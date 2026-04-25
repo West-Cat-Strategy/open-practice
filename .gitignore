@@ -1,22 +1,68 @@
+# OS and editor state
 .DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Local environment and secrets. Keep the documented example tracked.
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+
+# Dependencies and package-manager caches
 node_modules/
+**/node_modules/
 .pnpm-store/
+.npm/
+.yarn/
+.yarn-cache/
+
+# Build, framework, and test output
 .turbo/
+**/.turbo/
 .next/
+**/.next/
 dist/
+**/dist/
+build/
+**/build/
 coverage/
+**/coverage/
 playwright-report/
 test-results/
 *.tsbuildinfo
 
+# Logs and diagnostics
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local service state, uploads, and data snapshots
+.data/
+uploads/
+tmp/
+temp/
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.bak
+*.backup
+
 # Reference-only upstream projects. These are intentionally not part of the
 # Apache-2.0 core and may carry copyleft or incompatible licenses.
 .references/oss/
-
-# Local service state
-.data/
-uploads/
-
