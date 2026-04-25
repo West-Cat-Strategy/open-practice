@@ -1,0 +1,311 @@
+import Fastify, { type FastifyInstance } from "fastify";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  InMemoryOpenPracticeRepository,
+  type OpenPracticeRepository,
+} from "@open-practice/database";
+import { registerLedgerRoutes } from "./ledger.js";
+
+const servers: FastifyInstance[] = [];
+
+interface TestServerOptions {
+  repository?: OpenPracticeRepository;
+}
+
+async function authenticateTestRequest(
+  repository: OpenPracticeRepository,
+  headers: Record<string, string | string[] | undefined>,
+) {
+  const userIdHeader = headers["x-open-practice-user-id"];
+  const firmIdHeader = headers["x-open-practice-firm-id"];
+  const userId = typeof userIdHeader === "string" ? userIdHeader : "user-admin";
+  const firmId = typeof firmIdHeader === "string" ? firmIdHeader : "firm-west-legal";
+  const user = await repository.getUser(firmId, userId);
+  if (!user) {
+    throw Object.assign(new Error("Authenticated user was not found"), { statusCode: 401 });
+  }
+  return { user, firmId };
+}
+
+function testServer({ repository = new InMemoryOpenPracticeRepository() }: TestServerOptions = {}) {
+  const server = Fastify({ logger: false });
+  server.addHook("preHandler", async (request) => {
+    request.auth = await authenticateTestRequest(repository, request.headers);
+  });
+  registerLedgerRoutes(server, { repository });
+  server.setErrorHandler((error, _request, reply) => {
+    const normalizedError = error as Error & { statusCode?: number };
+    const statusCode =
+      typeof normalizedError.statusCode === "number" ? normalizedError.statusCode : 400;
+    reply.status(statusCode).send({
+      error: normalizedError.name,
+      message: normalizedError.message,
+    });
+  });
+  servers.push(server);
+  return server;
+}
+
+function ledgerTransactionPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "ledger-route-transaction",
+    idempotencyKey: "ledger-route-transaction-key",
+    postedAt: "2026-04-24T12:00:00.000Z",
+    entries: [
+      {
+        matterId: "matter-001",
+        clientId: "contact-ada",
+        accountId: "acct-trust-bank",
+        debitCents: 2500,
+        creditCents: 0,
+        memo: "Route test trust receipt",
+      },
+      {
+        matterId: "matter-001",
+        clientId: "contact-ada",
+        accountId: "acct-client-liability",
+        debitCents: 0,
+        creditCents: 2500,
+        memo: "Route test client liability",
+      },
+    ],
+    ...overrides,
+  };
+}
+
+afterEach(async () => {
+  await Promise.all(servers.splice(0).map((server) => server.close()));
+});
+
+describe("ledger routes", () => {
+  it("requires matterId for matter-scoped ledger reads", async () => {
+    const server = testServer();
+    const noMatterId = await server.inject({
+      method: "GET",
+      url: "/api/ledger",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+    const assignedMatter = await server.inject({
+      method: "GET",
+      url: "/api/ledger?matterId=matter-001",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+    const otherMatter = await server.inject({
+      method: "GET",
+      url: "/api/ledger?matterId=matter-002",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+
+    expect(noMatterId.statusCode).toBe(400);
+    expect(noMatterId.json()).toMatchObject({
+      error: "Error",
+      message: "matterId is required for matter-scoped ledger access",
+    });
+    expect(assignedMatter.statusCode).toBe(200);
+    expect(
+      assignedMatter
+        .json<{ entries: Array<{ matterId: string }> }>()
+        .entries.map((entry) => entry.matterId),
+    ).toEqual(["matter-001", "matter-001"]);
+    expect(otherMatter.statusCode).toBe(403);
+    expect(otherMatter.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Matter access required",
+    });
+  });
+
+  it("posts transactions through validated bodies", async () => {
+    const response = await testServer().inject({
+      method: "POST",
+      url: "/api/ledger/transactions",
+      payload: ledgerTransactionPayload(),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: "ledger-route-transaction",
+      firmId: "firm-west-legal",
+      idempotencyKey: "ledger-route-transaction-key",
+      entries: [
+        {
+          id: "ledger-route-transaction:1",
+          transactionId: "ledger-route-transaction",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-trust-bank",
+          debitCents: 2500,
+          creditCents: 0,
+          postedAt: "2026-04-24T12:00:00.000Z",
+        },
+        {
+          id: "ledger-route-transaction:2",
+          transactionId: "ledger-route-transaction",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-client-liability",
+          debitCents: 0,
+          creditCents: 2500,
+          postedAt: "2026-04-24T12:00:00.000Z",
+        },
+      ],
+    });
+    expect(response.json()).not.toHaveProperty("success");
+  });
+
+  it("rejects ledger client and matter scope mismatches", async () => {
+    const response = await testServer().inject({
+      method: "POST",
+      url: "/api/ledger/transactions",
+      payload: ledgerTransactionPayload({
+        id: "ledger-route-client-mismatch",
+        idempotencyKey: "ledger-route-client-mismatch-key",
+        entries: [
+          {
+            matterId: "matter-001",
+            clientId: "contact-northstar",
+            accountId: "acct-trust-bank",
+            debitCents: 2500,
+            creditCents: 0,
+            memo: "Wrong client for matter",
+          },
+          {
+            matterId: "matter-001",
+            clientId: "contact-northstar",
+            accountId: "acct-client-liability",
+            debitCents: 0,
+            creditCents: 2500,
+            memo: "Wrong client liability",
+          },
+        ],
+      }),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: "Error",
+      message: "Ledger client must be a non-adverse party on the matter",
+    });
+  });
+
+  it("records approvals and reconciliations", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const approval = await server.inject({
+      method: "POST",
+      url: "/api/ledger/transactions/trust-retainer/approvals",
+      payload: {
+        decision: "approved",
+        notes: "Reviewed against receipt batch.",
+        decidedAt: "2026-04-24T13:00:00.000Z",
+      },
+    });
+    const reconciliation = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations",
+      payload: {
+        accountId: "acct-trust-bank",
+        statementPeriodStart: "2026-04-01T00:00:00.000Z",
+        statementPeriodEnd: "2026-04-30T23:59:59.000Z",
+        expectedBalanceCents: 150000,
+        actualBalanceCents: 150000,
+        evidence: { statement: "april-trust.pdf" },
+      },
+    });
+
+    expect(approval.statusCode).toBe(200);
+    expect(approval.json()).toMatchObject({
+      firmId: "firm-west-legal",
+      transactionId: "trust-retainer",
+      decidedByUserId: "user-admin",
+      decision: "approved",
+      decidedAt: "2026-04-24T13:00:00.000Z",
+      notes: "Reviewed against receipt batch.",
+    });
+    await expect(
+      repository.listLedgerTransactionApprovals("firm-west-legal", {
+        transactionId: "trust-retainer",
+      }),
+    ).resolves.toHaveLength(1);
+
+    expect(reconciliation.statusCode).toBe(200);
+    expect(reconciliation.json()).toMatchObject({
+      firmId: "firm-west-legal",
+      accountId: "acct-trust-bank",
+      expectedBalanceCents: 150000,
+      actualBalanceCents: 150000,
+      status: "matched",
+      reviewedByUserId: "user-admin",
+      evidence: { statement: "april-trust.pdf" },
+    });
+    await expect(repository.listLedgerReconciliations("firm-west-legal")).resolves.toHaveLength(1);
+  });
+
+  it("rejects unauthorized ledger control writes", async () => {
+    const headers = {
+      "x-open-practice-user-id": "user-staff",
+      "x-open-practice-firm-id": "firm-west-legal",
+    };
+    const server = testServer();
+    const approval = await server.inject({
+      method: "POST",
+      url: "/api/ledger/transactions/trust-retainer/approvals",
+      headers,
+      payload: { decision: "approved" },
+    });
+    const reconciliation = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations",
+      headers,
+      payload: {
+        accountId: "acct-trust-bank",
+        statementPeriodStart: "2026-04-01T00:00:00.000Z",
+        statementPeriodEnd: "2026-04-30T23:59:59.000Z",
+        expectedBalanceCents: 150000,
+        actualBalanceCents: 150000,
+      },
+    });
+
+    expect(approval.statusCode).toBe(403);
+    expect(approval.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Matter access required",
+    });
+    expect(reconciliation.statusCode).toBe(403);
+    expect(reconciliation.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Matter access required",
+    });
+  });
+
+  it("returns legacy top-level error shape for invalid ledger bodies", async () => {
+    const response = await testServer().inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations",
+      payload: {
+        accountId: "acct-trust-bank",
+        statementPeriodStart: "not-a-date",
+        statementPeriodEnd: "2026-04-30T23:59:59.000Z",
+        expectedBalanceCents: 150000,
+        actualBalanceCents: 150000,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Invalid request body",
+    });
+    expect(response.json()).not.toHaveProperty("success");
+  });
+});

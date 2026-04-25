@@ -32,6 +32,7 @@ Current ratchets include:
 - direct API error envelopes in `server.ts`;
 - required adoption scaffold files;
 - billing route literals staying out of `server.ts`;
+- document, signature, intake, ledger, and queue route literals staying out of `server.ts`;
 - route catalog coverage for expected dashboard sections.
 
 If the ratchet fails, prefer moving code toward the intended boundary. If the boundary itself changed, update the script, docs, and tests in the same change.

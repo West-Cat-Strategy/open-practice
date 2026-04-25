@@ -46,7 +46,8 @@ function usage() {
   ].join("\n");
 }
 
-function parseArgs(args) {
+function parseArgs(rawArgs) {
+  const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
   let base = null;
   let files = null;
 
