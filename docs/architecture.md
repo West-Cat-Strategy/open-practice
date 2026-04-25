@@ -4,10 +4,11 @@ Open Practice is a TypeScript monorepo with a matter-centered legal domain core.
 
 ## Workspaces
 
-- `apps/web`: Next.js operational UI for firm members.
-- `apps/api`: Fastify API exposing the first matter, conflict, document, ledger, and audit endpoints.
+- `apps/web`: Next.js API-backed operational UI for firm members.
+- `apps/api`: Fastify API exposing session, capability, overview, matter, conflict, document, ledger, audit, signature, intake, and generated-document endpoints.
 - `packages/domain`: Pure TypeScript domain logic for permissions, conflict checks, audit hash chains, signature-provider boundaries, and trust/funds ledger validation.
-- `packages/database`: Drizzle schema for the planned PostgreSQL system of record.
+- `packages/database`: Drizzle schema, migrations, runtime setup, seed support, and in-memory/PostgreSQL repository implementations for the system of record.
+- `packages/providers`: Optional external-service adapters for manual/DocuSeal signatures and docassemble-style automation.
 
 ## Core Decisions
 
@@ -18,6 +19,8 @@ Open Practice is a TypeScript monorepo with a matter-centered legal domain core.
 - Trust/funds entries are balanced double-entry transactions with idempotency and no matter-level overdrafts.
 - E-signing and document automation are integrated through provider interfaces so self-hosted DocuSeal and docassemble can remain optional infrastructure.
 - Concrete external-service adapters live outside `packages/domain`; the domain package exports provider-neutral contracts and legal rules only.
+- The API currently wires signature providers from environment configuration; docassemble-style automation support exists as a provider adapter, while local intake/session records remain owned by Open Practice.
+- Planning lives in `docs/planning.md`, and live tracked work lives in `docs/planning-and-progress.md`.
 
 ## Reference-Informed Boundaries
 

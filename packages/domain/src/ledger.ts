@@ -45,6 +45,34 @@ export interface PostedLedgerTransaction {
   reversesTransactionId?: string;
 }
 
+export type LedgerApprovalDecision = "approved" | "rejected";
+
+export interface LedgerTransactionApprovalRecord {
+  id: string;
+  firmId: string;
+  transactionId: string;
+  decidedByUserId: string;
+  decision: LedgerApprovalDecision;
+  decidedAt: string;
+  notes?: string;
+}
+
+export type LedgerReconciliationStatus = "draft" | "matched" | "exception" | "reviewed";
+
+export interface LedgerReconciliationRecord {
+  id: string;
+  firmId: string;
+  accountId: string;
+  statementPeriodStart: string;
+  statementPeriodEnd: string;
+  expectedBalanceCents: number;
+  actualBalanceCents: number;
+  status: LedgerReconciliationStatus;
+  reviewedByUserId?: string;
+  evidence: Record<string, unknown>;
+  createdAt: string;
+}
+
 export interface LedgerPostingState {
   postedTransactions: PostedLedgerTransaction[];
   accounts: LedgerAccount[];

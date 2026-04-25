@@ -1,11 +1,14 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   appendAuditEvent,
+  calculateInvoiceTotals,
   canShareDocumentThroughPortal,
   clientTrustBalanceByMatter,
+  invoiceStatusForPayment,
   ledgerBalanceByMatter,
   postLedgerTransaction,
   runConflictCheck,
+  shouldUpdateSignatureRequestStatus,
   verifyAuditChain,
   type ActivityTimelineEntry,
   type AuditEvent,
@@ -13,14 +16,21 @@ import {
   type DocumentRecord,
   type ExpenseEntry,
   type Firm,
+  type InvoiceLineRecord,
+  type InvoiceRecord,
   type LedgerAccount,
   type LedgerEntry,
+  type LedgerReconciliationRecord,
   type LedgerTransaction,
+  type LedgerTransactionApprovalRecord,
+  type ManualPaymentRecord,
   type Matter,
   type MatterParty,
+  type PaymentAllocationRecord,
   type PortalGrant,
   type PostedLedgerTransaction,
   type TimeEntry,
+  type TrustTransferRequestRecord,
   type User,
 } from "@open-practice/domain";
 import {
@@ -32,19 +42,25 @@ import {
   sampleGeneratedDocuments,
   sampleIntakeSessions,
   sampleIntakeTemplates,
+  sampleInvoiceLines,
+  sampleInvoices,
   sampleLedgerAccounts,
   sampleLedgerEntries,
+  sampleManualPayments,
   sampleMatterParties,
   sampleMatters,
+  samplePaymentAllocations,
   samplePortalGrants,
   sampleSignatureProviderEvents,
   sampleSignatureRequestSigners,
   sampleSignatureRequests,
   sampleSignatureWebhookAttempts,
   sampleTimeEntries,
+  sampleTrustTransferRequests,
   sampleUsers,
 } from "@open-practice/domain/sample-data";
 import type {
+  AnswerSnapshotRecord,
   GeneratedDocumentRecord,
   IntakeSessionRecord,
   IntakeTemplateRecord,
@@ -87,6 +103,15 @@ export interface DocumentUploadIntent {
   checksumSha256: string;
   classification: DocumentRecord["classification"];
   legalHold: boolean;
+  supersedesDocumentId?: string;
+}
+
+export interface InvoiceWithLines extends InvoiceRecord {
+  lines: InvoiceLineRecord[];
+}
+
+export interface PaymentWithAllocations extends ManualPaymentRecord {
+  allocations: PaymentAllocationRecord[];
 }
 
 export interface OpenPracticeRepository {
@@ -126,6 +151,11 @@ export interface OpenPracticeRepository {
     checksumSha256: string;
     scanStatus?: DocumentRecord["scanStatus"];
   }): Promise<DocumentRecord>;
+  updateDocumentScanStatus(input: {
+    firmId: string;
+    documentId: string;
+    scanStatus: DocumentRecord["scanStatus"];
+  }): Promise<DocumentRecord>;
   listSignatureRequests(
     firmId: string,
     options?: { matterId?: string },
@@ -139,6 +169,17 @@ export interface OpenPracticeRepository {
     event: SignatureProviderEventRecord,
     webhookAttempt?: SignatureWebhookAttemptRecord,
   ): Promise<SignatureProviderEventRecord>;
+  recordSignatureWebhookAttempt(
+    attempt: SignatureWebhookAttemptRecord,
+  ): Promise<SignatureWebhookAttemptRecord>;
+  listSignatureProviderEvents(
+    firmId: string,
+    options?: { signatureRequestId?: string },
+  ): Promise<SignatureProviderEventRecord[]>;
+  listSignatureWebhookAttempts(
+    firmId: string,
+    options?: { provider?: SignatureWebhookAttemptRecord["provider"]; externalId?: string },
+  ): Promise<SignatureWebhookAttemptRecord[]>;
   listIntakeTemplates(firmId: string): Promise<IntakeTemplateRecord[]>;
   listIntakeSessions(
     firmId: string,
@@ -146,7 +187,80 @@ export interface OpenPracticeRepository {
   ): Promise<IntakeSessionRecord[]>;
   getIntakeSession(firmId: string, sessionId: string): Promise<IntakeSessionRecord | undefined>;
   createIntakeSession(session: IntakeSessionRecord): Promise<IntakeSessionRecord>;
+  createAnswerSnapshot(snapshot: AnswerSnapshotRecord): Promise<AnswerSnapshotRecord>;
+  listAnswerSnapshots(
+    firmId: string,
+    options?: { intakeSessionId?: string },
+  ): Promise<AnswerSnapshotRecord[]>;
   createGeneratedDocument(document: GeneratedDocumentRecord): Promise<GeneratedDocumentRecord>;
+  createLedgerTransactionApproval(
+    approval: LedgerTransactionApprovalRecord,
+  ): Promise<LedgerTransactionApprovalRecord>;
+  listLedgerTransactionApprovals(
+    firmId: string,
+    options?: { transactionId?: string },
+  ): Promise<LedgerTransactionApprovalRecord[]>;
+  createLedgerReconciliation(
+    reconciliation: LedgerReconciliationRecord,
+  ): Promise<LedgerReconciliationRecord>;
+  listLedgerReconciliations(firmId: string): Promise<LedgerReconciliationRecord[]>;
+  listTimeEntries(
+    firmId: string,
+    options?: { matterId?: string; status?: TimeEntry["billingStatus"] },
+  ): Promise<TimeEntry[]>;
+  getTimeEntry(firmId: string, entryId: string): Promise<TimeEntry | undefined>;
+  createTimeEntry(entry: TimeEntry): Promise<TimeEntry>;
+  updateTimeEntry(
+    firmId: string,
+    entryId: string,
+    updates: Partial<
+      Pick<
+        TimeEntry,
+        "performedAt" | "minutes" | "rateCents" | "narrative" | "billable" | "billingStatus"
+      >
+    >,
+  ): Promise<TimeEntry>;
+  listExpenseEntries(
+    firmId: string,
+    options?: { matterId?: string; status?: ExpenseEntry["billingStatus"] },
+  ): Promise<ExpenseEntry[]>;
+  getExpenseEntry(firmId: string, entryId: string): Promise<ExpenseEntry | undefined>;
+  createExpenseEntry(entry: ExpenseEntry): Promise<ExpenseEntry>;
+  updateExpenseEntry(
+    firmId: string,
+    entryId: string,
+    updates: Partial<
+      Pick<
+        ExpenseEntry,
+        "incurredAt" | "amountCents" | "category" | "description" | "reimbursable" | "billingStatus"
+      >
+    >,
+  ): Promise<ExpenseEntry>;
+  listInvoices(
+    firmId: string,
+    options?: { matterId?: string; status?: InvoiceRecord["status"] },
+  ): Promise<InvoiceWithLines[]>;
+  getInvoice(firmId: string, invoiceId: string): Promise<InvoiceWithLines | undefined>;
+  createInvoice(input: {
+    invoice: InvoiceRecord;
+    lines: InvoiceLineRecord[];
+  }): Promise<InvoiceWithLines>;
+  updateInvoice(invoice: InvoiceRecord): Promise<InvoiceWithLines>;
+  createPayment(input: {
+    payment: ManualPaymentRecord;
+    allocations: PaymentAllocationRecord[];
+  }): Promise<PaymentWithAllocations>;
+  listPayments(
+    firmId: string,
+    options?: { matterId?: string; invoiceId?: string },
+  ): Promise<PaymentWithAllocations[]>;
+  createTrustTransferRequest(
+    request: TrustTransferRequestRecord,
+  ): Promise<TrustTransferRequestRecord>;
+  listTrustTransferRequests(
+    firmId: string,
+    options?: { matterId?: string; status?: TrustTransferRequestRecord["status"] },
+  ): Promise<TrustTransferRequestRecord[]>;
 }
 
 function clone<T>(value: T): T {
@@ -189,6 +303,8 @@ function mapDocumentRow(row: typeof schema.documents.$inferSelect): DocumentReco
     checksumStatus: row.checksumStatus as DocumentRecord["checksumStatus"],
     scanStatus: row.scanStatus as DocumentRecord["scanStatus"],
     duplicateOfDocumentId: row.duplicateOfDocumentId ?? undefined,
+    supersedesDocumentId: row.supersedesDocumentId ?? undefined,
+    supersededAt: dateToIso(row.supersededAt),
     uploadedAt: dateToIso(row.uploadedAt),
     verifiedAt: dateToIso(row.verifiedAt),
   };
@@ -230,6 +346,81 @@ function mapIntakeSessionRow(row: typeof schema.intakeSessions.$inferSelect): In
     evidence: row.evidence as Record<string, unknown>,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function mapAnswerSnapshotRow(
+  row: typeof schema.answerSnapshots.$inferSelect,
+): AnswerSnapshotRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    intakeSessionId: row.intakeSessionId,
+    capturedAt: row.capturedAt.toISOString(),
+    answers: row.answers as Record<string, unknown>,
+  };
+}
+
+function mapSignatureProviderEventRow(
+  row: typeof schema.signatureProviderEvents.$inferSelect,
+): SignatureProviderEventRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    signatureRequestId: row.signatureRequestId,
+    provider: row.provider as SignatureProviderEventRecord["provider"],
+    externalId: row.externalId,
+    status: row.status as SignatureProviderStatus,
+    occurredAt: row.occurredAt.toISOString(),
+    evidence: row.evidence as Record<string, unknown>,
+  };
+}
+
+function mapSignatureWebhookAttemptRow(
+  row: typeof schema.signatureWebhookAttempts.$inferSelect,
+): SignatureWebhookAttemptRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    provider: row.provider as SignatureWebhookAttemptRecord["provider"],
+    externalId: row.externalId,
+    receivedAt: row.receivedAt.toISOString(),
+    processedAt: dateToIso(row.processedAt),
+    status: row.status as SignatureWebhookAttemptRecord["status"],
+    errorMessage: row.errorMessage ?? undefined,
+    payload: row.payload as Record<string, unknown>,
+  };
+}
+
+function mapLedgerApprovalRow(
+  row: typeof schema.trustTransactionApprovals.$inferSelect,
+): LedgerTransactionApprovalRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    transactionId: row.transactionId,
+    decidedByUserId: row.decidedByUserId,
+    decision: row.decision as LedgerTransactionApprovalRecord["decision"],
+    decidedAt: row.decidedAt.toISOString(),
+    notes: row.notes ?? undefined,
+  };
+}
+
+function mapLedgerReconciliationRow(
+  row: typeof schema.trustReconciliations.$inferSelect,
+): LedgerReconciliationRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    accountId: row.accountId,
+    statementPeriodStart: row.statementPeriodStart.toISOString(),
+    statementPeriodEnd: row.statementPeriodEnd.toISOString(),
+    expectedBalanceCents: row.expectedBalanceCents,
+    actualBalanceCents: row.actualBalanceCents,
+    status: row.status as LedgerReconciliationRecord["status"],
+    reviewedByUserId: row.reviewedByUserId ?? undefined,
+    evidence: row.evidence as Record<string, unknown>,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -329,15 +520,23 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private readonly matterParties = clone(sampleMatterParties);
   private readonly documents = clone(sampleDocuments);
   private readonly portalGrants = clone(samplePortalGrants);
-  private readonly timeEntries = clone(sampleTimeEntries);
-  private readonly expenseEntries = clone(sampleExpenseEntries);
+  private timeEntries = clone(sampleTimeEntries);
+  private expenseEntries = clone(sampleExpenseEntries);
+  private invoices = clone(sampleInvoices);
+  private invoiceLines = clone(sampleInvoiceLines);
+  private manualPayments = clone(sampleManualPayments);
+  private paymentAllocations = clone(samplePaymentAllocations);
+  private trustTransferRequests = clone(sampleTrustTransferRequests);
   private readonly ledgerAccounts = clone(sampleLedgerAccounts);
+  private ledgerApprovals: LedgerTransactionApprovalRecord[] = [];
+  private ledgerReconciliations: LedgerReconciliationRecord[] = [];
   private readonly intakeTemplates = clone(sampleIntakeTemplates);
   private signatureRequestSigners = clone(sampleSignatureRequestSigners);
   private signatureProviderEvents = clone(sampleSignatureProviderEvents);
   private signatureWebhookAttempts = clone(sampleSignatureWebhookAttempts);
   private signatureRequests = clone(sampleSignatureRequests);
   private intakeSessions = clone(sampleIntakeSessions);
+  private answerSnapshots: AnswerSnapshotRecord[] = [];
   private generatedDocuments = clone(sampleGeneratedDocuments);
   private auditEvents = clone(sampleAuditEvents);
   private postedTransactions: PostedLedgerTransaction[] = [
@@ -370,7 +569,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           0,
         ),
         unbilledMinutes: this.timeEntries
-          .filter((entry) => entry.firmId === firmId && entry.billable)
+          .filter(
+            (entry) =>
+              entry.firmId === firmId &&
+              entry.billable &&
+              ["draft", "submitted", "approved"].includes(entry.billingStatus),
+          )
           .reduce((sum, entry) => sum + entry.minutes, 0),
       },
       users: clone(this.users.filter((user) => user.firmId === firmId)),
@@ -538,6 +742,21 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   }
 
   async createDocumentUploadIntent(input: DocumentUploadIntent): Promise<DocumentRecord> {
+    const supersededDocument = input.supersedesDocumentId
+      ? this.documents.find(
+          (candidate) =>
+            candidate.firmId === input.firmId &&
+            candidate.matterId === input.matterId &&
+            candidate.id === input.supersedesDocumentId,
+        )
+      : undefined;
+    if (input.supersedesDocumentId && !supersededDocument) {
+      throw new Error(`Unknown superseded document ${input.supersedesDocumentId}`);
+    }
+    const now = new Date().toISOString();
+    if (supersededDocument) {
+      supersededDocument.supersededAt = now;
+    }
     const document: DocumentRecord = {
       id: input.id,
       firmId: input.firmId,
@@ -545,12 +764,13 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       title: input.title,
       storageKey: input.storageKey,
       checksumSha256: input.checksumSha256,
-      version: 1,
+      version: supersededDocument ? supersededDocument.version + 1 : 1,
       classification: input.classification,
       legalHold: input.legalHold,
       uploadStatus: "intent_created",
       checksumStatus: "pending",
       scanStatus: "pending",
+      supersedesDocumentId: input.supersedesDocumentId,
     };
     this.documents.push(document);
     return clone(document);
@@ -592,6 +812,19 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(document);
   }
 
+  async updateDocumentScanStatus(input: {
+    firmId: string;
+    documentId: string;
+    scanStatus: DocumentRecord["scanStatus"];
+  }): Promise<DocumentRecord> {
+    const document = this.documents.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.documentId,
+    );
+    if (!document) throw new Error(`Unknown document ${input.documentId}`);
+    document.scanStatus = input.scanStatus;
+    return clone(document);
+  }
+
   async listSignatureRequests(
     firmId: string,
     options: { matterId?: string } = {},
@@ -623,18 +856,56 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     if (webhookAttempt) {
       this.signatureWebhookAttempts = [...this.signatureWebhookAttempts, clone(webhookAttempt)];
     }
-    this.signatureRequests = this.signatureRequests.map((request) =>
-      request.firmId === event.firmId && request.id === event.signatureRequestId
-        ? {
-            ...request,
-            status: event.status,
-            completedAt: event.status === "completed" ? event.occurredAt : request.completedAt,
-            declinedAt: event.status === "declined" ? event.occurredAt : request.declinedAt,
-            evidence: event.evidence,
-          }
-        : request,
-    );
+    this.signatureRequests = this.signatureRequests.map((request) => {
+      if (request.firmId !== event.firmId || request.id !== event.signatureRequestId) {
+        return request;
+      }
+      if (!shouldUpdateSignatureRequestStatus(request.status, event)) {
+        return request;
+      }
+      return {
+        ...request,
+        status: event.status,
+        completedAt: event.status === "completed" ? event.occurredAt : request.completedAt,
+        declinedAt: event.status === "declined" ? event.occurredAt : request.declinedAt,
+        evidence: event.evidence,
+      };
+    });
     return clone(event);
+  }
+
+  async recordSignatureWebhookAttempt(
+    attempt: SignatureWebhookAttemptRecord,
+  ): Promise<SignatureWebhookAttemptRecord> {
+    this.signatureWebhookAttempts = [...this.signatureWebhookAttempts, clone(attempt)];
+    return clone(attempt);
+  }
+
+  async listSignatureProviderEvents(
+    firmId: string,
+    options: { signatureRequestId?: string } = {},
+  ): Promise<SignatureProviderEventRecord[]> {
+    return clone(
+      this.signatureProviderEvents.filter(
+        (event) =>
+          event.firmId === firmId &&
+          (!options.signatureRequestId || event.signatureRequestId === options.signatureRequestId),
+      ),
+    );
+  }
+
+  async listSignatureWebhookAttempts(
+    firmId: string,
+    options: { provider?: SignatureWebhookAttemptRecord["provider"]; externalId?: string } = {},
+  ): Promise<SignatureWebhookAttemptRecord[]> {
+    return clone(
+      this.signatureWebhookAttempts.filter(
+        (attempt) =>
+          attempt.firmId === firmId &&
+          (!options.provider || attempt.provider === options.provider) &&
+          (!options.externalId || attempt.externalId === options.externalId),
+      ),
+    );
   }
 
   async listIntakeTemplates(firmId: string): Promise<IntakeTemplateRecord[]> {
@@ -667,11 +938,273 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(session);
   }
 
+  async createAnswerSnapshot(snapshot: AnswerSnapshotRecord): Promise<AnswerSnapshotRecord> {
+    this.answerSnapshots = [...this.answerSnapshots, clone(snapshot)];
+    return clone(snapshot);
+  }
+
+  async listAnswerSnapshots(
+    firmId: string,
+    options: { intakeSessionId?: string } = {},
+  ): Promise<AnswerSnapshotRecord[]> {
+    return clone(
+      this.answerSnapshots.filter(
+        (snapshot) =>
+          snapshot.firmId === firmId &&
+          (!options.intakeSessionId || snapshot.intakeSessionId === options.intakeSessionId),
+      ),
+    );
+  }
+
   async createGeneratedDocument(
     document: GeneratedDocumentRecord,
   ): Promise<GeneratedDocumentRecord> {
     this.generatedDocuments = [...this.generatedDocuments, clone(document)];
     return clone(document);
+  }
+
+  async createLedgerTransactionApproval(
+    approval: LedgerTransactionApprovalRecord,
+  ): Promise<LedgerTransactionApprovalRecord> {
+    this.ledgerApprovals = [...this.ledgerApprovals, clone(approval)];
+    return clone(approval);
+  }
+
+  async listLedgerTransactionApprovals(
+    firmId: string,
+    options: { transactionId?: string } = {},
+  ): Promise<LedgerTransactionApprovalRecord[]> {
+    return clone(
+      this.ledgerApprovals.filter(
+        (approval) =>
+          approval.firmId === firmId &&
+          (!options.transactionId || approval.transactionId === options.transactionId),
+      ),
+    );
+  }
+
+  async createLedgerReconciliation(
+    reconciliation: LedgerReconciliationRecord,
+  ): Promise<LedgerReconciliationRecord> {
+    this.ledgerReconciliations = [...this.ledgerReconciliations, clone(reconciliation)];
+    return clone(reconciliation);
+  }
+
+  async listLedgerReconciliations(firmId: string): Promise<LedgerReconciliationRecord[]> {
+    return clone(
+      this.ledgerReconciliations.filter((reconciliation) => reconciliation.firmId === firmId),
+    );
+  }
+
+  async listTimeEntries(
+    firmId: string,
+    options: { matterId?: string; status?: TimeEntry["billingStatus"] } = {},
+  ): Promise<TimeEntry[]> {
+    return clone(
+      this.timeEntries.filter(
+        (entry) =>
+          entry.firmId === firmId &&
+          (!options.matterId || entry.matterId === options.matterId) &&
+          (!options.status || entry.billingStatus === options.status),
+      ),
+    );
+  }
+
+  async getTimeEntry(firmId: string, entryId: string): Promise<TimeEntry | undefined> {
+    return clone(this.timeEntries.find((entry) => entry.firmId === firmId && entry.id === entryId));
+  }
+
+  async createTimeEntry(entry: TimeEntry): Promise<TimeEntry> {
+    this.timeEntries = [...this.timeEntries, clone(entry)];
+    return clone(entry);
+  }
+
+  async updateTimeEntry(
+    firmId: string,
+    entryId: string,
+    updates: Partial<TimeEntry>,
+  ): Promise<TimeEntry> {
+    const index = this.timeEntries.findIndex(
+      (entry) => entry.firmId === firmId && entry.id === entryId,
+    );
+    if (index === -1) throw new Error("Time entry was not found");
+    const updated = { ...this.timeEntries[index]!, ...updates };
+    this.timeEntries = this.timeEntries.map((entry, candidateIndex) =>
+      candidateIndex === index ? updated : entry,
+    );
+    return clone(updated);
+  }
+
+  async listExpenseEntries(
+    firmId: string,
+    options: { matterId?: string; status?: ExpenseEntry["billingStatus"] } = {},
+  ): Promise<ExpenseEntry[]> {
+    return clone(
+      this.expenseEntries.filter(
+        (entry) =>
+          entry.firmId === firmId &&
+          (!options.matterId || entry.matterId === options.matterId) &&
+          (!options.status || entry.billingStatus === options.status),
+      ),
+    );
+  }
+
+  async getExpenseEntry(firmId: string, entryId: string): Promise<ExpenseEntry | undefined> {
+    return clone(
+      this.expenseEntries.find((entry) => entry.firmId === firmId && entry.id === entryId),
+    );
+  }
+
+  async createExpenseEntry(entry: ExpenseEntry): Promise<ExpenseEntry> {
+    this.expenseEntries = [...this.expenseEntries, clone(entry)];
+    return clone(entry);
+  }
+
+  async updateExpenseEntry(
+    firmId: string,
+    entryId: string,
+    updates: Partial<ExpenseEntry>,
+  ): Promise<ExpenseEntry> {
+    const index = this.expenseEntries.findIndex(
+      (entry) => entry.firmId === firmId && entry.id === entryId,
+    );
+    if (index === -1) throw new Error("Expense entry was not found");
+    const updated = { ...this.expenseEntries[index]!, ...updates };
+    this.expenseEntries = this.expenseEntries.map((entry, candidateIndex) =>
+      candidateIndex === index ? updated : entry,
+    );
+    return clone(updated);
+  }
+
+  async listInvoices(
+    firmId: string,
+    options: { matterId?: string; status?: InvoiceRecord["status"] } = {},
+  ): Promise<InvoiceWithLines[]> {
+    return clone(
+      this.invoices
+        .filter(
+          (invoice) =>
+            invoice.firmId === firmId &&
+            (!options.matterId || invoice.matterId === options.matterId) &&
+            (!options.status || invoice.status === options.status),
+        )
+        .map((invoice) => ({
+          ...invoice,
+          lines: this.invoiceLines.filter((line) => line.invoiceId === invoice.id),
+        })),
+    );
+  }
+
+  async getInvoice(firmId: string, invoiceId: string): Promise<InvoiceWithLines | undefined> {
+    const invoice = this.invoices.find(
+      (candidate) => candidate.firmId === firmId && candidate.id === invoiceId,
+    );
+    if (!invoice) return undefined;
+    return clone({
+      ...invoice,
+      lines: this.invoiceLines.filter((line) => line.invoiceId === invoice.id),
+    });
+  }
+
+  async createInvoice(input: {
+    invoice: InvoiceRecord;
+    lines: InvoiceLineRecord[];
+  }): Promise<InvoiceWithLines> {
+    this.invoices = [...this.invoices, clone(input.invoice)];
+    this.invoiceLines = [...this.invoiceLines, ...clone(input.lines)];
+    return clone({ ...input.invoice, lines: input.lines });
+  }
+
+  async updateInvoice(invoice: InvoiceRecord): Promise<InvoiceWithLines> {
+    const index = this.invoices.findIndex(
+      (candidate) => candidate.firmId === invoice.firmId && candidate.id === invoice.id,
+    );
+    if (index === -1) throw new Error("Invoice was not found");
+    this.invoices = this.invoices.map((candidate, candidateIndex) =>
+      candidateIndex === index ? clone(invoice) : candidate,
+    );
+    return (await this.getInvoice(invoice.firmId, invoice.id))!;
+  }
+
+  async createPayment(input: {
+    payment: ManualPaymentRecord;
+    allocations: PaymentAllocationRecord[];
+  }): Promise<PaymentWithAllocations> {
+    const allocatedCents = input.allocations.reduce(
+      (sum, allocation) => sum + allocation.amountCents,
+      0,
+    );
+    if (allocatedCents > input.payment.amountCents) {
+      throw new Error("Payment allocations exceed payment amount");
+    }
+    for (const allocation of input.allocations) {
+      const invoice = await this.getInvoice(input.payment.firmId, allocation.invoiceId);
+      if (!invoice) throw new Error("Payment allocation invoice was not found");
+      if (allocation.amountCents > invoice.balanceDueCents) {
+        throw new Error("Payment allocation exceeds invoice balance");
+      }
+      const totals = calculateInvoiceTotals({
+        lines: invoice.lines,
+        allocations: [
+          ...this.paymentAllocations.filter((existing) => existing.invoiceId === invoice.id),
+          allocation,
+        ],
+      });
+      await this.updateInvoice({
+        ...invoice,
+        ...totals,
+        status: invoiceStatusForPayment({
+          currentStatus: invoice.status,
+          totalCents: totals.totalCents,
+          paidCents: totals.paidCents,
+        }),
+      });
+    }
+    this.manualPayments = [...this.manualPayments, clone(input.payment)];
+    this.paymentAllocations = [...this.paymentAllocations, ...clone(input.allocations)];
+    return clone({ ...input.payment, allocations: input.allocations });
+  }
+
+  async listPayments(
+    firmId: string,
+    options: { matterId?: string; invoiceId?: string } = {},
+  ): Promise<PaymentWithAllocations[]> {
+    return clone(
+      this.manualPayments
+        .filter(
+          (payment) =>
+            payment.firmId === firmId &&
+            (!options.matterId || payment.matterId === options.matterId) &&
+            (!options.invoiceId || payment.invoiceId === options.invoiceId),
+        )
+        .map((payment) => ({
+          ...payment,
+          allocations: this.paymentAllocations.filter(
+            (allocation) => allocation.paymentId === payment.id,
+          ),
+        })),
+    );
+  }
+
+  async createTrustTransferRequest(
+    request: TrustTransferRequestRecord,
+  ): Promise<TrustTransferRequestRecord> {
+    this.trustTransferRequests = [...this.trustTransferRequests, clone(request)];
+    return clone(request);
+  }
+
+  async listTrustTransferRequests(
+    firmId: string,
+    options: { matterId?: string; status?: TrustTransferRequestRecord["status"] } = {},
+  ): Promise<TrustTransferRequestRecord[]> {
+    return clone(
+      this.trustTransferRequests.filter(
+        (request) =>
+          request.firmId === firmId &&
+          (!options.matterId || request.matterId === options.matterId) &&
+          (!options.status || request.status === options.status),
+      ),
+    );
   }
 }
 
@@ -724,7 +1257,10 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           0,
         ),
         unbilledMinutes: timeEntries
-          .filter((entry) => entry.billable)
+          .filter(
+            (entry) =>
+              entry.billable && ["draft", "submitted", "approved"].includes(entry.billingStatus),
+          )
           .reduce((sum, entry) => sum + entry.minutes, 0),
       },
       users,
@@ -1011,6 +1547,16 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   }
 
   async createDocumentUploadIntent(input: DocumentUploadIntent): Promise<DocumentRecord> {
+    const supersededDocument = input.supersedesDocumentId
+      ? await this.getDocument(input.firmId, input.supersedesDocumentId)
+      : undefined;
+    if (
+      input.supersedesDocumentId &&
+      (!supersededDocument || supersededDocument.matterId !== input.matterId)
+    ) {
+      throw new Error(`Unknown superseded document ${input.supersedesDocumentId}`);
+    }
+    const now = new Date();
     const document = {
       id: input.id,
       firmId: input.firmId,
@@ -1018,14 +1564,28 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       title: input.title,
       storageKey: input.storageKey,
       checksumSha256: input.checksumSha256,
-      version: 1,
+      version: supersededDocument ? supersededDocument.version + 1 : 1,
       classification: input.classification,
       legalHold: input.legalHold,
       uploadStatus: "intent_created" as const,
       checksumStatus: "pending" as const,
       scanStatus: "pending" as const,
+      supersedesDocumentId: input.supersedesDocumentId,
     };
-    await this.db.insert(schema.documents).values(document);
+    await this.db.transaction(async (tx) => {
+      if (supersededDocument) {
+        await tx
+          .update(schema.documents)
+          .set({ supersededAt: now })
+          .where(
+            and(
+              eq(schema.documents.firmId, input.firmId),
+              eq(schema.documents.id, supersededDocument.id),
+            ),
+          );
+      }
+      await tx.insert(schema.documents).values(document);
+    });
     return document;
   }
 
@@ -1056,6 +1616,22 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         uploadedAt: now,
         verifiedAt: now,
       })
+      .where(
+        and(eq(schema.documents.firmId, input.firmId), eq(schema.documents.id, input.documentId)),
+      )
+      .returning();
+    if (!row) throw new Error(`Unknown document ${input.documentId}`);
+    return mapDocumentRow(row);
+  }
+
+  async updateDocumentScanStatus(input: {
+    firmId: string;
+    documentId: string;
+    scanStatus: DocumentRecord["scanStatus"];
+  }): Promise<DocumentRecord> {
+    const [row] = await this.db
+      .update(schema.documents)
+      .set({ scanStatus: input.scanStatus })
       .where(
         and(eq(schema.documents.firmId, input.firmId), eq(schema.documents.id, input.documentId)),
       )
@@ -1112,6 +1688,15 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     event: SignatureProviderEventRecord,
     webhookAttempt?: SignatureWebhookAttemptRecord,
   ): Promise<SignatureProviderEventRecord> {
+    const [current] = await this.db
+      .select()
+      .from(schema.signatureRequests)
+      .where(
+        and(
+          eq(schema.signatureRequests.firmId, event.firmId),
+          eq(schema.signatureRequests.id, event.signatureRequestId),
+        ),
+      );
     await this.db.transaction(async (tx) => {
       await tx.insert(schema.signatureProviderEvents).values({
         ...event,
@@ -1124,22 +1709,75 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           processedAt: webhookAttempt.processedAt ? new Date(webhookAttempt.processedAt) : null,
         });
       }
-      await tx
-        .update(schema.signatureRequests)
-        .set({
-          status: event.status,
-          evidence: event.evidence,
-          completedAt: event.status === "completed" ? new Date(event.occurredAt) : undefined,
-          declinedAt: event.status === "declined" ? new Date(event.occurredAt) : undefined,
-        })
-        .where(
-          and(
-            eq(schema.signatureRequests.firmId, event.firmId),
-            eq(schema.signatureRequests.id, event.signatureRequestId),
-          ),
-        );
+      if (
+        current &&
+        shouldUpdateSignatureRequestStatus(current.status as SignatureProviderStatus, event)
+      ) {
+        await tx
+          .update(schema.signatureRequests)
+          .set({
+            status: event.status,
+            evidence: event.evidence,
+            completedAt: event.status === "completed" ? new Date(event.occurredAt) : undefined,
+            declinedAt: event.status === "declined" ? new Date(event.occurredAt) : undefined,
+          })
+          .where(
+            and(
+              eq(schema.signatureRequests.firmId, event.firmId),
+              eq(schema.signatureRequests.id, event.signatureRequestId),
+            ),
+          );
+      }
     });
     return event;
+  }
+
+  async recordSignatureWebhookAttempt(
+    attempt: SignatureWebhookAttemptRecord,
+  ): Promise<SignatureWebhookAttemptRecord> {
+    await this.db.insert(schema.signatureWebhookAttempts).values({
+      ...attempt,
+      receivedAt: new Date(attempt.receivedAt),
+      processedAt: attempt.processedAt ? new Date(attempt.processedAt) : null,
+    });
+    return attempt;
+  }
+
+  async listSignatureProviderEvents(
+    firmId: string,
+    options: { signatureRequestId?: string } = {},
+  ): Promise<SignatureProviderEventRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.signatureProviderEvents)
+      .where(
+        options.signatureRequestId
+          ? and(
+              eq(schema.signatureProviderEvents.firmId, firmId),
+              eq(schema.signatureProviderEvents.signatureRequestId, options.signatureRequestId),
+            )
+          : eq(schema.signatureProviderEvents.firmId, firmId),
+      )
+      .orderBy(asc(schema.signatureProviderEvents.occurredAt));
+    return rows.map(mapSignatureProviderEventRow);
+  }
+
+  async listSignatureWebhookAttempts(
+    firmId: string,
+    options: { provider?: SignatureWebhookAttemptRecord["provider"]; externalId?: string } = {},
+  ): Promise<SignatureWebhookAttemptRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.signatureWebhookAttempts)
+      .where(eq(schema.signatureWebhookAttempts.firmId, firmId))
+      .orderBy(asc(schema.signatureWebhookAttempts.receivedAt));
+    return rows
+      .map(mapSignatureWebhookAttemptRow)
+      .filter(
+        (attempt) =>
+          (!options.provider || attempt.provider === options.provider) &&
+          (!options.externalId || attempt.externalId === options.externalId),
+      );
   }
 
   async listIntakeTemplates(firmId: string): Promise<IntakeTemplateRecord[]> {
@@ -1197,6 +1835,32 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return session;
   }
 
+  async createAnswerSnapshot(snapshot: AnswerSnapshotRecord): Promise<AnswerSnapshotRecord> {
+    await this.db.insert(schema.answerSnapshots).values({
+      ...snapshot,
+      capturedAt: new Date(snapshot.capturedAt),
+    });
+    return snapshot;
+  }
+
+  async listAnswerSnapshots(
+    firmId: string,
+    options: { intakeSessionId?: string } = {},
+  ): Promise<AnswerSnapshotRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.answerSnapshots)
+      .where(
+        options.intakeSessionId
+          ? and(
+              eq(schema.answerSnapshots.firmId, firmId),
+              eq(schema.answerSnapshots.intakeSessionId, options.intakeSessionId),
+            )
+          : eq(schema.answerSnapshots.firmId, firmId),
+      );
+    return rows.map(mapAnswerSnapshotRow);
+  }
+
   async createGeneratedDocument(
     document: GeneratedDocumentRecord,
   ): Promise<GeneratedDocumentRecord> {
@@ -1205,6 +1869,55 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       createdAt: new Date(document.createdAt),
     });
     return document;
+  }
+
+  async createLedgerTransactionApproval(
+    approval: LedgerTransactionApprovalRecord,
+  ): Promise<LedgerTransactionApprovalRecord> {
+    await this.db.insert(schema.trustTransactionApprovals).values({
+      ...approval,
+      decidedAt: new Date(approval.decidedAt),
+    });
+    return approval;
+  }
+
+  async listLedgerTransactionApprovals(
+    firmId: string,
+    options: { transactionId?: string } = {},
+  ): Promise<LedgerTransactionApprovalRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.trustTransactionApprovals)
+      .where(
+        options.transactionId
+          ? and(
+              eq(schema.trustTransactionApprovals.firmId, firmId),
+              eq(schema.trustTransactionApprovals.transactionId, options.transactionId),
+            )
+          : eq(schema.trustTransactionApprovals.firmId, firmId),
+      );
+    return rows.map(mapLedgerApprovalRow);
+  }
+
+  async createLedgerReconciliation(
+    reconciliation: LedgerReconciliationRecord,
+  ): Promise<LedgerReconciliationRecord> {
+    await this.db.insert(schema.trustReconciliations).values({
+      ...reconciliation,
+      statementPeriodStart: new Date(reconciliation.statementPeriodStart),
+      statementPeriodEnd: new Date(reconciliation.statementPeriodEnd),
+      createdAt: new Date(reconciliation.createdAt),
+    });
+    return reconciliation;
+  }
+
+  async listLedgerReconciliations(firmId: string): Promise<LedgerReconciliationRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.trustReconciliations)
+      .where(eq(schema.trustReconciliations.firmId, firmId))
+      .orderBy(asc(schema.trustReconciliations.createdAt));
+    return rows.map(mapLedgerReconciliationRow);
   }
 
   private async listUsers(firmId: string): Promise<User[]> {
@@ -1245,15 +1958,267 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return rows.map(mapDocumentRow);
   }
 
-  private async listTimeEntries(firmId: string): Promise<TimeEntry[]> {
-    return this.db.select().from(schema.timeEntries).where(eq(schema.timeEntries.firmId, firmId));
+  async listTimeEntries(
+    firmId: string,
+    options: { matterId?: string; status?: TimeEntry["billingStatus"] } = {},
+  ): Promise<TimeEntry[]> {
+    const filters = [eq(schema.timeEntries.firmId, firmId)];
+    if (options.matterId) filters.push(eq(schema.timeEntries.matterId, options.matterId));
+    if (options.status) filters.push(eq(schema.timeEntries.billingStatus, options.status));
+    const rows = await this.db
+      .select()
+      .from(schema.timeEntries)
+      .where(and(...filters));
+    return rows.map(mapTimeEntryRow);
   }
 
-  private async listExpenseEntries(firmId: string): Promise<ExpenseEntry[]> {
-    return this.db
+  async getTimeEntry(firmId: string, entryId: string): Promise<TimeEntry | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.timeEntries)
+      .where(and(eq(schema.timeEntries.firmId, firmId), eq(schema.timeEntries.id, entryId)));
+    return row ? mapTimeEntryRow(row) : undefined;
+  }
+
+  async createTimeEntry(entry: TimeEntry): Promise<TimeEntry> {
+    await this.db.insert(schema.timeEntries).values({
+      ...entry,
+      performedAt: new Date(entry.performedAt),
+    });
+    return clone(entry);
+  }
+
+  async updateTimeEntry(
+    firmId: string,
+    entryId: string,
+    updates: Partial<TimeEntry>,
+  ): Promise<TimeEntry> {
+    const [row] = await this.db
+      .update(schema.timeEntries)
+      .set({
+        ...updates,
+        performedAt: updates.performedAt ? new Date(updates.performedAt) : undefined,
+      })
+      .where(and(eq(schema.timeEntries.firmId, firmId), eq(schema.timeEntries.id, entryId)))
+      .returning();
+    if (!row) throw new Error("Time entry was not found");
+    return mapTimeEntryRow(row);
+  }
+
+  async listExpenseEntries(
+    firmId: string,
+    options: { matterId?: string; status?: ExpenseEntry["billingStatus"] } = {},
+  ): Promise<ExpenseEntry[]> {
+    const filters = [eq(schema.expenseEntries.firmId, firmId)];
+    if (options.matterId) filters.push(eq(schema.expenseEntries.matterId, options.matterId));
+    if (options.status) filters.push(eq(schema.expenseEntries.billingStatus, options.status));
+    const rows = await this.db
       .select()
       .from(schema.expenseEntries)
-      .where(eq(schema.expenseEntries.firmId, firmId));
+      .where(and(...filters));
+    return rows.map(mapExpenseEntryRow);
+  }
+
+  async getExpenseEntry(firmId: string, entryId: string): Promise<ExpenseEntry | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.expenseEntries)
+      .where(and(eq(schema.expenseEntries.firmId, firmId), eq(schema.expenseEntries.id, entryId)));
+    return row ? mapExpenseEntryRow(row) : undefined;
+  }
+
+  async createExpenseEntry(entry: ExpenseEntry): Promise<ExpenseEntry> {
+    await this.db.insert(schema.expenseEntries).values({
+      ...entry,
+      incurredAt: new Date(entry.incurredAt),
+    });
+    return clone(entry);
+  }
+
+  async updateExpenseEntry(
+    firmId: string,
+    entryId: string,
+    updates: Partial<ExpenseEntry>,
+  ): Promise<ExpenseEntry> {
+    const [row] = await this.db
+      .update(schema.expenseEntries)
+      .set({
+        ...updates,
+        incurredAt: updates.incurredAt ? new Date(updates.incurredAt) : undefined,
+      })
+      .where(and(eq(schema.expenseEntries.firmId, firmId), eq(schema.expenseEntries.id, entryId)))
+      .returning();
+    if (!row) throw new Error("Expense entry was not found");
+    return mapExpenseEntryRow(row);
+  }
+
+  async listInvoices(
+    firmId: string,
+    options: { matterId?: string; status?: InvoiceRecord["status"] } = {},
+  ): Promise<InvoiceWithLines[]> {
+    const filters = [eq(schema.invoices.firmId, firmId)];
+    if (options.matterId) filters.push(eq(schema.invoices.matterId, options.matterId));
+    if (options.status) filters.push(eq(schema.invoices.status, options.status));
+    const rows = await this.db
+      .select()
+      .from(schema.invoices)
+      .where(and(...filters));
+    const lines = await this.db
+      .select()
+      .from(schema.invoiceLines)
+      .where(eq(schema.invoiceLines.firmId, firmId));
+    return rows.map((row) => ({
+      ...mapInvoiceRow(row),
+      lines: lines.filter((line) => line.invoiceId === row.id).map(mapInvoiceLineRow),
+    }));
+  }
+
+  async getInvoice(firmId: string, invoiceId: string): Promise<InvoiceWithLines | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.invoices)
+      .where(and(eq(schema.invoices.firmId, firmId), eq(schema.invoices.id, invoiceId)));
+    if (!row) return undefined;
+    const lines = await this.db
+      .select()
+      .from(schema.invoiceLines)
+      .where(eq(schema.invoiceLines.invoiceId, invoiceId));
+    return { ...mapInvoiceRow(row), lines: lines.map(mapInvoiceLineRow) };
+  }
+
+  async createInvoice(input: {
+    invoice: InvoiceRecord;
+    lines: InvoiceLineRecord[];
+  }): Promise<InvoiceWithLines> {
+    await this.db.insert(schema.invoices).values(invoiceInsert(input.invoice));
+    if (input.lines.length > 0) {
+      await this.db.insert(schema.invoiceLines).values(input.lines.map(invoiceLineInsert));
+    }
+    return { ...clone(input.invoice), lines: clone(input.lines) };
+  }
+
+  async updateInvoice(invoice: InvoiceRecord): Promise<InvoiceWithLines> {
+    const [row] = await this.db
+      .update(schema.invoices)
+      .set(invoiceInsert(invoice))
+      .where(and(eq(schema.invoices.firmId, invoice.firmId), eq(schema.invoices.id, invoice.id)))
+      .returning();
+    if (!row) throw new Error("Invoice was not found");
+    return (await this.getInvoice(invoice.firmId, invoice.id))!;
+  }
+
+  async createPayment(input: {
+    payment: ManualPaymentRecord;
+    allocations: PaymentAllocationRecord[];
+  }): Promise<PaymentWithAllocations> {
+    const allocatedCents = input.allocations.reduce(
+      (sum, allocation) => sum + allocation.amountCents,
+      0,
+    );
+    if (allocatedCents > input.payment.amountCents) {
+      throw new Error("Payment allocations exceed payment amount");
+    }
+    for (const allocation of input.allocations) {
+      const invoice = await this.getInvoice(input.payment.firmId, allocation.invoiceId);
+      if (!invoice) throw new Error("Payment allocation invoice was not found");
+      if (allocation.amountCents > invoice.balanceDueCents) {
+        throw new Error("Payment allocation exceeds invoice balance");
+      }
+    }
+    await this.db.insert(schema.manualPayments).values(paymentInsert(input.payment));
+    if (input.allocations.length > 0) {
+      await this.db
+        .insert(schema.paymentAllocations)
+        .values(input.allocations.map(paymentAllocationInsert));
+    }
+    for (const allocation of input.allocations) {
+      const invoice = await this.getInvoice(input.payment.firmId, allocation.invoiceId);
+      if (!invoice) continue;
+      const existingAllocations = await this.listPaymentAllocationsForInvoice(
+        input.payment.firmId,
+        allocation.invoiceId,
+      );
+      const totals = calculateInvoiceTotals({
+        lines: invoice.lines,
+        allocations: existingAllocations,
+      });
+      await this.updateInvoice({
+        ...invoice,
+        ...totals,
+        status: invoiceStatusForPayment({
+          currentStatus: invoice.status,
+          totalCents: totals.totalCents,
+          paidCents: totals.paidCents,
+        }),
+      });
+    }
+    return { ...clone(input.payment), allocations: clone(input.allocations) };
+  }
+
+  async listPayments(
+    firmId: string,
+    options: { matterId?: string; invoiceId?: string } = {},
+  ): Promise<PaymentWithAllocations[]> {
+    const filters = [eq(schema.manualPayments.firmId, firmId)];
+    if (options.matterId) filters.push(eq(schema.manualPayments.matterId, options.matterId));
+    if (options.invoiceId) filters.push(eq(schema.manualPayments.invoiceId, options.invoiceId));
+    const payments = await this.db
+      .select()
+      .from(schema.manualPayments)
+      .where(and(...filters));
+    const allocations = await this.db
+      .select()
+      .from(schema.paymentAllocations)
+      .where(eq(schema.paymentAllocations.firmId, firmId));
+    return payments.map((payment) => ({
+      ...mapPaymentRow(payment),
+      allocations: allocations
+        .filter((allocation) => allocation.paymentId === payment.id)
+        .map(mapPaymentAllocationRow),
+    }));
+  }
+
+  async createTrustTransferRequest(
+    request: TrustTransferRequestRecord,
+  ): Promise<TrustTransferRequestRecord> {
+    await this.db
+      .insert(schema.billingTrustTransferRequests)
+      .values(trustTransferRequestInsert(request));
+    return clone(request);
+  }
+
+  async listTrustTransferRequests(
+    firmId: string,
+    options: { matterId?: string; status?: TrustTransferRequestRecord["status"] } = {},
+  ): Promise<TrustTransferRequestRecord[]> {
+    const filters = [eq(schema.billingTrustTransferRequests.firmId, firmId)];
+    if (options.matterId) {
+      filters.push(eq(schema.billingTrustTransferRequests.matterId, options.matterId));
+    }
+    if (options.status) {
+      filters.push(eq(schema.billingTrustTransferRequests.status, options.status));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.billingTrustTransferRequests)
+      .where(and(...filters));
+    return rows.map(mapTrustTransferRequestRow);
+  }
+
+  private async listPaymentAllocationsForInvoice(
+    firmId: string,
+    invoiceId: string,
+  ): Promise<PaymentAllocationRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.paymentAllocations)
+      .where(
+        and(
+          eq(schema.paymentAllocations.firmId, firmId),
+          eq(schema.paymentAllocations.invoiceId, invoiceId),
+        ),
+      );
+    return rows.map(mapPaymentAllocationRow);
   }
 }
 
@@ -1269,5 +2234,186 @@ function mapMatter(row: typeof schema.matters.$inferSelect): Matter {
     responsibleUserId: row.responsibleUserId,
     openedOn: dateToIso(row.openedOn),
     closedOn: dateToIso(row.closedOn),
+  };
+}
+
+function mapTimeEntryRow(row: typeof schema.timeEntries.$inferSelect): TimeEntry {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    userId: row.userId,
+    performedAt: row.performedAt.toISOString(),
+    minutes: row.minutes,
+    rateCents: row.rateCents,
+    narrative: row.narrative,
+    billable: row.billable,
+    billingStatus: row.billingStatus as TimeEntry["billingStatus"],
+  };
+}
+
+function mapExpenseEntryRow(row: typeof schema.expenseEntries.$inferSelect): ExpenseEntry {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    incurredAt: row.incurredAt.toISOString(),
+    amountCents: row.amountCents,
+    category: row.category,
+    description: row.description,
+    reimbursable: row.reimbursable,
+    billingStatus: row.billingStatus as ExpenseEntry["billingStatus"],
+  };
+}
+
+function mapInvoiceRow(row: typeof schema.invoices.$inferSelect): InvoiceRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    clientContactId: row.clientContactId ?? undefined,
+    invoiceNumber: row.invoiceNumber,
+    status: row.status as InvoiceRecord["status"],
+    approvedAt: dateToIso(row.approvedAt),
+    issuedAt: dateToIso(row.issuedAt),
+    dueAt: dateToIso(row.dueAt),
+    memo: row.memo ?? undefined,
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    voidedAt: dateToIso(row.voidedAt),
+    subtotalCents: row.subtotalCents,
+    taxCents: row.taxCents,
+    totalCents: row.totalCents,
+    paidCents: row.paidCents,
+    balanceDueCents: row.balanceDueCents,
+  };
+}
+
+function invoiceInsert(invoice: InvoiceRecord): typeof schema.invoices.$inferInsert {
+  return {
+    id: invoice.id,
+    firmId: invoice.firmId,
+    matterId: invoice.matterId,
+    clientContactId: invoice.clientContactId,
+    invoiceNumber: invoice.invoiceNumber,
+    status: invoice.status,
+    approvedAt: invoice.approvedAt ? new Date(invoice.approvedAt) : null,
+    issuedAt: invoice.issuedAt ? new Date(invoice.issuedAt) : null,
+    dueAt: invoice.dueAt ? new Date(invoice.dueAt) : null,
+    memo: invoice.memo,
+    createdByUserId: invoice.createdByUserId,
+    createdAt: new Date(invoice.createdAt),
+    voidedAt: invoice.voidedAt ? new Date(invoice.voidedAt) : null,
+    subtotalCents: invoice.subtotalCents,
+    taxCents: invoice.taxCents,
+    totalCents: invoice.totalCents,
+    paidCents: invoice.paidCents,
+    balanceDueCents: invoice.balanceDueCents,
+  };
+}
+
+function mapInvoiceLineRow(row: typeof schema.invoiceLines.$inferSelect): InvoiceLineRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    invoiceId: row.invoiceId,
+    matterId: row.matterId,
+    kind: row.kind as InvoiceLineRecord["kind"],
+    description: row.description,
+    quantity: row.quantity,
+    unitAmountCents: row.unitAmountCents,
+    subtotalCents: row.subtotalCents,
+    taxName: row.taxName ?? undefined,
+    taxRateBps: row.taxRateBps,
+    taxCents: row.taxCents,
+    totalCents: row.totalCents,
+    timeEntryId: row.timeEntryId ?? undefined,
+    expenseEntryId: row.expenseEntryId ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function invoiceLineInsert(line: InvoiceLineRecord): typeof schema.invoiceLines.$inferInsert {
+  return {
+    ...line,
+    createdAt: new Date(line.createdAt),
+  };
+}
+
+function mapPaymentRow(row: typeof schema.manualPayments.$inferSelect): ManualPaymentRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    invoiceId: row.invoiceId ?? undefined,
+    clientContactId: row.clientContactId ?? undefined,
+    receivedAt: row.receivedAt.toISOString(),
+    amountCents: row.amountCents,
+    method: row.method as ManualPaymentRecord["method"],
+    reference: row.reference ?? undefined,
+    status: row.status as ManualPaymentRecord["status"],
+    receivedByUserId: row.receivedByUserId,
+    notes: row.notes ?? undefined,
+    evidence: row.evidence as Record<string, unknown>,
+  };
+}
+
+function paymentInsert(payment: ManualPaymentRecord): typeof schema.manualPayments.$inferInsert {
+  return {
+    ...payment,
+    receivedAt: new Date(payment.receivedAt),
+  };
+}
+
+function mapPaymentAllocationRow(
+  row: typeof schema.paymentAllocations.$inferSelect,
+): PaymentAllocationRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    paymentId: row.paymentId,
+    invoiceId: row.invoiceId,
+    amountCents: row.amountCents,
+    allocatedAt: row.allocatedAt.toISOString(),
+  };
+}
+
+function paymentAllocationInsert(
+  allocation: PaymentAllocationRecord,
+): typeof schema.paymentAllocations.$inferInsert {
+  return {
+    ...allocation,
+    allocatedAt: new Date(allocation.allocatedAt),
+  };
+}
+
+function mapTrustTransferRequestRow(
+  row: typeof schema.billingTrustTransferRequests.$inferSelect,
+): TrustTransferRequestRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    clientContactId: row.clientContactId ?? undefined,
+    invoiceId: row.invoiceId,
+    requestedByUserId: row.requestedByUserId,
+    amountCents: row.amountCents,
+    status: row.status as TrustTransferRequestRecord["status"],
+    reason: row.reason ?? undefined,
+    requestedAt: row.requestedAt.toISOString(),
+    reviewedByUserId: row.reviewedByUserId ?? undefined,
+    reviewedAt: dateToIso(row.reviewedAt),
+    ledgerTransactionId: row.ledgerTransactionId ?? undefined,
+    evidence: row.evidence as Record<string, unknown>,
+  };
+}
+
+function trustTransferRequestInsert(
+  request: TrustTransferRequestRecord,
+): typeof schema.billingTrustTransferRequests.$inferInsert {
+  return {
+    ...request,
+    requestedAt: new Date(request.requestedAt),
+    reviewedAt: request.reviewedAt ? new Date(request.reviewedAt) : null,
   };
 }

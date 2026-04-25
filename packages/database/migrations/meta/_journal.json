@@ -15,6 +15,20 @@
       "when": 1777081363449,
       "tag": "0001_fat_christian_walker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777086000000,
+      "tag": "0002_provider_queue_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777089600000,
+      "tag": "0003_full_billing_lane",
+      "breakpoints": true
     }
   ]
 }

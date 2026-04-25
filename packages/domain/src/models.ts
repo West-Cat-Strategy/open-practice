@@ -1,3 +1,5 @@
+import type { BillingStatus } from "./billing.js";
+
 export type Province = "BC" | "ON" | "CANADA" | "OTHER";
 
 export type ProfessionalRole =
@@ -104,6 +106,8 @@ export interface DocumentRecord {
   checksumStatus: DocumentChecksumStatus;
   scanStatus: DocumentScanStatus;
   duplicateOfDocumentId?: string;
+  supersedesDocumentId?: string;
+  supersededAt?: string;
   uploadedAt?: string;
   verifiedAt?: string;
 }
@@ -124,20 +128,24 @@ export interface TimeEntry {
   firmId: string;
   matterId: string;
   userId: string;
+  performedAt: string;
   minutes: number;
   rateCents: number;
   narrative: string;
   billable: boolean;
+  billingStatus: BillingStatus;
 }
 
 export interface ExpenseEntry {
   id: string;
   firmId: string;
   matterId: string;
+  incurredAt: string;
   amountCents: number;
   category: string;
   description: string;
   reimbursable: boolean;
+  billingStatus: BillingStatus;
 }
 
 export interface ActivityTimelineEntry {

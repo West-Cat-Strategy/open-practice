@@ -34,6 +34,204 @@ export type SignatureProviderStatus =
   | "declined"
   | "provider_error";
 
+export const signatureProviderStatusOrder = [
+  "draft",
+  "pending_provider_submission",
+  "sent",
+  "viewed",
+  "completed",
+  "declined",
+  "provider_error",
+] as const satisfies readonly SignatureProviderStatus[];
+
+export const terminalSignatureProviderStatuses = [
+  "completed",
+  "declined",
+  "provider_error",
+] as const satisfies readonly SignatureProviderStatus[];
+
+export const signatureProviderStatusRank: Record<SignatureProviderStatus, number> = {
+  draft: 0,
+  pending_provider_submission: 1,
+  sent: 2,
+  viewed: 3,
+  completed: 4,
+  declined: 4,
+  provider_error: 4,
+};
+
+const terminalSignatureStatuses = new Set<SignatureProviderStatus>(
+  terminalSignatureProviderStatuses,
+);
+
+export function isTerminalSignatureStatus(status: SignatureProviderStatus): boolean {
+  return terminalSignatureStatuses.has(status);
+}
+
+export function isTerminalSignatureProviderStatus(status: SignatureProviderStatus): boolean {
+  return isTerminalSignatureStatus(status);
+}
+
+export function getSignatureProviderStatusRank(status: SignatureProviderStatus): number {
+  return signatureProviderStatusRank[status];
+}
+
+export function compareSignatureProviderStatuses(
+  left: SignatureProviderStatus,
+  right: SignatureProviderStatus,
+): number {
+  return Math.sign(getSignatureProviderStatusRank(left) - getSignatureProviderStatusRank(right));
+}
+
+export function orderSignatureProviderStatuses(
+  statuses: readonly SignatureProviderStatus[],
+): SignatureProviderStatus[] {
+  return [...statuses].sort(compareSignatureProviderStatuses);
+}
+
+export function compareSignatureProviderEvents(
+  left: Pick<SignatureProviderEvent, "status" | "occurredAt">,
+  right: Pick<SignatureProviderEvent, "status" | "occurredAt">,
+): number {
+  const statusComparison = compareSignatureProviderStatuses(left.status, right.status);
+  if (statusComparison !== 0) return statusComparison;
+  return Math.sign(Date.parse(left.occurredAt) - Date.parse(right.occurredAt));
+}
+
+export function orderSignatureProviderEvents<
+  T extends Pick<SignatureProviderEvent, "status" | "occurredAt">,
+>(events: readonly T[]): T[] {
+  return [...events].sort(compareSignatureProviderEvents);
+}
+
+export function shouldApplySignatureProviderStatus(input: {
+  currentStatus: SignatureProviderStatus;
+  nextStatus: SignatureProviderStatus;
+}): boolean {
+  if (input.currentStatus === input.nextStatus) return true;
+  if (isTerminalSignatureStatus(input.currentStatus)) return false;
+  return (
+    signatureProviderStatusRank[input.nextStatus] >=
+    signatureProviderStatusRank[input.currentStatus]
+  );
+}
+
+export type SignatureStatusUpdateReason =
+  | "status_advanced"
+  | "same_status_replay"
+  | "status_regression"
+  | "terminal_status_preserved";
+
+export interface SignatureStatusUpdateDecision {
+  shouldUpdate: boolean;
+  reason: SignatureStatusUpdateReason;
+  currentStatus: SignatureProviderStatus;
+  incomingStatus: SignatureProviderStatus;
+  comparison: number;
+}
+
+export function getSignatureStatusUpdateDecision(
+  currentStatus: SignatureProviderStatus,
+  incoming: SignatureProviderStatus | Pick<SignatureProviderEvent, "status">,
+): SignatureStatusUpdateDecision {
+  const incomingStatus = typeof incoming === "string" ? incoming : incoming.status;
+  const comparison = compareSignatureProviderStatuses(incomingStatus, currentStatus);
+
+  if (isTerminalSignatureStatus(currentStatus)) {
+    return {
+      shouldUpdate: false,
+      reason: "terminal_status_preserved",
+      currentStatus,
+      incomingStatus,
+      comparison,
+    };
+  }
+
+  if (comparison === 0) {
+    return {
+      shouldUpdate: false,
+      reason: "same_status_replay",
+      currentStatus,
+      incomingStatus,
+      comparison,
+    };
+  }
+
+  if (comparison < 0) {
+    return {
+      shouldUpdate: false,
+      reason: "status_regression",
+      currentStatus,
+      incomingStatus,
+      comparison,
+    };
+  }
+
+  return {
+    shouldUpdate: true,
+    reason: "status_advanced",
+    currentStatus,
+    incomingStatus,
+    comparison,
+  };
+}
+
+export function shouldUpdateSignatureRequestStatus(
+  currentStatus: SignatureProviderStatus,
+  incoming: SignatureProviderStatus | Pick<SignatureProviderEvent, "status">,
+): boolean {
+  return getSignatureStatusUpdateDecision(currentStatus, incoming).shouldUpdate;
+}
+
+export interface SignatureProviderEventReplayMetadata {
+  replayKey: string;
+  providerEventId?: string;
+  providerWebhookId?: string;
+}
+
+export function getSignatureProviderEventReplayMetadata(
+  event: Pick<
+    SignatureProviderEvent,
+    "provider" | "externalId" | "status" | "occurredAt" | "evidence"
+  >,
+): SignatureProviderEventReplayMetadata {
+  const providerEventId = readStringEvidence(event.evidence, ["eventId", "event_id", "id"]);
+  const providerWebhookId = readStringEvidence(event.evidence, [
+    "webhookId",
+    "webhook_id",
+    "deliveryId",
+    "delivery_id",
+  ]);
+  const providerReplayId = providerEventId ?? providerWebhookId;
+  const replayKey = [
+    event.provider,
+    event.externalId,
+    providerReplayId ?? event.status,
+    providerReplayId ? undefined : event.occurredAt,
+  ]
+    .filter((part): part is string => typeof part === "string")
+    .map(encodeURIComponent)
+    .join(":");
+
+  return {
+    replayKey,
+    providerEventId,
+    providerWebhookId,
+  };
+}
+
+function readStringEvidence(
+  evidence: Record<string, unknown>,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = evidence[key];
+    if (typeof value === "string" && value.length > 0) return value;
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return undefined;
+}
+
 export interface SignatureProviderEvent {
   provider: SignatureProviderSubmission["provider"];
   externalId: string;

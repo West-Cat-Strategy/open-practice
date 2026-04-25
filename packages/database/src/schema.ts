@@ -183,6 +183,8 @@ export const documents = pgTable("documents", {
   checksumStatus: text("checksum_status").notNull().default("pending"),
   scanStatus: text("scan_status").notNull().default("pending"),
   duplicateOfDocumentId: text("duplicate_of_document_id"),
+  supersedesDocumentId: text("supersedes_document_id"),
+  supersededAt: timestamp("superseded_at", { withTimezone: true }),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -281,6 +283,38 @@ export const trustLedgerEntries = pgTable(
   }),
 );
 
+export const trustTransactionApprovals = pgTable("trust_transaction_approvals", {
+  id: text("id").primaryKey(),
+  firmId: text("firm_id")
+    .notNull()
+    .references(() => firms.id),
+  transactionId: text("transaction_id").notNull(),
+  decidedByUserId: text("decided_by_user_id")
+    .notNull()
+    .references(() => users.id),
+  decision: text("decision").notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
+  notes: text("notes"),
+});
+
+export const trustReconciliations = pgTable("trust_reconciliations", {
+  id: text("id").primaryKey(),
+  firmId: text("firm_id")
+    .notNull()
+    .references(() => firms.id),
+  accountId: text("account_id")
+    .notNull()
+    .references(() => ledgerAccounts.id),
+  statementPeriodStart: timestamp("statement_period_start", { withTimezone: true }).notNull(),
+  statementPeriodEnd: timestamp("statement_period_end", { withTimezone: true }).notNull(),
+  expectedBalanceCents: integer("expected_balance_cents").notNull(),
+  actualBalanceCents: integer("actual_balance_cents").notNull(),
+  status: text("status").notNull(),
+  reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+  evidence: jsonb("evidence").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
+
 export const auditEvents = pgTable("audit_events", {
   id: text("id").primaryKey(),
   firmId: text("firm_id")
@@ -307,10 +341,12 @@ export const timeEntries = pgTable("time_entries", {
   userId: text("user_id")
     .notNull()
     .references(() => users.id),
+  performedAt: timestamp("performed_at", { withTimezone: true }).notNull().defaultNow(),
   minutes: integer("minutes").notNull(),
   rateCents: integer("rate_cents").notNull(),
   narrative: text("narrative").notNull(),
   billable: boolean("billable").notNull().default(true),
+  billingStatus: text("billing_status").notNull().default("draft"),
 });
 
 export const expenseEntries = pgTable("expense_entries", {
@@ -321,10 +357,133 @@ export const expenseEntries = pgTable("expense_entries", {
   matterId: text("matter_id")
     .notNull()
     .references(() => matters.id),
+  incurredAt: timestamp("incurred_at", { withTimezone: true }).notNull().defaultNow(),
   amountCents: integer("amount_cents").notNull(),
   category: text("category").notNull(),
   description: text("description").notNull(),
   reimbursable: boolean("reimbursable").notNull().default(true),
+  billingStatus: text("billing_status").notNull().default("draft"),
+});
+
+export const invoices = pgTable(
+  "invoices",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    clientContactId: text("client_contact_id").references(() => contacts.id),
+    invoiceNumber: text("invoice_number").notNull(),
+    status: text("status").notNull().default("draft"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    issuedAt: timestamp("issued_at", { withTimezone: true }),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    memo: text("memo"),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    subtotalCents: integer("subtotal_cents").notNull().default(0),
+    taxCents: integer("tax_cents").notNull().default(0),
+    totalCents: integer("total_cents").notNull().default(0),
+    paidCents: integer("paid_cents").notNull().default(0),
+    balanceDueCents: integer("balance_due_cents").notNull().default(0),
+  },
+  (table) => ({
+    firmNumber: uniqueIndex("invoices_firm_number_idx").on(table.firmId, table.invoiceNumber),
+    matterStatus: index("invoices_matter_status_idx").on(table.matterId, table.status),
+  }),
+);
+
+export const invoiceLines = pgTable("invoice_lines", {
+  id: text("id").primaryKey(),
+  firmId: text("firm_id")
+    .notNull()
+    .references(() => firms.id),
+  invoiceId: text("invoice_id")
+    .notNull()
+    .references(() => invoices.id),
+  matterId: text("matter_id")
+    .notNull()
+    .references(() => matters.id),
+  kind: text("kind").notNull(),
+  description: text("description").notNull(),
+  quantity: integer("quantity").notNull(),
+  unitAmountCents: integer("unit_amount_cents").notNull(),
+  subtotalCents: integer("subtotal_cents").notNull(),
+  taxName: text("tax_name"),
+  taxRateBps: integer("tax_rate_bps").notNull().default(0),
+  taxCents: integer("tax_cents").notNull().default(0),
+  totalCents: integer("total_cents").notNull(),
+  timeEntryId: text("time_entry_id").references(() => timeEntries.id),
+  expenseEntryId: text("expense_entry_id").references(() => expenseEntries.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const manualPayments = pgTable("manual_payments", {
+  id: text("id").primaryKey(),
+  firmId: text("firm_id")
+    .notNull()
+    .references(() => firms.id),
+  matterId: text("matter_id")
+    .notNull()
+    .references(() => matters.id),
+  invoiceId: text("invoice_id").references(() => invoices.id),
+  clientContactId: text("client_contact_id").references(() => contacts.id),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  method: text("method").notNull(),
+  reference: text("reference"),
+  status: text("status").notNull().default("received"),
+  receivedByUserId: text("received_by_user_id")
+    .notNull()
+    .references(() => users.id),
+  notes: text("notes"),
+  evidence: jsonb("evidence").notNull().default({}),
+});
+
+export const paymentAllocations = pgTable("payment_allocations", {
+  id: text("id").primaryKey(),
+  firmId: text("firm_id")
+    .notNull()
+    .references(() => firms.id),
+  paymentId: text("payment_id")
+    .notNull()
+    .references(() => manualPayments.id),
+  invoiceId: text("invoice_id")
+    .notNull()
+    .references(() => invoices.id),
+  amountCents: integer("amount_cents").notNull(),
+  allocatedAt: timestamp("allocated_at", { withTimezone: true }).notNull(),
+});
+
+export const billingTrustTransferRequests = pgTable("billing_trust_transfer_requests", {
+  id: text("id").primaryKey(),
+  firmId: text("firm_id")
+    .notNull()
+    .references(() => firms.id),
+  matterId: text("matter_id")
+    .notNull()
+    .references(() => matters.id),
+  clientContactId: text("client_contact_id").references(() => contacts.id),
+  invoiceId: text("invoice_id")
+    .notNull()
+    .references(() => invoices.id),
+  requestedByUserId: text("requested_by_user_id")
+    .notNull()
+    .references(() => users.id),
+  amountCents: integer("amount_cents").notNull(),
+  status: text("status").notNull().default("pending_approval"),
+  reason: text("reason"),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+  reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  ledgerTransactionId: text("ledger_transaction_id").references(() => trustTransactions.id),
+  evidence: jsonb("evidence").notNull().default({}),
 });
 
 export const tasks = pgTable("tasks", {

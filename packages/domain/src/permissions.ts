@@ -43,7 +43,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     portal_message: ["create", "read", "update", "delete", "export"],
     signature_request: ["create", "read", "update", "delete", "approve", "export"],
     trust_ledger: ["create", "read", "approve", "export"],
-    time_entry: ["create", "read", "update", "delete", "export"],
+    time_entry: ["create", "read", "update", "delete", "approve", "export"],
     expense_entry: ["create", "read", "update", "delete", "approve", "export"],
     task: ["create", "read", "update", "delete"],
     calendar_event: ["create", "read", "update", "delete"],
@@ -57,7 +57,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     portal_message: ["create", "read", "update", "export"],
     signature_request: ["create", "read", "update", "approve", "export"],
     trust_ledger: ["read", "approve", "export"],
-    time_entry: ["create", "read", "update", "delete", "export"],
+    time_entry: ["create", "read", "update", "delete", "approve", "export"],
     expense_entry: ["create", "read", "update", "delete", "approve", "export"],
     task: ["create", "read", "update", "delete"],
     calendar_event: ["create", "read", "update", "delete"],
@@ -80,7 +80,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     contact: ["read"],
     matter: ["read"],
     trust_ledger: ["create", "read", "export"],
-    time_entry: ["create", "read", "update", "export"],
+    time_entry: ["create", "read", "update", "approve", "export"],
     expense_entry: ["create", "read", "update", "export"],
     audit_log: ["read"],
     intake_session: ["read"],
@@ -194,6 +194,7 @@ export type DashboardSectionKey =
   | "matters"
   | "funds"
   | "documents"
+  | "billing"
   | "signatures"
   | "intake"
   | "audit";
@@ -218,6 +219,12 @@ const dashboardSections: Array<{
     key: "documents",
     label: "Documents",
     resource: "document",
+    preferredMatterScopedAction: "read",
+  },
+  {
+    key: "billing",
+    label: "Billing",
+    resource: "time_entry",
     preferredMatterScopedAction: "read",
   },
   {
@@ -284,6 +291,7 @@ export function canShareDocumentThroughPortal(input: {
   if (input.grant.revokedAt) return false;
   if (input.grant.expiresAt && Date.parse(input.grant.expiresAt) <= now) return false;
   if (input.document.legalHold) return false;
+  if (input.document.supersededAt) return false;
   if (!allowedClassifications.has(input.document.classification)) return false;
   if (input.document.uploadStatus !== "verified") return false;
   if (input.document.checksumStatus !== "verified") return false;

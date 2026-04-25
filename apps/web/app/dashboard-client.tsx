@@ -5,6 +5,7 @@ import {
   Banknote,
   CheckCircle2,
   Clock3,
+  CreditCard,
   FileText,
   FileSignature,
   Files,
@@ -18,17 +19,20 @@ import { useMemo, useState } from "react";
 import type { ConflictCandidate, DashboardSectionKey } from "@open-practice/domain";
 import { filterMatters } from "./dashboard-utils";
 import type {
+  BillingDashboardResponse,
   CapabilitiesResponse,
   ConflictResponse,
   IntakeSessionsResponse,
   MatterSummary,
   PracticeOverview,
+  QueuesResponse,
   SessionResponse,
   SignatureRequestsResponse,
 } from "./types";
 
 interface DashboardClientProps {
   apiBaseUrl: string;
+  billing: BillingDashboardResponse;
   capabilities: CapabilitiesResponse;
   devHeaders: Record<string, string>;
   intake: IntakeSessionsResponse;
@@ -36,6 +40,15 @@ interface DashboardClientProps {
   matters: MatterSummary[];
   session: SessionResponse;
   signatures: SignatureRequestsResponse;
+  queues: QueuesResponse;
+}
+
+type LocalDashboardSectionKey = DashboardSectionKey | "billing";
+
+interface LocalDashboardSection {
+  key: LocalDashboardSectionKey;
+  label: string;
+  enabled: boolean;
 }
 
 const currency = new Intl.NumberFormat("en-CA", {
@@ -43,9 +56,10 @@ const currency = new Intl.NumberFormat("en-CA", {
   currency: "CAD",
 });
 
-const navIcons: Record<DashboardSectionKey, LucideIcon> = {
+const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   matters: Gavel,
   funds: Banknote,
+  billing: CreditCard,
   documents: Files,
   signatures: FileSignature,
   intake: FileText,
@@ -64,6 +78,7 @@ function minutes(value: number): string {
 
 export default function DashboardClient({
   apiBaseUrl,
+  billing,
   capabilities,
   devHeaders,
   intake,
@@ -71,9 +86,10 @@ export default function DashboardClient({
   matters,
   session,
   signatures,
+  queues,
 }: DashboardClientProps) {
   const [activeMatterId, setActiveMatterId] = useState(matters[0]?.id ?? "");
-  const [activeSection, setActiveSection] = useState<DashboardSectionKey>("matters");
+  const [activeSection, setActiveSection] = useState<LocalDashboardSectionKey>("matters");
   const [matterSearch, setMatterSearch] = useState("");
   const [conflictName, setConflictName] = useState("");
   const [conflictResults, setConflictResults] = useState<ConflictCandidate[]>([]);
@@ -91,6 +107,46 @@ export default function DashboardClient({
     (sessionRecord) => sessionRecord.matterId === activeMatter?.id,
   );
   const activeDocuments = activeMatter?.documents ?? [];
+  const activeBilling = billing.matters.find((matter) => matter.matterId === activeMatter?.id);
+  const activeUnbilledTime = activeBilling?.unbilledTime ?? [];
+  const activeUnbilledExpenses = activeBilling?.unbilledExpenses ?? [];
+  const activeInvoices = activeBilling?.invoices ?? [];
+  const activeManualPayments = activeBilling?.payments ?? [];
+  const activeBalanceDueCents = activeInvoices.reduce(
+    (sum, invoice) => sum + invoice.balanceDueCents,
+    0,
+  );
+  const activeUnbilledTimeCents = activeUnbilledTime.reduce(
+    (sum, entry) => sum + entry.amountCents,
+    0,
+  );
+  const activeUnbilledExpenseCents = activeUnbilledExpenses.reduce(
+    (sum, entry) => sum + entry.amountCents,
+    0,
+  );
+  const navigationSections = useMemo<LocalDashboardSection[]>(() => {
+    const sections = capabilities.sections.map((section) => ({
+      key: section.key,
+      label: section.label,
+      enabled: section.enabled,
+    }));
+    const billingSection: LocalDashboardSection = {
+      key: "billing",
+      label: "Billing",
+      enabled: billing.canView,
+    };
+    if (sections.some((section) => section.key === "billing")) {
+      return sections.map((section) => (section.key === "billing" ? billingSection : section));
+    }
+    const fundsIndex = sections.findIndex((section) => section.key === "funds");
+
+    if (fundsIndex === -1) return [...sections, billingSection];
+    return [
+      ...sections.slice(0, fundsIndex + 1),
+      billingSection,
+      ...sections.slice(fundsIndex + 1),
+    ];
+  }, [billing.canView, capabilities.sections]);
 
   const metrics = useMemo(
     () => [
@@ -114,8 +170,13 @@ export default function DashboardClient({
         value: minutes(overview.metrics.unbilledMinutes),
         icon: Clock3,
       },
+      {
+        label: "Balances due",
+        value: cents(billing.summary.issuedBalanceDueCents),
+        icon: CreditCard,
+      },
     ],
-    [overview.metrics],
+    [billing.summary.issuedBalanceDueCents, overview.metrics],
   );
 
   async function runConflictCheck() {
@@ -166,7 +227,7 @@ export default function DashboardClient({
         </div>
 
         <nav className="nav-list">
-          {capabilities.sections.map(({ key, label, enabled }) => {
+          {navigationSections.map(({ key, label, enabled }) => {
             const Icon = navIcons[key];
             return (
               <button
@@ -259,7 +320,7 @@ export default function DashboardClient({
                 <h2>
                   {activeSection === "matters"
                     ? activeMatter.title
-                    : capabilities.sections.find((section) => section.key === activeSection)?.label}
+                    : navigationSections.find((section) => section.key === activeSection)?.label}
                 </h2>
               </div>
               <span className="status-chip">{activeMatter.jurisdiction}</span>
@@ -356,6 +417,123 @@ export default function DashboardClient({
                   <span>unbilled time on file</span>
                 </div>
               </div>
+            ) : null}
+
+            {activeSection === "billing" ? (
+              billing.canView ? (
+                <>
+                  <div className="detail-grid billing-summary-grid">
+                    <div>
+                      <span className="field-label">Approved time</span>
+                      <strong>{cents(activeUnbilledTimeCents)}</strong>
+                    </div>
+                    <div>
+                      <span className="field-label">Approved expenses</span>
+                      <strong>{cents(activeUnbilledExpenseCents)}</strong>
+                    </div>
+                    <div>
+                      <span className="field-label">Draft / issued invoices</span>
+                      <strong>
+                        {
+                          activeInvoices.filter((invoice) =>
+                            ["draft", "issued"].includes(invoice.status),
+                          ).length
+                        }
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="field-label">Balance due</span>
+                      <strong>{cents(activeBalanceDueCents)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="section-title">
+                    <h3>Unbilled approved time and expenses</h3>
+                    <span>{cents(activeUnbilledTimeCents + activeUnbilledExpenseCents)}</span>
+                  </div>
+                  <div className="party-list">
+                    {activeUnbilledTime.slice(0, 4).map((entry) => (
+                      <div className="party-row" key={entry.id}>
+                        <span>
+                          <strong>{entry.narrative}</strong>
+                          <small>
+                            {minutes(entry.minutes)} · {cents(entry.rateCents)}/hr
+                          </small>
+                        </span>
+                        <em>{cents(entry.amountCents)}</em>
+                      </div>
+                    ))}
+                    {activeUnbilledExpenses.slice(0, 4).map((entry) => (
+                      <div className="party-row" key={entry.id}>
+                        <span>
+                          <strong>{entry.description}</strong>
+                          <small>{entry.category}</small>
+                        </span>
+                        <em>{cents(entry.amountCents)}</em>
+                      </div>
+                    ))}
+                    {activeUnbilledTime.length === 0 && activeUnbilledExpenses.length === 0 ? (
+                      <p className="inline-empty">
+                        No approved unbilled time or reimbursable expenses are linked to this
+                        matter.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="section-title">
+                    <h3>Invoices and balances</h3>
+                    <span>{activeInvoices.length} records</span>
+                  </div>
+                  <div className="party-list">
+                    {activeInvoices.map((invoice) => (
+                      <div className="party-row" key={invoice.id}>
+                        <span>
+                          <strong>{invoice.number}</strong>
+                          <small>
+                            {invoice.status}
+                            {invoice.dueAt
+                              ? ` · due ${new Date(invoice.dueAt).toLocaleDateString("en-CA")}`
+                              : ""}
+                          </small>
+                        </span>
+                        <em className={invoice.balanceDueCents > 0 ? "risk" : undefined}>
+                          {cents(invoice.balanceDueCents)}
+                        </em>
+                      </div>
+                    ))}
+                    {activeInvoices.length === 0 ? (
+                      <p className="inline-empty">
+                        No draft or issued invoices are linked to this matter.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="section-title">
+                    <h3>Manual payment history</h3>
+                    <span>{activeManualPayments.length} payments</span>
+                  </div>
+                  <div className="party-list">
+                    {activeManualPayments.map((payment) => (
+                      <div className="party-row" key={payment.id}>
+                        <span>
+                          <strong>{payment.reference ?? "Manual payment"}</strong>
+                          <small>{new Date(payment.receivedAt).toLocaleDateString("en-CA")}</small>
+                        </span>
+                        <em>{cents(payment.amountCents)}</em>
+                      </div>
+                    ))}
+                    {activeManualPayments.length === 0 ? (
+                      <p className="inline-empty">
+                        No manual payments have been recorded for this matter.
+                      </p>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <p className="inline-empty">
+                  Billing details are hidden for {session.user.role.replace("_", " ")} users.
+                </p>
+              )
             ) : null}
 
             {activeSection === "documents" ? (
@@ -481,6 +659,36 @@ export default function DashboardClient({
                   </div>
                 ))
               )}
+            </div>
+          </article>
+
+          <article className="panel queue-panel">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">Operational queues</p>
+                <h2>Review work</h2>
+              </div>
+              <Clock3 size={20} />
+            </div>
+            <div className="party-list">
+              {queues.sections.flatMap((section) =>
+                section.items.slice(0, 3).map((item) => (
+                  <div className="party-row" key={`${section.key}-${item.id}`}>
+                    <span>
+                      <strong>{item.title}</strong>
+                      <small>
+                        {section.label} · {item.status}
+                      </small>
+                    </span>
+                    <em className={item.priority === "high" ? "risk" : undefined}>
+                      {item.priority}
+                    </em>
+                  </div>
+                )),
+              )}
+              {queues.sections.every((section) => section.items.length === 0) ? (
+                <p className="inline-empty">No queue items need attention.</p>
+              ) : null}
             </div>
           </article>
         </section>

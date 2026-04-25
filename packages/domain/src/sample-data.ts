@@ -1,4 +1,11 @@
 import type {
+  InvoiceLineRecord,
+  InvoiceRecord,
+  ManualPaymentRecord,
+  PaymentAllocationRecord,
+  TrustTransferRequestRecord,
+} from "./billing.js";
+import type {
   Contact,
   DocumentRecord,
   ExpenseEntry,
@@ -210,6 +217,14 @@ export const sampleIntakeTemplates: IntakeTemplateRecord[] = [
     externalTemplateId: "residential-tenancy-intake",
     active: true,
   },
+  {
+    id: "docassemble-template-001",
+    firmId: sampleFirm.id,
+    name: "Docassemble tenancy package",
+    provider: "docassemble",
+    externalTemplateId: "docassemble-tenancy-package",
+    active: true,
+  },
 ];
 
 export const sampleIntakeSessions: IntakeSessionRecord[] = [
@@ -247,10 +262,12 @@ export const sampleTimeEntries: TimeEntry[] = [
     firmId: sampleFirm.id,
     matterId: "matter-001",
     userId: "user-licensee",
+    performedAt: "2026-04-04T16:30:00.000Z",
     minutes: 42,
     rateCents: 18000,
     narrative: "Reviewed tenancy branch materials and client chronology.",
     billable: true,
+    billingStatus: "approved",
   },
 ];
 
@@ -259,10 +276,72 @@ export const sampleExpenseEntries: ExpenseEntry[] = [
     id: "expense-001",
     firmId: sampleFirm.id,
     matterId: "matter-001",
+    incurredAt: "2026-04-04T18:00:00.000Z",
     amountCents: 1250,
     category: "Filing",
     description: "Tribunal evidence package upload fee",
     reimbursable: true,
+    billingStatus: "approved",
+  },
+];
+
+export const sampleInvoices: InvoiceRecord[] = [
+  {
+    id: "invoice-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    clientContactId: "contact-ada",
+    invoiceNumber: "INV-2026-0001",
+    status: "issued",
+    issuedAt: "2026-04-06T17:00:00.000Z",
+    dueAt: "2026-05-06T17:00:00.000Z",
+    memo: "Initial tenancy dispute invoice",
+    createdByUserId: "user-licensee",
+    createdAt: "2026-04-06T17:00:00.000Z",
+    subtotalCents: 12600,
+    taxCents: 630,
+    totalCents: 13230,
+    paidCents: 0,
+    balanceDueCents: 13230,
+  },
+];
+
+export const sampleInvoiceLines: InvoiceLineRecord[] = [
+  {
+    id: "invoice-line-001",
+    firmId: sampleFirm.id,
+    invoiceId: "invoice-001",
+    matterId: "matter-001",
+    kind: "time",
+    description: "Reviewed tenancy branch materials and client chronology.",
+    quantity: 42,
+    unitAmountCents: 300,
+    subtotalCents: 12600,
+    taxName: "GST",
+    taxRateBps: 500,
+    taxCents: 630,
+    totalCents: 13230,
+    timeEntryId: "time-001",
+    createdAt: "2026-04-06T17:00:00.000Z",
+  },
+];
+
+export const sampleManualPayments: ManualPaymentRecord[] = [];
+
+export const samplePaymentAllocations: PaymentAllocationRecord[] = [];
+
+export const sampleTrustTransferRequests: TrustTransferRequestRecord[] = [
+  {
+    id: "trust-transfer-request-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    clientContactId: "contact-ada",
+    invoiceId: "invoice-001",
+    requestedByUserId: "user-licensee",
+    amountCents: 13230,
+    status: "pending_approval",
+    reason: "Apply trust funds to issued invoice after approval.",
+    requestedAt: "2026-04-06T18:00:00.000Z",
   },
 ];
 

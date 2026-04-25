@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   appendAuditEvent,
+  assertBillingStatusTransition,
+  calculateInvoiceTotals,
   canAccess,
   canShareDocumentThroughPortal,
   clientTrustBalanceByMatter,
   createReversalTransaction,
   dashboardCapabilities,
+  isBillableUnbilled,
   ledgerBalanceByMatter,
   postLedgerTransaction,
   runConflictCheck,
@@ -23,6 +26,10 @@ import {
   sampleContacts,
   sampleDocuments,
   sampleFirm,
+  sampleInvoiceLines,
+  samplePaymentAllocations,
+  sampleTimeEntries,
+  sampleTrustTransferRequests,
   sampleLedgerAccounts,
   sampleLedgerEntries,
   sampleMatterParties,
@@ -30,6 +37,31 @@ import {
   samplePortalGrants,
   sampleUsers,
 } from "../src/sample-data.js";
+
+describe("billing helpers", () => {
+  it("computes invoice totals and outstanding balances", () => {
+    expect(
+      calculateInvoiceTotals({ lines: sampleInvoiceLines, allocations: samplePaymentAllocations }),
+    ).toMatchObject({
+      subtotalCents: 12600,
+      taxCents: 630,
+      totalCents: 13230,
+      balanceDueCents: 13230,
+    });
+  });
+
+  it("keeps trust-transfer requests as requests until explicitly postable", () => {
+    expect(sampleTrustTransferRequests[0]!.status).toBe("pending_approval");
+    expect(sampleTrustTransferRequests[0]!.ledgerTransactionId).toBeUndefined();
+    expect(isBillableUnbilled(sampleTimeEntries[0]!)).toBe(true);
+  });
+
+  it("rejects invalid billing status transitions", () => {
+    expect(() => assertBillingStatusTransition("approved", "submitted")).toThrow(
+      /Invalid billing status transition/,
+    );
+  });
+});
 
 describe("conflict checks", () => {
   it("flags normalized aliases and entity markers", () => {
@@ -245,6 +277,14 @@ describe("matter-scoped RBAC", () => {
         document: { ...document, checksumStatus: "duplicate" },
         grant: samplePortalGrants[0]!,
         now: "2026-04-10T12:00:00.000Z",
+      }),
+    ).toBe(false);
+
+    expect(
+      canShareDocumentThroughPortal({
+        document: { ...document, supersededAt: "2026-04-11T12:00:00.000Z" },
+        grant: samplePortalGrants[0]!,
+        now: "2026-04-12T12:00:00.000Z",
       }),
     ).toBe(false);
   });

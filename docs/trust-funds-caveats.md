@@ -1,6 +1,7 @@
 # Canadian Trust and Funds Caveats
 
-Open Practice starts with careful funds-tracking infrastructure. It is not yet jurisdiction-certified trust accounting software.
+Open Practice starts with careful funds-tracking infrastructure. It is not yet jurisdiction-certified
+trust accounting software, accounting software, or tax-advice tooling.
 
 ## V1 Defaults
 
@@ -10,7 +11,13 @@ Open Practice starts with careful funds-tracking infrastructure. It is not yet j
 - No overdrawing a client matter balance.
 - Idempotency keys for external bank/payment events.
 - Append-only posted entries; corrections require reversing transactions.
-- Reconciliation records are planned as first-class records.
+- Reconciliation records, maker-checker approvals, and persistent concurrency guarantees are
+  operational controls; they are not jurisdiction-certified controls.
+- Billing, invoice, manual-payment, and trust-transfer-request workflows should be treated as
+  operational controls around review, evidence, authorization, and reconciliation.
+- No live payment processor is currently part of the product contract.
+- Manual payment records are reviewed evidence, not proof of live settlement.
+- Trust-transfer-request approval must not automatically post trust ledger entries.
 
 ## Reference Guidance
 
@@ -23,6 +30,21 @@ Open Practice starts with careful funds-tracking infrastructure. It is not yet j
 
 The product should support configurable workflows for BC, Ontario, and broader Canadian practices, including lawyers, Ontario paralegals, BC notaries, and staff. Regulatory language differs by role and province, so the product must present checklists and prompts as configurable practice-management support, not legal advice.
 
+Billing and invoice wording must remain similarly cautious. The product can help record time,
+expenses, invoice lines, payment applications, write-offs, and transfer requests, but it must not
+present tax treatment, trust withdrawal eligibility, invoice wording, or fee/disbursement handling as
+certified for a jurisdiction without specific review.
+
+Manual payments and future payment-processor imports should be reconciled before affecting invoice
+status. A trust-transfer request may document that funds are intended to move from trust after review,
+but the actual trust ledger change must remain a separate, explicit, balanced posting with its own
+audit trail.
+
 ## Before Compliance Claims
 
-Before claiming trust-account compliance in any province, the project needs jurisdiction-specific review of records, withdrawals, authorization, reconciliation, reporting, retention, mixed trust account interest, and licensee/notary/paralegal rules.
+Before claiming trust-account compliance in any province, the project needs jurisdiction-specific
+review of records, withdrawals, authorization, reconciliation, reporting, retention, mixed trust
+account interest, billing and invoice treatment, payment handling, and licensee/notary/paralegal
+rules.
+
+Live trust/funds next steps are tracked in `docs/planning-and-progress.md`.
