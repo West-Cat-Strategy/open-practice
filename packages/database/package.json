@@ -1,0 +1,28 @@
+{
+  "name": "@open-practice/database",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "db:check": "drizzle-kit check",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@open-practice/domain": "workspace:^",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "latest",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "typescript-eslint": "latest"
+  }
+}

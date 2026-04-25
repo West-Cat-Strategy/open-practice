@@ -1,0 +1,51 @@
+name: open-practice-dev
+
+# Local development dependencies only. Production deployments must provide
+# managed secrets, TLS, app containers, private service networks, and backups.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: open_practice
+      POSTGRES_USER: open_practice
+      POSTGRES_PASSWORD: open_practice
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U open_practice -d open_practice"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: open_practice
+      MINIO_ROOT_PASSWORD: open_practice_secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  docuseal:
+    image: docuseal/docuseal:latest
+    profiles: ["esign"]
+    ports:
+      - "8080:3000"
+    volumes:
+      - docuseal-data:/data
+
+volumes:
+  postgres-data:
+  minio-data:
+  docuseal-data:
