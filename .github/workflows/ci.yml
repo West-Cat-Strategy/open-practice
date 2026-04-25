@@ -16,9 +16,4 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm format:check
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm --filter @open-practice/database db:check
-      - run: pnpm build
+      - run: pnpm verify

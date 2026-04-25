@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   compareSignatureProviderEvents,
   compareSignatureProviderStatuses,
@@ -8,17 +8,11 @@ import {
   orderSignatureProviderStatuses,
   shouldUpdateSignatureRequestStatus,
 } from "../../domain/src/signatures.js";
-import {
-  DocassembleAutomationProvider,
-  DocuSealSignatureProvider,
-  ManualSignatureProvider,
-  ProviderConfigurationError,
-  ProviderResponseError,
-} from "../src/index.js";
+import { EmbeddedAutomationProvider, EmbeddedSignatureProvider } from "../src/index.js";
 
-describe("signature providers", () => {
-  it("returns a deterministic manual submission for dev/test mode", async () => {
-    const provider = new ManualSignatureProvider();
+describe("embedded providers", () => {
+  it("returns a deterministic embedded signature submission", async () => {
+    const provider = new EmbeddedSignatureProvider();
 
     await expect(
       provider.createSubmission({
@@ -29,75 +23,27 @@ describe("signature providers", () => {
         consentText: "I consent to electronic signature.",
       }),
     ).resolves.toMatchObject({
-      provider: "manual",
-      externalId: "manual:matter-001:doc-001",
+      provider: "embedded",
+      externalId: "embedded:matter-001:doc-001",
       status: "sent",
+      evidence: { mode: "embedded" },
     });
   });
 
-  it("maps DocuSeal submission responses behind the provider boundary", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ id: 123, signing_url: "https://sign.example.test/123" }), {
-        status: 200,
-      }),
-    );
-    const provider = new DocuSealSignatureProvider(
-      "https://docuseal.example.test",
-      "secret",
-      fetchImpl,
-    );
-
-    const result = await provider.createSubmission({
-      matterId: "matter-001",
-      documentId: "doc-001",
-      title: "Retainer",
-      signers: [{ name: "Ada Morgan", email: "ada@example.test", role: "client" }],
-      consentText: "I consent to electronic signature.",
-    });
-
-    expect(result).toMatchObject({
-      provider: "docuseal",
-      externalId: "123",
-      signingUrl: "https://sign.example.test/123",
-      status: "sent",
-    });
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "https://docuseal.example.test/api/submissions",
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
-
-  it("fails fast when DocuSeal is not configured", async () => {
-    const provider = new DocuSealSignatureProvider("", "");
+  it("returns embedded automation references without network calls", async () => {
+    const provider = new EmbeddedAutomationProvider();
 
     await expect(
-      provider.createSubmission({
+      provider.startInterview({
+        firmId: "firm-west-legal",
         matterId: "matter-001",
-        documentId: "doc-001",
-        title: "Retainer",
-        signers: [],
-        consentText: "Consent",
+        templateId: "intake-retainer",
       }),
-    ).rejects.toBeInstanceOf(ProviderConfigurationError);
-  });
-
-  it("sanitizes failed DocuSeal responses into provider errors", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response("nope", { status: 500 }));
-    const provider = new DocuSealSignatureProvider(
-      "https://docuseal.example.test",
-      "secret",
-      fetchImpl,
-    );
-
-    await expect(
-      provider.createSubmission({
-        matterId: "matter-001",
-        documentId: "doc-001",
-        title: "Retainer",
-        signers: [],
-        consentText: "Consent",
-      }),
-    ).rejects.toBeInstanceOf(ProviderResponseError);
+    ).resolves.toMatchObject({
+      provider: "embedded",
+      externalId: "embedded:matter-001:intake-retainer",
+      status: "created",
+    });
   });
 });
 
@@ -148,7 +94,7 @@ describe("signature provider lifecycle helpers", () => {
     });
   });
 
-  it("extracts replay metadata from provider evidence when available", () => {
+  it("extracts replay metadata from legacy provider evidence when available", () => {
     expect(
       getSignatureProviderEventReplayMetadata({
         provider: "docuseal",
@@ -168,43 +114,12 @@ describe("signature provider lifecycle helpers", () => {
 
     expect(
       getSignatureProviderEventReplayMetadata({
-        provider: "manual",
-        externalId: "manual:matter-001:doc-001",
+        provider: "embedded",
+        externalId: "embedded:matter-001:doc-001",
         status: "viewed",
         occurredAt: "2026-04-24T10:01:00.000Z",
         evidence: {},
       }).replayKey,
-    ).toBe("manual:manual%3Amatter-001%3Adoc-001:viewed:2026-04-24T10%3A01%3A00.000Z");
-  });
-});
-
-describe("document automation providers", () => {
-  it("maps docassemble interview sessions behind an optional provider boundary", async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({ session_id: "session-001", interview_url: "https://docassemble/i/1" }),
-          { status: 200 },
-        ),
-      );
-    const provider = new DocassembleAutomationProvider(
-      "https://docassemble.example.test",
-      "secret",
-      fetchImpl,
-    );
-
-    await expect(
-      provider.startInterview({
-        firmId: "firm-west-legal",
-        matterId: "matter-001",
-        templateId: "intake-retainer",
-      }),
-    ).resolves.toMatchObject({
-      provider: "docassemble",
-      externalId: "session-001",
-      interviewUrl: "https://docassemble/i/1",
-      status: "created",
-    });
+    ).toBe("embedded:embedded%3Amatter-001%3Adoc-001:viewed:2026-04-24T10%3A01%3A00.000Z");
   });
 });

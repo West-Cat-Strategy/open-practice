@@ -18,7 +18,7 @@ Detailed reuse classes and admission rules live in `docs/reuse-decision-policy.m
 
 ## Optional Services
 
-Copyleft services may be run beside the core through documented APIs when their licenses and deployment obligations are respected. Examples include DocuSeal for e-signing and a future paperless-style OCR/document-processing service.
+Copyleft services may be studied as references or run beside the core only after an explicit future integration decision. The current runtime keeps e-signing and intake embedded; a future paperless-style OCR/document-processing service would need a documented boundary.
 
 Optional services must remain separate containers/processes and must not be required for core startup unless an explicit deployment profile enables them.
 
@@ -38,7 +38,7 @@ Before any third-party source excerpt, vendored asset, or new runtime dependency
 
 ## Current High-Risk Boundaries
 
-- DocuSeal is approved only as an optional wrapped AGPL service.
-- docassemble is the preferred permissive reference/optional service for guided intake and document automation.
+- DocuSeal is historical/reference-only for current runtime scope.
+- docassemble is historical/reference-only for current runtime scope.
 - j-lawyer.org, ArkCase, paperless-ngx, Kimai, LedgerSMB, CiviCRM, and Midaz are clean-room references only.
 - Midaz must be treated as Elastic License 2.0 in the pinned clone unless legal review confirms a compatible licensing path.

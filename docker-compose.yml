@@ -37,15 +37,6 @@ services:
       - "1025:1025"
       - "8025:8025"
 
-  docuseal:
-    image: docuseal/docuseal:latest
-    profiles: ["esign"]
-    ports:
-      - "8080:3000"
-    volumes:
-      - docuseal-data:/data
-
 volumes:
   postgres-data:
   minio-data:
-  docuseal-data:

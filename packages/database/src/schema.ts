@@ -74,6 +74,72 @@ export const users = pgTable(
   }),
 );
 
+export const authAccounts = pgTable(
+  "auth_accounts",
+  {
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    passwordHash: text("password_hash").notNull(),
+    passwordUpdatedAt: timestamp("password_updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.firmId, table.userId] }),
+  }),
+);
+
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text("token_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  },
+  (table) => ({
+    tokenHash: uniqueIndex("auth_sessions_token_hash_idx").on(table.tokenHash),
+    userExpiry: index("auth_sessions_user_expiry_idx").on(
+      table.firmId,
+      table.userId,
+      table.expiresAt,
+    ),
+  }),
+);
+
+export const authPasswordSetupTokens = pgTable(
+  "auth_password_setup_tokens",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text("token_hash").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (table) => ({
+    tokenHash: uniqueIndex("auth_password_setup_tokens_token_hash_idx").on(table.tokenHash),
+  }),
+);
+
 export const contacts = pgTable(
   "contacts",
   {

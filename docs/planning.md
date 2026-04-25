@@ -10,17 +10,17 @@ Open Practice is an Apache-2.0 TypeScript monorepo with:
 - `packages/database` for Drizzle schema, migrations, runtime setup, sample seeding, in-memory repositories, and PostgreSQL repository support.
 - `apps/api` for Fastify routes covering session, capabilities, overview, matters, conflicts, ledger, audit, document upload intent and completion, signature requests and provider events, intake sessions, and generated documents.
 - `apps/web` for an API-backed operational dashboard that no longer imports domain seed data directly at runtime.
-- `packages/providers` for optional service adapters, including manual/DocuSeal signatures and a docassemble-style automation adapter.
+- `packages/providers` for embedded signature and document-automation adapters.
 
 The current code already includes signature request persistence, signer rows, provider event and webhook-attempt records, upload-complete handling, intake templates and sessions, generated-document records, and the OSS reuse policy check.
 
 ## Development Lanes
 
 1. **Provider lifecycle hardening**
-   Strengthen DocuSeal webhook verification, replay protection, event ordering, failure semantics, and status reconciliation. Keep provider-specific HTTP logic outside `packages/domain`.
+   Strengthen embedded signature event evidence, event ordering, failure semantics, and status reconciliation. Keep provider-specific HTTP logic outside `packages/domain`.
 
 2. **Intake and document automation completion**
-   Expose answer snapshots through repository/API surfaces, connect the docassemble-style adapter to explicit API configuration when ready, and preserve Open Practice as the system of record for sessions, answers, generated document metadata, and final document records.
+   Expose answer snapshots through repository/API surfaces and preserve Open Practice as the system of record for sessions, answers, generated document metadata, and final document records.
 
 3. **Document pipeline and portal-share readiness**
    Finish versioning, storage confirmation, checksum policy, scan integration, legal-hold behavior, and portal-share gates before treating documents as production-shareable.
@@ -40,8 +40,7 @@ The current code already includes signature request persistence, signer rows, pr
 ## Reuse Guardrails
 
 - Keep Apache-2.0 core code independently authored unless reuse passes `docs/reuse-decision-policy.md`.
-- Wrap DocuSeal only as an optional AGPL service; do not copy its implementation into core code.
-- Treat docassemble as the preferred permissive optional-service/reference path for guided intake and document automation.
+- Treat DocuSeal and docassemble as historical references only for current runtime planning; do not copy their implementations into core code.
 - Treat j-lawyer.org, ArkCase, paperless-ngx, Kimai, LedgerSMB, CiviCRM, and Midaz as clean-room references only.
 - Use Blnk and Apache Fineract selectively for trust/funds design ideas where compatible; do not import their product model wholesale.
 - Keep Midaz reference-only because the pinned clone uses Elastic License 2.0 unless legal review approves another path.

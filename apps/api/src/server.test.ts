@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import type { DocumentAutomationProvider, SignatureProvider } from "@open-practice/domain";
-import { createApiServer } from "./server.js";
+import { createApiServer, envSchema, validateProductionReadiness } from "./server.js";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
 
 function testServer(overrides: Partial<CreateServerOptions> = {}) {
+  const repository = overrides.repository ?? new InMemoryOpenPracticeRepository();
   const server = createApiServer({
-    repository: new InMemoryOpenPracticeRepository(),
+    repository,
     devFirmId: "firm-west-legal",
     devUserId: "user-admin",
     ...overrides,
@@ -17,20 +17,221 @@ function testServer(overrides: Partial<CreateServerOptions> = {}) {
   return server;
 }
 
+function productionEnv(overrides: Record<string, unknown> = {}) {
+  return envSchema.parse({
+    NODE_ENV: "production",
+    DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+    AUTH_JWT_SECRET: "production-test-secret-at-least-32-characters",
+    ...overrides,
+  });
+}
+
+async function setAdminPassword(input: {
+  repository: InMemoryOpenPracticeRepository;
+  jwtSecret: string;
+  password: string;
+}) {
+  const setupServer = testServer({ repository: input.repository, jwtSecret: input.jwtSecret });
+  const setupToken = await setupServer.inject({
+    method: "POST",
+    url: "/api/auth/password-setup-tokens",
+    payload: { userId: "user-admin" },
+  });
+  const setup = await setupServer.inject({
+    method: "POST",
+    url: "/api/auth/password-setup",
+    payload: {
+      firmId: "firm-west-legal",
+      userId: "user-admin",
+      token: setupToken.json<{ token: string }>().token,
+      password: input.password,
+    },
+  });
+  expect(setupToken.statusCode).toBe(200);
+  expect(setup.statusCode).toBe(200);
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
 describe("API auth and persistence boundaries", () => {
   it("rejects unauthenticated production requests", async () => {
-    const previousNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
-    try {
-      const response = await testServer().inject({ method: "GET", url: "/api/overview" });
-      expect(response.statusCode).toBe(401);
-    } finally {
-      process.env.NODE_ENV = previousNodeEnv;
-    }
+    const response = await testServer({
+      nodeEnv: "production",
+      jwtSecret: "production-test-secret-at-least-32-characters",
+    }).inject({ method: "GET", url: "/api/overview" });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("rejects development header authentication in production", async () => {
+    const response = await testServer({
+      nodeEnv: "production",
+      jwtSecret: "production-test-secret-at-least-32-characters",
+    }).inject({
+      method: "GET",
+      url: "/api/overview",
+      headers: {
+        "x-open-practice-user-id": "user-admin",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("rejects bearer JWT authentication in production", async () => {
+    const jwtSecret = "production-test-secret-at-least-32-characters";
+    const response = await testServer({
+      nodeEnv: "production",
+      jwtSecret,
+    }).inject({
+      method: "GET",
+      url: "/api/overview",
+      headers: {
+        authorization: "Bearer dev.jwt.token",
+      },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("authenticates production requests with embedded sessions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const jwtSecret = "production-test-secret-at-least-32-characters";
+    await setAdminPassword({
+      repository,
+      jwtSecret,
+      password: "correct horse battery staple",
+    });
+    const productionServer = testServer({
+      repository,
+      nodeEnv: "production",
+      jwtSecret,
+    });
+    const login = await productionServer.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: {
+        firmId: "firm-west-legal",
+        email: "avery@example.test",
+        password: "correct horse battery staple",
+      },
+    });
+    const response = await productionServer.inject({
+      method: "GET",
+      url: "/api/overview",
+      headers: {
+        "x-open-practice-session": login.json<{ token: string }>().token,
+      },
+    });
+
+    expect(login.statusCode).toBe(200);
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("revokes embedded sessions on logout", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const jwtSecret = "production-test-secret-at-least-32-characters";
+    await setAdminPassword({ repository, jwtSecret, password: "logout password" });
+    const server = testServer({ repository, nodeEnv: "production", jwtSecret });
+    const login = await server.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: {
+        firmId: "firm-west-legal",
+        email: "avery@example.test",
+        password: "logout password",
+      },
+    });
+    const token = login.json<{ token: string }>().token;
+    const logout = await server.inject({
+      method: "POST",
+      url: "/api/auth/logout",
+      headers: { "x-open-practice-session": token },
+    });
+    const afterLogout = await server.inject({
+      method: "GET",
+      url: "/api/overview",
+      headers: { "x-open-practice-session": token },
+    });
+
+    expect(logout.statusCode).toBe(200);
+    expect(afterLogout.statusCode).toBe(401);
+  });
+
+  it("rejects expired embedded sessions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const jwtSecret = "production-test-secret-at-least-32-characters";
+    await setAdminPassword({ repository, jwtSecret, password: "expired password" });
+    const server = testServer({
+      repository,
+      nodeEnv: "production",
+      jwtSecret,
+      sessionTtlHours: -1,
+    });
+    const login = await server.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: {
+        firmId: "firm-west-legal",
+        email: "avery@example.test",
+        password: "expired password",
+      },
+    });
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/overview",
+      headers: { "x-open-practice-session": login.json<{ token: string }>().token },
+    });
+
+    expect(login.statusCode).toBe(200);
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("rejects unsafe production readiness configuration", () => {
+    expect(() => validateProductionReadiness(productionEnv({ DATABASE_URL: undefined }))).toThrow(
+      /DATABASE_URL/,
+    );
+    expect(() =>
+      validateProductionReadiness(productionEnv({ OPEN_PRACTICE_USE_MEMORY_REPO: true })),
+    ).toThrow(/OPEN_PRACTICE_USE_MEMORY_REPO/);
+    expect(() =>
+      validateProductionReadiness(productionEnv({ OPEN_PRACTICE_DEV_SEED: true })),
+    ).toThrow(/OPEN_PRACTICE_DEV_SEED/);
+    expect(() =>
+      validateProductionReadiness(productionEnv({ AUTH_JWT_SECRET: "too-short" })),
+    ).toThrow(/AUTH_JWT_SECRET/);
+    expect(() =>
+      validateProductionReadiness(
+        productionEnv({ AUTH_JWT_SECRET: "dev-only-change-me-at-least-16-chars" }),
+      ),
+    ).toThrow(/development example/);
+    expect(() =>
+      validateProductionReadiness(productionEnv({ S3_ENDPOINT: "http://localhost:9000" })),
+    ).toThrow(/S3/);
+    expect(() =>
+      validateProductionReadiness(productionEnv({ DOCUSEAL_BASE_URL: "http://localhost:8080" })),
+    ).toThrow(/Deprecated external provider/);
+    expect(() =>
+      validateProductionReadiness(
+        productionEnv({
+          DOCUSEAL_BASE_URL: "http://localhost:8080",
+          DOCUSEAL_API_KEY: "docuseal-key",
+        }),
+      ),
+    ).toThrow(/Deprecated external provider/);
+    expect(() =>
+      validateProductionReadiness(productionEnv({ DOCASSEMBLE_BASE_URL: "http://localhost:5000" })),
+    ).toThrow(/Deprecated external provider/);
+    expect(() =>
+      validateProductionReadiness(productionEnv({ OIDC_ISSUER_URL: "https://issuer.example" })),
+    ).toThrow(/Deprecated external provider/);
+  });
+
+  it("accepts minimal production readiness configuration", () => {
+    expect(() => validateProductionReadiness(productionEnv())).not.toThrow();
   });
 
   it("scopes matter lists to the authenticated user", async () => {
@@ -232,17 +433,19 @@ describe("API auth and persistence boundaries", () => {
     const requestId = created.json<{ request: { id: string } }>().request.id;
     const event = await server.inject({
       method: "POST",
-      url: "/api/signature-requests/provider-events",
+      url: `/api/signature-requests/${requestId}/embedded-events`,
       payload: {
-        signatureRequestId: requestId,
-        provider: "manual",
-        externalId: `manual:matter-001:doc-001`,
         status: "completed",
+        consentText: "I consent to electronic signature.",
         evidence: { completedBy: "Ada Morgan" },
       },
     });
 
     expect(event.statusCode).toBe(200);
+    expect(event.json()).toMatchObject({
+      status: "processed",
+      event: { provider: "embedded", status: "completed" },
+    });
     const list = await server.inject({ method: "GET", url: "/api/signature-requests" });
     expect(list.json<Array<{ id: string; status: string }>>()).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: requestId, status: "completed" })]),
@@ -277,24 +480,8 @@ describe("API auth and persistence boundaries", () => {
     expect(event.statusCode).toBe(409);
   });
 
-  it("verifies DocuSeal webhooks, rejects replay, and preserves terminal ordering", async () => {
-    const signatureProvider: SignatureProvider = {
-      async createSubmission() {
-        return {
-          provider: "docuseal",
-          externalId: "docuseal-submission-001",
-          status: "sent",
-        };
-      },
-    };
-    const server = testServer({
-      signatureProvider,
-      docusealWebhook: {
-        secretHeader: "x-docuseal-secret",
-        secretValue: "secret-value",
-        replayWindowSeconds: 300,
-      },
-    });
+  it("preserves terminal ordering for embedded signature events", async () => {
+    const server = testServer();
     const created = await server.inject({
       method: "POST",
       url: "/api/signature-requests",
@@ -307,111 +494,38 @@ describe("API auth and persistence boundaries", () => {
       },
     });
     const requestId = created.json<{ request: { id: string } }>().request.id;
-    const payload = {
-      firmId: "firm-west-legal",
-      signatureRequestId: requestId,
-      externalId: "docuseal-submission-001",
-      status: "completed",
-      eventId: "docuseal-event-001",
-      occurredAt: "2026-04-24T12:00:00.000Z",
-    };
-
-    const accepted = await server.inject({
+    const completed = await server.inject({
       method: "POST",
-      url: "/api/signature-requests/webhooks/docuseal",
-      headers: { "x-docuseal-secret": "secret-value" },
-      payload,
-    });
-    const duplicate = await server.inject({
-      method: "POST",
-      url: "/api/signature-requests/webhooks/docuseal",
-      headers: { "x-docuseal-secret": "secret-value" },
-      payload,
+      url: `/api/signature-requests/${requestId}/embedded-events`,
+      payload: {
+        status: "completed",
+        occurredAt: "2026-04-24T12:00:00.000Z",
+        evidence: { completedBy: "Ada Morgan" },
+      },
     });
     const outOfOrder = await server.inject({
       method: "POST",
-      url: "/api/signature-requests/webhooks/docuseal",
-      headers: { "x-docuseal-secret": "secret-value" },
-      payload: { ...payload, status: "viewed", eventId: "docuseal-event-002" },
+      url: `/api/signature-requests/${requestId}/embedded-events`,
+      payload: { status: "viewed", occurredAt: "2026-04-24T12:01:00.000Z" },
     });
     const list = await server.inject({ method: "GET", url: "/api/signature-requests" });
 
-    expect(accepted.statusCode).toBe(200);
-    expect(duplicate.statusCode).toBe(202);
-    expect(duplicate.json()).toMatchObject({ status: "duplicate" });
+    expect(completed.statusCode).toBe(200);
     expect(outOfOrder.statusCode).toBe(200);
     expect(list.json<Array<{ id: string; status: string }>>()).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: requestId, status: "completed" })]),
     );
   });
 
-  it("rejects DocuSeal webhooks with bad secrets or unknown requests", async () => {
-    const server = testServer({
-      docusealWebhook: {
-        secretHeader: "x-docuseal-secret",
-        secretValue: "secret-value",
-        replayWindowSeconds: 300,
-      },
-    });
-    const payload = {
-      firmId: "firm-west-legal",
-      signatureRequestId: "missing-signature",
-      externalId: "docuseal-submission-404",
-      status: "completed",
-      eventId: "docuseal-event-404",
-    };
-
-    const rejectedSecret = await server.inject({
-      method: "POST",
-      url: "/api/signature-requests/webhooks/docuseal",
-      headers: { "x-docuseal-secret": "wrong-value" },
-      payload,
-    });
+  it("rejects embedded signature events for unknown requests", async () => {
+    const server = testServer();
     const unknownRequest = await server.inject({
       method: "POST",
-      url: "/api/signature-requests/webhooks/docuseal",
-      headers: { "x-docuseal-secret": "secret-value" },
-      payload,
+      url: "/api/signature-requests/missing-signature/embedded-events",
+      payload: { status: "completed" },
     });
 
-    expect(rejectedSecret.statusCode).toBe(401);
     expect(unknownRequest.statusCode).toBe(404);
-  });
-
-  it("rejects DocuSeal webhooks that mismatch a known request provider payload", async () => {
-    const server = testServer({
-      docusealWebhook: {
-        secretHeader: "x-docuseal-secret",
-        secretValue: "secret-value",
-        replayWindowSeconds: 300,
-      },
-    });
-    const created = await server.inject({
-      method: "POST",
-      url: "/api/signature-requests",
-      payload: {
-        matterId: "matter-001",
-        documentId: "doc-001",
-        title: "Retainer agreement",
-        consentText: "I consent to electronic signature.",
-        signers: [{ name: "Ada Morgan", email: "ada@example.test", role: "client" }],
-      },
-    });
-    const requestId = created.json<{ request: { id: string } }>().request.id;
-    const mismatch = await server.inject({
-      method: "POST",
-      url: "/api/signature-requests/webhooks/docuseal",
-      headers: { "x-docuseal-secret": "secret-value" },
-      payload: {
-        firmId: "firm-west-legal",
-        signatureRequestId: requestId,
-        externalId: "docuseal-submission-001",
-        status: "completed",
-        eventId: "docuseal-event-mismatch",
-      },
-    });
-
-    expect(mismatch.statusCode).toBe(409);
   });
 
   it("persists intake sessions and generated document records", async () => {
@@ -442,42 +556,14 @@ describe("API auth and persistence boundaries", () => {
     });
   });
 
-  it("persists answer snapshots and docassemble generated document metadata", async () => {
-    const automationProvider: DocumentAutomationProvider = {
-      async startInterview() {
-        return {
-          provider: "docassemble",
-          externalId: "docassemble-session-001",
-          interviewUrl: "https://docassemble.example/interview/1",
-          status: "in_progress",
-          evidence: { started: true },
-        };
-      },
-      async getInterviewStatus() {
-        return {
-          provider: "docassemble",
-          externalId: "docassemble-session-001",
-          status: "ready_to_generate",
-        };
-      },
-      async renderDocument(input) {
-        return {
-          provider: "docassemble",
-          externalId: "docassemble-document-001",
-          title: input.documentTitle,
-          storageKey: "generated/docassemble-document-001.pdf",
-          checksumSha256: "a".repeat(64),
-          evidence: { rendered: true },
-        };
-      },
-    };
-    const server = testServer({ automationProvider });
+  it("persists answer snapshots and embedded generated document metadata", async () => {
+    const server = testServer();
     const created = await server.inject({
       method: "POST",
       url: "/api/intake-sessions",
       payload: {
         matterId: "matter-001",
-        templateId: "docassemble-template-001",
+        templateId: "intake-template-001",
         clientContactId: "contact-ada",
       },
     });
@@ -494,11 +580,15 @@ describe("API auth and persistence boundaries", () => {
     const generated = await server.inject({
       method: "POST",
       url: `/api/intake-sessions/${sessionId}/generated-documents`,
-      payload: { title: "Docassemble notice package" },
+      payload: {
+        title: "Embedded notice package",
+        storageKey: "generated/embedded-notice-package.pdf",
+        checksumSha256: "a".repeat(64),
+      },
     });
 
     expect(created.statusCode).toBe(200);
-    expect(created.json()).toMatchObject({ provider: "docassemble" });
+    expect(created.json()).toMatchObject({ provider: "embedded" });
     expect(snapshot.statusCode).toBe(200);
     expect(
       snapshots.json<{ snapshots: Array<{ answers: Record<string, unknown> }> }>().snapshots[0]
@@ -506,9 +596,8 @@ describe("API auth and persistence boundaries", () => {
     ).toEqual({ issue: "repair" });
     expect(generated.statusCode).toBe(200);
     expect(generated.json()).toMatchObject({
-      provider: "docassemble",
-      externalId: "docassemble-document-001",
-      storageKey: "generated/docassemble-document-001.pdf",
+      provider: "embedded",
+      storageKey: "generated/embedded-notice-package.pdf",
     });
   });
 

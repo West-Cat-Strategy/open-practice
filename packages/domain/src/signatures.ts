@@ -13,7 +13,7 @@ export interface CreateSignatureRequestInput {
 }
 
 export interface SignatureProviderSubmission {
-  provider: "docuseal" | "manual";
+  provider: "embedded" | "manual" | "docuseal";
   externalId: string;
   status?: SignatureProviderStatus;
   signingUrl?: string;
@@ -295,7 +295,7 @@ export interface StartAutomationInterviewInput {
 }
 
 export interface AutomationSessionRef {
-  provider: "docassemble" | "manual";
+  provider: "embedded" | "manual" | "docassemble";
   externalId: string;
   interviewUrl?: string;
   status: "created" | "in_progress" | "ready_to_generate" | "completed" | "provider_error";

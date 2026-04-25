@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import {
   answerSnapshots,
+  authAccounts,
+  authPasswordSetupTokens,
+  authSessions,
   billingTrustTransferRequests,
   documents,
   invoiceLines,
@@ -63,6 +66,25 @@ describe("database schema hardening", () => {
   it("persists guided intake sessions", () => {
     expect(getTableConfig(intakeSessions).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["matter_id", "template_id", "external_id", "status"]),
+    );
+  });
+
+  it("persists embedded auth accounts and sessions", () => {
+    expect(getTableConfig(authAccounts).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["firm_id", "user_id", "password_hash", "password_updated_at"]),
+    );
+    expect(getTableConfig(authSessions).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "user_id",
+        "token_hash",
+        "expires_at",
+        "revoked_at",
+        "last_seen_at",
+      ]),
+    );
+    expect(getTableConfig(authPasswordSetupTokens).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["token_hash", "expires_at", "used_at", "created_by_user_id"]),
     );
   });
 

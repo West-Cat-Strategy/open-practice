@@ -7,7 +7,7 @@ This document turns the reuse matrix into remaining opportunities without copyin
 ## Current State
 
 - `packages/domain` contains provider-neutral legal rules for conflict checks, matter-scoped RBAC, audit hash chains, trust/funds ledger posting, reversals, idempotency, and signature/automation contracts.
-- `packages/providers` contains concrete optional-service adapters for DocuSeal and docassemble-style automation; `packages/domain` should stay free of HTTP provider logic.
+- `packages/providers` contains embedded signature and automation adapters; `packages/domain` should stay free of HTTP/provider-specific runtime logic.
 - `apps/api` handles auth, access checks, repository injection, S3 presigning, upload completion, and routes for session, capabilities, overview, matters, conflicts, ledger, audit, documents, signatures, intake sessions, and generated documents.
 - `packages/database` defines the PostgreSQL schema, migrations, seed/runtime support, and repository interfaces and implementations for persistent and in-memory operation.
 - The web app is an API-backed operational dashboard; sample data remains intentional for tests, seed data, and in-memory development paths.
@@ -17,10 +17,10 @@ This document turns the reuse matrix into remaining opportunities without copyin
 ## Remaining Opportunities
 
 1. **Harden provider lifecycles.**
-   Keep DocuSeal/docassemble HTTP adapters in `packages/providers`; expose only provider-neutral DTOs and status transitions from `packages/domain`; add explicit webhook verification, replay protection, event ordering, provider-error handling, and reconciliation semantics.
+   Keep embedded signature/intake adapters in `packages/providers`; expose only provider-neutral DTOs and status transitions from `packages/domain`; preserve event ordering, provider-error handling, and reconciliation semantics.
 
 2. **Complete guided intake and document automation.**
-   Use docassemble as the optional automation service/reference. Store and expose answer snapshots, generated-document metadata, and final document records locally. Do not make docassemble the matter or document system of record.
+   Keep guided intake and document automation embedded. Store and expose answer snapshots, generated-document metadata, and final document records locally.
 
 3. **Harden trust/funds workflows.**
    Use Blnk and Apache Fineract patterns for idempotent transactions, balances, maker-checker approvals, and reconciliation. Use LedgerSMB only as a reporting/reconciliation reference. Keep no-overdraft, balanced-entry, reversal, and audit invariants covered by tests.

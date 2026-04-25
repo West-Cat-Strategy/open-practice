@@ -6,14 +6,16 @@
   "packageManager": "pnpm@10.0.0",
   "scripts": {
     "build": "turbo build",
+    "docs:check": "node scripts/validate-doc-links.mjs",
     "dev": "turbo dev --parallel",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo lint",
-    "policy:check": "node scripts/validate-oss-reuse.mjs",
+    "policy:check": "node scripts/validate-oss-reuse.mjs && node scripts/validate-doc-links.mjs && node scripts/validate-open-practice-boundaries.mjs",
     "refs:clone": "node scripts/clone-oss-references.mjs",
     "test": "turbo test",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm --filter @open-practice/database db:check && pnpm policy:check && pnpm build"
   },
   "devDependencies": {
     "@playwright/test": "latest",

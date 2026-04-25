@@ -7,10 +7,11 @@ with `apps/api/src/server.ts`, `packages/domain/src/models.ts`,
 
 ## API Surface
 
-All `/api/*` routes require authentication except `POST /api/signature-requests/webhooks/docuseal`,
-which uses the configured DocuSeal secret header. Development may use `x-open-practice-user-id` and
-`x-open-practice-firm-id`; bearer JWTs require `AUTH_JWT_SECRET`. Production rejects
-unauthenticated requests.
+All `/api/*` routes require authentication except `POST /api/auth/login` and
+`POST /api/auth/password-setup`. Production accepts embedded session cookies or
+`x-open-practice-session` tokens backed by PostgreSQL session records. Development may use
+`x-open-practice-user-id`, `x-open-practice-firm-id`, and bearer JWT helpers. Production rejects
+unauthenticated requests, development headers, and bearer JWTs.
 
 The billing lane exposes operational APIs for time, expenses, invoices, manual payments, and
 trust-transfer-request records. It does not include live payment processing, jurisdiction-certified
@@ -19,6 +20,11 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | Route                                                        | Purpose                                                                                                        |
 | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | `GET /health`                                                | Liveness and repository mode (`memory` or `postgres`).                                                         |
+| `POST /api/auth/login`                                       | Embedded session login with firm ID, email, and password.                                                      |
+| `POST /api/auth/logout`                                      | Revokes the current embedded session and clears the session cookie.                                            |
+| `GET /api/auth/session`                                      | Current embedded-auth session user.                                                                            |
+| `POST /api/auth/password-setup-tokens`                       | Owner-admin password setup token creation for local invitation/setup flows.                                    |
+| `POST /api/auth/password-setup`                              | Consumes a setup token and stores a local password hash.                                                       |
 | `GET /api/session`                                           | Current authenticated user.                                                                                    |
 | `GET /api/capabilities`                                      | Permission-aware dashboard sections for the current user and first assigned matter.                            |
 | `GET /api/overview`                                          | Firm overview metrics.                                                                                         |
@@ -32,11 +38,11 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/documents/:id/scan-status`                        | Explicit malware/scan-state update for an existing document.                                                   |
 | `GET /api/signature-requests?matterId=`                      | Signature requests visible firm-wide or across assigned matters.                                               |
 | `POST /api/signature-requests`                               | Provider-neutral signature submission and initial provider event.                                              |
-| `POST /api/signature-requests/provider-events`               | Provider status event plus webhook-attempt record.                                                             |
-| `POST /api/signature-requests/webhooks/docuseal`             | DocuSeal webhook receiver with configured secret-header verification, replay checks, and event ordering.       |
+| `POST /api/signature-requests/provider-events`               | Authenticated legacy/provider-neutral status event for matching provider/external IDs.                         |
+| `POST /api/signature-requests/:id/embedded-events`           | Embedded signature viewed/completed/declined event with consent/evidence capture.                              |
 | `GET /api/signature-requests/:id/events`                     | Provider event history for one signature request.                                                              |
 | `GET /api/intake-sessions?matterId=`                         | Intake templates and sessions visible firm-wide or across assigned matters.                                    |
-| `POST /api/intake-sessions`                                  | Manual or docassemble-backed intake session record, with Open Practice remaining system of record.             |
+| `POST /api/intake-sessions`                                  | Embedded intake session record, with Open Practice remaining system of record.                                 |
 | `GET /api/intake-sessions/:id/answer-snapshots`              | Answer snapshots for one intake session.                                                                       |
 | `POST /api/intake-sessions/:id/answer-snapshots`             | Captured intake answers for one intake session.                                                                |
 | `POST /api/intake-sessions/:id/generated-documents`          | Generated document metadata tied to an intake session.                                                         |
@@ -80,15 +86,15 @@ clear.
 Signature requests use provider statuses `draft`, `pending_provider_submission`, `sent`, `viewed`,
 `completed`, `declined`, and `provider_error`. Creating a request records the provider submission,
 signers, and an initial provider event. Provider events update the request status, set completion or
-decline timestamps for terminal statuses, and persist webhook-attempt evidence. DocuSeal webhooks are
-accepted only when the configured secret header matches. Replayed events are recorded as failed
-attempts, and terminal request statuses are not overwritten by out-of-order non-terminal events.
+decline timestamps for terminal statuses, and preserve terminal statuses against out-of-order
+non-terminal events. Embedded signature events capture signer consent text, actor ID, IP,
+user-agent, timestamps, and caller-provided evidence. Legacy `docuseal` requests remain historical
+records and are rejected by embedded event routes.
 
 Intake sessions use `created`, `in_progress`, `ready_to_generate`, `completed`, and
-`provider_error`. The API creates manual sessions by default and calls the docassemble adapter only
-for templates whose provider is `docassemble` and only when docassemble env configuration is present.
-Answer snapshots and generated-document metadata are stored locally; docassemble must not become the
-system of record for sessions, answers, generated document metadata, or final document records.
+`provider_error`. The API creates embedded sessions from embedded templates. Answer snapshots and
+generated-document metadata are stored locally. Legacy `docassemble` templates/sessions are rejected
+for new generation paths.
 
 Ledger posting has no mutable status field. A transaction is accepted only when entries are balanced,
 non-zero, one-sided debit/credit rows; all accounts, matters, and clients are valid; the idempotency
@@ -128,12 +134,10 @@ Audit events are append-only records with hash-chain validation. Conflict checks
 operations that create audit events should preserve firm scoping, actor identity, canonical payloads,
 and chain validity.
 
-Provider/bootstrap selection is environment driven. `DATABASE_URL` selects PostgreSQL unless
+Provider/bootstrap selection is local-first. `DATABASE_URL` selects PostgreSQL unless
 `OPEN_PRACTICE_USE_MEMORY_REPO=true` or the database URL is absent. `OPEN_PRACTICE_DEV_SEED=true`
-loads seed data. DocuSeal is selected only when both `DOCUSEAL_BASE_URL` and `DOCUSEAL_API_KEY` are
-present; otherwise the manual signature provider is used. S3 upload signing is enabled only when
-endpoint and credentials are configured. `DOCUSEAL_WEBHOOK_SECRET_HEADER` and
-`DOCUSEAL_WEBHOOK_SECRET_VALUE` enable DocuSeal webhook acceptance. `DOCASSEMBLE_BASE_URL`,
-`DOCASSEMBLE_API_KEY`, and `DOCASSEMBLE_RETURN_URL` enable optional docassemble sessions.
-There is no live payment processor configuration. Future processor keys, webhooks, and settlement
-imports should be introduced behind explicit deployment profiles and reconciliation controls.
+loads seed data. Signature and intake providers default to embedded implementations. S3 upload
+signing is enabled only when endpoint and credentials are configured. `DOCUSEAL_*`,
+`DOCASSEMBLE_*`, and `OIDC_*` variables are deprecated and rejected in production. There is no live
+payment processor configuration. Future processor keys, webhooks, and settlement imports should be
+introduced behind explicit deployment profiles and reconciliation controls.

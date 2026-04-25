@@ -114,8 +114,56 @@ export interface PaymentWithAllocations extends ManualPaymentRecord {
   allocations: PaymentAllocationRecord[];
 }
 
+export interface AuthAccountRecord {
+  firmId: string;
+  userId: string;
+  passwordHash: string;
+  passwordUpdatedAt: string;
+}
+
+export interface AuthSessionRecord {
+  id: string;
+  firmId: string;
+  userId: string;
+  tokenHash: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt?: string;
+  lastSeenAt?: string;
+}
+
+export interface AuthPasswordSetupTokenRecord {
+  id: string;
+  firmId: string;
+  userId: string;
+  tokenHash: string;
+  createdByUserId?: string;
+  createdAt: string;
+  expiresAt: string;
+  usedAt?: string;
+}
+
 export interface OpenPracticeRepository {
   getUser(firmId: string, userId: string): Promise<User | undefined>;
+  getUserByEmail(firmId: string, email: string): Promise<User | undefined>;
+  getAuthAccount(firmId: string, userId: string): Promise<AuthAccountRecord | undefined>;
+  setAuthPassword(input: {
+    firmId: string;
+    userId: string;
+    passwordHash: string;
+    passwordUpdatedAt: string;
+  }): Promise<AuthAccountRecord>;
+  createAuthSession(session: AuthSessionRecord): Promise<AuthSessionRecord>;
+  getAuthSessionByTokenHash(tokenHash: string): Promise<AuthSessionRecord | undefined>;
+  touchAuthSession(tokenHash: string, seenAt: string): Promise<void>;
+  revokeAuthSession(tokenHash: string, revokedAt: string): Promise<void>;
+  createPasswordSetupToken(
+    token: AuthPasswordSetupTokenRecord,
+  ): Promise<AuthPasswordSetupTokenRecord>;
+  consumePasswordSetupToken(
+    tokenHash: string,
+    usedAt: string,
+  ): Promise<AuthPasswordSetupTokenRecord | undefined>;
   getOverview(firmId: string): Promise<PracticeOverview>;
   listMattersForUser(user: User): Promise<MatterSummary[]>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
@@ -270,6 +318,43 @@ function clone<T>(value: T): T {
 function dateToIso(value: Date | string | null | undefined): string | undefined {
   if (!value) return undefined;
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function mapAuthAccountRow(row: typeof schema.authAccounts.$inferSelect): AuthAccountRecord {
+  return {
+    firmId: row.firmId,
+    userId: row.userId,
+    passwordHash: row.passwordHash,
+    passwordUpdatedAt: row.passwordUpdatedAt.toISOString(),
+  };
+}
+
+function mapAuthSessionRow(row: typeof schema.authSessions.$inferSelect): AuthSessionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    userId: row.userId,
+    tokenHash: row.tokenHash,
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
+    revokedAt: dateToIso(row.revokedAt),
+    lastSeenAt: dateToIso(row.lastSeenAt),
+  };
+}
+
+function mapPasswordSetupTokenRow(
+  row: typeof schema.authPasswordSetupTokens.$inferSelect,
+): AuthPasswordSetupTokenRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    userId: row.userId,
+    tokenHash: row.tokenHash,
+    createdByUserId: row.createdByUserId ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
+    usedAt: dateToIso(row.usedAt),
+  };
 }
 
 function matterTrustBalance(
@@ -538,6 +623,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private intakeSessions = clone(sampleIntakeSessions);
   private answerSnapshots: AnswerSnapshotRecord[] = [];
   private generatedDocuments = clone(sampleGeneratedDocuments);
+  private authAccounts: AuthAccountRecord[] = [];
+  private authSessions: AuthSessionRecord[] = [];
+  private passwordSetupTokens: AuthPasswordSetupTokenRecord[] = [];
   private auditEvents = clone(sampleAuditEvents);
   private postedTransactions: PostedLedgerTransaction[] = [
     {
@@ -551,6 +639,77 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async getUser(firmId: string, userId: string): Promise<User | undefined> {
     return clone(this.users.find((user) => user.firmId === firmId && user.id === userId));
+  }
+
+  async getUserByEmail(firmId: string, email: string): Promise<User | undefined> {
+    const normalized = email.trim().toLowerCase();
+    return clone(
+      this.users.find(
+        (user) => user.firmId === firmId && user.email.trim().toLowerCase() === normalized,
+      ),
+    );
+  }
+
+  async getAuthAccount(firmId: string, userId: string): Promise<AuthAccountRecord | undefined> {
+    return clone(
+      this.authAccounts.find((account) => account.firmId === firmId && account.userId === userId),
+    );
+  }
+
+  async setAuthPassword(input: {
+    firmId: string;
+    userId: string;
+    passwordHash: string;
+    passwordUpdatedAt: string;
+  }): Promise<AuthAccountRecord> {
+    const account: AuthAccountRecord = { ...input };
+    this.authAccounts = [
+      ...this.authAccounts.filter(
+        (candidate) => candidate.firmId !== input.firmId || candidate.userId !== input.userId,
+      ),
+      account,
+    ];
+    return clone(account);
+  }
+
+  async createAuthSession(session: AuthSessionRecord): Promise<AuthSessionRecord> {
+    this.authSessions = [...this.authSessions, clone(session)];
+    return clone(session);
+  }
+
+  async getAuthSessionByTokenHash(tokenHash: string): Promise<AuthSessionRecord | undefined> {
+    return clone(this.authSessions.find((session) => session.tokenHash === tokenHash));
+  }
+
+  async touchAuthSession(tokenHash: string, seenAt: string): Promise<void> {
+    this.authSessions = this.authSessions.map((session) =>
+      session.tokenHash === tokenHash ? { ...session, lastSeenAt: seenAt } : session,
+    );
+  }
+
+  async revokeAuthSession(tokenHash: string, revokedAt: string): Promise<void> {
+    this.authSessions = this.authSessions.map((session) =>
+      session.tokenHash === tokenHash ? { ...session, revokedAt } : session,
+    );
+  }
+
+  async createPasswordSetupToken(
+    token: AuthPasswordSetupTokenRecord,
+  ): Promise<AuthPasswordSetupTokenRecord> {
+    this.passwordSetupTokens = [...this.passwordSetupTokens, clone(token)];
+    return clone(token);
+  }
+
+  async consumePasswordSetupToken(
+    tokenHash: string,
+    usedAt: string,
+  ): Promise<AuthPasswordSetupTokenRecord | undefined> {
+    const token = this.passwordSetupTokens.find((candidate) => candidate.tokenHash === tokenHash);
+    if (!token || token.usedAt || Date.parse(token.expiresAt) <= Date.parse(usedAt)) {
+      return undefined;
+    }
+    token.usedAt = usedAt;
+    return clone(token);
   }
 
   async getOverview(firmId: string): Promise<PracticeOverview> {
@@ -1230,6 +1389,108 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       assignedMatterIds: assignments.map((assignment) => assignment.matterId),
       mfaEnabled: row.mfaEnabled,
     };
+  }
+
+  async getUserByEmail(firmId: string, email: string): Promise<User | undefined> {
+    const normalized = email.trim().toLowerCase();
+    const users = await this.listUsers(firmId);
+    return users.find((user) => user.email.trim().toLowerCase() === normalized);
+  }
+
+  async getAuthAccount(firmId: string, userId: string): Promise<AuthAccountRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.authAccounts)
+      .where(and(eq(schema.authAccounts.firmId, firmId), eq(schema.authAccounts.userId, userId)));
+    return row ? mapAuthAccountRow(row) : undefined;
+  }
+
+  async setAuthPassword(input: {
+    firmId: string;
+    userId: string;
+    passwordHash: string;
+    passwordUpdatedAt: string;
+  }): Promise<AuthAccountRecord> {
+    const [row] = await this.db
+      .insert(schema.authAccounts)
+      .values({
+        firmId: input.firmId,
+        userId: input.userId,
+        passwordHash: input.passwordHash,
+        passwordUpdatedAt: new Date(input.passwordUpdatedAt),
+      })
+      .onConflictDoUpdate({
+        target: [schema.authAccounts.firmId, schema.authAccounts.userId],
+        set: {
+          passwordHash: input.passwordHash,
+          passwordUpdatedAt: new Date(input.passwordUpdatedAt),
+        },
+      })
+      .returning();
+    return mapAuthAccountRow(row);
+  }
+
+  async createAuthSession(session: AuthSessionRecord): Promise<AuthSessionRecord> {
+    await this.db.insert(schema.authSessions).values({
+      ...session,
+      createdAt: new Date(session.createdAt),
+      expiresAt: new Date(session.expiresAt),
+      revokedAt: session.revokedAt ? new Date(session.revokedAt) : null,
+      lastSeenAt: session.lastSeenAt ? new Date(session.lastSeenAt) : null,
+    });
+    return session;
+  }
+
+  async getAuthSessionByTokenHash(tokenHash: string): Promise<AuthSessionRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.authSessions)
+      .where(eq(schema.authSessions.tokenHash, tokenHash));
+    return row ? mapAuthSessionRow(row) : undefined;
+  }
+
+  async touchAuthSession(tokenHash: string, seenAt: string): Promise<void> {
+    await this.db
+      .update(schema.authSessions)
+      .set({ lastSeenAt: new Date(seenAt) })
+      .where(eq(schema.authSessions.tokenHash, tokenHash));
+  }
+
+  async revokeAuthSession(tokenHash: string, revokedAt: string): Promise<void> {
+    await this.db
+      .update(schema.authSessions)
+      .set({ revokedAt: new Date(revokedAt) })
+      .where(eq(schema.authSessions.tokenHash, tokenHash));
+  }
+
+  async createPasswordSetupToken(
+    token: AuthPasswordSetupTokenRecord,
+  ): Promise<AuthPasswordSetupTokenRecord> {
+    await this.db.insert(schema.authPasswordSetupTokens).values({
+      ...token,
+      createdByUserId: token.createdByUserId ?? null,
+      createdAt: new Date(token.createdAt),
+      expiresAt: new Date(token.expiresAt),
+      usedAt: token.usedAt ? new Date(token.usedAt) : null,
+    });
+    return token;
+  }
+
+  async consumePasswordSetupToken(
+    tokenHash: string,
+    usedAt: string,
+  ): Promise<AuthPasswordSetupTokenRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.authPasswordSetupTokens)
+      .where(eq(schema.authPasswordSetupTokens.tokenHash, tokenHash));
+    if (!row || row.usedAt || row.expiresAt <= new Date(usedAt)) return undefined;
+    const [updated] = await this.db
+      .update(schema.authPasswordSetupTokens)
+      .set({ usedAt: new Date(usedAt) })
+      .where(eq(schema.authPasswordSetupTokens.tokenHash, tokenHash))
+      .returning();
+    return updated ? mapPasswordSetupTokenRow(updated) : undefined;
   }
 
   async getOverview(firmId: string): Promise<PracticeOverview> {

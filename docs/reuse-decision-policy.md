@@ -38,7 +38,7 @@ Rules:
 
 Examples:
 
-- DocuSeal may remain an optional e-sign service behind the signature-provider boundary.
+- DocuSeal is historical/reference-only for the current embedded e-sign runtime.
 - A paperless-style OCR/document service may be optional infrastructure, but GPL implementation must not be copied into core.
 
 ### Fork
@@ -156,7 +156,7 @@ Rules:
 - Do not make core startup depend on the service unless the deployment profile explicitly enables it.
 - Document source-offer, attribution, and modification obligations for the service operator.
 - For AGPL services exposed over a network, assume modified service source must be offered to users of that service.
-- For DocuSeal specifically, retain required interactive UI attribution under its AGPL additional terms.
+- If a future DocuSeal integration is reintroduced, retain required interactive UI attribution under its AGPL additional terms.
 
 ## Legal Review Required
 

@@ -17,7 +17,7 @@
 - Tampered audit logs or trust ledger records.
 - Uploaded malware or unsafe document previews.
 - Forged upload-completion claims, checksum mismatches, or scan-state bypasses.
-- Spoofed, replayed, duplicated, or out-of-order provider webhooks.
+- Spoofed, duplicated, or out-of-order embedded signature/provider events.
 - Overexposed intake answers or generated documents.
 - Unauthorized trust withdrawals or duplicate payment events.
 - Misleading e-sign evidence or missing consent records.

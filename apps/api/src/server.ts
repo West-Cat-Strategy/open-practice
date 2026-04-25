@@ -3,6 +3,7 @@ import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { jwtVerify } from "jose";
+import { pbkdf2Sync, randomBytes, timingSafeEqual, createHmac } from "node:crypto";
 import { z } from "zod";
 import {
   createDatabaseRuntime,
@@ -18,7 +19,6 @@ import {
   calculateInvoiceTotals,
   createInvoiceLineTotals,
   dashboardCapabilities,
-  getSignatureProviderEventReplayMetadata,
   isBillableUnbilled,
   type AccessRequest,
 } from "@open-practice/domain";
@@ -39,38 +39,75 @@ import type {
   SignatureProviderStatus,
   SignatureRequestRecord,
   SignatureRequestSignerRecord,
-  SignatureWebhookAttemptRecord,
   TimeEntry,
   TrustTransferRequestRecord,
   User,
 } from "@open-practice/domain";
-import {
-  DocassembleAutomationProvider,
-  DocuSealSignatureProvider,
-  ManualSignatureProvider,
-} from "@open-practice/providers";
+import { EmbeddedAutomationProvider, EmbeddedSignatureProvider } from "@open-practice/providers";
 
-const envSchema = z.object({
+const DEV_EXAMPLE_JWT_SECRET = "dev-only-change-me-at-least-16-chars";
+
+const optionalString = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().min(1).optional(),
+);
+
+const optionalUrl = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().url().optional(),
+);
+
+export const envSchema = z.object({
+  NODE_ENV: z.string().default("development"),
   API_PORT: z.coerce.number().default(4000),
-  DATABASE_URL: z.string().optional(),
+  DATABASE_URL: optionalString,
   OPEN_PRACTICE_USE_MEMORY_REPO: z.coerce.boolean().default(false),
   OPEN_PRACTICE_DEV_SEED: z.coerce.boolean().default(false),
-  AUTH_JWT_SECRET: z.string().min(16).optional(),
+  AUTH_JWT_SECRET: optionalString,
   DEV_AUTH_USER_ID: z.string().default("user-admin"),
   DEV_AUTH_FIRM_ID: z.string().default("firm-west-legal"),
-  S3_ENDPOINT: z.string().url().optional(),
+  S3_ENDPOINT: optionalUrl,
   S3_REGION: z.string().default("local"),
   S3_BUCKET: z.string().default("open-practice-documents"),
-  S3_ACCESS_KEY: z.string().optional(),
-  S3_SECRET_KEY: z.string().optional(),
-  DOCUSEAL_BASE_URL: z.string().url().optional(),
-  DOCUSEAL_API_KEY: z.string().optional(),
-  DOCUSEAL_WEBHOOK_SECRET_HEADER: z.string().min(1).optional(),
-  DOCUSEAL_WEBHOOK_SECRET_VALUE: z.string().min(1).optional(),
-  DOCUSEAL_WEBHOOK_REPLAY_WINDOW_SECONDS: z.coerce.number().int().positive().default(300),
-  DOCASSEMBLE_BASE_URL: z.string().url().optional(),
-  DOCASSEMBLE_API_KEY: z.string().optional(),
-  DOCASSEMBLE_RETURN_URL: z.string().url().optional(),
+  S3_ACCESS_KEY: optionalString,
+  S3_SECRET_KEY: optionalString,
+  SESSION_TTL_HOURS: z.coerce.number().int().positive().default(12),
+  DOCUSEAL_BASE_URL: optionalUrl,
+  DOCUSEAL_API_KEY: optionalString,
+  DOCUSEAL_WEBHOOK_SECRET_HEADER: optionalString,
+  DOCUSEAL_WEBHOOK_SECRET_VALUE: optionalString,
+  DOCUSEAL_WEBHOOK_REPLAY_WINDOW_SECONDS: optionalString,
+  DOCASSEMBLE_BASE_URL: optionalUrl,
+  DOCASSEMBLE_API_KEY: optionalString,
+  DOCASSEMBLE_RETURN_URL: optionalUrl,
+  OIDC_ISSUER_URL: optionalUrl,
+  OIDC_CLIENT_ID: optionalString,
+  OIDC_CLIENT_SECRET: optionalString,
+});
+
+export type ApiEnv = z.infer<typeof envSchema>;
+
+const SESSION_COOKIE_NAME = "open_practice_session";
+const PASSWORD_HASH_ITERATIONS = 210_000;
+const PASSWORD_HASH_KEY_LENGTH = 32;
+const PASSWORD_HASH_DIGEST = "sha256";
+
+const loginBodySchema = z.object({
+  firmId: z.string().min(1),
+  email: z.string().email(),
+  password: z.string().min(8),
+});
+
+const passwordSetupTokenBodySchema = z.object({
+  userId: z.string().min(1),
+  expiresInHours: z.number().int().positive().max(168).default(24),
+});
+
+const passwordSetupBodySchema = z.object({
+  firmId: z.string().min(1),
+  userId: z.string().min(1),
+  token: z.string().min(32),
+  password: z.string().min(8),
 });
 
 const conflictBodySchema = z.object({
@@ -249,7 +286,7 @@ const signatureRequestBodySchema = z.object({
 
 const signatureProviderEventBodySchema = z.object({
   signatureRequestId: z.string().min(1),
-  provider: z.enum(["docuseal", "manual"]),
+  provider: z.enum(["embedded", "manual", "docuseal"]),
   externalId: z.string().min(1),
   status: z.enum([
     "draft",
@@ -260,6 +297,14 @@ const signatureProviderEventBodySchema = z.object({
     "declined",
     "provider_error",
   ]),
+  occurredAt: z.string().datetime().optional(),
+  evidence: z.record(z.string(), z.unknown()).default({}),
+});
+
+const embeddedSignatureEventBodySchema = z.object({
+  signerId: z.string().min(1).optional(),
+  status: z.enum(["viewed", "completed", "declined"]),
+  consentText: z.string().min(1).optional(),
   occurredAt: z.string().datetime().optional(),
   evidence: z.record(z.string(), z.unknown()).default({}),
 });
@@ -302,8 +347,6 @@ const ledgerReconciliationBodySchema = z.object({
   evidence: z.record(z.string(), z.unknown()).default({}),
 });
 
-const docusealWebhookBodySchema = z.record(z.string(), z.unknown());
-
 export interface ApiAuthContext {
   user: User;
   firmId: string;
@@ -312,36 +355,165 @@ export interface ApiAuthContext {
 interface ApiOptions {
   repository: OpenPracticeRepository;
   jwtSecret?: string;
+  nodeEnv?: string;
   devUserId: string;
   devFirmId: string;
   signatureProvider?: SignatureProvider;
   automationProvider?: DocumentAutomationProvider;
-  automationReturnUrl?: string;
-  docusealWebhook?: {
-    secretHeader: string;
-    secretValue: string;
-    replayWindowSeconds: number;
-  };
+  sessionTtlHours?: number;
   s3?: {
     client: S3Client;
     bucket: string;
   };
 }
 
+function configuredCount(values: Array<string | undefined>): number {
+  return values.filter(Boolean).length;
+}
+
+function requireCompleteGroup(name: string, values: Array<string | undefined>): void {
+  const count = configuredCount(values);
+  if (count > 0 && count < values.length) {
+    throw new Error(`${name} configuration must be complete or absent`);
+  }
+}
+
+export function validateProductionReadiness(env: ApiEnv): void {
+  requireCompleteGroup("S3", [env.S3_ENDPOINT, env.S3_ACCESS_KEY, env.S3_SECRET_KEY]);
+  const deprecatedProviderEnv = [
+    "DOCUSEAL_BASE_URL",
+    "DOCUSEAL_API_KEY",
+    "DOCUSEAL_WEBHOOK_SECRET_HEADER",
+    "DOCUSEAL_WEBHOOK_SECRET_VALUE",
+    "DOCUSEAL_WEBHOOK_REPLAY_WINDOW_SECONDS",
+    "DOCASSEMBLE_BASE_URL",
+    "DOCASSEMBLE_API_KEY",
+    "DOCASSEMBLE_RETURN_URL",
+    "OIDC_ISSUER_URL",
+    "OIDC_CLIENT_ID",
+    "OIDC_CLIENT_SECRET",
+  ].filter((key) => Boolean(env[key as keyof ApiEnv]));
+
+  if (env.NODE_ENV !== "production") return;
+
+  if (deprecatedProviderEnv.length > 0) {
+    throw new Error(
+      `Deprecated external provider configuration is not supported in production: ${deprecatedProviderEnv.join(
+        ", ",
+      )}`,
+    );
+  }
+
+  if (!env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is required in production");
+  }
+  if (env.OPEN_PRACTICE_USE_MEMORY_REPO) {
+    throw new Error("OPEN_PRACTICE_USE_MEMORY_REPO cannot be true in production");
+  }
+  if (env.OPEN_PRACTICE_DEV_SEED) {
+    throw new Error("OPEN_PRACTICE_DEV_SEED cannot be true in production");
+  }
+  if (!env.AUTH_JWT_SECRET || env.AUTH_JWT_SECRET.length < 32) {
+    throw new Error("AUTH_JWT_SECRET must be at least 32 characters in production");
+  }
+  if (env.AUTH_JWT_SECRET === DEV_EXAMPLE_JWT_SECRET) {
+    throw new Error("AUTH_JWT_SECRET must not use the development example value in production");
+  }
+}
+
 function sanitizeFilename(filename: string): string {
   return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function hashToken(token: string, secret: string): string {
+  return createHmac("sha256", secret).update(token).digest("hex");
+}
+
+function hashPassword(password: string): string {
+  const salt = randomBytes(16).toString("hex");
+  const hash = pbkdf2Sync(
+    password,
+    salt,
+    PASSWORD_HASH_ITERATIONS,
+    PASSWORD_HASH_KEY_LENGTH,
+    PASSWORD_HASH_DIGEST,
+  ).toString("hex");
+  return `pbkdf2:${PASSWORD_HASH_DIGEST}:${PASSWORD_HASH_ITERATIONS}:${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, storedHash: string): boolean {
+  const [scheme, digest, iterations, salt, hash] = storedHash.split(":");
+  if (scheme !== "pbkdf2" || !digest || !iterations || !salt || !hash) return false;
+  const candidate = pbkdf2Sync(
+    password,
+    salt,
+    Number(iterations),
+    Buffer.from(hash, "hex").length,
+    digest,
+  );
+  const expected = Buffer.from(hash, "hex");
+  return expected.length === candidate.length && timingSafeEqual(expected, candidate);
+}
+
+function createSessionToken(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+function readSessionToken(request: FastifyRequest): string | undefined {
+  const header = request.headers["x-open-practice-session"];
+  if (typeof header === "string" && header.length > 0) return header;
+  const cookie = request.headers.cookie;
+  if (!cookie) return undefined;
+  for (const part of cookie.split(";")) {
+    const [name, ...value] = part.trim().split("=");
+    if (name === SESSION_COOKIE_NAME) return decodeURIComponent(value.join("="));
+  }
+  return undefined;
+}
+
+function sessionCookie(token: string, expiresAt: string, secure: boolean): string {
+  const secureFlag = secure ? "; Secure" : "";
+  return `${SESSION_COOKIE_NAME}=${encodeURIComponent(
+    token,
+  )}; Path=/; HttpOnly; SameSite=Lax${secureFlag}; Expires=${new Date(expiresAt).toUTCString()}`;
+}
+
+function clearSessionCookie(): string {
+  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
 }
 
 async function authenticate(
   request: FastifyRequest,
   repository: OpenPracticeRepository,
-  options: Pick<ApiOptions, "jwtSecret" | "devFirmId" | "devUserId">,
+  options: Pick<ApiOptions, "jwtSecret" | "nodeEnv" | "devFirmId" | "devUserId">,
 ): Promise<ApiAuthContext> {
   const authorization = request.headers.authorization;
   let firmId = options.devFirmId;
   let userId = options.devUserId;
+  const isProduction = (options.nodeEnv ?? process.env.NODE_ENV) === "production";
+  const sessionToken = readSessionToken(request);
 
-  if (authorization?.startsWith("Bearer ")) {
+  if (sessionToken) {
+    if (!options.jwtSecret) {
+      throw Object.assign(new Error("Session authentication is not configured"), {
+        statusCode: 503,
+      });
+    }
+    const session = await repository.getAuthSessionByTokenHash(
+      hashToken(sessionToken, options.jwtSecret),
+    );
+    if (!session || session.revokedAt || Date.parse(session.expiresAt) <= Date.now()) {
+      throw Object.assign(new Error("Session expired or revoked"), { statusCode: 401 });
+    }
+    firmId = session.firmId;
+    userId = session.userId;
+    await repository.touchAuthSession(session.tokenHash, new Date().toISOString());
+  } else if (authorization?.startsWith("Bearer ")) {
+    if (isProduction) {
+      throw Object.assign(new Error("Bearer JWT authentication is development-only"), {
+        statusCode: 401,
+      });
+    }
     if (!options.jwtSecret) {
       throw Object.assign(new Error("JWT authentication is not configured"), { statusCode: 503 });
     }
@@ -349,11 +521,11 @@ async function authenticate(
     const { payload } = await jwtVerify(authorization.slice("Bearer ".length), secret);
     firmId = z.string().parse(payload.firmId);
     userId = z.string().parse(payload.sub);
+  } else if (isProduction) {
+    throw Object.assign(new Error("Authentication required"), { statusCode: 401 });
   } else if (request.headers["x-open-practice-user-id"]) {
     userId = z.string().parse(request.headers["x-open-practice-user-id"]);
     firmId = z.string().parse(request.headers["x-open-practice-firm-id"] ?? options.devFirmId);
-  } else if (process.env.NODE_ENV === "production") {
-    throw Object.assign(new Error("Authentication required"), { statusCode: 401 });
   }
 
   const user = await repository.getUser(firmId, userId);
@@ -376,63 +548,6 @@ function hasFirmWideLedgerAccess(user: User): boolean {
   return ["owner_admin", "auditor", "billing_bookkeeper"].includes(user.role);
 }
 
-function readString(value: unknown): string | undefined {
-  if (typeof value === "string" && value.length > 0) return value;
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return undefined;
-}
-
-function readPayloadString(payload: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = readString(payload[key]);
-    if (value) return value;
-  }
-  const metadata = payload.metadata;
-  if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
-    for (const key of keys) {
-      const value = readString((metadata as Record<string, unknown>)[key]);
-      if (value) return value;
-    }
-  }
-  const submission = payload.submission;
-  if (submission && typeof submission === "object" && !Array.isArray(submission)) {
-    for (const key of keys) {
-      const value = readString((submission as Record<string, unknown>)[key]);
-      if (value) return value;
-    }
-  }
-  return undefined;
-}
-
-function mapDocuSealWebhookStatus(payload: Record<string, unknown>): SignatureProviderStatus {
-  const status = readPayloadString(payload, ["status", "event", "event_type", "type"]);
-  if (status === "completed" || status === "complete_form" || status === "api_complete_form") {
-    return "completed";
-  }
-  if (status === "declined" || status === "decline_form") return "declined";
-  if (status === "opened" || status === "viewed" || status === "view_form") return "viewed";
-  if (status === "pending" || status === "sent" || status === "invite_party") return "sent";
-  return "provider_error";
-}
-
-function payloadReplayKey(payload: Record<string, unknown>, fallback: string): string {
-  return (
-    readPayloadString(payload, [
-      "eventId",
-      "event_id",
-      "webhookId",
-      "webhook_id",
-      "deliveryId",
-      "delivery_id",
-      "id",
-    ]) ?? fallback
-  );
-}
-
-function sameReplayKey(attempt: SignatureWebhookAttemptRecord, replayKey: string): boolean {
-  return attempt.payload.replayKey === replayKey;
-}
-
 export function createApiServer(options: ApiOptions): FastifyInstance {
   const server = Fastify({ logger: true });
 
@@ -449,13 +564,110 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
 
   server.addHook("preHandler", async (request) => {
     if (request.url === "/health") return;
-    if (
-      request.method === "POST" &&
-      request.url.startsWith("/api/signature-requests/webhooks/docuseal")
-    ) {
-      return;
-    }
+    if (request.method === "POST" && request.url === "/api/auth/login") return;
+    if (request.method === "POST" && request.url === "/api/auth/password-setup") return;
     request.auth = await authenticate(request, options.repository, options);
+  });
+
+  server.post("/api/auth/login", async (request, reply) => {
+    if (!options.jwtSecret) {
+      throw Object.assign(new Error("Session authentication is not configured"), {
+        statusCode: 503,
+      });
+    }
+    const body = loginBodySchema.parse(request.body);
+    const user = await options.repository.getUserByEmail(body.firmId, body.email);
+    const account = user
+      ? await options.repository.getAuthAccount(user.firmId, user.id)
+      : undefined;
+    if (!user || !account || !verifyPassword(body.password, account.passwordHash)) {
+      throw Object.assign(new Error("Invalid email or password"), { statusCode: 401 });
+    }
+
+    const token = createSessionToken();
+    const now = new Date();
+    const expiresAt = new Date(
+      now.getTime() + (options.sessionTtlHours ?? 12) * 60 * 60 * 1000,
+    ).toISOString();
+    const session = await options.repository.createAuthSession({
+      id: crypto.randomUUID(),
+      firmId: user.firmId,
+      userId: user.id,
+      tokenHash: hashToken(token, options.jwtSecret),
+      createdAt: now.toISOString(),
+      expiresAt,
+    });
+    reply.header("set-cookie", sessionCookie(token, expiresAt, options.nodeEnv === "production"));
+    return { user, session: { id: session.id, expiresAt }, token };
+  });
+
+  server.post("/api/auth/logout", async (request, reply) => {
+    const token = readSessionToken(request);
+    if (token && options.jwtSecret) {
+      await options.repository.revokeAuthSession(
+        hashToken(token, options.jwtSecret),
+        new Date().toISOString(),
+      );
+    }
+    reply.header("set-cookie", clearSessionCookie());
+    return { ok: true };
+  });
+
+  server.get("/api/auth/session", async (request) => ({ user: request.auth.user }));
+
+  server.post("/api/auth/password-setup-tokens", async (request) => {
+    if (request.auth.user.role !== "owner_admin") {
+      throw Object.assign(new Error("Owner admin access required"), { statusCode: 403 });
+    }
+    if (!options.jwtSecret) {
+      throw Object.assign(new Error("Password setup tokens are not configured"), {
+        statusCode: 503,
+      });
+    }
+    const body = passwordSetupTokenBodySchema.parse(request.body);
+    const user = await options.repository.getUser(request.auth.firmId, body.userId);
+    if (!user) {
+      throw Object.assign(new Error("User was not found"), { statusCode: 404 });
+    }
+    const token = createSessionToken();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + body.expiresInHours * 60 * 60 * 1000).toISOString();
+    const record = await options.repository.createPasswordSetupToken({
+      id: crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      userId: user.id,
+      tokenHash: hashToken(token, options.jwtSecret),
+      createdByUserId: request.auth.user.id,
+      createdAt: now.toISOString(),
+      expiresAt,
+    });
+    return { token, expiresAt: record.expiresAt, userId: user.id };
+  });
+
+  server.post("/api/auth/password-setup", async (request) => {
+    if (!options.jwtSecret) {
+      throw Object.assign(new Error("Password setup is not configured"), { statusCode: 503 });
+    }
+    const body = passwordSetupBodySchema.parse(request.body);
+    const now = new Date().toISOString();
+    const token = await options.repository.consumePasswordSetupToken(
+      hashToken(body.token, options.jwtSecret),
+      now,
+    );
+    if (!token || token.firmId !== body.firmId || token.userId !== body.userId) {
+      throw Object.assign(new Error("Password setup token is invalid or expired"), {
+        statusCode: 401,
+      });
+    }
+    const user = await options.repository.getUser(body.firmId, body.userId);
+    if (!user) throw Object.assign(new Error("User was not found"), { statusCode: 404 });
+    await options.repository.setAuthPassword({
+      firmId: body.firmId,
+      userId: body.userId,
+      passwordHash: hashPassword(body.password),
+      passwordUpdatedAt: now,
+    });
+    return { user };
   });
 
   server.get("/api/session", async (request) => ({ user: request.auth.user }));
@@ -1326,7 +1538,7 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
       });
     }
 
-    const provider = options.signatureProvider ?? new ManualSignatureProvider();
+    const provider = options.signatureProvider ?? new EmbeddedSignatureProvider();
     const submission = await provider.createSubmission(body);
     const now = new Date().toISOString();
     const requestRecord: SignatureRequestRecord = {
@@ -1393,135 +1605,49 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
       occurredAt: body.occurredAt ?? new Date().toISOString(),
       evidence: body.evidence,
     };
-    const attempt: SignatureWebhookAttemptRecord = {
-      id: crypto.randomUUID(),
-      firmId: request.auth.firmId,
-      provider: body.provider,
-      externalId: body.externalId,
-      receivedAt: new Date().toISOString(),
-      processedAt: new Date().toISOString(),
-      status: "processed",
-      payload: body,
-    };
-    return options.repository.recordSignatureProviderEvent(event, attempt);
+    return options.repository.recordSignatureProviderEvent(event);
   });
 
-  server.post("/api/signature-requests/webhooks/docuseal", async (request, reply) => {
-    const payload = docusealWebhookBodySchema.parse(request.body);
-    const firmId = readPayloadString(payload, ["firmId", "firm_id"]) ?? options.devFirmId;
-    const externalId =
-      readPayloadString(payload, ["externalId", "external_id", "submissionId", "submission_id"]) ??
-      "unknown";
-    const receivedAt = new Date().toISOString();
-    const configured = options.docusealWebhook;
-    const submittedSecret = configured
-      ? readString(request.headers[configured.secretHeader.toLowerCase()])
-      : undefined;
-    const baseAttempt = {
-      id: crypto.randomUUID(),
-      firmId,
-      provider: "docuseal" as const,
-      externalId,
-      receivedAt,
-      payload,
-    };
-
-    if (!configured) {
-      await options.repository.recordSignatureWebhookAttempt({
-        ...baseAttempt,
-        processedAt: receivedAt,
-        status: "failed",
-        errorMessage: "DocuSeal webhook verification is not configured",
-      });
-      throw Object.assign(new Error("DocuSeal webhook verification is not configured"), {
-        statusCode: 503,
+  server.post("/api/signature-requests/:id/embedded-events", async (request) => {
+    const params = z.object({ id: z.string().min(1) }).parse(request.params);
+    const body = embeddedSignatureEventBodySchema.parse(request.body);
+    const signature = (await options.repository.listSignatureRequests(request.auth.firmId)).find(
+      (candidate) => candidate.id === params.id,
+    );
+    if (!signature) {
+      throw Object.assign(new Error("Signature request was not found"), { statusCode: 404 });
+    }
+    requireAccess(request.auth, {
+      resource: "signature_request",
+      action: "update",
+      matterId: signature.matterId,
+    });
+    if (signature.provider === "docuseal") {
+      throw Object.assign(new Error("DocuSeal signature events are deprecated"), {
+        statusCode: 410,
       });
     }
-
-    if (submittedSecret !== configured.secretValue) {
-      await options.repository.recordSignatureWebhookAttempt({
-        ...baseAttempt,
-        processedAt: receivedAt,
-        status: "failed",
-        errorMessage: "DocuSeal webhook secret did not match",
-      });
-      throw Object.assign(new Error("DocuSeal webhook secret did not match"), { statusCode: 401 });
-    }
-
-    const status = mapDocuSealWebhookStatus(payload);
-    const occurredAt =
-      readPayloadString(payload, ["occurredAt", "occurred_at", "createdAt", "created_at"]) ??
-      receivedAt;
-    const signatureRequestId = readPayloadString(payload, [
-      "signatureRequestId",
-      "signature_request_id",
-    ]);
-    const matchingRequest = signatureRequestId
-      ? (await options.repository.listSignatureRequests(firmId)).find(
-          (candidate) => candidate.id === signatureRequestId,
-        )
-      : (await options.repository.listSignatureRequests(firmId)).find(
-          (candidate) => candidate.provider === "docuseal" && candidate.externalId === externalId,
-        );
-
-    if (!matchingRequest) {
-      await options.repository.recordSignatureWebhookAttempt({
-        ...baseAttempt,
-        processedAt: receivedAt,
-        status: "failed",
-        errorMessage: "No matching signature request",
-      });
-      throw Object.assign(new Error("No matching signature request"), { statusCode: 404 });
-    }
-    if (matchingRequest.provider !== "docuseal" || matchingRequest.externalId !== externalId) {
-      await options.repository.recordSignatureWebhookAttempt({
-        ...baseAttempt,
-        processedAt: receivedAt,
-        status: "failed",
-        errorMessage: "DocuSeal webhook request did not match provider submission",
-      });
-      throw Object.assign(new Error("DocuSeal webhook request did not match provider submission"), {
-        statusCode: 409,
-      });
-    }
-
+    const occurredAt = body.occurredAt ?? new Date().toISOString();
     const event: SignatureProviderEventRecord = {
       id: crypto.randomUUID(),
-      firmId,
-      signatureRequestId: matchingRequest.id,
-      provider: "docuseal",
-      externalId,
-      status,
+      firmId: request.auth.firmId,
+      signatureRequestId: signature.id,
+      provider: signature.provider,
+      externalId: signature.externalId,
+      status: body.status,
       occurredAt,
-      evidence: payload,
+      evidence: {
+        mode: "embedded",
+        actorUserId: request.auth.user.id,
+        signerId: body.signerId,
+        consentText: body.consentText,
+        ip: request.ip,
+        userAgent: request.headers["user-agent"],
+        ...body.evidence,
+      },
     };
-    const replayMetadata = getSignatureProviderEventReplayMetadata(event);
-    const replayKey = payloadReplayKey(payload, replayMetadata.replayKey);
-    const recentAttempts = await options.repository.listSignatureWebhookAttempts(firmId, {
-      provider: "docuseal",
-      externalId,
-    });
-    const replayWindowMs = configured.replayWindowSeconds * 1000;
-    const duplicate = recentAttempts.some(
-      (attempt) =>
-        sameReplayKey(attempt, replayKey) &&
-        Date.parse(receivedAt) - Date.parse(attempt.receivedAt) <= replayWindowMs,
-    );
-
-    const attempt: SignatureWebhookAttemptRecord = {
-      ...baseAttempt,
-      processedAt: receivedAt,
-      status: duplicate ? "failed" : "processed",
-      errorMessage: duplicate ? "Duplicate webhook replay" : undefined,
-      payload: { ...payload, replayKey },
-    };
-    if (duplicate) {
-      await options.repository.recordSignatureWebhookAttempt(attempt);
-      return reply.status(202).send({ status: "duplicate", replayKey });
-    }
-
-    const recorded = await options.repository.recordSignatureProviderEvent(event, attempt);
-    return { status: "processed", event: recorded, replayKey };
+    const recorded = await options.repository.recordSignatureProviderEvent(event);
+    return { status: "processed", event: recorded };
   });
 
   server.get("/api/signature-requests/:id/events", async (request) => {
@@ -1594,31 +1720,20 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
     if (!template) {
       throw Object.assign(new Error("Intake template was not found"), { statusCode: 404 });
     }
+    if (template.provider === "docassemble") {
+      throw Object.assign(new Error("docassemble intake templates are deprecated"), {
+        statusCode: 410,
+      });
+    }
     const now = new Date().toISOString();
-    const providerRef =
-      template.provider === "docassemble"
-        ? await (async () => {
-            if (!options.automationProvider) {
-              throw Object.assign(new Error("docassemble automation is not configured"), {
-                statusCode: 503,
-              });
-            }
-            return options.automationProvider.startInterview({
-              firmId: request.auth.firmId,
-              matterId: body.matterId,
-              templateId: template.externalTemplateId,
-              clientContactId: body.clientContactId,
-              returnUrl: options.automationReturnUrl,
-              metadata: body.evidence,
-            });
-          })()
-        : {
-            provider: "manual" as const,
-            externalId: `manual:${crypto.randomUUID()}`,
-            interviewUrl: body.interviewUrl,
-            status: "created" as const,
-            evidence: body.evidence,
-          };
+    const provider = options.automationProvider ?? new EmbeddedAutomationProvider();
+    const providerRef = await provider.startInterview({
+      firmId: request.auth.firmId,
+      matterId: body.matterId,
+      templateId: template.externalTemplateId,
+      clientContactId: body.clientContactId,
+      metadata: body.evidence,
+    });
     const session: IntakeSessionRecord = {
       id: crypto.randomUUID(),
       firmId: request.auth.firmId,
@@ -1628,7 +1743,7 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
       externalId: providerRef.externalId,
       status: providerRef.status,
       clientContactId: body.clientContactId,
-      interviewUrl: providerRef.interviewUrl,
+      interviewUrl: body.interviewUrl ?? providerRef.interviewUrl,
       evidence: providerRef.evidence ?? body.evidence,
       createdAt: now,
       updatedAt: now,
@@ -1685,29 +1800,18 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
       matterId: session.matterId,
     });
     const body = generatedDocumentBodySchema.parse(request.body);
-    const generated =
-      session.provider === "docassemble"
-        ? await (async () => {
-            if (!options.automationProvider) {
-              throw Object.assign(new Error("docassemble automation is not configured"), {
-                statusCode: 503,
-              });
-            }
-            return options.automationProvider.renderDocument({
-              firmId: request.auth.firmId,
-              matterId: session.matterId,
-              sessionExternalId: session.externalId,
-              documentTitle: body.title,
-            });
-          })()
-        : {
-            provider: session.provider,
-            externalId: body.externalId ?? `manual:${crypto.randomUUID()}`,
-            title: body.title,
-            storageKey: body.storageKey,
-            checksumSha256: body.checksumSha256,
-            evidence: body.evidence,
-          };
+    if (session.provider === "docassemble") {
+      throw Object.assign(new Error("docassemble generated documents are deprecated"), {
+        statusCode: 410,
+      });
+    }
+    const provider = options.automationProvider ?? new EmbeddedAutomationProvider();
+    const generated = await provider.renderDocument({
+      firmId: request.auth.firmId,
+      matterId: session.matterId,
+      sessionExternalId: session.externalId,
+      documentTitle: body.title,
+    });
     return options.repository.createGeneratedDocument({
       id: crypto.randomUUID(),
       firmId: request.auth.firmId,
@@ -1860,7 +1964,7 @@ declare module "fastify" {
   }
 }
 
-async function createRepositoryFromEnv(env: z.infer<typeof envSchema>): Promise<{
+async function createRepositoryFromEnv(env: ApiEnv): Promise<{
   repository: OpenPracticeRepository;
   close?: () => Promise<void>;
 }> {
@@ -1878,7 +1982,7 @@ async function createRepositoryFromEnv(env: z.infer<typeof envSchema>): Promise<
   };
 }
 
-function createS3FromEnv(env: z.infer<typeof envSchema>): ApiOptions["s3"] {
+function createS3FromEnv(env: ApiEnv): ApiOptions["s3"] {
   if (!env.S3_ENDPOINT || !env.S3_ACCESS_KEY || !env.S3_SECRET_KEY) return undefined;
   return {
     bucket: env.S3_BUCKET,
@@ -1894,47 +1998,19 @@ function createS3FromEnv(env: z.infer<typeof envSchema>): ApiOptions["s3"] {
   };
 }
 
-function createSignatureProviderFromEnv(env: z.infer<typeof envSchema>): SignatureProvider {
-  if (env.DOCUSEAL_BASE_URL && env.DOCUSEAL_API_KEY) {
-    return new DocuSealSignatureProvider(env.DOCUSEAL_BASE_URL, env.DOCUSEAL_API_KEY);
-  }
-  return new ManualSignatureProvider();
-}
-
-function createAutomationProviderFromEnv(
-  env: z.infer<typeof envSchema>,
-): DocumentAutomationProvider | undefined {
-  if (env.DOCASSEMBLE_BASE_URL && env.DOCASSEMBLE_API_KEY) {
-    return new DocassembleAutomationProvider(env.DOCASSEMBLE_BASE_URL, env.DOCASSEMBLE_API_KEY);
-  }
-  return undefined;
-}
-
-function createDocuSealWebhookOptions(
-  env: z.infer<typeof envSchema>,
-): ApiOptions["docusealWebhook"] {
-  if (!env.DOCUSEAL_WEBHOOK_SECRET_HEADER || !env.DOCUSEAL_WEBHOOK_SECRET_VALUE) {
-    return undefined;
-  }
-  return {
-    secretHeader: env.DOCUSEAL_WEBHOOK_SECRET_HEADER,
-    secretValue: env.DOCUSEAL_WEBHOOK_SECRET_VALUE,
-    replayWindowSeconds: env.DOCUSEAL_WEBHOOK_REPLAY_WINDOW_SECONDS,
-  };
-}
-
 if (process.env.NODE_ENV !== "test") {
   const env = envSchema.parse(process.env);
+  validateProductionReadiness(env);
   const { repository, close } = await createRepositoryFromEnv(env);
   const server = createApiServer({
     repository,
     jwtSecret: env.AUTH_JWT_SECRET,
+    nodeEnv: env.NODE_ENV,
     devFirmId: env.DEV_AUTH_FIRM_ID,
     devUserId: env.DEV_AUTH_USER_ID,
-    signatureProvider: createSignatureProviderFromEnv(env),
-    automationProvider: createAutomationProviderFromEnv(env),
-    automationReturnUrl: env.DOCASSEMBLE_RETURN_URL,
-    docusealWebhook: createDocuSealWebhookOptions(env),
+    signatureProvider: new EmbeddedSignatureProvider(),
+    automationProvider: new EmbeddedAutomationProvider(),
+    sessionTtlHours: env.SESSION_TTL_HOURS,
     s3: createS3FromEnv(env),
   });
   process.once("SIGTERM", () => void close?.());
