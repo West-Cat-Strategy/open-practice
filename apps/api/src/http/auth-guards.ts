@@ -1,4 +1,5 @@
 import { canAccess, type AccessRequest } from "@open-practice/domain";
+import type { User } from "@open-practice/domain";
 import type { ApiAuthContext } from "../server.js";
 import { ApiHttpError } from "./response.js";
 
@@ -25,4 +26,8 @@ export function requireMatterAccess(
       matterId: request.matterId,
     }),
   };
+}
+
+export function hasFirmWideLedgerAccess(user: User): boolean {
+  return ["owner_admin", "auditor", "billing_bookkeeper"].includes(user.role);
 }

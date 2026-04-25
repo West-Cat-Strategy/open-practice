@@ -21,6 +21,18 @@ export interface OpenPracticeRouteCatalogEntry {
   area: OpenPracticeRouteArea;
   requiresMatterContext: boolean;
   order: number;
+  showInSidebar: boolean;
+}
+
+export interface RouteCatalogSectionCapability {
+  key: DashboardSectionKey;
+  enabled: boolean;
+}
+
+export interface OpenPracticeSidebarNavigationSection {
+  key: DashboardSectionKey | "billing";
+  label: string;
+  enabled: boolean;
 }
 
 export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
@@ -33,46 +45,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     area: "workspace",
     requiresMatterContext: true,
     order: 10,
-  },
-  {
-    id: "billing",
-    title: "Billing",
-    shortLabel: "Billing",
-    path: "/?section=billing",
-    sectionKey: "billing",
-    area: "finance",
-    requiresMatterContext: true,
-    order: 20,
-  },
-  {
-    id: "documents",
-    title: "Documents",
-    shortLabel: "Docs",
-    path: "/?section=documents",
-    sectionKey: "documents",
-    area: "workspace",
-    requiresMatterContext: true,
-    order: 30,
-  },
-  {
-    id: "signatures",
-    title: "Signatures",
-    shortLabel: "Signatures",
-    path: "/?section=signatures",
-    sectionKey: "signatures",
-    area: "operations",
-    requiresMatterContext: true,
-    order: 40,
-  },
-  {
-    id: "intake",
-    title: "Intake",
-    shortLabel: "Intake",
-    path: "/?section=intake",
-    sectionKey: "intake",
-    area: "operations",
-    requiresMatterContext: true,
-    order: 50,
+    showInSidebar: true,
   },
   {
     id: "funds",
@@ -82,7 +55,52 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     sectionKey: "funds",
     area: "finance",
     requiresMatterContext: true,
+    order: 20,
+    showInSidebar: true,
+  },
+  {
+    id: "billing",
+    title: "Billing",
+    shortLabel: "Billing",
+    path: "/?section=billing",
+    sectionKey: "billing",
+    area: "finance",
+    requiresMatterContext: true,
+    order: 30,
+    showInSidebar: true,
+  },
+  {
+    id: "documents",
+    title: "Documents",
+    shortLabel: "Documents",
+    path: "/?section=documents",
+    sectionKey: "documents",
+    area: "workspace",
+    requiresMatterContext: true,
+    order: 40,
+    showInSidebar: true,
+  },
+  {
+    id: "signatures",
+    title: "Signatures",
+    shortLabel: "Signatures",
+    path: "/?section=signatures",
+    sectionKey: "signatures",
+    area: "operations",
+    requiresMatterContext: true,
+    order: 50,
+    showInSidebar: true,
+  },
+  {
+    id: "intake",
+    title: "Intake",
+    shortLabel: "Intake",
+    path: "/?section=intake",
+    sectionKey: "intake",
+    area: "operations",
+    requiresMatterContext: true,
     order: 60,
+    showInSidebar: true,
   },
   {
     id: "audit",
@@ -93,6 +111,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     area: "review",
     requiresMatterContext: false,
     order: 70,
+    showInSidebar: true,
   },
   {
     id: "queues",
@@ -102,6 +121,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     area: "operations",
     requiresMatterContext: false,
     order: 80,
+    showInSidebar: false,
   },
 ];
 
@@ -119,6 +139,54 @@ export function getRoutesByArea(area: OpenPracticeRouteArea): OpenPracticeRouteC
   return routeCatalog
     .filter((entry) => entry.area === area)
     .sort((left, right) => left.order - right.order);
+}
+
+export function getSidebarRouteCatalogEntries(): OpenPracticeRouteCatalogEntry[] {
+  return routeCatalog
+    .filter((entry) => entry.showInSidebar)
+    .sort((left, right) => left.order - right.order);
+}
+
+export function buildSidebarNavigationSections(input: {
+  billingCanView: boolean;
+  capabilitySections: RouteCatalogSectionCapability[];
+}): OpenPracticeSidebarNavigationSection[] {
+  const sidebarEntryBySectionKey = new Map(
+    getSidebarRouteCatalogEntries().flatMap((entry) =>
+      entry.sectionKey ? [[entry.sectionKey, entry] as const] : [],
+    ),
+  );
+  const hasBillingCapability = input.capabilitySections.some(
+    (section) => section.key === "billing",
+  );
+  const displayCandidates = input.capabilitySections.map((section) => {
+    const entry = sidebarEntryBySectionKey.get(section.key);
+    if (!entry) {
+      throw new Error(`Displayed dashboard section "${section.key}" is missing a catalog entry.`);
+    }
+    return {
+      key: section.key,
+      label: entry.shortLabel,
+      enabled: section.key === "billing" ? input.billingCanView : section.enabled,
+      order: entry.order,
+    };
+  });
+
+  if (!hasBillingCapability) {
+    const billingEntry = sidebarEntryBySectionKey.get("billing");
+    if (billingEntry) {
+      displayCandidates.push({
+        key: "billing",
+        label: billingEntry.shortLabel,
+        enabled: input.billingCanView,
+        order: billingEntry.order,
+      });
+    }
+  }
+
+  return displayCandidates
+    .sort((left, right) => left.order - right.order)
+    .map(({ key, label, enabled }) => ({ key, label, enabled }));
 }
 
 export function matchRouteCatalogEntry(path: string): OpenPracticeRouteCatalogEntry | null {

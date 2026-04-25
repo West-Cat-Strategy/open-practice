@@ -15,6 +15,7 @@
     "refs:clone": "node scripts/clone-oss-references.mjs",
     "test": "turbo test",
     "typecheck": "turbo typecheck",
+    "verify:select": "node scripts/select-validation.mjs",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm --filter @open-practice/database db:check && pnpm policy:check && pnpm build"
   },
   "devDependencies": {

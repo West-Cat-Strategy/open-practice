@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getRouteCatalogEntry,
   getRoutesByArea,
+  getSidebarRouteCatalogEntries,
   matchRouteCatalogEntry,
   routeCatalog,
   type OpenPracticeRouteId,
@@ -12,11 +13,11 @@ describe("Open Practice route catalog", () => {
     const routeIds = routeCatalog.map((entry) => entry.id);
     const expected: OpenPracticeRouteId[] = [
       "matters",
+      "funds",
       "billing",
       "documents",
       "signatures",
       "intake",
-      "funds",
       "audit",
       "queues",
     ];
@@ -33,11 +34,27 @@ describe("Open Practice route catalog", () => {
   });
 
   it("groups routes by area in display order", () => {
-    expect(getRoutesByArea("finance").map((entry) => entry.id)).toEqual(["billing", "funds"]);
+    expect(getRoutesByArea("finance").map((entry) => entry.id)).toEqual(["funds", "billing"]);
     expect(getRoutesByArea("operations").map((entry) => entry.id)).toEqual([
       "signatures",
       "intake",
       "queues",
+    ]);
+  });
+
+  it("keeps queues cataloged without showing it in the sidebar order", () => {
+    expect(getRouteCatalogEntry("queues")).toMatchObject({
+      title: "Operational Queues",
+      showInSidebar: false,
+    });
+    expect(getSidebarRouteCatalogEntries().map((entry) => entry.id)).toEqual([
+      "matters",
+      "funds",
+      "billing",
+      "documents",
+      "signatures",
+      "intake",
+      "audit",
     ]);
   });
 

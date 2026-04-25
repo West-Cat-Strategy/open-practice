@@ -5,7 +5,7 @@ Open Practice is a TypeScript monorepo with a matter-centered legal domain core.
 ## Workspaces
 
 - `apps/web`: Next.js API-backed operational UI for firm members.
-- `apps/api`: Fastify API exposing session, capability, overview, matter, conflict, document, ledger, audit, signature, intake, and generated-document endpoints.
+- `apps/api`: Fastify API exposing session, capability, overview, matter, conflict, document, ledger, audit, signature, intake, billing, and generated-document endpoints.
 - `packages/domain`: Pure TypeScript domain logic for permissions, conflict checks, audit hash chains, signature-provider boundaries, and trust/funds ledger validation.
 - `packages/database`: Drizzle schema, migrations, runtime setup, seed support, and in-memory/PostgreSQL repository implementations for the system of record.
 - `packages/providers`: Embedded signature and document-automation adapters that avoid SaaS or provider-specific runtime dependencies.
@@ -21,6 +21,7 @@ Open Practice is a TypeScript monorepo with a matter-centered legal domain core.
 - Concrete provider adapters live outside `packages/domain`; the domain package exports provider-neutral contracts and legal rules only.
 - Production authentication uses embedded Postgres-backed sessions. Development may still use local header/JWT helpers.
 - Planning lives in `docs/planning.md`, and live tracked work lives in `docs/planning-and-progress.md`.
+- API route ownership is moving toward module-owned Fastify registrars under `apps/api/src/routes`; `apps/api/src/server.ts` remains responsible for bootstrap, authentication hooks, environment setup, and central error handling.
 
 ## Reference-Informed Boundaries
 

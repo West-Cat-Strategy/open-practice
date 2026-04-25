@@ -11,7 +11,9 @@ Open Practice is built for Canadian legal professionals and their clients. Contr
 
 Use [docs/README.md](docs/README.md) for the documentation map,
 [docs/development/getting-started.md](docs/development/getting-started.md) for runtime setup, and
-[docs/testing/TESTING.md](docs/testing/TESTING.md) for choosing narrower checks.
+[docs/development/repo-guide.md](docs/development/repo-guide.md) for workspace ownership. Use
+[docs/testing/TESTING.md](docs/testing/TESTING.md) for choosing narrower checks and
+[docs/development/maintenance.md](docs/development/maintenance.md) for docs, policy, migration, and release upkeep.
 
 ## License Hygiene
 

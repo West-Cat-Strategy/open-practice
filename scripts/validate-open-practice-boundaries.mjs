@@ -20,12 +20,12 @@ const directErrorEnvelopes = [...server.matchAll(/reply\.status\([^)]*\)\.send\(
   .length;
 
 assert(
-  routeCount <= 49,
-  `apps/api/src/server.ts defines ${routeCount} direct routes; current ratchet allows 49. Move new routes into module-owned registrars.`,
+  routeCount <= 30,
+  `apps/api/src/server.ts defines ${routeCount} direct routes; current ratchet allows 30. Move new routes into module-owned registrars.`,
 );
 assert(
-  inlineRequestParses <= 47,
-  `apps/api/src/server.ts contains ${inlineRequestParses} inline request parses; current ratchet allows 47. Use shared validation helpers for new code.`,
+  inlineRequestParses <= 27,
+  `apps/api/src/server.ts contains ${inlineRequestParses} inline request parses; current ratchet allows 27. Use shared validation helpers for new code.`,
 );
 assert(
   directErrorEnvelopes <= 1,
@@ -36,12 +36,29 @@ for (const required of [
   "apps/api/src/http/response.ts",
   "apps/api/src/http/validation.ts",
   "apps/api/src/http/auth-guards.ts",
+  "apps/api/src/routes/billing.ts",
+  "apps/api/src/routes/types.ts",
   "apps/web/routes/routeCatalog.ts",
   "docs/README.md",
   "docs/testing/TESTING.md",
   "docs/development/getting-started.md",
+  "scripts/select-validation.mjs",
 ]) {
   assert(existsSync(join(root, required)), `${required} must exist as the adoption scaffold.`);
+}
+
+for (const billingRoute of [
+  "/api/time-entries",
+  "/api/expense-entries",
+  "/api/invoices",
+  "/api/payments",
+  "/api/billing/trust-transfer-requests",
+  "/api/billing/dashboard",
+]) {
+  assert(
+    !server.includes(billingRoute),
+    `apps/api/src/server.ts still contains billing route literal ${billingRoute}; keep billing endpoints in apps/api/src/routes/billing.ts.`,
+  );
 }
 
 const routeCatalog = read("apps/web/routes/routeCatalog.ts");

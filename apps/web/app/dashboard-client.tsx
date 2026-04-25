@@ -16,7 +16,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { ConflictCandidate, DashboardSectionKey } from "@open-practice/domain";
+import type { ConflictCandidate } from "@open-practice/domain";
+import {
+  buildSidebarNavigationSections,
+  type OpenPracticeSidebarNavigationSection,
+} from "../routes/routeCatalog";
 import { filterMatters } from "./dashboard-utils";
 import type {
   BillingDashboardResponse,
@@ -43,13 +47,7 @@ interface DashboardClientProps {
   queues: QueuesResponse;
 }
 
-type LocalDashboardSectionKey = DashboardSectionKey | "billing";
-
-interface LocalDashboardSection {
-  key: LocalDashboardSectionKey;
-  label: string;
-  enabled: boolean;
-}
+type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 
 const currency = new Intl.NumberFormat("en-CA", {
   style: "currency",
@@ -124,28 +122,11 @@ export default function DashboardClient({
     (sum, entry) => sum + entry.amountCents,
     0,
   );
-  const navigationSections = useMemo<LocalDashboardSection[]>(() => {
-    const sections = capabilities.sections.map((section) => ({
-      key: section.key,
-      label: section.label,
-      enabled: section.enabled,
-    }));
-    const billingSection: LocalDashboardSection = {
-      key: "billing",
-      label: "Billing",
-      enabled: billing.canView,
-    };
-    if (sections.some((section) => section.key === "billing")) {
-      return sections.map((section) => (section.key === "billing" ? billingSection : section));
-    }
-    const fundsIndex = sections.findIndex((section) => section.key === "funds");
-
-    if (fundsIndex === -1) return [...sections, billingSection];
-    return [
-      ...sections.slice(0, fundsIndex + 1),
-      billingSection,
-      ...sections.slice(fundsIndex + 1),
-    ];
+  const navigationSections = useMemo<OpenPracticeSidebarNavigationSection[]>(() => {
+    return buildSidebarNavigationSections({
+      billingCanView: billing.canView,
+      capabilitySections: capabilities.sections,
+    });
   }, [billing.canView, capabilities.sections]);
 
   const metrics = useMemo(

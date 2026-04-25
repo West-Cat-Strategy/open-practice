@@ -1,12 +1,18 @@
 # Getting Started
 
-Use this guide for local runtime setup. Use [../testing/TESTING.md](../testing/TESTING.md) when choosing validation commands and [../../CONTRIBUTING.md](../../CONTRIBUTING.md) for contributor workflow.
+Use this guide for local runtime setup. Use [Repository Guide](repo-guide.md) for workspace ownership, [../testing/TESTING.md](../testing/TESTING.md) when choosing validation commands, and [../../CONTRIBUTING.md](../../CONTRIBUTING.md) for contributor workflow.
 
 ## Toolchain
 
 - Node.js 24 in CI.
 - pnpm 10, as declared in the root `package.json`.
 - Docker for PostgreSQL, MinIO, and Mailpit through `docker-compose.yml`.
+
+## Orientation
+
+- Use [Repository Guide](repo-guide.md) before choosing an owning workspace.
+- Use [Maintenance](maintenance.md) for policy, migration, docs, and release upkeep.
+- Use [Agent Workflows](agent-workflows.md) for Codex-assisted development practices and the `$develop-open-practice` skill entry point.
 
 ## First Run
 
