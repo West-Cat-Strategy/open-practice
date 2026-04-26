@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { OpenPracticeRepository } from "@open-practice/database";
-import { canAccess, type AccessRequest, type User } from "@open-practice/domain";
+import { requireAccess } from "../http/auth-guards.js";
 
 const conflictBodySchema = z.object({
   prospectiveName: z.string().min(1),
@@ -11,14 +11,6 @@ const conflictBodySchema = z.object({
   includeClosedMatters: z.boolean().default(true),
 });
 
-function requireAccess(
-  auth: { user: User; firmId: string },
-  request: Omit<AccessRequest, "firmId" | "user">,
-): void {
-  if (!canAccess({ ...request, user: auth.user, firmId: auth.firmId })) {
-    throw Object.assign(new Error("Matter access required"), { statusCode: 403 });
-  }
-}
 
 export function registerMatterRoutes(
   server: FastifyInstance,
@@ -33,7 +25,8 @@ export function registerMatterRoutes(
   );
 
   server.post("/api/conflicts/check", async (request) => {
-    requireAccess(request.auth, { resource: "contact", action: "read" });
+    const access = requireAccess(request.auth, { resource: "contact", action: "read" });
+    if (!access.ok) throw access.error;
     const body = conflictBodySchema.parse(request.body);
     return options.repository.runConflictCheck({
       firmId: request.auth.firmId,

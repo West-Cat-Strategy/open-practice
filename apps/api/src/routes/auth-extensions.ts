@@ -1,17 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import { canAccess } from "@open-practice/domain";
+import { requireAccess } from "../http/auth-guards.js";
 
 export function registerAuthExtensionRoutes(server: FastifyInstance): void {
   server.get("/api/auth/extensions", async (request) => {
-    const canReadFirm = canAccess({
-      user: request.auth.user,
-      firmId: request.auth.firmId,
-      resource: "firm",
-      action: "read",
-    });
-    if (!canReadFirm) {
-      throw Object.assign(new Error("Firm access required"), { statusCode: 403 });
-    }
+    const access = requireAccess(request.auth, { resource: "firm", action: "read" });
+    if (!access.ok) throw access.error;
 
     return {
       localPassword: { status: "default" },

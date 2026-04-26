@@ -16,7 +16,7 @@ import type {
   TimeEntry,
   TrustTransferRequestRecord,
 } from "@open-practice/domain";
-import { hasFirmWideLedgerAccess, requireMatterAccess } from "../http/auth-guards.js";
+import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import type { ApiRouteDependencies } from "./types.js";
@@ -133,7 +133,7 @@ function assertMatterAccess(
   context: ApiAuthContext,
   request: Omit<AccessRequest, "firmId" | "user">,
 ): void {
-  const access = requireMatterAccess(context, request);
+  const access = requireAccess(context, request);
   if (!access.ok) throw access.error;
 }
 
@@ -668,9 +668,8 @@ export function registerBillingRoutes(
   });
 
   server.get("/api/billing/dashboard", async (request) => {
-    if (!hasFirmWideLedgerAccess(request.auth.user)) {
-      throw Object.assign(new Error("Billing dashboard access required"), { statusCode: 403 });
-    }
+    const access = requireAccess(request.auth, { resource: "trust_ledger", action: "read" });
+    if (!access.ok) throw access.error;
     const matters = await repository.listMattersForUser(request.auth.user);
     const matterIds = matters.map((matter) => matter.id);
     const [timeEntries, expenseEntries, invoices, payments] = await Promise.all([

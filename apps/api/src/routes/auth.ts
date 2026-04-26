@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { OpenPracticeRepository } from "@open-practice/database";
+import { requireAccess } from "../http/auth-guards.js";
 import {
   hashToken,
   hashPassword,
@@ -101,9 +102,8 @@ export function registerAuthRoutes(
     "/api/auth/password-setup-tokens",
     { config: { rateLimit: { ...AUTH_MUTATION_RATE_LIMIT } } },
     async (request) => {
-      if (request.auth.user.role !== "owner_admin") {
-        throw Object.assign(new Error("Owner admin access required"), { statusCode: 403 });
-      }
+      const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
+      if (!access.ok) throw access.error;
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Password setup tokens are not configured"), {
           statusCode: 503,

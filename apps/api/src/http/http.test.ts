@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { ApiAuthContext } from "../server.js";
-import { requireMatterAccess } from "./auth-guards.js";
+import { requireAccess } from "./auth-guards.js";
 import { ApiHttpError, errorEnvelope, normalizeApiError, successEnvelope } from "./response.js";
 import { parseRequestPart, validateRequestPart } from "./validation.js";
 
@@ -77,26 +77,26 @@ describe("API HTTP helpers", () => {
     expect(() => parseRequestPart(schema, { id: "" }, "params")).toThrow(ApiHttpError);
   });
 
-  it("maps matter authorization checks into deterministic guard results", () => {
+  it("maps authorization checks into deterministic guard results", () => {
     expect(
-      requireMatterAccess(context, {
+      requireAccess(context, {
         resource: "matter",
         action: "read",
         matterId: "matter-001",
       }),
     ).toMatchObject({ ok: true });
 
-    const denied = requireMatterAccess(context, {
-      resource: "matter",
-      action: "read",
-      matterId: "matter-999",
+    const denied = requireAccess(context, {
+      resource: "audit_log",
+      action: "export",
     });
 
     expect(denied.ok).toBe(false);
     if (!denied.ok) {
       expect(denied.error).toMatchObject({
         statusCode: 403,
-        code: "MATTER_ACCESS_REQUIRED",
+        code: "AUDIT_LOG_ACCESS_REQUIRED",
+        message: "Audit log access required",
       });
     }
   });
