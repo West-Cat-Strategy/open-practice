@@ -4,6 +4,12 @@
   "private": true,
   "license": "Apache-2.0",
   "packageManager": "pnpm@10.0.0",
+  "pnpm": {
+    "overrides": {
+      "next>postcss": "8.5.10",
+      "@esbuild-kit/core-utils>esbuild": "0.25.12"
+    }
+  },
   "scripts": {
     "build": "turbo build",
     "docs:check": "node scripts/validate-doc-links.mjs",
