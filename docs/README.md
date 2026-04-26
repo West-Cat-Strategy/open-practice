@@ -5,11 +5,12 @@ Use this index as the first stop for repo orientation. Open Practice is a legal-
 ## Start Here
 
 1. [Architecture](architecture.md) explains the monorepo shape, source-of-truth boundaries, and local-first provider decisions.
-2. [Planning](planning.md) is the durable roadmap; [Planning and Progress](planning-and-progress.md) is the live workboard.
-3. [Getting Started](development/getting-started.md) covers local runtime choices, services, and environment defaults.
-4. [Repository Guide](development/repo-guide.md) maps workspace ownership, boundaries, and common edit paths.
-5. [Testing](testing/TESTING.md) maps change types to validation commands.
-6. [API and State Machines](api-and-state-machines.md) records the current API and lifecycle contracts.
+2. [Tech Stack](tech-stack.md) records accepted, deferred, and rejected stack choices with upstream source links.
+3. [Planning](planning.md) is the durable roadmap; [Planning and Progress](planning-and-progress.md) is the live workboard.
+4. [Getting Started](development/getting-started.md) covers local runtime choices, services, and environment defaults.
+5. [Repository Guide](development/repo-guide.md) maps workspace ownership, boundaries, and common edit paths.
+6. [Testing](testing/TESTING.md) maps change types to validation commands.
+7. [API and State Machines](api-and-state-machines.md) records the current API and lifecycle contracts.
 
 ## Governance
 

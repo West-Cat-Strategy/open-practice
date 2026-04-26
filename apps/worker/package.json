@@ -1,0 +1,27 @@
+{
+  "name": "@open-practice/worker",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/worker.ts",
+    "lint": "eslint .",
+    "start": "node dist/worker.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@open-practice/database": "workspace:^",
+    "@open-practice/domain": "workspace:*",
+    "@open-practice/providers": "workspace:*",
+    "bullmq": "^5.65.0",
+    "tsx": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "typescript-eslint": "latest"
+  }
+}

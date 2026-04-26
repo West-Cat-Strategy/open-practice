@@ -14,12 +14,20 @@ import {
 import { canAccess, dashboardCapabilities, type AccessRequest } from "@open-practice/domain";
 import type { DocumentAutomationProvider, SignatureProvider, User } from "@open-practice/domain";
 import { EmbeddedAutomationProvider, EmbeddedSignatureProvider } from "@open-practice/providers";
+import { registerAuthExtensionRoutes } from "./routes/auth-extensions.js";
 import { registerBillingRoutes } from "./routes/billing.js";
+import { registerDocumentProcessingRoutes } from "./routes/document-processing.js";
 import { registerDocumentRoutes } from "./routes/documents.js";
+import { registerEmailRoutes } from "./routes/email.js";
+import { registerExternalUploadRoutes } from "./routes/external-uploads.js";
+import { registerInboundEmailRoutes } from "./routes/inbound-email.js";
 import { registerIntakeRoutes } from "./routes/intake.js";
+import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
 import { registerQueuesRoutes } from "./routes/queues.js";
+import { registerShareRoutes } from "./routes/shares.js";
 import { registerSignatureRoutes } from "./routes/signatures.js";
+import { registerSetupRoutes } from "./routes/setup.js";
 
 const DEV_EXAMPLE_JWT_SECRET = "dev-only-change-me-at-least-16-chars";
 
@@ -48,6 +56,7 @@ export const envSchema = z.object({
   S3_ACCESS_KEY: optionalString,
   S3_SECRET_KEY: optionalString,
   SESSION_TTL_HOURS: z.coerce.number().int().positive().default(12),
+  OPEN_PRACTICE_SETUP_KEY: optionalString,
   DOCUSEAL_BASE_URL: optionalUrl,
   DOCUSEAL_API_KEY: optionalString,
   DOCUSEAL_WEBHOOK_SECRET_HEADER: optionalString,
@@ -108,6 +117,7 @@ interface ApiOptions {
   signatureProvider?: SignatureProvider;
   automationProvider?: DocumentAutomationProvider;
   sessionTtlHours?: number;
+  setupKey?: string;
   s3?: {
     client: S3Client;
     bucket: string;
@@ -225,6 +235,17 @@ function clearSessionCookie(): string {
   return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
 }
 
+function publicRoute(method: string, url: string): boolean {
+  const path = url.split("?")[0];
+  return (
+    path === "/health" ||
+    (method === "GET" && path === "/api/setup/status") ||
+    (method === "POST" && path === "/api/setup/complete") ||
+    (method === "POST" && path === "/api/auth/login") ||
+    (method === "POST" && path === "/api/auth/password-setup")
+  );
+}
+
 async function authenticate(
   request: FastifyRequest,
   repository: OpenPracticeRepository,
@@ -292,6 +313,7 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
 
   server.register(cors, {
     origin: [/^http:\/\/localhost:\d+$/],
+    credentials: true,
   });
 
   server.get("/health", async () => ({
@@ -301,10 +323,20 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
       options.repository instanceof InMemoryOpenPracticeRepository ? "memory" : "postgres",
   }));
 
+  registerSetupRoutes(server, {
+    repository: options.repository,
+    jwtSecret: options.jwtSecret,
+    nodeEnv: options.nodeEnv,
+    setupKey: options.setupKey,
+    sessionTtlHours: options.sessionTtlHours,
+    hashPassword,
+    hashToken,
+    createSessionToken,
+    sessionCookie,
+  });
+
   server.addHook("preHandler", async (request) => {
-    if (request.url === "/health") return;
-    if (request.method === "POST" && request.url === "/api/auth/login") return;
-    if (request.method === "POST" && request.url === "/api/auth/password-setup") return;
+    if (publicRoute(request.method, request.url)) return;
     request.auth = await authenticate(request, options.repository, options);
   });
 
@@ -440,6 +472,13 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
   registerLedgerRoutes(server, { repository: options.repository });
   registerBillingRoutes(server, { repository: options.repository });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
+  registerDocumentProcessingRoutes(server, { repository: options.repository });
+  registerJobsRoutes(server, { repository: options.repository });
+  registerEmailRoutes(server, { repository: options.repository });
+  registerInboundEmailRoutes(server, { repository: options.repository });
+  registerShareRoutes(server, { repository: options.repository });
+  registerExternalUploadRoutes(server, { repository: options.repository, s3: options.s3 });
+  registerAuthExtensionRoutes(server);
 
   server.get("/api/audit", async (request) => {
     requireAccess(request.auth, { resource: "audit_log", action: "read" });
@@ -523,6 +562,7 @@ if (process.env.NODE_ENV !== "test") {
     signatureProvider: new EmbeddedSignatureProvider(),
     automationProvider: new EmbeddedAutomationProvider(),
     sessionTtlHours: env.SESSION_TTL_HOURS,
+    setupKey: env.OPEN_PRACTICE_SETUP_KEY,
     s3: createS3FromEnv(env),
   });
   process.once("SIGTERM", () => void close?.());

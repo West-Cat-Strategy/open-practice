@@ -6,7 +6,9 @@ Use this guide for local runtime setup. Use [Repository Guide](repo-guide.md) fo
 
 - Node.js 24 in CI.
 - pnpm 10, as declared in the root `package.json`.
-- Docker for PostgreSQL, MinIO, and Mailpit through `docker-compose.yml`.
+- Docker for PostgreSQL, Redis, MinIO, and Mailpit through `docker-compose.yml`.
+- Postal, Ollama, Tesseract, Whisper, and FFmpeg are planned optional worker/provider tools; they are
+  not required for the default local startup.
 
 ## Orientation
 
@@ -36,6 +38,11 @@ pnpm --filter @open-practice/web dev
 - PostgreSQL is selected when `DATABASE_URL` is set.
 - In-memory persistence is available through `OPEN_PRACTICE_USE_MEMORY_REPO=true` or when no database URL is provided.
 - Development seed data is enabled with `OPEN_PRACTICE_DEV_SEED=true`.
+- Empty local firm/user state exposes first-run setup. Production first-run setup also requires
+  `OPEN_PRACTICE_SETUP_KEY` and the matching `x-open-practice-setup-key` header.
+- Background workers are scaffolded through `@open-practice/worker`. The local `pnpm dev` lane can run
+  the worker against Redis, but provider processors return skipped/not-configured results until setup
+  enables SMTP, inbound email, AI, OCR, transcription, or media processing.
 - Production rejects memory persistence, dev seed data, development auth helpers, deprecated external-provider env, and unsafe local S3 endpoints.
 
 ## Local Services
@@ -45,6 +52,10 @@ pnpm --filter @open-practice/web dev
 - PostgreSQL for legal records and embedded sessions.
 - MinIO for S3-compatible document-object storage.
 - Mailpit for local email capture when mail workflows are introduced.
+- Redis for BullMQ execution state.
+
+Redis should stay private to API and worker containers in production and should hold job metadata only.
+PostgreSQL remains the source of truth for legal and audit-relevant job lifecycle state.
 
 Run database schema checks with:
 

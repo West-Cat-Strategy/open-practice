@@ -51,11 +51,147 @@ async function setAdminPassword(input: {
   expect(setup.statusCode).toBe(200);
 }
 
+function setupPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    firm: { name: "North Shore Law", defaultProvince: "BC" },
+    businessAddress: {
+      line1: "100 Main Street",
+      city: "Vancouver",
+      province: "BC",
+      postalCode: "V6B 1A1",
+      country: "Canada",
+    },
+    office: { email: "office@example.test", phone: "604-555-0100" },
+    settings: {
+      practiceAreas: ["Residential tenancy"],
+      invoicePrefix: "NSL",
+      defaultPaymentTermsDays: 30,
+      trustAccountLabel: "Pooled trust",
+    },
+    compliance: { trustFundsCaveatAccepted: true },
+    owner: {
+      displayName: "Avery Owner",
+      email: "avery@example.test",
+      password: "correct horse battery staple",
+    },
+    firstMatter: {
+      client: {
+        kind: "person",
+        displayName: "First Client",
+        email: "client@example.test",
+      },
+      title: "First file",
+      practiceArea: "Residential tenancy",
+      jurisdiction: "BC",
+    },
+    ...overrides,
+  };
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
 describe("API auth and persistence boundaries", () => {
+  it("reports first-run setup status", async () => {
+    const seeded = await testServer().inject({ method: "GET", url: "/api/setup/status" });
+    const empty = await testServer({
+      repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
+      setupKey: "setup-key",
+    }).inject({ method: "GET", url: "/api/setup/status" });
+
+    expect(seeded.statusCode).toBe(200);
+    expect(seeded.json()).toMatchObject({ required: false, blocked: false });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json()).toMatchObject({
+      required: true,
+      blocked: false,
+      setupKeyRequired: true,
+    });
+  });
+
+  it("requires a configured setup key for production setup completion", async () => {
+    const response = await testServer({
+      repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
+      nodeEnv: "production",
+      jwtSecret: "production-test-secret-at-least-32-characters",
+    }).inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      payload: setupPayload(),
+    });
+
+    expect(response.statusCode).toBe(503);
+  });
+
+  it("completes first-run setup with owner auth, firm settings, first matter, and session", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const server = testServer({
+      repository,
+      jwtSecret: "production-test-secret-at-least-32-characters",
+      setupKey: "setup-key",
+    });
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      headers: { "x-open-practice-setup-key": "setup-key" },
+      payload: setupPayload(),
+    });
+    const body = response.json<{ token: string; user: { firmId: string; id: string } }>();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["set-cookie"]).toContain("open_practice_session");
+    await expect(repository.getFirmSettings(body.user.firmId)).resolves.toMatchObject({
+      practiceAreas: ["Residential tenancy"],
+      trustFundsCaveatAcceptedByUserId: body.user.id,
+    });
+    await expect(repository.getAuthAccount(body.user.firmId, body.user.id)).resolves.toBeDefined();
+
+    const overview = await server.inject({
+      method: "GET",
+      url: "/api/overview",
+      headers: { "x-open-practice-session": body.token },
+    });
+    const matters = await server.inject({
+      method: "GET",
+      url: "/api/matters",
+      headers: { "x-open-practice-session": body.token },
+    });
+
+    expect(overview.statusCode).toBe(200);
+    expect(matters.json<Array<{ number: string }>>()).toMatchObject([{ number: "2026-0001" }]);
+  });
+
+  it("rejects repeated setup and reports partial setup state as blocked", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const server = testServer({
+      repository,
+      jwtSecret: "production-test-secret-at-least-32-characters",
+      setupKey: "setup-key",
+    });
+    await server.inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      headers: { "x-open-practice-setup-key": "setup-key" },
+      payload: setupPayload({ firstMatter: undefined }),
+    });
+    const repeated = await server.inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      headers: { "x-open-practice-setup-key": "setup-key" },
+      payload: setupPayload({ firstMatter: undefined }),
+    });
+    const partial = await testServer({
+      repository: new InMemoryOpenPracticeRepository({
+        seedSampleData: false,
+        firms: [{ id: "firm-partial", name: "Partial", defaultProvince: "BC" }],
+      }),
+    }).inject({ method: "GET", url: "/api/setup/status" });
+
+    expect(repeated.statusCode).toBe(409);
+    expect(partial.json()).toMatchObject({ required: false, blocked: true });
+  });
+
   it("rejects unauthenticated production requests", async () => {
     const response = await testServer({
       nodeEnv: "production",
