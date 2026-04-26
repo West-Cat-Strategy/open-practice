@@ -10,7 +10,7 @@ export type GuardResult<T> =
       error: ApiHttpError;
     };
 
-export function requireMatterAccess(
+export function requireAccess(
   context: ApiAuthContext,
   request: Omit<AccessRequest, "firmId" | "user">,
 ): GuardResult<{ context: ApiAuthContext }> {
@@ -18,13 +18,21 @@ export function requireMatterAccess(
     return { ok: true, data: { context } };
   }
 
+  const resourceLabel = request.resource.replace(/_/g, " ");
+  const capitalizedLabel = resourceLabel.charAt(0).toUpperCase() + resourceLabel.slice(1);
+
   return {
     ok: false,
-    error: new ApiHttpError(403, "MATTER_ACCESS_REQUIRED", "Matter access required", {
-      resource: request.resource,
-      action: request.action,
-      matterId: request.matterId,
-    }),
+    error: new ApiHttpError(
+      403,
+      `${request.resource.toUpperCase()}_ACCESS_REQUIRED`,
+      `${capitalizedLabel} access required`,
+      {
+        resource: request.resource,
+        action: request.action,
+        matterId: request.matterId,
+      },
+    ),
   };
 }
 

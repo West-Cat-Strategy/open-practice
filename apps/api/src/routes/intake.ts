@@ -6,7 +6,7 @@ import type {
   IntakeSessionRecord,
 } from "@open-practice/domain";
 import { EmbeddedAutomationProvider } from "@open-practice/providers";
-import { requireMatterAccess } from "../http/auth-guards.js";
+import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import type { ApiRouteDependencies } from "./types.js";
@@ -43,7 +43,7 @@ function assertIntakeAccess(
   context: ApiAuthContext,
   request: Omit<AccessRequest, "firmId" | "user">,
 ): void {
-  const access = requireMatterAccess(context, request);
+  const access = requireAccess(context, request);
   if (!access.ok) throw access.error;
 }
 

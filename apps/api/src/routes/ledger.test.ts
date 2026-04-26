@@ -121,7 +121,7 @@ describe("ledger routes", () => {
     expect(otherMatter.statusCode).toBe(403);
     expect(otherMatter.json()).toMatchObject({
       error: "ApiHttpError",
-      message: "Matter access required",
+      message: "Trust ledger access required",
     });
   });
 
@@ -281,12 +281,12 @@ describe("ledger routes", () => {
     expect(approval.statusCode).toBe(403);
     expect(approval.json()).toMatchObject({
       error: "ApiHttpError",
-      message: "Matter access required",
+      message: "Trust ledger access required",
     });
     expect(reconciliation.statusCode).toBe(403);
     expect(reconciliation.json()).toMatchObject({
       error: "ApiHttpError",
-      message: "Matter access required",
+      message: "Trust ledger access required",
     });
   });
 

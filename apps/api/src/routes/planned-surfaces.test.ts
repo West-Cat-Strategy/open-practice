@@ -146,7 +146,7 @@ describe("planned surface route scaffolds", () => {
     });
     expect(deniedUpload.statusCode).toBe(403);
     expect(deniedUpload.json()).toMatchObject({
-      message: "Matter access required",
+      message: "Document access required",
     });
   });
 

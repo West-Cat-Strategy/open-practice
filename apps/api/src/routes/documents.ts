@@ -3,7 +3,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { AccessRequest } from "@open-practice/domain";
-import { requireMatterAccess } from "../http/auth-guards.js";
+import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import type { ApiRouteDependencies } from "./types.js";
@@ -38,7 +38,7 @@ function assertMatterAccess(
   context: ApiAuthContext,
   request: Omit<AccessRequest, "firmId" | "user">,
 ): void {
-  const access = requireMatterAccess(context, request);
+  const access = requireAccess(context, request);
   if (!access.ok) throw access.error;
 }
 

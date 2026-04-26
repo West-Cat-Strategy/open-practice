@@ -3,7 +3,6 @@ import rateLimit from "@fastify/rate-limit";
 import { S3Client } from "@aws-sdk/client-s3";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { jwtVerify } from "jose";
-import { pbkdf2Sync, randomBytes, timingSafeEqual, createHmac } from "node:crypto";
 import { z } from "zod";
 import {
   createDatabaseRuntime,
@@ -12,9 +11,10 @@ import {
   seedSampleData,
   type OpenPracticeRepository,
 } from "@open-practice/database";
-import { canAccess, dashboardCapabilities, type AccessRequest } from "@open-practice/domain";
 import type { DocumentAutomationProvider, SignatureProvider, User } from "@open-practice/domain";
 import { EmbeddedAutomationProvider, EmbeddedSignatureProvider } from "@open-practice/providers";
+import { registerAuditRoutes } from "./routes/audit.js";
+import { registerAuthRoutes } from "./routes/auth.js";
 import { registerAuthExtensionRoutes } from "./routes/auth-extensions.js";
 import { registerBillingRoutes } from "./routes/billing.js";
 import { registerDocumentProcessingRoutes } from "./routes/document-processing.js";
@@ -25,10 +25,20 @@ import { registerInboundEmailRoutes } from "./routes/inbound-email.js";
 import { registerIntakeRoutes } from "./routes/intake.js";
 import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
+import { registerMatterRoutes } from "./routes/matters.js";
 import { registerQueuesRoutes } from "./routes/queues.js";
+import { registerSessionRoutes } from "./routes/session.js";
 import { registerShareRoutes } from "./routes/shares.js";
 import { registerSignatureRoutes } from "./routes/signatures.js";
 import { registerSetupRoutes } from "./routes/setup.js";
+import {
+  hashToken,
+  hashPassword,
+  createSessionToken,
+  sessionCookie,
+  readSessionToken,
+  isPublicRoute,
+} from "./http/auth-helpers.js";
 
 const DEV_EXAMPLE_JWT_SECRET = "dev-only-change-me-at-least-16-chars";
 
@@ -73,39 +83,11 @@ export const envSchema = z.object({
 
 export type ApiEnv = z.infer<typeof envSchema>;
 
-const SESSION_COOKIE_NAME = "open_practice_session";
-const PASSWORD_HASH_ITERATIONS = 210_000;
-const PASSWORD_HASH_KEY_LENGTH = 32;
-const PASSWORD_HASH_DIGEST = "sha256";
+// Session cookie name moved to http/auth-helpers.ts
 const DEFAULT_RATE_LIMIT = { max: 300, timeWindow: "1 minute" };
-const AUTH_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };
-const AUTH_MUTATION_RATE_LIMIT = { max: 30, timeWindow: "1 minute" };
+// Auth rate limits moved to routes/auth.ts
 
-const loginBodySchema = z.object({
-  firmId: z.string().min(1),
-  email: z.string().email(),
-  password: z.string().min(8),
-});
-
-const passwordSetupTokenBodySchema = z.object({
-  userId: z.string().min(1),
-  expiresInHours: z.number().int().positive().max(168).default(24),
-});
-
-const passwordSetupBodySchema = z.object({
-  firmId: z.string().min(1),
-  userId: z.string().min(1),
-  token: z.string().min(32),
-  password: z.string().min(8),
-});
-
-const conflictBodySchema = z.object({
-  prospectiveName: z.string().min(1),
-  aliases: z.array(z.string().min(1)).optional(),
-  identifiers: z.array(z.object({ type: z.string().min(1), value: z.string().min(1) })).optional(),
-  prospectiveRole: z.enum(["client", "opposing_party", "third_party"]).optional(),
-  includeClosedMatters: z.boolean().default(true),
-});
+// Auth schemas moved to routes/auth.ts
 
 export interface ApiAuthContext {
   user: User;
@@ -182,73 +164,11 @@ export function validateProductionReadiness(env: ApiEnv): void {
   }
 }
 
-function hashToken(token: string, secret: string): string {
-  return createHmac("sha256", secret).update(token).digest("hex");
-}
+// Password hashing and token generation moved to http/auth-helpers.ts
 
-function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString("hex");
-  const hash = pbkdf2Sync(
-    password,
-    salt,
-    PASSWORD_HASH_ITERATIONS,
-    PASSWORD_HASH_KEY_LENGTH,
-    PASSWORD_HASH_DIGEST,
-  ).toString("hex");
-  return `pbkdf2:${PASSWORD_HASH_DIGEST}:${PASSWORD_HASH_ITERATIONS}:${salt}:${hash}`;
-}
+// Session token and cookie management moved to http/auth-helpers.ts
 
-function verifyPassword(password: string, storedHash: string): boolean {
-  const [scheme, digest, iterations, salt, hash] = storedHash.split(":");
-  if (scheme !== "pbkdf2" || !digest || !iterations || !salt || !hash) return false;
-  const candidate = pbkdf2Sync(
-    password,
-    salt,
-    Number(iterations),
-    Buffer.from(hash, "hex").length,
-    digest,
-  );
-  const expected = Buffer.from(hash, "hex");
-  return expected.length === candidate.length && timingSafeEqual(expected, candidate);
-}
-
-function createSessionToken(): string {
-  return randomBytes(32).toString("base64url");
-}
-
-function readSessionToken(request: FastifyRequest): string | undefined {
-  const header = request.headers["x-open-practice-session"];
-  if (typeof header === "string" && header.length > 0) return header;
-  const cookie = request.headers.cookie;
-  if (!cookie) return undefined;
-  for (const part of cookie.split(";")) {
-    const [name, ...value] = part.trim().split("=");
-    if (name === SESSION_COOKIE_NAME) return decodeURIComponent(value.join("="));
-  }
-  return undefined;
-}
-
-function sessionCookie(token: string, expiresAt: string, secure: boolean): string {
-  const secureFlag = secure ? "; Secure" : "";
-  return `${SESSION_COOKIE_NAME}=${encodeURIComponent(
-    token,
-  )}; Path=/; HttpOnly; SameSite=Lax${secureFlag}; Expires=${new Date(expiresAt).toUTCString()}`;
-}
-
-function clearSessionCookie(): string {
-  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
-}
-
-function publicRoute(method: string, url: string): boolean {
-  const path = url.split("?")[0];
-  return (
-    path === "/health" ||
-    (method === "GET" && path === "/api/setup/status") ||
-    (method === "POST" && path === "/api/setup/complete") ||
-    (method === "POST" && path === "/api/auth/login") ||
-    (method === "POST" && path === "/api/auth/password-setup")
-  );
-}
+// Public route check moved to http/auth-helpers.ts
 
 async function authenticate(
   request: FastifyRequest,
@@ -259,7 +179,7 @@ async function authenticate(
   let firmId = options.devFirmId;
   let userId = options.devUserId;
   const isProduction = (options.nodeEnv ?? process.env.NODE_ENV) === "production";
-  const sessionToken = readSessionToken(request);
+  const sessionToken = readSessionToken(request.headers);
 
   if (sessionToken) {
     if (!options.jwtSecret) {
@@ -301,15 +221,6 @@ async function authenticate(
     throw Object.assign(new Error("Authenticated user was not found"), { statusCode: 401 });
   }
   return { user, firmId };
-}
-
-function requireAccess(
-  context: ApiAuthContext,
-  request: Omit<AccessRequest, "firmId" | "user">,
-): void {
-  if (!canAccess({ ...request, user: context.user, firmId: context.firmId })) {
-    throw Object.assign(new Error("Matter access required"), { statusCode: 403 });
-  }
 }
 
 function routePath(url: string): string {
@@ -363,159 +274,18 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   });
 
   server.addHook("preHandler", async (request) => {
-    if (publicRoute(request.method, request.url)) return;
+    if (isPublicRoute(request.method, request.url)) return;
     request.auth = await authenticate(request, options.repository, options);
   });
 
-  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this login route has a tighter route cap.
-  server.post(
-    "/api/auth/login",
-    { config: { rateLimit: { ...AUTH_RATE_LIMIT } } },
-    async (request, reply) => {
-      if (!options.jwtSecret) {
-        throw Object.assign(new Error("Session authentication is not configured"), {
-          statusCode: 503,
-        });
-      }
-      const body = loginBodySchema.parse(request.body);
-      const user = await options.repository.getUserByEmail(body.firmId, body.email);
-      const account = user
-        ? await options.repository.getAuthAccount(user.firmId, user.id)
-        : undefined;
-      if (!user || !account || !verifyPassword(body.password, account.passwordHash)) {
-        throw Object.assign(new Error("Invalid email or password"), { statusCode: 401 });
-      }
-
-      const token = createSessionToken();
-      const now = new Date();
-      const expiresAt = new Date(
-        now.getTime() + (options.sessionTtlHours ?? 12) * 60 * 60 * 1000,
-      ).toISOString();
-      const session = await options.repository.createAuthSession({
-        id: crypto.randomUUID(),
-        firmId: user.firmId,
-        userId: user.id,
-        tokenHash: hashToken(token, options.jwtSecret),
-        createdAt: now.toISOString(),
-        expiresAt,
-      });
-      reply.header("set-cookie", sessionCookie(token, expiresAt, options.nodeEnv === "production"));
-      return { user, session: { id: session.id, expiresAt }, token };
-    },
-  );
-
-  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and logout has a tighter mutation cap.
-  server.post(
-    "/api/auth/logout",
-    { config: { rateLimit: { ...AUTH_MUTATION_RATE_LIMIT } } },
-    async (request, reply) => {
-      const token = readSessionToken(request);
-      if (token && options.jwtSecret) {
-        await options.repository.revokeAuthSession(
-          hashToken(token, options.jwtSecret),
-          new Date().toISOString(),
-        );
-      }
-      reply.header("set-cookie", clearSessionCookie());
-      return { ok: true };
-    },
-  );
-
-  server.get("/api/auth/session", async (request) => ({ user: request.auth.user }));
-
-  server.post(
-    "/api/auth/password-setup-tokens",
-    { config: { rateLimit: { ...AUTH_MUTATION_RATE_LIMIT } } },
-    async (request) => {
-      if (request.auth.user.role !== "owner_admin") {
-        throw Object.assign(new Error("Owner admin access required"), { statusCode: 403 });
-      }
-      if (!options.jwtSecret) {
-        throw Object.assign(new Error("Password setup tokens are not configured"), {
-          statusCode: 503,
-        });
-      }
-      const body = passwordSetupTokenBodySchema.parse(request.body);
-      const user = await options.repository.getUser(request.auth.firmId, body.userId);
-      if (!user) {
-        throw Object.assign(new Error("User was not found"), { statusCode: 404 });
-      }
-      const token = createSessionToken();
-      const now = new Date();
-      const expiresAt = new Date(
-        now.getTime() + body.expiresInHours * 60 * 60 * 1000,
-      ).toISOString();
-      const record = await options.repository.createPasswordSetupToken({
-        id: crypto.randomUUID(),
-        firmId: request.auth.firmId,
-        userId: user.id,
-        tokenHash: hashToken(token, options.jwtSecret),
-        createdByUserId: request.auth.user.id,
-        createdAt: now.toISOString(),
-        expiresAt,
-      });
-      return { token, expiresAt: record.expiresAt, userId: user.id };
-    },
-  );
-
-  server.post(
-    "/api/auth/password-setup",
-    { config: { rateLimit: { ...AUTH_RATE_LIMIT } } },
-    async (request) => {
-      if (!options.jwtSecret) {
-        throw Object.assign(new Error("Password setup is not configured"), { statusCode: 503 });
-      }
-      const body = passwordSetupBodySchema.parse(request.body);
-      const now = new Date().toISOString();
-      const token = await options.repository.consumePasswordSetupToken(
-        hashToken(body.token, options.jwtSecret),
-        now,
-      );
-      if (!token || token.firmId !== body.firmId || token.userId !== body.userId) {
-        throw Object.assign(new Error("Password setup token is invalid or expired"), {
-          statusCode: 401,
-        });
-      }
-      const user = await options.repository.getUser(body.firmId, body.userId);
-      if (!user) throw Object.assign(new Error("User was not found"), { statusCode: 404 });
-      await options.repository.setAuthPassword({
-        firmId: body.firmId,
-        userId: body.userId,
-        passwordHash: hashPassword(body.password),
-        passwordUpdatedAt: now,
-      });
-      return { user };
-    },
-  );
-
-  server.get("/api/session", async (request) => ({ user: request.auth.user }));
-
-  server.get("/api/capabilities", async (request) => ({
-    sections: dashboardCapabilities({
-      user: request.auth.user,
-      firmId: request.auth.firmId,
-      matterId: request.auth.user.assignedMatterIds[0],
-    }),
-  }));
-
-  server.get("/api/overview", async (request) =>
-    options.repository.getOverview(request.auth.firmId),
-  );
-
-  server.get("/api/matters", async (request) =>
-    options.repository.listMattersForUser(request.auth.user),
-  );
-
-  server.post("/api/conflicts/check", async (request) => {
-    requireAccess(request.auth, { resource: "contact", action: "read" });
-    const body = conflictBodySchema.parse(request.body);
-    return options.repository.runConflictCheck({
-      firmId: request.auth.firmId,
-      actorId: request.auth.user.id,
-      ...body,
-    });
+  registerAuthRoutes(server, {
+    repository: options.repository,
+    jwtSecret: options.jwtSecret,
+    sessionTtlHours: options.sessionTtlHours,
+    nodeEnv: options.nodeEnv,
   });
-
+  registerSessionRoutes(server);
+  registerMatterRoutes(server, { repository: options.repository });
   registerLedgerRoutes(server, { repository: options.repository });
   registerBillingRoutes(server, { repository: options.repository });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
@@ -526,12 +296,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerShareRoutes(server, { repository: options.repository });
   registerExternalUploadRoutes(server, { repository: options.repository, s3: options.s3 });
   registerAuthExtensionRoutes(server);
-
-  server.get("/api/audit", async (request) => {
-    requireAccess(request.auth, { resource: "audit_log", action: "read" });
-    return options.repository.listAuditEvents(request.auth.firmId);
-  });
-
+  registerAuditRoutes(server, { repository: options.repository });
   registerSignatureRoutes(server, {
     repository: options.repository,
     signatureProvider: options.signatureProvider ?? new EmbeddedSignatureProvider(),
