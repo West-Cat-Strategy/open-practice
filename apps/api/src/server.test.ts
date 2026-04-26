@@ -267,6 +267,29 @@ describe("API auth and persistence boundaries", () => {
     expect(response.statusCode).toBe(200);
   });
 
+  it("rate-limits repeated embedded login attempts", async () => {
+    const jwtSecret = "production-test-secret-at-least-32-characters";
+    const server = testServer({ nodeEnv: "production", jwtSecret });
+    const responses = [];
+
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      responses.push(
+        await server.inject({
+          method: "POST",
+          url: "/api/auth/login",
+          payload: {
+            firmId: "firm-west-legal",
+            email: "avery@example.test",
+            password: "wrong password",
+          },
+        }),
+      );
+    }
+
+    expect(responses.slice(0, 10).every((response) => response.statusCode === 401)).toBe(true);
+    expect(responses[10]?.statusCode).toBe(429);
+  });
+
   it("revokes embedded sessions on logout", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const jwtSecret = "production-test-secret-at-least-32-characters";

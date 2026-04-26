@@ -1,3 +1,4 @@
+import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -29,6 +30,7 @@ async function authenticateTestRequest(
 
 function testServer({ repository = new InMemoryOpenPracticeRepository() }: TestServerOptions = {}) {
   const server = Fastify({ logger: false });
+  server.register(rateLimit, { global: true, max: 1_000, timeWindow: "1 minute" });
   server.addHook("preHandler", async (request) => {
     request.auth = await authenticateTestRequest(repository, request.headers);
   });

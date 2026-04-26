@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import { S3Client } from "@aws-sdk/client-s3";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { jwtVerify } from "jose";
@@ -76,6 +77,9 @@ const SESSION_COOKIE_NAME = "open_practice_session";
 const PASSWORD_HASH_ITERATIONS = 210_000;
 const PASSWORD_HASH_KEY_LENGTH = 32;
 const PASSWORD_HASH_DIGEST = "sha256";
+const DEFAULT_RATE_LIMIT = { max: 300, timeWindow: "1 minute" };
+const AUTH_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };
+const AUTH_MUTATION_RATE_LIMIT = { max: 30, timeWindow: "1 minute" };
 
 const loginBodySchema = z.object({
   firmId: z.string().min(1),
@@ -308,9 +312,32 @@ function requireAccess(
   }
 }
 
+function routePath(url: string): string {
+  return url.split("?")[0] ?? url;
+}
+
 export function createApiServer(options: ApiOptions): FastifyInstance {
   const server = Fastify({ logger: true });
 
+  server.register(async (app) => {
+    await app.register(rateLimit, {
+      ...DEFAULT_RATE_LIMIT,
+      global: true,
+      keyGenerator: (request) => `${request.ip}:${request.method}:${routePath(request.url)}`,
+      errorResponseBuilder: () => ({
+        statusCode: 429,
+        error: "RATE_LIMIT_EXCEEDED",
+        message: "Too many requests",
+      }),
+    });
+
+    registerApiRoutes(app, options);
+  });
+
+  return server;
+}
+
+function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   server.register(cors, {
     origin: [/^http:\/\/localhost:\d+$/],
     credentials: true,
@@ -340,106 +367,126 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
     request.auth = await authenticate(request, options.repository, options);
   });
 
-  server.post("/api/auth/login", async (request, reply) => {
-    if (!options.jwtSecret) {
-      throw Object.assign(new Error("Session authentication is not configured"), {
-        statusCode: 503,
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this login route has a tighter route cap.
+  server.post(
+    "/api/auth/login",
+    { config: { rateLimit: { ...AUTH_RATE_LIMIT } } },
+    async (request, reply) => {
+      if (!options.jwtSecret) {
+        throw Object.assign(new Error("Session authentication is not configured"), {
+          statusCode: 503,
+        });
+      }
+      const body = loginBodySchema.parse(request.body);
+      const user = await options.repository.getUserByEmail(body.firmId, body.email);
+      const account = user
+        ? await options.repository.getAuthAccount(user.firmId, user.id)
+        : undefined;
+      if (!user || !account || !verifyPassword(body.password, account.passwordHash)) {
+        throw Object.assign(new Error("Invalid email or password"), { statusCode: 401 });
+      }
+
+      const token = createSessionToken();
+      const now = new Date();
+      const expiresAt = new Date(
+        now.getTime() + (options.sessionTtlHours ?? 12) * 60 * 60 * 1000,
+      ).toISOString();
+      const session = await options.repository.createAuthSession({
+        id: crypto.randomUUID(),
+        firmId: user.firmId,
+        userId: user.id,
+        tokenHash: hashToken(token, options.jwtSecret),
+        createdAt: now.toISOString(),
+        expiresAt,
       });
-    }
-    const body = loginBodySchema.parse(request.body);
-    const user = await options.repository.getUserByEmail(body.firmId, body.email);
-    const account = user
-      ? await options.repository.getAuthAccount(user.firmId, user.id)
-      : undefined;
-    if (!user || !account || !verifyPassword(body.password, account.passwordHash)) {
-      throw Object.assign(new Error("Invalid email or password"), { statusCode: 401 });
-    }
+      reply.header("set-cookie", sessionCookie(token, expiresAt, options.nodeEnv === "production"));
+      return { user, session: { id: session.id, expiresAt }, token };
+    },
+  );
 
-    const token = createSessionToken();
-    const now = new Date();
-    const expiresAt = new Date(
-      now.getTime() + (options.sessionTtlHours ?? 12) * 60 * 60 * 1000,
-    ).toISOString();
-    const session = await options.repository.createAuthSession({
-      id: crypto.randomUUID(),
-      firmId: user.firmId,
-      userId: user.id,
-      tokenHash: hashToken(token, options.jwtSecret),
-      createdAt: now.toISOString(),
-      expiresAt,
-    });
-    reply.header("set-cookie", sessionCookie(token, expiresAt, options.nodeEnv === "production"));
-    return { user, session: { id: session.id, expiresAt }, token };
-  });
-
-  server.post("/api/auth/logout", async (request, reply) => {
-    const token = readSessionToken(request);
-    if (token && options.jwtSecret) {
-      await options.repository.revokeAuthSession(
-        hashToken(token, options.jwtSecret),
-        new Date().toISOString(),
-      );
-    }
-    reply.header("set-cookie", clearSessionCookie());
-    return { ok: true };
-  });
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and logout has a tighter mutation cap.
+  server.post(
+    "/api/auth/logout",
+    { config: { rateLimit: { ...AUTH_MUTATION_RATE_LIMIT } } },
+    async (request, reply) => {
+      const token = readSessionToken(request);
+      if (token && options.jwtSecret) {
+        await options.repository.revokeAuthSession(
+          hashToken(token, options.jwtSecret),
+          new Date().toISOString(),
+        );
+      }
+      reply.header("set-cookie", clearSessionCookie());
+      return { ok: true };
+    },
+  );
 
   server.get("/api/auth/session", async (request) => ({ user: request.auth.user }));
 
-  server.post("/api/auth/password-setup-tokens", async (request) => {
-    if (request.auth.user.role !== "owner_admin") {
-      throw Object.assign(new Error("Owner admin access required"), { statusCode: 403 });
-    }
-    if (!options.jwtSecret) {
-      throw Object.assign(new Error("Password setup tokens are not configured"), {
-        statusCode: 503,
+  server.post(
+    "/api/auth/password-setup-tokens",
+    { config: { rateLimit: { ...AUTH_MUTATION_RATE_LIMIT } } },
+    async (request) => {
+      if (request.auth.user.role !== "owner_admin") {
+        throw Object.assign(new Error("Owner admin access required"), { statusCode: 403 });
+      }
+      if (!options.jwtSecret) {
+        throw Object.assign(new Error("Password setup tokens are not configured"), {
+          statusCode: 503,
+        });
+      }
+      const body = passwordSetupTokenBodySchema.parse(request.body);
+      const user = await options.repository.getUser(request.auth.firmId, body.userId);
+      if (!user) {
+        throw Object.assign(new Error("User was not found"), { statusCode: 404 });
+      }
+      const token = createSessionToken();
+      const now = new Date();
+      const expiresAt = new Date(
+        now.getTime() + body.expiresInHours * 60 * 60 * 1000,
+      ).toISOString();
+      const record = await options.repository.createPasswordSetupToken({
+        id: crypto.randomUUID(),
+        firmId: request.auth.firmId,
+        userId: user.id,
+        tokenHash: hashToken(token, options.jwtSecret),
+        createdByUserId: request.auth.user.id,
+        createdAt: now.toISOString(),
+        expiresAt,
       });
-    }
-    const body = passwordSetupTokenBodySchema.parse(request.body);
-    const user = await options.repository.getUser(request.auth.firmId, body.userId);
-    if (!user) {
-      throw Object.assign(new Error("User was not found"), { statusCode: 404 });
-    }
-    const token = createSessionToken();
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + body.expiresInHours * 60 * 60 * 1000).toISOString();
-    const record = await options.repository.createPasswordSetupToken({
-      id: crypto.randomUUID(),
-      firmId: request.auth.firmId,
-      userId: user.id,
-      tokenHash: hashToken(token, options.jwtSecret),
-      createdByUserId: request.auth.user.id,
-      createdAt: now.toISOString(),
-      expiresAt,
-    });
-    return { token, expiresAt: record.expiresAt, userId: user.id };
-  });
+      return { token, expiresAt: record.expiresAt, userId: user.id };
+    },
+  );
 
-  server.post("/api/auth/password-setup", async (request) => {
-    if (!options.jwtSecret) {
-      throw Object.assign(new Error("Password setup is not configured"), { statusCode: 503 });
-    }
-    const body = passwordSetupBodySchema.parse(request.body);
-    const now = new Date().toISOString();
-    const token = await options.repository.consumePasswordSetupToken(
-      hashToken(body.token, options.jwtSecret),
-      now,
-    );
-    if (!token || token.firmId !== body.firmId || token.userId !== body.userId) {
-      throw Object.assign(new Error("Password setup token is invalid or expired"), {
-        statusCode: 401,
+  server.post(
+    "/api/auth/password-setup",
+    { config: { rateLimit: { ...AUTH_RATE_LIMIT } } },
+    async (request) => {
+      if (!options.jwtSecret) {
+        throw Object.assign(new Error("Password setup is not configured"), { statusCode: 503 });
+      }
+      const body = passwordSetupBodySchema.parse(request.body);
+      const now = new Date().toISOString();
+      const token = await options.repository.consumePasswordSetupToken(
+        hashToken(body.token, options.jwtSecret),
+        now,
+      );
+      if (!token || token.firmId !== body.firmId || token.userId !== body.userId) {
+        throw Object.assign(new Error("Password setup token is invalid or expired"), {
+          statusCode: 401,
+        });
+      }
+      const user = await options.repository.getUser(body.firmId, body.userId);
+      if (!user) throw Object.assign(new Error("User was not found"), { statusCode: 404 });
+      await options.repository.setAuthPassword({
+        firmId: body.firmId,
+        userId: body.userId,
+        passwordHash: hashPassword(body.password),
+        passwordUpdatedAt: now,
       });
-    }
-    const user = await options.repository.getUser(body.firmId, body.userId);
-    if (!user) throw Object.assign(new Error("User was not found"), { statusCode: 404 });
-    await options.repository.setAuthPassword({
-      firmId: body.firmId,
-      userId: body.userId,
-      passwordHash: hashPassword(body.password),
-      passwordUpdatedAt: now,
-    });
-    return { user };
-  });
+      return { user };
+    },
+  );
 
   server.get("/api/session", async (request) => ({ user: request.auth.user }));
 
@@ -497,16 +544,18 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
 
   server.setErrorHandler((error, _request, reply) => {
     server.log.error(error);
-    const normalizedError = error as Error & { statusCode?: number };
+    const normalizedError = error as Error & { code?: string; error?: string; statusCode?: number };
     const statusCode =
-      typeof normalizedError.statusCode === "number" ? normalizedError.statusCode : 400;
+      typeof normalizedError.statusCode === "number"
+        ? normalizedError.statusCode
+        : reply.statusCode >= 400
+          ? reply.statusCode
+          : 400;
     reply.status(statusCode).send({
-      error: normalizedError.name,
+      error: normalizedError.name ?? normalizedError.error ?? normalizedError.code ?? "Error",
       message: normalizedError.message,
     });
   });
-
-  return server;
 }
 
 declare module "fastify" {
