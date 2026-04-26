@@ -1,6 +1,9 @@
 # Maintenance Guide
 
-Use this guide when keeping Open Practice healthy across docs, validation, policy, schema, and release handoff. Use [Repository Guide](repo-guide.md) for workspace ownership and [Testing](../testing/TESTING.md) for command selection.
+Use this guide when keeping Open Practice healthy across docs, validation, policy, schema, and release
+handoff. Use [Repository Guide](repo-guide.md) for workspace ownership,
+[GitHub Maintenance](github-maintenance.md) for repository automation, and
+[Testing](../testing/TESTING.md) for command selection.
 
 ## Documentation Maintenance
 
@@ -20,6 +23,12 @@ Open Practice has a small validation control plane that should stay boring and e
 - `pnpm verify` runs the full local CI parity lane.
 
 When adding a new package, app, route family, or docs category, update [Testing](../testing/TESTING.md) and `scripts/select-validation.mjs` together.
+
+## GitHub Automation
+
+Keep branch protection, Dependabot, dependency review, CodeQL/default setup, and Copilot agent policy
+aligned with [GitHub Maintenance](github-maintenance.md). GitHub-native tooling is preferred; add
+third-party bots only after documenting why native features are insufficient.
 
 ## Boundary Ratchets
 

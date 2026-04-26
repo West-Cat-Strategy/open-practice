@@ -51,7 +51,6 @@ const setupBodySchema = z.object({
     })
     .optional(),
 });
-
 export interface SetupRouteDependencies {
   repository: OpenPracticeRepository;
   jwtSecret?: string;
@@ -142,150 +141,160 @@ export function registerSetupRoutes(
     setupKeyRequired: setupKeyRequired(options),
   }));
 
-  server.post("/api/setup/complete", async (request, reply) => {
-    if (!options.jwtSecret) {
-      throw Object.assign(new Error("Session authentication is not configured"), {
-        statusCode: 503,
-      });
-    }
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before setup routes, with this route capped at 5 attempts per 15 minutes.
+  server.post(
+    "/api/setup/complete",
+    { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
+    async (request, reply) => {
+      if (!options.jwtSecret) {
+        throw Object.assign(new Error("Session authentication is not configured"), {
+          statusCode: 503,
+        });
+      }
 
-    const status = await options.repository.getSetupStatus();
-    if (status.blocked) {
-      throw Object.assign(new Error(status.reason ?? "First-run setup is blocked"), {
-        statusCode: 409,
-      });
-    }
-    if (!status.required) {
-      throw Object.assign(new Error("First-run setup is already complete"), { statusCode: 409 });
-    }
+      const status = await options.repository.getSetupStatus();
+      if (status.blocked) {
+        throw Object.assign(new Error(status.reason ?? "First-run setup is blocked"), {
+          statusCode: 409,
+        });
+      }
+      if (!status.required) {
+        throw Object.assign(new Error("First-run setup is already complete"), { statusCode: 409 });
+      }
 
-    assertSetupGate(request, options);
-    const body = setupBodySchema.parse(request.body);
-    const now = new Date();
-    const nowIso = now.toISOString();
-    const newFirmId = firmId(body.firm.name);
-    const ownerId = id("user");
-    const firstMatterId = body.firstMatter ? id("matter") : undefined;
-    const firstContactId = body.firstMatter ? id("contact") : undefined;
-    const firstMatterPartyId = body.firstMatter ? id("party") : undefined;
-    const currentYear = now.getUTCFullYear();
+      assertSetupGate(request, options);
+      const body = setupBodySchema.parse(request.body);
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const newFirmId = firmId(body.firm.name);
+      const ownerId = id("user");
+      const firstMatterId = body.firstMatter ? id("matter") : undefined;
+      const firstContactId = body.firstMatter ? id("contact") : undefined;
+      const firstMatterPartyId = body.firstMatter ? id("party") : undefined;
+      const currentYear = now.getUTCFullYear();
 
-    const owner = {
-      id: ownerId,
-      firmId: newFirmId,
-      displayName: body.owner.displayName,
-      email: body.owner.email,
-      role: "owner_admin" as const,
-      assignedMatterIds: firstMatterId ? [firstMatterId] : [],
-      mfaEnabled: false,
-    };
-    const firstMatter = body.firstMatter
-      ? {
-          id: firstMatterId!,
-          firmId: newFirmId,
-          number: `${currentYear}-0001`,
-          title: body.firstMatter.title,
-          practiceArea: body.firstMatter.practiceArea,
-          status: "intake" as const,
-          jurisdiction: body.firstMatter.jurisdiction,
-          responsibleUserId: ownerId,
-          openedOn: nowIso.slice(0, 10),
-        }
-      : undefined;
-    const firstContact = body.firstMatter
-      ? {
-          id: firstContactId!,
-          firmId: newFirmId,
-          kind: body.firstMatter.client.kind,
-          displayName: body.firstMatter.client.displayName,
-          aliases: [],
-          identifiers: [
-            ...(body.firstMatter.client.email
-              ? [{ type: "email" as const, value: body.firstMatter.client.email }]
-              : []),
-            ...(body.firstMatter.client.phone
-              ? [{ type: "phone" as const, value: body.firstMatter.client.phone }]
-              : []),
-          ],
-        }
-      : undefined;
-    const firstMatterParty =
-      body.firstMatter && firstMatterId && firstContactId
+      const owner = {
+        id: ownerId,
+        firmId: newFirmId,
+        displayName: body.owner.displayName,
+        email: body.owner.email,
+        role: "owner_admin" as const,
+        assignedMatterIds: firstMatterId ? [firstMatterId] : [],
+        mfaEnabled: false,
+      };
+      const firstMatter = body.firstMatter
         ? {
-            id: firstMatterPartyId!,
+            id: firstMatterId!,
             firmId: newFirmId,
-            matterId: firstMatterId,
-            contactId: firstContactId,
-            role: "prospective_client" as const,
-            adverse: false,
-            confidential: true,
+            number: `${currentYear}-0001`,
+            title: body.firstMatter.title,
+            practiceArea: body.firstMatter.practiceArea,
+            status: "intake" as const,
+            jurisdiction: body.firstMatter.jurisdiction,
+            responsibleUserId: ownerId,
+            openedOn: nowIso.slice(0, 10),
           }
         : undefined;
+      const firstContact = body.firstMatter
+        ? {
+            id: firstContactId!,
+            firmId: newFirmId,
+            kind: body.firstMatter.client.kind,
+            displayName: body.firstMatter.client.displayName,
+            aliases: [],
+            identifiers: [
+              ...(body.firstMatter.client.email
+                ? [{ type: "email" as const, value: body.firstMatter.client.email }]
+                : []),
+              ...(body.firstMatter.client.phone
+                ? [{ type: "phone" as const, value: body.firstMatter.client.phone }]
+                : []),
+            ],
+          }
+        : undefined;
+      const firstMatterParty =
+        body.firstMatter && firstMatterId && firstContactId
+          ? {
+              id: firstMatterPartyId!,
+              firmId: newFirmId,
+              matterId: firstMatterId,
+              contactId: firstContactId,
+              role: "prospective_client" as const,
+              adverse: false,
+              confidential: true,
+            }
+          : undefined;
 
-    const result = await options.repository
-      .completeFirstRunSetup({
-        firm: {
-          id: newFirmId,
-          name: body.firm.name,
-          defaultProvince: body.firm.defaultProvince,
-        },
-        settings: {
-          firmId: newFirmId,
-          businessAddress: body.businessAddress,
-          officeEmail: body.office.email,
-          officePhone: body.office.phone,
-          practiceAreas: body.settings.practiceAreas,
-          invoicePrefix: body.settings.invoicePrefix,
-          defaultPaymentTermsDays: body.settings.defaultPaymentTermsDays,
-          trustAccountLabel: body.settings.trustAccountLabel,
-          trustFundsCaveatAcceptedAt: nowIso,
-          trustFundsCaveatAcceptedByUserId: ownerId,
-          createdAt: nowIso,
-          updatedAt: nowIso,
-        },
-        owner,
-        ownerPasswordHash: options.hashPassword(body.owner.password),
-        ownerPasswordUpdatedAt: nowIso,
-        firstContact,
-        firstMatter,
-        firstMatterParty,
-        auditEvent: appendAuditEvent(undefined, {
-          id: id("audit"),
-          firmId: newFirmId,
-          actorId: ownerId,
-          action: "setup.completed",
-          resourceType: "firm",
-          resourceId: newFirmId,
-          occurredAt: nowIso,
-          metadata: {
-            practiceAreas: body.settings.practiceAreas,
-            firstMatterCreated: Boolean(firstMatter),
+      const result = await options.repository
+        .completeFirstRunSetup({
+          firm: {
+            id: newFirmId,
+            name: body.firm.name,
+            defaultProvince: body.firm.defaultProvince,
           },
-        }),
-      })
-      .catch((error: unknown) => {
-        if (error instanceof FirstRunSetupConflictError) {
-          throw Object.assign(error, { statusCode: 409 });
-        }
-        throw error;
-      });
+          settings: {
+            firmId: newFirmId,
+            businessAddress: body.businessAddress,
+            officeEmail: body.office.email,
+            officePhone: body.office.phone,
+            practiceAreas: body.settings.practiceAreas,
+            invoicePrefix: body.settings.invoicePrefix,
+            defaultPaymentTermsDays: body.settings.defaultPaymentTermsDays,
+            trustAccountLabel: body.settings.trustAccountLabel,
+            trustFundsCaveatAcceptedAt: nowIso,
+            trustFundsCaveatAcceptedByUserId: ownerId,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          },
+          owner,
+          ownerPasswordHash: options.hashPassword(body.owner.password),
+          ownerPasswordUpdatedAt: nowIso,
+          firstContact,
+          firstMatter,
+          firstMatterParty,
+          auditEvent: appendAuditEvent(undefined, {
+            id: id("audit"),
+            firmId: newFirmId,
+            actorId: ownerId,
+            action: "setup.completed",
+            resourceType: "firm",
+            resourceId: newFirmId,
+            occurredAt: nowIso,
+            metadata: {
+              practiceAreas: body.settings.practiceAreas,
+              firstMatterCreated: Boolean(firstMatter),
+            },
+          }),
+        })
+        .catch((error: unknown) => {
+          if (error instanceof FirstRunSetupConflictError) {
+            throw Object.assign(error, { statusCode: 409 });
+          }
+          throw error;
+        });
 
-    const token = options.createSessionToken();
-    const expiresAt = new Date(
-      now.getTime() + (options.sessionTtlHours ?? 12) * 60 * 60 * 1000,
-    ).toISOString();
-    const session = await options.repository.createAuthSession({
-      id: id("session"),
-      firmId: result.owner.firmId,
-      userId: result.owner.id,
-      tokenHash: options.hashToken(token, options.jwtSecret),
-      createdAt: nowIso,
-      expiresAt,
-    });
-    reply.header(
-      "set-cookie",
-      options.sessionCookie(token, expiresAt, options.nodeEnv === "production"),
-    );
-    return { user: result.owner, firm: result.firm, session: { id: session.id, expiresAt }, token };
-  });
+      const token = options.createSessionToken();
+      const expiresAt = new Date(
+        now.getTime() + (options.sessionTtlHours ?? 12) * 60 * 60 * 1000,
+      ).toISOString();
+      const session = await options.repository.createAuthSession({
+        id: id("session"),
+        firmId: result.owner.firmId,
+        userId: result.owner.id,
+        tokenHash: options.hashToken(token, options.jwtSecret),
+        createdAt: nowIso,
+        expiresAt,
+      });
+      reply.header(
+        "set-cookie",
+        options.sessionCookie(token, expiresAt, options.nodeEnv === "production"),
+      );
+      return {
+        user: result.owner,
+        firm: result.firm,
+        session: { id: session.id, expiresAt },
+        token,
+      };
+    },
+  );
 }

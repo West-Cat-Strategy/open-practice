@@ -1,12 +1,17 @@
 # Agent Workflows
 
-This guide is for Codex and other AI-assisted maintenance in Open Practice. It complements [Repository Guide](repo-guide.md), [Maintenance](maintenance.md), and [Testing](../testing/TESTING.md).
+This guide is for Codex and other AI-assisted maintenance in Open Practice. It complements
+[Repository Guide](repo-guide.md), [Maintenance](maintenance.md),
+[GitHub Maintenance](github-maintenance.md), and [Testing](../testing/TESTING.md).
 
 ## Skill Entry Point
 
 Use the local Codex skill `$develop-open-practice` for this repository. The skill lives at `/Users/bryan/.codex/skills/develop-open-practice` and points to compact references for workspace ownership, validation, domain invariants, API/web workflows, docs policy, and deployment concerns.
 
 Because the skill is outside the repo, tracked docs remain the durable source of truth. Refresh both when a workflow changes.
+
+GitHub-hosted Copilot agents should follow [GitHub Maintenance](github-maintenance.md): issue-first
+work, low-risk labels, draft PRs, synthetic data only, and protected-branch PR flow.
 
 ## Start Of Task
 
@@ -17,6 +22,9 @@ Because the skill is outside the repo, tracked docs remain the durable source of
 5. Use `pnpm verify:select -- --files <paths...>` to choose the first validation lane.
 
 Do not revert unrelated dirty work. If existing changes affect the task, work with them and keep the final summary clear about what was touched.
+
+After squash merges on protected `main`, refresh local `main` from `origin/main` before starting a
+new branch. Back up stale local-only commits first.
 
 ## Implementation Habits
 
@@ -45,6 +53,8 @@ Use the narrowest safe command first, then broaden when work crosses package bou
 - Database schema or repository: database tests, `db:check`, database typecheck, API tests, and migration confidence when needed.
 - Web dashboard or route catalog: web tests, web typecheck, and `pnpm build`.
 - Broad handoff: `pnpm verify` and `git diff --check`.
+- GitHub tooling: `pnpm verify`, `git diff --check`, and GitHub PR checks for `verify`, dependency
+  review, CodeQL/default setup, and Copilot review where applicable.
 
 ## Handoff
 

@@ -16,6 +16,7 @@
     "@aws-sdk/client-s3": "^3.1037.0",
     "@aws-sdk/s3-request-presigner": "^3.1037.0",
     "@fastify/cors": "latest",
+    "@fastify/rate-limit": "^10.3.0",
     "@open-practice/database": "workspace:^",
     "@open-practice/domain": "workspace:*",
     "@open-practice/providers": "workspace:*",

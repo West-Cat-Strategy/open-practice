@@ -1,0 +1,30 @@
+name: Maintenance
+description: Track dependency, CI, docs, policy, or housekeeping work.
+title: "[Maintenance]: "
+labels: ["maintenance"]
+assignees: ["bcroc"]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include secrets, client data, or private infrastructure details."
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What should change, and which paths are in scope?
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk
+      description: Note compatibility, security, privacy, or license concerns.
+    validations:
+      required: false
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: List read-only checks or expected evidence.
+    validations:
+      required: false
