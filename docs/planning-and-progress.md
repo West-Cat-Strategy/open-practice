@@ -6,13 +6,13 @@ Use this file for live tracked work and immediate next moves. Use `docs/planning
 
 ## At a Glance
 
-| Snapshot                          | Value                                       |
-| --------------------------------- | ------------------------------------------- |
-| Current focus                     | OP-M1 Dependabot alert remediation complete |
-| Active rows                       | 0                                           |
-| Review rows                       | 0                                           |
-| Blocked rows                      | 0                                           |
-| Recent thread follow-through rows | 0                                           |
+| Snapshot                          | Value                            |
+| --------------------------------- | -------------------------------- |
+| Current focus                     | OP-T17 route extraction complete |
+| Active rows                       | 0                                |
+| Review rows                       | 0                                |
+| Blocked rows                      | 0                                |
+| Recent thread follow-through rows | 0                                |
 
 ## Recent Thread Follow-through
 
@@ -42,6 +42,7 @@ Use this file for live tracked work and immediate next moves. Use `docs/planning
 | Done   | OP-T14 | Queue route extraction and boundary ratchet           | Moved API-backed work queue generation into a module-owned API registrar, added role-scoped queue regressions, and tightened the server route and validation parse ratchets.                                                                                  | 2026-04-25: `pnpm verify:select -- --files apps/api/src/server.ts apps/api/src/routes/queues.ts apps/api/src/routes/queues.test.ts apps/api/src/routes/types.ts scripts/validate-open-practice-boundaries.mjs docs/planning-and-progress.md docs/development/maintenance.md`; `pnpm --filter @open-practice/api test`; `pnpm --filter @open-practice/api typecheck`; `pnpm test`; `pnpm docs:check`; `pnpm policy:check`; `pnpm format:check`; `git diff --check`.                                                                                 |
 | Done   | OP-T15 | Architecture and stack documentation phase            | Documented worker/provider topology, official-source stack decisions, self-host privacy posture, reserved config defaults, planned API surfaces, and validation expectations.                                                                                 | 2026-04-25: `pnpm verify:select -- --files docs/architecture.md docs/tech-stack.md docs/README.md docs/development/getting-started.md docs/deployment-hardening.md docs/api-and-state-machines.md docs/planning.md docs/planning-and-progress.md`; `pnpm exec prettier --check docs/architecture.md docs/tech-stack.md docs/README.md docs/development/getting-started.md docs/deployment-hardening.md docs/api-and-state-machines.md docs/planning.md docs/planning-and-progress.md`; `pnpm docs:check`; `pnpm policy:check`; `git diff --check`. |
 | Done   | OP-T16 | Worker/provider foundation scaffold                   | Added Redis local service, worker app, provider-neutral operation contracts, disabled providers, firm provider settings, job lifecycle records, broad phase-one schema, disabled-by-default API scaffolds, and docs/config alignment.                         | 2026-04-25: `pnpm verify:select -- --files $(git diff --name-only) $(git ls-files --others --exclude-standard)`; `pnpm verify`.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Done   | OP-T17 | Auth, Session, and Matter route extraction            | Extracted remaining direct routes (Auth, Session, Matters, Audit) from `server.ts` to module registrars, moved shared helpers to `http/auth-helpers.ts`, and tightened boundary ratchets.                                                                     | 2026-04-26: `pnpm verify:select -- --files apps/api/src/server.ts apps/api/src/routes/auth.ts apps/api/src/routes/session.ts apps/api/src/routes/matters.ts apps/api/src/routes/audit.ts apps/api/src/http/auth-helpers.ts scripts/validate-open-practice-boundaries.mjs`; `pnpm --filter @open-practice/api test`; `pnpm policy:check`; `pnpm verify`.                                                                                                                                                                                            |
 
 ## Coordination Rules
 
