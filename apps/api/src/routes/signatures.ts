@@ -6,7 +6,7 @@ import type {
   SignatureRequestRecord,
   SignatureRequestSignerRecord,
 } from "@open-practice/domain";
-import { requireMatterAccess } from "../http/auth-guards.js";
+import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import type { ApiRouteDependencies } from "./types.js";
@@ -62,7 +62,7 @@ function assertSignatureAccess(
   context: ApiAuthContext,
   request: Omit<AccessRequest, "firmId" | "user">,
 ): void {
-  const access = requireMatterAccess(context, request);
+  const access = requireAccess(context, request);
   if (!access.ok) throw access.error;
 }
 

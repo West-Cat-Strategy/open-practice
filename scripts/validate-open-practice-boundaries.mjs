@@ -20,12 +20,12 @@ const directErrorEnvelopes = [...server.matchAll(/reply\.status\([^)]*\)\.send\(
   .length;
 
 assert(
-  routeCount <= 12,
-  `apps/api/src/server.ts defines ${routeCount} direct routes; current ratchet allows 12. Move new routes into module-owned registrars.`,
+  routeCount <= 1,
+  `apps/api/src/server.ts defines ${routeCount} direct routes; current ratchet allows 1. Move new routes into module-owned registrars.`,
 );
 assert(
-  inlineRequestParses <= 4,
-  `apps/api/src/server.ts contains ${inlineRequestParses} inline request parses; current ratchet allows 4. Use shared validation helpers for new code.`,
+  inlineRequestParses <= 0,
+  `apps/api/src/server.ts contains ${inlineRequestParses} inline request parses; current ratchet allows 0. Use shared validation helpers for new code.`,
 );
 assert(
   directErrorEnvelopes <= 1,
@@ -42,6 +42,10 @@ for (const required of [
   "apps/api/src/routes/ledger.ts",
   "apps/api/src/routes/queues.ts",
   "apps/api/src/routes/signatures.ts",
+  "apps/api/src/routes/auth.ts",
+  "apps/api/src/routes/session.ts",
+  "apps/api/src/routes/matters.ts",
+  "apps/api/src/routes/audit.ts",
   "apps/api/src/routes/types.ts",
   "apps/web/routes/routeCatalog.ts",
   "docs/README.md",
@@ -115,6 +119,38 @@ for (const ledgerRoute of [
 assert(
   !server.includes("/api/queues"),
   "apps/api/src/server.ts still contains queue route literal /api/queues; keep queue endpoints in apps/api/src/routes/queues.ts.",
+);
+
+for (const authRoute of [
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/auth/session",
+  "/api/auth/password-setup-tokens",
+  "/api/auth/password-setup",
+]) {
+  assert(
+    !server.includes(authRoute),
+    `apps/api/src/server.ts still contains auth route literal ${authRoute}; keep auth endpoints in apps/api/src/routes/auth.ts.`,
+  );
+}
+
+for (const sessionRoute of ["/api/session", "/api/capabilities"]) {
+  assert(
+    !server.includes(sessionRoute),
+    `apps/api/src/server.ts still contains session route literal ${sessionRoute}; keep session endpoints in apps/api/src/routes/session.ts.`,
+  );
+}
+
+for (const matterRoute of ["/api/overview", "/api/matters", "/api/conflicts/check"]) {
+  assert(
+    !server.includes(matterRoute),
+    `apps/api/src/server.ts still contains matter route literal ${matterRoute}; keep matter endpoints in apps/api/src/routes/matters.ts.`,
+  );
+}
+
+assert(
+  !server.includes("/api/audit"),
+  "apps/api/src/server.ts still contains audit route literal /api/audit; keep audit endpoints in apps/api/src/routes/audit.ts.",
 );
 
 const routeCatalog = read("apps/web/routes/routeCatalog.ts");

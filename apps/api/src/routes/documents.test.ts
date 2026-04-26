@@ -99,7 +99,7 @@ describe("document routes", () => {
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({
       error: "ApiHttpError",
-      message: "Matter access required",
+      message: "Document access required",
     });
   });
 

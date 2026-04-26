@@ -191,7 +191,7 @@ describe("intake routes", () => {
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({
       error: "ApiHttpError",
-      message: "Matter access required",
+      message: "Intake session access required",
     });
   });
 

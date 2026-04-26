@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { canAccess } from "@open-practice/domain";
+import { requireAccess } from "../http/auth-guards.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 export function registerJobsRoutes(
@@ -7,15 +7,8 @@ export function registerJobsRoutes(
   { repository }: ApiRouteDependencies,
 ): void {
   server.get("/api/jobs", async (request) => {
-    const canReadJobs = canAccess({
-      user: request.auth.user,
-      firmId: request.auth.firmId,
-      resource: "job",
-      action: "read",
-    });
-    if (!canReadJobs) {
-      throw Object.assign(new Error("Job access required"), { statusCode: 403 });
-    }
+    const access = requireAccess(request.auth, { resource: "job", action: "read" });
+    if (!access.ok) throw access.error;
 
     const jobs = await repository.listJobLifecycleRecords(request.auth.firmId);
     return {

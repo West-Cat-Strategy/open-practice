@@ -55,7 +55,7 @@ describe("billing routes", () => {
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({
       error: "ApiHttpError",
-      message: "Matter access required",
+      message: "Time entry access required",
     });
   });
 
@@ -71,8 +71,8 @@ describe("billing routes", () => {
 
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({
-      error: "Error",
-      message: "Billing dashboard access required",
+      error: "ApiHttpError",
+      message: "Trust ledger access required",
     });
   });
 

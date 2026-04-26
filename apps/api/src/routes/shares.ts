@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { canAccess, type AccessRequest } from "@open-practice/domain";
-import { requireMatterAccess } from "../http/auth-guards.js";
+import type { AccessRequest } from "@open-practice/domain";
+import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import type { ApiRouteDependencies } from "./types.js";
@@ -14,7 +14,7 @@ function assertShareAccess(
   context: ApiAuthContext,
   request: Omit<AccessRequest, "firmId" | "user">,
 ): void {
-  const access = requireMatterAccess(context, request);
+  const access = requireAccess(context, request);
   if (!access.ok) throw access.error;
 }
 
@@ -37,8 +37,9 @@ export function registerShareRoutes(
         action: "read",
         matterId: query.matterId,
       });
-    } else if (request.auth.user.role !== "owner_admin" && request.auth.user.role !== "auditor") {
-      throw Object.assign(new Error("Matter scope required"), { statusCode: 403 });
+    } else {
+      const access = requireAccess(request.auth, { resource: "document", action: "read" });
+      if (!access.ok) throw access.error;
     }
 
     const grants = await repository.listPortalGrants(request.auth.firmId);
@@ -48,15 +49,8 @@ export function registerShareRoutes(
   });
 
   server.post("/api/shares", async (request) => {
-    const canUpdateFirm = canAccess({
-      user: request.auth.user,
-      firmId: request.auth.firmId,
-      resource: "firm",
-      action: "update",
-    });
-    if (!canUpdateFirm) {
-      throw Object.assign(new Error("Firm access required"), { statusCode: 403 });
-    }
+    const access = requireAccess(request.auth, { resource: "firm", action: "update" });
+    if (!access.ok) throw access.error;
 
     return {
       status: "disabled",

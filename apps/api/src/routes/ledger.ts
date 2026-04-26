@@ -6,7 +6,7 @@ import type {
   LedgerTransaction,
   LedgerTransactionApprovalRecord,
 } from "@open-practice/domain";
-import { hasFirmWideLedgerAccess, requireMatterAccess } from "../http/auth-guards.js";
+import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import type { ApiRouteDependencies } from "./types.js";
@@ -57,7 +57,7 @@ function assertLedgerAccess(
   context: ApiAuthContext,
   request: Omit<AccessRequest, "firmId" | "user">,
 ): void {
-  const access = requireMatterAccess(context, request);
+  const access = requireAccess(context, request);
   if (!access.ok) throw access.error;
 }
 
