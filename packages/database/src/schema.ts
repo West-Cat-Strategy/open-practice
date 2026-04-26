@@ -48,6 +48,42 @@ export const documentClassification = pgEnum("document_classification", [
   "financial",
   "identity",
 ]);
+export const providerSettingKind = pgEnum("provider_setting_kind", [
+  "smtp",
+  "inbound_email",
+  "ai",
+  "ocr",
+  "transcription",
+  "media",
+  "storage",
+]);
+export const jobQueueName = pgEnum("job_queue_name", [
+  "email",
+  "inbound_email",
+  "ai_triage",
+  "ocr",
+  "transcription",
+  "media",
+]);
+export const jobLifecycleStatus = pgEnum("job_lifecycle_status", [
+  "queued",
+  "active",
+  "completed",
+  "failed",
+  "dead_letter",
+  "skipped",
+]);
+export const authChallengePurpose = pgEnum("auth_challenge_purpose", [
+  "passkey_registration",
+  "passkey_authentication",
+  "totp_setup",
+]);
+export const authActionTokenPurpose = pgEnum("auth_action_token_purpose", [
+  "password_reset",
+  "magic_link",
+  "account_recovery",
+  "email_verification",
+]);
 
 export const firms = pgTable("firms", {
   id: text("id").primaryKey(),
@@ -71,6 +107,85 @@ export const users = pgTable(
   },
   (table) => ({
     firmEmail: uniqueIndex("users_firm_email_idx").on(table.firmId, table.email),
+  }),
+);
+
+export const firmSettings = pgTable("firm_settings", {
+  firmId: text("firm_id")
+    .primaryKey()
+    .references(() => firms.id),
+  businessAddress: jsonb("business_address")
+    .$type<{
+      line1: string;
+      line2?: string;
+      city: string;
+      province: "BC" | "ON" | "CANADA" | "OTHER";
+      postalCode: string;
+      country: string;
+    }>()
+    .notNull(),
+  officeEmail: text("office_email").notNull(),
+  officePhone: text("office_phone").notNull(),
+  practiceAreas: jsonb("practice_areas").$type<string[]>().notNull().default([]),
+  invoicePrefix: text("invoice_prefix").notNull(),
+  defaultPaymentTermsDays: integer("default_payment_terms_days").notNull(),
+  trustAccountLabel: text("trust_account_label").notNull(),
+  trustFundsCaveatAcceptedAt: timestamp("trust_funds_caveat_accepted_at", {
+    withTimezone: true,
+  }).notNull(),
+  trustFundsCaveatAcceptedByUserId: text("trust_funds_caveat_accepted_by_user_id")
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const providerSettings = pgTable(
+  "provider_settings",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    kind: providerSettingKind("kind").notNull(),
+    key: text("key").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    encryptedConfig: text("encrypted_config").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmKindKey: uniqueIndex("provider_settings_firm_kind_key_idx").on(
+      table.firmId,
+      table.kind,
+      table.key,
+    ),
+  }),
+);
+
+export const notificationPreferences = pgTable(
+  "notification_preferences",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    channel: text("channel").notNull(),
+    eventKey: text("event_key").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    userEvent: uniqueIndex("notification_preferences_user_event_idx").on(
+      table.firmId,
+      table.userId,
+      table.channel,
+      table.eventKey,
+    ),
   }),
 );
 
@@ -137,6 +252,125 @@ export const authPasswordSetupTokens = pgTable(
   },
   (table) => ({
     tokenHash: uniqueIndex("auth_password_setup_tokens_token_hash_idx").on(table.tokenHash),
+  }),
+);
+
+export const webAuthnCredentials = pgTable(
+  "webauthn_credentials",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    credentialId: text("credential_id").notNull(),
+    publicKey: text("public_key").notNull(),
+    counter: integer("counter").notNull().default(0),
+    transports: jsonb("transports").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
+  },
+  (table) => ({
+    credentialId: uniqueIndex("webauthn_credentials_credential_id_idx").on(table.credentialId),
+    userCredential: index("webauthn_credentials_user_idx").on(table.firmId, table.userId),
+  }),
+);
+
+export const authChallenges = pgTable(
+  "auth_challenges",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    userId: text("user_id").references(() => users.id),
+    challengeHash: text("challenge_hash").notNull(),
+    purpose: authChallengePurpose("purpose").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    challengeHash: uniqueIndex("auth_challenges_challenge_hash_idx").on(table.challengeHash),
+    firmPurpose: index("auth_challenges_firm_purpose_idx").on(table.firmId, table.purpose),
+  }),
+);
+
+export const authActionTokens = pgTable(
+  "auth_action_tokens",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text("token_hash").notNull(),
+    purpose: authActionTokenPurpose("purpose").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenHash: uniqueIndex("auth_action_tokens_token_hash_idx").on(table.tokenHash),
+    userPurpose: index("auth_action_tokens_user_purpose_idx").on(
+      table.firmId,
+      table.userId,
+      table.purpose,
+    ),
+  }),
+);
+
+export const totpCredentials = pgTable(
+  "totp_credentials",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    encryptedSecret: text("encrypted_secret").notNull(),
+    label: text("label").notNull(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    userActive: index("totp_credentials_user_active_idx").on(
+      table.firmId,
+      table.userId,
+      table.disabledAt,
+    ),
+  }),
+);
+
+export const recoveryCodes = pgTable(
+  "recovery_codes",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    codeHash: text("code_hash").notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    codeHash: uniqueIndex("recovery_codes_code_hash_idx").on(table.codeHash),
+    userUnused: index("recovery_codes_user_unused_idx").on(
+      table.firmId,
+      table.userId,
+      table.usedAt,
+    ),
   }),
 );
 
@@ -256,6 +490,112 @@ export const documents = pgTable("documents", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const documentVersions = pgTable(
+  "document_versions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => documents.id),
+    version: integer("version").notNull(),
+    storageKey: text("storage_key"),
+    editorJson: jsonb("editor_json").$type<Record<string, unknown>>(),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    documentVersion: uniqueIndex("document_versions_document_version_idx").on(
+      table.documentId,
+      table.version,
+    ),
+  }),
+);
+
+export const documentTextExtractions = pgTable(
+  "document_text_extractions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => documents.id),
+    engine: text("engine").notNull(),
+    status: text("status").notNull().default("queued"),
+    language: text("language").notNull().default("eng"),
+    confidence: integer("confidence"),
+    textStorageKey: text("text_storage_key"),
+    extractedText: text("extracted_text"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => ({
+    documentStatus: index("document_text_extractions_document_status_idx").on(
+      table.documentId,
+      table.status,
+    ),
+  }),
+);
+
+export const mediaTranscripts = pgTable(
+  "media_transcripts",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => documents.id),
+    engine: text("engine").notNull(),
+    model: text("model").notNull(),
+    status: text("status").notNull().default("queued"),
+    transcriptStorageKey: text("transcript_storage_key"),
+    text: text("text"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => ({
+    documentStatus: index("media_transcripts_document_status_idx").on(
+      table.documentId,
+      table.status,
+    ),
+  }),
+);
+
+export const mediaDerivatives = pgTable(
+  "media_derivatives",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => documents.id),
+    kind: text("kind").notNull(),
+    storageKey: text("storage_key").notNull(),
+    contentType: text("content_type").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    documentKind: uniqueIndex("media_derivatives_document_kind_idx").on(
+      table.documentId,
+      table.kind,
+    ),
+  }),
+);
+
 export const portalGrants = pgTable("portal_grants", {
   id: text("id").primaryKey(),
   firmId: text("firm_id")
@@ -274,6 +614,88 @@ export const portalGrants = pgTable("portal_grants", {
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
 });
+
+export const shareLinks = pgTable(
+  "share_links",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    tokenHash: text("token_hash").notNull(),
+    grantedByUserId: text("granted_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
+    requireEmailVerification: boolean("require_email_verification").notNull().default(false),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenHash: uniqueIndex("share_links_token_hash_idx").on(table.tokenHash),
+    matterExpiry: index("share_links_matter_expiry_idx").on(table.matterId, table.expiresAt),
+  }),
+);
+
+export const externalUploadLinks = pgTable(
+  "external_upload_links",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    tokenHash: text("token_hash").notNull(),
+    requestedByUserId: text("requested_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    maxUploads: integer("max_uploads").notNull().default(1),
+    usedUploads: integer("used_uploads").notNull().default(0),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenHash: uniqueIndex("external_upload_links_token_hash_idx").on(table.tokenHash),
+    matterExpiry: index("external_upload_links_matter_expiry_idx").on(
+      table.matterId,
+      table.expiresAt,
+    ),
+  }),
+);
+
+export const accessLogs = pgTable(
+  "access_logs",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    actorId: text("actor_id").references(() => users.id),
+    shareLinkId: text("share_link_id").references(() => shareLinks.id),
+    externalUploadLinkId: text("external_upload_link_id").references(() => externalUploadLinks.id),
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id").notNull(),
+    action: text("action").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    firmResource: index("access_logs_firm_resource_idx").on(
+      table.firmId,
+      table.resourceType,
+      table.resourceId,
+    ),
+  }),
+);
 
 export const ledgerAccountType = pgEnum("ledger_account_type", [
   "trust_asset",
@@ -395,6 +817,182 @@ export const auditEvents = pgTable("audit_events", {
   previousHash: text("previous_hash").notNull(),
   hash: text("hash").notNull(),
 });
+
+export const jobLifecycleRecords = pgTable(
+  "job_lifecycle_records",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    queueName: jobQueueName("queue_name").notNull(),
+    jobName: text("job_name").notNull(),
+    bullJobId: text("bull_job_id"),
+    status: jobLifecycleStatus("status").notNull().default("queued"),
+    targetResourceType: text("target_resource_type"),
+    targetResourceId: text("target_resource_id"),
+    attemptsMade: integer("attempts_made").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    errorMessage: text("error_message"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    firmStatus: index("job_lifecycle_records_firm_status_idx").on(table.firmId, table.status),
+    bullJobId: index("job_lifecycle_records_bull_job_id_idx").on(table.bullJobId),
+  }),
+);
+
+export const emailOutbox = pgTable(
+  "email_outbox",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    templateKey: text("template_key").notNull(),
+    status: text("status").notNull().default("queued"),
+    to: jsonb("to_addresses").$type<string[]>().notNull().default([]),
+    cc: jsonb("cc_addresses").$type<string[]>().notNull().default([]),
+    bcc: jsonb("bcc_addresses").$type<string[]>().notNull().default([]),
+    from: text("from_address").notNull(),
+    subject: text("subject").notNull(),
+    htmlBody: text("html_body").notNull(),
+    textBody: text("text_body").notNull(),
+    relatedResourceType: text("related_resource_type"),
+    relatedResourceId: text("related_resource_id"),
+    queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().defaultNow(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    errorMessage: text("error_message"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    firmStatus: index("email_outbox_firm_status_idx").on(table.firmId, table.status),
+  }),
+);
+
+export const emailEvents = pgTable(
+  "email_events",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    emailId: text("email_id")
+      .notNull()
+      .references(() => emailOutbox.id),
+    eventType: text("event_type").notNull(),
+    providerMessageId: text("provider_message_id"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    emailEvent: index("email_events_email_event_idx").on(table.emailId, table.eventType),
+  }),
+);
+
+export const inboundEmailAddresses = pgTable(
+  "inbound_email_addresses",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    address: text("address").notNull(),
+    matterId: text("matter_id").references(() => matters.id),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmAddress: uniqueIndex("inbound_email_addresses_firm_address_idx").on(
+      table.firmId,
+      table.address,
+    ),
+  }),
+);
+
+export const inboundEmailMessages = pgTable(
+  "inbound_email_messages",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    addressId: text("address_id").references(() => inboundEmailAddresses.id),
+    matterId: text("matter_id").references(() => matters.id),
+    messageId: text("message_id"),
+    fromAddress: text("from_address").notNull(),
+    toAddresses: jsonb("to_addresses").$type<string[]>().notNull().default([]),
+    subject: text("subject").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+    rawStorageKey: text("raw_storage_key").notNull(),
+    parsedText: text("parsed_text"),
+    parsedHtmlStorageKey: text("parsed_html_storage_key"),
+    labels: jsonb("labels").$type<string[]>().notNull().default([]),
+    status: text("status").notNull().default("received"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    firmReceived: index("inbound_email_messages_firm_received_idx").on(
+      table.firmId,
+      table.receivedAt,
+    ),
+  }),
+);
+
+export const inboundEmailAttachments = pgTable("inbound_email_attachments", {
+  id: text("id").primaryKey(),
+  firmId: text("firm_id")
+    .notNull()
+    .references(() => firms.id),
+  inboundMessageId: text("inbound_message_id")
+    .notNull()
+    .references(() => inboundEmailMessages.id),
+  documentId: text("document_id").references(() => documents.id),
+  filename: text("filename").notNull(),
+  contentType: text("content_type"),
+  sizeBytes: integer("size_bytes"),
+  storageKey: text("storage_key").notNull(),
+  checksumSha256: text("checksum_sha256"),
+});
+
+export const aiTriageRecords = pgTable(
+  "ai_triage_records",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id").notNull(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    status: text("status").notNull().default("pending"),
+    classification: text("classification"),
+    confidence: integer("confidence"),
+    extractedEntities: jsonb("extracted_entities")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    suggestedActions: jsonb("suggested_actions").$type<string[]>().notNull().default([]),
+    suggestedDraft: text("suggested_draft"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+  },
+  (table) => ({
+    firmSource: index("ai_triage_records_firm_source_idx").on(
+      table.firmId,
+      table.sourceType,
+      table.sourceId,
+    ),
+  }),
+);
 
 export const timeEntries = pgTable("time_entries", {
   id: text("id").primaryKey(),

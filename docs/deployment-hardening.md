@@ -2,6 +2,7 @@
 
 - Require TLS for all browser, API, portal, and object-storage traffic.
 - Configure embedded session auth with strong password setup/invitation flows for firm users and portal users.
+- Configure a one-time `OPEN_PRACTICE_SETUP_KEY` for production first-run setup and remove or rotate it after the first owner admin is created.
 - Keep S3 buckets private; serve files only through expiring signed URLs after server-side authorization.
 - Verify upload-completion callbacks against expected storage keys, checksums, size policy, and scan state before documents can be shared.
 - Run malware scanning before a document can be shared through the portal.
@@ -9,7 +10,15 @@
 - Store secrets outside git and outside container images.
 - Configure production embedded auth explicitly; dev header auth, bearer JWT auth, and weak secrets must not be accepted in production.
 - Record embedded signature events with signer consent, actor, IP/user-agent, and timestamp evidence.
-- Keep future OCR workers separate from core startup unless an explicit deployment profile enables them.
+- Keep future workers separate from core startup unless an explicit deployment profile enables them.
+- Keep Redis private to API and worker containers. Do not put raw matter, document, intake, transcript,
+  billing, trust, or privileged text in queue payloads.
+- Use Mailpit only for local capture. Postal or another SMTP service needs TLS, SPF/DKIM/DMARC, bounce
+  handling, webhook verification, abuse monitoring, and backup/restore procedures before production use.
+- Run Tesseract, Whisper, FFmpeg, and Ollama in constrained worker containers with explicit retention,
+  provenance, and human-review states for generated text.
+- Configure passkey RP ID/origin before enabling SimpleWebAuthn routes, and sanitize/render TipTap
+  content server-side before portal exposure.
 - Keep audit exports in immutable or write-once storage where available.
 - Separate production trust/funds operations from test data and demo data.
 - Keep billing, invoice, manual-payment, and trust-transfer workflows behind role-scoped operational controls; do not describe them as jurisdiction-certified accounting, tax, or trust-compliance advice.
@@ -31,6 +40,9 @@ Environment variables must be treated as deployment inputs, not application defa
   manager, not through images or checked-in env files.
 - `SESSION_TTL_HOURS` controls embedded session expiry and should be set intentionally per
   deployment.
+- `OPEN_PRACTICE_SETUP_KEY` is required to complete first-run setup in production. The setup route
+  only proceeds while both firm and user tables are empty; any partial bootstrap state is blocked for
+  operator review.
 - `API_BASE_URL`, `WEB_PORT`, and `API_PORT` should be explicit per environment, with TLS termination
   and allowed origins configured at the edge.
 - `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY` must reference a
@@ -39,6 +51,10 @@ Environment variables must be treated as deployment inputs, not application defa
   and malware-scan state before portal sharing.
 - `DOCUSEAL_*`, `DOCASSEMBLE_*`, and `OIDC_*` configuration is deprecated and must not be present in
   production. Signature, intake, and auth are embedded local workflows.
+- Worker/provider configuration should be explicit and disabled by default. Reserved defaults are
+  recorded in [Tech Stack](tech-stack.md); production must not enable Redis/BullMQ, Postal, OCR,
+  transcription, Ollama, passkeys, or rich-text publishing without the corresponding runbook,
+  authorization checks, and retention controls.
 - Billing and invoice settings should ship as operational configuration only: invoice numbering,
   review roles, tax labels, payment terms, write-off reasons, and evidence requirements. They should
   not be represented as accounting or tax certification.

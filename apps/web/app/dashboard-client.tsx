@@ -164,6 +164,7 @@ export default function DashboardClient({
     setConflictStatus("Running conflict check...");
     const response = await fetch(`${apiBaseUrl}/api/conflicts/check`, {
       method: "POST",
+      credentials: "include",
       headers: {
         ...devHeaders,
         "Content-Type": "application/json",

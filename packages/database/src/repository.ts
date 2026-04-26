@@ -16,6 +16,7 @@ import {
   type DocumentRecord,
   type ExpenseEntry,
   type Firm,
+  type FirmSettings,
   type InvoiceLineRecord,
   type InvoiceRecord,
   type LedgerAccount,
@@ -29,6 +30,8 @@ import {
   type PaymentAllocationRecord,
   type PortalGrant,
   type PostedLedgerTransaction,
+  type JobLifecycleRecord,
+  type ProviderSettingRecord,
   type TimeEntry,
   type TrustTransferRequestRecord,
   type User,
@@ -143,7 +146,72 @@ export interface AuthPasswordSetupTokenRecord {
   usedAt?: string;
 }
 
+export interface FirstRunSetupStatus {
+  required: boolean;
+  blocked: boolean;
+  reason?: string;
+}
+
+export interface FirstRunSetupInput {
+  firm: Firm;
+  settings: FirmSettings;
+  owner: User;
+  ownerPasswordHash: string;
+  ownerPasswordUpdatedAt: string;
+  firstContact?: Contact;
+  firstMatter?: Matter;
+  firstMatterParty?: MatterParty;
+  auditEvent: AuditEvent;
+}
+
+export interface FirstRunSetupResult {
+  firm: Firm;
+  settings: FirmSettings;
+  owner: User;
+  firstMatter?: Matter;
+}
+
+export class FirstRunSetupConflictError extends Error {
+  constructor(message = "First-run setup is not available") {
+    super(message);
+    this.name = "FirstRunSetupConflictError";
+  }
+}
+
 export interface OpenPracticeRepository {
+  getSetupStatus(): Promise<FirstRunSetupStatus>;
+  completeFirstRunSetup(input: FirstRunSetupInput): Promise<FirstRunSetupResult>;
+  getFirmSettings(firmId: string): Promise<FirmSettings | undefined>;
+  listProviderSettings(
+    firmId: string,
+    options?: { kind?: ProviderSettingRecord["kind"] },
+  ): Promise<ProviderSettingRecord[]>;
+  upsertProviderSetting(setting: ProviderSettingRecord): Promise<ProviderSettingRecord>;
+  createJobLifecycleRecord(record: JobLifecycleRecord): Promise<JobLifecycleRecord>;
+  updateJobLifecycleRecord(
+    firmId: string,
+    id: string,
+    updates: Partial<
+      Pick<
+        JobLifecycleRecord,
+        | "bullJobId"
+        | "status"
+        | "attemptsMade"
+        | "startedAt"
+        | "finishedAt"
+        | "failedAt"
+        | "errorMessage"
+        | "metadata"
+      >
+    >,
+  ): Promise<JobLifecycleRecord>;
+  listJobLifecycleRecords(
+    firmId: string,
+    options?: {
+      status?: JobLifecycleRecord["status"];
+      queueName?: JobLifecycleRecord["queueName"];
+    },
+  ): Promise<JobLifecycleRecord[]>;
   getUser(firmId: string, userId: string): Promise<User | undefined>;
   getUserByEmail(firmId: string, email: string): Promise<User | undefined>;
   getAuthAccount(firmId: string, userId: string): Promise<AuthAccountRecord | undefined>;
@@ -354,6 +422,87 @@ function mapPasswordSetupTokenRow(
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt.toISOString(),
     usedAt: dateToIso(row.usedAt),
+  };
+}
+
+function setupStatusFromCounts(firmCount: number, userCount: number): FirstRunSetupStatus {
+  if (firmCount === 0 && userCount === 0) {
+    return { required: true, blocked: false };
+  }
+  if (firmCount > 0 && userCount > 0) {
+    return { required: false, blocked: false };
+  }
+  return {
+    required: false,
+    blocked: true,
+    reason: "Found partial setup state. Resolve firm/user records before running first-run setup.",
+  };
+}
+
+function mapFirmSettingsRow(row: typeof schema.firmSettings.$inferSelect): FirmSettings {
+  return {
+    firmId: row.firmId,
+    businessAddress: row.businessAddress,
+    officeEmail: row.officeEmail,
+    officePhone: row.officePhone,
+    practiceAreas: row.practiceAreas,
+    invoicePrefix: row.invoicePrefix,
+    defaultPaymentTermsDays: row.defaultPaymentTermsDays,
+    trustAccountLabel: row.trustAccountLabel,
+    trustFundsCaveatAcceptedAt: row.trustFundsCaveatAcceptedAt.toISOString(),
+    trustFundsCaveatAcceptedByUserId: row.trustFundsCaveatAcceptedByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function mapProviderSettingRow(
+  row: typeof schema.providerSettings.$inferSelect,
+): ProviderSettingRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    kind: row.kind,
+    key: row.key,
+    enabled: row.enabled,
+    encryptedConfig: row.encryptedConfig,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function mapJobLifecycleRow(
+  row: typeof schema.jobLifecycleRecords.$inferSelect,
+): JobLifecycleRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    queueName: row.queueName,
+    jobName: row.jobName,
+    bullJobId: row.bullJobId ?? undefined,
+    status: row.status,
+    targetResourceType: row.targetResourceType ?? undefined,
+    targetResourceId: row.targetResourceId ?? undefined,
+    attemptsMade: row.attemptsMade,
+    maxAttempts: row.maxAttempts,
+    queuedAt: row.queuedAt.toISOString(),
+    startedAt: dateToIso(row.startedAt),
+    finishedAt: dateToIso(row.finishedAt),
+    failedAt: dateToIso(row.failedAt),
+    errorMessage: row.errorMessage ?? undefined,
+    metadata: row.metadata,
+  };
+}
+
+function jobLifecycleInsert(
+  record: JobLifecycleRecord,
+): typeof schema.jobLifecycleRecords.$inferInsert {
+  return {
+    ...record,
+    queuedAt: new Date(record.queuedAt),
+    startedAt: record.startedAt ? new Date(record.startedAt) : null,
+    finishedAt: record.finishedAt ? new Date(record.finishedAt) : null,
+    failedAt: record.failedAt ? new Date(record.failedAt) : null,
   };
 }
 
@@ -598,44 +747,188 @@ function buildActivityTimeline(input: {
 }
 
 export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
-  private readonly firm = clone(sampleFirm);
-  private readonly users = clone(sampleUsers);
-  private readonly contacts = clone(sampleContacts);
-  private readonly matters = clone(sampleMatters);
-  private readonly matterParties = clone(sampleMatterParties);
-  private readonly documents = clone(sampleDocuments);
-  private readonly portalGrants = clone(samplePortalGrants);
-  private timeEntries = clone(sampleTimeEntries);
-  private expenseEntries = clone(sampleExpenseEntries);
-  private invoices = clone(sampleInvoices);
-  private invoiceLines = clone(sampleInvoiceLines);
-  private manualPayments = clone(sampleManualPayments);
-  private paymentAllocations = clone(samplePaymentAllocations);
-  private trustTransferRequests = clone(sampleTrustTransferRequests);
-  private readonly ledgerAccounts = clone(sampleLedgerAccounts);
+  private firms: Firm[];
+  private users: User[];
+  private contacts: Contact[];
+  private matters: Matter[];
+  private matterParties: MatterParty[];
+  private documents: DocumentRecord[];
+  private portalGrants: PortalGrant[];
+  private timeEntries: TimeEntry[];
+  private expenseEntries: ExpenseEntry[];
+  private invoices: InvoiceRecord[];
+  private invoiceLines: InvoiceLineRecord[];
+  private manualPayments: ManualPaymentRecord[];
+  private paymentAllocations: PaymentAllocationRecord[];
+  private trustTransferRequests: TrustTransferRequestRecord[];
+  private ledgerAccounts: LedgerAccount[];
   private ledgerApprovals: LedgerTransactionApprovalRecord[] = [];
   private ledgerReconciliations: LedgerReconciliationRecord[] = [];
-  private readonly intakeTemplates = clone(sampleIntakeTemplates);
-  private signatureRequestSigners = clone(sampleSignatureRequestSigners);
-  private signatureProviderEvents = clone(sampleSignatureProviderEvents);
-  private signatureWebhookAttempts = clone(sampleSignatureWebhookAttempts);
-  private signatureRequests = clone(sampleSignatureRequests);
-  private intakeSessions = clone(sampleIntakeSessions);
+  private intakeTemplates: IntakeTemplateRecord[];
+  private signatureRequestSigners: SignatureRequestSignerRecord[];
+  private signatureProviderEvents: SignatureProviderEventRecord[];
+  private signatureWebhookAttempts: SignatureWebhookAttemptRecord[];
+  private signatureRequests: SignatureRequestRecord[];
+  private intakeSessions: IntakeSessionRecord[];
   private answerSnapshots: AnswerSnapshotRecord[] = [];
-  private generatedDocuments = clone(sampleGeneratedDocuments);
+  private generatedDocuments: GeneratedDocumentRecord[];
+  private firmSettings: FirmSettings[] = [];
+  private providerSettings: ProviderSettingRecord[] = [];
+  private jobLifecycleRecords: JobLifecycleRecord[] = [];
   private authAccounts: AuthAccountRecord[] = [];
   private authSessions: AuthSessionRecord[] = [];
   private passwordSetupTokens: AuthPasswordSetupTokenRecord[] = [];
-  private auditEvents = clone(sampleAuditEvents);
-  private postedTransactions: PostedLedgerTransaction[] = [
-    {
-      id: "trust-retainer",
-      firmId: this.firm.id,
-      idempotencyKey: "retainer",
-      requestFingerprint: "seed:retainer",
-      entries: clone(sampleLedgerEntries),
-    },
-  ];
+  private auditEvents: AuditEvent[];
+  private postedTransactions: PostedLedgerTransaction[];
+
+  constructor(options: { seedSampleData?: boolean; firms?: Firm[]; users?: User[] } = {}) {
+    const seeded = options.seedSampleData ?? true;
+    this.firms = options.firms ? clone(options.firms) : seeded ? [clone(sampleFirm)] : [];
+    this.users = options.users ? clone(options.users) : seeded ? clone(sampleUsers) : [];
+    this.contacts = seeded ? clone(sampleContacts) : [];
+    this.matters = seeded ? clone(sampleMatters) : [];
+    this.matterParties = seeded ? clone(sampleMatterParties) : [];
+    this.documents = seeded ? clone(sampleDocuments) : [];
+    this.portalGrants = seeded ? clone(samplePortalGrants) : [];
+    this.timeEntries = seeded ? clone(sampleTimeEntries) : [];
+    this.expenseEntries = seeded ? clone(sampleExpenseEntries) : [];
+    this.invoices = seeded ? clone(sampleInvoices) : [];
+    this.invoiceLines = seeded ? clone(sampleInvoiceLines) : [];
+    this.manualPayments = seeded ? clone(sampleManualPayments) : [];
+    this.paymentAllocations = seeded ? clone(samplePaymentAllocations) : [];
+    this.trustTransferRequests = seeded ? clone(sampleTrustTransferRequests) : [];
+    this.ledgerAccounts = seeded ? clone(sampleLedgerAccounts) : [];
+    this.intakeTemplates = seeded ? clone(sampleIntakeTemplates) : [];
+    this.signatureRequestSigners = seeded ? clone(sampleSignatureRequestSigners) : [];
+    this.signatureProviderEvents = seeded ? clone(sampleSignatureProviderEvents) : [];
+    this.signatureWebhookAttempts = seeded ? clone(sampleSignatureWebhookAttempts) : [];
+    this.signatureRequests = seeded ? clone(sampleSignatureRequests) : [];
+    this.intakeSessions = seeded ? clone(sampleIntakeSessions) : [];
+    this.generatedDocuments = seeded ? clone(sampleGeneratedDocuments) : [];
+    this.auditEvents = seeded ? clone(sampleAuditEvents) : [];
+    this.postedTransactions = seeded
+      ? [
+          {
+            id: "trust-retainer",
+            firmId: sampleFirm.id,
+            idempotencyKey: "retainer",
+            requestFingerprint: "seed:retainer",
+            entries: clone(sampleLedgerEntries),
+          },
+        ]
+      : [];
+  }
+
+  async getSetupStatus(): Promise<FirstRunSetupStatus> {
+    return setupStatusFromCounts(this.firms.length, this.users.length);
+  }
+
+  async completeFirstRunSetup(input: FirstRunSetupInput): Promise<FirstRunSetupResult> {
+    const status = await this.getSetupStatus();
+    if (!status.required || status.blocked) {
+      throw new FirstRunSetupConflictError(status.reason ?? "First-run setup is already complete");
+    }
+
+    this.firms = [clone(input.firm)];
+    this.users = [clone(input.owner)];
+    this.firmSettings = [clone(input.settings)];
+    this.authAccounts = [
+      {
+        firmId: input.owner.firmId,
+        userId: input.owner.id,
+        passwordHash: input.ownerPasswordHash,
+        passwordUpdatedAt: input.ownerPasswordUpdatedAt,
+      },
+    ];
+    if (input.firstContact) this.contacts = [clone(input.firstContact)];
+    if (input.firstMatter) this.matters = [clone(input.firstMatter)];
+    if (input.firstMatterParty) this.matterParties = [clone(input.firstMatterParty)];
+    this.auditEvents = [clone(input.auditEvent)];
+
+    return {
+      firm: clone(input.firm),
+      settings: clone(input.settings),
+      owner: clone(input.owner),
+      firstMatter: clone(input.firstMatter),
+    };
+  }
+
+  async getFirmSettings(firmId: string): Promise<FirmSettings | undefined> {
+    return clone(this.firmSettings.find((settings) => settings.firmId === firmId));
+  }
+
+  async listProviderSettings(
+    firmId: string,
+    options: { kind?: ProviderSettingRecord["kind"] } = {},
+  ): Promise<ProviderSettingRecord[]> {
+    return clone(
+      this.providerSettings.filter(
+        (setting) => setting.firmId === firmId && (!options.kind || setting.kind === options.kind),
+      ),
+    );
+  }
+
+  async upsertProviderSetting(setting: ProviderSettingRecord): Promise<ProviderSettingRecord> {
+    const existingIndex = this.providerSettings.findIndex(
+      (candidate) =>
+        candidate.firmId === setting.firmId &&
+        candidate.kind === setting.kind &&
+        candidate.key === setting.key,
+    );
+    if (existingIndex >= 0) {
+      this.providerSettings[existingIndex] = clone(setting);
+    } else {
+      this.providerSettings.push(clone(setting));
+    }
+    return clone(setting);
+  }
+
+  async createJobLifecycleRecord(record: JobLifecycleRecord): Promise<JobLifecycleRecord> {
+    this.jobLifecycleRecords.push(clone(record));
+    return clone(record);
+  }
+
+  async updateJobLifecycleRecord(
+    firmId: string,
+    id: string,
+    updates: Partial<
+      Pick<
+        JobLifecycleRecord,
+        | "bullJobId"
+        | "status"
+        | "attemptsMade"
+        | "startedAt"
+        | "finishedAt"
+        | "failedAt"
+        | "errorMessage"
+        | "metadata"
+      >
+    >,
+  ): Promise<JobLifecycleRecord> {
+    const index = this.jobLifecycleRecords.findIndex(
+      (record) => record.firmId === firmId && record.id === id,
+    );
+    if (index === -1) throw new Error(`Job lifecycle record ${id} was not found`);
+    this.jobLifecycleRecords[index] = { ...this.jobLifecycleRecords[index], ...clone(updates) };
+    return clone(this.jobLifecycleRecords[index]);
+  }
+
+  async listJobLifecycleRecords(
+    firmId: string,
+    options: {
+      status?: JobLifecycleRecord["status"];
+      queueName?: JobLifecycleRecord["queueName"];
+    } = {},
+  ): Promise<JobLifecycleRecord[]> {
+    return clone(
+      this.jobLifecycleRecords.filter(
+        (record) =>
+          record.firmId === firmId &&
+          (!options.status || record.status === options.status) &&
+          (!options.queueName || record.queueName === options.queueName),
+      ),
+    );
+  }
 
   async getUser(firmId: string, userId: string): Promise<User | undefined> {
     return clone(this.users.find((user) => user.firmId === firmId && user.id === userId));
@@ -713,10 +1006,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   }
 
   async getOverview(firmId: string): Promise<PracticeOverview> {
+    const firm = this.firms.find((candidate) => candidate.id === firmId);
+    if (!firm) throw new Error(`Unknown firm ${firmId}`);
     const matters = this.matters.filter((matter) => matter.firmId === firmId);
     const ledger = await this.getLedger(firmId);
     return {
-      firm: clone(this.firm),
+      firm: clone(firm),
       metrics: {
         openMatters: matters.filter((matter) => matter.status === "open").length,
         intakeMatters: matters.filter((matter) => matter.status === "intake").length,
@@ -1369,6 +1664,190 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
 export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   constructor(private readonly db: OpenPracticeDatabase) {}
+
+  async getSetupStatus(): Promise<FirstRunSetupStatus> {
+    const firms = await this.db.select({ id: schema.firms.id }).from(schema.firms).limit(2);
+    const users = await this.db.select({ id: schema.users.id }).from(schema.users).limit(2);
+    return setupStatusFromCounts(firms.length, users.length);
+  }
+
+  async completeFirstRunSetup(input: FirstRunSetupInput): Promise<FirstRunSetupResult> {
+    return this.db.transaction(async (tx) => {
+      const firms = await tx.select({ id: schema.firms.id }).from(schema.firms).limit(2);
+      const users = await tx.select({ id: schema.users.id }).from(schema.users).limit(2);
+      const status = setupStatusFromCounts(firms.length, users.length);
+      if (!status.required || status.blocked) {
+        throw new FirstRunSetupConflictError(
+          status.reason ?? "First-run setup is already complete",
+        );
+      }
+
+      await tx.insert(schema.firms).values(input.firm);
+      await tx.insert(schema.users).values({
+        id: input.owner.id,
+        firmId: input.owner.firmId,
+        displayName: input.owner.displayName,
+        email: input.owner.email,
+        role: input.owner.role,
+        mfaEnabled: input.owner.mfaEnabled,
+      });
+      await tx.insert(schema.authAccounts).values({
+        firmId: input.owner.firmId,
+        userId: input.owner.id,
+        passwordHash: input.ownerPasswordHash,
+        passwordUpdatedAt: new Date(input.ownerPasswordUpdatedAt),
+      });
+      await tx.insert(schema.firmSettings).values({
+        firmId: input.settings.firmId,
+        businessAddress: input.settings.businessAddress,
+        officeEmail: input.settings.officeEmail,
+        officePhone: input.settings.officePhone,
+        practiceAreas: input.settings.practiceAreas,
+        invoicePrefix: input.settings.invoicePrefix,
+        defaultPaymentTermsDays: input.settings.defaultPaymentTermsDays,
+        trustAccountLabel: input.settings.trustAccountLabel,
+        trustFundsCaveatAcceptedAt: new Date(input.settings.trustFundsCaveatAcceptedAt),
+        trustFundsCaveatAcceptedByUserId: input.settings.trustFundsCaveatAcceptedByUserId,
+        createdAt: new Date(input.settings.createdAt),
+        updatedAt: new Date(input.settings.updatedAt),
+      });
+
+      if (input.firstContact) {
+        await tx.insert(schema.contacts).values(input.firstContact);
+      }
+      if (input.firstMatter) {
+        await tx.insert(schema.matters).values({
+          ...input.firstMatter,
+          openedOn: input.firstMatter.openedOn ? new Date(input.firstMatter.openedOn) : null,
+          closedOn: input.firstMatter.closedOn ? new Date(input.firstMatter.closedOn) : null,
+        });
+        await tx.insert(schema.matterAssignments).values({
+          matterId: input.firstMatter.id,
+          userId: input.owner.id,
+        });
+      }
+      if (input.firstMatterParty) {
+        await tx.insert(schema.matterParties).values(input.firstMatterParty);
+      }
+      await tx.insert(schema.auditEvents).values({
+        ...input.auditEvent,
+        occurredAt: new Date(input.auditEvent.occurredAt),
+      });
+
+      return {
+        firm: input.firm,
+        settings: input.settings,
+        owner: input.owner,
+        firstMatter: input.firstMatter,
+      };
+    });
+  }
+
+  async getFirmSettings(firmId: string): Promise<FirmSettings | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.firmSettings)
+      .where(eq(schema.firmSettings.firmId, firmId));
+    return row ? mapFirmSettingsRow(row) : undefined;
+  }
+
+  async listProviderSettings(
+    firmId: string,
+    options: { kind?: ProviderSettingRecord["kind"] } = {},
+  ): Promise<ProviderSettingRecord[]> {
+    const conditions = [eq(schema.providerSettings.firmId, firmId)];
+    if (options.kind) conditions.push(eq(schema.providerSettings.kind, options.kind));
+    const rows = await this.db
+      .select()
+      .from(schema.providerSettings)
+      .where(and(...conditions))
+      .orderBy(asc(schema.providerSettings.kind), asc(schema.providerSettings.key));
+    return rows.map(mapProviderSettingRow);
+  }
+
+  async upsertProviderSetting(setting: ProviderSettingRecord): Promise<ProviderSettingRecord> {
+    const [row] = await this.db
+      .insert(schema.providerSettings)
+      .values({
+        ...setting,
+        createdAt: new Date(setting.createdAt),
+        updatedAt: new Date(setting.updatedAt),
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.providerSettings.firmId,
+          schema.providerSettings.kind,
+          schema.providerSettings.key,
+        ],
+        set: {
+          enabled: setting.enabled,
+          encryptedConfig: setting.encryptedConfig,
+          updatedAt: new Date(setting.updatedAt),
+        },
+      })
+      .returning();
+    return mapProviderSettingRow(row);
+  }
+
+  async createJobLifecycleRecord(record: JobLifecycleRecord): Promise<JobLifecycleRecord> {
+    const [row] = await this.db
+      .insert(schema.jobLifecycleRecords)
+      .values(jobLifecycleInsert(record))
+      .returning();
+    return mapJobLifecycleRow(row);
+  }
+
+  async updateJobLifecycleRecord(
+    firmId: string,
+    id: string,
+    updates: Partial<
+      Pick<
+        JobLifecycleRecord,
+        | "bullJobId"
+        | "status"
+        | "attemptsMade"
+        | "startedAt"
+        | "finishedAt"
+        | "failedAt"
+        | "errorMessage"
+        | "metadata"
+      >
+    >,
+  ): Promise<JobLifecycleRecord> {
+    const [row] = await this.db
+      .update(schema.jobLifecycleRecords)
+      .set({
+        ...updates,
+        startedAt: updates.startedAt ? new Date(updates.startedAt) : undefined,
+        finishedAt: updates.finishedAt ? new Date(updates.finishedAt) : undefined,
+        failedAt: updates.failedAt ? new Date(updates.failedAt) : undefined,
+      })
+      .where(
+        and(eq(schema.jobLifecycleRecords.firmId, firmId), eq(schema.jobLifecycleRecords.id, id)),
+      )
+      .returning();
+    if (!row) throw new Error(`Job lifecycle record ${id} was not found`);
+    return mapJobLifecycleRow(row);
+  }
+
+  async listJobLifecycleRecords(
+    firmId: string,
+    options: {
+      status?: JobLifecycleRecord["status"];
+      queueName?: JobLifecycleRecord["queueName"];
+    } = {},
+  ): Promise<JobLifecycleRecord[]> {
+    const conditions = [eq(schema.jobLifecycleRecords.firmId, firmId)];
+    if (options.status) conditions.push(eq(schema.jobLifecycleRecords.status, options.status));
+    if (options.queueName)
+      conditions.push(eq(schema.jobLifecycleRecords.queueName, options.queueName));
+    const rows = await this.db
+      .select()
+      .from(schema.jobLifecycleRecords)
+      .where(and(...conditions))
+      .orderBy(asc(schema.jobLifecycleRecords.queuedAt));
+    return rows.map(mapJobLifecycleRow);
+  }
 
   async getUser(firmId: string, userId: string): Promise<User | undefined> {
     const [row] = await this.db

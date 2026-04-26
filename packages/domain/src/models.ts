@@ -44,6 +44,30 @@ export interface Firm {
   defaultProvince: Province;
 }
 
+export interface FirmBusinessAddress {
+  line1: string;
+  line2?: string;
+  city: string;
+  province: Province;
+  postalCode: string;
+  country: string;
+}
+
+export interface FirmSettings {
+  firmId: string;
+  businessAddress: FirmBusinessAddress;
+  officeEmail: string;
+  officePhone: string;
+  practiceAreas: string[];
+  invoicePrefix: string;
+  defaultPaymentTermsDays: number;
+  trustAccountLabel: string;
+  trustFundsCaveatAcceptedAt: string;
+  trustFundsCaveatAcceptedByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface User {
   id: string;
   firmId: string;

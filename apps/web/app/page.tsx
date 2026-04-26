@@ -1,4 +1,8 @@
+import { cookies } from "next/headers";
 import DashboardClient from "./dashboard-client";
+import LoginClient from "./login-client";
+import SetupWizard from "./setup-wizard";
+import { selectStartupView } from "./setup-wizard-utils";
 import type {
   BillingDashboardResponse,
   CapabilitiesResponse,
@@ -7,6 +11,7 @@ import type {
   PracticeOverview,
   QueuesResponse,
   SessionResponse,
+  SetupStatusResponse,
   SignatureRequestsResponse,
 } from "./types";
 
@@ -18,13 +23,33 @@ const devHeaders = {
   "x-open-practice-firm-id": process.env.DEV_AUTH_FIRM_ID ?? "firm-west-legal",
 };
 
-async function apiGet<T>(path: string): Promise<T> {
+class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+async function buildApiHeaders(): Promise<Record<string, string>> {
+  const cookieHeader = (await cookies()).toString();
+  return {
+    ...(process.env.NODE_ENV === "production" ? {} : devHeaders),
+    ...(cookieHeader ? { cookie: cookieHeader } : {}),
+  };
+}
+
+async function apiGet<T>(path: string, headers: Record<string, string>): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     cache: "no-store",
-    headers: devHeaders,
+    headers,
   });
   if (!response.ok) {
-    throw new Error(`Open Practice API request failed: ${response.status} ${path}`);
+    throw new ApiRequestError(
+      `Open Practice API request failed: ${response.status} ${path}`,
+      response.status,
+    );
   }
   return response.json() as Promise<T>;
 }
@@ -32,16 +57,20 @@ async function apiGet<T>(path: string): Promise<T> {
 async function apiGetOptional<T>(
   path: string,
   fallback: T,
+  headers: Record<string, string>,
   forbiddenFallback = fallback,
 ): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     cache: "no-store",
-    headers: devHeaders,
+    headers,
   });
   if (response.status === 404) return fallback;
   if (response.status === 403) return forbiddenFallback;
   if (!response.ok) {
-    throw new Error(`Open Practice API request failed: ${response.status} ${path}`);
+    throw new ApiRequestError(
+      `Open Practice API request failed: ${response.status} ${path}`,
+      response.status,
+    );
   }
   return response.json() as Promise<T>;
 }
@@ -109,19 +138,51 @@ function buildBillingFallback(
 }
 
 export default async function Home() {
-  const [session, capabilities, overview, matters, signatures, intake, queues] = await Promise.all([
-    apiGet<SessionResponse>("/api/session"),
-    apiGet<CapabilitiesResponse>("/api/capabilities"),
-    apiGet<PracticeOverview>("/api/overview"),
-    apiGet<MatterSummary[]>("/api/matters"),
-    apiGet<SignatureRequestsResponse>("/api/signature-requests"),
-    apiGet<IntakeSessionsResponse>("/api/intake-sessions"),
-    apiGet<QueuesResponse>("/api/queues"),
-  ]);
+  const setupStatus = await apiGet<SetupStatusResponse>("/api/setup/status", {});
+  if (selectStartupView(setupStatus, null) === "blocked") {
+    return (
+      <main className="empty-state">
+        <h1>Setup Blocked</h1>
+        <p>{setupStatus.reason ?? "Partial setup state needs operator review."}</p>
+      </main>
+    );
+  }
+  if (selectStartupView(setupStatus, null) === "setup") {
+    return <SetupWizard apiBaseUrl={apiBaseUrl} setupKeyRequired={setupStatus.setupKeyRequired} />;
+  }
+
+  const headers = await buildApiHeaders();
+  let session: SessionResponse;
+  let capabilities: CapabilitiesResponse;
+  let overview: PracticeOverview;
+  let matters: MatterSummary[];
+  let signatures: SignatureRequestsResponse;
+  let intake: IntakeSessionsResponse;
+  let queues: QueuesResponse;
+  try {
+    [session, capabilities, overview, matters, signatures, intake, queues] = await Promise.all([
+      apiGet<SessionResponse>("/api/session", headers),
+      apiGet<CapabilitiesResponse>("/api/capabilities", headers),
+      apiGet<PracticeOverview>("/api/overview", headers),
+      apiGet<MatterSummary[]>("/api/matters", headers),
+      apiGet<SignatureRequestsResponse>("/api/signature-requests", headers),
+      apiGet<IntakeSessionsResponse>("/api/intake-sessions", headers),
+      apiGet<QueuesResponse>("/api/queues", headers),
+    ]);
+  } catch (error) {
+    if (
+      error instanceof ApiRequestError &&
+      selectStartupView(setupStatus, error.status) === "login"
+    ) {
+      return <LoginClient apiBaseUrl={apiBaseUrl} />;
+    }
+    throw error;
+  }
   const billingFallback = buildBillingFallback(matters, session);
   const billing = await apiGetOptional<BillingDashboardResponse>(
     "/api/billing/dashboard",
     billingFallback,
+    headers,
     {
       ...billingFallback,
       canView: false,
@@ -133,7 +194,7 @@ export default async function Home() {
       apiBaseUrl={apiBaseUrl}
       billing={billing}
       capabilities={capabilities}
-      devHeaders={devHeaders}
+      devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}
       intake={intake}
       matters={matters}
       overview={overview}

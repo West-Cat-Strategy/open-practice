@@ -14,14 +14,37 @@ Open Practice is a TypeScript monorepo with a matter-centered legal domain core.
 
 - PostgreSQL is the source of truth for legal records.
 - S3-compatible object storage holds document binaries; the database stores metadata, checksums, versions, scan state, legal hold, and access grants.
+- Redis and BullMQ are accepted for optional background job delivery, retries, and worker concurrency only. Queue state must not become the legal source of truth.
 - Matter-scoped RBAC is implemented in core first, with a boundary that can later move to OpenFGA.
 - Audit events are append-only and hash chained to detect tampering.
 - Trust/funds entries are balanced double-entry transactions with idempotency and no matter-level overdrafts.
 - E-signing and document automation are embedded local workflows. Open Practice owns signature events, consent evidence, intake answers, and generated-document metadata.
 - Concrete provider adapters live outside `packages/domain`; the domain package exports provider-neutral contracts and legal rules only.
+- OCR, transcription, AI assistance, rich-text editing, passkeys, and outbound email are optional provider surfaces. They must be disabled by default until their deployment profile, authorization checks, and review states are implemented.
 - Production authentication uses embedded Postgres-backed sessions. Development may still use local header/JWT helpers.
 - Planning lives in `docs/planning.md`, and live tracked work lives in `docs/planning-and-progress.md`.
 - API route ownership is moving toward module-owned Fastify registrars under `apps/api/src/routes`; `apps/api/src/server.ts` remains responsible for bootstrap, authentication hooks, environment setup, and central error handling.
+
+## Runtime Topology
+
+The default runtime is browser to Next.js web, then Fastify API, then repository/domain code backed by
+PostgreSQL and private S3-compatible object storage. PostgreSQL stores legal records, session state,
+audit chains, document metadata, billing records, and trust/funds records.
+
+The worker profile adds Redis/BullMQ beside the API. API routes enqueue small job commands with record
+IDs, actor IDs, matter IDs, and idempotency keys. Workers load the current record from PostgreSQL,
+read/write private object storage after service authorization, call provider adapters, and persist
+results back to PostgreSQL. Redis can be rebuilt from durable records and must not contain raw document,
+intake, audio, transcript, billing, trust, or privileged text.
+
+Planned worker groups:
+
+- Document workers: Tesseract OCR and scan-derived metadata.
+- Media workers: FFmpeg normalization and Whisper transcription.
+- Assistive workers: Ollama-backed summarization/classification/drafting aids with review state.
+- Mail workers: Mailpit in development and Postal only behind an approved production profile.
+- Auth/content workers: SimpleWebAuthn passkey challenges and TipTap draft/template processing as
+  embedded app features, not third-party SaaS.
 
 ## Reference-Informed Boundaries
 
@@ -34,8 +57,16 @@ Open Practice is a TypeScript monorepo with a matter-centered legal domain core.
 
 ## Local Services
 
-`docker-compose.yml` provides PostgreSQL, S3-compatible storage via MinIO, and Mailpit. Signature, intake, and auth workflows run in the app/database instead of optional provider containers.
+`docker-compose.yml` provides PostgreSQL, S3-compatible storage via MinIO, Mailpit, and Redis. Signature,
+intake, and auth workflows run in the app/database instead of optional provider containers. Redis backs
+the scaffolded BullMQ worker runtime, while PostgreSQL remains the durable job/audit record. Postal,
+Ollama, Tesseract, Whisper, and FFmpeg are documented provider choices, but their processors stay
+disabled until setup and deployment profiles configure them.
 
 ## Security Posture
 
 The app assumes server-side authorization for every matter, document, portal message, signature request, trust entry, and audit event. The UI may hide controls, but the API and domain layer remain the enforcement boundary.
+
+Self-hosting is the privacy default. Optional providers run in local/private networks, receive the
+minimum record IDs and content required for the job, and write provenance back to PostgreSQL. SaaS
+substitutions require a deployment profile, privacy review, and docs update before use.

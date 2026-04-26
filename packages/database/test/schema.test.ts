@@ -5,16 +5,36 @@ import {
   authAccounts,
   authPasswordSetupTokens,
   authSessions,
+  accessLogs,
+  aiTriageRecords,
+  authActionTokens,
+  authChallenges,
   billingTrustTransferRequests,
+  documentTextExtractions,
+  documentVersions,
   documents,
+  emailEvents,
+  emailOutbox,
+  externalUploadLinks,
+  firmSettings,
+  inboundEmailAddresses,
+  inboundEmailAttachments,
+  inboundEmailMessages,
   invoiceLines,
   invoices,
   intakeSessions,
+  jobLifecycleRecords,
   manualPayments,
+  mediaDerivatives,
+  mediaTranscripts,
   paymentAllocations,
+  providerSettings,
+  recoveryCodes,
+  shareLinks,
   signatureProviderEvents,
   signatureRequestSigners,
   signatureRequests,
+  totpCredentials,
   trustReconciliations,
   trustLedgerEntries,
   trustTransactionApprovals,
@@ -85,6 +105,108 @@ describe("database schema hardening", () => {
     );
     expect(getTableConfig(authPasswordSetupTokens).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["token_hash", "expires_at", "used_at", "created_by_user_id"]),
+    );
+  });
+
+  it("persists first-run firm settings", () => {
+    expect(getTableConfig(firmSettings).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "business_address",
+        "office_email",
+        "office_phone",
+        "practice_areas",
+        "invoice_prefix",
+        "default_payment_terms_days",
+        "trust_account_label",
+        "trust_funds_caveat_accepted_at",
+        "trust_funds_caveat_accepted_by_user_id",
+      ]),
+    );
+  });
+
+  it("persists provider settings and queue lifecycle records", () => {
+    expect(getTableConfig(providerSettings).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["firm_id", "kind", "key", "enabled", "encrypted_config"]),
+    );
+    expect(getTableConfig(jobLifecycleRecords).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "queue_name",
+        "job_name",
+        "bull_job_id",
+        "status",
+        "attempts_made",
+        "max_attempts",
+        "metadata",
+      ]),
+    );
+  });
+
+  it("persists email, inbound, and AI triage workflow tables", () => {
+    expect(getTableConfig(emailOutbox).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["template_key", "status", "to_addresses", "html_body", "text_body"]),
+    );
+    expect(getTableConfig(emailEvents).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["email_id", "event_type", "provider_message_id", "metadata"]),
+    );
+    expect(getTableConfig(inboundEmailAddresses).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["firm_id", "address", "matter_id", "enabled"]),
+    );
+    expect(getTableConfig(inboundEmailMessages).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["raw_storage_key", "parsed_text", "labels", "status"]),
+    );
+    expect(getTableConfig(inboundEmailAttachments).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["inbound_message_id", "document_id", "storage_key"]),
+    );
+    expect(getTableConfig(aiTriageRecords).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "source_type",
+        "source_id",
+        "provider",
+        "model",
+        "classification",
+        "extracted_entities",
+      ]),
+    );
+  });
+
+  it("persists passkey, TOTP, and recovery records", () => {
+    expect(getTableConfig(authChallenges).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["challenge_hash", "purpose", "expires_at", "consumed_at"]),
+    );
+    expect(getTableConfig(authActionTokens).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["token_hash", "purpose", "expires_at", "consumed_at"]),
+    );
+    expect(getTableConfig(totpCredentials).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["encrypted_secret", "verified_at", "disabled_at"]),
+    );
+    expect(getTableConfig(recoveryCodes).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["code_hash", "used_at"]),
+    );
+  });
+
+  it("persists document processing, sharing, and external upload records", () => {
+    expect(getTableConfig(documentVersions).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["document_id", "version", "storage_key", "editor_json"]),
+    );
+    expect(getTableConfig(documentTextExtractions).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["document_id", "engine", "language", "confidence", "extracted_text"]),
+    );
+    expect(getTableConfig(mediaTranscripts).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["document_id", "engine", "model", "transcript_storage_key"]),
+    );
+    expect(getTableConfig(mediaDerivatives).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["document_id", "kind", "storage_key", "content_type"]),
+    );
+    expect(getTableConfig(shareLinks).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["matter_id", "token_hash", "permissions", "expires_at"]),
+    );
+    expect(getTableConfig(externalUploadLinks).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["matter_id", "token_hash", "max_uploads", "used_uploads"]),
+    );
+    expect(getTableConfig(accessLogs).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["resource_type", "resource_id", "action", "occurred_at"]),
     );
   });
 

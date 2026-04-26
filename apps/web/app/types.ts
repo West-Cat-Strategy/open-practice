@@ -135,3 +135,10 @@ export interface QueueSection {
 export interface QueuesResponse {
   sections: QueueSection[];
 }
+
+export interface SetupStatusResponse {
+  required: boolean;
+  blocked: boolean;
+  reason?: string;
+  setupKeyRequired: boolean;
+}

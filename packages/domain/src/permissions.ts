@@ -19,7 +19,15 @@ export type ResourceKind =
   | "task"
   | "calendar_event"
   | "audit_log"
-  | "intake_session";
+  | "intake_session"
+  | "job"
+  | "email"
+  | "inbound_email"
+  | "document_processing"
+  | "share_link"
+  | "external_upload"
+  | "auth_credential"
+  | "provider_setting";
 
 export type Action = "create" | "read" | "update" | "delete" | "approve" | "export";
 
@@ -49,6 +57,14 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     calendar_event: ["create", "read", "update", "delete"],
     audit_log: ["read", "export"],
     intake_session: ["create", "read", "update", "delete", "approve", "export"],
+    job: ["read", "update", "export"],
+    email: ["create", "read", "update", "export"],
+    inbound_email: ["create", "read", "update", "delete", "export"],
+    document_processing: ["create", "read", "update", "export"],
+    share_link: ["create", "read", "update", "delete", "export"],
+    external_upload: ["create", "read", "update", "delete", "export"],
+    auth_credential: ["create", "read", "update", "delete", "approve"],
+    provider_setting: ["create", "read", "update", "delete", "approve", "export"],
   },
   licensee: {
     contact: ["create", "read", "update", "export"],
@@ -63,6 +79,13 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     calendar_event: ["create", "read", "update", "delete"],
     audit_log: ["read"],
     intake_session: ["create", "read", "update", "approve", "export"],
+    job: ["read"],
+    email: ["create", "read", "update"],
+    inbound_email: ["create", "read", "update"],
+    document_processing: ["create", "read", "update"],
+    share_link: ["create", "read", "update", "delete"],
+    external_upload: ["create", "read", "update", "delete"],
+    auth_credential: ["create", "read", "update", "delete"],
   },
   firm_member: {
     contact: ["create", "read", "update"],
@@ -75,6 +98,12 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     task: ["create", "read", "update", "delete"],
     calendar_event: ["create", "read", "update", "delete"],
     intake_session: ["create", "read", "update"],
+    email: ["create", "read"],
+    inbound_email: ["read", "update"],
+    document_processing: ["create", "read"],
+    share_link: ["read"],
+    external_upload: ["create", "read"],
+    auth_credential: ["read", "update"],
   },
   billing_bookkeeper: {
     contact: ["read"],
@@ -84,6 +113,9 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     expense_entry: ["create", "read", "update", "export"],
     audit_log: ["read"],
     intake_session: ["read"],
+    job: ["read"],
+    email: ["read"],
+    inbound_email: ["read"],
   },
   client_external: {
     document: ["create", "read"],
@@ -91,6 +123,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     signature_request: ["read", "approve"],
     calendar_event: ["read"],
     intake_session: ["read"],
+    external_upload: ["create", "read"],
   },
   auditor: {
     firm: ["read"],
@@ -103,6 +136,14 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     expense_entry: ["read", "export"],
     audit_log: ["read", "export"],
     intake_session: ["read", "export"],
+    job: ["read", "export"],
+    email: ["read", "export"],
+    inbound_email: ["read", "export"],
+    document_processing: ["read", "export"],
+    share_link: ["read", "export"],
+    external_upload: ["read", "export"],
+    auth_credential: ["read"],
+    provider_setting: ["read"],
   },
 };
 
@@ -117,6 +158,11 @@ const matterScopedResources = new Set<ResourceKind>([
   "task",
   "calendar_event",
   "intake_session",
+  "email",
+  "inbound_email",
+  "document_processing",
+  "share_link",
+  "external_upload",
 ]);
 
 const portalPermissionByResourceAction: Partial<
@@ -129,6 +175,10 @@ const portalPermissionByResourceAction: Partial<
   portal_message: {
     create: "message",
     read: "message",
+  },
+  external_upload: {
+    create: "upload_documents",
+    read: "upload_documents",
   },
   signature_request: {
     read: "sign",
