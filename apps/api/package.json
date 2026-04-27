@@ -22,7 +22,7 @@
     "@open-practice/providers": "workspace:*",
     "@simplewebauthn/server": "^13.3.0",
     "fastify": "latest",
-    "jose": "^6.2.2",
+    "jose": "^6.2.3",
     "tsx": "latest",
     "zod": "latest"
   },
