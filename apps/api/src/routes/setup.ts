@@ -155,6 +155,8 @@ function firmId(name: string): string {
   return `firm-${slug}-${randomUUID().slice(0, 8)}`;
 }
 
+const SETUP_RATE_LIMIT = { max: 5, timeWindow: "15 minutes" };
+
 export function registerSetupRoutes(
   server: FastifyInstance,
   options: SetupRouteDependencies,
@@ -166,7 +168,7 @@ export function registerSetupRoutes(
 
   server.post(
     "/api/setup/webauthn-options",
-    { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
+    { config: { rateLimit: SETUP_RATE_LIMIT } },
     async (request) => {
       const status = await options.repository.getSetupStatus();
       if (!status.required || status.blocked) {
@@ -204,10 +206,12 @@ export function registerSetupRoutes(
     },
   );
 
-  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before setup routes, with this route capped at 5 attempts per 15 minutes.
   server.post(
     "/api/setup/complete",
-    { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
+    {
+      preHandler: server.rateLimit(SETUP_RATE_LIMIT),
+      config: { rateLimit: SETUP_RATE_LIMIT },
+    },
     async (request, reply) => {
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {

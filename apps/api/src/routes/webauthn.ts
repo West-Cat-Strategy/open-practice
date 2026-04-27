@@ -17,6 +17,8 @@ import {
 } from "../http/auth-helpers.js";
 
 const registrationVerifySchema = z.object({
+  firmId: z.string().min(1),
+  email: z.string().email(),
   response: z.any(),
 });
 
@@ -31,6 +33,8 @@ const loginVerifySchema = z.object({
   response: z.any(),
 });
 
+const WEBAUTHN_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };
+
 export function registerWebAuthnRoutes(
   server: FastifyInstance,
   options: {
@@ -43,16 +47,10 @@ export function registerWebAuthnRoutes(
     origin: string;
   },
 ): void {
+  // codeql[js/missing-rate-limiting] Rate-limited via the global @fastify/rate-limit plugin (global:true) and per-route config override.
   server.get(
     "/api/auth/register/options",
-    {
-      config: {
-        rateLimit: {
-          max: 10,
-          timeWindow: "1 minute",
-        },
-      },
-    },
+    { config: { rateLimit: WEBAUTHN_RATE_LIMIT } },
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
@@ -93,16 +91,10 @@ export function registerWebAuthnRoutes(
     },
   );
 
+  // codeql[js/missing-rate-limiting] Rate-limited via the global @fastify/rate-limit plugin (global:true) and per-route config override.
   server.post(
     "/api/auth/register/verify",
-    {
-      config: {
-        rateLimit: {
-          max: 10,
-          timeWindow: "1 minute",
-        },
-      },
-    },
+    { config: { rateLimit: WEBAUTHN_RATE_LIMIT } },
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
@@ -148,18 +140,7 @@ export function registerWebAuthnRoutes(
 
   server.post(
     "/api/auth/login/options",
-    {
-      preHandler: server.rateLimit({
-        max: 10,
-        timeWindow: "1 minute",
-      }),
-      config: {
-        rateLimit: {
-          max: 10,
-          timeWindow: "1 minute",
-        },
-      },
-    },
+    { config: { rateLimit: WEBAUTHN_RATE_LIMIT } },
     async (request) => {
       const body = loginOptionsSchema.parse(request.body);
       const user = await options.repository.getUserByEmail(body.firmId, body.email);
@@ -182,33 +163,37 @@ export function registerWebAuthnRoutes(
       await options.repository.createWebAuthnChallenge({
         id: crypto.randomUUID(),
         firmId: user.firmId,
+        userId: user.id,
+        challengeHash: authOptions.challenge,
+        purpose: "passkey_authentication",
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        createdAt: new Date().toISOString(),
+      });
+
+      return authOptions;
+    },
+  );
+
   server.post(
     "/api/auth/login/verify",
-    {
-      config: {
-        rateLimit: {
-          max: 10,
-          timeWindow: "1 minute",
-        },
-      },
-    },
+    { config: { rateLimit: WEBAUTHN_RATE_LIMIT } },
     async (request, reply) => {
       const body = loginVerifySchema.parse(request.body);
       const user = await options.repository.getUserByEmail(body.firmId, body.email);
       if (!user) throw Object.assign(new Error("User not found"), { statusCode: 404 });
-        createdAt: new Date().toISOString(),
+
       const challenge = await options.repository.getWebAuthnChallenge(body.response.challenge);
       if (!challenge || challenge.purpose !== "passkey_authentication" || challenge.consumedAt) {
         throw Object.assign(new Error("Invalid or expired challenge"), { statusCode: 400 });
       }
-  );
+
       const credentialId = body.response.id;
       const credential = await options.repository.getWebAuthnCredential(credentialId);
-    const body = loginVerifySchema.parse(request.body);
+
       if (!credential || credential.userId !== user.id) {
         throw Object.assign(new Error("Credential not found"), { statusCode: 400 });
       }
-    const challenge = await options.repository.getWebAuthnChallenge(body.response.challenge);
+
       const verification = await verifyAuthenticationResponse({
         response: body.response,
         expectedChallenge: challenge.challengeHash,
@@ -221,14 +206,13 @@ export function registerWebAuthnRoutes(
           transports: credential.transports as AuthenticatorTransport[],
         },
       });
-      response: body.response,
+
       if (verification.verified) {
         await options.repository.updateWebAuthnCredentialCounter(
           credential.id,
           verification.authenticationInfo.newCounter,
         );
-        publicKey: Buffer.from(credential.publicKey, "base64url"),
-        // Create session
+
         const token = createSessionToken();
         const now = new Date();
         const expiresAt = new Date(
@@ -242,23 +226,12 @@ export function registerWebAuthnRoutes(
           createdAt: now.toISOString(),
           expiresAt,
         });
-      const expiresAt = new Date(
+
         reply.header("set-cookie", sessionCookie(token, expiresAt, options.nodeEnv === "production"));
         return { user, session: { id: session.id, expiresAt }, token };
       }
-        id: crypto.randomUUID(),
+
       throw Object.assign(new Error("Verification failed"), { statusCode: 400 });
     },
   );
-        tokenHash: hashToken(token, options.jwtSecret!),
-        createdAt: now.toISOString(),
-        expiresAt,
-      });
-
-      reply.header("set-cookie", sessionCookie(token, expiresAt, options.nodeEnv === "production"));
-      return { user, session: { id: session.id, expiresAt }, token };
-    }
-
-    throw Object.assign(new Error("Verification failed"), { statusCode: 400 });
-  });
 }
