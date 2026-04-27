@@ -35,6 +35,8 @@ import {
   type TimeEntry,
   type TrustTransferRequestRecord,
   type User,
+  type WebAuthnChallengeRecord,
+  type WebAuthnCredentialRecord,
 } from "@open-practice/domain";
 import {
   sampleAuditEvents,
@@ -158,6 +160,7 @@ export interface FirstRunSetupInput {
   owner: User;
   ownerPasswordHash: string;
   ownerPasswordUpdatedAt: string;
+  webAuthnCredential?: WebAuthnCredentialRecord;
   firstContact?: Contact;
   firstMatter?: Matter;
   firstMatterParty?: MatterParty;
@@ -232,6 +235,12 @@ export interface OpenPracticeRepository {
     tokenHash: string,
     usedAt: string,
   ): Promise<AuthPasswordSetupTokenRecord | undefined>;
+  createWebAuthnChallenge(challenge: WebAuthnChallengeRecord): Promise<WebAuthnChallengeRecord>;
+  getWebAuthnChallenge(challengeHash: string): Promise<WebAuthnChallengeRecord | undefined>;
+  registerWebAuthnCredential(credential: WebAuthnCredentialRecord): Promise<WebAuthnCredentialRecord>;
+  listWebAuthnCredentials(firmId: string, userId: string): Promise<WebAuthnCredentialRecord[]>;
+  getWebAuthnCredential(credentialId: string): Promise<WebAuthnCredentialRecord | undefined>;
+  updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void>;
   getOverview(firmId: string): Promise<PracticeOverview>;
   listMattersForUser(user: User): Promise<MatterSummary[]>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
@@ -407,6 +416,38 @@ function mapAuthSessionRow(row: typeof schema.authSessions.$inferSelect): AuthSe
     expiresAt: row.expiresAt.toISOString(),
     revokedAt: dateToIso(row.revokedAt),
     lastSeenAt: dateToIso(row.lastSeenAt),
+  };
+}
+
+function mapWebAuthnCredentialRow(
+  row: typeof schema.webAuthnCredentials.$inferSelect,
+): WebAuthnCredentialRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    userId: row.userId,
+    credentialId: row.credentialId,
+    publicKey: row.publicKey,
+    counter: row.counter,
+    transports: row.transports,
+    deviceType: row.deviceType,
+    backedUp: row.backedUp,
+    createdAt: row.createdAt.toISOString(),
+    lastUsedAt: dateToIso(row.lastUsedAt),
+    disabledAt: dateToIso(row.disabledAt),
+  };
+}
+
+function mapAuthChallengeRow(row: typeof schema.authChallenges.$inferSelect): WebAuthnChallengeRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    userId: row.userId ?? undefined,
+    challengeHash: row.challengeHash,
+    purpose: row.purpose,
+    expiresAt: row.expiresAt.toISOString(),
+    consumedAt: dateToIso(row.consumedAt),
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -778,6 +819,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private authAccounts: AuthAccountRecord[] = [];
   private authSessions: AuthSessionRecord[] = [];
   private passwordSetupTokens: AuthPasswordSetupTokenRecord[] = [];
+  private authChallenges: WebAuthnChallengeRecord[] = [];
+  private webAuthnCredentials: WebAuthnCredentialRecord[] = [];
   private auditEvents: AuditEvent[];
   private postedTransactions: PostedLedgerTransaction[];
 
@@ -843,6 +886,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     if (input.firstContact) this.contacts = [clone(input.firstContact)];
     if (input.firstMatter) this.matters = [clone(input.firstMatter)];
     if (input.firstMatterParty) this.matterParties = [clone(input.firstMatterParty)];
+    if (input.webAuthnCredential) this.webAuthnCredentials = [clone(input.webAuthnCredential)];
     this.auditEvents = [clone(input.auditEvent)];
 
     return {
@@ -1003,6 +1047,36 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     }
     token.usedAt = usedAt;
     return clone(token);
+  }
+
+  async createWebAuthnChallenge(challenge: WebAuthnChallengeRecord): Promise<WebAuthnChallengeRecord> {
+    this.authChallenges = [...this.authChallenges, clone(challenge)];
+    return clone(challenge);
+  }
+
+  async getWebAuthnChallenge(challengeHash: string): Promise<WebAuthnChallengeRecord | undefined> {
+    return clone(this.authChallenges.find((c) => c.challengeHash === challengeHash));
+  }
+
+  async registerWebAuthnCredential(credential: WebAuthnCredentialRecord): Promise<WebAuthnCredentialRecord> {
+    this.webAuthnCredentials = [...this.webAuthnCredentials, clone(credential)];
+    return clone(credential);
+  }
+
+  async listWebAuthnCredentials(firmId: string, userId: string): Promise<WebAuthnCredentialRecord[]> {
+    return clone(this.webAuthnCredentials.filter((c) => c.firmId === firmId && c.userId === userId));
+  }
+
+  async getWebAuthnCredential(credentialId: string): Promise<WebAuthnCredentialRecord | undefined> {
+    return clone(this.webAuthnCredentials.find((c) => c.credentialId === credentialId));
+  }
+
+  async updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void> {
+    const cred = this.webAuthnCredentials.find((c) => c.id === id);
+    if (cred) {
+      cred.counter = counter;
+      cred.lastUsedAt = new Date().toISOString();
+    }
   }
 
   async getOverview(firmId: string): Promise<PracticeOverview> {
@@ -1729,6 +1803,18 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       if (input.firstMatterParty) {
         await tx.insert(schema.matterParties).values(input.firstMatterParty);
       }
+      if (input.webAuthnCredential) {
+        await tx.insert(schema.webAuthnCredentials).values({
+          ...input.webAuthnCredential,
+          createdAt: new Date(input.webAuthnCredential.createdAt),
+          lastUsedAt: input.webAuthnCredential.lastUsedAt
+            ? new Date(input.webAuthnCredential.lastUsedAt)
+            : null,
+          disabledAt: input.webAuthnCredential.disabledAt
+            ? new Date(input.webAuthnCredential.disabledAt)
+            : null,
+        });
+      }
       await tx.insert(schema.auditEvents).values({
         ...input.auditEvent,
         occurredAt: new Date(input.auditEvent.occurredAt),
@@ -1970,6 +2056,72 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .where(eq(schema.authPasswordSetupTokens.tokenHash, tokenHash))
       .returning();
     return updated ? mapPasswordSetupTokenRow(updated) : undefined;
+  }
+
+  async createWebAuthnChallenge(challenge: WebAuthnChallengeRecord): Promise<WebAuthnChallengeRecord> {
+    const [row] = await this.db
+      .insert(schema.authChallenges)
+      .values({
+        id: challenge.id,
+        firmId: challenge.firmId,
+        userId: challenge.userId,
+        challengeHash: challenge.challengeHash,
+        purpose: challenge.purpose,
+        expiresAt: new Date(challenge.expiresAt),
+        createdAt: new Date(challenge.createdAt),
+      })
+      .returning();
+    return mapAuthChallengeRow(row);
+  }
+
+  async getWebAuthnChallenge(challengeHash: string): Promise<WebAuthnChallengeRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.authChallenges)
+      .where(eq(schema.authChallenges.challengeHash, challengeHash));
+    return row ? mapAuthChallengeRow(row) : undefined;
+  }
+
+  async registerWebAuthnCredential(credential: WebAuthnCredentialRecord): Promise<WebAuthnCredentialRecord> {
+    const [row] = await this.db
+      .insert(schema.webAuthnCredentials)
+      .values({
+        id: credential.id,
+        firmId: credential.firmId,
+        userId: credential.userId,
+        credentialId: credential.credentialId,
+        publicKey: credential.publicKey,
+        counter: credential.counter,
+        transports: credential.transports,
+        deviceType: credential.deviceType,
+        backedUp: credential.backedUp,
+        createdAt: new Date(credential.createdAt),
+      })
+      .returning();
+    return mapWebAuthnCredentialRow(row);
+  }
+
+  async listWebAuthnCredentials(firmId: string, userId: string): Promise<WebAuthnCredentialRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.webAuthnCredentials)
+      .where(and(eq(schema.webAuthnCredentials.firmId, firmId), eq(schema.webAuthnCredentials.userId, userId)));
+    return rows.map(mapWebAuthnCredentialRow);
+  }
+
+  async getWebAuthnCredential(credentialId: string): Promise<WebAuthnCredentialRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.webAuthnCredentials)
+      .where(eq(schema.webAuthnCredentials.credentialId, credentialId));
+    return row ? mapWebAuthnCredentialRow(row) : undefined;
+  }
+
+  async updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void> {
+    await this.db
+      .update(schema.webAuthnCredentials)
+      .set({ counter, lastUsedAt: new Date() })
+      .where(eq(schema.webAuthnCredentials.id, id));
   }
 
   async getOverview(firmId: string): Promise<PracticeOverview> {

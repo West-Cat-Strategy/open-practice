@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "latest",
+    "typescript": "latest",
     "typescript-eslint": "latest"
   }
 }

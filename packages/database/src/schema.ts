@@ -269,6 +269,8 @@ export const webAuthnCredentials = pgTable(
     publicKey: text("public_key").notNull(),
     counter: integer("counter").notNull().default(0),
     transports: jsonb("transports").$type<string[]>().notNull().default([]),
+    deviceType: text("device_type").$type<"singleDevice" | "multiDevice">().notNull().default("singleDevice"),
+    backedUp: boolean("backed_up").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     disabledAt: timestamp("disabled_at", { withTimezone: true }),

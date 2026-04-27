@@ -243,12 +243,14 @@ export interface WebAuthnCredentialRecord {
   publicKey: string;
   counter: number;
   transports: string[];
+  deviceType: "singleDevice" | "multiDevice";
+  backedUp: boolean;
   createdAt: string;
   lastUsedAt?: string;
   disabledAt?: string;
 }
 
-export interface AuthChallengeRecord {
+export interface WebAuthnChallengeRecord {
   id: string;
   firmId: string;
   userId?: string;

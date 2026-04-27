@@ -20,6 +20,7 @@
     "@open-practice/database": "workspace:^",
     "@open-practice/domain": "workspace:*",
     "@open-practice/providers": "workspace:*",
+    "@simplewebauthn/server": "^13.3.0",
     "fastify": "latest",
     "jose": "^6.2.2",
     "tsx": "latest",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@eslint/js": "latest",
+    "typescript": "latest",
     "typescript-eslint": "latest"
   }
 }

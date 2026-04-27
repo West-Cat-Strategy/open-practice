@@ -36,6 +36,16 @@ const setupBodySchema = z.object({
     displayName: z.string().trim().min(1),
     email: z.string().trim().email(),
     password: z.string().min(8),
+    webAuthn: z
+      .object({
+        id: z.string(),
+        rawId: z.string(),
+        response: z.any(),
+        type: z.literal("public-key"),
+        clientExtensionResults: z.any(),
+        challengeHash: z.string(),
+      })
+      .optional(),
   }),
   firstMatter: z
     .object({
@@ -61,6 +71,9 @@ export interface SetupRouteDependencies {
   hashToken: (token: string, secret: string) => string;
   createSessionToken: () => string;
   sessionCookie: (token: string, expiresAt: string, secure: boolean) => string;
+  rpName: string;
+  rpID: string;
+  origin: string;
 }
 
 function setupKeyRequired(options: Pick<SetupRouteDependencies, "nodeEnv" | "setupKey">): boolean {
@@ -140,6 +153,42 @@ export function registerSetupRoutes(
     ...(await options.repository.getSetupStatus()),
     setupKeyRequired: setupKeyRequired(options),
   }));
+  
+  server.post("/api/setup/webauthn-options", async (request) => {
+    const status = await options.repository.getSetupStatus();
+    if (!status.required || status.blocked) {
+      throw Object.assign(new Error("Setup not available"), { statusCode: 409 });
+    }
+    assertSetupGate(request, options);
+    
+    const body = z.object({ email: z.string().email() }).parse(request.body);
+    const userId = id("user"); // Temp ID for registration
+    
+    const { generateRegistrationOptions } = await import("@simplewebauthn/server");
+    const registrationOptions = await generateRegistrationOptions({
+      rpName: options.rpName,
+      rpID: options.rpID,
+      userID: userId,
+      userName: body.email,
+      attestationType: "none",
+      authenticatorSelection: {
+        residentKey: "required",
+        userVerification: "preferred",
+      },
+    });
+
+    await options.repository.createWebAuthnChallenge({
+      id: id("challenge"),
+      firmId: "setup", // Placeholder firmId
+      userId,
+      challengeHash: registrationOptions.challenge,
+      purpose: "passkey_registration",
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+
+    return registrationOptions;
+  });
 
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before setup routes, with this route capped at 5 attempts per 15 minutes.
   server.post(
@@ -225,6 +274,46 @@ export function registerSetupRoutes(
             }
           : undefined;
 
+      let webAuthnCredential;
+      if (body.owner.webAuthn) {
+        const { verifyRegistrationResponse } = await import("@simplewebauthn/server");
+        const challenge = await options.repository.getWebAuthnChallenge(
+          body.owner.webAuthn.challengeHash,
+        );
+        if (!challenge || challenge.purpose !== "passkey_registration" || challenge.consumedAt) {
+          throw Object.assign(new Error("Invalid or expired WebAuthn challenge"), {
+            statusCode: 400,
+          });
+        }
+        const verification = await verifyRegistrationResponse({
+          response: body.owner.webAuthn,
+          expectedChallenge: challenge.challengeHash,
+          expectedOrigin: options.origin,
+          expectedRPID: options.rpID,
+        });
+        if (verification.verified && verification.registrationInfo) {
+          const {
+            credentialID,
+            credentialPublicKey,
+            counter,
+            credentialDeviceType,
+            credentialBackedUp,
+          } = verification.registrationInfo;
+          webAuthnCredential = {
+            id: id("cred"),
+            firmId: newFirmId,
+            userId: ownerId,
+            credentialId: Buffer.from(credentialID).toString("base64url"),
+            publicKey: Buffer.from(credentialPublicKey).toString("base64url"),
+            counter,
+            transports: body.owner.webAuthn.response.transports || [],
+            deviceType: credentialDeviceType,
+            backedUp: credentialBackedUp,
+            createdAt: nowIso,
+          };
+        }
+      }
+
       const result = await options.repository
         .completeFirstRunSetup({
           firm: {
@@ -249,6 +338,7 @@ export function registerSetupRoutes(
           owner,
           ownerPasswordHash: options.hashPassword(body.owner.password),
           ownerPasswordUpdatedAt: nowIso,
+          webAuthnCredential,
           firstContact,
           firstMatter,
           firstMatterParty,

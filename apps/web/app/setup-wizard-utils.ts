@@ -31,6 +31,7 @@ export interface SetupWizardState {
   matterTitle: string;
   matterPracticeArea: string;
   matterJurisdiction: string;
+  webAuthnCredential?: any;
 }
 
 export interface SetupValidationResult {
