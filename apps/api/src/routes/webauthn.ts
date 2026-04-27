@@ -49,7 +49,10 @@ export function registerWebAuthnRoutes(
   // codeql[js/missing-rate-limiting] Rate-limited via the global @fastify/rate-limit plugin (global:true) and per-route config override.
   server.post(
     "/api/auth/register/options",
-    { config: { rateLimit: WEBAUTHN_RATE_LIMIT } },
+    {
+      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
+      config: { rateLimit: WEBAUTHN_RATE_LIMIT },
+    },
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
@@ -93,7 +96,10 @@ export function registerWebAuthnRoutes(
   // codeql[js/missing-rate-limiting] Rate-limited via the global @fastify/rate-limit plugin (global:true) and per-route config override.
   server.post(
     "/api/auth/register/verify",
-    { config: { rateLimit: WEBAUTHN_RATE_LIMIT } },
+    {
+      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
+      config: { rateLimit: WEBAUTHN_RATE_LIMIT },
+    },
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
@@ -139,7 +145,10 @@ export function registerWebAuthnRoutes(
 
   server.post(
     "/api/auth/login/options",
-    { config: { rateLimit: WEBAUTHN_RATE_LIMIT } },
+    {
+      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
+      config: { rateLimit: WEBAUTHN_RATE_LIMIT },
+    },
     async (request) => {
       const body = loginOptionsSchema.parse(request.body);
       const user = await options.repository.getUserByEmail(body.firmId, body.email);
@@ -175,7 +184,10 @@ export function registerWebAuthnRoutes(
 
   server.post(
     "/api/auth/login/verify",
-    { config: { rateLimit: WEBAUTHN_RATE_LIMIT } },
+    {
+      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
+      config: { rateLimit: WEBAUTHN_RATE_LIMIT },
+    },
     async (request, reply) => {
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {

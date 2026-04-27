@@ -168,7 +168,10 @@ export function registerSetupRoutes(
 
   server.post(
     "/api/setup/webauthn-options",
-    { config: { rateLimit: SETUP_RATE_LIMIT } },
+    {
+      preHandler: server.rateLimit(SETUP_RATE_LIMIT),
+      config: { rateLimit: SETUP_RATE_LIMIT },
+    },
     async (request) => {
       const status = await options.repository.getSetupStatus();
       if (!status.required || status.blocked) {
