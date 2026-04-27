@@ -57,6 +57,13 @@
       "when": 1777252900000,
       "tag": "0007_setup_challenge_nullable_firm",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777324337065,
+      "tag": "0008_needy_valkyrie",
+      "breakpoints": true
     }
   ]
 }

@@ -104,6 +104,11 @@ export const users = pgTable(
     role: userRole("role").notNull(),
     mfaEnabled: boolean("mfa_enabled").notNull().default(false),
     oidcSubject: text("oidc_subject"),
+    practitionerProfile: jsonb("practitioner_profile").$type<{
+      regulator: string;
+      licenseStatus: string;
+      jurisdictions: string[];
+    }>(),
   },
   (table) => ({
     firmEmail: uniqueIndex("users_firm_email_idx").on(table.firmId, table.email),
