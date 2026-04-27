@@ -17,8 +17,6 @@ import {
 } from "../http/auth-helpers.js";
 
 const registrationVerifySchema = z.object({
-  firmId: z.string().min(1),
-  email: z.string().email(),
   response: z.any(),
 });
 
