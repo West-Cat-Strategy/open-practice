@@ -405,7 +405,9 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                       <Fingerprint size={20} />
                     )}
                     <span>
-                      {state.webAuthnCredential ? "Passkey Registered" : "Register a Passkey (Recommended)"}
+                      {state.webAuthnCredential
+                        ? "Passkey Registered"
+                        : "Register a Passkey (Recommended)"}
                     </span>
                   </button>
                   <p className="field-hint">
@@ -429,7 +431,9 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                   <span>Practitioner jurisdictions</span>
                   <textarea
                     placeholder="Enter jurisdictions separated by commas or new lines..."
-                    onChange={(event) => update("practitionerJurisdictionsText", event.target.value)}
+                    onChange={(event) =>
+                      update("practitionerJurisdictionsText", event.target.value)
+                    }
                     rows={3}
                     value={state.practitionerJurisdictionsText}
                   />

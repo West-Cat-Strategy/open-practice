@@ -103,7 +103,8 @@ export function registerWebAuthnRoutes(
     });
 
     if (verification.verified && verification.registrationInfo) {
-      const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+      const { credential, credentialDeviceType, credentialBackedUp } =
+        verification.registrationInfo;
       const { id: credentialID, publicKey, counter } = credential;
 
       await options.repository.registerWebAuthnCredential({
@@ -188,7 +189,10 @@ export function registerWebAuthnRoutes(
     });
 
     if (verification.verified) {
-      await options.repository.updateWebAuthnCredentialCounter(credential.id, verification.authenticationInfo.newCounter);
+      await options.repository.updateWebAuthnCredentialCounter(
+        credential.id,
+        verification.authenticationInfo.newCounter,
+      );
 
       // Create session
       const token = createSessionToken();

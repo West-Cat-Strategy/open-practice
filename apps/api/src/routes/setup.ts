@@ -163,17 +163,17 @@ export function registerSetupRoutes(
     ...(await options.repository.getSetupStatus()),
     setupKeyRequired: setupKeyRequired(options),
   }));
-  
+
   server.post("/api/setup/webauthn-options", async (request) => {
     const status = await options.repository.getSetupStatus();
     if (!status.required || status.blocked) {
       throw Object.assign(new Error("Setup not available"), { statusCode: 409 });
     }
     assertSetupGate(request, options);
-    
+
     const body = z.object({ email: z.string().email() }).parse(request.body);
     const userId = id("user"); // Temp ID for registration
-    
+
     const { generateRegistrationOptions } = await import("@simplewebauthn/server");
     const registrationOptions = await generateRegistrationOptions({
       rpName: options.rpName,
@@ -303,11 +303,8 @@ export function registerSetupRoutes(
           expectedRPID: options.rpID,
         });
         if (verification.verified && verification.registrationInfo) {
-          const {
-            credential,
-            credentialDeviceType,
-            credentialBackedUp,
-          } = verification.registrationInfo;
+          const { credential, credentialDeviceType, credentialBackedUp } =
+            verification.registrationInfo;
           const { id: credentialID, publicKey, counter } = credential;
           webAuthnCredential = {
             id: id("cred"),

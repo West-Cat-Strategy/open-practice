@@ -237,7 +237,9 @@ export interface OpenPracticeRepository {
   ): Promise<AuthPasswordSetupTokenRecord | undefined>;
   createWebAuthnChallenge(challenge: WebAuthnChallengeRecord): Promise<WebAuthnChallengeRecord>;
   getWebAuthnChallenge(challengeHash: string): Promise<WebAuthnChallengeRecord | undefined>;
-  registerWebAuthnCredential(credential: WebAuthnCredentialRecord): Promise<WebAuthnCredentialRecord>;
+  registerWebAuthnCredential(
+    credential: WebAuthnCredentialRecord,
+  ): Promise<WebAuthnCredentialRecord>;
   listWebAuthnCredentials(firmId: string, userId: string): Promise<WebAuthnCredentialRecord[]>;
   getWebAuthnCredential(credentialId: string): Promise<WebAuthnCredentialRecord | undefined>;
   updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void>;
@@ -438,7 +440,9 @@ function mapWebAuthnCredentialRow(
   };
 }
 
-function mapAuthChallengeRow(row: typeof schema.authChallenges.$inferSelect): WebAuthnChallengeRecord {
+function mapAuthChallengeRow(
+  row: typeof schema.authChallenges.$inferSelect,
+): WebAuthnChallengeRecord {
   return {
     id: row.id,
     firmId: row.firmId,
@@ -1052,7 +1056,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(token);
   }
 
-  async createWebAuthnChallenge(challenge: WebAuthnChallengeRecord): Promise<WebAuthnChallengeRecord> {
+  async createWebAuthnChallenge(
+    challenge: WebAuthnChallengeRecord,
+  ): Promise<WebAuthnChallengeRecord> {
     this.authChallenges = [...this.authChallenges, clone(challenge)];
     return clone(challenge);
   }
@@ -1061,13 +1067,20 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(this.authChallenges.find((c) => c.challengeHash === challengeHash));
   }
 
-  async registerWebAuthnCredential(credential: WebAuthnCredentialRecord): Promise<WebAuthnCredentialRecord> {
+  async registerWebAuthnCredential(
+    credential: WebAuthnCredentialRecord,
+  ): Promise<WebAuthnCredentialRecord> {
     this.webAuthnCredentials = [...this.webAuthnCredentials, clone(credential)];
     return clone(credential);
   }
 
-  async listWebAuthnCredentials(firmId: string, userId: string): Promise<WebAuthnCredentialRecord[]> {
-    return clone(this.webAuthnCredentials.filter((c) => c.firmId === firmId && c.userId === userId));
+  async listWebAuthnCredentials(
+    firmId: string,
+    userId: string,
+  ): Promise<WebAuthnCredentialRecord[]> {
+    return clone(
+      this.webAuthnCredentials.filter((c) => c.firmId === firmId && c.userId === userId),
+    );
   }
 
   async getWebAuthnCredential(credentialId: string): Promise<WebAuthnCredentialRecord | undefined> {
@@ -2066,7 +2079,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return updated ? mapPasswordSetupTokenRow(updated) : undefined;
   }
 
-  async createWebAuthnChallenge(challenge: WebAuthnChallengeRecord): Promise<WebAuthnChallengeRecord> {
+  async createWebAuthnChallenge(
+    challenge: WebAuthnChallengeRecord,
+  ): Promise<WebAuthnChallengeRecord> {
     const [row] = await this.db
       .insert(schema.authChallenges)
       .values({
@@ -2090,7 +2105,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return row ? mapAuthChallengeRow(row) : undefined;
   }
 
-  async registerWebAuthnCredential(credential: WebAuthnCredentialRecord): Promise<WebAuthnCredentialRecord> {
+  async registerWebAuthnCredential(
+    credential: WebAuthnCredentialRecord,
+  ): Promise<WebAuthnCredentialRecord> {
     const [row] = await this.db
       .insert(schema.webAuthnCredentials)
       .values({
@@ -2109,11 +2126,19 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return mapWebAuthnCredentialRow(row);
   }
 
-  async listWebAuthnCredentials(firmId: string, userId: string): Promise<WebAuthnCredentialRecord[]> {
+  async listWebAuthnCredentials(
+    firmId: string,
+    userId: string,
+  ): Promise<WebAuthnCredentialRecord[]> {
     const rows = await this.db
       .select()
       .from(schema.webAuthnCredentials)
-      .where(and(eq(schema.webAuthnCredentials.firmId, firmId), eq(schema.webAuthnCredentials.userId, userId)));
+      .where(
+        and(
+          eq(schema.webAuthnCredentials.firmId, firmId),
+          eq(schema.webAuthnCredentials.userId, userId),
+        ),
+      );
     return rows.map(mapWebAuthnCredentialRow);
   }
 

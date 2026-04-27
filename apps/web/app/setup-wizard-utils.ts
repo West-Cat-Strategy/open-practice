@@ -97,8 +97,10 @@ export function validateSetupWizardState(
     errors.push("Owner password confirmation must match.");
   }
   if (!state.practitionerRegulator.trim()) errors.push("Practitioner regulator is required.");
-  if (!state.practitionerLicenseStatus.trim()) errors.push("Practitioner license status is required.");
-  if (jurisdictions.length === 0) errors.push("At least one practitioner jurisdiction is required.");
+  if (!state.practitionerLicenseStatus.trim())
+    errors.push("Practitioner license status is required.");
+  if (jurisdictions.length === 0)
+    errors.push("At least one practitioner jurisdiction is required.");
   if (setupKeyRequired && !state.setupKey.trim()) errors.push("Setup key is required.");
 
   if (state.createFirstMatter) {
