@@ -180,63 +180,74 @@ export function registerWebAuthnRoutes(
       await options.repository.createWebAuthnChallenge({
         id: crypto.randomUUID(),
         firmId: user.firmId,
-        userId: user.id,
-        challengeHash: authOptions.challenge,
-        purpose: "passkey_authentication",
-        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+  server.post(
+    "/api/auth/login/verify",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = loginVerifySchema.parse(request.body);
+      const user = await options.repository.getUserByEmail(body.firmId, body.email);
+      if (!user) throw Object.assign(new Error("User not found"), { statusCode: 404 });
         createdAt: new Date().toISOString(),
+      const challenge = await options.repository.getWebAuthnChallenge(body.response.challenge);
+      if (!challenge || challenge.purpose !== "passkey_authentication" || challenge.consumedAt) {
+        throw Object.assign(new Error("Invalid or expired challenge"), { statusCode: 400 });
+      }
+  );
+      const credentialId = body.response.id;
+      const credential = await options.repository.getWebAuthnCredential(credentialId);
+    const body = loginVerifySchema.parse(request.body);
+      if (!credential || credential.userId !== user.id) {
+        throw Object.assign(new Error("Credential not found"), { statusCode: 400 });
+      }
+    const challenge = await options.repository.getWebAuthnChallenge(body.response.challenge);
+      const verification = await verifyAuthenticationResponse({
+        response: body.response,
+        expectedChallenge: challenge.challengeHash,
+        expectedOrigin: options.origin,
+        expectedRPID: options.rpID,
+        credential: {
+          id: credential.credentialId,
+          publicKey: Buffer.from(credential.publicKey, "base64url"),
+          counter: credential.counter,
+          transports: credential.transports as AuthenticatorTransport[],
+        },
       });
-
-      return authOptions;
+      response: body.response,
+      if (verification.verified) {
+        await options.repository.updateWebAuthnCredentialCounter(
+          credential.id,
+          verification.authenticationInfo.newCounter,
+        );
+        publicKey: Buffer.from(credential.publicKey, "base64url"),
+        // Create session
+        const token = createSessionToken();
+        const now = new Date();
+        const expiresAt = new Date(
+          now.getTime() + (options.sessionTtlHours ?? 12) * 60 * 60 * 1000,
+        ).toISOString();
+        const session = await options.repository.createAuthSession({
+          id: crypto.randomUUID(),
+          firmId: user.firmId,
+          userId: user.id,
+          tokenHash: hashToken(token, options.jwtSecret!),
+          createdAt: now.toISOString(),
+          expiresAt,
+        });
+      const expiresAt = new Date(
+        reply.header("set-cookie", sessionCookie(token, expiresAt, options.nodeEnv === "production"));
+        return { user, session: { id: session.id, expiresAt }, token };
+      }
+        id: crypto.randomUUID(),
+      throw Object.assign(new Error("Verification failed"), { statusCode: 400 });
     },
   );
-
-  server.post("/api/auth/login/verify", async (request, reply) => {
-    const body = loginVerifySchema.parse(request.body);
-    const user = await options.repository.getUserByEmail(body.firmId, body.email);
-    if (!user) throw Object.assign(new Error("User not found"), { statusCode: 404 });
-
-    const challenge = await options.repository.getWebAuthnChallenge(body.response.challenge);
-    if (!challenge || challenge.purpose !== "passkey_authentication" || challenge.consumedAt) {
-      throw Object.assign(new Error("Invalid or expired challenge"), { statusCode: 400 });
-    }
-
-    const credentialId = body.response.id;
-    const credential = await options.repository.getWebAuthnCredential(credentialId);
-
-    if (!credential || credential.userId !== user.id) {
-      throw Object.assign(new Error("Credential not found"), { statusCode: 400 });
-    }
-
-    const verification = await verifyAuthenticationResponse({
-      response: body.response,
-      expectedChallenge: challenge.challengeHash,
-      expectedOrigin: options.origin,
-      expectedRPID: options.rpID,
-      credential: {
-        id: credential.credentialId,
-        publicKey: Buffer.from(credential.publicKey, "base64url"),
-        counter: credential.counter,
-        transports: credential.transports as AuthenticatorTransport[],
-      },
-    });
-
-    if (verification.verified) {
-      await options.repository.updateWebAuthnCredentialCounter(
-        credential.id,
-        verification.authenticationInfo.newCounter,
-      );
-
-      // Create session
-      const token = createSessionToken();
-      const now = new Date();
-      const expiresAt = new Date(
-        now.getTime() + (options.sessionTtlHours ?? 12) * 60 * 60 * 1000,
-      ).toISOString();
-      const session = await options.repository.createAuthSession({
-        id: crypto.randomUUID(),
-        firmId: user.firmId,
-        userId: user.id,
         tokenHash: hashToken(token, options.jwtSecret!),
         createdAt: now.toISOString(),
         expiresAt,
