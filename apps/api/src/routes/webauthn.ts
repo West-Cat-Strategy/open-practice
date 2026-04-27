@@ -137,37 +137,48 @@ export function registerWebAuthnRoutes(
     throw Object.assign(new Error("Verification failed"), { statusCode: 400 });
   });
 
-  server.post("/api/auth/login/options", async (request) => {
-    const body = loginOptionsSchema.parse(request.body);
-    const user = await options.repository.getUserByEmail(body.firmId, body.email);
-    if (!user) {
-      throw Object.assign(new Error("User not found"), { statusCode: 404 });
-    }
+  server.post(
+    "/api/auth/login/options",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
+        },
+      },
+    },
+    async (request) => {
+      const body = loginOptionsSchema.parse(request.body);
+      const user = await options.repository.getUserByEmail(body.firmId, body.email);
+      if (!user) {
+        throw Object.assign(new Error("User not found"), { statusCode: 404 });
+      }
 
-    const userCredentials = await options.repository.listWebAuthnCredentials(user.firmId, user.id);
+      const userCredentials = await options.repository.listWebAuthnCredentials(user.firmId, user.id);
 
-    const authOptions = await generateAuthenticationOptions({
-      rpID: options.rpID,
-      allowCredentials: userCredentials.map((cred) => ({
-        id: cred.credentialId,
-        type: "public-key",
-        transports: cred.transports as AuthenticatorTransport[],
-      })),
-      userVerification: "preferred",
-    });
+      const authOptions = await generateAuthenticationOptions({
+        rpID: options.rpID,
+        allowCredentials: userCredentials.map((cred) => ({
+          id: cred.credentialId,
+          type: "public-key",
+          transports: cred.transports as AuthenticatorTransport[],
+        })),
+        userVerification: "preferred",
+      });
 
-    await options.repository.createWebAuthnChallenge({
-      id: crypto.randomUUID(),
-      firmId: user.firmId,
-      userId: user.id,
-      challengeHash: authOptions.challenge,
-      purpose: "passkey_authentication",
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      createdAt: new Date().toISOString(),
-    });
+      await options.repository.createWebAuthnChallenge({
+        id: crypto.randomUUID(),
+        firmId: user.firmId,
+        userId: user.id,
+        challengeHash: authOptions.challenge,
+        purpose: "passkey_authentication",
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        createdAt: new Date().toISOString(),
+      });
 
-    return authOptions;
-  });
+      return authOptions;
+    },
+  );
 
   server.post("/api/auth/login/verify", async (request, reply) => {
     const body = loginVerifySchema.parse(request.body);
