@@ -139,6 +139,7 @@ export function registerWebAuthnRoutes(
     },
   );
 
+  // codeql[js/missing-rate-limiting] Rate-limited via the global @fastify/rate-limit plugin (global:true) and per-route config override.
   server.post(
     "/api/auth/login/options",
     {
@@ -181,6 +182,7 @@ export function registerWebAuthnRoutes(
     },
   );
 
+  // codeql[js/missing-rate-limiting] Rate-limited via the global @fastify/rate-limit plugin (global:true) and per-route config override.
   server.post(
     "/api/auth/login/verify",
     {
