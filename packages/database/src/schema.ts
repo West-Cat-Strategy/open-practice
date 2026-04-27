@@ -291,9 +291,7 @@ export const authChallenges = pgTable(
   "auth_challenges",
   {
     id: text("id").primaryKey(),
-    firmId: text("firm_id")
-      .notNull()
-      .references(() => firms.id),
+    firmId: text("firm_id").references(() => firms.id),
     userId: text("user_id").references(() => users.id),
     challengeHash: text("challenge_hash").notNull(),
     purpose: authChallengePurpose("purpose").notNull(),

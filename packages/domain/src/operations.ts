@@ -252,7 +252,7 @@ export interface WebAuthnCredentialRecord {
 
 export interface WebAuthnChallengeRecord {
   id: string;
-  firmId: string;
+  firmId?: string;
   userId?: string;
   challengeHash: string;
   purpose: "passkey_registration" | "passkey_authentication" | "totp_setup";

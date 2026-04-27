@@ -194,8 +194,6 @@ export function registerSetupRoutes(
 
       await options.repository.createWebAuthnChallenge({
         id: id("challenge"),
-        firmId: "setup", // Placeholder firmId
-        userId,
         challengeHash: registrationOptions.challenge,
         purpose: "passkey_registration",
         expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),

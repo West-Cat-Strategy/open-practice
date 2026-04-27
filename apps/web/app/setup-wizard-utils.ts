@@ -1,4 +1,8 @@
+import type { RegistrationResponseJSON } from "@simplewebauthn/browser";
 import type { SetupStatusResponse } from "./types";
+
+/** RegistrationResponseJSON extended with the challenge hash used for server-side lookup. */
+export type SetupWebAuthnCredential = RegistrationResponseJSON & { challengeHash: string };
 
 export type StartupView = "setup" | "blocked" | "login" | "dashboard";
 
@@ -37,7 +41,7 @@ export interface SetupWizardState {
   matterTitle: string;
   matterPracticeArea: string;
   matterJurisdiction: string;
-  webAuthnCredential?: any;
+  webAuthnCredential?: SetupWebAuthnCredential;
 }
 
 export interface SetupValidationResult {

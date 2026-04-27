@@ -13,7 +13,6 @@ import {
   createSessionToken,
   hashToken,
   sessionCookie,
-  readSessionToken,
 } from "../http/auth-helpers.js";
 
 const registrationVerifySchema = z.object({
@@ -48,7 +47,7 @@ export function registerWebAuthnRoutes(
   },
 ): void {
   // codeql[js/missing-rate-limiting] Rate-limited via the global @fastify/rate-limit plugin (global:true) and per-route config override.
-  server.get(
+  server.post(
     "/api/auth/register/options",
     { config: { rateLimit: WEBAUTHN_RATE_LIMIT } },
     async (request) => {
@@ -178,6 +177,11 @@ export function registerWebAuthnRoutes(
     "/api/auth/login/verify",
     { config: { rateLimit: WEBAUTHN_RATE_LIMIT } },
     async (request, reply) => {
+      if (!options.jwtSecret) {
+        throw Object.assign(new Error("Session authentication is not configured"), {
+          statusCode: 503,
+        });
+      }
       const body = loginVerifySchema.parse(request.body);
       const user = await options.repository.getUserByEmail(body.firmId, body.email);
       if (!user) throw Object.assign(new Error("User not found"), { statusCode: 404 });
@@ -222,7 +226,7 @@ export function registerWebAuthnRoutes(
           id: crypto.randomUUID(),
           firmId: user.firmId,
           userId: user.id,
-          tokenHash: hashToken(token, options.jwtSecret!),
+          tokenHash: hashToken(token, options.jwtSecret),
           createdAt: now.toISOString(),
           expiresAt,
         });

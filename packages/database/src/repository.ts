@@ -445,7 +445,7 @@ function mapAuthChallengeRow(
 ): WebAuthnChallengeRecord {
   return {
     id: row.id,
-    firmId: row.firmId,
+    firmId: row.firmId ?? undefined,
     userId: row.userId ?? undefined,
     challengeHash: row.challengeHash,
     purpose: row.purpose,
