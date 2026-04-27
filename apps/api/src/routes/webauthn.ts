@@ -146,6 +146,7 @@ export function registerWebAuthnRoutes(
       preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
       config: { rateLimit: WEBAUTHN_RATE_LIMIT },
     },
+    // codeql[js/missing-rate-limiting] Rate-limited via preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT)
     async (request) => {
       const body = loginOptionsSchema.parse(request.body);
       const user = await options.repository.getUserByEmail(body.firmId, body.email);
@@ -189,6 +190,7 @@ export function registerWebAuthnRoutes(
       preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
       config: { rateLimit: WEBAUTHN_RATE_LIMIT },
     },
+    // codeql[js/missing-rate-limiting] Rate-limited via preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT)
     async (request, reply) => {
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {
