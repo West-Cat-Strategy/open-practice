@@ -95,47 +95,58 @@ export function registerWebAuthnRoutes(
     },
   );
 
-  server.post("/api/auth/register/verify", async (request) => {
-    const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
-    if (!access.ok) throw access.error;
+  server.post(
+    "/api/auth/register/verify",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
+        },
+      },
+    },
+    async (request) => {
+      const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
+      if (!access.ok) throw access.error;
 
-    const body = registrationVerifySchema.parse(request.body);
-    const challenge = await options.repository.getWebAuthnChallenge(body.response.challenge);
+      const body = registrationVerifySchema.parse(request.body);
+      const challenge = await options.repository.getWebAuthnChallenge(body.response.challenge);
 
-    if (!challenge || challenge.purpose !== "passkey_registration" || challenge.consumedAt) {
-      throw Object.assign(new Error("Invalid or expired challenge"), { statusCode: 400 });
-    }
+      if (!challenge || challenge.purpose !== "passkey_registration" || challenge.consumedAt) {
+        throw Object.assign(new Error("Invalid or expired challenge"), { statusCode: 400 });
+      }
 
-    const verification = await verifyRegistrationResponse({
-      response: body.response,
-      expectedChallenge: challenge.challengeHash,
-      expectedOrigin: options.origin,
-      expectedRPID: options.rpID,
-    });
-
-    if (verification.verified && verification.registrationInfo) {
-      const { credential, credentialDeviceType, credentialBackedUp } =
-        verification.registrationInfo;
-      const { id: credentialID, publicKey, counter } = credential;
-
-      await options.repository.registerWebAuthnCredential({
-        id: crypto.randomUUID(),
-        firmId: request.auth.firmId,
-        userId: request.auth.user.id,
-        credentialId: Buffer.from(credentialID).toString("base64url"),
-        publicKey: Buffer.from(publicKey).toString("base64url"),
-        counter,
-        transports: body.response.response.transports || [],
-        deviceType: credentialDeviceType,
-        backedUp: credentialBackedUp,
-        createdAt: new Date().toISOString(),
+      const verification = await verifyRegistrationResponse({
+        response: body.response,
+        expectedChallenge: challenge.challengeHash,
+        expectedOrigin: options.origin,
+        expectedRPID: options.rpID,
       });
 
-      return { verified: true };
-    }
+      if (verification.verified && verification.registrationInfo) {
+        const { credential, credentialDeviceType, credentialBackedUp } =
+          verification.registrationInfo;
+        const { id: credentialID, publicKey, counter } = credential;
 
-    throw Object.assign(new Error("Verification failed"), { statusCode: 400 });
-  });
+        await options.repository.registerWebAuthnCredential({
+          id: crypto.randomUUID(),
+          firmId: request.auth.firmId,
+          userId: request.auth.user.id,
+          credentialId: Buffer.from(credentialID).toString("base64url"),
+          publicKey: Buffer.from(publicKey).toString("base64url"),
+          counter,
+          transports: body.response.response.transports || [],
+          deviceType: credentialDeviceType,
+          backedUp: credentialBackedUp,
+          createdAt: new Date().toISOString(),
+        });
+
+        return { verified: true };
+      }
+
+      throw Object.assign(new Error("Verification failed"), { statusCode: 400 });
+    },
+  );
 
   server.post(
     "/api/auth/login/options",
