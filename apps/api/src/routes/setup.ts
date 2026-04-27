@@ -164,41 +164,45 @@ export function registerSetupRoutes(
     setupKeyRequired: setupKeyRequired(options),
   }));
 
-  server.post("/api/setup/webauthn-options", async (request) => {
-    const status = await options.repository.getSetupStatus();
-    if (!status.required || status.blocked) {
-      throw Object.assign(new Error("Setup not available"), { statusCode: 409 });
-    }
-    assertSetupGate(request, options);
+  server.post(
+    "/api/setup/webauthn-options",
+    { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
+    async (request) => {
+      const status = await options.repository.getSetupStatus();
+      if (!status.required || status.blocked) {
+        throw Object.assign(new Error("Setup not available"), { statusCode: 409 });
+      }
+      assertSetupGate(request, options);
 
-    const body = z.object({ email: z.string().email() }).parse(request.body);
-    const userId = id("user"); // Temp ID for registration
+      const body = z.object({ email: z.string().email() }).parse(request.body);
+      const userId = id("user"); // Temp ID for registration
 
-    const { generateRegistrationOptions } = await import("@simplewebauthn/server");
-    const registrationOptions = await generateRegistrationOptions({
-      rpName: options.rpName,
-      rpID: options.rpID,
-      userID: Buffer.from(userId),
-      userName: body.email,
-      attestationType: "none",
-      authenticatorSelection: {
-        residentKey: "required",
-        userVerification: "preferred",
-      },
-    });
+      const { generateRegistrationOptions } = await import("@simplewebauthn/server");
+      const registrationOptions = await generateRegistrationOptions({
+        rpName: options.rpName,
+        rpID: options.rpID,
+        userID: Buffer.from(userId),
+        userName: body.email,
+        attestationType: "none",
+        authenticatorSelection: {
+          residentKey: "required",
+          userVerification: "preferred",
+        },
+      });
 
-    await options.repository.createWebAuthnChallenge({
-      id: id("challenge"),
-      firmId: "setup", // Placeholder firmId
-      userId,
-      challengeHash: registrationOptions.challenge,
-      purpose: "passkey_registration",
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      createdAt: new Date().toISOString(),
-    });
+      await options.repository.createWebAuthnChallenge({
+        id: id("challenge"),
+        firmId: "setup", // Placeholder firmId
+        userId,
+        challengeHash: registrationOptions.challenge,
+        purpose: "passkey_registration",
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        createdAt: new Date().toISOString(),
+      });
 
-    return registrationOptions;
-  });
+      return registrationOptions;
+    },
+  );
 
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before setup routes, with this route capped at 5 attempts per 15 minutes.
   server.post(
