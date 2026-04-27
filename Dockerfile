@@ -7,7 +7,7 @@ RUN apk update && apk add --no-cache curl libc6-compat
 FROM base AS builder
 WORKDIR /app
 COPY . .
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 ARG APP_NAME
 RUN pnpm turbo build --filter=${APP_NAME}...
 
