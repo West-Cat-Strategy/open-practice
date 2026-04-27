@@ -151,6 +151,10 @@ export function registerWebAuthnRoutes(
   server.post(
     "/api/auth/login/options",
     {
+      preHandler: server.rateLimit({
+        max: 10,
+        timeWindow: "1 minute",
+      }),
       config: {
         rateLimit: {
           max: 10,
