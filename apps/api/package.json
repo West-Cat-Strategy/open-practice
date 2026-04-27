@@ -21,7 +21,7 @@
     "@open-practice/domain": "workspace:*",
     "@open-practice/providers": "workspace:*",
     "fastify": "latest",
-    "jose": "^6.2.2",
+    "jose": "^6.2.3",
     "tsx": "latest",
     "zod": "latest"
   },
