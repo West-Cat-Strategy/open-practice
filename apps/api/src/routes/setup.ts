@@ -166,19 +166,15 @@ export function registerSetupRoutes(
     setupKeyRequired: setupKeyRequired(options),
   }));
 
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this setup route has a tighter per-route cap.
   server.post(
     "/api/setup/webauthn-options",
-    {
-      preHandler: server.rateLimit(SETUP_RATE_LIMIT),
-      config: { rateLimit: SETUP_RATE_LIMIT },
-    },
+    { config: { rateLimit: { ...SETUP_RATE_LIMIT } } },
     async (request) => {
-      // codeql[js/missing-rate-limiting]
       const status = await options.repository.getSetupStatus();
       if (!status.required || status.blocked) {
         throw Object.assign(new Error("Setup not available"), { statusCode: 409 });
       }
-      // codeql[js/missing-rate-limiting]
       assertSetupGate(request, options);
 
       const body = z.object({ email: z.string().email() }).parse(request.body);
@@ -209,12 +205,10 @@ export function registerSetupRoutes(
     },
   );
 
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this setup route has a tighter per-route cap.
   server.post(
     "/api/setup/complete",
-    {
-      preHandler: server.rateLimit(SETUP_RATE_LIMIT),
-      config: { rateLimit: SETUP_RATE_LIMIT },
-    },
+    { config: { rateLimit: { ...SETUP_RATE_LIMIT } } },
     async (request, reply) => {
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {
@@ -222,7 +216,6 @@ export function registerSetupRoutes(
         });
       }
 
-      // codeql[js/missing-rate-limiting]
       const status = await options.repository.getSetupStatus();
       if (status.blocked) {
         throw Object.assign(new Error(status.reason ?? "First-run setup is blocked"), {
@@ -233,7 +226,6 @@ export function registerSetupRoutes(
         throw Object.assign(new Error("First-run setup is already complete"), { statusCode: 409 });
       }
 
-      // codeql[js/missing-rate-limiting]
       assertSetupGate(request, options);
       const body = setupBodySchema.parse(request.body);
       const now = new Date();
@@ -301,7 +293,6 @@ export function registerSetupRoutes(
       let webAuthnCredential;
       if (body.owner.webAuthn) {
         const { verifyRegistrationResponse } = await import("@simplewebauthn/server");
-        // codeql[js/missing-rate-limiting]
         const challenge = await options.repository.getWebAuthnChallenge(
           body.owner.webAuthn.challengeHash,
         );

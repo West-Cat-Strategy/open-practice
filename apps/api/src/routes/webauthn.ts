@@ -42,19 +42,14 @@ export function registerWebAuthnRoutes(
     origin: string;
   },
 ): void {
-  // codeql[js/missing-rate-limiting] Rate-limited via the global @fastify/rate-limit plugin (global:true) and per-route config override.
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this WebAuthn route has a tighter per-route cap.
   server.post(
     "/api/auth/register/options",
-    {
-      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
-      config: { rateLimit: WEBAUTHN_RATE_LIMIT },
-    },
+    { config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } } },
     async (request) => {
-      // codeql[js/missing-rate-limiting]
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
 
-      // codeql[js/missing-rate-limiting]
       const userCredentials = await options.repository.listWebAuthnCredentials(
         request.auth.firmId,
         request.auth.user.id,
@@ -91,20 +86,15 @@ export function registerWebAuthnRoutes(
     },
   );
 
-  // codeql[js/missing-rate-limiting] Rate-limited via the global @fastify/rate-limit plugin (global:true) and per-route config override.
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this WebAuthn route has a tighter per-route cap.
   server.post(
     "/api/auth/register/verify",
-    {
-      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
-      config: { rateLimit: WEBAUTHN_RATE_LIMIT },
-    },
+    { config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } } },
     async (request) => {
-      // codeql[js/missing-rate-limiting]
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
 
       const body = registrationVerifySchema.parse(request.body);
-      // codeql[js/missing-rate-limiting]
       const challenge = await options.repository.getWebAuthnChallenge(body.response.challenge);
 
       if (!challenge || challenge.purpose !== "passkey_registration" || challenge.consumedAt) {
@@ -143,23 +133,17 @@ export function registerWebAuthnRoutes(
     },
   );
 
-  // codeql[js/missing-rate-limiting] Rate-limited via the global @fastify/rate-limit plugin (global:true) and per-route config override.
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this WebAuthn route has a tighter per-route cap.
   server.post(
     "/api/auth/login/options",
-    {
-      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
-      config: { rateLimit: WEBAUTHN_RATE_LIMIT },
-    },
-    // codeql[js/missing-rate-limiting] Rate-limited via preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT)
+    { config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } } },
     async (request) => {
       const body = loginOptionsSchema.parse(request.body);
-      // codeql[js/missing-rate-limiting]
       const user = await options.repository.getUserByEmail(body.firmId, body.email);
       if (!user) {
         throw Object.assign(new Error("User not found"), { statusCode: 404 });
       }
 
-      // codeql[js/missing-rate-limiting]
       const userCredentials = await options.repository.listWebAuthnCredentials(
         user.firmId,
         user.id,
@@ -189,14 +173,10 @@ export function registerWebAuthnRoutes(
     },
   );
 
-  // codeql[js/missing-rate-limiting] Rate-limited via the global @fastify/rate-limit plugin (global:true) and per-route config override.
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this WebAuthn route has a tighter per-route cap.
   server.post(
     "/api/auth/login/verify",
-    {
-      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
-      config: { rateLimit: WEBAUTHN_RATE_LIMIT },
-    },
-    // codeql[js/missing-rate-limiting] Rate-limited via preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT)
+    { config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } } },
     async (request, reply) => {
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {
@@ -204,18 +184,15 @@ export function registerWebAuthnRoutes(
         });
       }
       const body = loginVerifySchema.parse(request.body);
-      // codeql[js/missing-rate-limiting]
       const user = await options.repository.getUserByEmail(body.firmId, body.email);
       if (!user) throw Object.assign(new Error("User not found"), { statusCode: 404 });
 
-      // codeql[js/missing-rate-limiting]
       const challenge = await options.repository.getWebAuthnChallenge(body.response.challenge);
       if (!challenge || challenge.purpose !== "passkey_authentication" || challenge.consumedAt) {
         throw Object.assign(new Error("Invalid or expired challenge"), { statusCode: 400 });
       }
 
       const credentialId = body.response.id;
-      // codeql[js/missing-rate-limiting]
       const credential = await options.repository.getWebAuthnCredential(credentialId);
 
       if (!credential || credential.userId !== user.id) {
