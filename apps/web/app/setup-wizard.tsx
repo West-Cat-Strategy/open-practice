@@ -96,9 +96,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(setupKeyRequired
-            ? { "x-open-practice-setup-key": state.setupKey.trim() }
-            : {}),
+          ...(setupKeyRequired ? { "x-open-practice-setup-key": state.setupKey.trim() } : {}),
         },
         body: JSON.stringify({ email: state.ownerEmail }),
       });

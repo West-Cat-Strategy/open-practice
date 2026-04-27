@@ -9,11 +9,7 @@ import {
 import { z } from "zod";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
-import {
-  createSessionToken,
-  hashToken,
-  sessionCookie,
-} from "../http/auth-helpers.js";
+import { createSessionToken, hashToken, sessionCookie } from "../http/auth-helpers.js";
 
 const registrationVerifySchema = z.object({
   firmId: z.string().min(1),
@@ -156,7 +152,10 @@ export function registerWebAuthnRoutes(
         throw Object.assign(new Error("User not found"), { statusCode: 404 });
       }
 
-      const userCredentials = await options.repository.listWebAuthnCredentials(user.firmId, user.id);
+      const userCredentials = await options.repository.listWebAuthnCredentials(
+        user.firmId,
+        user.id,
+      );
 
       const authOptions = await generateAuthenticationOptions({
         rpID: options.rpID,
@@ -243,7 +242,10 @@ export function registerWebAuthnRoutes(
           expiresAt,
         });
 
-        reply.header("set-cookie", sessionCookie(token, expiresAt, options.nodeEnv === "production"));
+        reply.header(
+          "set-cookie",
+          sessionCookie(token, expiresAt, options.nodeEnv === "production"),
+        );
         return { user, session: { id: session.id, expiresAt }, token };
       }
 
