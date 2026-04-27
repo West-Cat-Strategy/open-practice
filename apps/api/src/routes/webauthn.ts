@@ -45,44 +45,55 @@ export function registerWebAuthnRoutes(
     origin: string;
   },
 ): void {
-  server.get("/api/auth/register/options", async (request) => {
-    const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
-    if (!access.ok) throw access.error;
-
-    const userCredentials = await options.repository.listWebAuthnCredentials(
-      request.auth.firmId,
-      request.auth.user.id,
-    );
-
-    const registrationOptions = await generateRegistrationOptions({
-      rpName: options.rpName,
-      rpID: options.rpID,
-      userID: Buffer.from(request.auth.user.id),
-      userName: request.auth.user.email,
-      attestationType: "none",
-      excludeCredentials: userCredentials.map((cred) => ({
-        id: cred.credentialId,
-        type: "public-key",
-        transports: cred.transports as AuthenticatorTransport[],
-      })),
-      authenticatorSelection: {
-        residentKey: "required",
-        userVerification: "preferred",
+  server.get(
+    "/api/auth/register/options",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
+        },
       },
-    });
+    },
+    async (request) => {
+      const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
+      if (!access.ok) throw access.error;
 
-    await options.repository.createWebAuthnChallenge({
-      id: crypto.randomUUID(),
-      firmId: request.auth.firmId,
-      userId: request.auth.user.id,
-      challengeHash: registrationOptions.challenge,
-      purpose: "passkey_registration",
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      createdAt: new Date().toISOString(),
-    });
+      const userCredentials = await options.repository.listWebAuthnCredentials(
+        request.auth.firmId,
+        request.auth.user.id,
+      );
 
-    return registrationOptions;
-  });
+      const registrationOptions = await generateRegistrationOptions({
+        rpName: options.rpName,
+        rpID: options.rpID,
+        userID: Buffer.from(request.auth.user.id),
+        userName: request.auth.user.email,
+        attestationType: "none",
+        excludeCredentials: userCredentials.map((cred) => ({
+          id: cred.credentialId,
+          type: "public-key",
+          transports: cred.transports as AuthenticatorTransport[],
+        })),
+        authenticatorSelection: {
+          residentKey: "required",
+          userVerification: "preferred",
+        },
+      });
+
+      await options.repository.createWebAuthnChallenge({
+        id: crypto.randomUUID(),
+        firmId: request.auth.firmId,
+        userId: request.auth.user.id,
+        challengeHash: registrationOptions.challenge,
+        purpose: "passkey_registration",
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        createdAt: new Date().toISOString(),
+      });
+
+      return registrationOptions;
+    },
+  );
 
   server.post("/api/auth/register/verify", async (request) => {
     const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
