@@ -129,6 +129,39 @@ describe("API auth and persistence boundaries", () => {
     expect(response.statusCode).toBe(503);
   });
 
+  it("applies the setup key gate to first-run passkey registration options", async () => {
+    const server = testServer({
+      repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
+      setupKey: "setup-key",
+    });
+    const payload = { email: "avery@example.test" };
+    const missingKey = await server.inject({
+      method: "POST",
+      url: "/api/setup/webauthn-options",
+      payload,
+    });
+    const invalidKey = await server.inject({
+      method: "POST",
+      url: "/api/setup/webauthn-options",
+      headers: { "x-open-practice-setup-key": "wrong-key" },
+      payload,
+    });
+    const validKey = await server.inject({
+      method: "POST",
+      url: "/api/setup/webauthn-options",
+      headers: { "x-open-practice-setup-key": "setup-key" },
+      payload,
+    });
+
+    expect(missingKey.statusCode).toBe(403);
+    expect(invalidKey.statusCode).toBe(403);
+    expect(validKey.statusCode).toBe(200);
+    expect(validKey.json<{ challenge: string; rp: { id: string; name: string } }>()).toMatchObject({
+      rp: { id: "localhost", name: "Test RP" },
+    });
+    expect(validKey.json<{ challenge: string }>().challenge).toEqual(expect.any(String));
+  });
+
   it("completes first-run setup with owner auth, firm settings, first matter, and session", async () => {
     const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
     const server = testServer({

@@ -1,18 +1,18 @@
 # Planning and Progress
 
-**Last Updated:** 2026-04-26
+**Last Updated:** 2026-04-27
 
 Use this file for live tracked work and immediate next moves. Use `docs/planning.md` for the durable roadmap and `docs/improvement-opportunities.md` for the broader opportunity list.
 
 ## At a Glance
 
-| Snapshot                          | Value                                         |
-| --------------------------------- | --------------------------------------------- |
-| Current focus                     | Dependabot and route-hardening merge complete |
-| Active rows                       | 0                                             |
-| Review rows                       | 0                                             |
-| Blocked rows                      | 0                                             |
-| Recent thread follow-through rows | 0                                             |
+| Snapshot                          | Value                              |
+| --------------------------------- | ---------------------------------- |
+| Current focus                     | WebAuthn setup hardening in review |
+| Active rows                       | 0                                  |
+| Review rows                       | 1                                  |
+| Blocked rows                      | 0                                  |
+| Recent thread follow-through rows | 0                                  |
 
 ## Recent Thread Follow-through
 
@@ -24,6 +24,7 @@ Use this file for live tracked work and immediate next moves. Use `docs/planning
 
 | Status | ID     | Task                                                  | Immediate Next Move                                                                                                                                                                                                                                           | Validation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ------ | ------ | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Review | OP-T20 | First-run WebAuthn setup hardening                    | Preserved the in-flight type cleanup, sent the setup key when registering first-run passkeys, kept passkeys optional, surfaced the setup key before passkey registration, and added setup-key gate regressions.                                               | 2026-04-27: `pnpm verify:select -- --files apps/api/src/routes/webauthn.ts apps/api/src/server.test.ts apps/web/app/setup-wizard-utils.ts apps/web/app/setup-wizard.tsx docs/planning-and-progress.md`; `pnpm format:check`; `pnpm docs:check`; `pnpm policy:check`; `pnpm --filter @open-practice/api test`; `pnpm --filter @open-practice/api typecheck`; `pnpm --filter @open-practice/web test`; `pnpm --filter @open-practice/web typecheck`; `pnpm build`; `git diff --check`.                                                               |
 | Done   | OP-T18 | Centralize API access guards and fix audit route bug  | Generalised requireMatterAccess to requireAccess with dynamic resource labeling and error codes. Fixed audit route bug and applied to all API registrars.                                                                                                     | 2026-04-26: `pnpm verify`. All integration tests updated for new error messages.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Done   | OP-T1  | Provider lifecycle hardening                          | Stabilized embedded signature evidence capture, unknown-request rejection, provider/external-id matching, status ordering, and event-history API.                                                                                                             | 2026-04-25: `pnpm --filter @open-practice/providers test`; `pnpm --filter @open-practice/api test`; `pnpm test`; `pnpm typecheck`; `pnpm lint`.                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Done   | OP-T2  | Intake and document automation completion             | Stabilized answer-snapshot repository/API coverage and embedded automation while keeping generated documents as Open Practice records.                                                                                                                        | 2026-04-25: `pnpm --filter @open-practice/api test`; `pnpm test`; `pnpm typecheck`; `pnpm lint`; unauthorized snapshot access covered.                                                                                                                                                                                                                                                                                                                                                                                                             |

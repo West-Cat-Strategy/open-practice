@@ -83,8 +83,13 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
   }
 
   async function registerPasskey() {
+    const setupKey = state.setupKey.trim();
     if (!state.ownerEmail.trim()) {
       setStatus("Please enter your email first.");
+      return;
+    }
+    if (setupKeyRequired && !setupKey) {
+      setStatus("Enter the setup key before registering a passkey.");
       return;
     }
 
@@ -96,7 +101,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(setupKeyRequired ? { "x-open-practice-setup-key": state.setupKey.trim() } : {}),
+          ...(setupKeyRequired ? { "x-open-practice-setup-key": setupKey } : {}),
         },
         body: JSON.stringify({ email: state.ownerEmail }),
       });
@@ -111,9 +116,9 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
         challengeHash: options.challenge,
       });
       setStatus("Passkey ready. Complete setup to finish.");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setStatus(err.message || "Passkey registration failed.");
+      setStatus(err instanceof Error ? err.message : "Passkey registration failed.");
     } finally {
       setSubmitting(false);
     }
@@ -201,8 +206,8 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
 
       setStatus("Setup complete.");
       window.location.reload();
-    } catch (err: any) {
-      setStatus(err.message || "An unexpected error occurred.");
+    } catch (err: unknown) {
+      setStatus(err instanceof Error ? err.message : "An unexpected error occurred.");
       setSubmitting(false);
     }
   }
@@ -392,6 +397,15 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                   value={state.ownerEmail}
                   onChange={(value) => update("ownerEmail", value)}
                 />
+                {setupKeyRequired && (
+                  <TextField
+                    className="wide"
+                    label="System setup key"
+                    type="password"
+                    value={state.setupKey}
+                    onChange={(value) => update("setupKey", value)}
+                  />
+                )}
 
                 <div className="passkey-section wide">
                   <button
@@ -454,15 +468,6 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                   value={state.ownerPasswordConfirmation}
                   onChange={(value) => update("ownerPasswordConfirmation", value)}
                 />
-                {setupKeyRequired && (
-                  <TextField
-                    className="wide"
-                    label="System setup key"
-                    type="password"
-                    value={state.setupKey}
-                    onChange={(value) => update("setupKey", value)}
-                  />
-                )}
               </div>
             )}
 
@@ -681,7 +686,7 @@ function ReviewCard({
   description,
   meta,
 }: {
-  icon: any;
+  icon: React.ComponentType<{ size?: number }>;
   label: string;
   title: string;
   description?: string;
