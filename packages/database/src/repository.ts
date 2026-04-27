@@ -492,6 +492,9 @@ function mapFirmSettingsRow(row: typeof schema.firmSettings.$inferSelect): FirmS
     trustAccountLabel: row.trustAccountLabel,
     trustFundsCaveatAcceptedAt: row.trustFundsCaveatAcceptedAt.toISOString(),
     trustFundsCaveatAcceptedByUserId: row.trustFundsCaveatAcceptedByUserId,
+    website: row.website ?? undefined,
+    description: row.description ?? undefined,
+    businessNumber: row.businessNumber ?? undefined,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -1764,6 +1767,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         email: input.owner.email,
         role: input.owner.role,
         mfaEnabled: input.owner.mfaEnabled,
+        practitionerProfile: input.owner.practitionerProfile || null,
       });
       await tx.insert(schema.authAccounts).values({
         firmId: input.owner.firmId,
@@ -1782,6 +1786,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         trustAccountLabel: input.settings.trustAccountLabel,
         trustFundsCaveatAcceptedAt: new Date(input.settings.trustFundsCaveatAcceptedAt),
         trustFundsCaveatAcceptedByUserId: input.settings.trustFundsCaveatAcceptedByUserId,
+        website: input.settings.website || null,
+        description: input.settings.description || null,
+        businessNumber: input.settings.businessNumber || null,
         createdAt: new Date(input.settings.createdAt),
         updatedAt: new Date(input.settings.updatedAt),
       });
@@ -1953,6 +1960,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       role: row.role,
       assignedMatterIds: assignments.map((assignment) => assignment.matterId),
       mfaEnabled: row.mfaEnabled,
+      practitionerProfile: row.practitionerProfile ?? undefined,
     };
   }
 

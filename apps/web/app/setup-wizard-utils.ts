@@ -18,10 +18,16 @@ export interface SetupWizardState {
   defaultPaymentTermsDays: string;
   trustAccountLabel: string;
   trustFundsCaveatAccepted: boolean;
+  website: string;
+  description: string;
+  businessNumber: string;
   ownerName: string;
   ownerEmail: string;
   ownerPassword: string;
   ownerPasswordConfirmation: string;
+  practitionerRegulator: string;
+  practitionerLicenseStatus: string;
+  practitionerJurisdictionsText: string;
   setupKey: string;
   createFirstMatter: boolean;
   clientKind: "person" | "organization";
@@ -38,6 +44,7 @@ export interface SetupValidationResult {
   valid: boolean;
   errors: string[];
   practiceAreas: string[];
+  jurisdictions: string[];
 }
 
 export function selectStartupView(
@@ -63,6 +70,7 @@ export function validateSetupWizardState(
 ): SetupValidationResult {
   const errors: string[] = [];
   const practiceAreas = parsePracticeAreas(state.practiceAreasText);
+  const jurisdictions = parsePracticeAreas(state.practitionerJurisdictionsText);
 
   if (!state.firmName.trim()) errors.push("Firm name is required.");
   if (!state.addressLine1.trim()) errors.push("Business address line 1 is required.");
@@ -88,6 +96,9 @@ export function validateSetupWizardState(
   if (state.ownerPassword !== state.ownerPasswordConfirmation) {
     errors.push("Owner password confirmation must match.");
   }
+  if (!state.practitionerRegulator.trim()) errors.push("Practitioner regulator is required.");
+  if (!state.practitionerLicenseStatus.trim()) errors.push("Practitioner license status is required.");
+  if (jurisdictions.length === 0) errors.push("At least one practitioner jurisdiction is required.");
   if (setupKeyRequired && !state.setupKey.trim()) errors.push("Setup key is required.");
 
   if (state.createFirstMatter) {
@@ -96,5 +107,5 @@ export function validateSetupWizardState(
     if (!state.matterPracticeArea.trim()) errors.push("First matter practice area is required.");
   }
 
-  return { valid: errors.length === 0, errors, practiceAreas };
+  return { valid: errors.length === 0, errors, practiceAreas, jurisdictions };
 }

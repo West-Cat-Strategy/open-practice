@@ -104,6 +104,11 @@ export const users = pgTable(
     role: userRole("role").notNull(),
     mfaEnabled: boolean("mfa_enabled").notNull().default(false),
     oidcSubject: text("oidc_subject"),
+    practitionerProfile: jsonb("practitioner_profile").$type<{
+      regulator: string;
+      licenseStatus: string;
+      jurisdictions: string[];
+    }>(),
   },
   (table) => ({
     firmEmail: uniqueIndex("users_firm_email_idx").on(table.firmId, table.email),
@@ -136,6 +141,9 @@ export const firmSettings = pgTable("firm_settings", {
   trustFundsCaveatAcceptedByUserId: text("trust_funds_caveat_accepted_by_user_id")
     .notNull()
     .references(() => users.id),
+  website: text("website"),
+  description: text("description"),
+  businessNumber: text("business_number"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -43,6 +43,12 @@ const initialState: SetupWizardState = {
   ownerEmail: "",
   ownerPassword: "",
   ownerPasswordConfirmation: "",
+  website: "",
+  description: "",
+  businessNumber: "",
+  practitionerRegulator: "",
+  practitionerLicenseStatus: "",
+  practitionerJurisdictionsText: "",
   setupKey: "",
   createFirstMatter: false,
   clientKind: "person",
@@ -149,6 +155,9 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
             invoicePrefix: state.invoicePrefix,
             defaultPaymentTermsDays: Number(state.defaultPaymentTermsDays),
             trustAccountLabel: state.trustAccountLabel,
+            website: state.website || undefined,
+            description: state.description || undefined,
+            businessNumber: state.businessNumber || undefined,
           },
           compliance: {
             trustFundsCaveatAccepted: state.trustFundsCaveatAccepted,
@@ -158,6 +167,11 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
             email: state.ownerEmail,
             password: state.ownerPassword,
             webAuthn: state.webAuthnCredential,
+            practitionerProfile: {
+              regulator: state.practitionerRegulator,
+              licenseStatus: state.practitionerLicenseStatus,
+              jurisdictions: nextValidation.jurisdictions,
+            },
           },
           firstMatter: state.createFirstMatter
             ? {
@@ -292,6 +306,27 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                   value={state.officePhone}
                   onChange={(value) => update("officePhone", value)}
                 />
+                <TextField
+                  label="Website"
+                  placeholder="https://example.com"
+                  value={state.website}
+                  onChange={(value) => update("website", value)}
+                />
+                <TextField
+                  label="Business number"
+                  placeholder="BN-123456789"
+                  value={state.businessNumber}
+                  onChange={(value) => update("businessNumber", value)}
+                />
+                <label className="form-field wide">
+                  <span>Practice description</span>
+                  <textarea
+                    placeholder="Short summary of your practice..."
+                    onChange={(event) => update("description", event.target.value)}
+                    rows={3}
+                    value={state.description}
+                  />
+                </label>
               </div>
             )}
 
@@ -377,6 +412,28 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     Passkeys provide biometric security and a passwordless experience.
                   </p>
                 </div>
+
+                <TextField
+                  label="Regulator"
+                  placeholder="e.g. Law Society of BC"
+                  value={state.practitionerRegulator}
+                  onChange={(value) => update("practitionerRegulator", value)}
+                />
+                <TextField
+                  label="License status"
+                  placeholder="e.g. Active Practicing"
+                  value={state.practitionerLicenseStatus}
+                  onChange={(value) => update("practitionerLicenseStatus", value)}
+                />
+                <label className="form-field wide">
+                  <span>Practitioner jurisdictions</span>
+                  <textarea
+                    placeholder="Enter jurisdictions separated by commas or new lines..."
+                    onChange={(event) => update("practitionerJurisdictionsText", event.target.value)}
+                    rows={3}
+                    value={state.practitionerJurisdictionsText}
+                  />
+                </label>
 
                 <TextField
                   label="Backup password"

@@ -57,7 +57,7 @@ export function registerWebAuthnRoutes(
     const registrationOptions = await generateRegistrationOptions({
       rpName: options.rpName,
       rpID: options.rpID,
-      userID: request.auth.user.id,
+      userID: Buffer.from(request.auth.user.id),
       userName: request.auth.user.email,
       attestationType: "none",
       excludeCredentials: userCredentials.map((cred) => ({
@@ -103,15 +103,15 @@ export function registerWebAuthnRoutes(
     });
 
     if (verification.verified && verification.registrationInfo) {
-      const { credentialID, credentialPublicKey, counter, credentialDeviceType, credentialBackedUp } =
-        verification.registrationInfo;
+      const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+      const { id: credentialID, publicKey, counter } = credential;
 
       await options.repository.registerWebAuthnCredential({
         id: crypto.randomUUID(),
         firmId: request.auth.firmId,
         userId: request.auth.user.id,
         credentialId: Buffer.from(credentialID).toString("base64url"),
-        publicKey: Buffer.from(credentialPublicKey).toString("base64url"),
+        publicKey: Buffer.from(publicKey).toString("base64url"),
         counter,
         transports: body.response.response.transports || [],
         deviceType: credentialDeviceType,
@@ -179,9 +179,9 @@ export function registerWebAuthnRoutes(
       expectedChallenge: challenge.challengeHash,
       expectedOrigin: options.origin,
       expectedRPID: options.rpID,
-      authenticator: {
-        credentialID: Buffer.from(credential.credentialId, "base64url"),
-        credentialPublicKey: Buffer.from(credential.publicKey, "base64url"),
+      credential: {
+        id: credential.credentialId,
+        publicKey: Buffer.from(credential.publicKey, "base64url"),
         counter: credential.counter,
         transports: credential.transports as AuthenticatorTransport[],
       },

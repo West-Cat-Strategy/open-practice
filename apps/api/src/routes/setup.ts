@@ -28,6 +28,9 @@ const setupBodySchema = z.object({
     invoicePrefix: z.string().trim().min(1).max(16),
     defaultPaymentTermsDays: z.number().int().positive().max(365),
     trustAccountLabel: z.string().trim().min(1),
+    website: z.string().trim().url().optional().or(z.literal("")),
+    description: z.string().trim().optional(),
+    businessNumber: z.string().trim().optional(),
   }),
   compliance: z.object({
     trustFundsCaveatAccepted: z.literal(true),
@@ -44,6 +47,13 @@ const setupBodySchema = z.object({
         type: z.literal("public-key"),
         clientExtensionResults: z.any(),
         challengeHash: z.string(),
+      })
+      .optional(),
+    practitionerProfile: z
+      .object({
+        regulator: z.string().trim().min(1),
+        licenseStatus: z.string().trim().min(1),
+        jurisdictions: z.array(z.string().trim().min(1)).min(1),
       })
       .optional(),
   }),
@@ -168,7 +178,7 @@ export function registerSetupRoutes(
     const registrationOptions = await generateRegistrationOptions({
       rpName: options.rpName,
       rpID: options.rpID,
-      userID: userId,
+      userID: Buffer.from(userId),
       userName: body.email,
       attestationType: "none",
       authenticatorSelection: {
@@ -230,6 +240,7 @@ export function registerSetupRoutes(
         role: "owner_admin" as const,
         assignedMatterIds: firstMatterId ? [firstMatterId] : [],
         mfaEnabled: false,
+        practitionerProfile: body.owner.practitionerProfile,
       };
       const firstMatter = body.firstMatter
         ? {
@@ -293,18 +304,17 @@ export function registerSetupRoutes(
         });
         if (verification.verified && verification.registrationInfo) {
           const {
-            credentialID,
-            credentialPublicKey,
-            counter,
+            credential,
             credentialDeviceType,
             credentialBackedUp,
           } = verification.registrationInfo;
+          const { id: credentialID, publicKey, counter } = credential;
           webAuthnCredential = {
             id: id("cred"),
             firmId: newFirmId,
             userId: ownerId,
             credentialId: Buffer.from(credentialID).toString("base64url"),
-            publicKey: Buffer.from(credentialPublicKey).toString("base64url"),
+            publicKey: Buffer.from(publicKey).toString("base64url"),
             counter,
             transports: body.owner.webAuthn.response.transports || [],
             deviceType: credentialDeviceType,
@@ -330,6 +340,9 @@ export function registerSetupRoutes(
             invoicePrefix: body.settings.invoicePrefix,
             defaultPaymentTermsDays: body.settings.defaultPaymentTermsDays,
             trustAccountLabel: body.settings.trustAccountLabel,
+            website: body.settings.website || undefined,
+            description: body.settings.description || undefined,
+            businessNumber: body.settings.businessNumber || undefined,
             trustFundsCaveatAcceptedAt: nowIso,
             trustFundsCaveatAcceptedByUserId: ownerId,
             createdAt: nowIso,
