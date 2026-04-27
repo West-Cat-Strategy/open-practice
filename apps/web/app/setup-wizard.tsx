@@ -94,7 +94,12 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
     try {
       const resp = await fetch(`${apiBaseUrl}/api/setup/webauthn-options`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(setupKeyRequired
+            ? { "x-open-practice-setup-key": state.setupKey.trim() }
+            : {}),
+        },
         body: JSON.stringify({ email: state.ownerEmail }),
       });
 
