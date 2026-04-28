@@ -58,7 +58,14 @@ describe("worker queue foundation", () => {
 
   it("keeps processors disabled until providers are configured", async () => {
     await expect(
-      processOpenPracticeJob("ai_triage", "classify", { firmId: "firm-1" }),
+      processOpenPracticeJob({
+        queueName: "ai_triage",
+        jobName: "classify",
+        data: { firmId: "firm-1" },
+        repository: {} as any,
+        s3: {} as any,
+        ocrProvider: {} as any,
+      }),
     ).resolves.toMatchObject({
       status: "skipped",
       metadata: { providerConfigured: false },

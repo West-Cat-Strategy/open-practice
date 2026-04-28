@@ -333,7 +333,7 @@ export interface OcrProvider {
   extractText(input: {
     firmId: string;
     documentId: string;
-    storageKey: string;
+    content: Uint8Array;
     language: string;
   }): Promise<Pick<DocumentTextExtractionRecord, "confidence" | "extractedText" | "metadata">>;
 }
@@ -342,7 +342,7 @@ export interface TranscriptionProvider {
   transcribe(input: {
     firmId: string;
     documentId: string;
-    storageKey: string;
+    content: Uint8Array;
   }): Promise<Pick<MediaTranscriptRecord, "text" | "metadata">>;
 }
 
@@ -350,6 +350,6 @@ export interface MediaProcessor {
   createDerivatives(input: {
     firmId: string;
     documentId: string;
-    storageKey: string;
+    content: Uint8Array;
   }): Promise<MediaDerivativeRecord[]>;
 }

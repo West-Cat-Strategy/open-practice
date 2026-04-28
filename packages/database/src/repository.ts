@@ -66,6 +66,7 @@ import {
 } from "@open-practice/domain/sample-data";
 import type {
   AnswerSnapshotRecord,
+  DocumentTextExtractionRecord,
   GeneratedDocumentRecord,
   IntakeSessionRecord,
   IntakeTemplateRecord,
@@ -388,6 +389,13 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { matterId?: string; status?: TrustTransferRequestRecord["status"] },
   ): Promise<TrustTransferRequestRecord[]>;
+  createDocumentTextExtraction(
+    extraction: DocumentTextExtractionRecord,
+  ): Promise<DocumentTextExtractionRecord>;
+  getDocumentTextExtractions(
+    firmId: string,
+    documentId: string,
+  ): Promise<DocumentTextExtractionRecord[]>;
 }
 
 function clone<T>(value: T): T {
@@ -588,7 +596,25 @@ function mapDocumentRow(row: typeof schema.documents.$inferSelect): DocumentReco
     supersedesDocumentId: row.supersedesDocumentId ?? undefined,
     supersededAt: dateToIso(row.supersededAt),
     uploadedAt: dateToIso(row.uploadedAt),
-    verifiedAt: dateToIso(row.verifiedAt),
+  };
+}
+
+function mapDocumentTextExtractionRow(
+  row: typeof schema.documentTextExtractions.$inferSelect,
+): DocumentTextExtractionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    documentId: row.documentId,
+    engine: row.engine as DocumentTextExtractionRecord["engine"],
+    status: row.status as DocumentTextExtractionRecord["status"],
+    language: row.language,
+    confidence: row.confidence ?? undefined,
+    textStorageKey: row.textStorageKey ?? undefined,
+    extractedText: row.extractedText ?? undefined,
+    metadata: row.metadata as Record<string, unknown>,
+    createdAt: row.createdAt.toISOString(),
+    completedAt: dateToIso(row.completedAt),
   };
 }
 
@@ -830,6 +856,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private webAuthnCredentials: WebAuthnCredentialRecord[] = [];
   private auditEvents: AuditEvent[];
   private postedTransactions: PostedLedgerTransaction[];
+  private documentTextExtractions: DocumentTextExtractionRecord[] = [];
 
   constructor(options: { seedSampleData?: boolean; firms?: Firm[]; users?: User[] } = {}) {
     const seeded = options.seedSampleData ?? true;
@@ -1747,6 +1774,24 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           request.firmId === firmId &&
           (!options.matterId || request.matterId === options.matterId) &&
           (!options.status || request.status === options.status),
+      ),
+    );
+  }
+
+  async createDocumentTextExtraction(
+    extraction: DocumentTextExtractionRecord,
+  ): Promise<DocumentTextExtractionRecord> {
+    this.documentTextExtractions = [...this.documentTextExtractions, clone(extraction)];
+    return clone(extraction);
+  }
+
+  async getDocumentTextExtractions(
+    firmId: string,
+    documentId: string,
+  ): Promise<DocumentTextExtractionRecord[]> {
+    return clone(
+      this.documentTextExtractions.filter(
+        (ext) => ext.firmId === firmId && ext.documentId === documentId,
       ),
     );
   }
@@ -3144,6 +3189,33 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         ),
       );
     return rows.map(mapPaymentAllocationRow);
+  }
+
+  async createDocumentTextExtraction(
+    extraction: DocumentTextExtractionRecord,
+  ): Promise<DocumentTextExtractionRecord> {
+    await this.db.insert(schema.documentTextExtractions).values({
+      ...extraction,
+      createdAt: new Date(extraction.createdAt),
+      completedAt: extraction.completedAt ? new Date(extraction.completedAt) : null,
+    });
+    return extraction;
+  }
+
+  async getDocumentTextExtractions(
+    firmId: string,
+    documentId: string,
+  ): Promise<DocumentTextExtractionRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.documentTextExtractions)
+      .where(
+        and(
+          eq(schema.documentTextExtractions.firmId, firmId),
+          eq(schema.documentTextExtractions.documentId, documentId),
+        ),
+      );
+    return rows.map(mapDocumentTextExtractionRow);
   }
 }
 

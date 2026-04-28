@@ -34,21 +34,32 @@ export class DisabledAiTriageProvider implements AiTriageProvider {
 }
 
 export class DisabledOcrProvider implements OcrProvider {
-  async extractText(): Promise<
-    Pick<DocumentTextExtractionRecord, "confidence" | "extractedText" | "metadata">
-  > {
+  async extractText(_input: {
+    firmId: string;
+    documentId: string;
+    content: Uint8Array;
+    language: string;
+  }): Promise<Pick<DocumentTextExtractionRecord, "confidence" | "extractedText" | "metadata">> {
     throw disabled("OCR");
   }
 }
 
 export class DisabledTranscriptionProvider implements TranscriptionProvider {
-  async transcribe(): Promise<Pick<MediaTranscriptRecord, "text" | "metadata">> {
+  async transcribe(_input: {
+    firmId: string;
+    documentId: string;
+    content: Uint8Array;
+  }): Promise<Pick<MediaTranscriptRecord, "text" | "metadata">> {
     throw disabled("Transcription");
   }
 }
 
 export class DisabledMediaProcessor implements MediaProcessor {
-  async createDerivatives(): Promise<MediaDerivativeRecord[]> {
+  async createDerivatives(_input: {
+    firmId: string;
+    documentId: string;
+    content: Uint8Array;
+  }): Promise<MediaDerivativeRecord[]> {
     throw disabled("Media processor");
   }
 }
