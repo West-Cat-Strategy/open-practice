@@ -1523,7 +1523,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async postLedgerTransaction(transaction: LedgerTransaction): Promise<PostedLedgerTransaction> {
     const posted = postLedgerTransaction(
-      { postedTransactions: this.postedTransactions, accounts: this.ledgerAccounts },
+      {
+        postedTransactions: this.postedTransactions,
+        accounts: this.ledgerAccounts,
+        approvals: this.ledgerApprovals,
+      },
       transaction,
     );
     if (!this.postedTransactions.some((existing) => existing.id === posted.id)) {
@@ -2921,43 +2925,74 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   }
 
   async postLedgerTransaction(transaction: LedgerTransaction): Promise<PostedLedgerTransaction> {
-    const existingRows = await this.db
-      .select()
-      .from(schema.trustTransactions)
-      .where(eq(schema.trustTransactions.firmId, transaction.firmId));
-    const entryRows = await this.db
-      .select()
-      .from(schema.trustLedgerEntries)
-      .where(eq(schema.trustLedgerEntries.firmId, transaction.firmId));
-    const postedTransactions: PostedLedgerTransaction[] = existingRows.map((row) => ({
-      id: row.id,
-      firmId: row.firmId,
-      idempotencyKey: row.idempotencyKey,
-      requestFingerprint: row.requestFingerprint,
-      reversesTransactionId: row.reversesTransactionId ?? undefined,
-      entries: entryRows
-        .filter((entry) => entry.transactionId === row.id)
-        .map((entry) => ({
-          id: entry.id,
-          transactionId: entry.transactionId,
-          firmId: entry.firmId,
-          matterId: entry.matterId,
-          clientId: entry.clientId,
-          accountId: entry.accountId,
-          debitCents: entry.debitCents,
-          creditCents: entry.creditCents,
-          memo: entry.memo,
-          postedAt: row.postedAt.toISOString(),
-        })),
-    }));
-    const accounts = (await this.db
-      .select()
-      .from(schema.ledgerAccounts)
-      .where(eq(schema.ledgerAccounts.firmId, transaction.firmId))) as LedgerAccount[];
-    const posted = postLedgerTransaction({ postedTransactions, accounts }, transaction);
-    const alreadySaved = postedTransactions.some((existing) => existing.id === posted.id);
-    if (!alreadySaved) {
-      await this.db.transaction(async (tx) => {
+    const accountIds = [...new Set(transaction.entries.map((entry) => entry.accountId))];
+
+    return this.db.transaction(async (tx) => {
+      if (accountIds.length > 0) {
+        await tx
+          .select()
+          .from(schema.ledgerAccounts)
+          .where(
+            and(
+              eq(schema.ledgerAccounts.firmId, transaction.firmId),
+              inArray(schema.ledgerAccounts.id, accountIds),
+            ),
+          )
+          .orderBy(asc(schema.ledgerAccounts.id))
+          .for("update");
+      }
+
+      const existingRows = await tx
+        .select()
+        .from(schema.trustTransactions)
+        .where(eq(schema.trustTransactions.firmId, transaction.firmId));
+      const entryRows = await tx
+        .select()
+        .from(schema.trustLedgerEntries)
+        .where(eq(schema.trustLedgerEntries.firmId, transaction.firmId));
+      const postedTransactions: PostedLedgerTransaction[] = existingRows.map((row) => ({
+        id: row.id,
+        firmId: row.firmId,
+        idempotencyKey: row.idempotencyKey,
+        requestFingerprint: row.requestFingerprint,
+        reversesTransactionId: row.reversesTransactionId ?? undefined,
+        entries: entryRows
+          .filter((entry) => entry.transactionId === row.id)
+          .map((entry) => ({
+            id: entry.id,
+            transactionId: entry.transactionId,
+            firmId: entry.firmId,
+            matterId: entry.matterId,
+            clientId: entry.clientId,
+            accountId: entry.accountId,
+            debitCents: entry.debitCents,
+            creditCents: entry.creditCents,
+            memo: entry.memo,
+            postedAt: row.postedAt.toISOString(),
+          })),
+      }));
+      const accounts = (await tx
+        .select()
+        .from(schema.ledgerAccounts)
+        .where(eq(schema.ledgerAccounts.firmId, transaction.firmId))) as LedgerAccount[];
+      const approvals = (
+        await tx
+          .select()
+          .from(schema.trustTransactionApprovals)
+          .where(
+            and(
+              eq(schema.trustTransactionApprovals.firmId, transaction.firmId),
+              eq(schema.trustTransactionApprovals.transactionId, transaction.id),
+            ),
+          )
+      ).map(mapLedgerApprovalRow);
+
+      const posted = postLedgerTransaction(
+        { postedTransactions, accounts, approvals },
+        transaction,
+      );
+      const alreadySaved = postedTransactions.some((existing) => existing.id === posted.id);
+      if (!alreadySaved) {
         await tx.insert(schema.trustTransactions).values({
           id: posted.id,
           firmId: posted.firmId,
@@ -2968,9 +3003,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           reversesTransactionId: posted.reversesTransactionId,
         });
         await tx.insert(schema.trustLedgerEntries).values(posted.entries);
-      });
-    }
-    return posted;
+      }
+      return posted;
+    });
   }
 
   async listAuditEvents(firmId: string): Promise<{ events: AuditEvent[]; valid: boolean }> {

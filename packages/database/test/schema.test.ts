@@ -240,6 +240,12 @@ describe("database schema hardening", () => {
     expect(getTableConfig(trustTransactionApprovals).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["transaction_id", "decision", "decided_by_user_id", "decided_at"]),
     );
+    expect(getTableConfig(trustTransactionApprovals).checks.map((check) => check.name)).toContain(
+      "trust_transaction_approvals_valid_decision",
+    );
+    expect(
+      getTableConfig(trustTransactionApprovals).indexes.map((index) => index.config.name),
+    ).toContain("trust_transaction_approvals_transaction_decision_idx");
     expect(getTableConfig(trustReconciliations).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
         "account_id",
@@ -249,6 +255,9 @@ describe("database schema hardening", () => {
         "actual_balance_cents",
         "status",
       ]),
+    );
+    expect(getTableConfig(trustReconciliations).checks.map((check) => check.name)).toContain(
+      "trust_reconciliations_valid_status",
     );
   });
 

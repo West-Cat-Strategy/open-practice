@@ -468,6 +468,87 @@ describe("funds ledger", () => {
     ).toThrow(/different ledger payload/);
   });
 
+  it("requires independent approval before trust withdrawals", () => {
+    const withdrawal = {
+      id: "earned-fee-withdrawal",
+      firmId: sampleFirm.id,
+      idempotencyKey: "earned-fee-withdrawal",
+      postedByUserId: "user-admin",
+      postedAt: "2026-04-05T12:00:00.000Z",
+      entries: [
+        {
+          firmId: sampleFirm.id,
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-client-liability",
+          debitCents: 75000,
+          creditCents: 0,
+          memo: "Transfer earned fee from trust liability",
+        },
+        {
+          firmId: sampleFirm.id,
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-operating-revenue",
+          debitCents: 0,
+          creditCents: 75000,
+          memo: "Recognize earned fee",
+        },
+      ],
+    };
+    const state = {
+      postedTransactions: [
+        {
+          id: "trust-retainer",
+          firmId: sampleFirm.id,
+          idempotencyKey: "retainer",
+          requestFingerprint: "seed",
+          entries: sampleLedgerEntries,
+        },
+      ],
+      accounts: sampleLedgerAccounts,
+    };
+
+    expect(() => postLedgerTransaction(state, withdrawal)).toThrow(/independent ledger approval/);
+    expect(() =>
+      postLedgerTransaction(
+        {
+          ...state,
+          approvals: [
+            {
+              id: "approval-self",
+              firmId: sampleFirm.id,
+              transactionId: withdrawal.id,
+              decidedByUserId: "user-admin",
+              decision: "approved",
+              decidedAt: "2026-04-05T11:55:00.000Z",
+            },
+          ],
+        },
+        withdrawal,
+      ),
+    ).toThrow(/different user/);
+
+    expect(
+      postLedgerTransaction(
+        {
+          ...state,
+          approvals: [
+            {
+              id: "approval-independent",
+              firmId: sampleFirm.id,
+              transactionId: withdrawal.id,
+              decidedByUserId: "user-licensee",
+              decision: "approved",
+              decidedAt: "2026-04-05T11:55:00.000Z",
+            },
+          ],
+        },
+        withdrawal,
+      ),
+    ).toMatchObject({ id: withdrawal.id });
+  });
+
   it("constructs and validates exact reversing transactions", () => {
     const original: PostedLedgerTransaction = {
       id: "trust-retainer",
@@ -484,7 +565,20 @@ describe("funds ledger", () => {
     });
 
     const posted = postLedgerTransaction(
-      { postedTransactions: [original], accounts: sampleLedgerAccounts },
+      {
+        postedTransactions: [original],
+        accounts: sampleLedgerAccounts,
+        approvals: [
+          {
+            id: "trust-retainer-reversal-approval",
+            firmId: sampleFirm.id,
+            transactionId: reversal.id,
+            decidedByUserId: "user-licensee",
+            decision: "approved",
+            decidedAt: "2026-04-05T11:55:00.000Z",
+          },
+        ],
+      },
       reversal,
     );
 

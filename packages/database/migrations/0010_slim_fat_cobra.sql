@@ -1,0 +1,3 @@
+CREATE INDEX "trust_transaction_approvals_transaction_decision_idx" ON "trust_transaction_approvals" USING btree ("firm_id","transaction_id","decision");--> statement-breakpoint
+ALTER TABLE "trust_reconciliations" ADD CONSTRAINT "trust_reconciliations_valid_status" CHECK ("trust_reconciliations"."status" in ('draft', 'matched', 'exception', 'reviewed'));--> statement-breakpoint
+ALTER TABLE "trust_transaction_approvals" ADD CONSTRAINT "trust_transaction_approvals_valid_decision" CHECK ("trust_transaction_approvals"."decision" in ('approved', 'rejected'));

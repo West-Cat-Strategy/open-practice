@@ -563,7 +563,17 @@ describe("API auth and persistence boundaries", () => {
   });
 
   it("posts ledger transactions through validated request bodies", async () => {
-    const response = await testServer().inject({
+    const server = testServer();
+    const approval = await server.inject({
+      method: "POST",
+      url: "/api/ledger/transactions/earned-fee-001/approvals",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: { decision: "approved", notes: "Independent earned-fee review." },
+    });
+    const response = await server.inject({
       method: "POST",
       url: "/api/ledger/transactions",
       payload: {
@@ -590,6 +600,7 @@ describe("API auth and persistence boundaries", () => {
       },
     });
 
+    expect(approval.statusCode).toBe(200);
     expect(response.statusCode).toBe(200);
     expect(response.json<{ firmId: string; idempotencyKey: string }>()).toMatchObject({
       firmId: "firm-west-legal",

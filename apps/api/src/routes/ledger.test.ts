@@ -75,6 +75,33 @@ function ledgerTransactionPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function ledgerWithdrawalPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "ledger-route-withdrawal",
+    idempotencyKey: "ledger-route-withdrawal-key",
+    postedAt: "2026-04-24T12:00:00.000Z",
+    entries: [
+      {
+        matterId: "matter-001",
+        clientId: "contact-ada",
+        accountId: "acct-client-liability",
+        debitCents: 2500,
+        creditCents: 0,
+        memo: "Route test earned fee transfer",
+      },
+      {
+        matterId: "matter-001",
+        clientId: "contact-ada",
+        accountId: "acct-operating-revenue",
+        debitCents: 0,
+        creditCents: 2500,
+        memo: "Route test earned fee revenue",
+      },
+    ],
+    ...overrides,
+  };
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -163,6 +190,64 @@ describe("ledger routes", () => {
       ],
     });
     expect(response.json()).not.toHaveProperty("success");
+  });
+
+  it("requires independent approval before posting trust withdrawals", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const noApproval = await server.inject({
+      method: "POST",
+      url: "/api/ledger/transactions",
+      payload: ledgerWithdrawalPayload(),
+    });
+    const selfApproval = await server.inject({
+      method: "POST",
+      url: "/api/ledger/transactions/ledger-route-withdrawal/approvals",
+      payload: {
+        decision: "approved",
+        notes: "Reviewed against invoice batch.",
+        decidedAt: "2026-04-24T11:55:00.000Z",
+      },
+    });
+    const selfApprovedPost = await server.inject({
+      method: "POST",
+      url: "/api/ledger/transactions",
+      payload: ledgerWithdrawalPayload(),
+    });
+    const independentApproval = await server.inject({
+      method: "POST",
+      url: "/api/ledger/transactions/ledger-route-withdrawal-approved/approvals",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: {
+        decision: "approved",
+        notes: "Independent review against invoice batch.",
+        decidedAt: "2026-04-24T11:55:00.000Z",
+      },
+    });
+    const approvedPost = await server.inject({
+      method: "POST",
+      url: "/api/ledger/transactions",
+      payload: ledgerWithdrawalPayload({
+        id: "ledger-route-withdrawal-approved",
+        idempotencyKey: "ledger-route-withdrawal-approved-key",
+      }),
+    });
+
+    expect(noApproval.statusCode).toBe(400);
+    expect(noApproval.json()).toMatchObject({
+      message: "Trust withdrawals and reversals require independent ledger approval before posting",
+    });
+    expect(selfApproval.statusCode).toBe(200);
+    expect(selfApprovedPost.statusCode).toBe(400);
+    expect(selfApprovedPost.json()).toMatchObject({
+      message: "Trust ledger approval must be made by a different user than the poster",
+    });
+    expect(independentApproval.statusCode).toBe(200);
+    expect(approvedPost.statusCode).toBe(200);
+    expect(approvedPost.json()).toMatchObject({ id: "ledger-route-withdrawal-approved" });
   });
 
   it("rejects ledger client and matter scope mismatches", async () => {

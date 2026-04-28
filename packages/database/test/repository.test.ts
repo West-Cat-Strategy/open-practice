@@ -227,6 +227,64 @@ describe("repository operations foundation", () => {
     ).resolves.toMatchObject([{ enabled: true, encryptedConfig: "sealed:updated" }]);
   });
 
+  it("requires independent ledger approval before posting trust withdrawals", async () => {
+    const withdrawal = {
+      id: "repo-earned-fee-withdrawal",
+      firmId: "firm-west-legal",
+      idempotencyKey: "repo-earned-fee-withdrawal",
+      postedByUserId: "user-admin",
+      postedAt: now,
+      entries: [
+        {
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-client-liability",
+          debitCents: 50000,
+          creditCents: 0,
+          memo: "Transfer earned fee from trust liability",
+        },
+        {
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-operating-revenue",
+          debitCents: 0,
+          creditCents: 50000,
+          memo: "Recognize earned fee",
+        },
+      ],
+    };
+
+    await expect(
+      new InMemoryOpenPracticeRepository().postLedgerTransaction(withdrawal),
+    ).rejects.toThrow(/independent ledger approval/);
+
+    const selfApproved = new InMemoryOpenPracticeRepository();
+    await selfApproved.createLedgerTransactionApproval({
+      id: "repo-self-approval",
+      firmId: "firm-west-legal",
+      transactionId: withdrawal.id,
+      decidedByUserId: "user-admin",
+      decision: "approved",
+      decidedAt: now,
+    });
+    await expect(selfApproved.postLedgerTransaction(withdrawal)).rejects.toThrow(/different user/);
+
+    const independentlyApproved = new InMemoryOpenPracticeRepository();
+    await independentlyApproved.createLedgerTransactionApproval({
+      id: "repo-independent-approval",
+      firmId: "firm-west-legal",
+      transactionId: withdrawal.id,
+      decidedByUserId: "user-licensee",
+      decision: "approved",
+      decidedAt: now,
+    });
+    await expect(independentlyApproved.postLedgerTransaction(withdrawal)).resolves.toMatchObject({
+      id: withdrawal.id,
+    });
+  });
+
   it("records job lifecycle state transitions", async () => {
     const repository = new InMemoryOpenPracticeRepository();
 

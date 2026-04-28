@@ -782,37 +782,60 @@ export const trustLedgerEntries = pgTable(
   }),
 );
 
-export const trustTransactionApprovals = pgTable("trust_transaction_approvals", {
-  id: text("id").primaryKey(),
-  firmId: text("firm_id")
-    .notNull()
-    .references(() => firms.id),
-  transactionId: text("transaction_id").notNull(),
-  decidedByUserId: text("decided_by_user_id")
-    .notNull()
-    .references(() => users.id),
-  decision: text("decision").notNull(),
-  decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
-  notes: text("notes"),
-});
+export const trustTransactionApprovals = pgTable(
+  "trust_transaction_approvals",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    transactionId: text("transaction_id").notNull(),
+    decidedByUserId: text("decided_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    decision: text("decision").notNull(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
+    notes: text("notes"),
+  },
+  (table) => ({
+    transactionDecision: index("trust_transaction_approvals_transaction_decision_idx").on(
+      table.firmId,
+      table.transactionId,
+      table.decision,
+    ),
+    validDecision: check(
+      "trust_transaction_approvals_valid_decision",
+      sql`${table.decision} in ('approved', 'rejected')`,
+    ),
+  }),
+);
 
-export const trustReconciliations = pgTable("trust_reconciliations", {
-  id: text("id").primaryKey(),
-  firmId: text("firm_id")
-    .notNull()
-    .references(() => firms.id),
-  accountId: text("account_id")
-    .notNull()
-    .references(() => ledgerAccounts.id),
-  statementPeriodStart: timestamp("statement_period_start", { withTimezone: true }).notNull(),
-  statementPeriodEnd: timestamp("statement_period_end", { withTimezone: true }).notNull(),
-  expectedBalanceCents: integer("expected_balance_cents").notNull(),
-  actualBalanceCents: integer("actual_balance_cents").notNull(),
-  status: text("status").notNull(),
-  reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
-  evidence: jsonb("evidence").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-});
+export const trustReconciliations = pgTable(
+  "trust_reconciliations",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id),
+    statementPeriodStart: timestamp("statement_period_start", { withTimezone: true }).notNull(),
+    statementPeriodEnd: timestamp("statement_period_end", { withTimezone: true }).notNull(),
+    expectedBalanceCents: integer("expected_balance_cents").notNull(),
+    actualBalanceCents: integer("actual_balance_cents").notNull(),
+    status: text("status").notNull(),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+    evidence: jsonb("evidence").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    validStatus: check(
+      "trust_reconciliations_valid_status",
+      sql`${table.status} in ('draft', 'matched', 'exception', 'reviewed')`,
+    ),
+  }),
+);
 
 export const auditEvents = pgTable("audit_events", {
   id: text("id").primaryKey(),

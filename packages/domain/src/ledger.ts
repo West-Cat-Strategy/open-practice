@@ -76,6 +76,7 @@ export interface LedgerReconciliationRecord {
 export interface LedgerPostingState {
   postedTransactions: PostedLedgerTransaction[];
   accounts: LedgerAccount[];
+  approvals?: LedgerTransactionApprovalRecord[];
 }
 
 function netLiabilityBalance(
@@ -142,6 +143,41 @@ export function validateBalancedEntries(
   }
 }
 
+export function ledgerTransactionRequiresApproval(
+  transaction: LedgerTransaction,
+  accounts: LedgerAccount[],
+): boolean {
+  if (transaction.reversesTransactionId) return true;
+
+  return transaction.entries.some((entry) => {
+    const account = accounts.find((candidate) => candidate.id === entry.accountId);
+    if (!account) return false;
+    return (
+      (account.type === "client_liability" && entry.debitCents > 0) ||
+      (account.type === "trust_asset" && entry.creditCents > 0)
+    );
+  });
+}
+
+function assertApprovalGate(state: LedgerPostingState, transaction: LedgerTransaction): void {
+  if (!ledgerTransactionRequiresApproval(transaction, state.accounts)) return;
+
+  const approvals = (state.approvals ?? []).filter(
+    (approval) =>
+      approval.firmId === transaction.firmId &&
+      approval.transactionId === transaction.id &&
+      approval.decision === "approved",
+  );
+  if (approvals.length === 0) {
+    throw new Error(
+      "Trust withdrawals and reversals require independent ledger approval before posting",
+    );
+  }
+  if (approvals.every((approval) => approval.decidedByUserId === transaction.postedByUserId)) {
+    throw new Error("Trust ledger approval must be made by a different user than the poster");
+  }
+}
+
 export function postLedgerTransaction(
   state: LedgerPostingState,
   transaction: LedgerTransaction,
@@ -190,6 +226,7 @@ export function postLedgerTransaction(
       }
     }
   }
+  assertApprovalGate(state, transaction);
 
   return {
     id: transaction.id,

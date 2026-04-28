@@ -11,6 +11,8 @@ trust accounting software, accounting software, or tax-advice tooling.
 - No overdrawing a client matter balance.
 - Idempotency keys for external bank/payment events.
 - Append-only posted entries; corrections require reversing transactions.
+- Independent maker-checker approval before trust withdrawals or reversals are posted.
+- PostgreSQL posting locks the involved firm ledger accounts before balance/idempotency validation.
 - Reconciliation records, maker-checker approvals, and persistent concurrency guarantees are
   operational controls; they are not jurisdiction-certified controls.
 - Billing, invoice, manual-payment, and trust-transfer-request workflows should be treated as

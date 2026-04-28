@@ -33,7 +33,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/matters`                                           | Matters visible to the current user.                                                                            |
 | `POST /api/conflicts/check`                                  | Conflict search with audit recording for prospective names, aliases, identifiers, and party role.               |
 | `GET /api/ledger?matterId=`                                  | Trust ledger accounts, entries, posted transactions, and balances. Matter-scoped users must provide matter ID.  |
-| `POST /api/ledger/transactions`                              | Balanced, idempotent trust transaction posting.                                                                 |
+| `POST /api/ledger/transactions`                              | Balanced, idempotent trust transaction posting; withdrawals and reversals require independent approval.         |
 | `GET /api/audit`                                             | Firm audit events and hash-chain validity.                                                                      |
 | `GET /api/documents/presign-upload`                          | S3 PUT upload intent, storage key, document intent record, and required scan marker.                            |
 | `POST /api/documents/:id/upload-complete`                    | Checksum and scan-state completion for an upload intent.                                                        |
@@ -145,9 +145,12 @@ filtered by category while remaining editable through future template-management
 Ledger posting has no mutable status field. A transaction is accepted only when entries are balanced,
 non-zero, one-sided debit/credit rows; all accounts, matters, and clients are valid; the idempotency
 key is new or repeats the same request fingerprint; and client-liability balances are not overdrawn.
-Reversal transactions must reference an existing transaction and exactly mirror the original entries.
-Approval and reconciliation records are first-class controls around posting and review, but they are
-not jurisdiction-certified compliance claims.
+Trust receipts can post without a prior approval record. Trust withdrawals and reversal transactions
+require an approved maker-checker record from a different user than the poster, and reversals must
+reference an existing transaction and exactly mirror the original entries. PostgreSQL-backed posting
+serializes the involved firm ledger accounts before validating balances and idempotency. Approval and
+reconciliation records are first-class controls around posting and review, but they are not
+jurisdiction-certified compliance claims.
 
 Billing work treats time and expense capture as pre-invoice operational records. The billing status
 is `draft`, `submitted`, `approved`, `billed`, or `written_off`. Draft entries can be edited,
