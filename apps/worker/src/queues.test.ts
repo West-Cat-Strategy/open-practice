@@ -65,6 +65,7 @@ describe("worker queue foundation", () => {
         repository: {} as any,
         s3: {} as any,
         ocrProvider: {} as any,
+        mailSender: {} as any,
       }),
     ).resolves.toMatchObject({
       status: "skipped",

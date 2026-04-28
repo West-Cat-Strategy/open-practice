@@ -8,7 +8,7 @@ import {
   InMemoryOpenPracticeRepository,
   type OpenPracticeRepository,
 } from "@open-practice/database";
-import { TesseractOcrProvider } from "@open-practice/providers";
+import { TesseractOcrProvider, SmtpMailSender, DisabledMailSender } from "@open-practice/providers";
 import { openPracticeQueues, redisConnectionFromUrl } from "./queues.js";
 import { processOpenPracticeJob, type WorkerJobEnvelope } from "./processors.js";
 
@@ -33,6 +33,12 @@ const envSchema = z.object({
   S3_BUCKET: z.string().default("open-practice-documents"),
   S3_ACCESS_KEY: optionalString,
   S3_SECRET_KEY: optionalString,
+  SMTP_HOST: z.string().default("localhost"),
+  SMTP_PORT: z.coerce.number().default(1025),
+  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_FROM: z.string().default("Open Practice <no-reply@open-practice.local>"),
+  SMTP_USERNAME: optionalString,
+  SMTP_PASSWORD: optionalString,
 });
 
 function selectedQueues(value: string | undefined): OpenPracticeQueueName[] {
@@ -56,6 +62,7 @@ export function createWorkers(input: {
   repository: OpenPracticeRepository;
   s3: { client: S3Client; bucket: string };
   ocrProvider: TesseractOcrProvider;
+  mailSender: SmtpMailSender | DisabledMailSender;
 }): Worker[] {
   const connection = redisConnectionFromUrl(input.redisUrl);
   return input.queues.map(
@@ -70,6 +77,7 @@ export function createWorkers(input: {
             repository: input.repository,
             s3: input.s3,
             ocrProvider: input.ocrProvider,
+            mailSender: input.mailSender,
           }),
         { connection, concurrency: input.concurrency },
       ),
@@ -97,6 +105,19 @@ if (process.env.NODE_ENV !== "test") {
 
   const ocrProvider = new TesseractOcrProvider();
 
+  const mailSender =
+    env.SMTP_HOST && env.SMTP_PORT
+      ? new SmtpMailSender({
+          host: env.SMTP_HOST,
+          port: env.SMTP_PORT,
+          secure: env.SMTP_SECURE,
+          auth:
+            env.SMTP_USERNAME && env.SMTP_PASSWORD
+              ? { user: env.SMTP_USERNAME, pass: env.SMTP_PASSWORD }
+              : undefined,
+        })
+      : new DisabledMailSender();
+
   const workers = createWorkers({
     redisUrl: env.REDIS_URL,
     queues: selectedQueues(env.WORKER_QUEUES),
@@ -104,6 +125,7 @@ if (process.env.NODE_ENV !== "test") {
     repository,
     s3: { client: s3Client, bucket: env.S3_BUCKET },
     ocrProvider,
+    mailSender,
   });
 
   for (const worker of workers) {

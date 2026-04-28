@@ -1,7 +1,6 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import type { OpenPracticeQueueName, DocumentTextExtractionRecord } from "@open-practice/domain";
+import type { OpenPracticeQueueName, DocumentTextExtractionRecord, MailSender, OcrProvider } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
-import type { OcrProvider } from "@open-practice/domain";
 
 export interface WorkerJobEnvelope {
   firmId: string;
@@ -32,11 +31,16 @@ export async function processOpenPracticeJob(input: {
   repository: OpenPracticeRepository;
   s3: { client: S3Client; bucket: string };
   ocrProvider: OcrProvider;
+  mailSender: MailSender;
 }): Promise<WorkerJobResult> {
   const { queueName, data } = input;
 
   if (queueName === "ocr") {
     return processOcrJob(input);
+  }
+
+  if (queueName === "email") {
+    return processEmailJob(input);
   }
 
   return {
@@ -47,6 +51,40 @@ export async function processOpenPracticeJob(input: {
       resourceType: data.resourceType,
       resourceId: data.resourceId,
       providerConfigured: false,
+    },
+  };
+}
+
+async function processEmailJob(input: {
+  data: WorkerJobEnvelope;
+  mailSender: MailSender;
+}): Promise<WorkerJobResult> {
+  const { data, mailSender } = input;
+  const metadata = data.metadata || {};
+
+  if (!metadata.to || !metadata.subject || (!metadata.html && !metadata.text)) {
+    return {
+      status: "skipped",
+      reason: "Missing email details in job metadata",
+      metadata: { firmId: data.firmId },
+    };
+  }
+
+  const result = await mailSender.send({
+    firmId: data.firmId,
+    from: (metadata.from as string) || "Open Practice <no-reply@open-practice.local>",
+    to: Array.isArray(metadata.to) ? (metadata.to as string[]) : [metadata.to as string],
+    subject: metadata.subject as string,
+    html: (metadata.html as string) || "",
+    text: (metadata.text as string) || "",
+    metadata: metadata.providerMetadata as Record<string, unknown>,
+  });
+
+  return {
+    status: "completed",
+    metadata: {
+      firmId: data.firmId,
+      providerMessageId: result.providerMessageId,
     },
   };
 }
