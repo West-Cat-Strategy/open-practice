@@ -279,6 +279,7 @@ describe("API auth and persistence boundaries", () => {
       jwtSecret,
       password: "correct horse battery staple",
     });
+    await repository.updateUserMfaStatus("firm-west-legal", "user-admin", false);
     const productionServer = testServer({
       repository,
       nodeEnv: "production",
@@ -332,6 +333,7 @@ describe("API auth and persistence boundaries", () => {
     const repository = new InMemoryOpenPracticeRepository();
     const jwtSecret = "production-test-secret-at-least-32-characters";
     await setAdminPassword({ repository, jwtSecret, password: "logout password" });
+    await repository.updateUserMfaStatus("firm-west-legal", "user-admin", false);
     const server = testServer({ repository, nodeEnv: "production", jwtSecret });
     const login = await server.inject({
       method: "POST",
@@ -362,6 +364,7 @@ describe("API auth and persistence boundaries", () => {
     const repository = new InMemoryOpenPracticeRepository();
     const jwtSecret = "production-test-secret-at-least-32-characters";
     await setAdminPassword({ repository, jwtSecret, password: "expired password" });
+    await repository.updateUserMfaStatus("firm-west-legal", "user-admin", false);
     const server = testServer({
       repository,
       nodeEnv: "production",
