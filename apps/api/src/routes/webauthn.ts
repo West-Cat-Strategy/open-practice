@@ -45,7 +45,10 @@ export function registerWebAuthnRoutes(
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this WebAuthn route has a tighter per-route cap.
   server.post(
     "/api/auth/register/options",
-    { config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } } },
+    {
+      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
+      config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
+    },
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
@@ -89,7 +92,10 @@ export function registerWebAuthnRoutes(
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this WebAuthn route has a tighter per-route cap.
   server.post(
     "/api/auth/register/verify",
-    { config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } } },
+    {
+      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
+      config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
+    },
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
@@ -136,7 +142,10 @@ export function registerWebAuthnRoutes(
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this WebAuthn route has a tighter per-route cap.
   server.post(
     "/api/auth/login/options",
-    { config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } } },
+    {
+      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
+      config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
+    },
     async (request) => {
       const body = loginOptionsSchema.parse(request.body);
       const user = await options.repository.getUserByEmail(body.firmId, body.email);
@@ -176,7 +185,10 @@ export function registerWebAuthnRoutes(
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this WebAuthn route has a tighter per-route cap.
   server.post(
     "/api/auth/login/verify",
-    { config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } } },
+    {
+      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
+      config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
+    },
     async (request, reply) => {
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {
@@ -243,47 +255,83 @@ export function registerWebAuthnRoutes(
     },
   );
 
-  server.get("/api/auth/credentials", async (request) => {
-    const access = requireAccess(request.auth, { resource: "auth_credential", action: "read" });
-    if (!access.ok) throw access.error;
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and credential management has a tighter per-route cap.
+  server.get(
+    "/api/auth/credentials",
+    {
+      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
+      config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
+    },
+    async (request) => {
+      const access = requireAccess(request.auth, { resource: "auth_credential", action: "read" });
+      if (!access.ok) throw access.error;
 
-    return options.repository.listWebAuthnCredentials(request.auth.firmId, request.auth.user.id);
-  });
+      return options.repository.listWebAuthnCredentials(request.auth.firmId, request.auth.user.id);
+    },
+  );
 
-  server.delete("/api/auth/credentials/:id", async (request) => {
-    const access = requireAccess(request.auth, { resource: "auth_credential", action: "delete" });
-    if (!access.ok) throw access.error;
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and credential management has a tighter per-route cap.
+  server.delete(
+    "/api/auth/credentials/:id",
+    {
+      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
+      config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
+    },
+    async (request) => {
+      const access = requireAccess(request.auth, { resource: "auth_credential", action: "delete" });
+      if (!access.ok) throw access.error;
 
-    const params = z.object({ id: z.string().min(1) }).parse(request.params);
-    await options.repository.deleteWebAuthnCredential(request.auth.firmId, params.id);
-    return { ok: true };
-  });
+      const params = z.object({ id: z.string().min(1) }).parse(request.params);
+      await options.repository.deleteWebAuthnCredential(request.auth.firmId, params.id);
+      return { ok: true };
+    },
+  );
 
-  server.post("/api/auth/mfa/enable", async (request) => {
-    // Note: in a real app, you might want a fresh 'sudo' mode here.
-    // For now, we assume the current session is sufficient.
-    const access = requireAccess(request.auth, { resource: "auth_credential", action: "update" });
-    if (!access.ok) throw access.error;
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and MFA mutations have a tighter per-route cap.
+  server.post(
+    "/api/auth/mfa/enable",
+    {
+      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
+      config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
+    },
+    async (request) => {
+      // Note: in a real app, you might want a fresh 'sudo' mode here.
+      // For now, we assume the current session is sufficient.
+      const access = requireAccess(request.auth, { resource: "auth_credential", action: "update" });
+      if (!access.ok) throw access.error;
 
-    const credentials = await options.repository.listWebAuthnCredentials(
-      request.auth.firmId,
-      request.auth.user.id,
-    );
-    if (credentials.length === 0) {
-      throw Object.assign(new Error("Cannot enable MFA without a registered passkey"), {
-        statusCode: 400,
-      });
-    }
+      const credentials = await options.repository.listWebAuthnCredentials(
+        request.auth.firmId,
+        request.auth.user.id,
+      );
+      if (credentials.length === 0) {
+        throw Object.assign(new Error("Cannot enable MFA without a registered passkey"), {
+          statusCode: 400,
+        });
+      }
 
-    await options.repository.updateUserMfaStatus(request.auth.firmId, request.auth.user.id, true);
-    return { ok: true };
-  });
+      await options.repository.updateUserMfaStatus(request.auth.firmId, request.auth.user.id, true);
+      return { ok: true };
+    },
+  );
 
-  server.post("/api/auth/mfa/disable", async (request) => {
-    const access = requireAccess(request.auth, { resource: "auth_credential", action: "update" });
-    if (!access.ok) throw access.error;
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and MFA mutations have a tighter per-route cap.
+  server.post(
+    "/api/auth/mfa/disable",
+    {
+      preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
+      config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
+    },
+    async (request) => {
+      const access = requireAccess(request.auth, { resource: "auth_credential", action: "update" });
+      if (!access.ok) throw access.error;
 
-    await options.repository.updateUserMfaStatus(request.auth.firmId, request.auth.user.id, false);
-    return { ok: true };
-  });
+      await options.repository.updateUserMfaStatus(
+        request.auth.firmId,
+        request.auth.user.id,
+        false,
+      );
+      return { ok: true };
+    },
+  );
 }

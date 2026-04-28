@@ -169,7 +169,10 @@ export function registerSetupRoutes(
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this setup route has a tighter per-route cap.
   server.post(
     "/api/setup/webauthn-options",
-    { config: { rateLimit: { ...SETUP_RATE_LIMIT } } },
+    {
+      preHandler: server.rateLimit(SETUP_RATE_LIMIT),
+      config: { rateLimit: { ...SETUP_RATE_LIMIT } },
+    },
     async (request) => {
       const status = await options.repository.getSetupStatus();
       if (!status.required || status.blocked) {
@@ -208,7 +211,10 @@ export function registerSetupRoutes(
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this setup route has a tighter per-route cap.
   server.post(
     "/api/setup/complete",
-    { config: { rateLimit: { ...SETUP_RATE_LIMIT } } },
+    {
+      preHandler: server.rateLimit(SETUP_RATE_LIMIT),
+      config: { rateLimit: { ...SETUP_RATE_LIMIT } },
+    },
     async (request, reply) => {
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {

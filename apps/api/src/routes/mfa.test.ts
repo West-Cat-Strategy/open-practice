@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import rateLimit from "@fastify/rate-limit";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   InMemoryOpenPracticeRepository,
@@ -23,27 +24,31 @@ function testServer(repository: OpenPracticeRepository): FastifyInstance {
     origin: "http://localhost:3000",
   };
 
-  server.addHook("preHandler", async (request) => {
-    if (isPublicRoute(request.method, request.url)) return;
+  server.register(async (app) => {
+    await app.register(rateLimit, { global: true, max: 1_000, timeWindow: "1 minute" });
 
-    const sessionToken = request.headers["x-open-practice-session"];
-    if (sessionToken && typeof sessionToken === "string") {
-      const hash = hashToken(sessionToken, options.jwtSecret);
-      const session = await repository.getAuthSessionByTokenHash(hash);
-      if (session) {
-        const user = await repository.getUser(session.firmId, session.userId);
-        if (user) {
-          request.auth = { user, firmId: session.firmId };
-          return;
+    app.addHook("preHandler", async (request) => {
+      if (isPublicRoute(request.method, request.url)) return;
+
+      const sessionToken = request.headers["x-open-practice-session"];
+      if (sessionToken && typeof sessionToken === "string") {
+        const hash = hashToken(sessionToken, options.jwtSecret);
+        const session = await repository.getAuthSessionByTokenHash(hash);
+        if (session) {
+          const user = await repository.getUser(session.firmId, session.userId);
+          if (user) {
+            request.auth = { user, firmId: session.firmId };
+            return;
+          }
         }
       }
-    }
-    throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
-  });
+      throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
+    });
 
-  registerAuthRoutes(server, options);
-  registerWebAuthnRoutes(server, options);
-  registerRecoveryRoutes(server, options);
+    registerAuthRoutes(app, options);
+    registerWebAuthnRoutes(app, options);
+    registerRecoveryRoutes(app, options);
+  });
 
   servers.push(server);
   return server;

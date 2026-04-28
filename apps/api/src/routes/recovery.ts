@@ -24,7 +24,10 @@ export function registerRecoveryRoutes(
 
   server.post(
     "/api/auth/recovery-codes/generate",
-    { config: { rateLimit: { ...RECOVERY_RATE_LIMIT } } },
+    {
+      preHandler: server.rateLimit(RECOVERY_RATE_LIMIT),
+      config: { rateLimit: { ...RECOVERY_RATE_LIMIT } },
+    },
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
@@ -50,7 +53,10 @@ export function registerRecoveryRoutes(
 
   server.post(
     "/api/auth/recovery-codes/verify",
-    { config: { rateLimit: { ...RECOVERY_RATE_LIMIT } } },
+    {
+      preHandler: server.rateLimit(RECOVERY_RATE_LIMIT),
+      config: { rateLimit: { ...RECOVERY_RATE_LIMIT } },
+    },
     async (request, reply) => {
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {
