@@ -254,4 +254,66 @@ describe("repository operations foundation", () => {
       repository.listJobLifecycleRecords("firm-west-legal", { status: "failed" }),
     ).resolves.toMatchObject([{ id: "job-email-1", errorMessage: "SMTP unavailable" }]);
   });
+
+  it("stores parsed inbound email messages and attachments", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const message = await repository.createInboundEmailMessage({
+      id: "inbound-message-001",
+      firmId: "firm-west-legal",
+      addressId: "inbound-address-001",
+      matterId: "matter-001",
+      messageId: "<message-001@example.test>",
+      fromAddress: "client@example.test",
+      toAddresses: ["matter-001@open-practice.test"],
+      subject: "Filed materials",
+      receivedAt: now,
+      rawStorageKey: "inbound/raw/message-001.eml",
+      parsedText: "Please review.",
+      parsedHtmlStorageKey: "inbound/message-001/body.html",
+      labels: [],
+      status: "triaged",
+      metadata: { routedAddress: "matter-001@open-practice.test" },
+    });
+
+    await expect(repository.listInboundEmailMessages("firm-west-legal")).resolves.toMatchObject([
+      {
+        id: message.id,
+        matterId: "matter-001",
+        status: "triaged",
+      },
+    ]);
+    await expect(
+      repository.getInboundEmailMessage("firm-west-legal", message.id),
+    ).resolves.toMatchObject({
+      subject: "Filed materials",
+    });
+    await expect(
+      repository.updateInboundEmailMessage("firm-west-legal", message.id, {
+        status: "triage_pending",
+        labels: ["needs-review"],
+      }),
+    ).resolves.toMatchObject({
+      status: "triage_pending",
+      labels: ["needs-review"],
+    });
+
+    await repository.createInboundEmailAttachment({
+      id: "inbound-attachment-001",
+      firmId: "firm-west-legal",
+      inboundMessageId: message.id,
+      filename: "filing.pdf",
+      contentType: "application/pdf",
+      sizeBytes: 128,
+      storageKey: "inbound/message-001/filing.pdf",
+      checksumSha256: "a".repeat(64),
+    });
+
+    const attachments = await repository.listInboundEmailAttachments("firm-west-legal", message.id);
+    expect(attachments).toMatchObject([
+      {
+        filename: "filing.pdf",
+      },
+    ]);
+    expect(attachments[0]).not.toHaveProperty("documentId");
+  });
 });

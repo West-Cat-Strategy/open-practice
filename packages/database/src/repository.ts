@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   appendAuditEvent,
   buildBasicDraftTemplates,
@@ -41,6 +41,9 @@ import {
   type WebAuthnCredentialRecord,
   type DraftRecord,
   type DraftTemplateRecord,
+  type InboundEmailAddressRecord,
+  type InboundEmailAttachmentRecord,
+  type InboundEmailMessageRecord,
 } from "@open-practice/domain";
 import {
   sampleAuditEvents,
@@ -432,6 +435,33 @@ export interface OpenPracticeRepository {
     options?: { category?: string; activeOnly?: boolean },
   ): Promise<DraftTemplateRecord[]>;
   createDraftTemplate(template: DraftTemplateRecord): Promise<DraftTemplateRecord>;
+  getInboundEmailAddressByAddress(
+    firmId: string,
+    address: string,
+  ): Promise<InboundEmailAddressRecord | undefined>;
+  listInboundEmailMessages(
+    firmId: string,
+    options?: { matterId?: string; status?: InboundEmailMessageRecord["status"] },
+  ): Promise<InboundEmailMessageRecord[]>;
+  getInboundEmailMessage(
+    firmId: string,
+    messageId: string,
+  ): Promise<InboundEmailMessageRecord | undefined>;
+  createInboundEmailMessage(message: InboundEmailMessageRecord): Promise<InboundEmailMessageRecord>;
+  updateInboundEmailMessage(
+    firmId: string,
+    messageId: string,
+    updates: Partial<
+      Pick<InboundEmailMessageRecord, "status" | "matterId" | "labels" | "metadata">
+    >,
+  ): Promise<InboundEmailMessageRecord>;
+  createInboundEmailAttachment(
+    attachment: InboundEmailAttachmentRecord,
+  ): Promise<InboundEmailAttachmentRecord>;
+  listInboundEmailAttachments(
+    firmId: string,
+    messageId: string,
+  ): Promise<InboundEmailAttachmentRecord[]>;
 }
 
 function clone<T>(value: T): T {
@@ -899,6 +929,57 @@ function mapDraftTemplateRow(row: typeof schema.draftTemplates.$inferSelect): Dr
   };
 }
 
+function mapInboundEmailAddressRow(
+  row: typeof schema.inboundEmailAddresses.$inferSelect,
+): InboundEmailAddressRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    address: row.address,
+    matterId: row.matterId ?? undefined,
+    enabled: row.enabled,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function mapInboundEmailMessageRow(
+  row: typeof schema.inboundEmailMessages.$inferSelect,
+): InboundEmailMessageRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    addressId: row.addressId ?? undefined,
+    matterId: row.matterId ?? undefined,
+    messageId: row.messageId ?? undefined,
+    fromAddress: row.fromAddress,
+    toAddresses: row.toAddresses,
+    subject: row.subject,
+    receivedAt: row.receivedAt.toISOString(),
+    rawStorageKey: row.rawStorageKey,
+    parsedText: row.parsedText ?? undefined,
+    parsedHtmlStorageKey: row.parsedHtmlStorageKey ?? undefined,
+    labels: row.labels,
+    status: row.status as InboundEmailMessageRecord["status"],
+    metadata: row.metadata as Record<string, unknown>,
+  };
+}
+
+function mapInboundEmailAttachmentRow(
+  row: typeof schema.inboundEmailAttachments.$inferSelect,
+): InboundEmailAttachmentRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    inboundMessageId: row.inboundMessageId,
+    documentId: row.documentId ?? undefined,
+    filename: row.filename,
+    contentType: row.contentType ?? undefined,
+    sizeBytes: row.sizeBytes ?? undefined,
+    storageKey: row.storageKey,
+    checksumSha256: row.checksumSha256 ?? undefined,
+  };
+}
+
 export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private firms: Firm[];
   private users: User[];
@@ -939,6 +1020,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private documentTextExtractions: DocumentTextExtractionRecord[] = [];
   private drafts: DraftRecord[] = [];
   private draftTemplates: DraftTemplateRecord[] = [];
+  private inboundEmailAddresses: InboundEmailAddressRecord[] = [];
+  private inboundEmailMessages: InboundEmailMessageRecord[] = [];
+  private inboundEmailAttachments: InboundEmailAttachmentRecord[] = [];
 
   constructor(options: { seedSampleData?: boolean; firms?: Firm[]; users?: User[] } = {}) {
     const seeded = options.seedSampleData ?? true;
@@ -2006,6 +2090,87 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   async createDraftTemplate(template: DraftTemplateRecord): Promise<DraftTemplateRecord> {
     this.draftTemplates = [...this.draftTemplates, clone(template)];
     return clone(template);
+  }
+
+  async getInboundEmailAddressByAddress(
+    firmId: string,
+    address: string,
+  ): Promise<InboundEmailAddressRecord | undefined> {
+    const normalized = address.trim().toLowerCase();
+    return clone(
+      this.inboundEmailAddresses.find(
+        (candidate) =>
+          candidate.firmId === firmId && candidate.address.trim().toLowerCase() === normalized,
+      ),
+    );
+  }
+
+  async listInboundEmailMessages(
+    firmId: string,
+    options: { matterId?: string; status?: InboundEmailMessageRecord["status"] } = {},
+  ): Promise<InboundEmailMessageRecord[]> {
+    return clone(
+      this.inboundEmailMessages
+        .filter(
+          (message) =>
+            message.firmId === firmId &&
+            (!options.matterId || message.matterId === options.matterId) &&
+            (!options.status || message.status === options.status),
+        )
+        .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt)),
+    );
+  }
+
+  async getInboundEmailMessage(
+    firmId: string,
+    messageId: string,
+  ): Promise<InboundEmailMessageRecord | undefined> {
+    return clone(
+      this.inboundEmailMessages.find(
+        (message) => message.firmId === firmId && message.id === messageId,
+      ),
+    );
+  }
+
+  async createInboundEmailMessage(
+    message: InboundEmailMessageRecord,
+  ): Promise<InboundEmailMessageRecord> {
+    this.inboundEmailMessages = [...this.inboundEmailMessages, clone(message)];
+    return clone(message);
+  }
+
+  async updateInboundEmailMessage(
+    firmId: string,
+    messageId: string,
+    updates: Partial<
+      Pick<InboundEmailMessageRecord, "status" | "matterId" | "labels" | "metadata">
+    >,
+  ): Promise<InboundEmailMessageRecord> {
+    const index = this.inboundEmailMessages.findIndex(
+      (message) => message.firmId === firmId && message.id === messageId,
+    );
+    if (index === -1) throw new Error("Inbound email message was not found");
+    const updated = { ...this.inboundEmailMessages[index]!, ...clone(updates) };
+    this.inboundEmailMessages[index] = updated;
+    return clone(updated);
+  }
+
+  async createInboundEmailAttachment(
+    attachment: InboundEmailAttachmentRecord,
+  ): Promise<InboundEmailAttachmentRecord> {
+    this.inboundEmailAttachments = [...this.inboundEmailAttachments, clone(attachment)];
+    return clone(attachment);
+  }
+
+  async listInboundEmailAttachments(
+    firmId: string,
+    messageId: string,
+  ): Promise<InboundEmailAttachmentRecord[]> {
+    return clone(
+      this.inboundEmailAttachments.filter(
+        (attachment) => attachment.firmId === firmId && attachment.inboundMessageId === messageId,
+      ),
+    );
   }
 }
 
@@ -3623,6 +3788,106 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       updatedAt: new Date(template.updatedAt),
     });
     return template;
+  }
+
+  async getInboundEmailAddressByAddress(
+    firmId: string,
+    address: string,
+  ): Promise<InboundEmailAddressRecord | undefined> {
+    const normalized = address.trim().toLowerCase();
+    const rows = await this.db
+      .select()
+      .from(schema.inboundEmailAddresses)
+      .where(eq(schema.inboundEmailAddresses.firmId, firmId));
+    return rows
+      .map(mapInboundEmailAddressRow)
+      .find((candidate) => candidate.address.trim().toLowerCase() === normalized);
+  }
+
+  async listInboundEmailMessages(
+    firmId: string,
+    options: { matterId?: string; status?: InboundEmailMessageRecord["status"] } = {},
+  ): Promise<InboundEmailMessageRecord[]> {
+    const conditions = [eq(schema.inboundEmailMessages.firmId, firmId)];
+    if (options.matterId)
+      conditions.push(eq(schema.inboundEmailMessages.matterId, options.matterId));
+    if (options.status) conditions.push(eq(schema.inboundEmailMessages.status, options.status));
+    const rows = await this.db
+      .select()
+      .from(schema.inboundEmailMessages)
+      .where(and(...conditions))
+      .orderBy(desc(schema.inboundEmailMessages.receivedAt));
+    return rows.map(mapInboundEmailMessageRow);
+  }
+
+  async getInboundEmailMessage(
+    firmId: string,
+    messageId: string,
+  ): Promise<InboundEmailMessageRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.inboundEmailMessages)
+      .where(
+        and(
+          eq(schema.inboundEmailMessages.firmId, firmId),
+          eq(schema.inboundEmailMessages.id, messageId),
+        ),
+      );
+    return row ? mapInboundEmailMessageRow(row) : undefined;
+  }
+
+  async createInboundEmailMessage(
+    message: InboundEmailMessageRecord,
+  ): Promise<InboundEmailMessageRecord> {
+    await this.db.insert(schema.inboundEmailMessages).values({
+      ...message,
+      receivedAt: new Date(message.receivedAt),
+    });
+    return message;
+  }
+
+  async updateInboundEmailMessage(
+    firmId: string,
+    messageId: string,
+    updates: Partial<
+      Pick<InboundEmailMessageRecord, "status" | "matterId" | "labels" | "metadata">
+    >,
+  ): Promise<InboundEmailMessageRecord> {
+    const [row] = await this.db
+      .update(schema.inboundEmailMessages)
+      .set(updates)
+      .where(
+        and(
+          eq(schema.inboundEmailMessages.firmId, firmId),
+          eq(schema.inboundEmailMessages.id, messageId),
+        ),
+      )
+      .returning();
+    if (!row) throw new Error("Inbound email message was not found");
+    return mapInboundEmailMessageRow(row);
+  }
+
+  async createInboundEmailAttachment(
+    attachment: InboundEmailAttachmentRecord,
+  ): Promise<InboundEmailAttachmentRecord> {
+    await this.db.insert(schema.inboundEmailAttachments).values(attachment);
+    return attachment;
+  }
+
+  async listInboundEmailAttachments(
+    firmId: string,
+    messageId: string,
+  ): Promise<InboundEmailAttachmentRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.inboundEmailAttachments)
+      .where(
+        and(
+          eq(schema.inboundEmailAttachments.firmId, firmId),
+          eq(schema.inboundEmailAttachments.inboundMessageId, messageId),
+        ),
+      );
+    return rows.map(mapInboundEmailAttachmentRow);
   }
 }
 

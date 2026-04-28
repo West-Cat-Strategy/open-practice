@@ -14,11 +14,13 @@
   },
   "dependencies": {
     "@open-practice/domain": "workspace:*",
+    "mailparser": "^3.9.8",
     "nodemailer": "^8.0.7",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@eslint/js": "latest",
+    "@types/mailparser": "^3.4.6",
     "@types/nodemailer": "^8.0.0",
     "typescript": "latest",
     "typescript-eslint": "latest"

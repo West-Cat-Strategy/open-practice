@@ -2,10 +2,12 @@ import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type {
   OpenPracticeQueueName,
   DocumentTextExtractionRecord,
+  InboundEmailParser,
   MailSender,
   OcrProvider,
 } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
+import { processInboundEmailJob } from "./processors/inbound-email.js";
 
 export interface WorkerJobEnvelope {
   firmId: string;
@@ -37,6 +39,7 @@ export async function processOpenPracticeJob(input: {
   s3: { client: S3Client; bucket: string };
   ocrProvider: OcrProvider;
   mailSender: MailSender;
+  inboundEmailParser: InboundEmailParser;
 }): Promise<WorkerJobResult> {
   const { queueName, data } = input;
 
@@ -46,6 +49,10 @@ export async function processOpenPracticeJob(input: {
 
   if (queueName === "email") {
     return processEmailJob(input);
+  }
+
+  if (queueName === "inbound_email") {
+    return processInboundEmailJob(input);
   }
 
   return {

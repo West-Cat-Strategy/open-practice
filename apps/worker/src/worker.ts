@@ -8,7 +8,12 @@ import {
   InMemoryOpenPracticeRepository,
   type OpenPracticeRepository,
 } from "@open-practice/database";
-import { TesseractOcrProvider, SmtpMailSender, DisabledMailSender } from "@open-practice/providers";
+import {
+  TesseractOcrProvider,
+  SmtpMailSender,
+  DisabledMailSender,
+  MailParserProvider,
+} from "@open-practice/providers";
 import { openPracticeQueues, redisConnectionFromUrl } from "./queues.js";
 import { processOpenPracticeJob, type WorkerJobEnvelope } from "./processors.js";
 
@@ -63,6 +68,7 @@ export function createWorkers(input: {
   s3: { client: S3Client; bucket: string };
   ocrProvider: TesseractOcrProvider;
   mailSender: SmtpMailSender | DisabledMailSender;
+  inboundEmailParser: MailParserProvider;
 }): Worker[] {
   const connection = redisConnectionFromUrl(input.redisUrl);
   return input.queues.map(
@@ -78,6 +84,7 @@ export function createWorkers(input: {
             s3: input.s3,
             ocrProvider: input.ocrProvider,
             mailSender: input.mailSender,
+            inboundEmailParser: input.inboundEmailParser,
           }),
         { connection, concurrency: input.concurrency },
       ),
@@ -126,6 +133,7 @@ if (process.env.NODE_ENV !== "test") {
     s3: { client: s3Client, bucket: env.S3_BUCKET },
     ocrProvider,
     mailSender,
+    inboundEmailParser: new MailParserProvider(),
   });
 
   for (const worker of workers) {

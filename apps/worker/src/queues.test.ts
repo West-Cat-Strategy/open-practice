@@ -70,6 +70,8 @@ describe("worker queue foundation", () => {
         ocrProvider: {} as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         mailSender: {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        inboundEmailParser: {} as any,
       }),
     ).resolves.toMatchObject({
       status: "skipped",
