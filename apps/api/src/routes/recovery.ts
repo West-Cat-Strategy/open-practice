@@ -28,6 +28,7 @@ export function registerRecoveryRoutes(
       preHandler: server.rateLimit(RECOVERY_RATE_LIMIT),
       config: { rateLimit: { ...RECOVERY_RATE_LIMIT } },
     },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(RECOVERY_RATE_LIMIT) above.
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
@@ -57,6 +58,7 @@ export function registerRecoveryRoutes(
       preHandler: server.rateLimit(RECOVERY_RATE_LIMIT),
       config: { rateLimit: { ...RECOVERY_RATE_LIMIT } },
     },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(RECOVERY_RATE_LIMIT) above.
     async (request, reply) => {
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {

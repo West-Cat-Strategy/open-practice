@@ -173,6 +173,7 @@ export function registerSetupRoutes(
       preHandler: server.rateLimit(SETUP_RATE_LIMIT),
       config: { rateLimit: { ...SETUP_RATE_LIMIT } },
     },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(SETUP_RATE_LIMIT) above.
     async (request) => {
       const status = await options.repository.getSetupStatus();
       if (!status.required || status.blocked) {
@@ -215,6 +216,7 @@ export function registerSetupRoutes(
       preHandler: server.rateLimit(SETUP_RATE_LIMIT),
       config: { rateLimit: { ...SETUP_RATE_LIMIT } },
     },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(SETUP_RATE_LIMIT) above.
     async (request, reply) => {
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {

@@ -49,6 +49,7 @@ export function registerWebAuthnRoutes(
       preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
       config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
     },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
@@ -96,6 +97,7 @@ export function registerWebAuthnRoutes(
       preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
       config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
     },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
@@ -146,6 +148,7 @@ export function registerWebAuthnRoutes(
       preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
       config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
     },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request) => {
       const body = loginOptionsSchema.parse(request.body);
       const user = await options.repository.getUserByEmail(body.firmId, body.email);
@@ -189,6 +192,7 @@ export function registerWebAuthnRoutes(
       preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
       config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
     },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request, reply) => {
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {
@@ -262,6 +266,7 @@ export function registerWebAuthnRoutes(
       preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
       config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
     },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "read" });
       if (!access.ok) throw access.error;
@@ -277,6 +282,7 @@ export function registerWebAuthnRoutes(
       preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
       config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
     },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "delete" });
       if (!access.ok) throw access.error;
@@ -294,6 +300,7 @@ export function registerWebAuthnRoutes(
       preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
       config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
     },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request) => {
       // Note: in a real app, you might want a fresh 'sudo' mode here.
       // For now, we assume the current session is sufficient.
@@ -322,6 +329,7 @@ export function registerWebAuthnRoutes(
       preHandler: server.rateLimit(WEBAUTHN_RATE_LIMIT),
       config: { rateLimit: { ...WEBAUTHN_RATE_LIMIT } },
     },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "update" });
       if (!access.ok) throw access.error;
