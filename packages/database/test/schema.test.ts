@@ -13,6 +13,8 @@ import {
   documentTextExtractions,
   documentVersions,
   documents,
+  drafts,
+  draftTemplates,
   emailEvents,
   emailOutbox,
   externalUploadLinks,
@@ -213,6 +215,24 @@ describe("database schema hardening", () => {
   it("persists answer snapshots for intake sessions", () => {
     expect(getTableConfig(answerSnapshots).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["firm_id", "intake_session_id", "captured_at", "answers"]),
+    );
+  });
+
+  it("persists structured drafts and draft templates", () => {
+    expect(getTableConfig(drafts).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "title",
+        "editor_json",
+        "rendered_html",
+        "version",
+        "created_by_user_id",
+        "updated_by_user_id",
+      ]),
+    );
+    expect(getTableConfig(draftTemplates).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["firm_id", "name", "editor_json", "category", "active"]),
     );
   });
 

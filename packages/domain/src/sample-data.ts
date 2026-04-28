@@ -27,6 +27,7 @@ import type {
   SignatureWebhookAttemptRecord,
 } from "./signatures.js";
 import { appendAuditEvent, type AuditEvent } from "./audit.js";
+import { buildBasicDraftTemplates } from "./drafting.js";
 
 export const sampleFirm: Firm = {
   id: "firm-west-legal",
@@ -236,6 +237,11 @@ export const sampleIntakeSessions: IntakeSessionRecord[] = [
 ];
 
 export const sampleGeneratedDocuments: GeneratedDocumentRecord[] = [];
+
+export const sampleDraftTemplates = buildBasicDraftTemplates(
+  sampleFirm.id,
+  "2026-04-01T00:00:00.000Z",
+);
 
 export const samplePortalGrants: PortalGrant[] = [
   {

@@ -1321,3 +1321,51 @@ export const generatedDocuments = pgTable("generated_documents", {
   evidence: jsonb("evidence").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const drafts = pgTable(
+  "drafts",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id").references(() => matters.id),
+    title: text("title").notNull(),
+    editorJson: jsonb("editor_json").$type<Record<string, unknown>>().notNull(),
+    renderedHtml: text("rendered_html"),
+    version: integer("version").notNull().default(1),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    updatedByUserId: text("updated_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    firmMatter: index("drafts_firm_matter_idx").on(table.firmId, table.matterId),
+  }),
+);
+
+export const draftTemplates = pgTable(
+  "draft_templates",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    editorJson: jsonb("editor_json").$type<Record<string, unknown>>().notNull(),
+    category: text("category").notNull().default("general"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    firmCategory: index("draft_templates_firm_category_idx").on(table.firmId, table.category),
+  }),
+);

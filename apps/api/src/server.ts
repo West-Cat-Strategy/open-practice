@@ -19,6 +19,7 @@ import { registerAuthExtensionRoutes } from "./routes/auth-extensions.js";
 import { registerBillingRoutes } from "./routes/billing.js";
 import { registerDocumentProcessingRoutes } from "./routes/document-processing.js";
 import { registerDocumentRoutes } from "./routes/documents.js";
+import { registerDraftRoutes } from "./routes/drafts.js";
 import { registerEmailRoutes } from "./routes/email.js";
 import { registerExternalUploadRoutes } from "./routes/external-uploads.js";
 import { registerInboundEmailRoutes } from "./routes/inbound-email.js";
@@ -319,6 +320,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerBillingRoutes(server, { repository: options.repository });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
   registerDocumentProcessingRoutes(server, { repository: options.repository });
+  registerDraftRoutes(server, { repository: options.repository });
   registerJobsRoutes(server, { repository: options.repository });
   registerEmailRoutes(server, { repository: options.repository });
   registerInboundEmailRoutes(server, { repository: options.repository });

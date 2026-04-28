@@ -1,6 +1,7 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   appendAuditEvent,
+  buildBasicDraftTemplates,
   calculateInvoiceTotals,
   canShareDocumentThroughPortal,
   clientTrustBalanceByMatter,
@@ -38,10 +39,13 @@ import {
   type User,
   type WebAuthnChallengeRecord,
   type WebAuthnCredentialRecord,
+  type DraftRecord,
+  type DraftTemplateRecord,
 } from "@open-practice/domain";
 import {
   sampleAuditEvents,
   sampleContacts,
+  sampleDraftTemplates,
   sampleDocuments,
   sampleExpenseEntries,
   sampleFirm,
@@ -409,6 +413,25 @@ export interface OpenPracticeRepository {
     firmId: string,
     documentId: string,
   ): Promise<DocumentTextExtractionRecord[]>;
+  listDrafts(
+    firmId: string,
+    options?: { matterId?: string; userId?: string },
+  ): Promise<DraftRecord[]>;
+  getDraft(firmId: string, draftId: string): Promise<DraftRecord | undefined>;
+  createDraft(draft: DraftRecord): Promise<DraftRecord>;
+  updateDraft(
+    firmId: string,
+    draftId: string,
+    updates: Partial<
+      Pick<DraftRecord, "title" | "editorJson" | "renderedHtml" | "updatedByUserId">
+    >,
+  ): Promise<DraftRecord>;
+  deleteDraft(firmId: string, draftId: string): Promise<void>;
+  listDraftTemplates(
+    firmId: string,
+    options?: { category?: string; activeOnly?: boolean },
+  ): Promise<DraftTemplateRecord[]>;
+  createDraftTemplate(template: DraftTemplateRecord): Promise<DraftTemplateRecord>;
 }
 
 function clone<T>(value: T): T {
@@ -844,6 +867,38 @@ function buildActivityTimeline(input: {
     .sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
 }
 
+function mapDraftRow(row: typeof schema.drafts.$inferSelect): DraftRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId ?? undefined,
+    title: row.title,
+    editorJson: row.editorJson as DraftRecord["editorJson"],
+    renderedHtml: row.renderedHtml ?? undefined,
+    version: row.version,
+    createdByUserId: row.createdByUserId,
+    updatedByUserId: row.updatedByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    metadata: row.metadata as Record<string, unknown>,
+  };
+}
+
+function mapDraftTemplateRow(row: typeof schema.draftTemplates.$inferSelect): DraftTemplateRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    name: row.name,
+    description: row.description ?? undefined,
+    editorJson: row.editorJson as DraftTemplateRecord["editorJson"],
+    category: row.category,
+    active: row.active,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    metadata: row.metadata as Record<string, unknown>,
+  };
+}
+
 export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private firms: Firm[];
   private users: User[];
@@ -882,6 +937,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private auditEvents: AuditEvent[];
   private postedTransactions: PostedLedgerTransaction[];
   private documentTextExtractions: DocumentTextExtractionRecord[] = [];
+  private drafts: DraftRecord[] = [];
+  private draftTemplates: DraftTemplateRecord[] = [];
 
   constructor(options: { seedSampleData?: boolean; firms?: Firm[]; users?: User[] } = {}) {
     const seeded = options.seedSampleData ?? true;
@@ -901,6 +958,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.trustTransferRequests = seeded ? clone(sampleTrustTransferRequests) : [];
     this.ledgerAccounts = seeded ? clone(sampleLedgerAccounts) : [];
     this.intakeTemplates = seeded ? clone(sampleIntakeTemplates) : [];
+    this.draftTemplates = seeded ? clone(sampleDraftTemplates) : [];
     this.signatureRequestSigners = seeded ? clone(sampleSignatureRequestSigners) : [];
     this.signatureProviderEvents = seeded ? clone(sampleSignatureProviderEvents) : [];
     this.signatureWebhookAttempts = seeded ? clone(sampleSignatureWebhookAttempts) : [];
@@ -946,6 +1004,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     if (input.firstMatter) this.matters = [clone(input.firstMatter)];
     if (input.firstMatterParty) this.matterParties = [clone(input.firstMatterParty)];
     if (input.webAuthnCredential) this.webAuthnCredentials = [clone(input.webAuthnCredential)];
+    this.draftTemplates = buildBasicDraftTemplates(input.firm.id, input.settings.createdAt);
     this.auditEvents = [clone(input.auditEvent)];
 
     return {
@@ -1881,6 +1940,73 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       ),
     );
   }
+
+  async listDrafts(
+    firmId: string,
+    options: { matterId?: string; userId?: string } = {},
+  ): Promise<DraftRecord[]> {
+    return clone(
+      this.drafts.filter(
+        (draft) =>
+          draft.firmId === firmId &&
+          (!options.matterId || draft.matterId === options.matterId) &&
+          (!options.userId || draft.createdByUserId === options.userId),
+      ),
+    );
+  }
+
+  async getDraft(firmId: string, draftId: string): Promise<DraftRecord | undefined> {
+    return clone(this.drafts.find((draft) => draft.firmId === firmId && draft.id === draftId));
+  }
+
+  async createDraft(draft: DraftRecord): Promise<DraftRecord> {
+    this.drafts = [...this.drafts, clone(draft)];
+    return clone(draft);
+  }
+
+  async updateDraft(
+    firmId: string,
+    draftId: string,
+    updates: Partial<
+      Pick<DraftRecord, "title" | "editorJson" | "renderedHtml" | "updatedByUserId">
+    >,
+  ): Promise<DraftRecord> {
+    const draftIndex = this.drafts.findIndex((d) => d.firmId === firmId && d.id === draftId);
+    if (draftIndex === -1) {
+      throw new Error(`Draft ${draftId} not found`);
+    }
+    const updatedDraft = {
+      ...this.drafts[draftIndex],
+      ...updates,
+      version: this.drafts[draftIndex]!.version + 1,
+      updatedAt: new Date().toISOString(),
+    } as DraftRecord;
+    this.drafts[draftIndex] = updatedDraft;
+    return clone(updatedDraft);
+  }
+
+  async deleteDraft(firmId: string, draftId: string): Promise<void> {
+    this.drafts = this.drafts.filter((d) => d.firmId !== firmId || d.id !== draftId);
+  }
+
+  async listDraftTemplates(
+    firmId: string,
+    options: { category?: string; activeOnly?: boolean } = {},
+  ): Promise<DraftTemplateRecord[]> {
+    return clone(
+      this.draftTemplates.filter(
+        (t) =>
+          t.firmId === firmId &&
+          (!options.category || t.category === options.category) &&
+          (!options.activeOnly || t.active),
+      ),
+    );
+  }
+
+  async createDraftTemplate(template: DraftTemplateRecord): Promise<DraftTemplateRecord> {
+    this.draftTemplates = [...this.draftTemplates, clone(template)];
+    return clone(template);
+  }
 }
 
 export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
@@ -1966,6 +2092,13 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
             : null,
         });
       }
+      await tx.insert(schema.draftTemplates).values(
+        buildBasicDraftTemplates(input.firm.id, input.settings.createdAt).map((template) => ({
+          ...template,
+          createdAt: new Date(template.createdAt),
+          updatedAt: new Date(template.updatedAt),
+        })),
+      );
       await tx.insert(schema.auditEvents).values({
         ...input.auditEvent,
         occurredAt: new Date(input.auditEvent.occurredAt),
@@ -3406,6 +3539,90 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         ),
       );
     return rows.map(mapDocumentTextExtractionRow);
+  }
+
+  async listDrafts(
+    firmId: string,
+    options: { matterId?: string; userId?: string } = {},
+  ): Promise<DraftRecord[]> {
+    const conditions = [eq(schema.drafts.firmId, firmId)];
+    if (options.matterId) conditions.push(eq(schema.drafts.matterId, options.matterId));
+    if (options.userId) conditions.push(eq(schema.drafts.createdByUserId, options.userId));
+
+    const rows = await this.db
+      .select()
+      .from(schema.drafts)
+      .where(and(...conditions))
+      .orderBy(asc(schema.drafts.createdAt));
+    return rows.map(mapDraftRow);
+  }
+
+  async getDraft(firmId: string, draftId: string): Promise<DraftRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.drafts)
+      .where(and(eq(schema.drafts.firmId, firmId), eq(schema.drafts.id, draftId)));
+    return row ? mapDraftRow(row) : undefined;
+  }
+
+  async createDraft(draft: DraftRecord): Promise<DraftRecord> {
+    await this.db.insert(schema.drafts).values({
+      ...draft,
+      createdAt: new Date(draft.createdAt),
+      updatedAt: new Date(draft.updatedAt),
+    });
+    return draft;
+  }
+
+  async updateDraft(
+    firmId: string,
+    draftId: string,
+    updates: Partial<
+      Pick<DraftRecord, "title" | "editorJson" | "renderedHtml" | "updatedByUserId">
+    >,
+  ): Promise<DraftRecord> {
+    const [row] = await this.db
+      .update(schema.drafts)
+      .set({
+        ...updates,
+        version: sql`${schema.drafts.version} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schema.drafts.firmId, firmId), eq(schema.drafts.id, draftId)))
+      .returning();
+    if (!row) throw new Error(`Draft ${draftId} not found`);
+    return mapDraftRow(row);
+  }
+
+  async deleteDraft(firmId: string, draftId: string): Promise<void> {
+    await this.db
+      .delete(schema.drafts)
+      .where(and(eq(schema.drafts.firmId, firmId), eq(schema.drafts.id, draftId)));
+  }
+
+  async listDraftTemplates(
+    firmId: string,
+    options: { category?: string; activeOnly?: boolean } = {},
+  ): Promise<DraftTemplateRecord[]> {
+    const conditions = [eq(schema.draftTemplates.firmId, firmId)];
+    if (options.category) conditions.push(eq(schema.draftTemplates.category, options.category));
+    if (options.activeOnly) conditions.push(eq(schema.draftTemplates.active, true));
+
+    const rows = await this.db
+      .select()
+      .from(schema.draftTemplates)
+      .where(and(...conditions))
+      .orderBy(asc(schema.draftTemplates.name));
+    return rows.map(mapDraftTemplateRow);
+  }
+
+  async createDraftTemplate(template: DraftTemplateRecord): Promise<DraftTemplateRecord> {
+    await this.db.insert(schema.draftTemplates).values({
+      ...template,
+      createdAt: new Date(template.createdAt),
+      updatedAt: new Date(template.updatedAt),
+    });
+    return template;
   }
 }
 

@@ -1,6 +1,7 @@
 import {
   sampleAuditEvents,
   sampleContacts,
+  sampleDraftTemplates,
   sampleDocuments,
   sampleExpenseEntries,
   sampleFirm,
@@ -224,6 +225,16 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
       .onConflictDoNothing();
   }
   await db.insert(schema.intakeTemplates).values(sampleIntakeTemplates).onConflictDoNothing();
+  await db
+    .insert(schema.draftTemplates)
+    .values(
+      sampleDraftTemplates.map((template) => ({
+        ...template,
+        createdAt: new Date(template.createdAt),
+        updatedAt: new Date(template.updatedAt),
+      })),
+    )
+    .onConflictDoNothing();
   await db
     .insert(schema.intakeSessions)
     .values(

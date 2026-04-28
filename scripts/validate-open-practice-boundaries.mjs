@@ -38,6 +38,7 @@ for (const required of [
   "apps/api/src/http/auth-guards.ts",
   "apps/api/src/routes/billing.ts",
   "apps/api/src/routes/documents.ts",
+  "apps/api/src/routes/drafts.ts",
   "apps/api/src/routes/intake.ts",
   "apps/api/src/routes/ledger.ts",
   "apps/api/src/routes/queues.ts",
@@ -152,6 +153,13 @@ assert(
   !server.includes("/api/audit"),
   "apps/api/src/server.ts still contains audit route literal /api/audit; keep audit endpoints in apps/api/src/routes/audit.ts.",
 );
+
+for (const draftRoute of ["/api/drafts", "/api/drafts/:id", "/api/draft-templates"]) {
+  assert(
+    !server.includes(draftRoute),
+    `apps/api/src/server.ts still contains draft route literal ${draftRoute}; keep draft endpoints in apps/api/src/routes/drafts.ts.`,
+  );
+}
 
 const routeCatalog = read("apps/web/routes/routeCatalog.ts");
 for (const routeId of [
