@@ -27,7 +27,9 @@ export type ResourceKind =
   | "share_link"
   | "external_upload"
   | "auth_credential"
-  | "provider_setting";
+  | "provider_setting"
+  | "draft"
+  | "draft_template";
 
 export type Action = "create" | "read" | "update" | "delete" | "approve" | "export";
 
@@ -65,6 +67,8 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     external_upload: ["create", "read", "update", "delete", "export"],
     auth_credential: ["create", "read", "update", "delete", "approve"],
     provider_setting: ["create", "read", "update", "delete", "approve", "export"],
+    draft: ["create", "read", "update", "delete", "export"],
+    draft_template: ["create", "read", "update", "delete", "export"],
   },
   licensee: {
     contact: ["create", "read", "update", "export"],
@@ -86,6 +90,8 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     share_link: ["create", "read", "update", "delete"],
     external_upload: ["create", "read", "update", "delete"],
     auth_credential: ["create", "read", "update", "delete"],
+    draft: ["create", "read", "update", "delete", "export"],
+    draft_template: ["create", "read", "update", "export"],
   },
   firm_member: {
     contact: ["create", "read", "update"],
@@ -104,6 +110,8 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     share_link: ["read"],
     external_upload: ["create", "read"],
     auth_credential: ["read", "update"],
+    draft: ["create", "read", "update"],
+    draft_template: ["read"],
   },
   billing_bookkeeper: {
     contact: ["read"],
@@ -163,6 +171,7 @@ const matterScopedResources = new Set<ResourceKind>([
   "document_processing",
   "share_link",
   "external_upload",
+  "draft",
 ]);
 
 const portalPermissionByResourceAction: Partial<
