@@ -1,7 +1,8 @@
 name: open-practice-dev
 
-# Local development dependencies only. Production deployments must provide
-# managed secrets, TLS, app containers, private service networks, and backups.
+# Local development and testing stack.
+# Coordination for API, Web, Worker, and Infrastructure services.
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -15,7 +16,19 @@ services:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U open_practice -d open_practice"]
-      interval: 10s
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
       timeout: 5s
       retries: 5
 
@@ -31,23 +44,79 @@ services:
     volumes:
       - minio-data:/data
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   mailpit:
     image: axllent/mailpit:latest
     ports:
       - "1025:1025"
       - "8025:8025"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: "@open-practice/api"
+        APP_PATH: "apps/api"
+    environment:
+      - NODE_ENV=development
+      - API_PORT=4000
+      - DATABASE_URL=postgresql://open_practice:open_practice@postgres:5432/open_practice
+      - REDIS_URL=redis://redis:6379/0
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=open_practice
+      - S3_SECRET_KEY=open_practice_secret
+      - SMTP_HOST=mailpit
+      - AUTH_JWT_SECRET=dev-only-change-me-at-least-16-chars
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: "@open-practice/web"
+        APP_PATH: "apps/web"
+    environment:
+      - NODE_ENV=development
+      - WEB_PORT=3000
+      - API_BASE_URL=http://api:4000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: "@open-practice/worker"
+        APP_PATH: "apps/worker"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://open_practice:open_practice@postgres:5432/open_practice
+      - REDIS_URL=redis://redis:6379/0
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=open_practice
+      - S3_SECRET_KEY=open_practice_secret
+      - SMTP_HOST=mailpit
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres-data:

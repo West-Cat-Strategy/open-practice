@@ -58,7 +58,19 @@ describe("worker queue foundation", () => {
 
   it("keeps processors disabled until providers are configured", async () => {
     await expect(
-      processOpenPracticeJob("ai_triage", "classify", { firmId: "firm-1" }),
+      processOpenPracticeJob({
+        queueName: "ai_triage",
+        jobName: "classify",
+        data: { firmId: "firm-1" },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        repository: {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        s3: {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ocrProvider: {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        mailSender: {} as any,
+      }),
     ).resolves.toMatchObject({
       status: "skipped",
       metadata: { providerConfigured: false },

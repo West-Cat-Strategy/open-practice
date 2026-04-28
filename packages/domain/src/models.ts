@@ -64,8 +64,17 @@ export interface FirmSettings {
   trustAccountLabel: string;
   trustFundsCaveatAcceptedAt: string;
   trustFundsCaveatAcceptedByUserId: string;
+  website?: string;
+  description?: string;
+  businessNumber?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PractitionerProfile {
+  regulator: string;
+  licenseStatus: string;
+  jurisdictions: string[];
 }
 
 export interface User {
@@ -76,6 +85,7 @@ export interface User {
   role: ProfessionalRole;
   assignedMatterIds: string[];
   mfaEnabled: boolean;
+  practitionerProfile?: PractitionerProfile;
 }
 
 export interface ContactIdentifier {

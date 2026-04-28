@@ -11,6 +11,11 @@ function testServer(overrides: Partial<CreateServerOptions> = {}) {
     repository,
     devFirmId: "firm-west-legal",
     devUserId: "user-admin",
+    webAuthn: {
+      rpName: "Test RP",
+      rpID: "localhost",
+      origin: "http://localhost:3000",
+    },
     ...overrides,
   });
   servers.push(server);
@@ -122,6 +127,83 @@ describe("API auth and persistence boundaries", () => {
     });
 
     expect(response.statusCode).toBe(503);
+  });
+
+  it("applies the setup key gate to first-run passkey registration options", async () => {
+    const server = testServer({
+      repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
+      setupKey: "setup-key",
+    });
+    const payload = { email: "avery@example.test" };
+    const missingKey = await server.inject({
+      method: "POST",
+      url: "/api/setup/webauthn-options",
+      payload,
+    });
+    const invalidKey = await server.inject({
+      method: "POST",
+      url: "/api/setup/webauthn-options",
+      headers: { "x-open-practice-setup-key": "wrong-key" },
+      payload,
+    });
+    const validKey = await server.inject({
+      method: "POST",
+      url: "/api/setup/webauthn-options",
+      headers: { "x-open-practice-setup-key": "setup-key" },
+      payload,
+    });
+
+    expect(missingKey.statusCode).toBe(403);
+    expect(invalidKey.statusCode).toBe(403);
+    expect(validKey.statusCode).toBe(200);
+    expect(validKey.json<{ challenge: string; rp: { id: string; name: string } }>()).toMatchObject({
+      rp: { id: "localhost", name: "Test RP" },
+    });
+    expect(validKey.json<{ challenge: string }>().challenge).toEqual(expect.any(String));
+  });
+
+  it("rejects expired first-run passkey challenges", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const server = testServer({
+      repository,
+      jwtSecret: "production-test-secret-at-least-32-characters",
+      setupKey: "setup-key",
+    });
+    await repository.createWebAuthnChallenge({
+      id: "challenge-expired",
+      challengeHash: "expired-challenge",
+      purpose: "passkey_registration",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      createdAt: new Date(Date.now() - 120_000).toISOString(),
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      headers: { "x-open-practice-setup-key": "setup-key" },
+      payload: setupPayload({
+        owner: {
+          displayName: "Avery Owner",
+          email: "avery@example.test",
+          password: "correct horse battery staple",
+          webAuthn: {
+            id: "credential-id",
+            rawId: "credential-id",
+            type: "public-key",
+            response: {
+              clientDataJSON: "client-data",
+              attestationObject: "attestation",
+              transports: ["internal"],
+            },
+            clientExtensionResults: {},
+            challengeHash: "expired-challenge",
+          },
+        },
+      }),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ message: "Invalid or expired WebAuthn challenge" });
   });
 
   it("completes first-run setup with owner auth, firm settings, first matter, and session", async () => {
@@ -241,6 +323,7 @@ describe("API auth and persistence boundaries", () => {
       jwtSecret,
       password: "correct horse battery staple",
     });
+    await repository.updateUserMfaStatus("firm-west-legal", "user-admin", false);
     const productionServer = testServer({
       repository,
       nodeEnv: "production",
@@ -294,6 +377,7 @@ describe("API auth and persistence boundaries", () => {
     const repository = new InMemoryOpenPracticeRepository();
     const jwtSecret = "production-test-secret-at-least-32-characters";
     await setAdminPassword({ repository, jwtSecret, password: "logout password" });
+    await repository.updateUserMfaStatus("firm-west-legal", "user-admin", false);
     const server = testServer({ repository, nodeEnv: "production", jwtSecret });
     const login = await server.inject({
       method: "POST",
@@ -324,6 +408,7 @@ describe("API auth and persistence boundaries", () => {
     const repository = new InMemoryOpenPracticeRepository();
     const jwtSecret = "production-test-secret-at-least-32-characters";
     await setAdminPassword({ repository, jwtSecret, password: "expired password" });
+    await repository.updateUserMfaStatus("firm-west-legal", "user-admin", false);
     const server = testServer({
       repository,
       nodeEnv: "production",

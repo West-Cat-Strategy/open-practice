@@ -13,10 +13,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@open-practice/domain": "workspace:*"
+    "@open-practice/domain": "workspace:*",
+    "nodemailer": "^8.0.7",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@eslint/js": "latest",
+    "@types/nodemailer": "^8.0.0",
+    "typescript": "latest",
     "typescript-eslint": "latest"
   }
 }

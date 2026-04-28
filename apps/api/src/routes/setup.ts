@@ -28,6 +28,9 @@ const setupBodySchema = z.object({
     invoicePrefix: z.string().trim().min(1).max(16),
     defaultPaymentTermsDays: z.number().int().positive().max(365),
     trustAccountLabel: z.string().trim().min(1),
+    website: z.string().trim().url().optional().or(z.literal("")),
+    description: z.string().trim().optional(),
+    businessNumber: z.string().trim().optional(),
   }),
   compliance: z.object({
     trustFundsCaveatAccepted: z.literal(true),
@@ -36,6 +39,23 @@ const setupBodySchema = z.object({
     displayName: z.string().trim().min(1),
     email: z.string().trim().email(),
     password: z.string().min(8),
+    webAuthn: z
+      .object({
+        id: z.string(),
+        rawId: z.string(),
+        response: z.any(),
+        type: z.literal("public-key"),
+        clientExtensionResults: z.any(),
+        challengeHash: z.string(),
+      })
+      .optional(),
+    practitionerProfile: z
+      .object({
+        regulator: z.string().trim().min(1),
+        licenseStatus: z.string().trim().min(1),
+        jurisdictions: z.array(z.string().trim().min(1)).min(1),
+      })
+      .optional(),
   }),
   firstMatter: z
     .object({
@@ -61,6 +81,9 @@ export interface SetupRouteDependencies {
   hashToken: (token: string, secret: string) => string;
   createSessionToken: () => string;
   sessionCookie: (token: string, expiresAt: string, secure: boolean) => string;
+  rpName: string;
+  rpID: string;
+  origin: string;
 }
 
 function setupKeyRequired(options: Pick<SetupRouteDependencies, "nodeEnv" | "setupKey">): boolean {
@@ -132,6 +155,13 @@ function firmId(name: string): string {
   return `firm-${slug}-${randomUUID().slice(0, 8)}`;
 }
 
+const SETUP_RATE_LIMIT = { max: 5, timeWindow: "15 minutes" };
+const SETUP_WEBAUTHN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+
+function webAuthnChallengeExpired(expiresAt: string, now: Date): boolean {
+  return new Date(expiresAt).getTime() <= now.getTime();
+}
+
 export function registerSetupRoutes(
   server: FastifyInstance,
   options: SetupRouteDependencies,
@@ -141,10 +171,57 @@ export function registerSetupRoutes(
     setupKeyRequired: setupKeyRequired(options),
   }));
 
-  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before setup routes, with this route capped at 5 attempts per 15 minutes.
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this setup route has a tighter per-route cap.
+  server.post(
+    "/api/setup/webauthn-options",
+    {
+      preHandler: server.rateLimit(SETUP_RATE_LIMIT),
+      config: { rateLimit: { ...SETUP_RATE_LIMIT } },
+    },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(SETUP_RATE_LIMIT) above.
+    async (request) => {
+      const status = await options.repository.getSetupStatus();
+      if (!status.required || status.blocked) {
+        throw Object.assign(new Error("Setup not available"), { statusCode: 409 });
+      }
+      assertSetupGate(request, options);
+
+      const body = z.object({ email: z.string().email() }).parse(request.body);
+      const userId = id("user"); // Temp ID for registration
+
+      const { generateRegistrationOptions } = await import("@simplewebauthn/server");
+      const registrationOptions = await generateRegistrationOptions({
+        rpName: options.rpName,
+        rpID: options.rpID,
+        userID: Buffer.from(userId),
+        userName: body.email,
+        attestationType: "none",
+        authenticatorSelection: {
+          residentKey: "required",
+          userVerification: "preferred",
+        },
+      });
+
+      await options.repository.createWebAuthnChallenge({
+        id: id("challenge"),
+        challengeHash: registrationOptions.challenge,
+        purpose: "passkey_registration",
+        expiresAt: new Date(Date.now() + SETUP_WEBAUTHN_CHALLENGE_TTL_MS).toISOString(),
+        createdAt: new Date().toISOString(),
+      });
+
+      return registrationOptions;
+    },
+  );
+
+  // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this setup route has a tighter per-route cap.
   server.post(
     "/api/setup/complete",
-    { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
+    {
+      preHandler: server.rateLimit(SETUP_RATE_LIMIT),
+      config: { rateLimit: { ...SETUP_RATE_LIMIT } },
+    },
+    // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(SETUP_RATE_LIMIT) above.
     async (request, reply) => {
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {
@@ -181,6 +258,7 @@ export function registerSetupRoutes(
         role: "owner_admin" as const,
         assignedMatterIds: firstMatterId ? [firstMatterId] : [],
         mfaEnabled: false,
+        practitionerProfile: body.owner.practitionerProfile,
       };
       const firstMatter = body.firstMatter
         ? {
@@ -225,6 +303,47 @@ export function registerSetupRoutes(
             }
           : undefined;
 
+      let webAuthnCredential;
+      if (body.owner.webAuthn) {
+        const { verifyRegistrationResponse } = await import("@simplewebauthn/server");
+        const challenge = await options.repository.getWebAuthnChallenge(
+          body.owner.webAuthn.challengeHash,
+        );
+        if (
+          !challenge ||
+          challenge.purpose !== "passkey_registration" ||
+          challenge.consumedAt ||
+          webAuthnChallengeExpired(challenge.expiresAt, now)
+        ) {
+          throw Object.assign(new Error("Invalid or expired WebAuthn challenge"), {
+            statusCode: 400,
+          });
+        }
+        const verification = await verifyRegistrationResponse({
+          response: body.owner.webAuthn,
+          expectedChallenge: challenge.challengeHash,
+          expectedOrigin: options.origin,
+          expectedRPID: options.rpID,
+        });
+        if (verification.verified && verification.registrationInfo) {
+          const { credential, credentialDeviceType, credentialBackedUp } =
+            verification.registrationInfo;
+          const { id: credentialID, publicKey, counter } = credential;
+          webAuthnCredential = {
+            id: id("cred"),
+            firmId: newFirmId,
+            userId: ownerId,
+            credentialId: Buffer.from(credentialID).toString("base64url"),
+            publicKey: Buffer.from(publicKey).toString("base64url"),
+            counter,
+            transports: body.owner.webAuthn.response.transports || [],
+            deviceType: credentialDeviceType,
+            backedUp: credentialBackedUp,
+            createdAt: nowIso,
+          };
+        }
+      }
+
       const result = await options.repository
         .completeFirstRunSetup({
           firm: {
@@ -241,6 +360,9 @@ export function registerSetupRoutes(
             invoicePrefix: body.settings.invoicePrefix,
             defaultPaymentTermsDays: body.settings.defaultPaymentTermsDays,
             trustAccountLabel: body.settings.trustAccountLabel,
+            website: body.settings.website || undefined,
+            description: body.settings.description || undefined,
+            businessNumber: body.settings.businessNumber || undefined,
             trustFundsCaveatAcceptedAt: nowIso,
             trustFundsCaveatAcceptedByUserId: ownerId,
             createdAt: nowIso,
@@ -249,6 +371,7 @@ export function registerSetupRoutes(
           owner,
           ownerPasswordHash: options.hashPassword(body.owner.password),
           ownerPasswordUpdatedAt: nowIso,
+          webAuthnCredential,
           firstContact,
           firstMatter,
           firstMatterParty,
@@ -272,6 +395,12 @@ export function registerSetupRoutes(
           }
           throw error;
         });
+      if (body.owner.webAuthn) {
+        await options.repository.consumeWebAuthnChallenge(
+          body.owner.webAuthn.challengeHash,
+          nowIso,
+        );
+      }
 
       const token = options.createSessionToken();
       const expiresAt = new Date(

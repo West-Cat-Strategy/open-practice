@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import {
   appendAuditEvent,
   calculateInvoiceTotals,
@@ -27,6 +27,7 @@ import {
   type ManualPaymentRecord,
   type Matter,
   type MatterParty,
+  type RecoveryCodeRecord,
   type PaymentAllocationRecord,
   type PortalGrant,
   type PostedLedgerTransaction,
@@ -35,6 +36,8 @@ import {
   type TimeEntry,
   type TrustTransferRequestRecord,
   type User,
+  type WebAuthnChallengeRecord,
+  type WebAuthnCredentialRecord,
 } from "@open-practice/domain";
 import {
   sampleAuditEvents,
@@ -64,6 +67,7 @@ import {
 } from "@open-practice/domain/sample-data";
 import type {
   AnswerSnapshotRecord,
+  DocumentTextExtractionRecord,
   GeneratedDocumentRecord,
   IntakeSessionRecord,
   IntakeTemplateRecord,
@@ -158,6 +162,7 @@ export interface FirstRunSetupInput {
   owner: User;
   ownerPasswordHash: string;
   ownerPasswordUpdatedAt: string;
+  webAuthnCredential?: WebAuthnCredentialRecord;
   firstContact?: Contact;
   firstMatter?: Matter;
   firstMatterParty?: MatterParty;
@@ -213,6 +218,7 @@ export interface OpenPracticeRepository {
     },
   ): Promise<JobLifecycleRecord[]>;
   getUser(firmId: string, userId: string): Promise<User | undefined>;
+  createUser(user: User): Promise<User>;
   getUserByEmail(firmId: string, email: string): Promise<User | undefined>;
   getAuthAccount(firmId: string, userId: string): Promise<AuthAccountRecord | undefined>;
   setAuthPassword(input: {
@@ -232,6 +238,25 @@ export interface OpenPracticeRepository {
     tokenHash: string,
     usedAt: string,
   ): Promise<AuthPasswordSetupTokenRecord | undefined>;
+  createWebAuthnChallenge(challenge: WebAuthnChallengeRecord): Promise<WebAuthnChallengeRecord>;
+  getWebAuthnChallenge(challengeHash: string): Promise<WebAuthnChallengeRecord | undefined>;
+  consumeWebAuthnChallenge(challengeHash: string, consumedAt: string): Promise<boolean>;
+  registerWebAuthnCredential(
+    credential: WebAuthnCredentialRecord,
+  ): Promise<WebAuthnCredentialRecord>;
+  listWebAuthnCredentials(firmId: string, userId: string): Promise<WebAuthnCredentialRecord[]>;
+  getWebAuthnCredential(credentialId: string): Promise<WebAuthnCredentialRecord | undefined>;
+  updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void>;
+  deleteWebAuthnCredential(firmId: string, id: string): Promise<void>;
+  updateUserMfaStatus(firmId: string, userId: string, mfaEnabled: boolean): Promise<void>;
+  createRecoveryCodes(firmId: string, userId: string, codes: RecoveryCodeRecord[]): Promise<void>;
+  useRecoveryCode(
+    firmId: string,
+    userId: string,
+    codeHash: string,
+    consumedAt: string,
+  ): Promise<boolean>;
+  listRecoveryCodes(firmId: string, userId: string): Promise<RecoveryCodeRecord[]>;
   getOverview(firmId: string): Promise<PracticeOverview>;
   listMattersForUser(user: User): Promise<MatterSummary[]>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
@@ -377,6 +402,13 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { matterId?: string; status?: TrustTransferRequestRecord["status"] },
   ): Promise<TrustTransferRequestRecord[]>;
+  createDocumentTextExtraction(
+    extraction: DocumentTextExtractionRecord,
+  ): Promise<DocumentTextExtractionRecord>;
+  getDocumentTextExtractions(
+    firmId: string,
+    documentId: string,
+  ): Promise<DocumentTextExtractionRecord[]>;
 }
 
 function clone<T>(value: T): T {
@@ -410,6 +442,40 @@ function mapAuthSessionRow(row: typeof schema.authSessions.$inferSelect): AuthSe
   };
 }
 
+function mapWebAuthnCredentialRow(
+  row: typeof schema.webAuthnCredentials.$inferSelect,
+): WebAuthnCredentialRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    userId: row.userId,
+    credentialId: row.credentialId,
+    publicKey: row.publicKey,
+    counter: row.counter,
+    transports: row.transports,
+    deviceType: row.deviceType,
+    backedUp: row.backedUp,
+    createdAt: row.createdAt.toISOString(),
+    lastUsedAt: dateToIso(row.lastUsedAt),
+    disabledAt: dateToIso(row.disabledAt),
+  };
+}
+
+function mapAuthChallengeRow(
+  row: typeof schema.authChallenges.$inferSelect,
+): WebAuthnChallengeRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId ?? undefined,
+    userId: row.userId ?? undefined,
+    challengeHash: row.challengeHash,
+    purpose: row.purpose,
+    expiresAt: row.expiresAt.toISOString(),
+    consumedAt: dateToIso(row.consumedAt),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
 function mapPasswordSetupTokenRow(
   row: typeof schema.authPasswordSetupTokens.$inferSelect,
 ): AuthPasswordSetupTokenRecord {
@@ -422,6 +488,17 @@ function mapPasswordSetupTokenRow(
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt.toISOString(),
     usedAt: dateToIso(row.usedAt),
+  };
+}
+
+function mapRecoveryCodeRow(row: typeof schema.recoveryCodes.$inferSelect): RecoveryCodeRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    userId: row.userId,
+    codeHash: row.codeHash,
+    usedAt: dateToIso(row.usedAt),
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -451,6 +528,9 @@ function mapFirmSettingsRow(row: typeof schema.firmSettings.$inferSelect): FirmS
     trustAccountLabel: row.trustAccountLabel,
     trustFundsCaveatAcceptedAt: row.trustFundsCaveatAcceptedAt.toISOString(),
     trustFundsCaveatAcceptedByUserId: row.trustFundsCaveatAcceptedByUserId,
+    website: row.website ?? undefined,
+    description: row.description ?? undefined,
+    businessNumber: row.businessNumber ?? undefined,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -540,7 +620,25 @@ function mapDocumentRow(row: typeof schema.documents.$inferSelect): DocumentReco
     supersedesDocumentId: row.supersedesDocumentId ?? undefined,
     supersededAt: dateToIso(row.supersededAt),
     uploadedAt: dateToIso(row.uploadedAt),
-    verifiedAt: dateToIso(row.verifiedAt),
+  };
+}
+
+function mapDocumentTextExtractionRow(
+  row: typeof schema.documentTextExtractions.$inferSelect,
+): DocumentTextExtractionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    documentId: row.documentId,
+    engine: row.engine as DocumentTextExtractionRecord["engine"],
+    status: row.status as DocumentTextExtractionRecord["status"],
+    language: row.language,
+    confidence: row.confidence ?? undefined,
+    textStorageKey: row.textStorageKey ?? undefined,
+    extractedText: row.extractedText ?? undefined,
+    metadata: row.metadata as Record<string, unknown>,
+    createdAt: row.createdAt.toISOString(),
+    completedAt: dateToIso(row.completedAt),
   };
 }
 
@@ -778,8 +876,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private authAccounts: AuthAccountRecord[] = [];
   private authSessions: AuthSessionRecord[] = [];
   private passwordSetupTokens: AuthPasswordSetupTokenRecord[] = [];
+  private authChallenges: WebAuthnChallengeRecord[] = [];
+  private webAuthnCredentials: WebAuthnCredentialRecord[] = [];
+  private recoveryCodes: RecoveryCodeRecord[] = [];
   private auditEvents: AuditEvent[];
   private postedTransactions: PostedLedgerTransaction[];
+  private documentTextExtractions: DocumentTextExtractionRecord[] = [];
 
   constructor(options: { seedSampleData?: boolean; firms?: Firm[]; users?: User[] } = {}) {
     const seeded = options.seedSampleData ?? true;
@@ -843,6 +945,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     if (input.firstContact) this.contacts = [clone(input.firstContact)];
     if (input.firstMatter) this.matters = [clone(input.firstMatter)];
     if (input.firstMatterParty) this.matterParties = [clone(input.firstMatterParty)];
+    if (input.webAuthnCredential) this.webAuthnCredentials = [clone(input.webAuthnCredential)];
     this.auditEvents = [clone(input.auditEvent)];
 
     return {
@@ -934,6 +1037,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(this.users.find((user) => user.firmId === firmId && user.id === userId));
   }
 
+  async createUser(user: User): Promise<User> {
+    this.users = [...this.users, clone(user)];
+    return clone(user);
+  }
+
   async getUserByEmail(firmId: string, email: string): Promise<User | undefined> {
     const normalized = email.trim().toLowerCase();
     return clone(
@@ -1003,6 +1111,101 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     }
     token.usedAt = usedAt;
     return clone(token);
+  }
+
+  async createWebAuthnChallenge(
+    challenge: WebAuthnChallengeRecord,
+  ): Promise<WebAuthnChallengeRecord> {
+    this.authChallenges = [...this.authChallenges, clone(challenge)];
+    return clone(challenge);
+  }
+
+  async getWebAuthnChallenge(challengeHash: string): Promise<WebAuthnChallengeRecord | undefined> {
+    return clone(this.authChallenges.find((c) => c.challengeHash === challengeHash));
+  }
+
+  async consumeWebAuthnChallenge(challengeHash: string, consumedAt: string): Promise<boolean> {
+    const challenge = this.authChallenges.find(
+      (c) => c.challengeHash === challengeHash && !c.consumedAt,
+    );
+    if (challenge) {
+      challenge.consumedAt = consumedAt;
+      return true;
+    }
+    return false;
+  }
+
+  async registerWebAuthnCredential(
+    credential: WebAuthnCredentialRecord,
+  ): Promise<WebAuthnCredentialRecord> {
+    this.webAuthnCredentials = [...this.webAuthnCredentials, clone(credential)];
+    return clone(credential);
+  }
+
+  async listWebAuthnCredentials(
+    firmId: string,
+    userId: string,
+  ): Promise<WebAuthnCredentialRecord[]> {
+    return clone(
+      this.webAuthnCredentials.filter((c) => c.firmId === firmId && c.userId === userId),
+    );
+  }
+
+  async getWebAuthnCredential(credentialId: string): Promise<WebAuthnCredentialRecord | undefined> {
+    return clone(this.webAuthnCredentials.find((c) => c.credentialId === credentialId));
+  }
+
+  async updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void> {
+    const cred = this.webAuthnCredentials.find((c) => c.id === id);
+    if (cred) {
+      cred.counter = counter;
+      cred.lastUsedAt = new Date().toISOString();
+    }
+  }
+
+  async deleteWebAuthnCredential(firmId: string, id: string): Promise<void> {
+    this.webAuthnCredentials = this.webAuthnCredentials.filter(
+      (c) => !(c.firmId === firmId && c.id === id),
+    );
+  }
+
+  async updateUserMfaStatus(firmId: string, userId: string, mfaEnabled: boolean): Promise<void> {
+    const user = this.users.find((u) => u.firmId === firmId && u.id === userId);
+    if (user) {
+      user.mfaEnabled = mfaEnabled;
+    }
+  }
+
+  async createRecoveryCodes(
+    firmId: string,
+    userId: string,
+    codes: RecoveryCodeRecord[],
+  ): Promise<void> {
+    // Invalidate old codes
+    this.recoveryCodes = this.recoveryCodes.filter(
+      (c) => !(c.firmId === firmId && c.userId === userId),
+    );
+    this.recoveryCodes = [...this.recoveryCodes, ...clone(codes)];
+  }
+
+  async useRecoveryCode(
+    firmId: string,
+    userId: string,
+    codeHash: string,
+    consumedAt: string,
+  ): Promise<boolean> {
+    const code = this.recoveryCodes.find(
+      (c) => c.firmId === firmId && c.userId === userId && c.codeHash === codeHash && !c.usedAt,
+    );
+    if (code) {
+      code.usedAt = consumedAt;
+      return true;
+    }
+    return false;
+  }
+
+  async listRecoveryCodes(firmId: string, userId: string): Promise<RecoveryCodeRecord[]> {
+    return clone(this.recoveryCodes.filter((c) => c.firmId === firmId && c.userId === userId));
   }
 
   async getOverview(firmId: string): Promise<PracticeOverview> {
@@ -1660,6 +1863,24 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       ),
     );
   }
+
+  async createDocumentTextExtraction(
+    extraction: DocumentTextExtractionRecord,
+  ): Promise<DocumentTextExtractionRecord> {
+    this.documentTextExtractions = [...this.documentTextExtractions, clone(extraction)];
+    return clone(extraction);
+  }
+
+  async getDocumentTextExtractions(
+    firmId: string,
+    documentId: string,
+  ): Promise<DocumentTextExtractionRecord[]> {
+    return clone(
+      this.documentTextExtractions.filter(
+        (ext) => ext.firmId === firmId && ext.documentId === documentId,
+      ),
+    );
+  }
 }
 
 export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
@@ -1690,6 +1911,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         email: input.owner.email,
         role: input.owner.role,
         mfaEnabled: input.owner.mfaEnabled,
+        practitionerProfile: input.owner.practitionerProfile || null,
       });
       await tx.insert(schema.authAccounts).values({
         firmId: input.owner.firmId,
@@ -1708,6 +1930,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         trustAccountLabel: input.settings.trustAccountLabel,
         trustFundsCaveatAcceptedAt: new Date(input.settings.trustFundsCaveatAcceptedAt),
         trustFundsCaveatAcceptedByUserId: input.settings.trustFundsCaveatAcceptedByUserId,
+        website: input.settings.website || null,
+        description: input.settings.description || null,
+        businessNumber: input.settings.businessNumber || null,
         createdAt: new Date(input.settings.createdAt),
         updatedAt: new Date(input.settings.updatedAt),
       });
@@ -1728,6 +1953,18 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       }
       if (input.firstMatterParty) {
         await tx.insert(schema.matterParties).values(input.firstMatterParty);
+      }
+      if (input.webAuthnCredential) {
+        await tx.insert(schema.webAuthnCredentials).values({
+          ...input.webAuthnCredential,
+          createdAt: new Date(input.webAuthnCredential.createdAt),
+          lastUsedAt: input.webAuthnCredential.lastUsedAt
+            ? new Date(input.webAuthnCredential.lastUsedAt)
+            : null,
+          disabledAt: input.webAuthnCredential.disabledAt
+            ? new Date(input.webAuthnCredential.disabledAt)
+            : null,
+        });
       }
       await tx.insert(schema.auditEvents).values({
         ...input.auditEvent,
@@ -1867,6 +2104,26 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       role: row.role,
       assignedMatterIds: assignments.map((assignment) => assignment.matterId),
       mfaEnabled: row.mfaEnabled,
+      practitionerProfile: row.practitionerProfile ?? undefined,
+    };
+  }
+
+  async createUser(user: User): Promise<User> {
+    const [row] = await this.db
+      .insert(schema.users)
+      .values({
+        id: user.id,
+        firmId: user.firmId,
+        displayName: user.displayName,
+        email: user.email,
+        role: user.role,
+        mfaEnabled: user.mfaEnabled,
+        practitionerProfile: user.practitionerProfile,
+      })
+      .returning();
+    return {
+      ...user,
+      id: row.id,
     };
   }
 
@@ -1970,6 +2227,169 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .where(eq(schema.authPasswordSetupTokens.tokenHash, tokenHash))
       .returning();
     return updated ? mapPasswordSetupTokenRow(updated) : undefined;
+  }
+
+  async createWebAuthnChallenge(
+    challenge: WebAuthnChallengeRecord,
+  ): Promise<WebAuthnChallengeRecord> {
+    const [row] = await this.db
+      .insert(schema.authChallenges)
+      .values({
+        id: challenge.id,
+        firmId: challenge.firmId,
+        userId: challenge.userId,
+        challengeHash: challenge.challengeHash,
+        purpose: challenge.purpose,
+        expiresAt: new Date(challenge.expiresAt),
+        createdAt: new Date(challenge.createdAt),
+      })
+      .returning();
+    return mapAuthChallengeRow(row);
+  }
+
+  async getWebAuthnChallenge(challengeHash: string): Promise<WebAuthnChallengeRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.authChallenges)
+      .where(eq(schema.authChallenges.challengeHash, challengeHash));
+    return row ? mapAuthChallengeRow(row) : undefined;
+  }
+
+  async consumeWebAuthnChallenge(challengeHash: string, consumedAt: string): Promise<boolean> {
+    const [row] = await this.db
+      .update(schema.authChallenges)
+      .set({ consumedAt: new Date(consumedAt) })
+      .where(
+        and(
+          eq(schema.authChallenges.challengeHash, challengeHash),
+          isNull(schema.authChallenges.consumedAt),
+        ),
+      )
+      .returning();
+    return !!row;
+  }
+
+  async registerWebAuthnCredential(
+    credential: WebAuthnCredentialRecord,
+  ): Promise<WebAuthnCredentialRecord> {
+    const [row] = await this.db
+      .insert(schema.webAuthnCredentials)
+      .values({
+        id: credential.id,
+        firmId: credential.firmId,
+        userId: credential.userId,
+        credentialId: credential.credentialId,
+        publicKey: credential.publicKey,
+        counter: credential.counter,
+        transports: credential.transports,
+        deviceType: credential.deviceType,
+        backedUp: credential.backedUp,
+        createdAt: new Date(credential.createdAt),
+      })
+      .returning();
+    return mapWebAuthnCredentialRow(row);
+  }
+
+  async listWebAuthnCredentials(
+    firmId: string,
+    userId: string,
+  ): Promise<WebAuthnCredentialRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.webAuthnCredentials)
+      .where(
+        and(
+          eq(schema.webAuthnCredentials.firmId, firmId),
+          eq(schema.webAuthnCredentials.userId, userId),
+        ),
+      );
+    return rows.map(mapWebAuthnCredentialRow);
+  }
+
+  async getWebAuthnCredential(credentialId: string): Promise<WebAuthnCredentialRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.webAuthnCredentials)
+      .where(eq(schema.webAuthnCredentials.credentialId, credentialId));
+    return row ? mapWebAuthnCredentialRow(row) : undefined;
+  }
+
+  async updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void> {
+    await this.db
+      .update(schema.webAuthnCredentials)
+      .set({ counter, lastUsedAt: new Date() })
+      .where(eq(schema.webAuthnCredentials.id, id));
+  }
+
+  async deleteWebAuthnCredential(firmId: string, id: string): Promise<void> {
+    await this.db
+      .delete(schema.webAuthnCredentials)
+      .where(
+        and(eq(schema.webAuthnCredentials.firmId, firmId), eq(schema.webAuthnCredentials.id, id)),
+      );
+  }
+
+  async updateUserMfaStatus(firmId: string, userId: string, mfaEnabled: boolean): Promise<void> {
+    await this.db
+      .update(schema.users)
+      .set({ mfaEnabled })
+      .where(and(eq(schema.users.firmId, firmId), eq(schema.users.id, userId)));
+  }
+
+  async createRecoveryCodes(
+    firmId: string,
+    userId: string,
+    codes: RecoveryCodeRecord[],
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      // Invalidate old codes
+      await tx
+        .delete(schema.recoveryCodes)
+        .where(
+          and(eq(schema.recoveryCodes.firmId, firmId), eq(schema.recoveryCodes.userId, userId)),
+        );
+
+      if (codes.length > 0) {
+        await tx.insert(schema.recoveryCodes).values(
+          codes.map((c) => ({
+            id: c.id,
+            firmId: c.firmId,
+            userId: c.userId,
+            codeHash: c.codeHash,
+            createdAt: new Date(c.createdAt),
+          })),
+        );
+      }
+    });
+  }
+
+  async useRecoveryCode(
+    firmId: string,
+    userId: string,
+    codeHash: string,
+    consumedAt: string,
+  ): Promise<boolean> {
+    const [updated] = await this.db
+      .update(schema.recoveryCodes)
+      .set({ usedAt: new Date(consumedAt) })
+      .where(
+        and(
+          eq(schema.recoveryCodes.firmId, firmId),
+          eq(schema.recoveryCodes.userId, userId),
+          eq(schema.recoveryCodes.codeHash, codeHash),
+          isNull(schema.recoveryCodes.usedAt),
+        ),
+      )
+      .returning();
+    return !!updated;
+  }
+
+  async listRecoveryCodes(firmId: string, userId: string): Promise<RecoveryCodeRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.recoveryCodes)
+      .where(and(eq(schema.recoveryCodes.firmId, firmId), eq(schema.recoveryCodes.userId, userId)));
+    return rows.map(mapRecoveryCodeRow);
   }
 
   async getOverview(firmId: string): Promise<PracticeOverview> {
@@ -2959,6 +3379,33 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         ),
       );
     return rows.map(mapPaymentAllocationRow);
+  }
+
+  async createDocumentTextExtraction(
+    extraction: DocumentTextExtractionRecord,
+  ): Promise<DocumentTextExtractionRecord> {
+    await this.db.insert(schema.documentTextExtractions).values({
+      ...extraction,
+      createdAt: new Date(extraction.createdAt),
+      completedAt: extraction.completedAt ? new Date(extraction.completedAt) : null,
+    });
+    return extraction;
+  }
+
+  async getDocumentTextExtractions(
+    firmId: string,
+    documentId: string,
+  ): Promise<DocumentTextExtractionRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.documentTextExtractions)
+      .where(
+        and(
+          eq(schema.documentTextExtractions.firmId, firmId),
+          eq(schema.documentTextExtractions.documentId, documentId),
+        ),
+      );
+    return rows.map(mapDocumentTextExtractionRow);
   }
 }
 

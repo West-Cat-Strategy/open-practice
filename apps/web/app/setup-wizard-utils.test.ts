@@ -27,6 +27,12 @@ function state(overrides: Partial<SetupWizardState> = {}): SetupWizardState {
     ownerPassword: "correct horse battery staple",
     ownerPasswordConfirmation: "correct horse battery staple",
     setupKey: "",
+    website: "",
+    description: "",
+    businessNumber: "",
+    practitionerRegulator: "Law Society of BC",
+    practitionerLicenseStatus: "Active",
+    practitionerJurisdictionsText: "BC",
     createFirstMatter: false,
     clientKind: "person",
     clientName: "",
@@ -78,6 +84,25 @@ describe("setup wizard startup and validation", () => {
         "Firm name is required.",
         "At least one practice area is required.",
         "Trust/funds caveat acknowledgement is required.",
+      ]),
+    );
+  });
+
+  it("requires practitioner licensing details", () => {
+    const validation = validateSetupWizardState(
+      state({
+        practitionerRegulator: "",
+        practitionerLicenseStatus: "",
+        practitionerJurisdictionsText: "",
+      }),
+    );
+
+    expect(validation.valid).toBe(false);
+    expect(validation.errors).toEqual(
+      expect.arrayContaining([
+        "Practitioner regulator is required.",
+        "Practitioner license status is required.",
+        "At least one practitioner jurisdiction is required.",
       ]),
     );
   });

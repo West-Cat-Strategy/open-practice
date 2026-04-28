@@ -71,7 +71,11 @@ export function isPublicRoute(method: string, url: string): boolean {
     path === "/health" ||
     (method === "GET" && path === "/api/setup/status") ||
     (method === "POST" && path === "/api/setup/complete") ||
+    (method === "POST" && path === "/api/setup/webauthn-options") ||
     (method === "POST" && path === "/api/auth/login") ||
-    (method === "POST" && path === "/api/auth/password-setup")
+    (method === "POST" && path === "/api/auth/login/options") ||
+    (method === "POST" && path === "/api/auth/login/verify") ||
+    (method === "POST" && path === "/api/auth/password-setup") ||
+    (method === "POST" && path === "/api/auth/recovery-codes/verify")
   );
 }

@@ -27,10 +27,12 @@ import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
 import { registerMatterRoutes } from "./routes/matters.js";
 import { registerQueuesRoutes } from "./routes/queues.js";
+import { registerRecoveryRoutes } from "./routes/recovery.js";
 import { registerSessionRoutes } from "./routes/session.js";
 import { registerShareRoutes } from "./routes/shares.js";
 import { registerSignatureRoutes } from "./routes/signatures.js";
 import { registerSetupRoutes } from "./routes/setup.js";
+import { registerWebAuthnRoutes } from "./routes/webauthn.js";
 import {
   hashToken,
   hashPassword,
@@ -79,6 +81,9 @@ export const envSchema = z.object({
   OIDC_ISSUER_URL: optionalUrl,
   OIDC_CLIENT_ID: optionalString,
   OIDC_CLIENT_SECRET: optionalString,
+  WEBAUTHN_RP_NAME: z.string().default("Open Practice"),
+  WEBAUTHN_RP_ID: z.string().default("localhost"),
+  WEBAUTHN_ORIGIN: z.string().default("http://localhost:3000"),
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;
@@ -107,6 +112,11 @@ interface ApiOptions {
   s3?: {
     client: S3Client;
     bucket: string;
+  };
+  webAuthn: {
+    rpName: string;
+    rpID: string;
+    origin: string;
   };
 }
 
@@ -271,6 +281,19 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     hashToken,
     createSessionToken,
     sessionCookie,
+    rpName: options.webAuthn.rpName,
+    rpID: options.webAuthn.rpID,
+    origin: options.webAuthn.origin,
+  });
+
+  registerWebAuthnRoutes(server, {
+    repository: options.repository,
+    jwtSecret: options.jwtSecret,
+    sessionTtlHours: options.sessionTtlHours,
+    nodeEnv: options.nodeEnv,
+    rpName: options.webAuthn.rpName,
+    rpID: options.webAuthn.rpID,
+    origin: options.webAuthn.origin,
   });
 
   server.addHook("preHandler", async (request) => {
@@ -279,6 +302,12 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   });
 
   registerAuthRoutes(server, {
+    repository: options.repository,
+    jwtSecret: options.jwtSecret,
+    sessionTtlHours: options.sessionTtlHours,
+    nodeEnv: options.nodeEnv,
+  });
+  registerRecoveryRoutes(server, {
     repository: options.repository,
     jwtSecret: options.jwtSecret,
     sessionTtlHours: options.sessionTtlHours,
@@ -378,6 +407,11 @@ if (process.env.NODE_ENV !== "test") {
     sessionTtlHours: env.SESSION_TTL_HOURS,
     setupKey: env.OPEN_PRACTICE_SETUP_KEY,
     s3: createS3FromEnv(env),
+    webAuthn: {
+      rpName: env.WEBAUTHN_RP_NAME,
+      rpID: env.WEBAUTHN_RP_ID,
+      origin: env.WEBAUTHN_ORIGIN,
+    },
   });
   process.once("SIGTERM", () => void close?.());
   await server.listen({ host: "0.0.0.0", port: env.API_PORT });

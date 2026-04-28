@@ -5,9 +5,10 @@ Open Practice is built for Canadian legal professionals and their clients. Contr
 ## Development
 
 1. Install dependencies with `pnpm install`.
-2. Start local services with `docker compose up -d`.
-3. Run the app with `pnpm dev`.
-4. Verify the full local CI lane with `pnpm verify`.
+2. Start the full stack with `docker compose up -d`.
+3. (Optional) Run individual services locally for development with `pnpm dev`.
+4. Access the web UI at `http://localhost:3000` and the API at `http://localhost:4000`.
+5. Verify the full local CI lane with `pnpm verify`.
 
 Use [docs/README.md](docs/README.md) for the documentation map,
 [docs/development/getting-started.md](docs/development/getting-started.md) for runtime setup, and

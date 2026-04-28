@@ -12,6 +12,11 @@ function testServer(overrides: Partial<CreateServerOptions> = {}) {
     repository,
     devFirmId: "firm-west-legal",
     devUserId: "user-admin",
+    webAuthn: {
+      rpName: "Test RP",
+      rpID: "localhost",
+      origin: "http://localhost:3000",
+    },
     ...overrides,
   });
   servers.push(server);

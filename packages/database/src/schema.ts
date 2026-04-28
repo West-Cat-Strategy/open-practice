@@ -104,6 +104,11 @@ export const users = pgTable(
     role: userRole("role").notNull(),
     mfaEnabled: boolean("mfa_enabled").notNull().default(false),
     oidcSubject: text("oidc_subject"),
+    practitionerProfile: jsonb("practitioner_profile").$type<{
+      regulator: string;
+      licenseStatus: string;
+      jurisdictions: string[];
+    }>(),
   },
   (table) => ({
     firmEmail: uniqueIndex("users_firm_email_idx").on(table.firmId, table.email),
@@ -136,6 +141,9 @@ export const firmSettings = pgTable("firm_settings", {
   trustFundsCaveatAcceptedByUserId: text("trust_funds_caveat_accepted_by_user_id")
     .notNull()
     .references(() => users.id),
+  website: text("website"),
+  description: text("description"),
+  businessNumber: text("business_number"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -269,6 +277,11 @@ export const webAuthnCredentials = pgTable(
     publicKey: text("public_key").notNull(),
     counter: integer("counter").notNull().default(0),
     transports: jsonb("transports").$type<string[]>().notNull().default([]),
+    deviceType: text("device_type")
+      .$type<"singleDevice" | "multiDevice">()
+      .notNull()
+      .default("singleDevice"),
+    backedUp: boolean("backed_up").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     disabledAt: timestamp("disabled_at", { withTimezone: true }),
@@ -283,9 +296,7 @@ export const authChallenges = pgTable(
   "auth_challenges",
   {
     id: text("id").primaryKey(),
-    firmId: text("firm_id")
-      .notNull()
-      .references(() => firms.id),
+    firmId: text("firm_id").references(() => firms.id),
     userId: text("user_id").references(() => users.id),
     challengeHash: text("challenge_hash").notNull(),
     purpose: authChallengePurpose("purpose").notNull(),

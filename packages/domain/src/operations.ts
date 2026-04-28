@@ -243,14 +243,16 @@ export interface WebAuthnCredentialRecord {
   publicKey: string;
   counter: number;
   transports: string[];
+  deviceType: "singleDevice" | "multiDevice";
+  backedUp: boolean;
   createdAt: string;
   lastUsedAt?: string;
   disabledAt?: string;
 }
 
-export interface AuthChallengeRecord {
+export interface WebAuthnChallengeRecord {
   id: string;
-  firmId: string;
+  firmId?: string;
   userId?: string;
   challengeHash: string;
   purpose: "passkey_registration" | "passkey_authentication" | "totp_setup";
@@ -331,7 +333,7 @@ export interface OcrProvider {
   extractText(input: {
     firmId: string;
     documentId: string;
-    storageKey: string;
+    content: Uint8Array;
     language: string;
   }): Promise<Pick<DocumentTextExtractionRecord, "confidence" | "extractedText" | "metadata">>;
 }
@@ -340,7 +342,7 @@ export interface TranscriptionProvider {
   transcribe(input: {
     firmId: string;
     documentId: string;
-    storageKey: string;
+    content: Uint8Array;
   }): Promise<Pick<MediaTranscriptRecord, "text" | "metadata">>;
 }
 
@@ -348,6 +350,6 @@ export interface MediaProcessor {
   createDerivatives(input: {
     firmId: string;
     documentId: string;
-    storageKey: string;
+    content: Uint8Array;
   }): Promise<MediaDerivativeRecord[]>;
 }

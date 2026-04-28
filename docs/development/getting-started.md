@@ -6,7 +6,7 @@ Use this guide for local runtime setup. Use [Repository Guide](repo-guide.md) fo
 
 - Node.js 24 in CI.
 - pnpm 10, as declared in the root `package.json`.
-- Docker for PostgreSQL, Redis, MinIO, and Mailpit through `docker-compose.yml`.
+- Docker for all services (API, Web, Worker, and Infrastructure) through `docker-compose.yml`.
 - Postal, Ollama, Tesseract, Whisper, and FFmpeg are planned optional worker/provider tools; they are
   not required for the default local startup.
 
@@ -21,6 +21,14 @@ Use this guide for local runtime setup. Use [Repository Guide](repo-guide.md) fo
 ```bash
 pnpm install
 docker compose up -d
+```
+
+Access the application at `http://localhost:3000`. The stack is fully containerized and coordinates automatically.
+
+If you prefer to run services locally for development:
+
+```bash
+docker compose up -d postgres redis minio mailpit
 pnpm dev
 ```
 
@@ -47,12 +55,15 @@ pnpm --filter @open-practice/web dev
 
 ## Local Services
 
-`docker-compose.yml` provides the supporting services expected by the app:
+`docker-compose.yml` provides all services required to run the application:
 
-- PostgreSQL for legal records and embedded sessions.
-- MinIO for S3-compatible document-object storage.
-- Mailpit for local email capture when mail workflows are introduced.
-- Redis for BullMQ execution state.
+- **api**: Fastify-based backend.
+- **web**: Next.js-based frontend.
+- **worker**: BullMQ background processor.
+- **postgres**: PostgreSQL for legal records and embedded sessions.
+- **minio**: MinIO for S3-compatible document-object storage.
+- **mailpit**: Local email capture for mail workflows.
+- **redis**: Redis for BullMQ execution state.
 
 Redis should stay private to API and worker containers in production and should hold job metadata only.
 PostgreSQL remains the source of truth for legal and audit-relevant job lifecycle state.

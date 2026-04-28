@@ -34,21 +34,35 @@ export class DisabledAiTriageProvider implements AiTriageProvider {
 }
 
 export class DisabledOcrProvider implements OcrProvider {
-  async extractText(): Promise<
-    Pick<DocumentTextExtractionRecord, "confidence" | "extractedText" | "metadata">
-  > {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async extractText(_: {
+    firmId: string;
+    documentId: string;
+    content: Uint8Array;
+    language: string;
+  }): Promise<Pick<DocumentTextExtractionRecord, "confidence" | "extractedText" | "metadata">> {
     throw disabled("OCR");
   }
 }
 
 export class DisabledTranscriptionProvider implements TranscriptionProvider {
-  async transcribe(): Promise<Pick<MediaTranscriptRecord, "text" | "metadata">> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async transcribe(_: {
+    firmId: string;
+    documentId: string;
+    content: Uint8Array;
+  }): Promise<Pick<MediaTranscriptRecord, "text" | "metadata">> {
     throw disabled("Transcription");
   }
 }
 
 export class DisabledMediaProcessor implements MediaProcessor {
-  async createDerivatives(): Promise<MediaDerivativeRecord[]> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async createDerivatives(_: {
+    firmId: string;
+    documentId: string;
+    content: Uint8Array;
+  }): Promise<MediaDerivativeRecord[]> {
     throw disabled("Media processor");
   }
 }
