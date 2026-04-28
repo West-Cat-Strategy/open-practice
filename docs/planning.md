@@ -14,10 +14,13 @@ Open Practice is an Apache-2.0 TypeScript monorepo with:
   inbound email, AI triage, OCR, transcription, and media queues.
 - `packages/providers` for embedded signature, document-automation, and disabled operation-provider adapters.
 - A documented local-first stack plan for Redis/BullMQ workers, Mailpit/Postal email, Tesseract OCR,
-  Whisper/FFmpeg transcription, Ollama/LM Studio assistance, SimpleWebAuthn passkeys, and TipTap
-  rich-text drafting.
+  Whisper/FFmpeg transcription, Ollama/LM Studio assistance, SimpleWebAuthn passkeys, TipTap
+  rich-text drafting, outbound iCalendar/webcal subscriptions, and WebRTC meeting foundations.
 
-The current code already includes signature request persistence, signer rows, provider event and webhook-attempt records, upload-complete handling, intake templates and sessions, generated-document records, and the OSS reuse policy check.
+The current code already includes signature request persistence, signer rows, provider event and
+webhook-attempt records, upload-complete handling, intake templates and sessions, generated-document
+records, a basic `calendar_events` table, `calendar_event` permission entries, and the OSS reuse
+policy check.
 
 ## Development Lanes
 
@@ -50,6 +53,19 @@ The current code already includes signature request persistence, signer rows, pr
 9. **Embedded auth and drafting extensions**
    Add SimpleWebAuthn passkeys and TipTap-backed drafts/templates only after RP ID/origin, content
    sanitization, versioning, and audit contracts are designed.
+
+10. **Calendaring and meeting management**
+    Grow the existing `calendar_events` schema and `calendar_event` permissions into matter-scoped
+    events with attendees, reminders, rescheduling/cancellation records, audit events, and outbound
+    email invitations. Plan WebRTC meeting support behind self-hostable/private signaling plus
+    STUN/TURN configuration, disabled until explicitly configured. Meeting request emails should
+    carry both the iCalendar invite and meeting link in the same message. Recipient meeting links
+    should work without Open Practice authentication, but only through tokenized,
+    expiring/revocable capabilities scoped to the meeting room, meeting chat, and document upload
+    during that meeting. Meeting chat and uploads should become audited matter-linked records
+    without exposing broader matter, portal, document, billing, trust/funds, or firm data. Calendar
+    sync v1 should be outbound iCalendar/webcal subscription, including iOS one-click setup; two-way
+    provider sync stays deferred until a provider-auth, conflict-resolution, and privacy plan lands.
 
 ## Reuse Guardrails
 
