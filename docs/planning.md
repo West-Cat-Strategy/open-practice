@@ -4,28 +4,30 @@ This is the durable roadmap for Open Practice. Use `docs/planning-and-progress.m
 
 ## Current Baseline
 
-Open Practice is an Apache-2.0 TypeScript monorepo that has stabilized its **Phase 1: Foundation**. Key accomplishments include:
+Open Practice is an Apache-2.0 TypeScript monorepo that has stabilized **Phase 1:
+Foundation** and **Phase 2: Hardening & Integration**. Key accomplishments include:
 
 - **Core Architecture**: Provider-neutral `packages/domain`, Drizzle-backed `packages/database`, and Fastify `apps/api`.
 - **Operational Dashboard**: API-backed `apps/web` with permission-aware navigation and route catalogs.
 - **Worker Foundation**: Redis/BullMQ `apps/worker` scaffold with job lifecycle persistence.
 - **Provider Adapters**: Embedded signature and document-automation adapters in `packages/providers`.
-- **Hardened Features**: WebAuthn first-run setup, matter-scoped RBAC, audit hash chains, trust ledger invariants, and billing/reporting foundations.
+- **Hardened Features**: WebAuthn first-run setup, matter-scoped RBAC, audit hash chains, persistent trust ledger balance guards, and billing/reporting foundations.
 - **Module extraction**: Extraction of Auth, Session, Matters, Ledger, Documents, Signatures, and Intake into owned API registrars.
 
 ## Strategic Phases
 
-### Phase 2: Hardening & Integration (Current Focus)
+### Phase 2: Hardening & Integration (Complete)
 
-Strengthen the system of record and automate high-frequency workflows.
+Strengthened the system of record and automated high-frequency workflows.
 
-1.  **Worker Processors**: Implement concrete Tesseract OCR and Whisper transcription processors for verified documents.
-2.  **Notification Delivery**: Implement outbound email delivery (Postal/Mailpit) for signature requests and alerts.
-3.  **Advanced Auth**: Full SimpleWebAuthn MFA, passkey authentication, and multi-factor recovery paths.
-4.  **Drafting & Templates**: TipTap/ProseMirror foundation for structured drafting and template management.
-5.  **Inbound Triage**: Mail parsing and automated matter triage/filing for inbound correspondence.
+1.  **Worker Processors**: Implemented concrete Tesseract OCR and text-extraction processors for verified documents.
+2.  **Notification Delivery**: Implemented outbound email delivery (Postal/Mailpit) for signature requests and alerts.
+3.  **Advanced Auth**: Completed SimpleWebAuthn MFA, passkey authentication, and recovery paths.
+4.  **Drafting & Templates**: Implemented the TipTap/ProseMirror foundation for structured drafting and template management.
+5.  **Inbound Triage**: Implemented mail parsing and matter-scoped inbound correspondence storage.
+6.  **Trust Hardening**: Added persistent client trust-balance guards, atomic ledger posting updates, and tighter approval/reconciliation persistence rules.
 
-### Phase 3: Operational Scale (Future Phase)
+### Phase 3: Operational Scale (Current Focus)
 
 Expand the ecosystem for secure collaboration and intelligent assistance.
 

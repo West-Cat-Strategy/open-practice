@@ -6,6 +6,7 @@ import {
   canAccess,
   canShareDocumentThroughPortal,
   clientTrustBalanceByMatter,
+  clientTrustBalanceDeltas,
   createReversalTransaction,
   dashboardCapabilities,
   isBillableUnbilled,
@@ -400,6 +401,17 @@ describe("funds ledger", () => {
         "contact-ada:matter-001"
       ],
     ).toBe(150000);
+  });
+
+  it("summarizes client liability balance deltas for persistent guards", () => {
+    expect(clientTrustBalanceDeltas(sampleLedgerEntries, sampleLedgerAccounts)).toEqual([
+      {
+        firmId: sampleFirm.id,
+        matterId: "matter-001",
+        clientId: "contact-ada",
+        deltaCents: 150000,
+      },
+    ]);
   });
 
   it("rejects idempotency replays with different payloads", () => {

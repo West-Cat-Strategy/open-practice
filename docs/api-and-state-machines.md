@@ -145,9 +145,12 @@ filtered by category while remaining editable through future template-management
 Ledger posting has no mutable status field. A transaction is accepted only when entries are balanced,
 non-zero, one-sided debit/credit rows; all accounts, matters, and clients are valid; the idempotency
 key is new or repeats the same request fingerprint; and client-liability balances are not overdrawn.
-Reversal transactions must reference an existing transaction and exactly mirror the original entries.
-Approval and reconciliation records are first-class controls around posting and review, but they are
-not jurisdiction-certified compliance claims.
+PostgreSQL persistence also maintains a matter/client trust-balance guard that is updated atomically
+with posted client-liability entries so concurrent withdrawals cannot push a persisted balance below
+zero. Reversal transactions must reference an existing transaction and exactly mirror the original
+entries. Approval and reconciliation records are first-class controls around posting and review, but
+they are not jurisdiction-certified compliance claims. Approval records must reference an existing
+transaction and one reviewer cannot record duplicate decisions for the same transaction.
 
 Billing work treats time and expense capture as pre-invoice operational records. The billing status
 is `draft`, `submitted`, `approved`, `billed`, or `written_off`. Draft entries can be edited,

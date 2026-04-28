@@ -255,6 +255,73 @@ describe("repository operations foundation", () => {
     ).resolves.toMatchObject([{ id: "job-email-1", errorMessage: "SMTP unavailable" }]);
   });
 
+  it("guards trust approval and reconciliation persistence", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await expect(
+      repository.createLedgerTransactionApproval({
+        id: "approval-1",
+        firmId: "firm-west-legal",
+        transactionId: "trust-retainer",
+        decidedByUserId: "user-admin",
+        decision: "approved",
+        decidedAt: now,
+      }),
+    ).resolves.toMatchObject({ transactionId: "trust-retainer", decision: "approved" });
+
+    await expect(
+      repository.createLedgerTransactionApproval({
+        id: "approval-duplicate",
+        firmId: "firm-west-legal",
+        transactionId: "trust-retainer",
+        decidedByUserId: "user-admin",
+        decision: "rejected",
+        decidedAt: now,
+      }),
+    ).rejects.toThrow(/already recorded/);
+    await expect(
+      repository.createLedgerTransactionApproval({
+        id: "approval-missing",
+        firmId: "firm-west-legal",
+        transactionId: "missing-transaction",
+        decidedByUserId: "user-admin",
+        decision: "approved",
+        decidedAt: now,
+      }),
+    ).rejects.toThrow(/Unknown ledger transaction/);
+
+    await expect(
+      repository.createLedgerReconciliation({
+        id: "reconciliation-invalid-period",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        statementPeriodStart: "2026-04-30T00:00:00.000Z",
+        statementPeriodEnd: "2026-04-01T00:00:00.000Z",
+        expectedBalanceCents: 150000,
+        actualBalanceCents: 150000,
+        status: "matched",
+        reviewedByUserId: "user-admin",
+        evidence: {},
+        createdAt: now,
+      }),
+    ).rejects.toThrow(/period end/);
+    await expect(
+      repository.createLedgerReconciliation({
+        id: "reconciliation-missing-account",
+        firmId: "firm-west-legal",
+        accountId: "missing-account",
+        statementPeriodStart: "2026-04-01T00:00:00.000Z",
+        statementPeriodEnd: "2026-04-30T00:00:00.000Z",
+        expectedBalanceCents: 150000,
+        actualBalanceCents: 150000,
+        status: "matched",
+        reviewedByUserId: "user-admin",
+        evidence: {},
+        createdAt: now,
+      }),
+    ).rejects.toThrow(/Unknown ledger account/);
+  });
+
   it("stores parsed inbound email messages and attachments", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const message = await repository.createInboundEmailMessage({

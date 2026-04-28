@@ -253,6 +253,59 @@ describe("ledger routes", () => {
     await expect(repository.listLedgerReconciliations("firm-west-legal")).resolves.toHaveLength(1);
   });
 
+  it("rejects invalid ledger approval and reconciliation controls", async () => {
+    const server = testServer({ repository: new InMemoryOpenPracticeRepository() });
+    const firstApproval = await server.inject({
+      method: "POST",
+      url: "/api/ledger/transactions/trust-retainer/approvals",
+      payload: {
+        decision: "approved",
+        decidedAt: "2026-04-24T13:00:00.000Z",
+      },
+    });
+    const duplicateApproval = await server.inject({
+      method: "POST",
+      url: "/api/ledger/transactions/trust-retainer/approvals",
+      payload: {
+        decision: "rejected",
+        decidedAt: "2026-04-24T13:05:00.000Z",
+      },
+    });
+    const unknownApproval = await server.inject({
+      method: "POST",
+      url: "/api/ledger/transactions/missing-transaction/approvals",
+      payload: { decision: "approved" },
+    });
+    const invalidPeriod = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations",
+      payload: {
+        accountId: "acct-trust-bank",
+        statementPeriodStart: "2026-04-30T00:00:00.000Z",
+        statementPeriodEnd: "2026-04-01T00:00:00.000Z",
+        expectedBalanceCents: 150000,
+        actualBalanceCents: 150000,
+      },
+    });
+
+    expect(firstApproval.statusCode).toBe(200);
+    expect(duplicateApproval.statusCode).toBe(400);
+    expect(duplicateApproval.json()).toMatchObject({
+      error: "Error",
+      message: "Ledger approval reviewer has already recorded a decision",
+    });
+    expect(unknownApproval.statusCode).toBe(400);
+    expect(unknownApproval.json()).toMatchObject({
+      error: "Error",
+      message: "Unknown ledger transaction missing-transaction",
+    });
+    expect(invalidPeriod.statusCode).toBe(400);
+    expect(invalidPeriod.json()).toMatchObject({
+      error: "Error",
+      message: "Ledger reconciliation period end must be after period start",
+    });
+  });
+
   it("rejects unauthorized ledger control writes", async () => {
     const headers = {
       "x-open-practice-user-id": "user-staff",
