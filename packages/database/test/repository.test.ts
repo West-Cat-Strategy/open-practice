@@ -119,6 +119,10 @@ describe("repository first-run setup", () => {
     await expect(repository.getAuthAccount(input.firm.id, input.owner.id)).resolves.toMatchObject({
       passwordHash: input.ownerPasswordHash,
     });
+    await expect(repository.listDraftTemplates(input.firm.id)).resolves.toMatchObject([
+      { id: "draft-template-legal-letter" },
+      { id: "draft-template-meeting-notes" },
+    ]);
     await expect(repository.listMattersForUser(input.owner)).resolves.toHaveLength(1);
   });
 
@@ -146,6 +150,50 @@ describe("repository first-run setup", () => {
 });
 
 describe("repository operations foundation", () => {
+  it("seeds basic draft templates and versions draft updates", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await expect(repository.listDraftTemplates("firm-west-legal")).resolves.toMatchObject([
+      {
+        id: "draft-template-legal-letter",
+        category: "correspondence",
+        active: true,
+      },
+      {
+        id: "draft-template-meeting-notes",
+        category: "internal",
+        active: true,
+      },
+    ]);
+
+    const created = await repository.createDraft({
+      id: "draft-test-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      title: "Draft test",
+      editorJson: {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Initial" }] }],
+      },
+      version: 1,
+      createdByUserId: "user-admin",
+      updatedByUserId: "user-admin",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {},
+    });
+    const updated = await repository.updateDraft("firm-west-legal", created.id, {
+      title: "Updated draft test",
+      updatedByUserId: "user-licensee",
+    });
+
+    expect(updated).toMatchObject({
+      id: created.id,
+      title: "Updated draft test",
+      version: 2,
+      updatedByUserId: "user-licensee",
+    });
+  });
+
   it("upserts firm-scoped provider settings", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const createdAt = now;

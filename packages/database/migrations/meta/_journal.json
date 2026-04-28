@@ -64,6 +64,13 @@
       "when": 1777324337065,
       "tag": "0008_needy_valkyrie",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777413867520,
+      "tag": "0009_quick_amazoness",
+      "breakpoints": true
     }
   ]
 }

@@ -1333,6 +1333,7 @@ export const drafts = pgTable(
     title: text("title").notNull(),
     editorJson: jsonb("editor_json").$type<Record<string, unknown>>().notNull(),
     renderedHtml: text("rendered_html"),
+    version: integer("version").notNull().default(1),
     createdByUserId: text("created_by_user_id")
       .notNull()
       .references(() => users.id),

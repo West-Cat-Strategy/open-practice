@@ -1,6 +1,7 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   appendAuditEvent,
+  buildBasicDraftTemplates,
   calculateInvoiceTotals,
   canShareDocumentThroughPortal,
   clientTrustBalanceByMatter,
@@ -44,6 +45,7 @@ import {
 import {
   sampleAuditEvents,
   sampleContacts,
+  sampleDraftTemplates,
   sampleDocuments,
   sampleExpenseEntries,
   sampleFirm,
@@ -420,7 +422,9 @@ export interface OpenPracticeRepository {
   updateDraft(
     firmId: string,
     draftId: string,
-    updates: Partial<Pick<DraftRecord, "title" | "editorJson" | "renderedHtml" | "updatedByUserId">>,
+    updates: Partial<
+      Pick<DraftRecord, "title" | "editorJson" | "renderedHtml" | "updatedByUserId">
+    >,
   ): Promise<DraftRecord>;
   deleteDraft(firmId: string, draftId: string): Promise<void>;
   listDraftTemplates(
@@ -869,8 +873,9 @@ function mapDraftRow(row: typeof schema.drafts.$inferSelect): DraftRecord {
     firmId: row.firmId,
     matterId: row.matterId ?? undefined,
     title: row.title,
-    editorJson: row.editorJson as Record<string, unknown>,
+    editorJson: row.editorJson as DraftRecord["editorJson"],
     renderedHtml: row.renderedHtml ?? undefined,
+    version: row.version,
     createdByUserId: row.createdByUserId,
     updatedByUserId: row.updatedByUserId,
     createdAt: row.createdAt.toISOString(),
@@ -885,7 +890,7 @@ function mapDraftTemplateRow(row: typeof schema.draftTemplates.$inferSelect): Dr
     firmId: row.firmId,
     name: row.name,
     description: row.description ?? undefined,
-    editorJson: row.editorJson as Record<string, unknown>,
+    editorJson: row.editorJson as DraftTemplateRecord["editorJson"],
     category: row.category,
     active: row.active,
     createdAt: row.createdAt.toISOString(),
@@ -953,6 +958,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.trustTransferRequests = seeded ? clone(sampleTrustTransferRequests) : [];
     this.ledgerAccounts = seeded ? clone(sampleLedgerAccounts) : [];
     this.intakeTemplates = seeded ? clone(sampleIntakeTemplates) : [];
+    this.draftTemplates = seeded ? clone(sampleDraftTemplates) : [];
     this.signatureRequestSigners = seeded ? clone(sampleSignatureRequestSigners) : [];
     this.signatureProviderEvents = seeded ? clone(sampleSignatureProviderEvents) : [];
     this.signatureWebhookAttempts = seeded ? clone(sampleSignatureWebhookAttempts) : [];
@@ -998,6 +1004,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     if (input.firstMatter) this.matters = [clone(input.firstMatter)];
     if (input.firstMatterParty) this.matterParties = [clone(input.firstMatterParty)];
     if (input.webAuthnCredential) this.webAuthnCredentials = [clone(input.webAuthnCredential)];
+    this.draftTemplates = buildBasicDraftTemplates(input.firm.id, input.settings.createdAt);
     this.auditEvents = [clone(input.auditEvent)];
 
     return {
@@ -1960,7 +1967,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   async updateDraft(
     firmId: string,
     draftId: string,
-    updates: Partial<Pick<DraftRecord, "title" | "editorJson" | "renderedHtml" | "updatedByUserId">>,
+    updates: Partial<
+      Pick<DraftRecord, "title" | "editorJson" | "renderedHtml" | "updatedByUserId">
+    >,
   ): Promise<DraftRecord> {
     const draftIndex = this.drafts.findIndex((d) => d.firmId === firmId && d.id === draftId);
     if (draftIndex === -1) {
@@ -1969,8 +1978,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     const updatedDraft = {
       ...this.drafts[draftIndex],
       ...updates,
+      version: this.drafts[draftIndex]!.version + 1,
       updatedAt: new Date().toISOString(),
-    };
+    } as DraftRecord;
     this.drafts[draftIndex] = updatedDraft;
     return clone(updatedDraft);
   }
@@ -2082,6 +2092,13 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
             : null,
         });
       }
+      await tx.insert(schema.draftTemplates).values(
+        buildBasicDraftTemplates(input.firm.id, input.settings.createdAt).map((template) => ({
+          ...template,
+          createdAt: new Date(template.createdAt),
+          updatedAt: new Date(template.updatedAt),
+        })),
+      );
       await tx.insert(schema.auditEvents).values({
         ...input.auditEvent,
         occurredAt: new Date(input.auditEvent.occurredAt),
@@ -3560,12 +3577,15 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   async updateDraft(
     firmId: string,
     draftId: string,
-    updates: Partial<Pick<DraftRecord, "title" | "editorJson" | "renderedHtml" | "updatedByUserId">>,
+    updates: Partial<
+      Pick<DraftRecord, "title" | "editorJson" | "renderedHtml" | "updatedByUserId">
+    >,
   ): Promise<DraftRecord> {
     const [row] = await this.db
       .update(schema.drafts)
       .set({
         ...updates,
+        version: sql`${schema.drafts.version} + 1`,
         updatedAt: new Date(),
       })
       .where(and(eq(schema.drafts.firmId, firmId), eq(schema.drafts.id, draftId)))

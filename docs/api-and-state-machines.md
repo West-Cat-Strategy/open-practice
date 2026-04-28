@@ -87,6 +87,13 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/shares`                                           | Auth-gated disabled scaffold for future secure share-link creation.                                             |
 | `GET /api/external-uploads/status`                           | External upload capability status and S3 configuration signal.                                                  |
 | `POST /api/external-uploads/intents`                         | Auth-gated disabled scaffold for future secure external upload intents.                                         |
+| `GET /api/drafts?matterId=&userId=`                          | Matter-scoped structured drafts with TipTap/ProseMirror JSON and sanitized rendered snapshots.                  |
+| `POST /api/drafts`                                           | Create a structured draft with version `1`, matter authorization, and sanitized rendered HTML.                  |
+| `GET /api/drafts/:id`                                        | Fetch an authorized draft by ID.                                                                                |
+| `PUT /api/drafts/:id`                                        | Save structured draft content or rendered snapshot updates and increment the draft version.                     |
+| `DELETE /api/drafts/:id`                                     | Delete an authorized draft record.                                                                              |
+| `GET /api/draft-templates?category=&activeOnly=`             | List active firm-scoped drafting templates, including seeded operational basics.                                |
+| `POST /api/draft-templates`                                  | Create a firm-scoped drafting template from structured TipTap/ProseMirror JSON.                                 |
 
 ## Deferred Worker And Provider Surfaces
 
@@ -104,8 +111,6 @@ behind the scaffolded provider settings and job lifecycle records.
 | `POST /api/auth/passkeys/registration`            | Verify and store a passkey credential for embedded auth.                                         |
 | `POST /api/auth/passkeys/authentication-options`  | Create a passkey login challenge for configured RP ID/origin.                                    |
 | `POST /api/auth/passkeys/authentication`          | Verify passkey assertion and create an embedded session.                                         |
-| `GET /api/drafts/:id`                             | Fetch TipTap/ProseMirror JSON and rendered snapshot metadata for an authorized draft.            |
-| `PUT /api/drafts/:id`                             | Save structured draft content with sanitization, versioning, and audit metadata.                 |
 
 ## State Machines
 
@@ -129,6 +134,11 @@ Intake sessions use `created`, `in_progress`, `ready_to_generate`, `completed`, 
 `provider_error`. The API creates embedded sessions from embedded templates. Answer snapshots and
 generated-document metadata are stored locally. Legacy `docassemble` templates/sessions are rejected
 for new generation paths.
+
+Draft records store structured TipTap/ProseMirror JSON and an optional sanitized rendered HTML
+snapshot. New drafts start at version `1`; each save through `PUT /api/drafts/:id` increments the
+version and records the updating user. Basic draft templates are firm-scoped seed records and can be
+filtered by category while remaining editable through future template-management workflows.
 
 Ledger posting has no mutable status field. A transaction is accepted only when entries are balanced,
 non-zero, one-sided debit/credit rows; all accounts, matters, and clients are valid; the idempotency

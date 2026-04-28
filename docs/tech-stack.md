@@ -39,8 +39,8 @@ documentation; dependency admission and service reuse still follow
 - Reject Mailpit for production email delivery.
 - Defer Postal until mail governance, deliverability, incident response, and webhook verification are
   implemented.
-- Defer SimpleWebAuthn passkeys, TipTap-backed drafting, Tesseract OCR, Whisper transcription, Ollama
-  assistive tasks, and BullMQ workers until their API and database surfaces are implemented.
+- Defer Whisper transcription, Ollama assistive tasks, and any provider-backed drafting assistance
+  until their API, worker, and review surfaces are implemented.
 - Defer WebRTC meeting rooms until self-hostable/private signaling, STUN/TURN configuration,
   meeting-scoped access tokens, meeting chat, temporary document upload, and audit persistence are
   implemented.

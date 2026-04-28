@@ -4,7 +4,12 @@ import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import type { ApiRouteDependencies } from "./types.js";
-import { sanitizeDraftHtml, type DraftRecord, type DraftTemplateRecord } from "@open-practice/domain";
+import {
+  sanitizeDraftHtml,
+  tipTapDocumentSchema,
+  type DraftRecord,
+  type DraftTemplateRecord,
+} from "@open-practice/domain";
 
 const draftListQuerySchema = z.object({
   matterId: z.string().min(1).optional(),
@@ -14,15 +19,23 @@ const draftListQuerySchema = z.object({
 const createDraftBodySchema = z.object({
   matterId: z.string().min(1).optional(),
   title: z.string().min(1),
-  editorJson: z.record(z.string(), z.any()),
+  editorJson: tipTapDocumentSchema,
   renderedHtml: z.string().optional(),
-  metadata: z.record(z.string(), z.any()).default({}),
+  metadata: z.record(z.string(), z.unknown()).default({}),
 });
 
 const updateDraftBodySchema = z.object({
   title: z.string().min(1).optional(),
-  editorJson: z.record(z.string(), z.any()).optional(),
+  editorJson: tipTapDocumentSchema.optional(),
   renderedHtml: z.string().optional(),
+});
+
+const createTemplateBodySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1).optional(),
+  editorJson: tipTapDocumentSchema,
+  category: z.string().min(1).default("general"),
+  metadata: z.record(z.string(), z.unknown()).default({}),
 });
 
 const templateListQuerySchema = z.object({
@@ -80,6 +93,7 @@ export function registerDraftRoutes(
       title: body.title,
       editorJson: body.editorJson,
       renderedHtml: body.renderedHtml ? sanitizeDraftHtml(body.renderedHtml) : undefined,
+      version: 1,
       createdByUserId: request.auth.user.id,
       updatedByUserId: request.auth.user.id,
       createdAt: now,
@@ -134,7 +148,7 @@ export function registerDraftRoutes(
   });
 
   server.post("/api/draft-templates", async (request) => {
-    const body = parseRequestPart(createDraftBodySchema, request.body, "body");
+    const body = parseRequestPart(createTemplateBodySchema, request.body, "body");
     assertAccess(request.auth, "draft_template", "create");
 
     const templateId = crypto.randomUUID();
@@ -143,10 +157,10 @@ export function registerDraftRoutes(
     const template: DraftTemplateRecord = {
       id: templateId,
       firmId: request.auth.firmId,
-      name: body.title,
-      description: (body.metadata.description as string) ?? undefined,
+      name: body.name,
+      description: body.description,
       editorJson: body.editorJson,
-      category: (body.metadata.category as string) ?? "general",
+      category: body.category,
       active: true,
       createdAt: now,
       updatedAt: now,

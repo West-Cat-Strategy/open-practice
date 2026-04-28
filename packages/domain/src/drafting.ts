@@ -1,12 +1,60 @@
 import sanitizeHtml from "sanitize-html";
+import { z } from "zod";
+
+export type TipTapMark = {
+  type: string;
+  attrs?: Record<string, unknown>;
+};
+
+export type TipTapNode = {
+  type: string;
+  attrs?: Record<string, unknown>;
+  content?: TipTapNode[];
+  marks?: TipTapMark[];
+  text?: string;
+};
+
+export type TipTapDocument = TipTapNode & {
+  type: "doc";
+};
+
+const jsonPrimitiveSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+type JsonValue = z.infer<typeof jsonPrimitiveSchema> | JsonValue[] | { [key: string]: JsonValue };
+
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([jsonPrimitiveSchema, z.array(jsonValueSchema), z.record(z.string(), jsonValueSchema)]),
+);
+
+const markSchema: z.ZodType<TipTapMark> = z.object({
+  type: z.string().min(1),
+  attrs: z.record(z.string(), jsonValueSchema).optional(),
+});
+
+const nodeSchema: z.ZodType<TipTapNode> = z.lazy(() =>
+  z
+    .object({
+      type: z.string().min(1),
+      attrs: z.record(z.string(), jsonValueSchema).optional(),
+      content: z.array(nodeSchema).optional(),
+      marks: z.array(markSchema).optional(),
+      text: z.string().optional(),
+    })
+    .strict(),
+);
+
+export const tipTapDocumentSchema: z.ZodType<TipTapDocument> = nodeSchema.refine(
+  (node): node is TipTapDocument => node.type === "doc",
+  { message: "TipTap document root must be a doc node" },
+);
 
 export interface DraftRecord {
   id: string;
   firmId: string;
   matterId?: string;
   title: string;
-  editorJson: Record<string, unknown>;
+  editorJson: TipTapDocument;
   renderedHtml?: string;
+  version: number;
   createdByUserId: string;
   updatedByUserId: string;
   createdAt: string;
@@ -19,7 +67,7 @@ export interface DraftTemplateRecord {
   firmId: string;
   name: string;
   description?: string;
-  editorJson: Record<string, unknown>;
+  editorJson: TipTapDocument;
   category: string;
   active: boolean;
   createdAt: string;
@@ -31,7 +79,7 @@ export const DRAFT_SANITIZATION_OPTIONS: sanitizeHtml.IOptions = {
   allowedTags: sanitizeHtml.defaults.allowedTags.concat(["h1", "h2", "span", "img"]),
   allowedAttributes: {
     ...sanitizeHtml.defaults.allowedAttributes,
-    "*": ["style", "class", "data-*"],
+    "*": ["data-*"],
     img: ["src", "alt", "width", "height"],
   },
 };
@@ -40,14 +88,15 @@ export function sanitizeDraftHtml(html: string): string {
   return sanitizeHtml(html, DRAFT_SANITIZATION_OPTIONS);
 }
 
-/**
- * Basic templates for common legal drafting tasks.
- */
-export const BASIC_DRAFT_TEMPLATES: Array<Partial<DraftTemplateRecord>> = [
+type BasicDraftTemplate = Omit<DraftTemplateRecord, "firmId" | "createdAt" | "updatedAt">;
+
+export const BASIC_DRAFT_TEMPLATES: BasicDraftTemplate[] = [
   {
+    id: "draft-template-legal-letter",
     name: "Generic Legal Letter",
     category: "correspondence",
     description: "A standard letterhead template for external correspondence.",
+    active: true,
     editorJson: {
       type: "doc",
       content: [
@@ -86,11 +135,14 @@ export const BASIC_DRAFT_TEMPLATES: Array<Partial<DraftTemplateRecord>> = [
         },
       ],
     },
+    metadata: { source: "open-practice-basic" },
   },
   {
+    id: "draft-template-meeting-notes",
     name: "Meeting Notes",
     category: "internal",
     description: "Template for recording matter-scoped meeting notes and action items.",
+    active: true,
     editorJson: {
       type: "doc",
       content: [
@@ -137,5 +189,15 @@ export const BASIC_DRAFT_TEMPLATES: Array<Partial<DraftTemplateRecord>> = [
         },
       ],
     },
+    metadata: { source: "open-practice-basic" },
   },
 ];
+
+export function buildBasicDraftTemplates(firmId: string, timestamp: string): DraftTemplateRecord[] {
+  return BASIC_DRAFT_TEMPLATES.map((template) => ({
+    ...template,
+    firmId,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }));
+}
