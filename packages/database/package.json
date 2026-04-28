@@ -18,7 +18,7 @@
   "dependencies": {
     "@open-practice/domain": "workspace:^",
     "drizzle-kit": "^0.31.10",
-    "drizzle-orm": "latest",
+    "drizzle-orm": "0.45.2",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
