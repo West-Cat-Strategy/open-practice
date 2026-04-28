@@ -34,6 +34,19 @@ Expand the ecosystem for secure collaboration and intelligent assistance.
 3.  **Assistive AI**: Ollama/LM Studio integration for drafting assistance and document summarization.
 4.  **Specialized Workflows**: Deeper integration for legal clinics, nonprofit fiscal hosts, and complex trust accounting.
 
+10. **Calendaring and meeting management**
+    Grow the existing `calendar_events` schema and `calendar_event` permissions into matter-scoped
+    events with attendees, reminders, rescheduling/cancellation records, audit events, and outbound
+    email invitations. Plan WebRTC meeting support behind self-hostable/private signaling plus
+    STUN/TURN configuration, disabled until explicitly configured. Meeting request emails should
+    carry both the iCalendar invite and meeting link in the same message. Recipient meeting links
+    should work without Open Practice authentication, but only through tokenized,
+    expiring/revocable capabilities scoped to the meeting room, meeting chat, and document upload
+    during that meeting. Meeting chat and uploads should become audited matter-linked records
+    without exposing broader matter, portal, document, billing, trust/funds, or firm data. Calendar
+    sync v1 should be outbound iCalendar/webcal subscription, including iOS one-click setup; two-way
+    provider sync stays deferred until a provider-auth, conflict-resolution, and privacy plan lands.
+
 ## Reuse Guardrails
 
 - Keep Apache-2.0 core code independently authored unless reuse passes `docs/reuse-decision-policy.md`.

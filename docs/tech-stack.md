@@ -28,6 +28,8 @@ documentation; dependency admission and service reuse still follow
 | Local LLM             | [Ollama](https://docs.ollama.com/)                                                                    | Optional local assistive worker for summarization, classification, and drafting aids. Disabled by default; never system of record.                            |
 | Passkeys              | [SimpleWebAuthn](https://simplewebauthn.dev/docs/)                                                    | Accepted future embedded-auth extension for passkeys, bound to configured RP ID and origin.                                                                   |
 | Rich text             | [TipTap](https://tiptap.dev/docs) editor core                                                         | Accepted for local notes, drafts, templates, and portal text. Store structured editor JSON plus rendered snapshots; avoid cloud/pro services unless reviewed. |
+| Calendar export       | [iCalendar](https://datatracker.ietf.org/doc/html/rfc5545) and `webcal://` subscriptions              | Planned outbound sync for matter-scoped Open Practice calendars, including iOS one-click setup. Two-way provider sync remains deferred.                       |
+| Video meetings        | [WebRTC](https://www.w3.org/TR/webrtc/) with private signaling and STUN/TURN configuration            | Planned self-hostable meeting substrate. Meeting links are disabled until capability tokens, signaling, TURN, chat, upload, and audit controls are designed.  |
 
 ## Rejected Or Deferred
 
@@ -39,6 +41,12 @@ documentation; dependency admission and service reuse still follow
   implemented.
 - Defer SimpleWebAuthn passkeys, TipTap-backed drafting, Tesseract OCR, Whisper transcription, Ollama
   assistive tasks, and BullMQ workers until their API and database surfaces are implemented.
+- Defer WebRTC meeting rooms until self-hostable/private signaling, STUN/TURN configuration,
+  meeting-scoped access tokens, meeting chat, temporary document upload, and audit persistence are
+  implemented.
+- Defer Google Calendar, Microsoft 365, and CalDAV two-way sync until a provider-auth,
+  conflict-resolution, consent, retention, and privacy plan is approved. Outbound iCalendar/webcal
+  subscription is the first sync target.
 - Keep DocuSeal, docassemble, OIDC providers, live payment processors, paperless-ngx, Kimai, LedgerSMB,
   CiviCRM, and Midaz out of the default runtime as recorded in the planning and reuse docs.
 
