@@ -162,6 +162,50 @@ describe("API auth and persistence boundaries", () => {
     expect(validKey.json<{ challenge: string }>().challenge).toEqual(expect.any(String));
   });
 
+  it("rejects expired first-run passkey challenges", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const server = testServer({
+      repository,
+      jwtSecret: "production-test-secret-at-least-32-characters",
+      setupKey: "setup-key",
+    });
+    await repository.createWebAuthnChallenge({
+      id: "challenge-expired",
+      challengeHash: "expired-challenge",
+      purpose: "passkey_registration",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      createdAt: new Date(Date.now() - 120_000).toISOString(),
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      headers: { "x-open-practice-setup-key": "setup-key" },
+      payload: setupPayload({
+        owner: {
+          displayName: "Avery Owner",
+          email: "avery@example.test",
+          password: "correct horse battery staple",
+          webAuthn: {
+            id: "credential-id",
+            rawId: "credential-id",
+            type: "public-key",
+            response: {
+              clientDataJSON: "client-data",
+              attestationObject: "attestation",
+              transports: ["internal"],
+            },
+            clientExtensionResults: {},
+            challengeHash: "expired-challenge",
+          },
+        },
+      }),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ message: "Invalid or expired WebAuthn challenge" });
+  });
+
   it("completes first-run setup with owner auth, firm settings, first matter, and session", async () => {
     const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
     const server = testServer({

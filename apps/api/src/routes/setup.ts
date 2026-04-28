@@ -156,6 +156,11 @@ function firmId(name: string): string {
 }
 
 const SETUP_RATE_LIMIT = { max: 5, timeWindow: "15 minutes" };
+const SETUP_WEBAUTHN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+
+function webAuthnChallengeExpired(expiresAt: string, now: Date): boolean {
+  return new Date(expiresAt).getTime() <= now.getTime();
+}
 
 export function registerSetupRoutes(
   server: FastifyInstance,
@@ -201,7 +206,7 @@ export function registerSetupRoutes(
         id: id("challenge"),
         challengeHash: registrationOptions.challenge,
         purpose: "passkey_registration",
-        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        expiresAt: new Date(Date.now() + SETUP_WEBAUTHN_CHALLENGE_TTL_MS).toISOString(),
         createdAt: new Date().toISOString(),
       });
 
@@ -304,7 +309,12 @@ export function registerSetupRoutes(
         const challenge = await options.repository.getWebAuthnChallenge(
           body.owner.webAuthn.challengeHash,
         );
-        if (!challenge || challenge.purpose !== "passkey_registration" || challenge.consumedAt) {
+        if (
+          !challenge ||
+          challenge.purpose !== "passkey_registration" ||
+          challenge.consumedAt ||
+          webAuthnChallengeExpired(challenge.expiresAt, now)
+        ) {
           throw Object.assign(new Error("Invalid or expired WebAuthn challenge"), {
             statusCode: 400,
           });
@@ -385,6 +395,12 @@ export function registerSetupRoutes(
           }
           throw error;
         });
+      if (body.owner.webAuthn) {
+        await options.repository.consumeWebAuthnChallenge(
+          body.owner.webAuthn.challengeHash,
+          nowIso,
+        );
+      }
 
       const token = options.createSessionToken();
       const expiresAt = new Date(

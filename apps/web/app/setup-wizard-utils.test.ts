@@ -88,6 +88,25 @@ describe("setup wizard startup and validation", () => {
     );
   });
 
+  it("requires practitioner licensing details", () => {
+    const validation = validateSetupWizardState(
+      state({
+        practitionerRegulator: "",
+        practitionerLicenseStatus: "",
+        practitionerJurisdictionsText: "",
+      }),
+    );
+
+    expect(validation.valid).toBe(false);
+    expect(validation.errors).toEqual(
+      expect.arrayContaining([
+        "Practitioner regulator is required.",
+        "Practitioner license status is required.",
+        "At least one practitioner jurisdiction is required.",
+      ]),
+    );
+  });
+
   it("requires a setup key when the server asks for one", () => {
     expect(validateSetupWizardState(state(), true).errors).toContain("Setup key is required.");
     expect(validateSetupWizardState(state({ setupKey: "key" }), true).valid).toBe(true);

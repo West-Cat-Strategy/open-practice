@@ -240,6 +240,7 @@ export interface OpenPracticeRepository {
   ): Promise<AuthPasswordSetupTokenRecord | undefined>;
   createWebAuthnChallenge(challenge: WebAuthnChallengeRecord): Promise<WebAuthnChallengeRecord>;
   getWebAuthnChallenge(challengeHash: string): Promise<WebAuthnChallengeRecord | undefined>;
+  consumeWebAuthnChallenge(challengeHash: string, consumedAt: string): Promise<boolean>;
   registerWebAuthnCredential(
     credential: WebAuthnCredentialRecord,
   ): Promise<WebAuthnCredentialRecord>;
@@ -1121,6 +1122,17 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async getWebAuthnChallenge(challengeHash: string): Promise<WebAuthnChallengeRecord | undefined> {
     return clone(this.authChallenges.find((c) => c.challengeHash === challengeHash));
+  }
+
+  async consumeWebAuthnChallenge(challengeHash: string, consumedAt: string): Promise<boolean> {
+    const challenge = this.authChallenges.find(
+      (c) => c.challengeHash === challengeHash && !c.consumedAt,
+    );
+    if (challenge) {
+      challenge.consumedAt = consumedAt;
+      return true;
+    }
+    return false;
   }
 
   async registerWebAuthnCredential(
@@ -2241,6 +2253,20 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .from(schema.authChallenges)
       .where(eq(schema.authChallenges.challengeHash, challengeHash));
     return row ? mapAuthChallengeRow(row) : undefined;
+  }
+
+  async consumeWebAuthnChallenge(challengeHash: string, consumedAt: string): Promise<boolean> {
+    const [row] = await this.db
+      .update(schema.authChallenges)
+      .set({ consumedAt: new Date(consumedAt) })
+      .where(
+        and(
+          eq(schema.authChallenges.challengeHash, challengeHash),
+          isNull(schema.authChallenges.consumedAt),
+        ),
+      )
+      .returning();
+    return !!row;
   }
 
   async registerWebAuthnCredential(

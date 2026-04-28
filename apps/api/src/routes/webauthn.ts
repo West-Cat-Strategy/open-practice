@@ -14,6 +14,7 @@ import { createSessionToken, hashToken, sessionCookie } from "../http/auth-helpe
 const registrationVerifySchema = z.object({
   firmId: z.string().min(1),
   email: z.string().email(),
+  challengeHash: z.string().min(1),
   response: z.any(),
 });
 
@@ -25,10 +26,20 @@ const loginOptionsSchema = z.object({
 const loginVerifySchema = z.object({
   firmId: z.string().min(1),
   email: z.string().email(),
+  challengeHash: z.string().min(1),
   response: z.any(),
 });
 
 const WEBAUTHN_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };
+const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+
+function invalidWebAuthnRequest(message = "Invalid passkey request"): Error {
+  return Object.assign(new Error(message), { statusCode: 400 });
+}
+
+function challengeIsExpired(expiresAt: string, now: Date): boolean {
+  return new Date(expiresAt).getTime() <= now.getTime();
+}
 
 export function registerWebAuthnRoutes(
   server: FastifyInstance,
@@ -82,7 +93,7 @@ export function registerWebAuthnRoutes(
         userId: request.auth.user.id,
         challengeHash: registrationOptions.challenge,
         purpose: "passkey_registration",
-        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS).toISOString(),
         createdAt: new Date().toISOString(),
       });
 
@@ -103,10 +114,18 @@ export function registerWebAuthnRoutes(
       if (!access.ok) throw access.error;
 
       const body = registrationVerifySchema.parse(request.body);
-      const challenge = await options.repository.getWebAuthnChallenge(body.response.challenge);
+      const now = new Date();
+      const challenge = await options.repository.getWebAuthnChallenge(body.challengeHash);
 
-      if (!challenge || challenge.purpose !== "passkey_registration" || challenge.consumedAt) {
-        throw Object.assign(new Error("Invalid or expired challenge"), { statusCode: 400 });
+      if (
+        !challenge ||
+        challenge.purpose !== "passkey_registration" ||
+        challenge.consumedAt ||
+        challengeIsExpired(challenge.expiresAt, now) ||
+        challenge.firmId !== request.auth.firmId ||
+        challenge.userId !== request.auth.user.id
+      ) {
+        throw invalidWebAuthnRequest("Invalid or expired challenge");
       }
 
       const verification = await verifyRegistrationResponse({
@@ -131,8 +150,12 @@ export function registerWebAuthnRoutes(
           transports: body.response.response.transports || [],
           deviceType: credentialDeviceType,
           backedUp: credentialBackedUp,
-          createdAt: new Date().toISOString(),
+          createdAt: now.toISOString(),
         });
+        await options.repository.consumeWebAuthnChallenge(
+          challenge.challengeHash,
+          now.toISOString(),
+        );
 
         return { verified: true };
       }
@@ -152,14 +175,9 @@ export function registerWebAuthnRoutes(
     async (request) => {
       const body = loginOptionsSchema.parse(request.body);
       const user = await options.repository.getUserByEmail(body.firmId, body.email);
-      if (!user) {
-        throw Object.assign(new Error("User not found"), { statusCode: 404 });
-      }
-
-      const userCredentials = await options.repository.listWebAuthnCredentials(
-        user.firmId,
-        user.id,
-      );
+      const userCredentials = user
+        ? await options.repository.listWebAuthnCredentials(user.firmId, user.id)
+        : [];
 
       const authOptions = await generateAuthenticationOptions({
         rpID: options.rpID,
@@ -173,11 +191,11 @@ export function registerWebAuthnRoutes(
 
       await options.repository.createWebAuthnChallenge({
         id: crypto.randomUUID(),
-        firmId: user.firmId,
-        userId: user.id,
+        firmId: user?.firmId ?? body.firmId,
+        userId: user?.id,
         challengeHash: authOptions.challenge,
         purpose: "passkey_authentication",
-        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS).toISOString(),
         createdAt: new Date().toISOString(),
       });
 
@@ -200,19 +218,33 @@ export function registerWebAuthnRoutes(
         });
       }
       const body = loginVerifySchema.parse(request.body);
+      const now = new Date();
+      const challenge = await options.repository.getWebAuthnChallenge(body.challengeHash);
       const user = await options.repository.getUserByEmail(body.firmId, body.email);
-      if (!user) throw Object.assign(new Error("User not found"), { statusCode: 404 });
-
-      const challenge = await options.repository.getWebAuthnChallenge(body.response.challenge);
-      if (!challenge || challenge.purpose !== "passkey_authentication" || challenge.consumedAt) {
-        throw Object.assign(new Error("Invalid or expired challenge"), { statusCode: 400 });
+      if (
+        !challenge ||
+        challenge.purpose !== "passkey_authentication" ||
+        challenge.consumedAt ||
+        challengeIsExpired(challenge.expiresAt, now) ||
+        challenge.firmId !== body.firmId ||
+        (challenge.userId && (!user || challenge.userId !== user.id))
+      ) {
+        throw invalidWebAuthnRequest("Invalid or expired challenge");
+      }
+      if (!user) {
+        throw invalidWebAuthnRequest("Invalid passkey login");
       }
 
       const credentialId = body.response.id;
       const credential = await options.repository.getWebAuthnCredential(credentialId);
 
-      if (!credential || credential.userId !== user.id) {
-        throw Object.assign(new Error("Credential not found"), { statusCode: 400 });
+      if (
+        !credential ||
+        credential.userId !== user.id ||
+        credential.firmId !== user.firmId ||
+        credential.disabledAt
+      ) {
+        throw invalidWebAuthnRequest("Invalid passkey login");
       }
 
       const verification = await verifyAuthenticationResponse({
@@ -235,7 +267,6 @@ export function registerWebAuthnRoutes(
         );
 
         const token = createSessionToken();
-        const now = new Date();
         const expiresAt = new Date(
           now.getTime() + (options.sessionTtlHours ?? 12) * 60 * 60 * 1000,
         ).toISOString();
@@ -247,6 +278,10 @@ export function registerWebAuthnRoutes(
           createdAt: now.toISOString(),
           expiresAt,
         });
+        await options.repository.consumeWebAuthnChallenge(
+          challenge.challengeHash,
+          now.toISOString(),
+        );
 
         reply.header(
           "set-cookie",
