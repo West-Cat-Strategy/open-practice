@@ -27,6 +27,7 @@ import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
 import { registerMatterRoutes } from "./routes/matters.js";
 import { registerQueuesRoutes } from "./routes/queues.js";
+import { registerRecoveryRoutes } from "./routes/recovery.js";
 import { registerSessionRoutes } from "./routes/session.js";
 import { registerShareRoutes } from "./routes/shares.js";
 import { registerSignatureRoutes } from "./routes/signatures.js";
@@ -301,6 +302,12 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   });
 
   registerAuthRoutes(server, {
+    repository: options.repository,
+    jwtSecret: options.jwtSecret,
+    sessionTtlHours: options.sessionTtlHours,
+    nodeEnv: options.nodeEnv,
+  });
+  registerRecoveryRoutes(server, {
     repository: options.repository,
     jwtSecret: options.jwtSecret,
     sessionTtlHours: options.sessionTtlHours,

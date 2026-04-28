@@ -242,4 +242,48 @@ export function registerWebAuthnRoutes(
       throw Object.assign(new Error("Verification failed"), { statusCode: 400 });
     },
   );
+
+  server.get("/api/auth/credentials", async (request) => {
+    const access = requireAccess(request.auth, { resource: "auth_credential", action: "read" });
+    if (!access.ok) throw access.error;
+
+    return options.repository.listWebAuthnCredentials(request.auth.firmId, request.auth.user.id);
+  });
+
+  server.delete("/api/auth/credentials/:id", async (request) => {
+    const access = requireAccess(request.auth, { resource: "auth_credential", action: "delete" });
+    if (!access.ok) throw access.error;
+
+    const params = z.object({ id: z.string().min(1) }).parse(request.params);
+    await options.repository.deleteWebAuthnCredential(request.auth.firmId, params.id);
+    return { ok: true };
+  });
+
+  server.post("/api/auth/mfa/enable", async (request) => {
+    // Note: in a real app, you might want a fresh 'sudo' mode here.
+    // For now, we assume the current session is sufficient.
+    const access = requireAccess(request.auth, { resource: "auth_credential", action: "update" });
+    if (!access.ok) throw access.error;
+
+    const credentials = await options.repository.listWebAuthnCredentials(
+      request.auth.firmId,
+      request.auth.user.id,
+    );
+    if (credentials.length === 0) {
+      throw Object.assign(new Error("Cannot enable MFA without a registered passkey"), {
+        statusCode: 400,
+      });
+    }
+
+    await options.repository.updateUserMfaStatus(request.auth.firmId, request.auth.user.id, true);
+    return { ok: true };
+  });
+
+  server.post("/api/auth/mfa/disable", async (request) => {
+    const access = requireAccess(request.auth, { resource: "auth_credential", action: "update" });
+    if (!access.ok) throw access.error;
+
+    await options.repository.updateUserMfaStatus(request.auth.firmId, request.auth.user.id, false);
+    return { ok: true };
+  });
 }

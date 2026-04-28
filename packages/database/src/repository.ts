@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import {
   appendAuditEvent,
   calculateInvoiceTotals,
@@ -27,6 +27,7 @@ import {
   type ManualPaymentRecord,
   type Matter,
   type MatterParty,
+  type RecoveryCodeRecord,
   type PaymentAllocationRecord,
   type PortalGrant,
   type PostedLedgerTransaction,
@@ -217,6 +218,7 @@ export interface OpenPracticeRepository {
     },
   ): Promise<JobLifecycleRecord[]>;
   getUser(firmId: string, userId: string): Promise<User | undefined>;
+  createUser(user: User): Promise<User>;
   getUserByEmail(firmId: string, email: string): Promise<User | undefined>;
   getAuthAccount(firmId: string, userId: string): Promise<AuthAccountRecord | undefined>;
   setAuthPassword(input: {
@@ -244,6 +246,16 @@ export interface OpenPracticeRepository {
   listWebAuthnCredentials(firmId: string, userId: string): Promise<WebAuthnCredentialRecord[]>;
   getWebAuthnCredential(credentialId: string): Promise<WebAuthnCredentialRecord | undefined>;
   updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void>;
+  deleteWebAuthnCredential(firmId: string, id: string): Promise<void>;
+  updateUserMfaStatus(firmId: string, userId: string, mfaEnabled: boolean): Promise<void>;
+  createRecoveryCodes(firmId: string, userId: string, codes: RecoveryCodeRecord[]): Promise<void>;
+  useRecoveryCode(
+    firmId: string,
+    userId: string,
+    codeHash: string,
+    consumedAt: string,
+  ): Promise<boolean>;
+  listRecoveryCodes(firmId: string, userId: string): Promise<RecoveryCodeRecord[]>;
   getOverview(firmId: string): Promise<PracticeOverview>;
   listMattersForUser(user: User): Promise<MatterSummary[]>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
@@ -475,6 +487,17 @@ function mapPasswordSetupTokenRow(
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt.toISOString(),
     usedAt: dateToIso(row.usedAt),
+  };
+}
+
+function mapRecoveryCodeRow(row: typeof schema.recoveryCodes.$inferSelect): RecoveryCodeRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    userId: row.userId,
+    codeHash: row.codeHash,
+    usedAt: dateToIso(row.usedAt),
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -854,6 +877,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private passwordSetupTokens: AuthPasswordSetupTokenRecord[] = [];
   private authChallenges: WebAuthnChallengeRecord[] = [];
   private webAuthnCredentials: WebAuthnCredentialRecord[] = [];
+  private recoveryCodes: RecoveryCodeRecord[] = [];
   private auditEvents: AuditEvent[];
   private postedTransactions: PostedLedgerTransaction[];
   private documentTextExtractions: DocumentTextExtractionRecord[] = [];
@@ -1012,6 +1036,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(this.users.find((user) => user.firmId === firmId && user.id === userId));
   }
 
+  async createUser(user: User): Promise<User> {
+    this.users = [...this.users, clone(user)];
+    return clone(user);
+  }
+
   async getUserByEmail(firmId: string, email: string): Promise<User | undefined> {
     const normalized = email.trim().toLowerCase();
     return clone(
@@ -1120,6 +1149,49 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       cred.counter = counter;
       cred.lastUsedAt = new Date().toISOString();
     }
+  }
+
+  async deleteWebAuthnCredential(firmId: string, id: string): Promise<void> {
+    this.webAuthnCredentials = this.webAuthnCredentials.filter(
+      (c) => !(c.firmId === firmId && c.id === id),
+    );
+  }
+
+  async updateUserMfaStatus(firmId: string, userId: string, mfaEnabled: boolean): Promise<void> {
+    const user = this.users.find((u) => u.firmId === firmId && u.id === userId);
+    if (user) {
+      user.mfaEnabled = mfaEnabled;
+    }
+  }
+
+  async createRecoveryCodes(
+    firmId: string,
+    userId: string,
+    codes: RecoveryCodeRecord[],
+  ): Promise<void> {
+    // Invalidate old codes
+    this.recoveryCodes = this.recoveryCodes.filter((c) => !(c.firmId === firmId && c.userId === userId));
+    this.recoveryCodes = [...this.recoveryCodes, ...clone(codes)];
+  }
+
+  async useRecoveryCode(
+    firmId: string,
+    userId: string,
+    codeHash: string,
+    consumedAt: string,
+  ): Promise<boolean> {
+    const code = this.recoveryCodes.find(
+      (c) => c.firmId === firmId && c.userId === userId && c.codeHash === codeHash && !c.usedAt,
+    );
+    if (code) {
+      code.usedAt = consumedAt;
+      return true;
+    }
+    return false;
+  }
+
+  async listRecoveryCodes(firmId: string, userId: string): Promise<RecoveryCodeRecord[]> {
+    return clone(this.recoveryCodes.filter((c) => c.firmId === firmId && c.userId === userId));
   }
 
   async getOverview(firmId: string): Promise<PracticeOverview> {
@@ -2022,6 +2094,25 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     };
   }
 
+  async createUser(user: User): Promise<User> {
+    const [row] = await this.db
+      .insert(schema.users)
+      .values({
+        id: user.id,
+        firmId: user.firmId,
+        displayName: user.displayName,
+        email: user.email,
+        role: user.role,
+        mfaEnabled: user.mfaEnabled,
+        practitionerProfile: user.practitionerProfile,
+      })
+      .returning();
+    return {
+      ...user,
+      id: row.id,
+    };
+  }
+
   async getUserByEmail(firmId: string, email: string): Promise<User | undefined> {
     const normalized = email.trim().toLowerCase();
     const users = await this.listUsers(firmId);
@@ -2200,6 +2291,73 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .update(schema.webAuthnCredentials)
       .set({ counter, lastUsedAt: new Date() })
       .where(eq(schema.webAuthnCredentials.id, id));
+  }
+
+  async deleteWebAuthnCredential(firmId: string, id: string): Promise<void> {
+    await this.db
+      .delete(schema.webAuthnCredentials)
+      .where(and(eq(schema.webAuthnCredentials.firmId, firmId), eq(schema.webAuthnCredentials.id, id)));
+  }
+
+  async updateUserMfaStatus(firmId: string, userId: string, mfaEnabled: boolean): Promise<void> {
+    await this.db
+      .update(schema.users)
+      .set({ mfaEnabled })
+      .where(and(eq(schema.users.firmId, firmId), eq(schema.users.id, userId)));
+  }
+
+  async createRecoveryCodes(
+    firmId: string,
+    userId: string,
+    codes: RecoveryCodeRecord[],
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      // Invalidate old codes
+      await tx
+        .delete(schema.recoveryCodes)
+        .where(and(eq(schema.recoveryCodes.firmId, firmId), eq(schema.recoveryCodes.userId, userId)));
+
+      if (codes.length > 0) {
+        await tx.insert(schema.recoveryCodes).values(
+          codes.map((c) => ({
+            id: c.id,
+            firmId: c.firmId,
+            userId: c.userId,
+            codeHash: c.codeHash,
+            createdAt: new Date(c.createdAt),
+          })),
+        );
+      }
+    });
+  }
+
+  async useRecoveryCode(
+    firmId: string,
+    userId: string,
+    codeHash: string,
+    consumedAt: string,
+  ): Promise<boolean> {
+    const [updated] = await this.db
+      .update(schema.recoveryCodes)
+      .set({ usedAt: new Date(consumedAt) })
+      .where(
+        and(
+          eq(schema.recoveryCodes.firmId, firmId),
+          eq(schema.recoveryCodes.userId, userId),
+          eq(schema.recoveryCodes.codeHash, codeHash),
+          isNull(schema.recoveryCodes.usedAt),
+        ),
+      )
+      .returning();
+    return !!updated;
+  }
+
+  async listRecoveryCodes(firmId: string, userId: string): Promise<RecoveryCodeRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.recoveryCodes)
+      .where(and(eq(schema.recoveryCodes.firmId, firmId), eq(schema.recoveryCodes.userId, userId)));
+    return rows.map(mapRecoveryCodeRow);
   }
 
   async getOverview(firmId: string): Promise<PracticeOverview> {

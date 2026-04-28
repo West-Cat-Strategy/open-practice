@@ -61,6 +61,13 @@ export function registerAuthRoutes(
         throw Object.assign(new Error("Invalid email or password"), { statusCode: 401 });
       }
 
+      if (user.mfaEnabled) {
+        return {
+          status: "mfa_required",
+          mfaOptions: { webauthn: true },
+        };
+      }
+
       const token = createSessionToken();
       const now = new Date();
       const expiresAt = new Date(

@@ -75,6 +75,7 @@ export function isPublicRoute(method: string, url: string): boolean {
     (method === "POST" && path === "/api/auth/login") ||
     (method === "POST" && path === "/api/auth/login/options") ||
     (method === "POST" && path === "/api/auth/login/verify") ||
-    (method === "POST" && path === "/api/auth/password-setup")
+    (method === "POST" && path === "/api/auth/password-setup") ||
+    (method === "POST" && path === "/api/auth/recovery-codes/verify")
   );
 }
