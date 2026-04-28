@@ -4,7 +4,6 @@ import {
   InMemoryOpenPracticeRepository,
   type OpenPracticeRepository,
 } from "@open-practice/database";
-import type { User } from "@open-practice/domain";
 import { registerAuthRoutes } from "./auth.js";
 import { registerWebAuthnRoutes } from "./webauthn.js";
 import { registerRecoveryRoutes } from "./recovery.js";

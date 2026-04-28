@@ -62,9 +62,13 @@ describe("worker queue foundation", () => {
         queueName: "ai_triage",
         jobName: "classify",
         data: { firmId: "firm-1" },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         repository: {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         s3: {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ocrProvider: {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         mailSender: {} as any,
       }),
     ).resolves.toMatchObject({

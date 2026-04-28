@@ -34,7 +34,8 @@ export class DisabledAiTriageProvider implements AiTriageProvider {
 }
 
 export class DisabledOcrProvider implements OcrProvider {
-  async extractText(_input: {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async extractText(_: {
     firmId: string;
     documentId: string;
     content: Uint8Array;
@@ -45,7 +46,8 @@ export class DisabledOcrProvider implements OcrProvider {
 }
 
 export class DisabledTranscriptionProvider implements TranscriptionProvider {
-  async transcribe(_input: {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async transcribe(_: {
     firmId: string;
     documentId: string;
     content: Uint8Array;
@@ -55,7 +57,8 @@ export class DisabledTranscriptionProvider implements TranscriptionProvider {
 }
 
 export class DisabledMediaProcessor implements MediaProcessor {
-  async createDerivatives(_input: {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async createDerivatives(_: {
     firmId: string;
     documentId: string;
     content: Uint8Array;
