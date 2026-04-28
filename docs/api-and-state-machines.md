@@ -78,7 +78,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/email/status`                                      | SMTP provider status from firm provider settings.                                                               |
 | `POST /api/email/previews`                                   | Auth-gated disabled scaffold for future template previews and queued mail creation.                             |
 | `GET /api/inbound-email/status`                              | Inbound email provider status from firm provider settings.                                                      |
-| `GET /api/inbound-email/messages?matterId=`                  | Auth-gated disabled scaffold for parsed inbound email messages.                                                 |
+| `GET /api/inbound-email/messages?matterId=`                  | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                           |
 | `GET /api/document-processing/status`                        | OCR, transcription, media, and AI provider status from firm provider settings.                                  |
 | `POST /api/document-processing/documents/:id/queue`          | Auth-gated disabled scaffold for future document processing jobs.                                               |
 | `GET /api/auth/extensions`                                   | Embedded-auth extension status for local password, OIDC/SAML placeholders, and MFA policy scaffolding.          |
@@ -98,7 +98,9 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 ## Deferred Worker And Provider Surfaces
 
 These routes remain deferred until their persistence, authorization, and worker implementations land
-behind the scaffolded provider settings and job lifecycle records.
+behind the scaffolded provider settings and job lifecycle records. Inbound email parsing now
+persists parsed messages and attachment records, but webhook ingestion, provider delivery setup, and
+automatic document promotion remain deferred.
 
 | Route                                             | Purpose                                                                                          |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -193,10 +195,11 @@ and the matching `x-open-practice-setup-key` header. Non-production setup withou
 is limited to local/private network access. Signature and intake providers default to embedded
 implementations. S3 upload signing is enabled only when endpoint and credentials are configured.
 Redis/BullMQ queues, firm provider settings, job lifecycle records, and disabled-by-default API
-scaffolds are implemented for email, inbound email, AI triage, OCR, transcription, media, auth
-extensions, secure shares, and external uploads. Concrete Postal, Tesseract, Whisper/FFmpeg, Ollama,
-LM Studio, SimpleWebAuthn, and TipTap behavior still requires explicit setup, provider adapters,
-review states, and deployment profiles. `DOCUSEAL_*`, `DOCASSEMBLE_*`, and `OIDC_*` variables are
-deprecated and rejected in production. There is no live payment processor configuration. Future
-processor keys, webhooks, and settlement imports should be introduced behind explicit deployment
-profiles and reconciliation controls.
+scaffolds are implemented for email, AI triage, OCR, transcription, media, auth extensions, secure
+shares, and external uploads. Inbound email parsing is implemented for raw messages already stored
+in object storage; provider webhooks and automatic document promotion remain deferred. Concrete
+Postal, Tesseract, Whisper/FFmpeg, Ollama, LM Studio, SimpleWebAuthn, and TipTap behavior still
+requires explicit setup, provider adapters, review states, and deployment profiles. `DOCUSEAL_*`,
+`DOCASSEMBLE_*`, and `OIDC_*` variables are deprecated and rejected in production. There is no live
+payment processor configuration. Future processor keys, webhooks, and settlement imports should be
+introduced behind explicit deployment profiles and reconciliation controls.

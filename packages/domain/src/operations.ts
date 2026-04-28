@@ -305,13 +305,19 @@ export interface MailSender {
 }
 
 export interface InboundEmailParser {
-  parse(input: { firmId: string; rawStorageKey: string }): Promise<{
+  parse(input: { firmId: string; rawContent: Uint8Array }): Promise<{
+    messageId?: string;
     subject: string;
     fromAddress: string;
     toAddresses: string[];
     text?: string;
-    htmlStorageKey?: string;
-    attachments: InboundEmailAttachmentRecord[];
+    html?: string;
+    attachments: Array<{
+      filename: string;
+      contentType?: string;
+      sizeBytes?: number;
+      content: Uint8Array;
+    }>;
   }>;
 }
 

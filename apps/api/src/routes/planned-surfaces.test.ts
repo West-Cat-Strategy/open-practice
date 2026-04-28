@@ -161,4 +161,41 @@ describe("planned surface route scaffolds", () => {
       message: "Document processing worker is not configured",
     });
   });
+
+  it("lists parsed inbound email messages through matter-scoped access", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage({
+      id: "inbound-message-001",
+      firmId: "firm-west-legal",
+      addressId: "inbound-address-001",
+      matterId: "matter-001",
+      messageId: "<message-001@example.test>",
+      fromAddress: "client@example.test",
+      toAddresses: ["matter-001@open-practice.test"],
+      subject: "Filed materials",
+      receivedAt: "2026-04-28T12:00:00.000Z",
+      rawStorageKey: "inbound/raw/message-001.eml",
+      parsedText: "Please review.",
+      labels: [],
+      status: "triaged",
+      metadata: {},
+    });
+    const server = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
+
+    const allowed = await server.inject({
+      method: "GET",
+      url: "/api/inbound-email/messages?matterId=matter-001",
+    });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toMatchObject({
+      status: "available",
+      messages: [{ id: "inbound-message-001", matterId: "matter-001" }],
+    });
+
+    const denied = await server.inject({
+      method: "GET",
+      url: "/api/inbound-email/messages?matterId=matter-002",
+    });
+    expect(denied.statusCode).toBe(403);
+  });
 });

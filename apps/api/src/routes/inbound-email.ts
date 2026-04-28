@@ -47,10 +47,13 @@ export function registerInboundEmailRoutes(
       throw Object.assign(new Error("Matter scope required"), { statusCode: 403 });
     }
 
+    const messages = await repository.listInboundEmailMessages(request.auth.firmId, {
+      matterId: query.matterId,
+    });
+
     return {
-      status: "disabled",
-      reason: "not_configured",
-      messages: [],
+      status: "available",
+      messages,
     };
   });
 }
