@@ -1170,7 +1170,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     codes: RecoveryCodeRecord[],
   ): Promise<void> {
     // Invalidate old codes
-    this.recoveryCodes = this.recoveryCodes.filter((c) => !(c.firmId === firmId && c.userId === userId));
+    this.recoveryCodes = this.recoveryCodes.filter(
+      (c) => !(c.firmId === firmId && c.userId === userId),
+    );
     this.recoveryCodes = [...this.recoveryCodes, ...clone(codes)];
   }
 
@@ -2296,7 +2298,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   async deleteWebAuthnCredential(firmId: string, id: string): Promise<void> {
     await this.db
       .delete(schema.webAuthnCredentials)
-      .where(and(eq(schema.webAuthnCredentials.firmId, firmId), eq(schema.webAuthnCredentials.id, id)));
+      .where(
+        and(eq(schema.webAuthnCredentials.firmId, firmId), eq(schema.webAuthnCredentials.id, id)),
+      );
   }
 
   async updateUserMfaStatus(firmId: string, userId: string, mfaEnabled: boolean): Promise<void> {
@@ -2315,7 +2319,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       // Invalidate old codes
       await tx
         .delete(schema.recoveryCodes)
-        .where(and(eq(schema.recoveryCodes.firmId, firmId), eq(schema.recoveryCodes.userId, userId)));
+        .where(
+          and(eq(schema.recoveryCodes.firmId, firmId), eq(schema.recoveryCodes.userId, userId)),
+        );
 
       if (codes.length > 0) {
         await tx.insert(schema.recoveryCodes).values(

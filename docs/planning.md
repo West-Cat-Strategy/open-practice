@@ -34,7 +34,7 @@ Expand the ecosystem for secure collaboration and intelligent assistance.
 3.  **Assistive AI**: Ollama/LM Studio integration for drafting assistance and document summarization.
 4.  **Specialized Workflows**: Deeper integration for legal clinics, nonprofit fiscal hosts, and complex trust accounting.
 
-10. **Calendaring and meeting management**
+5.  **Calendaring and meeting management**
     Grow the existing `calendar_events` schema and `calendar_event` permissions into matter-scoped
     events with attendees, reminders, rescheduling/cancellation records, audit events, and outbound
     email invitations. Plan WebRTC meeting support behind self-hostable/private signaling plus

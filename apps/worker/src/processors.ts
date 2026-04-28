@@ -1,5 +1,10 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import type { OpenPracticeQueueName, DocumentTextExtractionRecord, MailSender, OcrProvider } from "@open-practice/domain";
+import type {
+  OpenPracticeQueueName,
+  DocumentTextExtractionRecord,
+  MailSender,
+  OcrProvider,
+} from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
 
 export interface WorkerJobEnvelope {
