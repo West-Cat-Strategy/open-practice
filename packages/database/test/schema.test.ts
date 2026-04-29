@@ -37,6 +37,7 @@ import {
   signatureRequestSigners,
   signatureRequests,
   totpCredentials,
+  trustClientBalances,
   trustReconciliations,
   trustLedgerEntries,
   trustTransactionApprovals,
@@ -56,6 +57,18 @@ describe("database schema hardening", () => {
 
     expect(checks).toContain("trust_ledger_entries_non_negative_amounts");
     expect(checks).toContain("trust_ledger_entries_one_sided_amount");
+  });
+
+  it("persists non-negative client trust balance guards", () => {
+    const config = getTableConfig(trustClientBalances);
+
+    expect(config.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["firm_id", "matter_id", "client_id", "balance_cents", "updated_at"]),
+    );
+    expect(config.primaryKeys).toHaveLength(1);
+    expect(config.checks.map((check) => check.name)).toContain(
+      "trust_client_balances_non_negative_balance",
+    );
   });
 
   it("tracks document ingestion state", () => {
@@ -156,10 +169,15 @@ describe("database schema hardening", () => {
       expect.arrayContaining(["firm_id", "address", "matter_id", "enabled"]),
     );
     expect(getTableConfig(inboundEmailMessages).columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["raw_storage_key", "parsed_text", "labels", "status"]),
+      expect.arrayContaining(["message_id", "raw_storage_key", "parsed_text", "labels", "status"]),
     );
     expect(getTableConfig(inboundEmailAttachments).columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["inbound_message_id", "document_id", "storage_key"]),
+      expect.arrayContaining([
+        "inbound_message_id",
+        "document_id",
+        "storage_key",
+        "checksum_sha256",
+      ]),
     );
     expect(getTableConfig(aiTriageRecords).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
@@ -237,10 +255,16 @@ describe("database schema hardening", () => {
   });
 
   it("persists trust approval and reconciliation controls", () => {
-    expect(getTableConfig(trustTransactionApprovals).columns.map((column) => column.name)).toEqual(
+    const approvalConfig = getTableConfig(trustTransactionApprovals);
+    const reconciliationConfig = getTableConfig(trustReconciliations);
+
+    expect(approvalConfig.columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["transaction_id", "decision", "decided_by_user_id", "decided_at"]),
     );
-    expect(getTableConfig(trustReconciliations).columns.map((column) => column.name)).toEqual(
+    expect(approvalConfig.checks.map((check) => check.name)).toContain(
+      "trust_transaction_approvals_decision_value",
+    );
+    expect(reconciliationConfig.columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
         "account_id",
         "statement_period_start",
@@ -248,6 +272,12 @@ describe("database schema hardening", () => {
         "expected_balance_cents",
         "actual_balance_cents",
         "status",
+      ]),
+    );
+    expect(reconciliationConfig.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "trust_reconciliations_valid_period",
+        "trust_reconciliations_status_value",
       ]),
     );
   });

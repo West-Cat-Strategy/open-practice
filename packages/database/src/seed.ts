@@ -1,3 +1,4 @@
+import { clientTrustBalanceDeltas } from "@open-practice/domain";
 import {
   sampleAuditEvents,
   sampleContacts,
@@ -96,6 +97,18 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
     })
     .onConflictDoNothing();
   await db.insert(schema.trustLedgerEntries).values(sampleLedgerEntries).onConflictDoNothing();
+  await db
+    .insert(schema.trustClientBalances)
+    .values(
+      clientTrustBalanceDeltas(sampleLedgerEntries, sampleLedgerAccounts).map((delta) => ({
+        firmId: delta.firmId,
+        matterId: delta.matterId,
+        clientId: delta.clientId,
+        balanceCents: delta.deltaCents,
+        updatedAt: new Date("2026-04-02T17:00:00.000Z"),
+      })),
+    )
+    .onConflictDoNothing();
   await db
     .insert(schema.auditEvents)
     .values(

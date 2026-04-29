@@ -64,6 +64,9 @@ Environment variables must be treated as deployment inputs, not application defa
 - Trust-transfer-request deployment gates should require matter-balance checks, invoice linkage,
   authorization evidence, and segregation between request approval and ledger posting. Approval of a
   transfer request must not automatically create trust ledger transactions.
+- Trust ledger migrations should preserve the persisted client-balance guard. Backfills should derive
+  client balances from client-liability ledger entries and fail rather than hide negative historical
+  balances.
 
 Release hardening should include a migration dry run, backup restore proof for PostgreSQL and object
 storage, `pnpm policy:check`, and a smoke test for S3 presign/upload-complete, embedded session

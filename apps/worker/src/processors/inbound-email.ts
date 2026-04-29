@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { InboundEmailAttachmentRecord, InboundEmailParser } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
@@ -18,10 +17,6 @@ function safePathPart(value: string): string {
     .replace(/[^A-Za-z0-9._-]/g, "_")
     .slice(0, 120);
   return normalized || "attachment";
-}
-
-function checksumSha256(content: Uint8Array): string {
-  return createHash("sha256").update(content).digest("hex");
 }
 
 export async function processInboundEmailJob(input: {
@@ -125,7 +120,7 @@ export async function processInboundEmailJob(input: {
       contentType: attachment.contentType,
       sizeBytes: attachment.sizeBytes,
       storageKey,
-      checksumSha256: checksumSha256(attachment.content),
+      checksumSha256: attachment.checksumSha256,
     });
     attachments.push({
       id: record.id,
@@ -139,6 +134,7 @@ export async function processInboundEmailJob(input: {
     metadata: {
       firmId: data.firmId,
       messageId,
+      ...(parsed.messageId ? { upstreamMessageId: parsed.messageId } : {}),
       matterId,
       attachmentCount: attachments.length,
       attachments,

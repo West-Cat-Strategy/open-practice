@@ -6,6 +6,7 @@ import {
   canAccess,
   canShareDocumentThroughPortal,
   clientTrustBalanceByMatter,
+  clientTrustBalanceDeltas,
   createReversalTransaction,
   dashboardCapabilities,
   isBillableUnbilled,
@@ -249,8 +250,24 @@ describe("matter-scoped RBAC", () => {
       expect.arrayContaining([
         expect.objectContaining({ key: "matters", enabled: true }),
         expect.objectContaining({ key: "funds", enabled: true }),
+        expect.objectContaining({ key: "drafting", enabled: true }),
         expect.objectContaining({ key: "audit", enabled: true }),
       ]),
+    );
+
+    const bookkeeper: User = {
+      id: "user-bookkeeper",
+      firmId: sampleFirm.id,
+      displayName: "Synthetic Bookkeeper",
+      email: "bookkeeper@example.test",
+      role: "billing_bookkeeper",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    };
+    expect(
+      dashboardCapabilities({ user: bookkeeper, firmId: sampleFirm.id, matterId: "matter-001" }),
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: "drafting", enabled: false })]),
     );
   });
 
@@ -400,6 +417,17 @@ describe("funds ledger", () => {
         "contact-ada:matter-001"
       ],
     ).toBe(150000);
+  });
+
+  it("summarizes client liability balance deltas for persistent guards", () => {
+    expect(clientTrustBalanceDeltas(sampleLedgerEntries, sampleLedgerAccounts)).toEqual([
+      {
+        firmId: sampleFirm.id,
+        matterId: "matter-001",
+        clientId: "contact-ada",
+        deltaCents: 150000,
+      },
+    ]);
   });
 
   it("rejects idempotency replays with different payloads", () => {

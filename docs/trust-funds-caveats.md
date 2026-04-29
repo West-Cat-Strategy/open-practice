@@ -9,6 +9,7 @@ trust accounting software, accounting software, or tax-advice tooling.
 - Matter-level client balances.
 - Balanced double-entry transactions.
 - No overdrawing a client matter balance.
+- PostgreSQL-backed client trust balances are updated atomically with posted client-liability entries.
 - Idempotency keys for external bank/payment events.
 - Append-only posted entries; corrections require reversing transactions.
 - Reconciliation records, maker-checker approvals, and persistent concurrency guarantees are

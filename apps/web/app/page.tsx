@@ -1,11 +1,13 @@
 import { cookies } from "next/headers";
 import DashboardClient from "./dashboard-client";
+import { loadDraftingDashboardData } from "./drafting-dashboard";
 import LoginClient from "./login-client";
 import SetupWizard from "./setup-wizard";
 import { selectStartupView } from "./setup-wizard-utils";
 import type {
   BillingDashboardResponse,
   CapabilitiesResponse,
+  DraftingDashboardResponse,
   IntakeSessionsResponse,
   MatterSummary,
   PracticeOverview,
@@ -188,6 +190,24 @@ export default async function Home() {
       canView: false,
     },
   );
+  const canViewDrafting = capabilities.sections.some(
+    (section) => section.key === "drafting" && section.enabled,
+  );
+  const drafting: DraftingDashboardResponse = canViewDrafting
+    ? await loadDraftingDashboardData({
+        matters,
+        listTemplates: () =>
+          apiGet<DraftingDashboardResponse["templates"]>(
+            "/api/draft-templates?activeOnly=true",
+            headers,
+          ),
+        listDraftsForMatter: (matterId) =>
+          apiGet<DraftingDashboardResponse["draftsByMatterId"][string]>(
+            `/api/drafts?matterId=${encodeURIComponent(matterId)}`,
+            headers,
+          ),
+      })
+    : { templates: [], draftsByMatterId: {} };
 
   return (
     <DashboardClient
@@ -195,6 +215,7 @@ export default async function Home() {
       billing={billing}
       capabilities={capabilities}
       devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}
+      drafting={drafting}
       intake={intake}
       matters={matters}
       overview={overview}

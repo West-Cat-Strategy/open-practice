@@ -503,6 +503,7 @@ describe("API auth and persistence boundaries", () => {
       expect.arrayContaining([
         expect.objectContaining({ key: "matters", enabled: true }),
         expect.objectContaining({ key: "documents", enabled: true }),
+        expect.objectContaining({ key: "drafting", enabled: true }),
         expect.objectContaining({ key: "signatures", enabled: true }),
       ]),
     );

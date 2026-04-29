@@ -89,6 +89,7 @@ describe("processInboundEmailJob", () => {
               filename: "filing notice.pdf",
               contentType: "application/pdf",
               sizeBytes: 8,
+              checksumSha256: "f56047c822efb76ea455924782aef526abdca4aab8df59e00df26c366e96ace8",
               content: new TextEncoder().encode("PDF body"),
             },
           ],
@@ -112,6 +113,7 @@ describe("processInboundEmailJob", () => {
       metadata: {
         firmId: "firm-west-legal",
         matterId: "matter-001",
+        upstreamMessageId: "<provider-message@example.test>",
         attachmentCount: 1,
       },
     });
@@ -119,6 +121,7 @@ describe("processInboundEmailJob", () => {
     expect(messages[0]).toMatchObject({
       addressId: "inbound-address-001",
       matterId: "matter-001",
+      messageId: "<provider-message@example.test>",
       status: "triaged",
       rawStorageKey: "mail/raw/message.eml",
       parsedText: "Please review.",
@@ -128,7 +131,7 @@ describe("processInboundEmailJob", () => {
     expect(attachments[0]).toMatchObject({
       filename: "filing notice.pdf",
       contentType: "application/pdf",
-      checksumSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      checksumSha256: "f56047c822efb76ea455924782aef526abdca4aab8df59e00df26c366e96ace8",
     });
     expect(attachments[0]).not.toHaveProperty("documentId");
     expect(puts.map((put) => put.key)).toEqual([

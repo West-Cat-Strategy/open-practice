@@ -73,6 +73,13 @@ export interface LedgerReconciliationRecord {
   createdAt: string;
 }
 
+export interface ClientTrustBalanceDelta {
+  firmId: string;
+  matterId: string;
+  clientId: string;
+  deltaCents: number;
+}
+
 export interface LedgerPostingState {
   postedTransactions: PostedLedgerTransaction[];
   accounts: LedgerAccount[];
@@ -290,4 +297,35 @@ export function clientTrustBalanceByMatter(
       balances[key] = (balances[key] ?? 0) + entry.creditCents - entry.debitCents;
       return balances;
     }, {});
+}
+
+export function clientTrustBalanceDeltas(
+  entries: Array<
+    Pick<
+      LedgerEntry,
+      "firmId" | "matterId" | "clientId" | "accountId" | "debitCents" | "creditCents"
+    >
+  >,
+  accounts: LedgerAccount[],
+): ClientTrustBalanceDelta[] {
+  const liabilityAccountIds = new Set(
+    accounts.filter((account) => account.type === "client_liability").map((account) => account.id),
+  );
+  const deltas = new Map<string, ClientTrustBalanceDelta>();
+
+  for (const entry of entries) {
+    if (!liabilityAccountIds.has(entry.accountId)) continue;
+
+    const key = `${entry.firmId}:${entry.matterId}:${entry.clientId}`;
+    const current = deltas.get(key) ?? {
+      firmId: entry.firmId,
+      matterId: entry.matterId,
+      clientId: entry.clientId,
+      deltaCents: 0,
+    };
+    current.deltaCents += entry.creditCents - entry.debitCents;
+    deltas.set(key, current);
+  }
+
+  return [...deltas.values()].filter((delta) => delta.deltaCents !== 0);
 }

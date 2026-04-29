@@ -2,18 +2,18 @@
 
 This document captures the remaining opportunities for Open Practice, categorized by strategic phase. Use `docs/planning.md` for the durable roadmap and `docs/planning-and-progress.md` for live workboard tasks.
 
-## Phase 2: Hardening & Integration (Current)
+## Phase 2: Hardening & Integration (Completed)
 
-| Topic                   | Action-Oriented Goal                                                                                      |
-| :---------------------- | :-------------------------------------------------------------------------------------------------------- |
-| **Worker Processors**   | Integrate Tesseract OCR and Whisper transcription into the `apps/worker` pipeline for verified documents. |
-| **Email Delivery**      | Wire the Mailpit/Postal adapters for automated signature request notifications and firm alerts.           |
-| **Advanced Auth**       | Complete the SimpleWebAuthn lifecycle, including MFA policy enforcement and credential recovery.          |
-| **Drafting Foundation** | Implement the TipTap-backed drafting API with versioning, sanitization, and structured template support.  |
-| **Inbound Triage**      | Automate parsing of inbound email into matter-scoped messages and document attachments.                   |
-| **Trust Hardening**     | Transition from domain-only invariants to persistent DB-level concurrency and approval gates.             |
+| Topic                   | Action-Oriented Goal                                                                                |
+| :---------------------- | :-------------------------------------------------------------------------------------------------- |
+| **Worker Processors**   | Integrated Tesseract OCR/text extraction into the `apps/worker` pipeline for verified documents.    |
+| **Email Delivery**      | Wired Mailpit/Postal adapters for automated signature request notifications and firm alerts.        |
+| **Advanced Auth**       | Completed the SimpleWebAuthn lifecycle, including MFA policy enforcement and credential recovery.   |
+| **Drafting Foundation** | Implemented the TipTap-backed drafting API with versioning, sanitization, and structured templates. |
+| **Inbound Triage**      | Automated parsing of inbound email into matter-scoped messages and attachments.                     |
+| **Trust Hardening**     | Added persistent DB-level client-balance concurrency guards and approval/reconciliation gates.      |
 
-## Phase 3: Operational Scale (Upcoming)
+## Phase 3: Operational Scale (Current)
 
 | Topic                 | Action-Oriented Goal                                                                             |
 | :-------------------- | :----------------------------------------------------------------------------------------------- |

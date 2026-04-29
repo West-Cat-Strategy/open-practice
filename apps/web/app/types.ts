@@ -2,6 +2,8 @@ import type {
   Contact,
   ConflictCandidate,
   DocumentRecord,
+  DraftRecord,
+  DraftTemplateRecord,
   ExpenseEntry,
   Firm,
   ActivityTimelineEntry,
@@ -55,6 +57,11 @@ export interface IntakeSessionsResponse {
 }
 
 export type SignatureRequestsResponse = SignatureRequestRecord[];
+
+export interface DraftingDashboardResponse {
+  templates: DraftTemplateRecord[];
+  draftsByMatterId: Record<string, DraftRecord[]>;
+}
 
 export type BillingEntryStatus = "draft" | "submitted" | "approved" | "billed" | "written_off";
 
