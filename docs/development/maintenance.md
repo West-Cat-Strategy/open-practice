@@ -2,7 +2,7 @@
 
 Use this guide when keeping Open Practice healthy across docs, validation, policy, schema, and release
 handoff. Use [Repository Guide](repo-guide.md) for workspace ownership,
-[GitHub Maintenance](github-maintenance.md) for repository automation, and
+[GitHub Maintenance](github-maintenance.md) for local-only repository gates and GitHub settings, and
 [Testing](../testing/TESTING.md) for command selection.
 
 ## Documentation Maintenance
@@ -20,15 +20,19 @@ Open Practice has a small validation control plane that should stay boring and e
 - `pnpm verify:select -- --files <paths...>` prints recommended commands for a change set and never runs them.
 - `pnpm docs:check` validates local Markdown links.
 - `pnpm policy:check` runs OSS reuse validation, docs link validation, and Open Practice boundary policy.
-- `pnpm verify` runs the full local CI parity lane.
+- `pnpm verify` runs the package verification lane.
+- `pnpm ci:local` runs `pnpm verify` and `git diff --check`.
+- `pnpm deps:audit` runs local production and development dependency audits.
+- `pnpm release:local` runs dependency audits plus the full local gate.
 
 When adding a new package, app, route family, or docs category, update [Testing](../testing/TESTING.md) and `scripts/select-validation.mjs` together.
 
-## GitHub Automation
+## Local Repository Gate
 
-Keep branch protection, Dependabot, dependency review, CodeQL/default setup, and Copilot agent policy
-aligned with [GitHub Maintenance](github-maintenance.md). GitHub-native tooling is preferred; add
-third-party bots only after documenting why native features are insufficient.
+Open Practice uses local command evidence instead of GitHub Actions, Dependabot auto-merge,
+dependency review workflows, CodeQL default setup, or Copilot cloud agents. Keep the cutover and
+verification commands aligned with [GitHub Maintenance](github-maintenance.md). Secret scanning and
+push protection remain repository safety settings, not CI/CD gates.
 
 ## Boundary Ratchets
 
@@ -66,8 +70,7 @@ If the ratchet fails, prefer moving code toward the intended boundary. If the bo
 Before broad handoff or release, prefer:
 
 ```bash
-pnpm verify
-git diff --check
+pnpm release:local
 ```
 
 For production-facing changes, also confirm the relevant notes in [Deployment Hardening](../deployment-hardening.md), [Threat Model](../threat-model.md), and [Trust/Funds Caveats](../trust-funds-caveats.md). Do not describe billing, reconciliation, or trust-transfer workflows as jurisdiction-certified without specific legal/accounting review.

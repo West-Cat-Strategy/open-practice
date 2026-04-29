@@ -4,7 +4,7 @@ Use this guide for local runtime setup. Use [Repository Guide](repo-guide.md) fo
 
 ## Toolchain
 
-- Node.js 24 in CI.
+- Node.js 24 for local validation.
 - pnpm 10, as declared in the root `package.json`.
 - Docker for all services (API, Web, Worker, and Infrastructure) through `docker-compose.yml`.
 - Postal, Ollama, Tesseract, Whisper, and FFmpeg are planned optional worker/provider tools; they are
@@ -76,10 +76,10 @@ pnpm --filter @open-practice/database db:check
 
 ## Verification
 
-Use the local CI parity lane before handing off broad changes:
+Use the local gate before handing off broad changes:
 
 ```bash
-pnpm verify
+pnpm ci:local
 ```
 
 For smaller changes, use [../testing/TESTING.md](../testing/TESTING.md) to choose the narrowest safe command set.

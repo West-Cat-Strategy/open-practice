@@ -60,4 +60,4 @@ Expand the ecosystem for secure collaboration and intelligent assistance.
 
 - Run `pnpm policy:check` after changes to reuse, reference, or license docs.
 - Run `pnpm format:check` for Markdown and TypeScript formatting drift.
-- Run `pnpm verify` before handoff for stack, schema, worker, API, or lockfile changes.
+- Run `pnpm ci:local` before handoff for stack, schema, worker, API, or lockfile changes.

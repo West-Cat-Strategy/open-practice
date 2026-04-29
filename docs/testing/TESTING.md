@@ -1,12 +1,15 @@
 # Testing Guide
 
-Use this file to choose validation commands. Prefer the full local CI lane for cross-package changes, API contracts, database schema changes, auth changes, or release handoff.
+Use this file to choose validation commands. Prefer the full local gate for cross-package changes,
+API contracts, database schema changes, auth changes, or release handoff.
 
 ## Default Commands
 
 | Need                   | Command                                          | Notes                                                                |
 | ---------------------- | ------------------------------------------------ | -------------------------------------------------------------------- |
-| Full local CI parity   | `pnpm verify`                                    | Mirrors the GitHub Actions verify job.                               |
+| Full local gate        | `pnpm ci:local`                                  | Runs the full local verification lane and `git diff --check`.        |
+| Release readiness      | `pnpm release:local`                             | Runs dependency audits, the full local gate, and diff whitespace.    |
+| Dependency audit       | `pnpm deps:audit`                                | Runs local production and development dependency audits.             |
 | Selective validation   | `pnpm verify:select -- --base <git-ref>`         | Prints recommended commands for changed files without running them.  |
 | Formatting             | `pnpm format:check`                              | Required before handoff.                                             |
 | Static lint            | `pnpm lint`                                      | Runs Turbo package lint tasks.                                       |
@@ -34,15 +37,15 @@ pnpm verify:select -- --files apps/api/src/server.ts docs/testing/TESTING.md
 
 Selection rules:
 
-| Changed path                                         | Recommended commands                                                                                                                                                                       |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `apps/api/**`                                        | `pnpm --filter @open-practice/api test`, `pnpm --filter @open-practice/api typecheck`, `pnpm policy:check`                                                                                 |
-| `packages/domain/**`                                 | `pnpm --filter @open-practice/domain test`, `pnpm --filter @open-practice/domain typecheck`; source files also add API tests                                                               |
-| `packages/database/**` or any `migrations/` path     | `pnpm --filter @open-practice/database test`, `pnpm --filter @open-practice/database db:check`, `pnpm --filter @open-practice/database typecheck`, `pnpm --filter @open-practice/api test` |
-| `apps/web/**`                                        | `pnpm --filter @open-practice/web test`, `pnpm --filter @open-practice/web typecheck`, `pnpm build`                                                                                        |
-| `docs/**`                                            | `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`                                                                                                                                |
-| `scripts/**`                                         | `pnpm policy:check`, `pnpm test`                                                                                                                                                           |
-| Root config, lockfile, CI, package, Turbo, TS config | `pnpm verify`                                                                                                                                                                              |
+| Changed path                                                 | Recommended commands                                                                                                                                                                       |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/api/**`                                                | `pnpm --filter @open-practice/api test`, `pnpm --filter @open-practice/api typecheck`, `pnpm policy:check`                                                                                 |
+| `packages/domain/**`                                         | `pnpm --filter @open-practice/domain test`, `pnpm --filter @open-practice/domain typecheck`; source files also add API tests                                                               |
+| `packages/database/**` or any `migrations/` path             | `pnpm --filter @open-practice/database test`, `pnpm --filter @open-practice/database db:check`, `pnpm --filter @open-practice/database typecheck`, `pnpm --filter @open-practice/api test` |
+| `apps/web/**`                                                | `pnpm --filter @open-practice/web test`, `pnpm --filter @open-practice/web typecheck`, `pnpm build`                                                                                        |
+| `docs/**`                                                    | `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`                                                                                                                                |
+| `scripts/**`                                                 | `pnpm policy:check`, `pnpm test`                                                                                                                                                           |
+| Root config, lockfile, local gate, package, Turbo, TS config | `pnpm ci:local`                                                                                                                                                                            |
 
 Output is deterministic, de-duplicated, and one command per line after a short header.
 
@@ -69,7 +72,7 @@ pnpm --filter @open-practice/providers typecheck
 
 ## Change-Type Guidance
 
-- API route, auth, permission, or lifecycle changes: run API tests, typecheck, policy checks, and `pnpm verify` before handoff.
+- API route, auth, permission, or lifecycle changes: run API tests, typecheck, policy checks, and `pnpm ci:local` before handoff.
 - Domain invariants, trust/funds, conflicts, signatures, or billing rules: run the owning package tests plus API tests if routes expose the behavior.
 - Database schema or repository behavior: run database tests, `db:check`, API tests, and the full verification lane.
 - Web dashboard, route catalog, or UI state changes: run web tests and typecheck; use `pnpm build` for Next app integration proof.

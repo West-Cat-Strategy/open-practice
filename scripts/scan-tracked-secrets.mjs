@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const MAX_TEXT_FILE_BYTES = 5 * 1024 * 1024;
 
@@ -57,6 +57,8 @@ function lineAndColumn(text, index) {
 const findings = [];
 
 for (const file of trackedFiles()) {
+  if (!existsSync(file)) continue;
+
   const buffer = readFileSync(file);
   if (buffer.length > MAX_TEXT_FILE_BYTES || isBinary(buffer)) continue;
 

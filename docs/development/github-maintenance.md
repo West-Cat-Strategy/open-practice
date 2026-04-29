@@ -1,83 +1,70 @@
 # GitHub Maintenance
 
-Use this guide when changing GitHub automation, repository settings, branch protection, dependency
-updates, or AI-assisted maintenance for Open Practice.
+Use this guide when changing local repository gates, GitHub settings, dependency maintenance,
+branch cleanup, pull request hygiene, or release handoff for Open Practice.
 
 ## Repository Posture
 
-- Prefer GitHub-native tooling before adding third-party bots.
-- Keep `main` protected: PR-only updates, strict required status check named `verify`, conversation
-  resolution, admin enforcement, no force pushes, and no branch deletion.
-- Prefer squash merges for a linear, reviewable default branch. After a squash merge, refresh local
-  `main` from `origin/main` before starting the next branch.
-- Keep GitHub Actions read-only by default. Grant elevated permissions only in the one workflow/job
-  that needs them.
-- Keep secret scanning, push protection, Dependabot security updates, and the security policy enabled.
-- Use CodeQL default setup for code scanning; add a checked-in CodeQL workflow only if default setup is
-  insufficient for the repo.
-- Fix CodeQL findings first. If a finding is a verified framework-model false positive, keep the
-  underlying control in code, add regression evidence, and dismiss only the specific alert with a
-  false-positive reason and audit comment. Do not disable CodeQL or remove a query for a single
-  documented false positive.
+- Local validation is authoritative. Use `pnpm verify:select -- --files <changed paths...>` to
+  choose focused checks, `pnpm ci:local` for broad handoff, and `pnpm release:local` for dependency
+  or release-readiness work.
+- GitHub Actions, checked-in Actions workflows, Dependency Review, Dependabot auto-merge, CodeQL
+  default setup, Copilot automatic review, and Copilot cloud agents are intentionally disabled.
+- `main` does not use a required GitHub status check or protected-branch merge gate. Keep branch
+  discipline local: start from a branch, do not push directly to `main` unless the user explicitly
+  asks, and record local validation evidence before merge or release.
+- Keep secret scanning, push protection, the security policy, and private vulnerability reporting
+  enabled. They are repository safety settings, not CI/CD gates.
+- Prefer synthetic examples in issues and pull requests. Do not publish client, matter, credential,
+  payment, privileged document, trust/funds, audit-log, or private deployment details.
 
-## Dependency Updates
+## Local Dependency Maintenance
 
-- Dependabot owns npm and GitHub Actions version update PRs.
-- Low-risk auto-merge is limited to green Dependabot PRs for patch/minor development dependencies and
-  patch/minor GitHub Actions updates.
-- Major updates, production/runtime dependency updates, security-alert PRs, vulnerable updates, and
-  license-sensitive updates stay manual.
-- The auto-merge workflow requires `DEPENDABOT_METADATA_TOKEN` as a Dependabot secret with read access
-  to Dependabot alerts. If that token is missing, the workflow fails closed instead of risking a
-  security-alert auto-merge.
-- Repository administrators own changes to branch protection, auto-merge settings, code scanning
-  setup, and Dependabot/GitHub Actions secrets. Record any settings changes in the PR summary.
-- Dependency review should fail pull requests that introduce high or critical vulnerabilities or
-  licenses outside [License Policy](../license-policy.md).
-- If several Dependabot PRs touch the same workflow or lockfile, merge one, let Dependabot rebase the
-  rest, then wait for fresh checks before merging.
+- Use `pnpm deps:audit` for production and development dependency audits.
+- Use `pnpm policy:check` for OSS reuse, docs links, tracked-secret scanning, and architecture
+  boundary checks.
+- For dependency changes, inspect the package path locally with `pnpm list` or `pnpm why`, make the
+  smallest manifest or lockfile change, then run `pnpm deps:audit` and `pnpm ci:local`.
+- Major updates, runtime dependency updates, vulnerable packages, and license-sensitive updates stay
+  manual. Follow [License Policy](../license-policy.md) before adding dependencies or copied
+  excerpts.
 
-## Agent And Copilot Policy
+## GitHub Settings Cutover
 
-- Use Copilot code review as an advisory reviewer on pull requests; human review remains authoritative.
-- Assign cloud/custom agents only to issues labeled `agent-ready` and `risk:low`.
-- Agent work must start from an issue, use synthetic data only, and open draft PRs.
-- Agents must not handle secrets, real client or matter data, privileged documents, trust records,
-  deployment credentials, or incident response details.
-- Custom agents should stay narrow:
-  - planning agents may edit docs/spec/planning files only;
-  - test-maintenance agents may edit tests and fixtures, and may touch production code only when the
-    issue explicitly says the implementation is faulty.
-
-## Local Branch Hygiene
-
-After a protected-branch squash merge, local branches may contain pre-squash commits. Before starting
-new work:
+The repository has no checked-in automation files after the local-only cutover. Repository admins
+should keep GitHub-side automation disabled with the UI or `gh api`:
 
 ```bash
-git fetch origin --prune
-git status --short --branch
-git branch backup/main-pre-squash-<short-sha> <stale-sha>
-git switch main
-git reset --hard origin/main
-git switch -c codex/<short-task-name>
+gh api -X DELETE repos/West-Cat-Strategy/open-practice/branches/main/protection
+gh api -X PUT repos/West-Cat-Strategy/open-practice/actions/permissions -F enabled=false
+gh api -X PATCH repos/West-Cat-Strategy/open-practice/code-scanning/default-setup -f state=not-configured
+gh api -X DELETE repos/West-Cat-Strategy/open-practice/automated-security-fixes
+gh api -X DELETE repos/West-Cat-Strategy/open-practice/vulnerability-alerts
 ```
 
-Do not reset a dirty worktree. Preserve unrelated user work and ask before discarding any local-only
-changes.
+Copilot automatic review and Copilot cloud-agent access are controlled by GitHub repository or
+organization settings/rulesets. Disable them there; no checked-in file is authoritative once
+`.github/copilot-instructions.md` and `.github/agents/**` are absent.
 
-## Validation
-
-For GitHub automation changes, run:
+Confirm the settings after any cutover:
 
 ```bash
-pnpm verify:select -- --files <changed paths...>
-pnpm format:check
-pnpm docs:check
-pnpm policy:check
-pnpm verify
-git diff --check
+gh api repos/West-Cat-Strategy/open-practice/branches/main/protection
+gh api repos/West-Cat-Strategy/open-practice/actions/permissions
+gh api repos/West-Cat-Strategy/open-practice/code-scanning/default-setup
+gh api repos/West-Cat-Strategy/open-practice/vulnerability-alerts
 ```
 
-After pushing a PR, confirm GitHub `verify`, dependency review, CodeQL/default setup status, and
-Copilot review status where applicable.
+Expected results are absent branch protection, disabled Actions permissions, CodeQL default setup not
+configured, and disabled or unavailable Dependabot alert surfaces. Keep the exact command output in
+the PR, issue, or release notes when settings change.
+
+## Branches, Pull Requests, And Releases
+
+- Keep branch work scoped to the requested issue, PR, or release task.
+- Avoid force pushes unless explicitly requested and safe for the collaboration model.
+- Make commit messages describe the user-facing or maintenance outcome, not just the files touched.
+- After a squash merge or manual merge, refresh local `main` from `origin/main` before starting the
+  next branch.
+- For release maintenance, collect changed scope, `pnpm release:local` output, migration notes,
+  deployment notes, and any known operational caveats before drafting notes.
