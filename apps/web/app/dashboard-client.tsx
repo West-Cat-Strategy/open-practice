@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  ArrowLeft,
   Banknote,
   CheckCircle2,
   Clock3,
@@ -12,6 +13,8 @@ import {
   Files,
   Gavel,
   LockKeyhole,
+  Plus,
+  Save,
   Search,
   ShieldCheck,
   type LucideIcon,
@@ -24,9 +27,13 @@ import {
 } from "../routes/routeCatalog";
 import {
   appendDraftToMatterDrafts,
+  buildBlankDraftPayload,
   buildDraftFromTemplatePayload,
+  buildDraftUpdatePayload,
   extractDraftPlainText,
+  isSameDraftDocument,
 } from "./drafting-dashboard";
+import DraftEditor from "./drafting/DraftEditor";
 import { filterMatters } from "./dashboard-utils";
 import type {
   BillingDashboardResponse,
@@ -106,6 +113,9 @@ export default function DashboardClient({
   const [draftsByMatterId, setDraftsByMatterId] = useState(drafting.draftsByMatterId);
   const [creatingTemplateId, setCreatingTemplateId] = useState("");
   const [draftStatus, setDraftStatus] = useState("No draft created in this session.");
+  const [selectedDraftId, setSelectedDraftId] = useState("");
+  const [draftEditorJson, setDraftEditorJson] = useState<DashboardDraft["editorJson"] | null>(null);
+  const [savingDraft, setSavingDraft] = useState(false);
 
   const filteredMatters = useMemo(
     () => filterMatters(matters, matterSearch),
@@ -120,6 +130,11 @@ export default function DashboardClient({
   );
   const activeDocuments = activeMatter?.documents ?? [];
   const activeDrafts = activeMatter ? (draftsByMatterId[activeMatter.id] ?? []) : [];
+  const selectedDraft = activeDrafts.find((draft) => draft.id === selectedDraftId);
+  const draftHasChanges =
+    selectedDraft !== undefined &&
+    draftEditorJson !== null &&
+    !isSameDraftDocument(selectedDraft.editorJson, draftEditorJson);
   const activeBilling = billing.matters.find((matter) => matter.matterId === activeMatter?.id);
   const activeUnbilledTime = activeBilling?.unbilledTime ?? [];
   const activeUnbilledExpenses = activeBilling?.unbilledExpenses ?? [];
@@ -228,8 +243,88 @@ export default function DashboardClient({
 
     const draft = (await response.json()) as DashboardDraft;
     setDraftsByMatterId((current) => appendDraftToMatterDrafts(current, draft));
+    setSelectedDraftId(draft.id);
+    setDraftEditorJson(draft.editorJson);
     setDraftStatus(`Created ${draft.title}.`);
     setCreatingTemplateId("");
+  }
+
+  async function createBlankDraft(): Promise<void> {
+    if (!activeMatter) return;
+
+    setCreatingTemplateId("blank");
+    setDraftStatus("Creating draft...");
+    const response = await fetch(`${apiBaseUrl}/api/drafts`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildBlankDraftPayload({ matter: activeMatter })),
+    });
+
+    if (!response.ok) {
+      setDraftStatus(`Draft creation failed: ${response.status}`);
+      setCreatingTemplateId("");
+      return;
+    }
+
+    const draft = (await response.json()) as DashboardDraft;
+    setDraftsByMatterId((current) => appendDraftToMatterDrafts(current, draft));
+    setSelectedDraftId(draft.id);
+    setDraftEditorJson(draft.editorJson);
+    setDraftStatus(`Created ${draft.title}.`);
+    setCreatingTemplateId("");
+  }
+
+  async function saveDraft(): Promise<void> {
+    if (!selectedDraft || !draftEditorJson) return;
+
+    setSavingDraft(true);
+    setDraftStatus("Saving draft...");
+    const response = await fetch(`${apiBaseUrl}/api/drafts/${selectedDraft.id}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildDraftUpdatePayload({ editorJson: draftEditorJson })),
+    });
+
+    if (!response.ok) {
+      setDraftStatus(`Draft save failed: ${response.status}`);
+      setSavingDraft(false);
+      return;
+    }
+
+    const draft = (await response.json()) as DashboardDraft;
+    setDraftsByMatterId((current) => ({
+      ...current,
+      [draft.matterId ?? activeMatter.id]: (current[draft.matterId ?? activeMatter.id] ?? []).map(
+        (candidate) => (candidate.id === draft.id ? draft : candidate),
+      ),
+    }));
+    setDraftEditorJson(draft.editorJson);
+    setDraftStatus(`Saved ${draft.title}.`);
+    setSavingDraft(false);
+  }
+
+  function openDraft(draft: DashboardDraft): void {
+    setSelectedDraftId(draft.id);
+    setDraftEditorJson(draft.editorJson);
+    setDraftStatus(`Editing ${draft.title}.`);
+  }
+
+  function closeDraftEditor(): void {
+    setSelectedDraftId("");
+    setDraftEditorJson(null);
+  }
+
+  function selectMatter(matterId: string): void {
+    setActiveMatterId(matterId);
+    closeDraftEditor();
   }
 
   if (!activeMatter) {
@@ -322,7 +417,7 @@ export default function DashboardClient({
               <button
                 className={matter.id === activeMatter.id ? "matter-row selected" : "matter-row"}
                 key={matter.id}
-                onClick={() => setActiveMatterId(matter.id)}
+                onClick={() => selectMatter(matter.id)}
                 type="button"
               >
                 <span>
@@ -584,53 +679,111 @@ export default function DashboardClient({
 
             {activeSection === "drafting" ? (
               <>
-                <div className="section-title">
-                  <h3>Templates</h3>
-                  <span>{drafting.templates.length} active</span>
-                </div>
-                <div className="activity-grid drafting-template-grid">
-                  {drafting.templates.map((template) => (
-                    <div className="activity-card draft-template-card" key={template.id}>
-                      <FilePenLine size={18} />
-                      <strong>{template.name}</strong>
-                      <span>{template.category}</span>
+                {selectedDraft && draftEditorJson ? (
+                  <div className="draft-editor-panel">
+                    <div className="draft-editor-header">
                       <button
-                        className="secondary-button compact-button"
-                        disabled={creatingTemplateId.length > 0}
-                        onClick={() => void createDraftFromTemplate(template)}
+                        aria-label="Back to matter drafts"
+                        className="icon-button"
+                        onClick={closeDraftEditor}
+                        title="Back to matter drafts"
                         type="button"
                       >
-                        {creatingTemplateId === template.id ? "Starting..." : "Start draft"}
+                        <ArrowLeft size={18} />
+                      </button>
+                      <div>
+                        <h3>{selectedDraft.title}</h3>
+                        <span>
+                          v{selectedDraft.version} · updated{" "}
+                          {new Date(selectedDraft.updatedAt).toLocaleDateString("en-CA")}
+                        </span>
+                      </div>
+                      <button
+                        className="secondary-button compact-button save-draft-button"
+                        disabled={!draftHasChanges || savingDraft}
+                        onClick={() => void saveDraft()}
+                        type="button"
+                      >
+                        <Save size={16} />
+                        {savingDraft ? "Saving..." : "Save"}
                       </button>
                     </div>
-                  ))}
-                </div>
-                {drafting.templates.length === 0 ? (
-                  <p className="inline-empty">No active drafting templates are available.</p>
-                ) : null}
-                <p className="inline-empty">{draftStatus}</p>
-
-                <div className="section-title">
-                  <h3>Matter drafts</h3>
-                  <span>{activeDrafts.length} records</span>
-                </div>
-                <div className="party-list">
-                  {activeDrafts.map((draft) => (
-                    <div className="party-row" key={draft.id}>
-                      <span>
-                        <strong>{draft.title}</strong>
-                        <small>
-                          updated {new Date(draft.updatedAt).toLocaleDateString("en-CA")} ·{" "}
-                          {extractDraftPlainText(draft.editorJson)}
-                        </small>
-                      </span>
-                      <em>v{draft.version}</em>
+                    <DraftEditor
+                      key={selectedDraft.id}
+                      content={draftEditorJson}
+                      onChange={setDraftEditorJson}
+                    />
+                    <p className="inline-empty">{draftStatus}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="section-title">
+                      <h3>Templates</h3>
+                      <span>{drafting.templates.length} active</span>
                     </div>
-                  ))}
-                  {activeDrafts.length === 0 ? (
-                    <p className="inline-empty">No drafts are linked to this matter.</p>
-                  ) : null}
-                </div>
+                    <div className="activity-grid drafting-template-grid">
+                      <div className="activity-card draft-template-card">
+                        <Plus size={18} />
+                        <strong>Blank Draft</strong>
+                        <span>general</span>
+                        <button
+                          className="secondary-button compact-button"
+                          disabled={creatingTemplateId.length > 0}
+                          onClick={() => void createBlankDraft()}
+                          type="button"
+                        >
+                          {creatingTemplateId === "blank" ? "Starting..." : "Start draft"}
+                        </button>
+                      </div>
+                      {drafting.templates.map((template) => (
+                        <div className="activity-card draft-template-card" key={template.id}>
+                          <FilePenLine size={18} />
+                          <strong>{template.name}</strong>
+                          <span>{template.category}</span>
+                          <button
+                            className="secondary-button compact-button"
+                            disabled={creatingTemplateId.length > 0}
+                            onClick={() => void createDraftFromTemplate(template)}
+                            type="button"
+                          >
+                            {creatingTemplateId === template.id ? "Starting..." : "Start draft"}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    {drafting.templates.length === 0 ? (
+                      <p className="inline-empty">No active drafting templates are available.</p>
+                    ) : null}
+                    <p className="inline-empty">{draftStatus}</p>
+
+                    <div className="section-title">
+                      <h3>Matter drafts</h3>
+                      <span>{activeDrafts.length} records</span>
+                    </div>
+                    <div className="party-list">
+                      {activeDrafts.map((draft) => (
+                        <button
+                          className="party-row draft-row"
+                          key={draft.id}
+                          onClick={() => openDraft(draft)}
+                          type="button"
+                        >
+                          <span>
+                            <strong>{draft.title}</strong>
+                            <small>
+                              updated {new Date(draft.updatedAt).toLocaleDateString("en-CA")} ·{" "}
+                              {extractDraftPlainText(draft.editorJson)}
+                            </small>
+                          </span>
+                          <em>v{draft.version}</em>
+                        </button>
+                      ))}
+                      {activeDrafts.length === 0 ? (
+                        <p className="inline-empty">No drafts are linked to this matter.</p>
+                      ) : null}
+                    </div>
+                  </>
+                )}
               </>
             ) : null}
 

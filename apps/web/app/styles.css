@@ -391,6 +391,125 @@ h3 {
   align-content: start;
 }
 
+.draft-row {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.draft-row:hover {
+  color: #fffdfa;
+}
+
+.draft-editor-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.draft-editor-header {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.draft-editor-header span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.save-draft-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.draft-editor {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(13, 13, 12, 0.42);
+}
+
+.draft-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-muted);
+  padding: 8px;
+}
+
+.toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-group-end {
+  margin-left: auto;
+}
+
+.draft-editor-toolbar button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.draft-editor-toolbar button:hover:not(:disabled),
+.draft-editor-toolbar button.is-active {
+  border-color: rgba(63, 185, 173, 0.3);
+  background: rgba(63, 185, 173, 0.12);
+  color: var(--accent);
+}
+
+.draft-editor-toolbar button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.draft-editor-surface {
+  min-height: 360px;
+  padding: 18px;
+}
+
+.draft-editor-surface .tiptap {
+  min-height: 324px;
+  outline: none;
+  line-height: 1.6;
+}
+
+.draft-editor-surface .tiptap > *:last-child {
+  margin-bottom: 0;
+}
+
+.draft-editor-surface .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.draft-editor-surface blockquote {
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+  margin-left: 0;
+  padding-left: 14px;
+}
+
 .activity-card .compact-button {
   min-height: 36px;
   border-radius: 8px;

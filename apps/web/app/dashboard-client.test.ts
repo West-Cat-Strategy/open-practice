@@ -9,8 +9,11 @@ import { buildSidebarNavigationSections } from "../routes/routeCatalog";
 import { filterMatters } from "./dashboard-utils";
 import {
   appendDraftToMatterDrafts,
+  buildBlankDraftPayload,
   buildDraftFromTemplatePayload,
+  buildDraftUpdatePayload,
   extractDraftPlainText,
+  isSameDraftDocument,
   loadDraftingDashboardData,
 } from "./drafting-dashboard";
 import type { MatterSummary } from "./types";
@@ -199,5 +202,30 @@ describe("dashboard client behavior", () => {
       "matter-001": [createdDraft],
     });
     expect(extractDraftPlainText(template.editorJson)).toBe("Synthetic letter opening");
+  });
+
+  it("builds explicit draft editor payloads without changing matter scope", () => {
+    const activeMatter = matter({ id: "matter-001", number: "2026-0001" });
+    const blankPayload = buildBlankDraftPayload({ matter: activeMatter });
+    const updatedEditorJson = {
+      type: "doc" as const,
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Revised synthetic draft" }],
+        },
+      ],
+    };
+
+    expect(blankPayload).toEqual({
+      matterId: "matter-001",
+      title: "Blank Draft - 2026-0001",
+      editorJson: { type: "doc", content: [{ type: "paragraph" }] },
+    });
+    expect(buildDraftUpdatePayload({ editorJson: updatedEditorJson })).toEqual({
+      editorJson: updatedEditorJson,
+    });
+    expect(isSameDraftDocument(blankPayload.editorJson, updatedEditorJson)).toBe(false);
+    expect(isSameDraftDocument(updatedEditorJson, updatedEditorJson)).toBe(true);
   });
 });
