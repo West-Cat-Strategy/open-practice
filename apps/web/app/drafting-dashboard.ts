@@ -1,5 +1,15 @@
-import type { DraftRecord, DraftTemplateRecord, TipTapNode } from "@open-practice/domain";
+import type {
+  DraftRecord,
+  DraftTemplateRecord,
+  TipTapDocument,
+  TipTapNode,
+} from "@open-practice/domain";
 import type { DraftingDashboardResponse, MatterSummary } from "./types";
+
+export const blankDraftDocument: TipTapDocument = {
+  type: "doc",
+  content: [{ type: "paragraph" }],
+};
 
 export async function loadDraftingDashboardData(input: {
   matters: Pick<MatterSummary, "id">[];
@@ -31,6 +41,30 @@ export function buildDraftFromTemplatePayload(input: {
     title: `${input.template.name} - ${input.matter.number}`,
     templateId: input.template.id,
   };
+}
+
+export function buildBlankDraftPayload(input: { matter: Pick<MatterSummary, "id" | "number"> }): {
+  matterId: string;
+  title: string;
+  editorJson: TipTapDocument;
+} {
+  return {
+    matterId: input.matter.id,
+    title: `Blank Draft - ${input.matter.number}`,
+    editorJson: structuredClone(blankDraftDocument),
+  };
+}
+
+export function buildDraftUpdatePayload(input: { editorJson: TipTapDocument }): {
+  editorJson: TipTapDocument;
+} {
+  return {
+    editorJson: input.editorJson,
+  };
+}
+
+export function isSameDraftDocument(left: TipTapDocument, right: TipTapDocument): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 export function appendDraftToMatterDrafts(
