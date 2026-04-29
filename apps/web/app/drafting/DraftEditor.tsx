@@ -1,5 +1,10 @@
 "use client";
 
+import "@tiptap/extension-blockquote";
+import "@tiptap/extension-bold";
+import "@tiptap/extension-heading";
+import "@tiptap/extension-italic";
+import "@tiptap/extension-list";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
