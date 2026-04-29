@@ -1,15 +1,18 @@
 "use client";
 
-import "@tiptap/extension-blockquote";
-import "@tiptap/extension-bold";
-import "@tiptap/extension-heading";
-import "@tiptap/extension-italic";
-import "@tiptap/extension-list";
+import Blockquote from "@tiptap/extension-blockquote";
+import BoldExtension from "@tiptap/extension-bold";
+import Document from "@tiptap/extension-document";
+import Heading from "@tiptap/extension-heading";
+import ItalicExtension from "@tiptap/extension-italic";
+import { BulletList, ListItem, ListKeymap, OrderedList } from "@tiptap/extension-list";
 import Link from "@tiptap/extension-link";
+import Paragraph from "@tiptap/extension-paragraph";
 import Placeholder from "@tiptap/extension-placeholder";
+import Text from "@tiptap/extension-text";
 import Underline from "@tiptap/extension-underline";
+import { UndoRedo } from "@tiptap/extensions";
 import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import type { TipTapDocument } from "@open-practice/domain";
 import {
   Bold,
@@ -42,8 +45,21 @@ export default function DraftEditor({
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
-      StarterKit,
+      Document,
+      Paragraph,
+      Text,
+      BoldExtension,
+      ItalicExtension,
       Underline,
+      Heading.configure({
+        levels: [1, 2],
+      }),
+      BulletList,
+      OrderedList,
+      ListItem,
+      ListKeymap,
+      Blockquote,
+      UndoRedo,
       Link.configure({
         openOnClick: false,
       }),
