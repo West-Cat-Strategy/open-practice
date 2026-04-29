@@ -14,11 +14,13 @@ import {
   shouldUpdateSignatureRequestStatus,
   verifyAuditChain,
   type ActivityTimelineEntry,
+  type AccessLogRecord,
   type AuditEvent,
   type NewAuditEvent,
   type Contact,
   type DocumentRecord,
   type ExpenseEntry,
+  type ExternalUploadLinkRecord,
   type Firm,
   type FirmSettings,
   type InvoiceLineRecord,
@@ -48,7 +50,6 @@ import {
   type InboundEmailAttachmentRecord,
   type InboundEmailMessageRecord,
   type ShareLinkRecord,
-  type AccessLogRecord,
 } from "@open-practice/domain";
 import {
   sampleAuditEvents,
@@ -308,10 +309,33 @@ export interface OpenPracticeRepository {
     id: string;
     revokedAt: string;
   }): Promise<ShareLinkRecord | undefined>;
+  listExternalUploadLinks(
+    firmId: string,
+    options?: { matterId?: string },
+  ): Promise<ExternalUploadLinkRecord[]>;
+  createExternalUploadLink(link: ExternalUploadLinkRecord): Promise<ExternalUploadLinkRecord>;
+  getExternalUploadLinkByTokenHash(
+    tokenHash: string,
+  ): Promise<ExternalUploadLinkRecord | undefined>;
+  revokeExternalUploadLink(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<ExternalUploadLinkRecord | undefined>;
+  claimExternalUploadUse(input: {
+    firmId: string;
+    id: string;
+    usedAt: string;
+  }): Promise<ExternalUploadLinkRecord | undefined>;
   createAccessLog(log: AccessLogRecord): Promise<AccessLogRecord>;
   listAccessLogs(
     firmId: string,
-    options?: { shareLinkId?: string; resourceType?: string; resourceId?: string },
+    options?: {
+      shareLinkId?: string;
+      externalUploadLinkId?: string;
+      resourceType?: string;
+      resourceId?: string;
+    },
   ): Promise<AccessLogRecord[]>;
   createDocumentUploadIntent(input: DocumentUploadIntent): Promise<DocumentRecord>;
   completeDocumentUpload(input: {
@@ -531,23 +555,6 @@ function mapShareLinkRow(row: typeof schema.shareLinks.$inferSelect): ShareLinkR
   };
 }
 
-function mapAccessLogRow(row: typeof schema.accessLogs.$inferSelect): AccessLogRecord {
-  return {
-    id: row.id,
-    firmId: row.firmId,
-    actorId: row.actorId ?? undefined,
-    shareLinkId: row.shareLinkId ?? undefined,
-    externalUploadLinkId: row.externalUploadLinkId ?? undefined,
-    resourceType: row.resourceType,
-    resourceId: row.resourceId,
-    action: row.action as AccessLogRecord["action"],
-    occurredAt: row.occurredAt.toISOString(),
-    ipAddress: row.ipAddress ?? undefined,
-    userAgent: row.userAgent ?? undefined,
-    metadata: row.metadata as Record<string, unknown>,
-  };
-}
-
 function mapWebAuthnCredentialRow(
   row: typeof schema.webAuthnCredentials.$inferSelect,
 ): WebAuthnCredentialRecord {
@@ -745,6 +752,68 @@ function mapDocumentTextExtractionRow(
     metadata: row.metadata as Record<string, unknown>,
     createdAt: row.createdAt.toISOString(),
     completedAt: dateToIso(row.completedAt),
+  };
+}
+
+function mapExternalUploadLinkRow(
+  row: typeof schema.externalUploadLinks.$inferSelect,
+): ExternalUploadLinkRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    tokenHash: row.tokenHash,
+    requestedByUserId: row.requestedByUserId,
+    expiresAt: row.expiresAt.toISOString(),
+    maxUploads: row.maxUploads,
+    usedUploads: row.usedUploads,
+    createdAt: row.createdAt.toISOString(),
+    revokedAt: dateToIso(row.revokedAt),
+  };
+}
+
+function externalUploadLinkInsert(
+  link: ExternalUploadLinkRecord,
+): typeof schema.externalUploadLinks.$inferInsert {
+  return {
+    ...link,
+    expiresAt: new Date(link.expiresAt),
+    revokedAt: link.revokedAt ? new Date(link.revokedAt) : null,
+    createdAt: new Date(link.createdAt),
+  };
+}
+
+function mapAccessLogRow(row: typeof schema.accessLogs.$inferSelect): AccessLogRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    actorId: row.actorId ?? undefined,
+    shareLinkId: row.shareLinkId ?? undefined,
+    externalUploadLinkId: row.externalUploadLinkId ?? undefined,
+    resourceType: row.resourceType,
+    resourceId: row.resourceId,
+    action: row.action as AccessLogRecord["action"],
+    occurredAt: row.occurredAt.toISOString(),
+    ipAddress: row.ipAddress ?? undefined,
+    userAgent: row.userAgent ?? undefined,
+    metadata: row.metadata as Record<string, unknown>,
+  };
+}
+
+function accessLogInsert(log: AccessLogRecord): typeof schema.accessLogs.$inferInsert {
+  return {
+    id: log.id,
+    firmId: log.firmId,
+    actorId: log.actorId ?? null,
+    shareLinkId: log.shareLinkId ?? null,
+    externalUploadLinkId: log.externalUploadLinkId ?? null,
+    resourceType: log.resourceType,
+    resourceId: log.resourceId,
+    action: log.action,
+    occurredAt: new Date(log.occurredAt),
+    ipAddress: log.ipAddress ?? null,
+    userAgent: log.userAgent ?? null,
+    metadata: log.metadata,
   };
 }
 
@@ -1041,6 +1110,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private matterParties: MatterParty[];
   private documents: DocumentRecord[];
   private portalGrants: PortalGrant[];
+  private externalUploadLinks: ExternalUploadLinkRecord[] = [];
   private timeEntries: TimeEntry[];
   private expenseEntries: ExpenseEntry[];
   private invoices: InvoiceRecord[];
@@ -1628,6 +1698,69 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     );
   }
 
+  async listExternalUploadLinks(
+    firmId: string,
+    options: { matterId?: string } = {},
+  ): Promise<ExternalUploadLinkRecord[]> {
+    return clone(
+      this.externalUploadLinks
+        .filter(
+          (link) =>
+            link.firmId === firmId && (!options.matterId || link.matterId === options.matterId),
+        )
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+    );
+  }
+
+  async createExternalUploadLink(
+    link: ExternalUploadLinkRecord,
+  ): Promise<ExternalUploadLinkRecord> {
+    if (this.externalUploadLinks.some((existing) => existing.tokenHash === link.tokenHash)) {
+      throw new Error("External upload link token hash already exists");
+    }
+    this.externalUploadLinks = [...this.externalUploadLinks, clone(link)];
+    return clone(link);
+  }
+
+  async getExternalUploadLinkByTokenHash(
+    tokenHash: string,
+  ): Promise<ExternalUploadLinkRecord | undefined> {
+    return clone(this.externalUploadLinks.find((link) => link.tokenHash === tokenHash));
+  }
+
+  async revokeExternalUploadLink(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<ExternalUploadLinkRecord | undefined> {
+    const link = this.externalUploadLinks.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+    );
+    if (!link) return undefined;
+    link.revokedAt = input.revokedAt;
+    return clone(link);
+  }
+
+  async claimExternalUploadUse(input: {
+    firmId: string;
+    id: string;
+    usedAt: string;
+  }): Promise<ExternalUploadLinkRecord | undefined> {
+    const link = this.externalUploadLinks.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+    );
+    if (
+      !link ||
+      link.revokedAt ||
+      Date.parse(link.expiresAt) <= Date.parse(input.usedAt) ||
+      link.usedUploads >= link.maxUploads
+    ) {
+      return undefined;
+    }
+    link.usedUploads += 1;
+    return clone(link);
+  }
+
   async createShareLink(link: ShareLinkRecord): Promise<ShareLinkRecord> {
     if (this.shareLinks.some((existing) => existing.tokenHash === link.tokenHash)) {
       throw new Error("Share link token hash already exists");
@@ -1673,7 +1806,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async listAccessLogs(
     firmId: string,
-    options: { shareLinkId?: string; resourceType?: string; resourceId?: string } = {},
+    options: {
+      shareLinkId?: string;
+      externalUploadLinkId?: string;
+      resourceType?: string;
+      resourceId?: string;
+    } = {},
   ): Promise<AccessLogRecord[]> {
     return clone(
       this.accessLogs
@@ -1681,6 +1819,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           (log) =>
             log.firmId === firmId &&
             (!options.shareLinkId || log.shareLinkId === options.shareLinkId) &&
+            (!options.externalUploadLinkId ||
+              log.externalUploadLinkId === options.externalUploadLinkId) &&
             (!options.resourceType || log.resourceType === options.resourceType) &&
             (!options.resourceId || log.resourceId === options.resourceId),
         )
@@ -3280,6 +3420,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     await this.db.insert(schema.auditEvents).values({
       ...appended,
       occurredAt: new Date(appended.occurredAt),
+      metadata: appended.metadata,
     });
     return appended;
   }
@@ -3360,37 +3501,113 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return row ? mapShareLinkRow(row) : undefined;
   }
 
+  async listExternalUploadLinks(
+    firmId: string,
+    options: { matterId?: string } = {},
+  ): Promise<ExternalUploadLinkRecord[]> {
+    const conditions = [eq(schema.externalUploadLinks.firmId, firmId)];
+    if (options.matterId) {
+      conditions.push(eq(schema.externalUploadLinks.matterId, options.matterId));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.externalUploadLinks)
+      .where(and(...conditions))
+      .orderBy(desc(schema.externalUploadLinks.createdAt));
+    return rows.map(mapExternalUploadLinkRow);
+  }
+
+  async createExternalUploadLink(
+    link: ExternalUploadLinkRecord,
+  ): Promise<ExternalUploadLinkRecord> {
+    const [row] = await this.db
+      .insert(schema.externalUploadLinks)
+      .values(externalUploadLinkInsert(link))
+      .returning();
+    return mapExternalUploadLinkRow(row);
+  }
+
+  async getExternalUploadLinkByTokenHash(
+    tokenHash: string,
+  ): Promise<ExternalUploadLinkRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.externalUploadLinks)
+      .where(eq(schema.externalUploadLinks.tokenHash, tokenHash));
+    return row ? mapExternalUploadLinkRow(row) : undefined;
+  }
+
+  async revokeExternalUploadLink(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<ExternalUploadLinkRecord | undefined> {
+    const [row] = await this.db
+      .update(schema.externalUploadLinks)
+      .set({ revokedAt: new Date(input.revokedAt) })
+      .where(
+        and(
+          eq(schema.externalUploadLinks.firmId, input.firmId),
+          eq(schema.externalUploadLinks.id, input.id),
+        ),
+      )
+      .returning();
+    return row ? mapExternalUploadLinkRow(row) : undefined;
+  }
+
+  async claimExternalUploadUse(input: {
+    firmId: string;
+    id: string;
+    usedAt: string;
+  }): Promise<ExternalUploadLinkRecord | undefined> {
+    const usedAt = new Date(input.usedAt);
+    const [row] = await this.db
+      .update(schema.externalUploadLinks)
+      .set({ usedUploads: sql`${schema.externalUploadLinks.usedUploads} + 1` })
+      .where(
+        and(
+          eq(schema.externalUploadLinks.firmId, input.firmId),
+          eq(schema.externalUploadLinks.id, input.id),
+          isNull(schema.externalUploadLinks.revokedAt),
+          sql`${schema.externalUploadLinks.expiresAt} > ${usedAt}`,
+          sql`${schema.externalUploadLinks.usedUploads} < ${schema.externalUploadLinks.maxUploads}`,
+        ),
+      )
+      .returning();
+    return row ? mapExternalUploadLinkRow(row) : undefined;
+  }
+
   async createAccessLog(log: AccessLogRecord): Promise<AccessLogRecord> {
-    await this.db.insert(schema.accessLogs).values({
-      id: log.id,
-      firmId: log.firmId,
-      actorId: log.actorId,
-      shareLinkId: log.shareLinkId,
-      externalUploadLinkId: log.externalUploadLinkId,
-      resourceType: log.resourceType,
-      resourceId: log.resourceId,
-      action: log.action,
-      occurredAt: new Date(log.occurredAt),
-      ipAddress: log.ipAddress,
-      userAgent: log.userAgent,
-      metadata: log.metadata,
-    });
-    return clone(log);
+    const [row] = await this.db.insert(schema.accessLogs).values(accessLogInsert(log)).returning();
+    return mapAccessLogRow(row);
   }
 
   async listAccessLogs(
     firmId: string,
-    options: { shareLinkId?: string; resourceType?: string; resourceId?: string } = {},
+    options: {
+      shareLinkId?: string;
+      externalUploadLinkId?: string;
+      resourceType?: string;
+      resourceId?: string;
+    } = {},
   ): Promise<AccessLogRecord[]> {
-    const filters = [eq(schema.accessLogs.firmId, firmId)];
-    if (options.shareLinkId) filters.push(eq(schema.accessLogs.shareLinkId, options.shareLinkId));
-    if (options.resourceType)
-      filters.push(eq(schema.accessLogs.resourceType, options.resourceType));
-    if (options.resourceId) filters.push(eq(schema.accessLogs.resourceId, options.resourceId));
+    const conditions = [eq(schema.accessLogs.firmId, firmId)];
+    if (options.shareLinkId) {
+      conditions.push(eq(schema.accessLogs.shareLinkId, options.shareLinkId));
+    }
+    if (options.externalUploadLinkId) {
+      conditions.push(eq(schema.accessLogs.externalUploadLinkId, options.externalUploadLinkId));
+    }
+    if (options.resourceType) {
+      conditions.push(eq(schema.accessLogs.resourceType, options.resourceType));
+    }
+    if (options.resourceId) {
+      conditions.push(eq(schema.accessLogs.resourceId, options.resourceId));
+    }
     const rows = await this.db
       .select()
       .from(schema.accessLogs)
-      .where(and(...filters))
+      .where(and(...conditions))
       .orderBy(desc(schema.accessLogs.occurredAt));
     return rows.map(mapAccessLogRow);
   }
@@ -4324,6 +4541,8 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return rows.map(mapInboundEmailAttachmentRow);
   }
 }
+
+export { DrizzleOpenPracticeRepository as PostgresOpenPracticeRepository };
 
 function mapMatter(row: typeof schema.matters.$inferSelect): Matter {
   return {

@@ -19,14 +19,19 @@ active commitments until promoted to the live workboard.
 
 | Topic                        | Candidate Goal                                                                                                                           |
 | :--------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
-| **Secure Shares**            | Create token-hashed, expiring, revocable portal share links for documents and intake sessions.                                           |
-| **External Uploads**         | Build client-facing upload links with S3 completion checks, revocation, and matter-scoped audit records.                                 |
 | **Audit Coverage**           | Extend append-only audit events across signature, intake, drafting, document, billing, ledger, email, share, and upload state changes.   |
 | **Email Workflow Closure**   | Connect SMTP/outbox worker capability to API preview/send flows for signature, intake, share, upload, and meeting notices.               |
 | **Guided Intake**            | Add branching logic, reusable intake packages, and multi-document automation while keeping generated records inside Open Practice.       |
 | **Local AI Drafting Assist** | Integrate disabled-by-default Ollama/LM Studio workflows for reviewed draft assistance and matter/document summarization.                |
 | **Calendaring/Meetings**     | Add matter-scoped event CRUD, outbound iCalendar/webcal sync, invitation email, and optional configured WebRTC meeting links.            |
 | **Specialized Workflows**    | Support legal clinics, nonprofit fiscal hosts, complex trust accounting, and multi-jurisdiction reporting with cautious compliance text. |
+
+## Phase 3: Completed Slices
+
+| Topic                | Completed Goal                                                                                                                          |
+| :------------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| **Secure Shares**    | Added token-hashed, expiring, revocable v1 portal share links for document metadata with matter-scoped auth, audit events, and logs.    |
+| **External Uploads** | Added client-facing upload links with token-scoped S3 intent/complete flows, S3-disabled fallback behavior, revocation, and audit logs. |
 
 ## Implementation Guardrails
 

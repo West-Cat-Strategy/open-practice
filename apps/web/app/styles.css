@@ -538,6 +538,13 @@ h3 {
   align-items: end;
 }
 
+.upload-create-grid {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.7fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
 .share-check-row {
   min-height: 42px;
   border: 1px solid var(--line);
@@ -552,6 +559,38 @@ h3 {
   gap: 8px;
 }
 
+.upload-token {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(63, 185, 173, 0.3);
+  border-radius: 8px;
+  background: rgba(63, 185, 173, 0.08);
+  margin-top: 10px;
+  padding: 12px;
+}
+
+.upload-token span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.upload-token code {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.upload-link-row {
+  align-items: flex-start;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .share-row-actions .compact-button,
 .share-form-row .compact-button {
   display: inline-flex;
@@ -561,6 +600,12 @@ h3 {
   min-height: 42px;
   border-radius: 8px;
   padding: 0 12px;
+}
+
+.row-button {
+  min-height: 34px;
+  border-radius: 8px;
+  padding: 0 10px;
 }
 
 .search-field {
@@ -908,6 +953,7 @@ h3 {
   .activity-grid,
   .permission-toggle-grid,
   .share-form-row,
+  .upload-create-grid,
   .nav-list,
   .setup-grid {
     grid-template-columns: 1fr;

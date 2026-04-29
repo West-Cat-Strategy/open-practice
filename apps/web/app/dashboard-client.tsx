@@ -18,6 +18,7 @@ import {
   Save,
   Search,
   ShieldCheck,
+  Upload,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -41,6 +42,13 @@ import {
   extractDraftPlainText,
   isSameDraftDocument,
 } from "./drafting-dashboard";
+import {
+  buildExternalUploadCreatePayload,
+  buildExternalUploadRevokePath,
+  canCreateExternalUpload,
+  getExternalUploadLinkState,
+  upsertExternalUploadLink,
+} from "./external-uploads-dashboard";
 import DraftEditor from "./drafting/DraftEditor";
 import { filterMatters } from "./dashboard-utils";
 import type {
@@ -48,6 +56,9 @@ import type {
   CapabilitiesResponse,
   ConflictResponse,
   DraftingDashboardResponse,
+  ExternalUploadCreateResponse,
+  ExternalUploadRevokeResponse,
+  ExternalUploadsDashboardResponse,
   IntakeSessionsResponse,
   MatterSummary,
   PracticeOverview,
@@ -68,6 +79,7 @@ interface DashboardClientProps {
   capabilities: CapabilitiesResponse;
   devHeaders: Record<string, string>;
   drafting: DraftingDashboardResponse;
+  externalUploads: ExternalUploadsDashboardResponse;
   intake: IntakeSessionsResponse;
   overview: PracticeOverview;
   matters: MatterSummary[];
@@ -91,6 +103,7 @@ const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   billing: CreditCard,
   documents: Files,
   shares: Link2,
+  externalUploads: Upload,
   drafting: FilePenLine,
   signatures: FileSignature,
   intake: FileText,
@@ -107,12 +120,23 @@ function minutes(value: number): string {
   return hours > 0 ? `${hours}h ${remaining}m` : `${remaining}m`;
 }
 
+function compactStatus(value?: string): string {
+  return value ? value.replaceAll("_", " ") : "none";
+}
+
+function compactDate(value?: string): string {
+  if (!value) return "none";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("en-CA");
+}
+
 export default function DashboardClient({
   apiBaseUrl,
   billing,
   capabilities,
   devHeaders,
   drafting,
+  externalUploads,
   intake,
   overview,
   matters,
@@ -142,6 +166,15 @@ export default function DashboardClient({
   const requireEmailVerification = false;
   const [creatingShare, setCreatingShare] = useState(false);
   const [revokingShareId, setRevokingShareId] = useState("");
+  const [externalUploadsByMatterId, setExternalUploadsByMatterId] = useState(
+    externalUploads.uploadsByMatterId,
+  );
+  const [externalUploadMaxUploads, setExternalUploadMaxUploads] = useState("1");
+  const [externalUploadExpiresAt, setExternalUploadExpiresAt] = useState("");
+  const [externalUploadToken, setExternalUploadToken] = useState("");
+  const [externalUploadStatus, setExternalUploadStatus] = useState("No link created.");
+  const [creatingExternalUpload, setCreatingExternalUpload] = useState(false);
+  const [revokingExternalUploadId, setRevokingExternalUploadId] = useState("");
 
   const filteredMatters = useMemo(
     () => filterMatters(matters, matterSearch),
@@ -157,6 +190,10 @@ export default function DashboardClient({
   const activeDocuments = activeMatter?.documents ?? [];
   const activeShares = activeMatter ? (sharesByMatterId[activeMatter.id] ?? []) : [];
   const activeDrafts = activeMatter ? (draftsByMatterId[activeMatter.id] ?? []) : [];
+  const activeExternalUploads = activeMatter
+    ? (externalUploadsByMatterId[activeMatter.id] ?? [])
+    : [];
+  const externalUploadCreateAvailable = canCreateExternalUpload(externalUploads.status);
   const selectedDraft = activeDrafts.find((draft) => draft.id === selectedDraftId);
   const draftHasChanges =
     selectedDraft !== undefined &&
@@ -184,8 +221,14 @@ export default function DashboardClient({
       billingCanView: billing.canView,
       capabilitySections: capabilities.sections,
       shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
+      externalUploadsEnabled: externalUploadCreateAvailable,
     });
-  }, [billing.canView, capabilities.sections, shareLinksStatus.createStatus]);
+  }, [
+    billing.canView,
+    capabilities.sections,
+    externalUploadCreateAvailable,
+    shareLinksStatus.createStatus,
+  ]);
 
   useEffect(() => {
     if (!activeMatter) return;
@@ -386,8 +429,81 @@ export default function DashboardClient({
     setDraftEditorJson(null);
   }
 
+  async function createExternalUploadLink(): Promise<void> {
+    if (!activeMatter) return;
+    if (!externalUploadCreateAvailable) {
+      setExternalUploadStatus(
+        `Create unavailable: ${compactStatus(externalUploads.status.reason)}`,
+      );
+      return;
+    }
+
+    setCreatingExternalUpload(true);
+    setExternalUploadToken("");
+    setExternalUploadStatus("Creating link...");
+    const response = await fetch(`${apiBaseUrl}/api/external-uploads`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        buildExternalUploadCreatePayload({
+          matterId: activeMatter.id,
+          maxUploads: externalUploadMaxUploads,
+          expiresAtLocal: externalUploadExpiresAt,
+        }),
+      ),
+    });
+
+    if (!response.ok) {
+      setExternalUploadStatus(`Create failed: ${response.status}`);
+      setCreatingExternalUpload(false);
+      return;
+    }
+
+    const payload = (await response.json()) as ExternalUploadCreateResponse;
+    if (!payload.upload) {
+      setExternalUploadStatus(`Not created: ${compactStatus(payload.reason)}`);
+      setCreatingExternalUpload(false);
+      return;
+    }
+
+    setExternalUploadsByMatterId((current) => upsertExternalUploadLink(current, payload.upload!));
+    setExternalUploadToken(payload.token ?? "");
+    setExternalUploadStatus(payload.token ? "Link created." : "Link created; token unavailable.");
+    setCreatingExternalUpload(false);
+  }
+
+  async function revokeExternalUploadLink(uploadId: string): Promise<void> {
+    setRevokingExternalUploadId(uploadId);
+    setExternalUploadStatus("Revoking link...");
+    const response = await fetch(`${apiBaseUrl}${buildExternalUploadRevokePath(uploadId)}`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      setExternalUploadStatus(`Revoke failed: ${response.status}`);
+      setRevokingExternalUploadId("");
+      return;
+    }
+
+    const payload = (await response.json()) as ExternalUploadRevokeResponse;
+    setExternalUploadsByMatterId((current) => upsertExternalUploadLink(current, payload.upload));
+    setExternalUploadStatus("Link revoked.");
+    setRevokingExternalUploadId("");
+  }
+
   function selectMatter(matterId: string): void {
     setActiveMatterId(matterId);
+    setExternalUploadToken("");
+    setExternalUploadStatus("No link created.");
     closeDraftEditor();
   }
 
@@ -936,6 +1052,114 @@ export default function DashboardClient({
                   })}
                   {activeShares.length === 0 ? (
                     <p className="inline-empty">No share links are linked to this matter.</p>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+
+            {activeSection === "externalUploads" ? (
+              <>
+                <div className="detail-grid">
+                  <div>
+                    <span className="field-label">Create status</span>
+                    <strong>{compactStatus(externalUploads.status.status)}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Provider</span>
+                    <strong>{compactStatus(externalUploads.status.provider)}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Reason</span>
+                    <strong>{compactStatus(externalUploads.status.reason)}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Active links</span>
+                    <strong>
+                      {
+                        activeExternalUploads.filter(
+                          (upload) => getExternalUploadLinkState(upload) === "active",
+                        ).length
+                      }
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="section-title">
+                  <h3>Create link</h3>
+                  <span>{activeMatter.number}</span>
+                </div>
+                <div className="upload-create-grid">
+                  <label className="search-field compact">
+                    <span>Max uploads</span>
+                    <input
+                      min={1}
+                      onChange={(event) => setExternalUploadMaxUploads(event.target.value)}
+                      type="number"
+                      value={externalUploadMaxUploads}
+                    />
+                  </label>
+                  <label className="search-field compact">
+                    <span>Expiry</span>
+                    <input
+                      onChange={(event) => setExternalUploadExpiresAt(event.target.value)}
+                      type="datetime-local"
+                      value={externalUploadExpiresAt}
+                    />
+                  </label>
+                  <button
+                    className="primary-button"
+                    disabled={creatingExternalUpload || !externalUploadCreateAvailable}
+                    onClick={() => void createExternalUploadLink()}
+                    type="button"
+                  >
+                    {creatingExternalUpload ? "Creating..." : "Create link"}
+                  </button>
+                </div>
+                {externalUploadToken ? (
+                  <div className="upload-token">
+                    <span>One-time token</span>
+                    <code>{externalUploadToken}</code>
+                  </div>
+                ) : null}
+                <p className="inline-empty">{externalUploadStatus}</p>
+
+                <div className="section-title">
+                  <h3>External upload links</h3>
+                  <span>{activeExternalUploads.length} records</span>
+                </div>
+                <div className="party-list">
+                  {activeExternalUploads.map((upload) => {
+                    const linkState = getExternalUploadLinkState(upload);
+                    return (
+                      <div className="party-row upload-link-row" key={upload.id}>
+                        <span>
+                          <strong>{upload.id}</strong>
+                          <small>
+                            {upload.usedUploads}/{upload.maxUploads} used · expires{" "}
+                            {compactDate(upload.expiresAt)} · created{" "}
+                            {compactDate(upload.createdAt)}
+                          </small>
+                        </span>
+                        <div className="row-actions">
+                          <em className={linkState === "active" ? undefined : "risk"}>
+                            {linkState}
+                          </em>
+                          {!upload.revokedAt ? (
+                            <button
+                              className="secondary-button compact-button row-button"
+                              disabled={revokingExternalUploadId === upload.id}
+                              onClick={() => void revokeExternalUploadLink(upload.id)}
+                              type="button"
+                            >
+                              {revokingExternalUploadId === upload.id ? "Revoking..." : "Revoke"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {activeExternalUploads.length === 0 ? (
+                    <p className="inline-empty">No external upload links for this matter.</p>
                   ) : null}
                 </div>
               </>

@@ -63,6 +63,43 @@ export interface DraftingDashboardResponse {
   draftsByMatterId: Record<string, DraftRecord[]>;
 }
 
+export interface ExternalUploadLinkRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  requestedByUserId: string;
+  expiresAt: string;
+  maxUploads: number;
+  usedUploads: number;
+  createdAt: string;
+  revokedAt?: string;
+}
+
+export interface ExternalUploadsStatusResponse {
+  status: string;
+  provider?: string;
+  reason?: string;
+}
+
+export interface ExternalUploadsListResponse {
+  uploads: ExternalUploadLinkRecord[];
+}
+
+export interface ExternalUploadCreateResponse {
+  upload: ExternalUploadLinkRecord | null;
+  token?: string;
+  reason?: string;
+}
+
+export interface ExternalUploadRevokeResponse {
+  upload: ExternalUploadLinkRecord;
+}
+
+export interface ExternalUploadsDashboardResponse {
+  status: ExternalUploadsStatusResponse;
+  uploadsByMatterId: Record<string, ExternalUploadLinkRecord[]>;
+}
+
 export type BillingEntryStatus = "draft" | "submitted" | "approved" | "billed" | "written_off";
 
 export interface BillingTimeItem {
