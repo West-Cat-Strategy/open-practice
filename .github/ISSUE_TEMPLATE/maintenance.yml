@@ -1,5 +1,5 @@
 name: Maintenance
-description: Track dependency, CI, docs, policy, or housekeeping work.
+description: Track dependency, local validation, docs, policy, or housekeeping work.
 title: "[Maintenance]: "
 labels: ["maintenance"]
 assignees: ["bcroc"]
@@ -25,6 +25,6 @@ body:
     id: validation
     attributes:
       label: Validation
-      description: List read-only checks or expected evidence.
+      description: List local checks or expected evidence.
     validations:
       required: false

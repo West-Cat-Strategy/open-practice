@@ -9,8 +9,8 @@ Use this index as the first stop for repo orientation. Open Practice is a legal-
 3. [Planning](planning.md) is the durable roadmap; [Planning and Progress](planning-and-progress.md) is the live workboard.
 4. [Getting Started](development/getting-started.md) covers local runtime choices, services, and environment defaults.
 5. [Repository Guide](development/repo-guide.md) maps workspace ownership, boundaries, and common edit paths.
-6. [GitHub Maintenance](development/github-maintenance.md) covers branch protection, Dependabot,
-   code scanning, Copilot agents, and PR automation.
+6. [GitHub Maintenance](development/github-maintenance.md) covers local-only repository gates,
+   GitHub settings cutover, dependency audits, and branch cleanup.
 7. [Testing](testing/TESTING.md) maps change types to validation commands.
 8. [API and State Machines](api-and-state-machines.md) records the current API and lifecycle contracts.
 

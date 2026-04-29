@@ -10,8 +10,9 @@ Use the local Codex skill `$develop-open-practice` for this repository. The skil
 
 Because the skill is outside the repo, tracked docs remain the durable source of truth. Refresh both when a workflow changes.
 
-GitHub-hosted Copilot agents should follow [GitHub Maintenance](github-maintenance.md): issue-first
-work, low-risk labels, draft PRs, synthetic data only, and protected-branch PR flow.
+Repository work uses local agent sessions and local validation evidence. GitHub-hosted Copilot
+agents, automatic review, and Actions-backed checks are intentionally disabled; keep any future
+change to that posture documented in [GitHub Maintenance](github-maintenance.md).
 
 ## Start Of Task
 
@@ -23,8 +24,8 @@ work, low-risk labels, draft PRs, synthetic data only, and protected-branch PR f
 
 Do not revert unrelated dirty work. If existing changes affect the task, work with them and keep the final summary clear about what was touched.
 
-After squash merges on protected `main`, refresh local `main` from `origin/main` before starting a
-new branch. Back up stale local-only commits first.
+After merges to `main`, refresh local `main` from `origin/main` before starting a new branch. Back
+up stale local-only commits first.
 
 ## Implementation Habits
 
@@ -52,9 +53,10 @@ Use the narrowest safe command first, then broaden when work crosses package bou
 - Domain rules: domain tests and typecheck, plus API tests when routes expose the rule.
 - Database schema or repository: database tests, `db:check`, database typecheck, API tests, and migration confidence when needed.
 - Web dashboard or route catalog: web tests, web typecheck, and `pnpm build`.
-- Broad handoff: `pnpm verify` and `git diff --check`.
-- GitHub tooling: `pnpm verify`, `git diff --check`, and GitHub PR checks for `verify`, dependency
-  review, CodeQL/default setup, and Copilot review where applicable.
+- Broad handoff: `pnpm ci:local`.
+- Dependency or release-readiness work: `pnpm deps:audit` and `pnpm release:local`.
+- GitHub settings cutover: use read-only `gh api` checks after any admin-side changes to confirm
+  Actions, branch protection, CodeQL default setup, Dependabot, and Copilot automation stay disabled.
 
 ## Handoff
 

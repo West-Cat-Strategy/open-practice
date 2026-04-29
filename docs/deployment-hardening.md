@@ -24,7 +24,9 @@
 - Keep billing, invoice, manual-payment, and trust-transfer workflows behind role-scoped operational controls; do not describe them as jurisdiction-certified accounting, tax, or trust-compliance advice.
 - Do not enable live payment processing by default. Any future processor must have explicit secrets, webhook verification, replay protection, settlement reconciliation, refund/chargeback handling, and a manual fallback before production use.
 - Do not let invoice payment application or trust-transfer approval automatically post trust ledger entries. Trust ledger posting must remain an explicit balanced transaction with its own evidence, idempotency key, approval controls, and reconciliation path.
-- Enable dependency, container, and license scanning in CI before deployment.
+- Run local dependency, secret, and license checks before deployment: `pnpm deps:audit`,
+  `pnpm security:scan`, and `pnpm policy:check`. Container/image scanning remains a
+  deployment-profile requirement when production images are published.
 
 ## Implementation Plan Notes
 
@@ -69,6 +71,6 @@ Environment variables must be treated as deployment inputs, not application defa
   balances.
 
 Release hardening should include a migration dry run, backup restore proof for PostgreSQL and object
-storage, `pnpm policy:check`, and a smoke test for S3 presign/upload-complete, embedded session
+storage, `pnpm release:local`, and a smoke test for S3 presign/upload-complete, embedded session
 login/logout, embedded signature events, billing dashboard reads, manual payment allocation, and
 trust-transfer-request evidence creation.

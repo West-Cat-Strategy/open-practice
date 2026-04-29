@@ -11,7 +11,8 @@
 
 - [ ] Read-only checks run, or reason skipped:
 - [ ] `pnpm verify:select -- --files <changed paths...>` considered for focused validation.
-- [ ] `pnpm verify` run for root config, GitHub tooling, lockfile, schema, auth/security, or broad changes.
+- [ ] `pnpm ci:local` run for root config, local gate, lockfile, schema, auth/security, or broad changes.
+- [ ] `pnpm deps:audit` run for dependency, security, or release-readiness changes.
 
 ## Privacy and Policy
 

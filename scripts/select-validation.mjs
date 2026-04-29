@@ -6,6 +6,7 @@ const COMMANDS = {
   apiTest: "pnpm --filter @open-practice/api test",
   apiTypecheck: "pnpm --filter @open-practice/api typecheck",
   build: "pnpm build",
+  ciLocal: "pnpm ci:local",
   databaseCheck: "pnpm --filter @open-practice/database db:check",
   databaseTest: "pnpm --filter @open-practice/database test",
   databaseTypecheck: "pnpm --filter @open-practice/database typecheck",
@@ -15,13 +16,12 @@ const COMMANDS = {
   formatCheck: "pnpm format:check",
   policyCheck: "pnpm policy:check",
   test: "pnpm test",
-  verify: "pnpm verify",
   webTest: "pnpm --filter @open-practice/web test",
   webTypecheck: "pnpm --filter @open-practice/web typecheck",
 };
 
 const COMMAND_ORDER = [
-  COMMANDS.verify,
+  COMMANDS.ciLocal,
   COMMANDS.formatCheck,
   COMMANDS.docsCheck,
   COMMANDS.policyCheck,
@@ -182,7 +182,7 @@ function selectCommands(paths) {
     }
 
     if (isRootConfig(path)) {
-      selected.add(COMMANDS.verify);
+      selected.add(COMMANDS.ciLocal);
     }
   }
 
