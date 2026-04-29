@@ -15,6 +15,36 @@ const editorJson = {
   ],
 };
 
+const licenseeHeaders = {
+  "x-open-practice-user-id": "user-licensee",
+  "x-open-practice-firm-id": "firm-west-legal",
+};
+
+const staffHeaders = {
+  "x-open-practice-user-id": "user-staff",
+  "x-open-practice-firm-id": "firm-west-legal",
+};
+
+function draftPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    matterId: "matter-001",
+    title: "Synthetic draft",
+    editorJson,
+    ...overrides,
+  };
+}
+
+function templatePayload(overrides: Record<string, unknown> = {}) {
+  return {
+    name: "Synthetic drafting template",
+    description: "Reusable synthetic template for API permission regression coverage.",
+    editorJson,
+    category: "correspondence",
+    metadata: { source: "route-test" },
+    ...overrides,
+  };
+}
+
 function testServer(overrides: Partial<CreateServerOptions> = {}) {
   const repository = overrides.repository ?? new InMemoryOpenPracticeRepository();
   const server = createApiServer({
@@ -62,18 +92,54 @@ describe("draft routes", () => {
     );
   });
 
+  it("lets firm staff read templates but blocks template creation without permission", async () => {
+    const server = testServer();
+    const listed = await server.inject({
+      method: "GET",
+      url: "/api/draft-templates",
+      headers: staffHeaders,
+    });
+    const deniedCreate = await server.inject({
+      method: "POST",
+      url: "/api/draft-templates",
+      headers: staffHeaders,
+      payload: templatePayload(),
+    });
+    const adminCreate = await server.inject({
+      method: "POST",
+      url: "/api/draft-templates",
+      payload: templatePayload({ name: "Admin-created synthetic template" }),
+    });
+
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "draft-template-legal-letter" })]),
+    );
+    expect(deniedCreate.statusCode).toBe(403);
+    expect(deniedCreate.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Draft template access required",
+    });
+    expect(adminCreate.statusCode).toBe(200);
+    expect(adminCreate.json()).toMatchObject({
+      firmId: "firm-west-legal",
+      name: "Admin-created synthetic template",
+      category: "correspondence",
+      active: true,
+      editorJson,
+    });
+  });
+
   it("creates sanitized draft snapshots and increments versions on update", async () => {
     const server = testServer();
     const created = await server.inject({
       method: "POST",
       url: "/api/drafts",
-      payload: {
-        matterId: "matter-001",
+      payload: draftPayload({
         title: "Demand letter draft",
-        editorJson,
         renderedHtml: '<h1 data-draft-block="title">Demand</h1><script>alert("xss")</script>',
         metadata: { templateId: "draft-template-legal-letter" },
-      },
+      }),
     });
     const updated = await server.inject({
       method: "PUT",
@@ -104,15 +170,124 @@ describe("draft routes", () => {
     });
   });
 
-  it("rejects invalid TipTap document JSON", async () => {
-    const response = await testServer().inject({
+  it("creates matter drafts from selected active templates", async () => {
+    const server = testServer();
+    const templates = await server.inject({
+      method: "GET",
+      url: "/api/draft-templates",
+    });
+    const legalLetterTemplate = templates
+      .json<Array<{ id: string; editorJson: typeof editorJson }>>()
+      .find((template) => template.id === "draft-template-legal-letter")!;
+
+    const created = await server.inject({
       method: "POST",
       url: "/api/drafts",
       payload: {
         matterId: "matter-001",
+        title: "Template-backed letter",
+        templateId: legalLetterTemplate.id,
+      },
+    });
+    const listed = await server.inject({
+      method: "GET",
+      url: "/api/drafts?matterId=matter-001",
+    });
+
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      matterId: "matter-001",
+      title: "Template-backed letter",
+      editorJson: legalLetterTemplate.editorJson,
+      version: 1,
+      metadata: { templateId: legalLetterTemplate.id },
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: created.json<{ id: string }>().id,
+          metadata: { templateId: legalLetterTemplate.id },
+        }),
+      ]),
+    );
+  });
+
+  it("rejects ambiguous or unseeded draft creation input", async () => {
+    const server = testServer();
+    const ambiguous = await server.inject({
+      method: "POST",
+      url: "/api/drafts",
+      payload: {
+        matterId: "matter-001",
+        title: "Ambiguous draft",
+        editorJson,
+        templateId: "draft-template-legal-letter",
+      },
+    });
+    const missingSeed = await server.inject({
+      method: "POST",
+      url: "/api/drafts",
+      payload: {
+        matterId: "matter-001",
+        title: "Unseeded draft",
+      },
+    });
+
+    expect(ambiguous.statusCode).toBe(400);
+    expect(missingSeed.statusCode).toBe(400);
+    expect(ambiguous.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Invalid request body",
+    });
+    expect(missingSeed.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Invalid request body",
+    });
+  });
+
+  it("returns 404 for inactive or foreign template selections", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const [seedTemplate] = await repository.listDraftTemplates("firm-west-legal");
+    await repository.createDraftTemplate({
+      ...seedTemplate!,
+      id: "draft-template-inactive",
+      active: false,
+    });
+    await repository.createDraftTemplate({
+      ...seedTemplate!,
+      id: "draft-template-foreign",
+      firmId: "firm-other",
+    });
+    const server = testServer({ repository });
+
+    for (const templateId of ["draft-template-inactive", "draft-template-foreign"]) {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/drafts",
+        payload: {
+          matterId: "matter-001",
+          title: "Unavailable template",
+          templateId,
+        },
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({
+        error: "Error",
+        message: "Draft template was not found",
+      });
+    }
+  });
+
+  it("rejects invalid TipTap document JSON", async () => {
+    const response = await testServer().inject({
+      method: "POST",
+      url: "/api/drafts",
+      payload: draftPayload({
         title: "Invalid draft",
         editorJson: { type: "paragraph" },
-      },
+      }),
     });
 
     expect(response.statusCode).toBe(400);
@@ -122,31 +297,111 @@ describe("draft routes", () => {
     });
   });
 
-  it("keeps unauthorized matter access at 403", async () => {
+  it("keeps matter-scoped draft lists limited to assigned matters", async () => {
+    const server = testServer();
+    const matterOne = await server.inject({
+      method: "POST",
+      url: "/api/drafts",
+      payload: draftPayload({ title: "Assigned matter draft" }),
+    });
+    const matterTwo = await server.inject({
+      method: "POST",
+      url: "/api/drafts",
+      payload: draftPayload({ matterId: "matter-002", title: "Restricted matter draft" }),
+    });
+    const assignedMatterList = await server.inject({
+      method: "GET",
+      url: "/api/drafts?matterId=matter-001",
+      headers: licenseeHeaders,
+    });
+    const noMatterList = await server.inject({
+      method: "GET",
+      url: "/api/drafts",
+      headers: licenseeHeaders,
+    });
+    const otherMatterList = await server.inject({
+      method: "GET",
+      url: "/api/drafts?matterId=matter-002",
+      headers: licenseeHeaders,
+    });
+    const deniedCreate = await server.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers: licenseeHeaders,
+      payload: draftPayload({ matterId: "matter-002", title: "Denied restricted matter draft" }),
+    });
+
+    expect(matterOne.statusCode).toBe(200);
+    expect(matterTwo.statusCode).toBe(200);
+    expect(assignedMatterList.statusCode).toBe(200);
+    expect(
+      assignedMatterList.json<Array<{ matterId?: string; title: string }>>().map((draft) => ({
+        matterId: draft.matterId,
+        title: draft.title,
+      })),
+    ).toEqual([{ matterId: "matter-001", title: "Assigned matter draft" }]);
+    expect(noMatterList.statusCode).toBe(403);
+    expect(noMatterList.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Draft access required",
+    });
+    expect(otherMatterList.statusCode).toBe(403);
+    expect(otherMatterList.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Draft access required",
+    });
+    expect(deniedCreate.statusCode).toBe(403);
+    expect(deniedCreate.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Draft access required",
+    });
+  });
+
+  it("keeps unauthorized matter reads and updates at 403 without mutating drafts", async () => {
     const server = testServer();
     const created = await server.inject({
       method: "POST",
       url: "/api/drafts",
-      payload: {
+      payload: draftPayload({
         matterId: "matter-002",
         title: "Restricted matter draft",
-        editorJson,
+      }),
+    });
+    const draftId = created.json<{ id: string }>().id;
+    const read = await server.inject({
+      method: "GET",
+      url: `/api/drafts/${draftId}`,
+      headers: licenseeHeaders,
+    });
+    const update = await server.inject({
+      method: "PUT",
+      url: `/api/drafts/${draftId}`,
+      headers: licenseeHeaders,
+      payload: {
+        title: "Unauthorized title update",
       },
     });
-    const response = await server.inject({
+    const adminReadback = await server.inject({
       method: "GET",
-      url: `/api/drafts/${created.json<{ id: string }>().id}`,
-      headers: {
-        "x-open-practice-user-id": "user-licensee",
-        "x-open-practice-firm-id": "firm-west-legal",
-      },
+      url: `/api/drafts/${draftId}`,
     });
 
     expect(created.statusCode).toBe(200);
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({
+    expect(read.statusCode).toBe(403);
+    expect(read.json()).toMatchObject({
       error: "ApiHttpError",
       message: "Draft access required",
+    });
+    expect(update.statusCode).toBe(403);
+    expect(update.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Draft access required",
+    });
+    expect(adminReadback.statusCode).toBe(200);
+    expect(adminReadback.json()).toMatchObject({
+      title: "Restricted matter draft",
+      version: 1,
+      updatedByUserId: "user-admin",
     });
   });
 });

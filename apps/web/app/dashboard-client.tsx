@@ -7,6 +7,7 @@ import {
   Clock3,
   CreditCard,
   FileText,
+  FilePenLine,
   FileSignature,
   Files,
   Gavel,
@@ -21,11 +22,17 @@ import {
   buildSidebarNavigationSections,
   type OpenPracticeSidebarNavigationSection,
 } from "../routes/routeCatalog";
+import {
+  appendDraftToMatterDrafts,
+  buildDraftFromTemplatePayload,
+  extractDraftPlainText,
+} from "./drafting-dashboard";
 import { filterMatters } from "./dashboard-utils";
 import type {
   BillingDashboardResponse,
   CapabilitiesResponse,
   ConflictResponse,
+  DraftingDashboardResponse,
   IntakeSessionsResponse,
   MatterSummary,
   PracticeOverview,
@@ -39,6 +46,7 @@ interface DashboardClientProps {
   billing: BillingDashboardResponse;
   capabilities: CapabilitiesResponse;
   devHeaders: Record<string, string>;
+  drafting: DraftingDashboardResponse;
   intake: IntakeSessionsResponse;
   overview: PracticeOverview;
   matters: MatterSummary[];
@@ -48,6 +56,7 @@ interface DashboardClientProps {
 }
 
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
+type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][number];
 
 const currency = new Intl.NumberFormat("en-CA", {
   style: "currency",
@@ -59,6 +68,7 @@ const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   funds: Banknote,
   billing: CreditCard,
   documents: Files,
+  drafting: FilePenLine,
   signatures: FileSignature,
   intake: FileText,
   audit: ShieldCheck,
@@ -79,6 +89,7 @@ export default function DashboardClient({
   billing,
   capabilities,
   devHeaders,
+  drafting,
   intake,
   overview,
   matters,
@@ -92,6 +103,9 @@ export default function DashboardClient({
   const [conflictName, setConflictName] = useState("");
   const [conflictResults, setConflictResults] = useState<ConflictCandidate[]>([]);
   const [conflictStatus, setConflictStatus] = useState("No check run yet.");
+  const [draftsByMatterId, setDraftsByMatterId] = useState(drafting.draftsByMatterId);
+  const [creatingTemplateId, setCreatingTemplateId] = useState("");
+  const [draftStatus, setDraftStatus] = useState("No draft created in this session.");
 
   const filteredMatters = useMemo(
     () => filterMatters(matters, matterSearch),
@@ -105,6 +119,7 @@ export default function DashboardClient({
     (sessionRecord) => sessionRecord.matterId === activeMatter?.id,
   );
   const activeDocuments = activeMatter?.documents ?? [];
+  const activeDrafts = activeMatter ? (draftsByMatterId[activeMatter.id] ?? []) : [];
   const activeBilling = billing.matters.find((matter) => matter.matterId === activeMatter?.id);
   const activeUnbilledTime = activeBilling?.unbilledTime ?? [];
   const activeUnbilledExpenses = activeBilling?.unbilledExpenses ?? [];
@@ -186,6 +201,35 @@ export default function DashboardClient({
         ? "No conflicts found."
         : `${payload.results.length} potential conflict${payload.results.length === 1 ? "" : "s"} found.`,
     );
+  }
+
+  async function createDraftFromTemplate(
+    template: DraftingDashboardResponse["templates"][number],
+  ): Promise<void> {
+    if (!activeMatter) return;
+
+    setCreatingTemplateId(template.id);
+    setDraftStatus("Creating draft...");
+    const response = await fetch(`${apiBaseUrl}/api/drafts`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildDraftFromTemplatePayload({ matter: activeMatter, template })),
+    });
+
+    if (!response.ok) {
+      setDraftStatus(`Draft creation failed: ${response.status}`);
+      setCreatingTemplateId("");
+      return;
+    }
+
+    const draft = (await response.json()) as DashboardDraft;
+    setDraftsByMatterId((current) => appendDraftToMatterDrafts(current, draft));
+    setDraftStatus(`Created ${draft.title}.`);
+    setCreatingTemplateId("");
   }
 
   if (!activeMatter) {
@@ -536,6 +580,58 @@ export default function DashboardClient({
                   <p className="inline-empty">No documents are linked to this matter.</p>
                 ) : null}
               </div>
+            ) : null}
+
+            {activeSection === "drafting" ? (
+              <>
+                <div className="section-title">
+                  <h3>Templates</h3>
+                  <span>{drafting.templates.length} active</span>
+                </div>
+                <div className="activity-grid drafting-template-grid">
+                  {drafting.templates.map((template) => (
+                    <div className="activity-card draft-template-card" key={template.id}>
+                      <FilePenLine size={18} />
+                      <strong>{template.name}</strong>
+                      <span>{template.category}</span>
+                      <button
+                        className="secondary-button compact-button"
+                        disabled={creatingTemplateId.length > 0}
+                        onClick={() => void createDraftFromTemplate(template)}
+                        type="button"
+                      >
+                        {creatingTemplateId === template.id ? "Starting..." : "Start draft"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {drafting.templates.length === 0 ? (
+                  <p className="inline-empty">No active drafting templates are available.</p>
+                ) : null}
+                <p className="inline-empty">{draftStatus}</p>
+
+                <div className="section-title">
+                  <h3>Matter drafts</h3>
+                  <span>{activeDrafts.length} records</span>
+                </div>
+                <div className="party-list">
+                  {activeDrafts.map((draft) => (
+                    <div className="party-row" key={draft.id}>
+                      <span>
+                        <strong>{draft.title}</strong>
+                        <small>
+                          updated {new Date(draft.updatedAt).toLocaleDateString("en-CA")} ·{" "}
+                          {extractDraftPlainText(draft.editorJson)}
+                        </small>
+                      </span>
+                      <em>v{draft.version}</em>
+                    </div>
+                  ))}
+                  {activeDrafts.length === 0 ? (
+                    <p className="inline-empty">No drafts are linked to this matter.</p>
+                  ) : null}
+                </div>
+              </>
             ) : null}
 
             {activeSection === "signatures" ? (

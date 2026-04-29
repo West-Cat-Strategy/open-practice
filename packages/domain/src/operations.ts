@@ -316,6 +316,7 @@ export interface InboundEmailParser {
       filename: string;
       contentType?: string;
       sizeBytes?: number;
+      checksumSha256: string;
       content: Uint8Array;
     }>;
   }>;

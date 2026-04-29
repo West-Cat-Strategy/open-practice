@@ -30,6 +30,7 @@ describe("MailParserProvider", () => {
       firmId: "firm-west-legal",
       rawContent: Buffer.from(
         "MIME-Version: 1.0\n" +
+          "Message-ID: <attachment-message@example.test>\n" +
           "From: sender@example.test\n" +
           "To: matter-001@open-practice.test\n" +
           "Subject: Attachment\n" +
@@ -48,10 +49,12 @@ describe("MailParserProvider", () => {
       ),
     });
 
+    expect(result.messageId).toBe("<attachment-message@example.test>");
     expect(result.attachments).toHaveLength(1);
     expect(result.attachments[0]).toMatchObject({
       filename: "notes.txt",
       contentType: "text/plain",
+      checksumSha256: "3f82ec854f554e1e5a7fed249f8a258289bca7ea378c737c55df5d04fa777196",
     });
     expect(new TextDecoder().decode(result.attachments[0]!.content).trim()).toBe(
       "Attachment content",

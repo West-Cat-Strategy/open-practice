@@ -16,13 +16,19 @@ const draftListQuerySchema = z.object({
   userId: z.string().min(1).optional(),
 });
 
-const createDraftBodySchema = z.object({
-  matterId: z.string().min(1).optional(),
-  title: z.string().min(1),
-  editorJson: tipTapDocumentSchema,
-  renderedHtml: z.string().optional(),
-  metadata: z.record(z.string(), z.unknown()).default({}),
-});
+const createDraftBodySchema = z
+  .object({
+    matterId: z.string().min(1).optional(),
+    title: z.string().min(1),
+    editorJson: tipTapDocumentSchema.optional(),
+    templateId: z.string().min(1).optional(),
+    renderedHtml: z.string().optional(),
+    metadata: z.record(z.string(), z.unknown()).default({}),
+  })
+  .refine((body) => Boolean(body.editorJson) !== Boolean(body.templateId), {
+    message: "Provide exactly one of editorJson or templateId",
+    path: ["editorJson"],
+  });
 
 const updateDraftBodySchema = z.object({
   title: z.string().min(1).optional(),
@@ -83,6 +89,15 @@ export function registerDraftRoutes(
     const body = parseRequestPart(createDraftBodySchema, request.body, "body");
     assertAccess(request.auth, "draft", "create", body.matterId);
 
+    const template = body.templateId
+      ? (await repository.listDraftTemplates(request.auth.firmId, { activeOnly: true })).find(
+          (candidate) => candidate.id === body.templateId,
+        )
+      : undefined;
+    if (body.templateId && !template) {
+      throw Object.assign(new Error("Draft template was not found"), { statusCode: 404 });
+    }
+
     const draftId = crypto.randomUUID();
     const now = new Date().toISOString();
 
@@ -91,14 +106,14 @@ export function registerDraftRoutes(
       firmId: request.auth.firmId,
       matterId: body.matterId,
       title: body.title,
-      editorJson: body.editorJson,
+      editorJson: template?.editorJson ?? body.editorJson!,
       renderedHtml: body.renderedHtml ? sanitizeDraftHtml(body.renderedHtml) : undefined,
       version: 1,
       createdByUserId: request.auth.user.id,
       updatedByUserId: request.auth.user.id,
       createdAt: now,
       updatedAt: now,
-      metadata: body.metadata,
+      metadata: body.templateId ? { ...body.metadata, templateId: body.templateId } : body.metadata,
     };
 
     return repository.createDraft(draft);

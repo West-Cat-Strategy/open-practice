@@ -250,8 +250,24 @@ describe("matter-scoped RBAC", () => {
       expect.arrayContaining([
         expect.objectContaining({ key: "matters", enabled: true }),
         expect.objectContaining({ key: "funds", enabled: true }),
+        expect.objectContaining({ key: "drafting", enabled: true }),
         expect.objectContaining({ key: "audit", enabled: true }),
       ]),
+    );
+
+    const bookkeeper: User = {
+      id: "user-bookkeeper",
+      firmId: sampleFirm.id,
+      displayName: "Synthetic Bookkeeper",
+      email: "bookkeeper@example.test",
+      role: "billing_bookkeeper",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    };
+    expect(
+      dashboardCapabilities({ user: bookkeeper, firmId: sampleFirm.id, matterId: "matter-001" }),
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: "drafting", enabled: false })]),
     );
   });
 

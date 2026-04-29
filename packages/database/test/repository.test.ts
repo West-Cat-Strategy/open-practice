@@ -346,12 +346,14 @@ describe("repository operations foundation", () => {
       {
         id: message.id,
         matterId: "matter-001",
+        messageId: "<message-001@example.test>",
         status: "triaged",
       },
     ]);
     await expect(
       repository.getInboundEmailMessage("firm-west-legal", message.id),
     ).resolves.toMatchObject({
+      messageId: "<message-001@example.test>",
       subject: "Filed materials",
     });
     await expect(
@@ -379,6 +381,7 @@ describe("repository operations foundation", () => {
     expect(attachments).toMatchObject([
       {
         filename: "filing.pdf",
+        checksumSha256: "a".repeat(64),
       },
     ]);
     expect(attachments[0]).not.toHaveProperty("documentId");

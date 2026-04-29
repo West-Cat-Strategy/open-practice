@@ -1,9 +1,14 @@
+import { createHash } from "node:crypto";
 import { simpleParser } from "mailparser";
 import type { InboundEmailParser } from "@open-practice/domain";
 
 function normalizeAddress(value: string | undefined): string | undefined {
   const normalized = value?.trim().toLowerCase();
   return normalized || undefined;
+}
+
+function checksumSha256(content: Uint8Array): string {
+  return createHash("sha256").update(content).digest("hex");
 }
 
 export class MailParserProvider implements InboundEmailParser {
@@ -22,12 +27,16 @@ export class MailParserProvider implements InboundEmailParser {
       toAddresses,
       text: parsed.text?.trim() || undefined,
       html: typeof parsed.html === "string" ? parsed.html : undefined,
-      attachments: parsed.attachments.map((attachment) => ({
-        filename: attachment.filename?.trim() || "unnamed-attachment",
-        contentType: attachment.contentType || undefined,
-        sizeBytes: attachment.size,
-        content: new Uint8Array(attachment.content),
-      })),
+      attachments: parsed.attachments.map((attachment) => {
+        const content = new Uint8Array(attachment.content);
+        return {
+          filename: attachment.filename?.trim() || "unnamed-attachment",
+          contentType: attachment.contentType || undefined,
+          sizeBytes: attachment.size,
+          checksumSha256: checksumSha256(content),
+          content,
+        };
+      }),
     };
   }
 }

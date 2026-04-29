@@ -4,6 +4,7 @@ export type OpenPracticeRouteId =
   | "matters"
   | "billing"
   | "documents"
+  | "drafting"
   | "signatures"
   | "intake"
   | "funds"
@@ -78,6 +79,17 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     area: "workspace",
     requiresMatterContext: true,
     order: 40,
+    showInSidebar: true,
+  },
+  {
+    id: "drafting",
+    title: "Drafting",
+    shortLabel: "Drafting",
+    path: "/?section=drafting",
+    sectionKey: "drafting",
+    area: "workspace",
+    requiresMatterContext: true,
+    order: 45,
     showInSidebar: true,
   },
   {

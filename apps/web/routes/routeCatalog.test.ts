@@ -16,6 +16,7 @@ describe("Open Practice route catalog", () => {
       "funds",
       "billing",
       "documents",
+      "drafting",
       "signatures",
       "intake",
       "audit",
@@ -40,6 +41,11 @@ describe("Open Practice route catalog", () => {
       "intake",
       "queues",
     ]);
+    expect(getRoutesByArea("workspace").map((entry) => entry.id)).toEqual([
+      "matters",
+      "documents",
+      "drafting",
+    ]);
   });
 
   it("keeps queues cataloged without showing it in the sidebar order", () => {
@@ -52,6 +58,7 @@ describe("Open Practice route catalog", () => {
       "funds",
       "billing",
       "documents",
+      "drafting",
       "signatures",
       "intake",
       "audit",
@@ -61,6 +68,7 @@ describe("Open Practice route catalog", () => {
   it("matches dashboard section URLs without changing runtime behavior", () => {
     expect(matchRouteCatalogEntry("/")?.id).toBe("matters");
     expect(matchRouteCatalogEntry("/?section=documents")?.id).toBe("documents");
+    expect(matchRouteCatalogEntry("/?section=drafting")?.id).toBe("drafting");
     expect(matchRouteCatalogEntry("/?section=unknown")).toBeNull();
   });
 });

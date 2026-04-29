@@ -169,10 +169,15 @@ describe("database schema hardening", () => {
       expect.arrayContaining(["firm_id", "address", "matter_id", "enabled"]),
     );
     expect(getTableConfig(inboundEmailMessages).columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["raw_storage_key", "parsed_text", "labels", "status"]),
+      expect.arrayContaining(["message_id", "raw_storage_key", "parsed_text", "labels", "status"]),
     );
     expect(getTableConfig(inboundEmailAttachments).columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["inbound_message_id", "document_id", "storage_key"]),
+      expect.arrayContaining([
+        "inbound_message_id",
+        "document_id",
+        "storage_key",
+        "checksum_sha256",
+      ]),
     );
     expect(getTableConfig(aiTriageRecords).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([

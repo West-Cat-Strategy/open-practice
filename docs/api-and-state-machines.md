@@ -88,7 +88,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/external-uploads/status`                           | External upload capability status and S3 configuration signal.                                                  |
 | `POST /api/external-uploads/intents`                         | Auth-gated disabled scaffold for future secure external upload intents.                                         |
 | `GET /api/drafts?matterId=&userId=`                          | Matter-scoped structured drafts with TipTap/ProseMirror JSON and sanitized rendered snapshots.                  |
-| `POST /api/drafts`                                           | Create a structured draft with version `1`, matter authorization, and sanitized rendered HTML.                  |
+| `POST /api/drafts`                                           | Create a structured draft from either TipTap/ProseMirror JSON or an active draft template.                      |
 | `GET /api/drafts/:id`                                        | Fetch an authorized draft by ID.                                                                                |
 | `PUT /api/drafts/:id`                                        | Save structured draft content or rendered snapshot updates and increment the draft version.                     |
 | `DELETE /api/drafts/:id`                                     | Delete an authorized draft record.                                                                              |
@@ -139,8 +139,10 @@ for new generation paths.
 
 Draft records store structured TipTap/ProseMirror JSON and an optional sanitized rendered HTML
 snapshot. New drafts start at version `1`; each save through `PUT /api/drafts/:id` increments the
-version and records the updating user. Basic draft templates are firm-scoped seed records and can be
-filtered by category while remaining editable through future template-management workflows.
+version and records the updating user. `POST /api/drafts` accepts exactly one seed source:
+`editorJson` for direct structured content or `templateId` for an active firm-scoped template. Basic
+draft templates are firm-scoped seed records and can be filtered by category while remaining editable
+through future template-management workflows.
 
 Ledger posting has no mutable status field. A transaction is accepted only when entries are balanced,
 non-zero, one-sided debit/credit rows; all accounts, matters, and clients are valid; the idempotency
