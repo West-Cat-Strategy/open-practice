@@ -13,6 +13,7 @@ import type {
   PracticeOverview,
   QueuesResponse,
   SessionResponse,
+  ShareLinksStatusResponse,
   SetupStatusResponse,
   SignatureRequestsResponse,
 } from "./types";
@@ -208,6 +209,11 @@ export default async function Home() {
           ),
       })
     : { templates: [], draftsByMatterId: {} };
+  const shareLinksStatus = await apiGetOptional<ShareLinksStatusResponse>(
+    "/api/shares/status",
+    { createStatus: "disabled", reason: "share_routes_unavailable" },
+    headers,
+  );
 
   return (
     <DashboardClient
@@ -221,6 +227,7 @@ export default async function Home() {
       overview={overview}
       queues={queues}
       session={session}
+      shareLinksStatus={shareLinksStatus}
       signatures={signatures}
     />
   );

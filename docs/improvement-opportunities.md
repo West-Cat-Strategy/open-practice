@@ -1,6 +1,8 @@
 # Development Backlog
 
-This document captures the remaining opportunities for Open Practice, categorized by strategic phase. Use `docs/planning.md` for the durable roadmap and `docs/planning-and-progress.md` for live workboard tasks.
+This document captures candidate opportunities for Open Practice. Use `docs/planning.md` for the
+durable roadmap and `docs/planning-and-progress.md` for live workboard tasks. Items here are not
+active commitments until promoted to the live workboard.
 
 ## Phase 2: Hardening & Integration (Completed)
 
@@ -13,15 +15,18 @@ This document captures the remaining opportunities for Open Practice, categorize
 | **Inbound Triage**      | Automated parsing of inbound email into matter-scoped messages and attachments.                     |
 | **Trust Hardening**     | Added persistent DB-level client-balance concurrency guards and approval/reconciliation gates.      |
 
-## Phase 3: Operational Scale (Current)
+## Phase 3: Operational Scale Candidates
 
-| Topic                 | Action-Oriented Goal                                                                             |
-| :-------------------- | :----------------------------------------------------------------------------------------------- |
-| **Secure Shares**     | Implement time-bound, password-protected portal share links for documents and intake sessions.   |
-| **External Uploads**  | Build the client-facing upload intent flow for secure document collection from external parties. |
-| **Assistive AI**      | Integrate Ollama/LM Studio for local, private drafting assistance and matter summarization.      |
-| **Guided Intake**     | Expand the intake engine to support branching logic and multi-document automation packages.      |
-| **Specialized Flows** | Add support for nonprofit fiscal hosting and multi-jurisdiction trust ledger reporting.          |
+| Topic                        | Candidate Goal                                                                                                                           |
+| :--------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
+| **Secure Shares**            | Create token-hashed, expiring, revocable portal share links for documents and intake sessions.                                           |
+| **External Uploads**         | Build client-facing upload links with S3 completion checks, revocation, and matter-scoped audit records.                                 |
+| **Audit Coverage**           | Extend append-only audit events across signature, intake, drafting, document, billing, ledger, email, share, and upload state changes.   |
+| **Email Workflow Closure**   | Connect SMTP/outbox worker capability to API preview/send flows for signature, intake, share, upload, and meeting notices.               |
+| **Guided Intake**            | Add branching logic, reusable intake packages, and multi-document automation while keeping generated records inside Open Practice.       |
+| **Local AI Drafting Assist** | Integrate disabled-by-default Ollama/LM Studio workflows for reviewed draft assistance and matter/document summarization.                |
+| **Calendaring/Meetings**     | Add matter-scoped event CRUD, outbound iCalendar/webcal sync, invitation email, and optional configured WebRTC meeting links.            |
+| **Specialized Workflows**    | Support legal clinics, nonprofit fiscal hosts, complex trust accounting, and multi-jurisdiction reporting with cautious compliance text. |
 
 ## Implementation Guardrails
 

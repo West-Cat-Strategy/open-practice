@@ -143,6 +143,44 @@ export interface QueuesResponse {
   sections: QueueSection[];
 }
 
+export type ShareLinkPermission = "view_documents";
+
+export interface ShareLinkRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  grantedByUserId: string;
+  permissions: ShareLinkPermission[];
+  expiresAt?: string;
+  revokedAt?: string;
+  createdAt?: string;
+  tokenHash?: string;
+  requireEmailVerification?: boolean;
+  contactId?: string;
+}
+
+export interface ShareLinksResponse {
+  shares: ShareLinkRecord[];
+}
+
+export interface ShareLinksStatusResponse {
+  createStatus: "enabled" | "disabled";
+  status?: string;
+  provider?: string;
+  reason?: string;
+}
+
+export interface CreateShareLinkResponse {
+  share: ShareLinkRecord | null;
+  token?: string;
+  status?: string;
+  reason?: string;
+}
+
+export interface RevokeShareLinkResponse {
+  share: ShareLinkRecord;
+}
+
 export interface SetupStatusResponse {
   required: boolean;
   blocked: boolean;

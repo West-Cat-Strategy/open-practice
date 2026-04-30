@@ -8,6 +8,12 @@ import type {
 import { buildSidebarNavigationSections } from "../routes/routeCatalog";
 import { filterMatters } from "./dashboard-utils";
 import {
+  buildCreateShareLinkPayload,
+  describeShareLinkState,
+  formatSharePermission,
+  replaceShareLink,
+} from "./share-links-dashboard";
+import {
   appendDraftToMatterDrafts,
   buildBlankDraftPayload,
   buildDraftFromTemplatePayload,
@@ -16,7 +22,7 @@ import {
   isSameDraftDocument,
   loadDraftingDashboardData,
 } from "./drafting-dashboard";
-import type { MatterSummary } from "./types";
+import type { MatterSummary, ShareLinkRecord } from "./types";
 
 const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapability["resource"]> = {
   matters: "matter",
@@ -106,6 +112,19 @@ function draftRecord(overrides: Partial<DraftRecord> = {}): DraftRecord {
   };
 }
 
+function shareLink(overrides: Partial<ShareLinkRecord> = {}): ShareLinkRecord {
+  return {
+    id: "share-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    grantedByUserId: "user-admin",
+    permissions: ["view_documents"],
+    requireEmailVerification: true,
+    createdAt: "2026-04-29T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
 describe("dashboard client behavior", () => {
   it("filters matters by API-backed matter fields", () => {
     const matters = [
@@ -137,6 +156,7 @@ describe("dashboard client behavior", () => {
       { key: "funds", label: "Funds", enabled: true },
       { key: "billing", label: "Billing", enabled: true },
       { key: "documents", label: "Documents", enabled: true },
+      { key: "shares", label: "Shares", enabled: true },
       { key: "drafting", label: "Drafting", enabled: true },
       { key: "signatures", label: "Signatures", enabled: true },
       { key: "intake", label: "Intake", enabled: true },
@@ -163,7 +183,36 @@ describe("dashboard client behavior", () => {
       label: "Billing",
       enabled: false,
     });
+    expect(navigationSections.find((section) => section.key === "shares")).toEqual({
+      key: "shares",
+      label: "Shares",
+      enabled: true,
+    });
     expect(navigationSections.map((section) => section.key)).not.toContain("queues");
+  });
+
+  it("builds share-link payloads and replaces revoked links without leaking token hashes", () => {
+    const activeShare = shareLink();
+    const revokedShare = shareLink({
+      revokedAt: "2026-04-29T13:00:00.000Z",
+    });
+
+    expect(
+      buildCreateShareLinkPayload({
+        matterId: "matter-001",
+        permissions: ["view_documents"],
+        expiresAt: "2026-05-01",
+        requireEmailVerification: false,
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      permissions: ["view_documents"],
+      expiresAt: "2026-05-01T00:00:00.000Z",
+      requireEmailVerification: false,
+    });
+    expect(formatSharePermission("view_documents")).toBe("View documents");
+    expect(describeShareLinkState(activeShare)).toEqual({ label: "active", tone: "active" });
+    expect(replaceShareLink([activeShare], revokedShare)).toEqual([revokedShare]);
   });
 
   it("loads draft templates once and existing drafts per matter for first render", async () => {

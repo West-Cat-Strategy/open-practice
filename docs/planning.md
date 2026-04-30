@@ -29,25 +29,30 @@ Strengthened the system of record and automated high-frequency workflows.
 
 ### Phase 3: Operational Scale (Current Focus)
 
-Expand the ecosystem for secure collaboration and intelligent assistance.
+Expand the ecosystem for secure collaboration, controlled automation, and operational workflows that
+stay local-first, matter-scoped, and auditable.
 
-1.  **Secure Shares**: Secure, time-bound portal sharing for documents and intake sessions.
-2.  **External Uploads**: Guarded S3 upload intents for external parties/clients.
-3.  **Assistive AI**: Ollama/LM Studio integration for drafting assistance and document summarization.
-4.  **Specialized Workflows**: Deeper integration for legal clinics, nonprofit fiscal hosts, and complex trust accounting.
-
-5.  **Calendaring and meeting management**
-    Grow the existing `calendar_events` schema and `calendar_event` permissions into matter-scoped
-    events with attendees, reminders, rescheduling/cancellation records, audit events, and outbound
-    email invitations. Plan WebRTC meeting support behind self-hostable/private signaling plus
-    STUN/TURN configuration, disabled until explicitly configured. Meeting request emails should
-    carry both the iCalendar invite and meeting link in the same message. Recipient meeting links
-    should work without Open Practice authentication, but only through tokenized,
-    expiring/revocable capabilities scoped to the meeting room, meeting chat, and document upload
-    during that meeting. Meeting chat and uploads should become audited matter-linked records
-    without exposing broader matter, portal, document, billing, trust/funds, or firm data. Calendar
-    sync v1 should be outbound iCalendar/webcal subscription, including iOS one-click setup; two-way
-    provider sync stays deferred until a provider-auth, conflict-resolution, and privacy plan lands.
+1.  **Secure Shares**: Replace disabled share-creation scaffolding with token-hashed,
+    time-bound, revocable portal share links for documents and intake sessions.
+2.  **External Uploads**: Turn the guarded upload-intent scaffold into expiring,
+    revocable document collection links for external parties, with S3 completion checks and audit
+    records.
+3.  **Audit Coverage**: Broaden append-only audit events across signature, intake, drafting,
+    document, billing, ledger, email, share, and external-upload state changes.
+4.  **Email Workflow Closure**: Connect the local SMTP/outbox worker foundation to API preview/send
+    flows for signature, intake, share, upload, and future meeting notices.
+5.  **Guided Intake**: Expand the embedded intake engine with branching logic, reusable packages,
+    and multi-document automation while keeping generated records inside Open Practice.
+6.  **Local AI Drafting Assist**: Add disabled-by-default Ollama/LM Studio review workflows for
+    draft assistance and matter/document summarization; generated text remains non-authoritative
+    draft material.
+7.  **Calendaring and Meeting Management**: Grow the existing `calendar_events` schema and
+    `calendar_event` permissions into matter-scoped events with attendees, reminders,
+    rescheduling/cancellation records, audit events, outbound iCalendar/webcal sync, and optional
+    self-hostable WebRTC meeting links behind explicit configuration.
+8.  **Specialized Workflows**: Add focused support for legal clinics, nonprofit fiscal hosts,
+    complex trust accounting, and multi-jurisdiction trust reporting without making
+    jurisdiction-certified compliance claims.
 
 ## Reuse Guardrails
 

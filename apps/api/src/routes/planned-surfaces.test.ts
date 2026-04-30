@@ -16,8 +16,13 @@ import { registerShareRoutes } from "./shares.js";
 const servers: FastifyInstance[] = [];
 
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
+  const idByRole: Partial<Record<ProfessionalRole, string>> = {
+    owner_admin: "user-admin",
+    licensee: "user-licensee",
+    firm_member: "user-staff",
+  };
   return {
-    id: `user-${role}`,
+    id: idByRole[role] ?? `user-${role}`,
     firmId: "firm-west-legal",
     displayName: `Test ${role}`,
     email: `${role}@example.test`,
@@ -31,6 +36,7 @@ function testServer(
   input: {
     repository?: OpenPracticeRepository;
     authUser?: User;
+    jwtSecret?: string;
   } = {},
 ): FastifyInstance {
   const repository = input.repository ?? new InMemoryOpenPracticeRepository();
@@ -46,7 +52,7 @@ function testServer(
   registerExternalUploadRoutes(server, dependencies);
   registerInboundEmailRoutes(server, dependencies);
   registerJobsRoutes(server, dependencies);
-  registerShareRoutes(server, dependencies);
+  registerShareRoutes(server, { ...dependencies, jwtSecret: input.jwtSecret });
   servers.push(server);
   return server;
 }
@@ -101,8 +107,21 @@ describe("planned surface route scaffolds", () => {
     });
   });
 
-  it("lists existing share grants without inventing create behavior", async () => {
-    const response = await testServer().inject({
+  it("lists persisted share links through matter-scoped access", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createShareLink({
+      id: "share-link-planned-surface",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      tokenHash: "planned-surface-token-hash",
+      grantedByUserId: "user-admin",
+      permissions: ["view_documents"],
+      requireEmailVerification: false,
+      expiresAt: "2026-05-01T00:00:00.000Z",
+      createdAt: "2026-04-28T00:00:00.000Z",
+    });
+
+    const response = await testServer({ repository }).inject({
       method: "GET",
       url: "/api/shares?matterId=matter-001",
     });
@@ -111,13 +130,7 @@ describe("planned surface route scaffolds", () => {
     expect(response.json()).toMatchObject({
       shares: [expect.objectContaining({ matterId: "matter-001" })],
     });
-    expect(
-      (await testServer().inject({ method: "POST", url: "/api/shares", payload: {} })).json(),
-    ).toMatchObject({
-      status: "disabled",
-      reason: "repository_methods_absent",
-      share: null,
-    });
+    expect(response.json().shares[0]).not.toHaveProperty("tokenHash");
   });
 
   it("keeps planned actions auth-gated before returning disabled scaffolding", async () => {

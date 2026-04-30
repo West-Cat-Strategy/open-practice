@@ -255,6 +255,52 @@ describe("repository operations foundation", () => {
     ).resolves.toMatchObject([{ id: "job-email-1", errorMessage: "SMTP unavailable" }]);
   });
 
+  it("persists share links and access logs in memory", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const share = await repository.createShareLink({
+      id: "share-link-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      tokenHash: "share-token-hash-001",
+      grantedByUserId: "user-admin",
+      permissions: ["view_documents"],
+      requireEmailVerification: false,
+      expiresAt: "2026-05-01T00:00:00.000Z",
+      createdAt: now,
+    });
+
+    await expect(repository.listShareLinks("firm-west-legal")).resolves.toMatchObject([
+      { id: share.id, matterId: "matter-001" },
+    ]);
+    await expect(repository.getShareLinkByTokenHash("share-token-hash-001")).resolves.toMatchObject(
+      { id: share.id },
+    );
+
+    await repository.createAccessLog({
+      id: "access-log-001",
+      firmId: "firm-west-legal",
+      shareLinkId: share.id,
+      resourceType: "share_link",
+      resourceId: share.id,
+      action: "view",
+      occurredAt: now,
+      ipAddress: "127.0.0.1",
+      userAgent: "vitest",
+      metadata: { outcome: "granted" },
+    });
+    await expect(
+      repository.listAccessLogs("firm-west-legal", { shareLinkId: share.id }),
+    ).resolves.toMatchObject([{ resourceId: share.id, metadata: { outcome: "granted" } }]);
+
+    await expect(
+      repository.revokeShareLink({
+        firmId: "firm-west-legal",
+        id: share.id,
+        revokedAt: "2026-04-25T13:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({ revokedAt: "2026-04-25T13:00:00.000Z" });
+  });
+
   it("guards trust approval and reconciliation persistence", async () => {
     const repository = new InMemoryOpenPracticeRepository();
 

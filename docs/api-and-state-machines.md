@@ -8,9 +8,10 @@ This document records the current API and lifecycle contracts. Keep it aligned w
 ## API Surface
 
 All `/api/*` routes require authentication except first-run setup status/completion,
-`POST /api/auth/login`, and `POST /api/auth/password-setup`. Production accepts embedded session
-cookies or `x-open-practice-session` tokens backed by PostgreSQL session records. Development may
-use `x-open-practice-user-id`, `x-open-practice-firm-id`, and bearer JWT helpers. Production rejects
+`POST /api/auth/login`, `POST /api/auth/password-setup`, and token-scoped public portal routes such
+as `GET /api/portal/shares/:token`. Production accepts embedded session cookies or
+`x-open-practice-session` tokens backed by PostgreSQL session records. Development may use
+`x-open-practice-user-id`, `x-open-practice-firm-id`, and bearer JWT helpers. Production rejects
 unauthenticated requests, development headers, and bearer JWTs.
 
 The billing lane exposes operational APIs for time, expenses, invoices, manual payments, and
@@ -82,9 +83,11 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/document-processing/status`                        | OCR, transcription, media, and AI provider status from firm provider settings.                                  |
 | `POST /api/document-processing/documents/:id/queue`          | Auth-gated disabled scaffold for future document processing jobs.                                               |
 | `GET /api/auth/extensions`                                   | Embedded-auth extension status for local password, OIDC/SAML placeholders, and MFA policy scaffolding.          |
-| `GET /api/shares/status`                                     | Share-link capability status, currently backed by existing portal grants for reads.                             |
-| `GET /api/shares?matterId=`                                  | Portal-share grant listing with matter-scoped authorization.                                                    |
-| `POST /api/shares`                                           | Auth-gated disabled scaffold for future secure share-link creation.                                             |
+| `GET /api/shares/status`                                     | Share-link capability status and create enablement based on token-signing configuration.                        |
+| `GET /api/shares?matterId=`                                  | Persisted share-link listing with matter-scoped authorization and no token hashes in the response.              |
+| `POST /api/shares`                                           | Creates an expiring token-hashed share link and returns the raw token only once.                                |
+| `POST /api/shares/:id/revoke`                                | Revokes an existing matter-scoped share link and records audit evidence.                                        |
+| `GET /api/portal/shares/:token`                              | Public token-scoped read of eligible shared document metadata with access logging.                              |
 | `GET /api/external-uploads/status`                           | External upload capability status and S3 configuration signal.                                                  |
 | `POST /api/external-uploads/intents`                         | Auth-gated disabled scaffold for future secure external upload intents.                                         |
 | `GET /api/drafts?matterId=&userId=`                          | Matter-scoped structured drafts with TipTap/ProseMirror JSON and sanitized rendered snapshots.                  |
@@ -123,6 +126,15 @@ the upload intent. Checksum mismatch moves upload to `rejected`, checksum to `mi
 `pending`, `queued`, `passed`, `failed`, or `not_required` value. Portal sharing remains blocked
 unless upload is verified, checksum is verified, scan has passed or is not required, and legal hold is
 clear.
+
+Secure share links store only HMAC token hashes. Authenticated v1 creation accepts document-view
+shares only, requires matter-scoped `share_link:create` access, a future expiry, and at least one
+shareable document. The create response returns the raw token once; list and revoke responses never
+expose token hashes. Public share reads resolve the supplied token to its hash, reject missing,
+revoked, expired, or email-verification-required links, filter documents through the same
+upload/checksum/scan/legal-hold/supersession gates as portal grants, and record access-log outcomes
+for granted and denied reads. Upload, message, signature, and email-verification share flows remain
+future scoped until those public flows are implemented.
 
 Signature requests use provider statuses `draft`, `pending_provider_submission`, `sent`, `viewed`,
 `completed`, `declined`, and `provider_error`. Creating a request records the provider submission,
@@ -200,9 +212,11 @@ and the matching `x-open-practice-setup-key` header. Non-production setup withou
 is limited to local/private network access. Signature and intake providers default to embedded
 implementations. S3 upload signing is enabled only when endpoint and credentials are configured.
 Redis/BullMQ queues, firm provider settings, job lifecycle records, and disabled-by-default API
-scaffolds are implemented for email, AI triage, OCR, transcription, media, auth extensions, secure
-shares, and external uploads. Inbound email parsing is implemented for raw messages already stored
-in object storage; provider webhooks and automatic document promotion remain deferred. Concrete
+scaffolds are implemented for email, AI triage, OCR, transcription, media, auth extensions, and
+external uploads. Secure share-link create/list/revoke plus token-scoped public document metadata
+reads are implemented with token hashing, matter-scoped authorization, audit events, and access
+logs. Inbound email parsing is implemented for raw messages already stored in object storage;
+provider webhooks and automatic document promotion remain deferred. Concrete
 Postal, Tesseract, Whisper/FFmpeg, Ollama, LM Studio, SimpleWebAuthn, and TipTap behavior still
 requires explicit setup, provider adapters, review states, and deployment profiles. `DOCUSEAL_*`,
 `DOCASSEMBLE_*`, and `OIDC_*` variables are deprecated and rejected in production. There is no live

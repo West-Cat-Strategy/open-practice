@@ -4,6 +4,7 @@ export type OpenPracticeRouteId =
   | "matters"
   | "billing"
   | "documents"
+  | "shares"
   | "drafting"
   | "signatures"
   | "intake"
@@ -30,8 +31,10 @@ export interface RouteCatalogSectionCapability {
   enabled: boolean;
 }
 
+export type OpenPracticeSidebarSectionKey = DashboardSectionKey | "billing" | "shares";
+
 export interface OpenPracticeSidebarNavigationSection {
-  key: DashboardSectionKey | "billing";
+  key: OpenPracticeSidebarSectionKey;
   label: string;
   enabled: boolean;
 }
@@ -79,6 +82,16 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     area: "workspace",
     requiresMatterContext: true,
     order: 40,
+    showInSidebar: true,
+  },
+  {
+    id: "shares",
+    title: "Share Links",
+    shortLabel: "Shares",
+    path: "/?section=shares",
+    area: "operations",
+    requiresMatterContext: true,
+    order: 42,
     showInSidebar: true,
   },
   {
@@ -171,7 +184,15 @@ export function buildSidebarNavigationSections(input: {
   const hasBillingCapability = input.capabilitySections.some(
     (section) => section.key === "billing",
   );
-  const displayCandidates = input.capabilitySections.map((section) => {
+  const documentsCapability = input.capabilitySections.find(
+    (section) => section.key === "documents",
+  );
+  const displayCandidates: Array<{
+    key: OpenPracticeSidebarSectionKey;
+    label: string;
+    enabled: boolean;
+    order: number;
+  }> = input.capabilitySections.map((section) => {
     const entry = sidebarEntryBySectionKey.get(section.key);
     if (!entry) {
       throw new Error(`Displayed dashboard section "${section.key}" is missing a catalog entry.`);
@@ -195,6 +216,13 @@ export function buildSidebarNavigationSections(input: {
       });
     }
   }
+  const shareLinksEntry = getRouteCatalogEntry("shares");
+  displayCandidates.push({
+    key: "shares",
+    label: shareLinksEntry.shortLabel,
+    enabled: documentsCapability?.enabled ?? false,
+    order: shareLinksEntry.order,
+  });
 
   return displayCandidates
     .sort((left, right) => left.order - right.order)

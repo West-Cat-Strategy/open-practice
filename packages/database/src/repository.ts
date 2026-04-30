@@ -15,6 +15,7 @@ import {
   verifyAuditChain,
   type ActivityTimelineEntry,
   type AuditEvent,
+  type NewAuditEvent,
   type Contact,
   type DocumentRecord,
   type ExpenseEntry,
@@ -46,6 +47,8 @@ import {
   type InboundEmailAddressRecord,
   type InboundEmailAttachmentRecord,
   type InboundEmailMessageRecord,
+  type ShareLinkRecord,
+  type AccessLogRecord,
 } from "@open-practice/domain";
 import {
   sampleAuditEvents,
@@ -269,6 +272,7 @@ export interface OpenPracticeRepository {
   getOverview(firmId: string): Promise<PracticeOverview>;
   listMattersForUser(user: User): Promise<MatterSummary[]>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
+  listMatterDocuments(firmId: string, matterId: string): Promise<DocumentRecord[]>;
   runConflictCheck(input: {
     firmId: string;
     actorId: string;
@@ -293,7 +297,21 @@ export interface OpenPracticeRepository {
   }): Promise<void>;
   postLedgerTransaction(transaction: LedgerTransaction): Promise<PostedLedgerTransaction>;
   listAuditEvents(firmId: string): Promise<{ events: AuditEvent[]; valid: boolean }>;
+  appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent>;
   listPortalGrants(firmId: string): Promise<PortalGrant[]>;
+  listShareLinks(firmId: string, options?: { matterId?: string }): Promise<ShareLinkRecord[]>;
+  createShareLink(link: ShareLinkRecord): Promise<ShareLinkRecord>;
+  getShareLinkByTokenHash(tokenHash: string): Promise<ShareLinkRecord | undefined>;
+  revokeShareLink(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<ShareLinkRecord | undefined>;
+  createAccessLog(log: AccessLogRecord): Promise<AccessLogRecord>;
+  listAccessLogs(
+    firmId: string,
+    options?: { shareLinkId?: string; resourceType?: string; resourceId?: string },
+  ): Promise<AccessLogRecord[]>;
   createDocumentUploadIntent(input: DocumentUploadIntent): Promise<DocumentRecord>;
   completeDocumentUpload(input: {
     firmId: string;
@@ -494,6 +512,38 @@ function mapAuthSessionRow(row: typeof schema.authSessions.$inferSelect): AuthSe
     expiresAt: row.expiresAt.toISOString(),
     revokedAt: dateToIso(row.revokedAt),
     lastSeenAt: dateToIso(row.lastSeenAt),
+  };
+}
+
+function mapShareLinkRow(row: typeof schema.shareLinks.$inferSelect): ShareLinkRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    tokenHash: row.tokenHash,
+    grantedByUserId: row.grantedByUserId,
+    permissions: row.permissions as ShareLinkRecord["permissions"],
+    requireEmailVerification: row.requireEmailVerification,
+    expiresAt: dateToIso(row.expiresAt),
+    revokedAt: dateToIso(row.revokedAt),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function mapAccessLogRow(row: typeof schema.accessLogs.$inferSelect): AccessLogRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    actorId: row.actorId ?? undefined,
+    shareLinkId: row.shareLinkId ?? undefined,
+    externalUploadLinkId: row.externalUploadLinkId ?? undefined,
+    resourceType: row.resourceType,
+    resourceId: row.resourceId,
+    action: row.action as AccessLogRecord["action"],
+    occurredAt: row.occurredAt.toISOString(),
+    ipAddress: row.ipAddress ?? undefined,
+    userAgent: row.userAgent ?? undefined,
+    metadata: row.metadata as Record<string, unknown>,
   };
 }
 
@@ -1025,6 +1075,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private inboundEmailAddresses: InboundEmailAddressRecord[] = [];
   private inboundEmailMessages: InboundEmailMessageRecord[] = [];
   private inboundEmailAttachments: InboundEmailAttachmentRecord[] = [];
+  private shareLinks: ShareLinkRecord[] = [];
+  private accessLogs: AccessLogRecord[] = [];
 
   constructor(options: { seedSampleData?: boolean; firms?: Firm[]; users?: User[] } = {}) {
     const seeded = options.seedSampleData ?? true;
@@ -1427,6 +1479,14 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     );
   }
 
+  async listMatterDocuments(firmId: string, matterId: string): Promise<DocumentRecord[]> {
+    return clone(
+      this.documents.filter(
+        (document) => document.firmId === firmId && document.matterId === matterId,
+      ),
+    );
+  }
+
   async runConflictCheck(input: {
     firmId: string;
     actorId: string;
@@ -1539,8 +1599,81 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return { events: clone(events), valid: verifyAuditChain(events) };
   }
 
+  async appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent> {
+    const firmEvents = this.auditEvents.filter((candidate) => candidate.firmId === event.firmId);
+    const appended = appendAuditEvent(firmEvents.at(-1), event);
+    this.auditEvents = [...this.auditEvents, appended];
+    return clone(appended);
+  }
+
   async listPortalGrants(firmId: string): Promise<PortalGrant[]> {
     return clone(this.portalGrants.filter((grant) => grant.firmId === firmId));
+  }
+
+  async listShareLinks(
+    firmId: string,
+    options: { matterId?: string } = {},
+  ): Promise<ShareLinkRecord[]> {
+    return clone(
+      this.shareLinks.filter(
+        (link) =>
+          link.firmId === firmId && (!options.matterId || link.matterId === options.matterId),
+      ),
+    );
+  }
+
+  async createShareLink(link: ShareLinkRecord): Promise<ShareLinkRecord> {
+    if (this.shareLinks.some((existing) => existing.tokenHash === link.tokenHash)) {
+      throw new Error("Share link token hash already exists");
+    }
+    const matter = this.matters.find(
+      (candidate) => candidate.firmId === link.firmId && candidate.id === link.matterId,
+    );
+    if (!matter) throw new Error(`Unknown share link matter ${link.matterId}`);
+    const user = this.users.find(
+      (candidate) => candidate.firmId === link.firmId && candidate.id === link.grantedByUserId,
+    );
+    if (!user) throw new Error(`Unknown share link grantor ${link.grantedByUserId}`);
+
+    this.shareLinks = [...this.shareLinks, clone(link)];
+    return clone(link);
+  }
+
+  async getShareLinkByTokenHash(tokenHash: string): Promise<ShareLinkRecord | undefined> {
+    return clone(this.shareLinks.find((link) => link.tokenHash === tokenHash));
+  }
+
+  async revokeShareLink(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<ShareLinkRecord | undefined> {
+    const link = this.shareLinks.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+    );
+    if (!link) return undefined;
+    link.revokedAt = input.revokedAt;
+    return clone(link);
+  }
+
+  async createAccessLog(log: AccessLogRecord): Promise<AccessLogRecord> {
+    this.accessLogs = [...this.accessLogs, clone(log)];
+    return clone(log);
+  }
+
+  async listAccessLogs(
+    firmId: string,
+    options: { shareLinkId?: string; resourceType?: string; resourceId?: string } = {},
+  ): Promise<AccessLogRecord[]> {
+    return clone(
+      this.accessLogs.filter(
+        (log) =>
+          log.firmId === firmId &&
+          (!options.shareLinkId || log.shareLinkId === options.shareLinkId) &&
+          (!options.resourceType || log.resourceType === options.resourceType) &&
+          (!options.resourceId || log.resourceId === options.resourceId),
+      ),
+    );
   }
 
   async createDocumentUploadIntent(input: DocumentUploadIntent): Promise<DocumentRecord> {
@@ -2808,6 +2941,14 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return row ? mapDocumentRow(row) : undefined;
   }
 
+  async listMatterDocuments(firmId: string, matterId: string): Promise<DocumentRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.documents)
+      .where(and(eq(schema.documents.firmId, firmId), eq(schema.documents.matterId, matterId)));
+    return rows.map(mapDocumentRow);
+  }
+
   async runConflictCheck(input: {
     firmId: string;
     actorId: string;
@@ -3106,6 +3247,16 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return { events, valid: verifyAuditChain(events) };
   }
 
+  async appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent> {
+    const previous = (await this.listAuditEvents(event.firmId)).events.at(-1);
+    const appended = appendAuditEvent(previous, event);
+    await this.db.insert(schema.auditEvents).values({
+      ...appended,
+      occurredAt: new Date(appended.occurredAt),
+    });
+    return appended;
+  }
+
   async listPortalGrants(firmId: string): Promise<PortalGrant[]> {
     const rows = await this.db
       .select()
@@ -3121,6 +3272,92 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       expiresAt: dateToIso(row.expiresAt),
       revokedAt: dateToIso(row.revokedAt),
     }));
+  }
+
+  async listShareLinks(
+    firmId: string,
+    options: { matterId?: string } = {},
+  ): Promise<ShareLinkRecord[]> {
+    const filters = [eq(schema.shareLinks.firmId, firmId)];
+    if (options.matterId) filters.push(eq(schema.shareLinks.matterId, options.matterId));
+    const rows = await this.db
+      .select()
+      .from(schema.shareLinks)
+      .where(and(...filters))
+      .orderBy(desc(schema.shareLinks.createdAt));
+    return rows.map(mapShareLinkRow);
+  }
+
+  async createShareLink(link: ShareLinkRecord): Promise<ShareLinkRecord> {
+    await this.db.insert(schema.shareLinks).values({
+      id: link.id,
+      firmId: link.firmId,
+      matterId: link.matterId,
+      tokenHash: link.tokenHash,
+      grantedByUserId: link.grantedByUserId,
+      permissions: link.permissions,
+      requireEmailVerification: link.requireEmailVerification,
+      expiresAt: link.expiresAt ? new Date(link.expiresAt) : null,
+      revokedAt: link.revokedAt ? new Date(link.revokedAt) : null,
+      createdAt: new Date(link.createdAt),
+    });
+    return clone(link);
+  }
+
+  async getShareLinkByTokenHash(tokenHash: string): Promise<ShareLinkRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.shareLinks)
+      .where(eq(schema.shareLinks.tokenHash, tokenHash));
+    return row ? mapShareLinkRow(row) : undefined;
+  }
+
+  async revokeShareLink(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<ShareLinkRecord | undefined> {
+    const [row] = await this.db
+      .update(schema.shareLinks)
+      .set({ revokedAt: new Date(input.revokedAt) })
+      .where(and(eq(schema.shareLinks.firmId, input.firmId), eq(schema.shareLinks.id, input.id)))
+      .returning();
+    return row ? mapShareLinkRow(row) : undefined;
+  }
+
+  async createAccessLog(log: AccessLogRecord): Promise<AccessLogRecord> {
+    await this.db.insert(schema.accessLogs).values({
+      id: log.id,
+      firmId: log.firmId,
+      actorId: log.actorId,
+      shareLinkId: log.shareLinkId,
+      externalUploadLinkId: log.externalUploadLinkId,
+      resourceType: log.resourceType,
+      resourceId: log.resourceId,
+      action: log.action,
+      occurredAt: new Date(log.occurredAt),
+      ipAddress: log.ipAddress,
+      userAgent: log.userAgent,
+      metadata: log.metadata,
+    });
+    return clone(log);
+  }
+
+  async listAccessLogs(
+    firmId: string,
+    options: { shareLinkId?: string; resourceType?: string; resourceId?: string } = {},
+  ): Promise<AccessLogRecord[]> {
+    const filters = [eq(schema.accessLogs.firmId, firmId)];
+    if (options.shareLinkId) filters.push(eq(schema.accessLogs.shareLinkId, options.shareLinkId));
+    if (options.resourceType)
+      filters.push(eq(schema.accessLogs.resourceType, options.resourceType));
+    if (options.resourceId) filters.push(eq(schema.accessLogs.resourceId, options.resourceId));
+    const rows = await this.db
+      .select()
+      .from(schema.accessLogs)
+      .where(and(...filters))
+      .orderBy(desc(schema.accessLogs.occurredAt));
+    return rows.map(mapAccessLogRow);
   }
 
   async createDocumentUploadIntent(input: DocumentUploadIntent): Promise<DocumentRecord> {
