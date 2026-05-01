@@ -86,8 +86,9 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/email/status`                                           | SMTP provider status from firm provider settings.                                                                                          |
 | `POST /api/email/previews`                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                                                        |
 | `POST /api/mail/outbox`                                           | Create a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.                              |
-| `GET /api/inbound-email/status`                                   | Inbound email provider status from firm provider settings.                                                                                 |
+| `GET /api/inbound-email/status`                                   | Inbound email provider status plus configured firm inbound addresses.                                                                      |
 | `GET /api/inbound-email/messages?matterId=`                       | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                                                      |
+| `GET /api/inbound-email/messages/:id`                             | Matter-scoped parsed inbound email detail with inbound-email attachment records.                                                           |
 | `GET /api/document-processing/status`                             | OCR, transcription, media, and AI provider status from firm provider settings.                                                             |
 | `POST /api/document-processing/documents/:id/queue`               | Auth-gated disabled scaffold for future document processing jobs.                                                                          |
 | `GET /api/auth/extensions`                                        | Embedded-auth extension status for local password, OIDC/SAML placeholders, and MFA policy scaffolding.                                     |
@@ -119,8 +120,9 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 
 These routes remain deferred until their persistence, authorization, and worker implementations land
 behind the scaffolded provider settings and job lifecycle records. Inbound email parsing now
-persists parsed messages and attachment records, but webhook ingestion, provider delivery setup, and
-automatic document promotion remain deferred.
+persists parsed messages and attachment records, and inbound status exposes configured firm
+recipient addresses; webhook ingestion, provider delivery setup, and automatic document promotion
+remain deferred.
 
 | Route                                             | Purpose                                                                                         |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -309,10 +311,11 @@ Secure share-link create/list/revoke plus token-scoped public document metadata 
 implemented with token hashing, matter-scoped authorization, audit events, and access logs. External
 upload link create/list/revoke plus token-scoped S3 intent and completion flows are implemented with
 token hashing, matter-scoped authorization, S3-disabled fallbacks, audit events, and access logs.
-Inbound email parsing is implemented for raw messages already stored in object storage; provider
-webhooks and automatic document promotion remain deferred. Concrete Postal, Tesseract,
-Whisper/FFmpeg, live Ollama/LM Studio adapters, SimpleWebAuthn, and TipTap behavior still requires explicit
-setup, provider adapters, review states, and deployment profiles. `DOCUSEAL_*`, `DOCASSEMBLE_*`, and
-`OIDC_*` variables are deprecated and rejected in production. There is no live payment processor
-configuration. Future processor keys, webhooks, and settlement imports should be introduced behind
-explicit deployment profiles and reconciliation controls.
+Inbound email parsing is implemented for raw messages already stored in object storage, with
+matter-scoped message detail and attachment-record reads; provider webhooks and automatic document
+promotion remain deferred. Concrete Postal, Tesseract, Whisper/FFmpeg, live Ollama/LM Studio
+adapters, SimpleWebAuthn, and TipTap behavior still requires explicit setup, provider adapters,
+review states, and deployment profiles. `DOCUSEAL_*`, `DOCASSEMBLE_*`, and `OIDC_*` variables are
+deprecated and rejected in production. There is no live payment processor configuration. Future
+processor keys, webhooks, and settlement imports should be introduced behind explicit deployment
+profiles and reconciliation controls.

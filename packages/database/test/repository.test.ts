@@ -768,6 +768,46 @@ describe("repository operations foundation", () => {
 
   it("stores parsed inbound email messages and attachments", async () => {
     const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailAddress({
+      id: "inbound-address-001",
+      firmId: "firm-west-legal",
+      address: "matter-001@open-practice.test",
+      matterId: "matter-001",
+      enabled: true,
+      createdAt: now,
+    });
+    await repository.createInboundEmailAddress({
+      id: "inbound-address-disabled",
+      firmId: "firm-west-legal",
+      address: "archive@open-practice.test",
+      enabled: false,
+      createdAt: now,
+    });
+
+    await expect(repository.listInboundEmailAddresses("firm-west-legal")).resolves.toMatchObject([
+      {
+        id: "inbound-address-001",
+        address: "matter-001@open-practice.test",
+        matterId: "matter-001",
+        enabled: true,
+      },
+      {
+        id: "inbound-address-disabled",
+        address: "archive@open-practice.test",
+        enabled: false,
+      },
+    ]);
+    await expect(
+      repository.createInboundEmailAddress({
+        id: "inbound-address-duplicate",
+        firmId: "firm-west-legal",
+        address: "MATTER-001@open-practice.test",
+        matterId: "matter-001",
+        enabled: true,
+        createdAt: now,
+      }),
+    ).rejects.toThrow(/already exists/);
+
     const message = await repository.createInboundEmailMessage({
       id: "inbound-message-001",
       firmId: "firm-west-legal",
