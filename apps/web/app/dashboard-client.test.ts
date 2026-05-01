@@ -694,6 +694,22 @@ describe("dashboard client behavior", () => {
       }),
     ).toBe("upload: intent created");
     expect(
+      summarizeIntakeItemAction({
+        id: "action-signature-001",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        intakeSessionId: "intake-session-001",
+        formLinkId: "intake-form-link-001",
+        itemId: "client-attestation",
+        kind: "signature",
+        status: "completed",
+        documentId: "doc-001",
+        signatureRequestId: "signature-request-001",
+        evidence: {},
+        createdAt: "2026-04-29T12:00:00.000Z",
+      }),
+    ).toBe("signature request: completed");
+    expect(
       currentProposalValue(
         proposal,
         matter({

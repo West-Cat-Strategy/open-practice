@@ -522,7 +522,7 @@ function SignatureItemEditor({
   return (
     <>
       <label className="form-field">
-        <span>Attestation label</span>
+        <span>Signature label</span>
         <input
           onChange={(event) =>
             updateItem((draft) => {
@@ -530,6 +530,19 @@ function SignatureItemEditor({
             })
           }
           value={item.label}
+        />
+      </label>
+      <label className="form-field">
+        <span>Document ID to sign</span>
+        <input
+          onChange={(event) =>
+            updateItem((draft) => {
+              if (draft.kind === "signature") {
+                draft.documentId = event.target.value.trim() || undefined;
+              }
+            })
+          }
+          value={item.documentId ?? ""}
         />
       </label>
       <label className="form-field">

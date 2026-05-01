@@ -333,6 +333,7 @@ export interface OpenPracticeRepository {
   listRecoveryCodes(firmId: string, userId: string): Promise<RecoveryCodeRecord[]>;
   getOverview(firmId: string): Promise<PracticeOverview>;
   listMattersForUser(user: User): Promise<MatterSummary[]>;
+  getContact(firmId: string, contactId: string): Promise<Contact | undefined>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
   listMatterDocuments(firmId: string, matterId: string): Promise<DocumentRecord[]>;
   listCalendarEvents(
@@ -947,6 +948,18 @@ function matterTrustBalance(
 
 function userHasFirmWideLedgerAccess(user: User): boolean {
   return ["owner_admin", "auditor", "billing_bookkeeper"].includes(user.role);
+}
+
+function mapContactRow(row: typeof schema.contacts.$inferSelect): Contact {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    kind: row.kind,
+    displayName: row.displayName,
+    aliases: row.aliases,
+    identifiers: row.identifiers as Contact["identifiers"],
+    notes: row.notes ?? undefined,
+  };
 }
 
 function mapDocumentRow(row: typeof schema.documents.$inferSelect): DocumentRecord {
@@ -2082,6 +2095,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           ),
         };
       });
+  }
+
+  async getContact(firmId: string, contactId: string): Promise<Contact | undefined> {
+    return clone(
+      this.contacts.find((contact) => contact.firmId === firmId && contact.id === contactId),
+    );
   }
 
   async getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined> {
@@ -4145,6 +4164,14 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     });
   }
 
+  async getContact(firmId: string, contactId: string): Promise<Contact | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.contacts)
+      .where(and(eq(schema.contacts.firmId, firmId), eq(schema.contacts.id, contactId)));
+    return row ? mapContactRow(row) : undefined;
+  }
+
   async getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined> {
     const [row] = await this.db
       .select()
@@ -5570,15 +5597,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .select()
       .from(schema.contacts)
       .where(eq(schema.contacts.firmId, firmId));
-    return rows.map((row) => ({
-      id: row.id,
-      firmId: row.firmId,
-      kind: row.kind,
-      displayName: row.displayName,
-      aliases: row.aliases,
-      identifiers: row.identifiers as Contact["identifiers"],
-      notes: row.notes ?? undefined,
-    }));
+    return rows.map(mapContactRow);
   }
 
   private async listMatterParties(firmId: string): Promise<MatterParty[]> {

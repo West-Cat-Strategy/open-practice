@@ -175,7 +175,12 @@ export function buildVariableMapping(
 }
 
 export function summarizeIntakeItemAction(action: IntakeFormItemActionRecord): string {
-  const label = action.kind === "upload" ? "upload" : "signature";
+  const label =
+    action.kind === "upload"
+      ? "upload"
+      : action.signatureRequestId
+        ? "signature request"
+        : "signature";
   return `${label}: ${action.status.replaceAll("_", " ")}`;
 }
 

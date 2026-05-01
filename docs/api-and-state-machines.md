@@ -63,7 +63,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/portal/intake-forms/:token/submit`                               | Public answer submission that gates required items, creates an answer snapshot, and creates pending proposals only.                        |
 | `POST /api/portal/intake-forms/:token/items/:itemId/uploads`                | Public token-scoped S3 upload intent for an intake upload item, including accepted MIME-type validation.                                   |
 | `POST /api/portal/intake-forms/:token/items/:itemId/documents/:id/complete` | Public checksum completion for an intake upload item document.                                                                             |
-| `POST /api/portal/intake-forms/:token/items/:itemId/signature`              | Public embedded attestation/signature item event with consent and request evidence capture.                                                |
+| `POST /api/portal/intake-forms/:token/items/:itemId/signature`              | Public embedded attestation fallback or document-backed signature request creation for an intake signature item.                           |
 | `POST /api/ledger/transactions/:id/approvals`                               | Maker-checker approval decision for a trust transaction boundary.                                                                          |
 | `POST /api/ledger/reconciliations`                                          | Trust-account reconciliation record with matched/exception status.                                                                         |
 | `GET /api/queues`                                                           | Permission-aware operational queues for matters, documents, signatures, intake, ledger, and audit review.                                  |
@@ -210,6 +210,14 @@ against out-of-order non-terminal events. Embedded signature events capture sign
 actor ID, IP, user-agent, timestamps, and caller-provided evidence. Legacy `docuseal` requests
 remain historical records and are rejected by embedded event routes.
 
+V2 intake form `signature` items remain attestation-only when no `documentId` is configured. When
+staff configure a `documentId`, the public token-scoped signature item creates an embedded
+signature request for that existing matter document, derives the signer from the intake session's
+client contact email, records the initial and terminal signature events, and links the
+`intake_form_item_actions` row to the resulting signature request. Missing or cross-matter
+documents, missing client contacts, and contacts without an email reject before any signature
+request or item action is created.
+
 Intake sessions use `created`, `in_progress`, `ready_to_generate`, `completed`, and
 `provider_error`. The API creates embedded sessions from embedded templates. Embedded template
 records store `definitionVersion` plus provider-neutral JSON definitions with questions, branch
@@ -227,9 +235,9 @@ available but no recipient-specific email action has been requested. When SMTP i
 intake session creation and generated-document creation queue staff-facing outbox notices to the
 authenticated user. Legacy `docassemble` templates/sessions are rejected for new generation paths.
 
-Intake audit events record only IDs, counts, status, provider, and package/document references.
-Raw answers, evidence bodies, storage keys, checksums, and generated content stay out of audit
-metadata.
+Intake audit events record only IDs, counts, status, provider, package/document references, and
+signature request references. Raw answers, signer details, evidence bodies, storage keys,
+checksums, and generated content stay out of audit metadata.
 
 Draft records store structured TipTap/ProseMirror JSON and an optional sanitized rendered HTML
 snapshot. New drafts start at version `1`; each save through `PUT /api/drafts/:id` increments the

@@ -377,6 +377,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     repository: options.repository,
     s3: options.s3,
     jwtSecret: options.jwtSecret,
+    signatureProvider: options.signatureProvider ?? new EmbeddedSignatureProvider(),
     emailJobQueue: options.emailJobQueue,
     publicWebBaseUrl: options.publicWebBaseUrl,
   });

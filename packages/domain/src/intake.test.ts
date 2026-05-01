@@ -183,7 +183,7 @@ describe("embedded intake templates", () => {
     ).toEqual(["hidden-required-item"]);
   });
 
-  it("rejects invalid structured upload and embedded signature definitions", () => {
+  it("rejects invalid structured uploads and allows document-backed signature definitions", () => {
     const invalidUpload: EmbeddedIntakeTemplateDefinition = {
       schemaVersion: 2,
       questions: [],
@@ -204,7 +204,7 @@ describe("embedded intake templates", () => {
         },
       ],
     };
-    const attachedSignature: EmbeddedIntakeTemplateDefinition = {
+    const documentBackedSignature: EmbeddedIntakeTemplateDefinition = {
       schemaVersion: 2,
       questions: [],
       branchRules: [],
@@ -229,8 +229,8 @@ describe("embedded intake templates", () => {
     expect(() => validateEmbeddedIntakeTemplateDefinition(invalidUpload)).toThrow(
       "Upload item bad-upload has an empty accepted file type",
     );
-    expect(() => validateEmbeddedIntakeTemplateDefinition(attachedSignature)).toThrow(
-      "Signature item attached-signature must use embedded attestation evidence",
+    expect(validateEmbeddedIntakeTemplateDefinition(documentBackedSignature)).toBe(
+      documentBackedSignature,
     );
   });
 
