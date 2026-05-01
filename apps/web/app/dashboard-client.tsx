@@ -1299,12 +1299,12 @@ export default function DashboardClient({
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell dashboard-shell legal-ops-shell" aria-labelledby="dashboard-title">
       <a className="skip-link" href="#matter-workspace">
         Skip to matter workspace
       </a>
-      <aside className="sidebar" aria-label="Primary">
-        <div className="brand">
+      <aside className="sidebar dashboard-sidebar" aria-label="Primary">
+        <div className="brand dashboard-brand">
           <span className="brand-mark">OP</span>
           <div>
             <strong>Open Practice</strong>
@@ -1342,26 +1342,26 @@ export default function DashboardClient({
           })}
         </nav>
 
-        <section className="security-card">
+        <section className="security-card dashboard-security-card">
           <ShieldCheck size={20} />
           <strong>Server-enforced controls</strong>
           <p>Data is loaded through authenticated API requests and matter-scoped permissions.</p>
         </section>
       </aside>
 
-      <section className="workspace">
-        <header className="topbar">
-          <div>
+      <section className="workspace dashboard-workspace">
+        <header className="topbar dashboard-topbar">
+          <div className="topbar-heading">
             <p className="eyebrow">BC / Ontario / Canada small-practice workspace</p>
-            <h1>{overview.firm.name}</h1>
+            <h1 id="dashboard-title">{overview.firm.name}</h1>
           </div>
-          <div className="user-pill">
+          <div className="user-pill topbar-user-pill">
             <span>{session.user.displayName}</span>
             <strong>{session.user.role.replace("_", " ")}</strong>
           </div>
         </header>
 
-        <section className="metric-grid" aria-label="Practice metrics">
+        <section className="metric-grid dashboard-metrics" aria-label="Practice metrics">
           {metrics.map((metric) => (
             <article className="metric-card" key={metric.label}>
               <metric.icon size={19} />
@@ -1371,11 +1371,14 @@ export default function DashboardClient({
           ))}
         </section>
 
-        <section className="panel matter-context-panel" aria-label="Matter context">
-          <div className="panel-header">
+        <section
+          className="panel matter-context-panel dashboard-matter-context"
+          aria-labelledby="matter-context-title"
+        >
+          <div className="panel-header matter-context-header">
             <div>
               <p className="eyebrow">Matter command centre</p>
-              <h2>Active files</h2>
+              <h2 id="matter-context-title">Active files</h2>
             </div>
             <label className="search-field matter-search-field">
               <Search size={16} aria-hidden="true" />
@@ -1410,21 +1413,25 @@ export default function DashboardClient({
           </div>
         </section>
 
-        <section className="main-grid">
+        <section className="main-grid matter-workspace-grid">
           <article
-            className="panel matter-detail"
+            className="panel matter-detail matter-detail-panel"
+            aria-labelledby="matter-detail-title"
             id="matter-workspace"
             ref={detailPanelRef}
             tabIndex={-1}
           >
-            <div className="panel-header">
+            <div className="panel-header matter-detail-header">
               <div>
                 <p className="eyebrow">{activeMatter.number}</p>
-                <h2>{activeSectionLabel}</h2>
+                <h2 id="matter-detail-title">{activeSectionLabel}</h2>
               </div>
               <span className="status-chip">{activeMatter.jurisdiction}</span>
             </div>
-            <div className="matter-action-strip" aria-label="Matter actions">
+            <div
+              className="matter-action-strip matter-detail-action-strip"
+              aria-label="Matter actions"
+            >
               {matterActionSections.map((section) => {
                 const disabledReason = describeDisabledNavigationReason(section);
                 return (
@@ -2722,9 +2729,9 @@ export default function DashboardClient({
             ) : null}
           </article>
 
-          <aside className="context-rail" aria-label="Matter review tools">
-            <article className="panel conflict-panel">
-              <div className="panel-header">
+          <aside className="context-rail matter-context-rail" aria-label="Matter review tools">
+            <article className="panel conflict-panel context-rail-panel">
+              <div className="panel-header context-rail-header">
                 <div>
                   <p className="eyebrow">Conflict review</p>
                   <h2>Prospective client check</h2>
@@ -2769,8 +2776,8 @@ export default function DashboardClient({
               </div>
             </article>
 
-            <article className="panel queue-panel">
-              <div className="panel-header">
+            <article className="panel queue-panel context-rail-panel">
+              <div className="panel-header context-rail-header">
                 <div>
                   <p className="eyebrow">Operational queues</p>
                   <h2>Review work</h2>
