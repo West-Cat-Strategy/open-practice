@@ -9,6 +9,7 @@ import type {
   Firm,
   ActivityTimelineEntry,
   CalendarEventRecord,
+  CalendarEventAttendeeRecord,
   DashboardSectionCapability,
   IntakeSessionRecord,
   IntakeTemplateRecord,
@@ -185,6 +186,25 @@ export interface CalendarCredentialCreateResponse {
 
 export interface CalendarCredentialRevokeResponse {
   credential: CalendarCredentialSummary;
+}
+
+export interface CalendarAttendeeMutationResponse {
+  attendee: CalendarEventAttendeeRecord;
+}
+
+export interface CalendarInvitationResult {
+  attendee: CalendarEventAttendeeRecord;
+  queuedEmail?: {
+    id: string;
+    templateKey: string;
+    status: string;
+    queuedAt: string;
+    jobId: string;
+  };
+}
+
+export interface CalendarInvitationResponse {
+  results: CalendarInvitationResult[];
 }
 
 export interface CalendarMatterLinks {

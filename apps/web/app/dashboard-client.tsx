@@ -77,13 +77,17 @@ import StructuredIntakeBuilder from "./intake-forms/StructuredIntakeBuilder";
 import {
   buildCalendarRadarBuckets,
   describeCalendarEventTiming,
+  removeCalendarEventAttendee,
+  upsertCalendarEventAttendee,
   upsertCalendarCredential,
 } from "./calendar-dashboard";
 import type {
+  CalendarAttendeeMutationResponse,
   BillingDashboardResponse,
   CalendarCredentialCreateResponse,
   CalendarCredentialRevokeResponse,
   CalendarDashboardResponse,
+  CalendarInvitationResponse,
   CapabilitiesResponse,
   ConflictResponse,
   DraftingDashboardResponse,
@@ -239,7 +243,9 @@ export default function DashboardClient({
   const [externalUploadStatus, setExternalUploadStatus] = useState("No link created.");
   const [creatingExternalUpload, setCreatingExternalUpload] = useState(false);
   const [revokingExternalUploadId, setRevokingExternalUploadId] = useState("");
-  const [calendarEventsByMatterId] = useState(calendar.eventsByMatterId);
+  const [calendarEventsByMatterId, setCalendarEventsByMatterId] = useState(
+    calendar.eventsByMatterId,
+  );
   const [calendarCredentials, setCalendarCredentials] = useState(calendar.credentials);
   const [calendarCredentialLabel, setCalendarCredentialLabel] = useState("iOS Calendar");
   const [calendarCredentialStatus, setCalendarCredentialStatus] = useState(
@@ -253,6 +259,18 @@ export default function DashboardClient({
     useState<CalendarCredentialCreateResponse | null>(null);
   const [creatingCalendarCredential, setCreatingCalendarCredential] = useState(false);
   const [revokingCalendarCredentialId, setRevokingCalendarCredentialId] = useState("");
+  const [calendarMeetingEventId, setCalendarMeetingEventId] = useState("");
+  const [calendarAttendeeName, setCalendarAttendeeName] = useState("");
+  const [calendarAttendeeEmail, setCalendarAttendeeEmail] = useState("");
+  const [calendarAttendeeRole, setCalendarAttendeeRole] = useState<"required" | "optional">(
+    "required",
+  );
+  const [calendarMeetingStatus, setCalendarMeetingStatus] = useState(
+    "Meeting attendees have not changed.",
+  );
+  const [addingCalendarAttendee, setAddingCalendarAttendee] = useState(false);
+  const [removingCalendarAttendeeId, setRemovingCalendarAttendeeId] = useState("");
+  const [sendingCalendarInvitationsEventId, setSendingCalendarInvitationsEventId] = useState("");
   const [intakeFormLinksByMatterId, setIntakeFormLinksByMatterId] = useState(
     intakeForms.linksByMatterId,
   );
@@ -310,6 +328,19 @@ export default function DashboardClient({
     () => buildCalendarRadarBuckets(activeCalendarEvents),
     [activeCalendarEvents],
   );
+  const selectedCalendarMeetingEvent =
+    activeCalendarEvents.find((event) => event.id === calendarMeetingEventId) ??
+    activeCalendarEvents[0];
+
+  useEffect(() => {
+    if (!activeCalendarEvents.length) {
+      if (calendarMeetingEventId) setCalendarMeetingEventId("");
+      return;
+    }
+    if (!activeCalendarEvents.some((event) => event.id === calendarMeetingEventId)) {
+      setCalendarMeetingEventId(activeCalendarEvents[0]!.id);
+    }
+  }, [activeCalendarEvents, calendarMeetingEventId]);
   const activeIntakeFormLinks = activeMatter
     ? (intakeFormLinksByMatterId[activeMatter.id] ?? [])
     : [];
@@ -861,6 +892,122 @@ export default function DashboardClient({
     setCalendarCredentials((current) => upsertCalendarCredential(current, payload.credential));
     setCalendarCredentialStatus("Calendar app password revoked.");
     setRevokingCalendarCredentialId("");
+  }
+
+  async function addCalendarAttendee(): Promise<void> {
+    if (!activeMatter || !selectedCalendarMeetingEvent) return;
+    setAddingCalendarAttendee(true);
+    setCalendarMeetingStatus("Adding attendee...");
+    const response = await fetch(
+      `${apiBaseUrl}/api/calendar/events/${encodeURIComponent(
+        selectedCalendarMeetingEvent.id,
+      )}/attendees`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          matterId: activeMatter.id,
+          name: calendarAttendeeName.trim(),
+          email: calendarAttendeeEmail.trim(),
+          role: calendarAttendeeRole,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      setCalendarMeetingStatus(`Attendee add failed: ${response.status}`);
+      setAddingCalendarAttendee(false);
+      return;
+    }
+
+    const payload = (await response.json()) as CalendarAttendeeMutationResponse;
+    setCalendarEventsByMatterId((current) =>
+      upsertCalendarEventAttendee(
+        current,
+        activeMatter.id,
+        selectedCalendarMeetingEvent.id,
+        payload.attendee,
+      ),
+    );
+    setCalendarAttendeeName("");
+    setCalendarAttendeeEmail("");
+    setCalendarMeetingStatus("Attendee added.");
+    setAddingCalendarAttendee(false);
+  }
+
+  async function removeCalendarAttendee(eventId: string, attendeeId: string): Promise<void> {
+    if (!activeMatter) return;
+    setRemovingCalendarAttendeeId(attendeeId);
+    setCalendarMeetingStatus("Removing attendee...");
+    const response = await fetch(
+      `${apiBaseUrl}/api/calendar/events/${encodeURIComponent(
+        eventId,
+      )}/attendees/${encodeURIComponent(attendeeId)}?matterId=${encodeURIComponent(
+        activeMatter.id,
+      )}`,
+      {
+        method: "DELETE",
+        credentials: "include",
+        headers: devHeaders,
+      },
+    );
+
+    if (!response.ok) {
+      setCalendarMeetingStatus(`Attendee remove failed: ${response.status}`);
+      setRemovingCalendarAttendeeId("");
+      return;
+    }
+
+    setCalendarEventsByMatterId((current) =>
+      removeCalendarEventAttendee(current, activeMatter.id, eventId, attendeeId),
+    );
+    setCalendarMeetingStatus("Attendee removed.");
+    setRemovingCalendarAttendeeId("");
+  }
+
+  async function sendCalendarInvitations(eventId: string): Promise<void> {
+    if (!activeMatter) return;
+    setSendingCalendarInvitationsEventId(eventId);
+    setCalendarMeetingStatus("Sending invitations...");
+    const response = await fetch(
+      `${apiBaseUrl}/api/calendar/events/${encodeURIComponent(eventId)}/invitations`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ matterId: activeMatter.id }),
+      },
+    );
+
+    if (!response.ok) {
+      setCalendarMeetingStatus(`Invitation send failed: ${response.status}`);
+      setSendingCalendarInvitationsEventId("");
+      return;
+    }
+
+    const payload = (await response.json()) as CalendarInvitationResponse;
+    setCalendarEventsByMatterId((current) =>
+      payload.results.reduce(
+        (next, result) =>
+          upsertCalendarEventAttendee(next, activeMatter.id, eventId, result.attendee),
+        current,
+      ),
+    );
+    const queued = payload.results.filter(
+      (result) => result.attendee.invitationStatus === "queued",
+    ).length;
+    const skipped = payload.results.filter(
+      (result) => result.attendee.invitationStatus === "skipped",
+    ).length;
+    setCalendarMeetingStatus(`${queued} invitation queued; ${skipped} skipped.`);
+    setSendingCalendarInvitationsEventId("");
   }
 
   function selectIntakeTemplate(templateId: string): void {
@@ -1805,30 +1952,147 @@ export default function DashboardClient({
                 <div className="party-list">
                   {activeCalendarEvents.map((event) => {
                     const timing = describeCalendarEventTiming(event);
+                    const attendees = event.attendees ?? [];
                     return (
-                      <div className="party-row" key={event.id}>
-                        <span>
-                          <strong>{event.title}</strong>
-                          <small>
-                            {compactDate(event.startsAt)} to {compactDate(event.endsAt)}
-                            {event.location ? ` · ${event.location}` : ""}
-                          </small>
-                        </span>
-                        <em
-                          className={
-                            event.status === "cancelled" || timing === "overdue"
-                              ? "risk"
-                              : undefined
-                          }
-                        >
-                          {event.status === "cancelled" ? "cancelled" : timing}
-                        </em>
+                      <div className="party-row calendar-event-row" key={event.id}>
+                        <div className="calendar-event-summary">
+                          <span>
+                            <strong>{event.title}</strong>
+                            <small>
+                              {compactDate(event.startsAt)} to {compactDate(event.endsAt)}
+                              {event.location ? ` · ${event.location}` : ""}
+                            </small>
+                          </span>
+                          <div className="row-actions">
+                            <em
+                              className={
+                                event.status === "cancelled" || timing === "overdue"
+                                  ? "risk"
+                                  : undefined
+                              }
+                            >
+                              {event.status === "cancelled" ? "cancelled" : timing}
+                            </em>
+                            <button
+                              className="secondary-button compact-button row-button"
+                              disabled={
+                                attendees.length === 0 ||
+                                sendingCalendarInvitationsEventId === event.id
+                              }
+                              onClick={() => void sendCalendarInvitations(event.id)}
+                              type="button"
+                            >
+                              {sendingCalendarInvitationsEventId === event.id
+                                ? "Sending..."
+                                : "Send invites"}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="calendar-attendee-list">
+                          {attendees.map((attendee) => (
+                            <div className="calendar-attendee-row" key={attendee.id}>
+                              <span>
+                                <strong>{attendee.name}</strong>
+                                <small>
+                                  {attendee.email} · {attendee.role} ·{" "}
+                                  {attendee.responseStatus.replace("_", " ")}
+                                </small>
+                              </span>
+                              <div className="row-actions">
+                                <em
+                                  className={
+                                    attendee.invitationStatus === "skipped" ? "risk" : undefined
+                                  }
+                                >
+                                  {attendee.invitationStatus.replace("_", " ")}
+                                </em>
+                                <button
+                                  aria-label={`Remove ${attendee.name}`}
+                                  className="icon-button"
+                                  disabled={removingCalendarAttendeeId === attendee.id}
+                                  onClick={() => void removeCalendarAttendee(event.id, attendee.id)}
+                                  title="Remove attendee"
+                                  type="button"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                          {attendees.length === 0 ? (
+                            <p className="inline-empty">No attendees are linked to this event.</p>
+                          ) : null}
+                        </div>
                       </div>
                     );
                   })}
                   {activeCalendarEvents.length === 0 ? (
                     <p className="inline-empty">No calendar events are linked to this matter.</p>
                   ) : null}
+                </div>
+
+                <div className="share-controls calendar-meeting-controls">
+                  <div className="section-title">
+                    <h3>Meeting attendees</h3>
+                    <span>{selectedCalendarMeetingEvent?.title ?? "No event selected"}</span>
+                  </div>
+                  <div className="calendar-attendee-form">
+                    <label className="search-field">
+                      <span>Event</span>
+                      <select
+                        onChange={(event) => setCalendarMeetingEventId(event.target.value)}
+                        value={selectedCalendarMeetingEvent?.id ?? ""}
+                      >
+                        {activeCalendarEvents.map((event) => (
+                          <option key={event.id} value={event.id}>
+                            {event.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="search-field">
+                      <span>Name</span>
+                      <input
+                        onChange={(event) => setCalendarAttendeeName(event.target.value)}
+                        value={calendarAttendeeName}
+                      />
+                    </label>
+                    <label className="search-field">
+                      <span>Email</span>
+                      <input
+                        onChange={(event) => setCalendarAttendeeEmail(event.target.value)}
+                        type="email"
+                        value={calendarAttendeeEmail}
+                      />
+                    </label>
+                    <label className="search-field">
+                      <span>Role</span>
+                      <select
+                        onChange={(event) =>
+                          setCalendarAttendeeRole(event.target.value as "required" | "optional")
+                        }
+                        value={calendarAttendeeRole}
+                      >
+                        <option value="required">Required</option>
+                        <option value="optional">Optional</option>
+                      </select>
+                    </label>
+                    <button
+                      className="secondary-button compact-button"
+                      disabled={
+                        !selectedCalendarMeetingEvent ||
+                        !calendarAttendeeName.trim() ||
+                        !calendarAttendeeEmail.trim() ||
+                        addingCalendarAttendee
+                      }
+                      onClick={() => void addCalendarAttendee()}
+                      type="button"
+                    >
+                      <Plus size={16} />
+                      {addingCalendarAttendee ? "Adding..." : "Add attendee"}
+                    </button>
+                  </div>
+                  <p className="inline-empty">{calendarMeetingStatus}</p>
                 </div>
 
                 <div className="section-title">

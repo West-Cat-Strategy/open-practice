@@ -12,6 +12,7 @@ import {
   authChallenges,
   billingTrustTransferRequests,
   calendarCredentials,
+  calendarEventAttendees,
   calendarEvents,
   documentTextExtractions,
   documentVersions,
@@ -120,6 +121,40 @@ describe("database schema hardening", () => {
     );
     expect(uidIndex?.config.unique).toBe(true);
     expect(uidIndex?.config.where).toBeDefined();
+  });
+
+  it("persists meeting attendees for calendar events", () => {
+    const config = getTableConfig(calendarEventAttendees);
+    const columns = config.columns.map((column) => column.name);
+    const emailIndex = config.indexes.find(
+      (index) => index.config.name === "calendar_event_attendees_firm_event_email_idx",
+    );
+
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "event_id",
+        "name",
+        "email",
+        "role",
+        "response_status",
+        "invitation_status",
+        "invited_at",
+        "invitation_email_id",
+        "invitation_job_id",
+        "deleted_at",
+      ]),
+    );
+    expect(emailIndex?.config.unique).toBe(true);
+    expect(emailIndex?.config.where).toBeDefined();
+    expect(config.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "calendar_event_attendees_role_value",
+        "calendar_event_attendees_response_status_value",
+        "calendar_event_attendees_invitation_status_value",
+      ]),
+    );
   });
 
   it("persists revocable calendar app-password credentials", () => {

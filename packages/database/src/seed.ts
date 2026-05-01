@@ -80,15 +80,40 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
     .insert(schema.calendarEvents)
     .values(
       sampleCalendarEvents.map((event) => ({
-        ...event,
+        id: event.id,
+        firmId: event.firmId,
+        matterId: event.matterId,
+        uid: event.uid,
+        title: event.title,
         startsAt: new Date(event.startsAt),
         endsAt: new Date(event.endsAt),
+        description: event.description,
+        location: event.location,
+        status: event.status,
+        sequence: event.sequence,
         createdAt: new Date(event.createdAt),
         updatedAt: new Date(event.updatedAt),
         deletedAt: event.deletedAt ? new Date(event.deletedAt) : null,
+        createdByUserId: event.createdByUserId,
+        updatedByUserId: event.updatedByUserId,
       })),
     )
     .onConflictDoNothing();
+  const sampleCalendarAttendees = sampleCalendarEvents.flatMap((event) => event.attendees ?? []);
+  if (sampleCalendarAttendees.length > 0) {
+    await db
+      .insert(schema.calendarEventAttendees)
+      .values(
+        sampleCalendarAttendees.map((attendee) => ({
+          ...attendee,
+          invitedAt: attendee.invitedAt ? new Date(attendee.invitedAt) : null,
+          createdAt: new Date(attendee.createdAt),
+          updatedAt: new Date(attendee.updatedAt),
+          deletedAt: attendee.deletedAt ? new Date(attendee.deletedAt) : null,
+        })),
+      )
+      .onConflictDoNothing();
+  }
   await db
     .insert(schema.portalGrants)
     .values(

@@ -19,6 +19,7 @@ import {
   type AuditEvent,
   type NewAuditEvent,
   type CalendarCredentialRecord,
+  type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
   type Contact,
   type DocumentRecord,
@@ -165,6 +166,7 @@ export interface AuthSessionRecord {
 }
 
 export type CalendarEventUpsertInput = CalendarEventRecord;
+export type CalendarEventAttendeeUpsertInput = CalendarEventAttendeeRecord;
 
 export class CalendarEventScopeConflictError extends Error {
   constructor(eventId: string) {
@@ -351,6 +353,30 @@ export interface OpenPracticeRepository {
     uid: string,
   ): Promise<CalendarEventRecord | undefined>;
   upsertCalendarEvent(event: CalendarEventUpsertInput): Promise<CalendarEventRecord>;
+  listCalendarEventAttendees(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+  ): Promise<CalendarEventAttendeeRecord[]>;
+  upsertCalendarEventAttendee(
+    attendee: CalendarEventAttendeeUpsertInput,
+  ): Promise<CalendarEventAttendeeRecord>;
+  deleteCalendarEventAttendee(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    attendeeId: string;
+    deletedAt: string;
+    updatedByUserId: string;
+  }): Promise<CalendarEventAttendeeRecord | undefined>;
+  replaceCalendarEventAttendees(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    attendees: CalendarEventAttendeeUpsertInput[];
+    replacedAt: string;
+    updatedByUserId: string;
+  }): Promise<CalendarEventAttendeeRecord[]>;
   deleteCalendarEvent(input: {
     firmId: string;
     matterId: string;
@@ -797,6 +823,45 @@ function mapCalendarEventRow(row: typeof schema.calendarEvents.$inferSelect): Ca
     createdByUserId: row.createdByUserId,
     updatedByUserId: row.updatedByUserId,
   };
+}
+
+function mapCalendarEventAttendeeRow(
+  row: typeof schema.calendarEventAttendees.$inferSelect,
+): CalendarEventAttendeeRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    eventId: row.eventId,
+    name: row.name,
+    email: row.email,
+    role: row.role as CalendarEventAttendeeRecord["role"],
+    responseStatus: row.responseStatus as CalendarEventAttendeeRecord["responseStatus"],
+    invitationStatus: row.invitationStatus as CalendarEventAttendeeRecord["invitationStatus"],
+    invitedAt: dateToIso(row.invitedAt),
+    invitationEmailId: row.invitationEmailId ?? undefined,
+    invitationJobId: row.invitationJobId ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    deletedAt: dateToIso(row.deletedAt),
+    createdByUserId: row.createdByUserId,
+    updatedByUserId: row.updatedByUserId,
+  };
+}
+
+function activeCalendarAttendees(
+  attendees: CalendarEventAttendeeRecord[] | undefined,
+  event: Pick<CalendarEventRecord, "firmId" | "matterId" | "id">,
+): CalendarEventAttendeeRecord[] {
+  return (attendees ?? [])
+    .filter(
+      (attendee) =>
+        attendee.firmId === event.firmId &&
+        attendee.matterId === event.matterId &&
+        attendee.eventId === event.id &&
+        !attendee.deletedAt,
+    )
+    .sort((left, right) => left.email.localeCompare(right.email));
 }
 
 function setupStatusFromCounts(firmCount: number, userCount: number): FirstRunSetupStatus {
@@ -2136,7 +2201,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         .sort((left, right) => {
           const startDifference = Date.parse(left.startsAt) - Date.parse(right.startsAt);
           return startDifference === 0 ? left.id.localeCompare(right.id) : startDifference;
-        }),
+        })
+        .map((event) => ({
+          ...event,
+          attendees: activeCalendarAttendees(event.attendees, event),
+        })),
     );
   }
 
@@ -2145,15 +2214,16 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     matterId: string,
     eventId: string,
   ): Promise<CalendarEventRecord | undefined> {
-    return clone(
-      this.calendarEvents.find(
-        (event) =>
-          event.firmId === firmId &&
-          event.matterId === matterId &&
-          event.id === eventId &&
-          !event.deletedAt,
-      ),
+    const event = this.calendarEvents.find(
+      (event) =>
+        event.firmId === firmId &&
+        event.matterId === matterId &&
+        event.id === eventId &&
+        !event.deletedAt,
     );
+    return event
+      ? clone({ ...event, attendees: activeCalendarAttendees(event.attendees, event) })
+      : undefined;
   }
 
   async getCalendarEventByUid(
@@ -2161,15 +2231,16 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     matterId: string,
     uid: string,
   ): Promise<CalendarEventRecord | undefined> {
-    return clone(
-      this.calendarEvents.find(
-        (event) =>
-          event.firmId === firmId &&
-          event.matterId === matterId &&
-          event.uid === uid &&
-          !event.deletedAt,
-      ),
+    const event = this.calendarEvents.find(
+      (event) =>
+        event.firmId === firmId &&
+        event.matterId === matterId &&
+        event.uid === uid &&
+        !event.deletedAt,
     );
+    return event
+      ? clone({ ...event, attendees: activeCalendarAttendees(event.attendees, event) })
+      : undefined;
   }
 
   async upsertCalendarEvent(event: CalendarEventUpsertInput): Promise<CalendarEventRecord> {
@@ -2200,11 +2271,112 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         candidate.id === event.id,
     );
     if (existingIndex >= 0) {
-      this.calendarEvents[existingIndex] = clone(event);
+      this.calendarEvents[existingIndex] = clone({
+        ...event,
+        attendees: event.attendees ?? this.calendarEvents[existingIndex]!.attendees,
+      });
     } else {
       this.calendarEvents.push(clone(event));
     }
-    return clone(event);
+    const stored = this.calendarEvents.find((candidate) => candidate.id === event.id)!;
+    return clone({ ...stored, attendees: activeCalendarAttendees(stored.attendees, stored) });
+  }
+
+  async listCalendarEventAttendees(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+  ): Promise<CalendarEventAttendeeRecord[]> {
+    const event = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === firmId &&
+        candidate.matterId === matterId &&
+        candidate.id === eventId &&
+        !candidate.deletedAt,
+    );
+    return clone(activeCalendarAttendees(event?.attendees, { firmId, matterId, id: eventId }));
+  }
+
+  async upsertCalendarEventAttendee(
+    attendee: CalendarEventAttendeeUpsertInput,
+  ): Promise<CalendarEventAttendeeRecord> {
+    const event = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === attendee.firmId &&
+        candidate.matterId === attendee.matterId &&
+        candidate.id === attendee.eventId &&
+        !candidate.deletedAt,
+    );
+    if (!event) {
+      throw new Error(`Calendar event ${attendee.eventId} was not found`);
+    }
+    const attendees = event.attendees ?? [];
+    const existingIndex = attendees.findIndex((candidate) => candidate.id === attendee.id);
+    if (existingIndex >= 0) {
+      attendees[existingIndex] = clone(attendee);
+    } else {
+      const activeEmailCollision = attendees.find(
+        (candidate) =>
+          candidate.email.toLowerCase() === attendee.email.toLowerCase() &&
+          candidate.id !== attendee.id &&
+          !candidate.deletedAt,
+      );
+      if (activeEmailCollision) {
+        throw new Error(`Calendar attendee ${attendee.email} already exists on this event`);
+      }
+      attendees.push(clone(attendee));
+    }
+    event.attendees = attendees;
+    return clone(attendee);
+  }
+
+  async deleteCalendarEventAttendee(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    attendeeId: string;
+    deletedAt: string;
+    updatedByUserId: string;
+  }): Promise<CalendarEventAttendeeRecord | undefined> {
+    const event = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === input.firmId &&
+        candidate.matterId === input.matterId &&
+        candidate.id === input.eventId &&
+        !candidate.deletedAt,
+    );
+    const attendee = event?.attendees?.find(
+      (candidate) => candidate.id === input.attendeeId && !candidate.deletedAt,
+    );
+    if (!attendee) return undefined;
+    attendee.deletedAt = input.deletedAt;
+    attendee.updatedAt = input.deletedAt;
+    attendee.updatedByUserId = input.updatedByUserId;
+    return clone(attendee);
+  }
+
+  async replaceCalendarEventAttendees(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    attendees: CalendarEventAttendeeUpsertInput[];
+    replacedAt: string;
+    updatedByUserId: string;
+  }): Promise<CalendarEventAttendeeRecord[]> {
+    const event = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === input.firmId &&
+        candidate.matterId === input.matterId &&
+        candidate.id === input.eventId &&
+        !candidate.deletedAt,
+    );
+    if (!event) return [];
+    const retainedDeleted = (event.attendees ?? [])
+      .filter((attendee) => attendee.deletedAt)
+      .map(clone);
+    const replaced = input.attendees.map(clone);
+    event.attendees = [...retainedDeleted, ...replaced];
+    return clone(activeCalendarAttendees(event.attendees, event));
   }
 
   async deleteCalendarEvent(input: {
@@ -4188,6 +4360,36 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return rows.map(mapDocumentRow);
   }
 
+  private async attachCalendarEventAttendees(
+    events: CalendarEventRecord[],
+  ): Promise<CalendarEventRecord[]> {
+    if (events.length === 0) return events;
+    const attendees = await this.db
+      .select()
+      .from(schema.calendarEventAttendees)
+      .where(
+        and(
+          eq(schema.calendarEventAttendees.firmId, events[0]!.firmId),
+          inArray(
+            schema.calendarEventAttendees.eventId,
+            events.map((event) => event.id),
+          ),
+          isNull(schema.calendarEventAttendees.deletedAt),
+        ),
+      )
+      .orderBy(asc(schema.calendarEventAttendees.email));
+    const attendeesByEventId = new Map<string, CalendarEventAttendeeRecord[]>();
+    for (const attendee of attendees.map(mapCalendarEventAttendeeRow)) {
+      const eventAttendees = attendeesByEventId.get(attendee.eventId) ?? [];
+      eventAttendees.push(attendee);
+      attendeesByEventId.set(attendee.eventId, eventAttendees);
+    }
+    return events.map((event) => ({
+      ...event,
+      attendees: attendeesByEventId.get(event.id) ?? [],
+    }));
+  }
+
   async listCalendarEvents(
     firmId: string,
     options: { matterId: string; startsAfter?: string; startsBefore?: string },
@@ -4208,7 +4410,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .from(schema.calendarEvents)
       .where(and(...filters))
       .orderBy(asc(schema.calendarEvents.startsAt), asc(schema.calendarEvents.id));
-    return rows.map(mapCalendarEventRow);
+    return this.attachCalendarEventAttendees(rows.map(mapCalendarEventRow));
   }
 
   async getCalendarEvent(
@@ -4227,7 +4429,8 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           isNull(schema.calendarEvents.deletedAt),
         ),
       );
-    return row ? mapCalendarEventRow(row) : undefined;
+    if (!row) return undefined;
+    return (await this.attachCalendarEventAttendees([mapCalendarEventRow(row)]))[0];
   }
 
   async getCalendarEventByUid(
@@ -4246,7 +4449,8 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           isNull(schema.calendarEvents.deletedAt),
         ),
       );
-    return row ? mapCalendarEventRow(row) : undefined;
+    if (!row) return undefined;
+    return (await this.attachCalendarEventAttendees([mapCalendarEventRow(row)]))[0];
   }
 
   async upsertCalendarEvent(event: CalendarEventUpsertInput): Promise<CalendarEventRecord> {
@@ -4326,7 +4530,155 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     if (!row) {
       throw new CalendarEventScopeConflictError(event.id);
     }
-    return mapCalendarEventRow(row);
+    return (await this.attachCalendarEventAttendees([mapCalendarEventRow(row)]))[0]!;
+  }
+
+  async listCalendarEventAttendees(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+  ): Promise<CalendarEventAttendeeRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.calendarEventAttendees)
+      .where(
+        and(
+          eq(schema.calendarEventAttendees.firmId, firmId),
+          eq(schema.calendarEventAttendees.matterId, matterId),
+          eq(schema.calendarEventAttendees.eventId, eventId),
+          isNull(schema.calendarEventAttendees.deletedAt),
+        ),
+      )
+      .orderBy(asc(schema.calendarEventAttendees.email));
+    return rows.map(mapCalendarEventAttendeeRow);
+  }
+
+  async upsertCalendarEventAttendee(
+    attendee: CalendarEventAttendeeUpsertInput,
+  ): Promise<CalendarEventAttendeeRecord> {
+    const values = {
+      id: attendee.id,
+      firmId: attendee.firmId,
+      matterId: attendee.matterId,
+      eventId: attendee.eventId,
+      name: attendee.name,
+      email: attendee.email,
+      role: attendee.role,
+      responseStatus: attendee.responseStatus,
+      invitationStatus: attendee.invitationStatus,
+      invitedAt: attendee.invitedAt ? new Date(attendee.invitedAt) : null,
+      invitationEmailId: attendee.invitationEmailId ?? null,
+      invitationJobId: attendee.invitationJobId ?? null,
+      createdAt: new Date(attendee.createdAt),
+      updatedAt: new Date(attendee.updatedAt),
+      deletedAt: attendee.deletedAt ? new Date(attendee.deletedAt) : null,
+      createdByUserId: attendee.createdByUserId,
+      updatedByUserId: attendee.updatedByUserId,
+    };
+    const [row] = await this.db
+      .insert(schema.calendarEventAttendees)
+      .values(values)
+      .onConflictDoUpdate({
+        target: schema.calendarEventAttendees.id,
+        set: {
+          name: values.name,
+          email: values.email,
+          role: values.role,
+          responseStatus: values.responseStatus,
+          invitationStatus: values.invitationStatus,
+          invitedAt: values.invitedAt,
+          invitationEmailId: values.invitationEmailId,
+          invitationJobId: values.invitationJobId,
+          updatedAt: values.updatedAt,
+          deletedAt: values.deletedAt,
+          updatedByUserId: values.updatedByUserId,
+        },
+        setWhere: sql`${schema.calendarEventAttendees.firmId} = ${attendee.firmId} and ${schema.calendarEventAttendees.matterId} = ${attendee.matterId} and ${schema.calendarEventAttendees.eventId} = ${attendee.eventId}`,
+      })
+      .returning();
+    if (!row) {
+      throw new Error(`Calendar attendee ${attendee.id} already exists in another scope`);
+    }
+    return mapCalendarEventAttendeeRow(row);
+  }
+
+  async deleteCalendarEventAttendee(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    attendeeId: string;
+    deletedAt: string;
+    updatedByUserId: string;
+  }): Promise<CalendarEventAttendeeRecord | undefined> {
+    const [row] = await this.db
+      .update(schema.calendarEventAttendees)
+      .set({
+        deletedAt: new Date(input.deletedAt),
+        updatedAt: new Date(input.deletedAt),
+        updatedByUserId: input.updatedByUserId,
+      })
+      .where(
+        and(
+          eq(schema.calendarEventAttendees.firmId, input.firmId),
+          eq(schema.calendarEventAttendees.matterId, input.matterId),
+          eq(schema.calendarEventAttendees.eventId, input.eventId),
+          eq(schema.calendarEventAttendees.id, input.attendeeId),
+          isNull(schema.calendarEventAttendees.deletedAt),
+        ),
+      )
+      .returning();
+    return row ? mapCalendarEventAttendeeRow(row) : undefined;
+  }
+
+  async replaceCalendarEventAttendees(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    attendees: CalendarEventAttendeeUpsertInput[];
+    replacedAt: string;
+    updatedByUserId: string;
+  }): Promise<CalendarEventAttendeeRecord[]> {
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(schema.calendarEventAttendees)
+        .set({
+          deletedAt: new Date(input.replacedAt),
+          updatedAt: new Date(input.replacedAt),
+          updatedByUserId: input.updatedByUserId,
+        })
+        .where(
+          and(
+            eq(schema.calendarEventAttendees.firmId, input.firmId),
+            eq(schema.calendarEventAttendees.matterId, input.matterId),
+            eq(schema.calendarEventAttendees.eventId, input.eventId),
+            isNull(schema.calendarEventAttendees.deletedAt),
+          ),
+        );
+      if (input.attendees.length > 0) {
+        await tx.insert(schema.calendarEventAttendees).values(
+          input.attendees.map((attendee) => ({
+            id: attendee.id,
+            firmId: attendee.firmId,
+            matterId: attendee.matterId,
+            eventId: attendee.eventId,
+            name: attendee.name,
+            email: attendee.email,
+            role: attendee.role,
+            responseStatus: attendee.responseStatus,
+            invitationStatus: attendee.invitationStatus,
+            invitedAt: attendee.invitedAt ? new Date(attendee.invitedAt) : null,
+            invitationEmailId: attendee.invitationEmailId ?? null,
+            invitationJobId: attendee.invitationJobId ?? null,
+            createdAt: new Date(attendee.createdAt),
+            updatedAt: new Date(attendee.updatedAt),
+            deletedAt: attendee.deletedAt ? new Date(attendee.deletedAt) : null,
+            createdByUserId: attendee.createdByUserId,
+            updatedByUserId: attendee.updatedByUserId,
+          })),
+        );
+      }
+    });
+    return this.listCalendarEventAttendees(input.firmId, input.matterId, input.eventId);
   }
 
   async deleteCalendarEvent(input: {

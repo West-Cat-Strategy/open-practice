@@ -445,6 +445,23 @@ export const sampleCalendarEvents: CalendarEventRecord[] = [
     updatedAt: "2026-04-30T12:00:00.000Z",
     createdByUserId: "user-licensee",
     updatedByUserId: "user-licensee",
+    attendees: [
+      {
+        id: "calendar-attendee-001",
+        firmId: sampleFirm.id,
+        matterId: "matter-001",
+        eventId: "calendar-event-002",
+        name: "Ada Morgan",
+        email: "ada.morgan@example.test",
+        role: "required",
+        responseStatus: "needs_action",
+        invitationStatus: "not_sent",
+        createdAt: "2026-04-30T12:00:00.000Z",
+        updatedAt: "2026-04-30T12:00:00.000Z",
+        createdByUserId: "user-licensee",
+        updatedByUserId: "user-licensee",
+      },
+    ],
   },
   {
     id: "calendar-event-003",

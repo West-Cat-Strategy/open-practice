@@ -1,10 +1,17 @@
-import type { CalendarEventRecord, CalendarEventStatus } from "./models.js";
+import type {
+  CalendarAttendeeResponseStatus,
+  CalendarAttendeeRole,
+  CalendarEventAttendeeRecord,
+  CalendarEventRecord,
+  CalendarEventStatus,
+} from "./models.js";
 
 const DEFAULT_PRODUCT_ID = "-//Open Practice//Matter Calendar//EN";
 const DEFAULT_DTSTAMP = "1970-01-01T00:00:00.000Z";
 const SUPPORTED_STATUS_VALUES = new Set(["CONFIRMED", "TENTATIVE", "CANCELLED"]);
+const SUPPORTED_ATTENDEE_ROLES = new Set(["REQ-PARTICIPANT", "OPT-PARTICIPANT"]);
+const SUPPORTED_ATTENDEE_PARTSTATS = new Set(["NEEDS-ACTION", "ACCEPTED", "TENTATIVE", "DECLINED"]);
 const UNSUPPORTED_PROPERTIES = new Set([
-  "ATTENDEE",
   "ORGANIZER",
   "RRULE",
   "RDATE",
@@ -33,6 +40,14 @@ export interface ParsedCalendarEventInput {
   location?: string;
   status: CalendarEventStatus;
   sequence: number;
+  attendees: ParsedCalendarAttendeeInput[];
+}
+
+export interface ParsedCalendarAttendeeInput {
+  name: string;
+  email: string;
+  role: CalendarAttendeeRole;
+  responseStatus: CalendarAttendeeResponseStatus;
 }
 
 export class UnsupportedCalendarPayloadError extends Error {
@@ -71,6 +86,17 @@ export function escapeICalendarText(value: string): string {
 
 function unescapeICalendarText(value: string): string {
   return value.replace(/\\n/gi, "\n").replace(/\\([\\;,])/g, "$1");
+}
+
+function escapeICalendarParam(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r\n|\r|\n/g, " ");
+}
+
+function unescapeICalendarParam(value: string): string {
+  return value.replace(/^"|"$/g, "").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
 }
 
 export function foldICalendarLine(line: string): string {
@@ -123,8 +149,27 @@ export function buildICalendarEvent(event: CalendarEventRecord, generatedAt?: st
   if (event.location) {
     lines.push(`LOCATION:${escapeICalendarText(event.location)}`);
   }
+  for (const attendee of (event.attendees ?? [])
+    .filter((candidate) => !candidate.deletedAt)
+    .sort((left, right) => left.email.localeCompare(right.email))) {
+    lines.push(buildAttendeeLine(attendee));
+  }
   lines.push("END:VEVENT");
   return lines.map(foldICalendarLine).join("\r\n");
+}
+
+function buildAttendeeLine(attendee: CalendarEventAttendeeRecord): string {
+  const role = attendee.role === "optional" ? "OPT-PARTICIPANT" : "REQ-PARTICIPANT";
+  const partstat =
+    attendee.responseStatus === "needs_action"
+      ? "NEEDS-ACTION"
+      : attendee.responseStatus.toUpperCase();
+  const params = [
+    attendee.name ? `CN="${escapeICalendarParam(attendee.name)}"` : undefined,
+    `ROLE=${role}`,
+    `PARTSTAT=${partstat}`,
+  ].filter((param): param is string => Boolean(param));
+  return `ATTENDEE;${params.join(";")}:mailto:${escapeICalendarText(attendee.email)}`;
 }
 
 export function buildICalendarFeed(input: CalendarFeedInput): string {
@@ -166,14 +211,25 @@ function unfoldICalendarLines(payload: string): string[] {
     }, []);
 }
 
-function parseContentLine(line: string): { name: string; value: string } {
+function parseContentLine(line: string): {
+  name: string;
+  params: Map<string, string>;
+  value: string;
+} {
   const separatorIndex = line.indexOf(":");
   if (separatorIndex < 0) {
     throw new InvalidCalendarPayloadError("Invalid iCalendar content line");
   }
-  const rawName = line.slice(0, separatorIndex).split(";")[0] ?? "";
+  const [rawName = "", ...rawParams] = line.slice(0, separatorIndex).split(";");
+  const params = new Map<string, string>();
+  for (const rawParam of rawParams) {
+    const equalsIndex = rawParam.indexOf("=");
+    if (equalsIndex <= 0) continue;
+    params.set(rawParam.slice(0, equalsIndex).toUpperCase(), rawParam.slice(equalsIndex + 1));
+  }
   return {
     name: rawName.toUpperCase(),
+    params,
     value: line.slice(separatorIndex + 1),
   };
 }
@@ -244,6 +300,7 @@ export function parseICalendarEvent(payload: string): ParsedCalendarEventInput {
   }
 
   const values = new Map<string, string>();
+  const attendees: ParsedCalendarAttendeeInput[] = [];
   for (const line of lines.slice(beginIndex + 1, endIndex)) {
     const parsed = parseContentLine(line);
     if (parsed.name === "BEGIN" && isUnsupportedCalendarComponentName(parsed.value)) {
@@ -255,7 +312,9 @@ export function parseICalendarEvent(payload: string): ParsedCalendarEventInput {
     ) {
       throw new UnsupportedCalendarPayloadError(`${parsed.name} is not supported`);
     }
-    if (!values.has(parsed.name)) values.set(parsed.name, parsed.value);
+    if (parsed.name === "ATTENDEE") {
+      attendees.push(parseAttendeeLine(parsed));
+    } else if (!values.has(parsed.name)) values.set(parsed.name, parsed.value);
   }
 
   const uid = values.get("UID");
@@ -291,5 +350,38 @@ export function parseICalendarEvent(payload: string): ParsedCalendarEventInput {
     location: values.has("LOCATION") ? unescapeICalendarText(values.get("LOCATION")!) : undefined,
     status: rawStatus.toLowerCase() as CalendarEventStatus,
     sequence,
+    attendees,
+  };
+}
+
+function parseAttendeeLine(parsed: {
+  params: Map<string, string>;
+  value: string;
+}): ParsedCalendarAttendeeInput {
+  if (!parsed.value.toLowerCase().startsWith("mailto:")) {
+    throw new InvalidCalendarPayloadError("ATTENDEE must use a mailto value");
+  }
+  const email = unescapeICalendarText(parsed.value.slice("mailto:".length)).trim();
+  if (!email || !email.includes("@")) {
+    throw new InvalidCalendarPayloadError("ATTENDEE requires an email address");
+  }
+
+  const rawRole = parsed.params.get("ROLE")?.toUpperCase() ?? "REQ-PARTICIPANT";
+  if (!SUPPORTED_ATTENDEE_ROLES.has(rawRole)) {
+    throw new InvalidCalendarPayloadError("ATTENDEE ROLE is not supported");
+  }
+  const rawPartstat = parsed.params.get("PARTSTAT")?.toUpperCase() ?? "NEEDS-ACTION";
+  if (!SUPPORTED_ATTENDEE_PARTSTATS.has(rawPartstat)) {
+    throw new InvalidCalendarPayloadError("ATTENDEE PARTSTAT is not supported");
+  }
+
+  return {
+    name: unescapeICalendarParam(parsed.params.get("CN") ?? email),
+    email,
+    role: rawRole === "OPT-PARTICIPANT" ? "optional" : "required",
+    responseStatus:
+      rawPartstat === "NEEDS-ACTION"
+        ? "needs_action"
+        : (rawPartstat.toLowerCase() as CalendarAttendeeResponseStatus),
   };
 }

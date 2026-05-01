@@ -27,7 +27,6 @@ interface CalDavParams {
 
 const XML_CONTENT_TYPE = "application/xml; charset=utf-8";
 const UNSUPPORTED_CALENDAR_PROPERTIES = new Set([
-  "ATTENDEE",
   "ORGANIZER",
   "RRULE",
   "RDATE",
@@ -645,6 +644,28 @@ export function registerCalDavRoutes(
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
             createdByUserId: existing?.createdByUserId ?? auth.context.user.id,
+            updatedByUserId: auth.context.user.id,
+          });
+          await repository.replaceCalendarEventAttendees({
+            firmId: auth.context.firmId,
+            matterId: params.matterId!,
+            eventId: event.id,
+            attendees: parsed.attendees.map((attendee) => ({
+              id: `calendar-attendee-${createSessionToken().slice(0, 16)}`,
+              firmId: auth.context.firmId,
+              matterId: params.matterId!,
+              eventId: event.id,
+              name: attendee.name,
+              email: attendee.email,
+              role: attendee.role,
+              responseStatus: attendee.responseStatus,
+              invitationStatus: "not_sent",
+              createdAt: now,
+              updatedAt: now,
+              createdByUserId: auth.context.user.id,
+              updatedByUserId: auth.context.user.id,
+            })),
+            replacedAt: now,
             updatedByUserId: auth.context.user.id,
           });
         } catch (error) {

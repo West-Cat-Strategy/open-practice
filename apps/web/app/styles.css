@@ -1039,6 +1039,45 @@ h3 {
   margin-bottom: 10px;
 }
 
+.calendar-event-row {
+  display: grid;
+  gap: 10px;
+}
+
+.calendar-event-summary,
+.calendar-attendee-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.calendar-attendee-list {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.calendar-attendee-row {
+  border-radius: 8px;
+  background: rgba(16, 18, 16, 0.45);
+  padding: 8px;
+}
+
+.calendar-meeting-controls {
+  margin-top: 14px;
+}
+
+.calendar-attendee-form {
+  display: grid;
+  grid-template-columns:
+    minmax(160px, 1fr) minmax(120px, 0.8fr) minmax(170px, 1fr)
+    minmax(110px, 0.5fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
 .row-actions {
   display: flex;
   align-items: center;
@@ -1046,7 +1085,9 @@ h3 {
 }
 
 .share-row-actions .compact-button,
-.share-form-row .compact-button {
+.share-form-row .compact-button,
+.calendar-attendee-form .compact-button,
+.calendar-event-summary .compact-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1071,7 +1112,8 @@ h3 {
   margin-bottom: 4px;
 }
 
-.search-field input {
+.search-field input,
+.search-field select {
   width: 100%;
   min-height: 42px;
   border: 1px solid var(--line);
@@ -1086,7 +1128,9 @@ h3 {
 }
 
 .search-field input:hover,
-.search-field input:focus {
+.search-field input:focus,
+.search-field select:hover,
+.search-field select:focus {
   border-color: rgba(63, 185, 173, 0.34);
   background: rgba(19, 22, 19, 0.8);
 }
@@ -1518,6 +1562,7 @@ h3 {
   .context-rail,
   .permission-toggle-grid,
   .share-form-row,
+  .calendar-attendee-form,
   .upload-create-grid,
   .intake-builder-grid,
   .intake-item-add-row,
@@ -1526,6 +1571,11 @@ h3 {
   .setup-grid,
   .preset-grid {
     grid-template-columns: 1fr;
+  }
+
+  .calendar-event-summary,
+  .calendar-attendee-row {
+    flex-direction: column;
   }
 
   .metric-grid {
