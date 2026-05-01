@@ -226,9 +226,10 @@ export interface AccessLogRecord {
   actorId?: string;
   shareLinkId?: string;
   externalUploadLinkId?: string;
+  intakeFormLinkId?: string;
   resourceType: string;
   resourceId: string;
-  action: "view" | "download" | "upload" | "message" | "sign";
+  action: "view" | "download" | "upload" | "message" | "sign" | "submit";
   occurredAt: string;
   ipAddress?: string;
   userAgent?: string;

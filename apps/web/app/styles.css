@@ -624,6 +624,11 @@ h3 {
   color: #fffdfa;
 }
 
+.selected-template {
+  border-color: rgba(63, 185, 173, 0.34);
+  background: rgba(63, 185, 173, 0.08);
+}
+
 .draft-editor-panel {
   display: grid;
   gap: 12px;
@@ -806,6 +811,179 @@ h3 {
   grid-template-columns: minmax(110px, 0.7fr) minmax(180px, 1fr) auto;
   gap: 10px;
   align-items: end;
+}
+
+.intake-builder-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(340px, 1.4fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.intake-template-list .compact-button,
+.intake-template-editor .compact-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  border-radius: 8px;
+  padding: 0 12px;
+}
+
+.intake-template-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.intake-section-editor-list,
+.intake-item-editor-list {
+  display: grid;
+  gap: 10px;
+}
+
+.intake-section-editor,
+.intake-item-editor {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(13, 13, 12, 0.26);
+  padding: 12px;
+}
+
+.intake-section-editor-header,
+.intake-item-editor-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.intake-item-editor-header strong {
+  color: var(--accent);
+  text-transform: capitalize;
+}
+
+.intake-item-add-row,
+.intake-question-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.intake-item-add-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.intake-question-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.advanced-json-editor {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.advanced-json-editor summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.advanced-json-editor[open] {
+  display: grid;
+  gap: 10px;
+}
+
+.advanced-json-editor textarea {
+  min-height: 260px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.rejection-field {
+  min-width: 180px;
+}
+
+.public-form-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: start center;
+  padding: 32px;
+}
+
+.public-form-panel {
+  width: min(780px, 100%);
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 22px;
+}
+
+.public-form-section {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.public-form-items {
+  display: grid;
+  gap: 12px;
+}
+
+.public-question span::after {
+  content: "";
+}
+
+.public-form-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 12px;
+}
+
+.public-form-action > div {
+  display: grid;
+  gap: 4px;
+}
+
+.public-form-action small {
+  line-height: 1.35;
+}
+
+.signature-consent {
+  min-width: 118px;
+}
+
+.file-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.file-button input[type="file"] {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.public-submit-button {
+  justify-self: end;
+  min-width: 160px;
+  padding: 0 18px;
 }
 
 .share-check-row {
@@ -1341,6 +1519,10 @@ h3 {
   .permission-toggle-grid,
   .share-form-row,
   .upload-create-grid,
+  .intake-builder-grid,
+  .intake-item-add-row,
+  .intake-question-grid,
+  .nav-list,
   .setup-grid,
   .preset-grid {
     grid-template-columns: 1fr;
@@ -1369,6 +1551,18 @@ h3 {
   .primary-button,
   .secondary-button {
     justify-content: center;
+  }
+
+  .public-form-shell {
+    padding: 18px;
+  }
+
+  .public-form-action {
+    grid-template-columns: 1fr;
+  }
+
+  .public-submit-button {
+    justify-self: stretch;
   }
 
   .user-pill {

@@ -877,7 +877,24 @@ describe("repository operations foundation", () => {
     const resolution = {
       templateId: template.id,
       templateVersion: template.definitionVersion,
-      visibleQuestionIds: ["issue_type", "urgent", "repair_details"],
+      visibleQuestionIds: [
+        "issue_type",
+        "urgent",
+        "repair_details",
+        "client_display_name",
+        "matter_title",
+      ],
+      visibleFormItemIds: [
+        "intro",
+        "client-name-item",
+        "matter-title-item",
+        "issue-type-item",
+        "urgent-item",
+        "repair-details-item",
+        "evidence-upload",
+        "client-attestation",
+      ],
+      requiredIncompleteItemIds: ["evidence-upload", "client-attestation"],
       eligiblePackageIds: ["repair_notice_package"],
       selectedPackageIds: ["repair_notice_package"],
       packageDocuments: [
@@ -891,9 +908,10 @@ describe("repository operations foundation", () => {
 
     expect(template).toMatchObject({
       id: "intake-template-001",
-      definitionVersion: 1,
+      definitionVersion: 2,
       definition: expect.objectContaining({
-        schemaVersion: 1,
+        schemaVersion: 2,
+        sections: expect.arrayContaining([expect.objectContaining({ id: "issue-details" })]),
         packages: expect.arrayContaining([
           expect.objectContaining({ id: "repair_notice_package" }),
         ]),

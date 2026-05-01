@@ -12,6 +12,11 @@ import {
   externalUploadsStatusFallback,
   loadExternalUploadsDashboardData,
 } from "./external-uploads-dashboard";
+import {
+  buildIntakeFormLinkListPath,
+  buildIntakeVariableProposalListPath,
+  loadIntakeFormsDashboardData,
+} from "./intake-forms-dashboard";
 import LoginClient from "./login-client";
 import SetupWizard from "./setup-wizard";
 import { selectStartupView } from "./setup-wizard-utils";
@@ -26,6 +31,9 @@ import type {
   ExternalUploadsListResponse,
   ExternalUploadsStatusResponse,
   IntakeSessionsResponse,
+  IntakeFormsDashboardResponse,
+  IntakeFormLinksResponse,
+  IntakeVariableProposalsResponse,
   MatterSummary,
   PracticeOverview,
   QueuesResponse,
@@ -274,6 +282,27 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       return response.uploads;
     },
   });
+  const intakeForms: IntakeFormsDashboardResponse = await loadIntakeFormsDashboardData({
+    matters,
+    listLinksForMatter: async (matterId) => {
+      const response = await apiGetOptional<IntakeFormLinksResponse>(
+        buildIntakeFormLinkListPath(matterId),
+        { links: [], actionsByLinkId: {} },
+        headers,
+        { links: [], actionsByLinkId: {} },
+      );
+      return response;
+    },
+    listProposalsForMatter: async (matterId) => {
+      const response = await apiGetOptional<IntakeVariableProposalsResponse>(
+        buildIntakeVariableProposalListPath(matterId),
+        { proposals: [] },
+        headers,
+        { proposals: [] },
+      );
+      return response.proposals;
+    },
+  });
   const navigationSections = buildSidebarNavigationSections({
     billingCanView: billing.canView,
     capabilitySections: capabilities.sections,
@@ -296,6 +325,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       externalUploads={externalUploads}
       initialSection={initialSection}
       intake={intake}
+      intakeForms={intakeForms}
       matters={matters}
       overview={overview}
       queues={queues}

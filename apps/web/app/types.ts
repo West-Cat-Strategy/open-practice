@@ -12,6 +12,10 @@ import type {
   DashboardSectionCapability,
   IntakeSessionRecord,
   IntakeTemplateRecord,
+  IntakeVariableProposal,
+  EmbeddedIntakeTemplateDefinition,
+  IntakeFormLinkRecord,
+  IntakeFormItemActionRecord,
   Matter,
   MatterParty,
   SignatureRequestRecord,
@@ -56,6 +60,43 @@ export interface CapabilitiesResponse {
 export interface IntakeSessionsResponse {
   templates: IntakeTemplateRecord[];
   sessions: IntakeSessionRecord[];
+}
+
+export type IntakeFormLinkSummary = Omit<IntakeFormLinkRecord, "tokenHash"> & {
+  status: string;
+};
+
+export interface IntakeFormLinksResponse {
+  links: IntakeFormLinkSummary[];
+  actionsByLinkId?: Record<string, IntakeFormItemActionRecord[]>;
+}
+
+export interface IntakeFormLinkCreateResponse {
+  link: IntakeFormLinkSummary;
+  token?: string;
+  portalUrl?: string;
+}
+
+export interface IntakeFormLinkRevokeResponse {
+  link: IntakeFormLinkSummary | null;
+}
+
+export interface IntakeVariableProposalsResponse {
+  proposals: IntakeVariableProposal[];
+}
+
+export interface IntakeFormsDashboardResponse {
+  linksByMatterId: Record<string, IntakeFormLinkSummary[]>;
+  actionsByLinkId: Record<string, IntakeFormItemActionRecord[]>;
+  proposalsByMatterId: Record<string, IntakeVariableProposal[]>;
+}
+
+export interface IntakeTemplateSavePayload {
+  id?: string;
+  name: string;
+  active: boolean;
+  definitionVersion: number;
+  definition: EmbeddedIntakeTemplateDefinition;
 }
 
 export type SignatureRequestsResponse = SignatureRequestRecord[];

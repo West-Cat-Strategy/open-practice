@@ -25,7 +25,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ConflictCandidate } from "@open-practice/domain";
+import type { ConflictCandidate, EmbeddedIntakeTemplateDefinitionV2 } from "@open-practice/domain";
 import {
   buildDashboardSectionUrl,
   buildSidebarNavigationSections,
@@ -58,12 +58,22 @@ import {
   getExternalUploadLinkState,
   upsertExternalUploadLink,
 } from "./external-uploads-dashboard";
+import {
+  buildIntakeFormLinkCreatePayload,
+  coerceIntakeDefinitionV2,
+  currentProposalValue,
+  getIntakeFormLinkState,
+  summarizeIntakeItemAction,
+  upsertIntakeFormLink,
+  upsertIntakeVariableProposal,
+} from "./intake-forms-dashboard";
 import DraftEditor from "./drafting/DraftEditor";
 import {
   describeDisabledNavigationReason,
   filterMatters,
   summarizeQueues,
 } from "./dashboard-utils";
+import StructuredIntakeBuilder from "./intake-forms/StructuredIntakeBuilder";
 import {
   buildCalendarRadarBuckets,
   describeCalendarEventTiming,
@@ -83,6 +93,10 @@ import type {
   ExternalUploadRevokeResponse,
   ExternalUploadsDashboardResponse,
   IntakeSessionsResponse,
+  IntakeFormsDashboardResponse,
+  IntakeFormLinkCreateResponse,
+  IntakeFormLinkRevokeResponse,
+  IntakeTemplateSavePayload,
   MatterSummary,
   PracticeOverview,
   QueuesResponse,
@@ -94,6 +108,7 @@ import type {
   ShareLinksResponse,
   ShareLinksStatusResponse,
   SignatureRequestsResponse,
+  IntakeVariableProposalsResponse,
 } from "./types";
 
 interface DashboardClientProps {
@@ -105,6 +120,7 @@ interface DashboardClientProps {
   drafting: DraftingDashboardResponse;
   externalUploads: ExternalUploadsDashboardResponse;
   intake: IntakeSessionsResponse;
+  intakeForms: IntakeFormsDashboardResponse;
   initialSection: DashboardNavigationSectionKey;
   overview: PracticeOverview;
   matters: MatterSummary[];
@@ -117,6 +133,7 @@ interface DashboardClientProps {
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][number];
 type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
+type DashboardIntakeVariableProposal = IntakeVariableProposalsResponse["proposals"][number];
 
 const currency = new Intl.NumberFormat("en-CA", {
   style: "currency",
@@ -167,6 +184,7 @@ export default function DashboardClient({
   drafting,
   externalUploads,
   intake,
+  intakeForms,
   initialSection,
   overview,
   matters,
@@ -235,6 +253,37 @@ export default function DashboardClient({
     useState<CalendarCredentialCreateResponse | null>(null);
   const [creatingCalendarCredential, setCreatingCalendarCredential] = useState(false);
   const [revokingCalendarCredentialId, setRevokingCalendarCredentialId] = useState("");
+  const [intakeFormLinksByMatterId, setIntakeFormLinksByMatterId] = useState(
+    intakeForms.linksByMatterId,
+  );
+  const [intakeFormActionsByLinkId] = useState(intakeForms.actionsByLinkId);
+  const [intakeVariableProposalsByMatterId, setIntakeVariableProposalsByMatterId] = useState(
+    intakeForms.proposalsByMatterId,
+  );
+  const [intakeFormExpiresAt, setIntakeFormExpiresAt] = useState("");
+  const [intakeFormToken, setIntakeFormToken] = useState("");
+  const [intakeFormPortalUrl, setIntakeFormPortalUrl] = useState("");
+  const [intakeFormStatus, setIntakeFormStatus] = useState("No form link created.");
+  const [creatingIntakeFormLink, setCreatingIntakeFormLink] = useState(false);
+  const [revokingIntakeFormLinkId, setRevokingIntakeFormLinkId] = useState("");
+  const [reviewingIntakeProposalId, setReviewingIntakeProposalId] = useState("");
+  const [proposalRejectionReasons, setProposalRejectionReasons] = useState<Record<string, string>>(
+    {},
+  );
+  const [intakeTemplates, setIntakeTemplates] = useState(intake.templates);
+  const [selectedIntakeTemplateId, setSelectedIntakeTemplateId] = useState(
+    intake.templates[0]?.id ?? "",
+  );
+  const selectedIntakeTemplate =
+    intakeTemplates.find((template) => template.id === selectedIntakeTemplateId) ??
+    intakeTemplates[0];
+  const [intakeTemplateName, setIntakeTemplateName] = useState(
+    selectedIntakeTemplate?.name ?? "New intake form",
+  );
+  const [intakeTemplateDefinition, setIntakeTemplateDefinition] =
+    useState<EmbeddedIntakeTemplateDefinitionV2>(coerceIntakeDefinitionV2(selectedIntakeTemplate));
+  const [intakeTemplateStatus, setIntakeTemplateStatus] = useState("Template editor ready.");
+  const [savingIntakeTemplate, setSavingIntakeTemplate] = useState(false);
 
   const filteredMatters = useMemo(
     () => filterMatters(matters, matterSearch),
@@ -260,6 +309,15 @@ export default function DashboardClient({
   const activeCalendarBuckets = useMemo(
     () => buildCalendarRadarBuckets(activeCalendarEvents),
     [activeCalendarEvents],
+  );
+  const activeIntakeFormLinks = activeMatter
+    ? (intakeFormLinksByMatterId[activeMatter.id] ?? [])
+    : [];
+  const activeIntakeVariableProposals = activeMatter
+    ? (intakeVariableProposalsByMatterId[activeMatter.id] ?? [])
+    : [];
+  const activePendingIntakeVariableProposals = activeIntakeVariableProposals.filter(
+    (proposal) => proposal.status === "pending",
   );
   const externalUploadCreateAvailable = canCreateExternalUpload(externalUploads.status);
   const selectedDraft = activeDrafts.find((draft) => draft.id === selectedDraftId);
@@ -805,11 +863,179 @@ export default function DashboardClient({
     setRevokingCalendarCredentialId("");
   }
 
+  function selectIntakeTemplate(templateId: string): void {
+    const template = intakeTemplates.find((candidate) => candidate.id === templateId);
+    setSelectedIntakeTemplateId(templateId);
+    setIntakeTemplateName(template?.name ?? "New intake form");
+    setIntakeTemplateDefinition(coerceIntakeDefinitionV2(template));
+    setIntakeTemplateStatus(template ? `Editing ${template.name}.` : "Template editor ready.");
+  }
+
+  function startNewIntakeTemplate(): void {
+    setSelectedIntakeTemplateId("");
+    setIntakeTemplateName("New intake form");
+    setIntakeTemplateDefinition(coerceIntakeDefinitionV2());
+    setIntakeTemplateStatus("New template ready.");
+  }
+
+  async function saveIntakeTemplate(): Promise<void> {
+    setSavingIntakeTemplate(true);
+    setIntakeTemplateStatus("Saving template...");
+
+    const payload: IntakeTemplateSavePayload = {
+      name: intakeTemplateName.trim() || "Untitled intake form",
+      active: true,
+      definitionVersion: intakeTemplateDefinition.schemaVersion,
+      definition: intakeTemplateDefinition,
+    };
+    const url = selectedIntakeTemplateId
+      ? `${apiBaseUrl}/api/intake-templates/${encodeURIComponent(selectedIntakeTemplateId)}`
+      : `${apiBaseUrl}/api/intake-templates`;
+    const response = await fetch(url, {
+      method: selectedIntakeTemplateId ? "PATCH" : "POST",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      setIntakeTemplateStatus(`Template save failed: ${response.status}`);
+      setSavingIntakeTemplate(false);
+      return;
+    }
+
+    const savedTemplate = (await response.json()) as IntakeSessionsResponse["templates"][number];
+    setIntakeTemplates((current) =>
+      current.some((template) => template.id === savedTemplate.id)
+        ? current.map((template) => (template.id === savedTemplate.id ? savedTemplate : template))
+        : [savedTemplate, ...current],
+    );
+    setSelectedIntakeTemplateId(savedTemplate.id);
+    setIntakeTemplateName(savedTemplate.name);
+    setIntakeTemplateDefinition(coerceIntakeDefinitionV2(savedTemplate));
+    setIntakeTemplateStatus(`Saved ${savedTemplate.name}.`);
+    setSavingIntakeTemplate(false);
+  }
+
+  async function createIntakeFormLink(): Promise<void> {
+    if (!activeMatter) return;
+    const sessionRecord = activeIntakeSessions[0];
+    if (!sessionRecord) {
+      setIntakeFormStatus("Create failed: no intake session for this matter.");
+      return;
+    }
+
+    setCreatingIntakeFormLink(true);
+    setIntakeFormToken("");
+    setIntakeFormPortalUrl("");
+    setIntakeFormStatus("Creating form link...");
+    const response = await fetch(`${apiBaseUrl}/api/intake-form-links`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        buildIntakeFormLinkCreatePayload({
+          intakeSessionId: sessionRecord.id,
+          expiresAtLocal: intakeFormExpiresAt,
+        }),
+      ),
+    });
+
+    if (!response.ok) {
+      setIntakeFormStatus(`Create failed: ${response.status}`);
+      setCreatingIntakeFormLink(false);
+      return;
+    }
+
+    const payload = (await response.json()) as IntakeFormLinkCreateResponse;
+    setIntakeFormLinksByMatterId((current) => upsertIntakeFormLink(current, payload.link));
+    setIntakeFormToken(payload.token ?? "");
+    setIntakeFormPortalUrl(payload.portalUrl ?? "");
+    setIntakeFormStatus(
+      payload.portalUrl ? "Form link created." : "Form link created; URL unavailable.",
+    );
+    setCreatingIntakeFormLink(false);
+  }
+
+  async function revokeIntakeFormLink(linkId: string): Promise<void> {
+    setRevokingIntakeFormLinkId(linkId);
+    setIntakeFormStatus("Revoking form link...");
+    const response = await fetch(
+      `${apiBaseUrl}/api/intake-form-links/${encodeURIComponent(linkId)}/revoke`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: devHeaders,
+      },
+    );
+
+    if (!response.ok) {
+      setIntakeFormStatus(`Revoke failed: ${response.status}`);
+      setRevokingIntakeFormLinkId("");
+      return;
+    }
+
+    const payload = (await response.json()) as IntakeFormLinkRevokeResponse;
+    if (payload.link) {
+      setIntakeFormLinksByMatterId((current) => upsertIntakeFormLink(current, payload.link!));
+    }
+    setIntakeFormStatus("Form link revoked.");
+    setRevokingIntakeFormLinkId("");
+  }
+
+  async function reviewIntakeVariableProposal(
+    proposal: DashboardIntakeVariableProposal,
+    status: "approved" | "rejected",
+  ): Promise<void> {
+    const rejectionReason = proposalRejectionReasons[proposal.id]?.trim() ?? "";
+    if (status === "rejected" && rejectionReason.length === 0) {
+      setIntakeFormStatus("Reject failed: add a rejection reason.");
+      return;
+    }
+    setReviewingIntakeProposalId(proposal.id);
+    setIntakeFormStatus(status === "approved" ? "Approving proposal..." : "Rejecting proposal...");
+    const response = await fetch(
+      `${apiBaseUrl}/api/intake-variable-proposals/${encodeURIComponent(proposal.id)}/${status === "approved" ? "approve" : "reject"}`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: status === "rejected" ? JSON.stringify({ reason: rejectionReason }) : "{}",
+      },
+    );
+
+    if (!response.ok) {
+      setIntakeFormStatus(`Proposal review failed: ${response.status}`);
+      setReviewingIntakeProposalId("");
+      return;
+    }
+
+    const reviewed = (await response.json()) as DashboardIntakeVariableProposal;
+    setIntakeVariableProposalsByMatterId((current) =>
+      upsertIntakeVariableProposal(current, reviewed),
+    );
+    setProposalRejectionReasons((current) => ({ ...current, [proposal.id]: "" }));
+    setIntakeFormStatus(status === "approved" ? "Proposal approved." : "Proposal rejected.");
+    setReviewingIntakeProposalId("");
+  }
+
   function selectMatter(matterId: string): void {
     setActiveMatterId(matterId);
     setExternalUploadToken("");
     setExternalUploadStatus("No link created.");
     setCalendarOneTimeSecret(null);
+    setIntakeFormToken("");
+    setIntakeFormPortalUrl("");
+    setIntakeFormStatus("No form link created.");
     closeDraftEditor();
   }
 
@@ -1909,27 +2135,243 @@ export default function DashboardClient({
             ) : null}
 
             {activeSection === "intake" ? (
-              <div className="party-list">
-                {activeIntakeSessions.map((sessionRecord) => (
-                  <div className="party-row" key={sessionRecord.id}>
-                    <span>
-                      <strong>
-                        {intake.templates.find(
-                          (template) => template.id === sessionRecord.templateId,
-                        )?.name ?? sessionRecord.templateId}
-                      </strong>
-                      <small>
-                        {sessionRecord.provider} · updated{" "}
-                        {new Date(sessionRecord.updatedAt).toLocaleDateString("en-CA")}
-                      </small>
-                    </span>
-                    <em>{sessionRecord.status.replace("_", " ")}</em>
+              <>
+                <div className="detail-grid">
+                  <div>
+                    <span className="field-label">Templates</span>
+                    <strong>{intakeTemplates.length}</strong>
                   </div>
-                ))}
-                {activeIntakeSessions.length === 0 ? (
-                  <p className="inline-empty">No intake sessions are linked to this matter.</p>
+                  <div>
+                    <span className="field-label">Sessions</span>
+                    <strong>{activeIntakeSessions.length}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Form links</span>
+                    <strong>{activeIntakeFormLinks.length}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Pending proposals</span>
+                    <strong>{activePendingIntakeVariableProposals.length}</strong>
+                  </div>
+                </div>
+
+                <div className="section-title">
+                  <h3>Form builder</h3>
+                  <span>{selectedIntakeTemplate?.id ?? "new"}</span>
+                </div>
+                <div className="intake-builder-grid">
+                  <div className="party-list intake-template-list">
+                    {intakeTemplates.map((template) => (
+                      <button
+                        className={
+                          template.id === selectedIntakeTemplateId
+                            ? "party-row draft-row selected-template"
+                            : "party-row draft-row"
+                        }
+                        key={template.id}
+                        onClick={() => selectIntakeTemplate(template.id)}
+                        type="button"
+                      >
+                        <span>
+                          <strong>{template.name}</strong>
+                          <small>
+                            v{template.definitionVersion} ·{" "}
+                            {template.definition.schemaVersion === 2
+                              ? `${template.definition.sections.length} sections`
+                              : "legacy"}
+                          </small>
+                        </span>
+                        <em>{template.active ? "active" : "paused"}</em>
+                      </button>
+                    ))}
+                    <button
+                      className="secondary-button compact-button"
+                      onClick={startNewIntakeTemplate}
+                      type="button"
+                    >
+                      <Plus size={16} />
+                      New form
+                    </button>
+                  </div>
+                  <StructuredIntakeBuilder
+                    definition={intakeTemplateDefinition}
+                    name={intakeTemplateName}
+                    onDefinitionChange={setIntakeTemplateDefinition}
+                    onNameChange={setIntakeTemplateName}
+                    onSave={() => void saveIntakeTemplate()}
+                    saving={savingIntakeTemplate}
+                    status={intakeTemplateStatus}
+                  />
+                </div>
+
+                <div className="section-title">
+                  <h3>Client form links</h3>
+                  <span>{activeMatter.number}</span>
+                </div>
+                <div className="upload-create-grid">
+                  <label className="search-field compact">
+                    <span>Expiry</span>
+                    <input
+                      onChange={(event) => setIntakeFormExpiresAt(event.target.value)}
+                      type="datetime-local"
+                      value={intakeFormExpiresAt}
+                    />
+                  </label>
+                  <button
+                    className="primary-button"
+                    disabled={creatingIntakeFormLink || activeIntakeSessions.length === 0}
+                    onClick={() => void createIntakeFormLink()}
+                    type="button"
+                  >
+                    {creatingIntakeFormLink ? "Creating..." : "Create link"}
+                  </button>
+                </div>
+                {intakeFormToken ? (
+                  <div className="upload-token">
+                    <span>One-time token</span>
+                    <code>{intakeFormToken}</code>
+                  </div>
                 ) : null}
-              </div>
+                {intakeFormPortalUrl ? (
+                  <div className="upload-token">
+                    <span>Client form URL</span>
+                    <code>{intakeFormPortalUrl}</code>
+                  </div>
+                ) : null}
+                <p className="inline-empty">{intakeFormStatus}</p>
+                <div className="party-list">
+                  {activeIntakeFormLinks.map((link) => {
+                    const linkState = getIntakeFormLinkState(link);
+                    const itemActions = intakeFormActionsByLinkId[link.id] ?? [];
+                    return (
+                      <div className="party-row upload-link-row" key={link.id}>
+                        <span>
+                          <strong>{link.id}</strong>
+                          <small>
+                            {link.intakeSessionId} · expires {compactDate(link.expiresAt)} · created{" "}
+                            {compactDate(link.createdAt)}
+                          </small>
+                          {itemActions.length > 0 ? (
+                            <small>{itemActions.map(summarizeIntakeItemAction).join(" · ")}</small>
+                          ) : null}
+                        </span>
+                        <div className="row-actions">
+                          <em className={linkState === "active" ? undefined : "risk"}>
+                            {linkState}
+                          </em>
+                          {!link.revokedAt && !link.submittedAt ? (
+                            <button
+                              className="secondary-button compact-button row-button"
+                              disabled={revokingIntakeFormLinkId === link.id}
+                              onClick={() => void revokeIntakeFormLink(link.id)}
+                              type="button"
+                            >
+                              {revokingIntakeFormLinkId === link.id ? "Revoking..." : "Revoke"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {activeIntakeFormLinks.length === 0 ? (
+                    <p className="inline-empty">No form links are linked to this matter.</p>
+                  ) : null}
+                </div>
+
+                <div className="section-title">
+                  <h3>Variable proposals</h3>
+                  <span>{activeIntakeVariableProposals.length} records</span>
+                </div>
+                <div className="party-list">
+                  {activeIntakeVariableProposals.map((proposal) => (
+                    <div className="party-row upload-link-row" key={proposal.id}>
+                      <span>
+                        <strong>
+                          {proposal.targetScope}.{proposal.targetField}
+                        </strong>
+                        <small>
+                          proposed {proposal.proposedValue} · current{" "}
+                          {currentProposalValue(proposal, activeMatter)} · from{" "}
+                          {proposal.sourceQuestionId}
+                        </small>
+                        {proposal.rejectionReason ? (
+                          <small>reason: {proposal.rejectionReason}</small>
+                        ) : null}
+                      </span>
+                      <div className="row-actions">
+                        <em className={proposal.status === "pending" ? undefined : "risk"}>
+                          {proposal.status}
+                        </em>
+                        {proposal.status === "pending" ? (
+                          <>
+                            <label className="search-field compact rejection-field">
+                              <span>Reject reason</span>
+                              <input
+                                onChange={(event) =>
+                                  setProposalRejectionReasons((current) => ({
+                                    ...current,
+                                    [proposal.id]: event.target.value,
+                                  }))
+                                }
+                                value={proposalRejectionReasons[proposal.id] ?? ""}
+                              />
+                            </label>
+                            <button
+                              className="secondary-button compact-button row-button"
+                              disabled={reviewingIntakeProposalId === proposal.id}
+                              onClick={() =>
+                                void reviewIntakeVariableProposal(proposal, "approved")
+                              }
+                              type="button"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="secondary-button compact-button row-button"
+                              disabled={reviewingIntakeProposalId === proposal.id}
+                              onClick={() =>
+                                void reviewIntakeVariableProposal(proposal, "rejected")
+                              }
+                              type="button"
+                            >
+                              Reject
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                  {activeIntakeVariableProposals.length === 0 ? (
+                    <p className="inline-empty">No variable proposals are waiting for review.</p>
+                  ) : null}
+                </div>
+
+                <div className="section-title">
+                  <h3>Intake sessions</h3>
+                  <span>{activeIntakeSessions.length} records</span>
+                </div>
+                <div className="party-list">
+                  {activeIntakeSessions.map((sessionRecord) => (
+                    <div className="party-row" key={sessionRecord.id}>
+                      <span>
+                        <strong>
+                          {intakeTemplates.find(
+                            (template) => template.id === sessionRecord.templateId,
+                          )?.name ?? sessionRecord.templateId}
+                        </strong>
+                        <small>
+                          {sessionRecord.provider} · updated{" "}
+                          {new Date(sessionRecord.updatedAt).toLocaleDateString("en-CA")}
+                        </small>
+                      </span>
+                      <em>{sessionRecord.status.replace("_", " ")}</em>
+                    </div>
+                  ))}
+                  {activeIntakeSessions.length === 0 ? (
+                    <p className="inline-empty">No intake sessions are linked to this matter.</p>
+                  ) : null}
+                </div>
+              </>
             ) : null}
 
             {activeSection === "audit" ? (

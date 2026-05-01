@@ -6,6 +6,7 @@ import type {
   DraftRecord,
   DraftTemplateRecord,
 } from "@open-practice/domain";
+import { sampleResidentialTenancyIntakeDefinition } from "@open-practice/domain/sample-data";
 import { buildSidebarNavigationSections } from "../routes/routeCatalog";
 import {
   describeDisabledNavigationReason,
@@ -45,7 +46,35 @@ import {
   loadCalendarDashboardData,
   upsertCalendarCredential,
 } from "./calendar-dashboard";
-import type { ExternalUploadLinkRecord, MatterSummary, ShareLinkRecord } from "./types";
+import {
+  buildIntakeFormLinkCreatePayload,
+  buildIntakeFormLinkListPath,
+  buildIntakePortalPath,
+  buildIntakeTemplateEditorValue,
+  buildVariableMapping,
+  currentProposalValue,
+  buildIntakeVariableProposalListPath,
+  getIntakeFormLinkState,
+  loadIntakeFormsDashboardData,
+  summarizeIntakeItemAction,
+  upsertIntakeFormLink,
+  upsertIntakeVariableProposal,
+} from "./intake-forms-dashboard";
+import {
+  actionComplete,
+  coerceAnswer,
+  errorMessage,
+  itemAction,
+  requiredIncompleteItemIds,
+  visibleSections,
+  type PublicIntakeFormPayload,
+} from "./intake-forms/runner-utils";
+import type {
+  ExternalUploadLinkRecord,
+  IntakeFormLinkSummary,
+  MatterSummary,
+  ShareLinkRecord,
+} from "./types";
 
 const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapability["resource"]> = {
   matters: "matter",
@@ -187,6 +216,40 @@ function baseExternalUploadLink(): ExternalUploadLinkRecord {
     maxUploads: 2,
     usedUploads: 0,
     createdAt: "2026-04-29T12:00:00.000Z",
+  };
+}
+
+function intakeFormLink(overrides: Partial<IntakeFormLinkSummary> = {}): IntakeFormLinkSummary {
+  return {
+    id: "intake-form-link-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    intakeSessionId: "intake-session-001",
+    requestedByUserId: "user-admin",
+    expiresAt: "2026-05-01T12:00:00.000Z",
+    createdAt: "2026-04-29T12:00:00.000Z",
+    status: "active",
+    ...overrides,
+  };
+}
+
+function publicRunnerPayload(
+  overrides: Partial<PublicIntakeFormPayload> = {},
+): PublicIntakeFormPayload {
+  return {
+    link: {
+      id: "intake-form-link-001",
+      status: "active",
+      expiresAt: "2099-06-01T00:00:00.000Z",
+    },
+    template: {
+      id: "intake-template-001",
+      name: "Residential tenancy intake",
+      definitionVersion: 2,
+      definition: sampleResidentialTenancyIntakeDefinition,
+    },
+    actions: [],
+    ...overrides,
   };
 }
 
@@ -555,5 +618,180 @@ describe("dashboard client behavior", () => {
     ).toEqual([
       expect.objectContaining({ id: "calendar-credential-001", revokedAt: expect.any(String) }),
     ]);
+  });
+
+  it("builds intake form link paths, create payloads, and review state", async () => {
+    const expiresAtLocal = "2026-05-01T09:30";
+    const link = intakeFormLink();
+    const submittedLink = intakeFormLink({
+      submittedAt: "2026-04-30T12:00:00.000Z",
+      status: "submitted",
+    });
+    const proposal = {
+      id: "proposal-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      intakeSessionId: "intake-session-001",
+      answerSnapshotId: "snapshot-001",
+      sourceQuestionId: "matter_title",
+      targetScope: "matter" as const,
+      targetField: "title" as const,
+      targetRecordId: "matter-001",
+      proposedValue: "Synthetic title",
+      status: "pending" as const,
+      createdAt: "2026-04-29T12:00:00.000Z",
+    };
+
+    expect(buildIntakeFormLinkListPath("matter 001")).toBe(
+      "/api/intake-form-links?matterId=matter%20001",
+    );
+    expect(buildIntakePortalPath("client token")).toBe("/intake-forms/client%20token");
+    expect(buildIntakeVariableProposalListPath("matter 001")).toBe(
+      "/api/intake-variable-proposals?matterId=matter%20001",
+    );
+    expect(
+      buildIntakeFormLinkCreatePayload({
+        intakeSessionId: "intake-session-001",
+        expiresAtLocal,
+      }),
+    ).toEqual({
+      intakeSessionId: "intake-session-001",
+      expiresAt: new Date(expiresAtLocal).toISOString(),
+    });
+    expect(
+      buildIntakeFormLinkCreatePayload({
+        intakeSessionId: "intake-session-001",
+        expiresAtLocal: "",
+      }),
+    ).toEqual({ intakeSessionId: "intake-session-001" });
+    expect(upsertIntakeFormLink({}, link)).toEqual({ "matter-001": [link] });
+    expect(upsertIntakeFormLink({ "matter-001": [link] }, submittedLink)).toEqual({
+      "matter-001": [submittedLink],
+    });
+    expect(upsertIntakeVariableProposal({}, proposal)).toEqual({ "matter-001": [proposal] });
+    expect(getIntakeFormLinkState(link, new Date("2026-04-30T12:00:00.000Z"))).toBe("active");
+    expect(getIntakeFormLinkState(submittedLink, new Date("2026-04-30T12:00:00.000Z"))).toBe(
+      "submitted",
+    );
+    expect(buildIntakeTemplateEditorValue()).toContain('"schemaVersion": 2');
+    expect(buildVariableMapping("client", "displayName")).toEqual({
+      targetScope: "client",
+      targetField: "displayName",
+    });
+    expect(buildVariableMapping("matter", "unsupported")).toBeUndefined();
+    expect(
+      summarizeIntakeItemAction({
+        id: "action-001",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        intakeSessionId: "intake-session-001",
+        formLinkId: "intake-form-link-001",
+        itemId: "evidence-upload",
+        kind: "upload",
+        status: "intent_created",
+        evidence: {},
+        createdAt: "2026-04-29T12:00:00.000Z",
+      }),
+    ).toBe("upload: intent created");
+    expect(
+      currentProposalValue(
+        proposal,
+        matter({
+          id: "matter-001",
+          title: "Current title",
+          parties: [
+            {
+              id: "party-001",
+              firmId: "firm-west-legal",
+              matterId: "matter-001",
+              contactId: "contact-ada",
+              role: "client",
+              adverse: false,
+              confidential: true,
+              contact: {
+                id: "contact-ada",
+                firmId: "firm-west-legal",
+                kind: "person",
+                displayName: "Ada Morgan",
+                aliases: [],
+                identifiers: [],
+              },
+            },
+          ],
+        }),
+      ),
+    ).toBe("Current title");
+
+    const data = await loadIntakeFormsDashboardData({
+      matters: [matter({ id: "matter-001" }), matter({ id: "matter-002" })],
+      listLinksForMatter: async (matterId) =>
+        matterId === "matter-001"
+          ? {
+              links: [link],
+              actionsByLinkId: {
+                [link.id]: [
+                  {
+                    id: "action-001",
+                    firmId: "firm-west-legal",
+                    matterId: "matter-001",
+                    intakeSessionId: "intake-session-001",
+                    formLinkId: link.id,
+                    itemId: "evidence-upload",
+                    kind: "upload",
+                    status: "uploaded",
+                    evidence: {},
+                    createdAt: "2026-04-29T12:00:00.000Z",
+                  },
+                ],
+              },
+            }
+          : { links: [], actionsByLinkId: {} },
+      listProposalsForMatter: async (matterId) => (matterId === "matter-001" ? [proposal] : []),
+    });
+
+    expect(data.linksByMatterId).toEqual({ "matter-001": [link], "matter-002": [] });
+    expect(data.actionsByLinkId[link.id]).toEqual([
+      expect.objectContaining({ itemId: "evidence-upload", status: "uploaded" }),
+    ]);
+    expect(data.proposalsByMatterId).toEqual({ "matter-001": [proposal], "matter-002": [] });
+  });
+
+  it("derives public runner visibility, action state, and API error messages", () => {
+    const payload = publicRunnerPayload({
+      actions: [
+        {
+          id: "action-001",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          intakeSessionId: "intake-session-001",
+          formLinkId: "intake-form-link-001",
+          itemId: "evidence-upload",
+          kind: "upload",
+          status: "uploaded",
+          evidence: { contentType: "application/pdf" },
+          createdAt: "2026-04-29T12:00:00.000Z",
+        },
+      ],
+    });
+    const visibleItemIds = visibleSections(payload, { issue_type: "deposit", urgent: false })
+      .flatMap((section) => section.items)
+      .map((item) => item.id);
+
+    expect(visibleItemIds).toContain("evidence-upload");
+    expect(visibleItemIds).not.toContain("repair-details-item");
+    expect(actionComplete(payload.actions[0])).toBe(true);
+    expect(
+      itemAction(payload.actions, { id: "evidence-upload", kind: "upload", label: "Evidence" }),
+    )?.toMatchObject({ status: "uploaded" });
+    expect(coerceAnswer({ id: "urgent", label: "Urgent", type: "boolean" }, false)).toBe(false);
+    expect(
+      requiredIncompleteItemIds({
+        code: "INTAKE_FORM_INCOMPLETE",
+        details: { requiredIncompleteItemIds: ["client-attestation"] },
+      }),
+    ).toEqual(["client-attestation"]);
+    expect(errorMessage({ message: "Upload type is not accepted" }, "fallback")).toBe(
+      "Upload type is not accepted",
+    );
   });
 });

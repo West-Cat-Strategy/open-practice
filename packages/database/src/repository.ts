@@ -26,6 +26,9 @@ import {
   type ExternalUploadLinkRecord,
   type Firm,
   type FirmSettings,
+  type IntakeFormItemActionRecord,
+  type IntakeFormLinkRecord,
+  type IntakeVariableProposal,
   type InvoiceLineRecord,
   type InvoiceRecord,
   type LedgerAccount,
@@ -99,6 +102,8 @@ import type {
 } from "@open-practice/domain";
 import type { OpenPracticeDatabase } from "./runtime.js";
 import * as schema from "./schema.js";
+
+type OpenPracticeTransaction = Parameters<Parameters<OpenPracticeDatabase["transaction"]>[0]>[0];
 
 export interface MatterSummary extends Matter {
   parties: Array<MatterParty & { contact: Contact }>;
@@ -422,6 +427,7 @@ export interface OpenPracticeRepository {
     options?: {
       shareLinkId?: string;
       externalUploadLinkId?: string;
+      intakeFormLinkId?: string;
       resourceType?: string;
       resourceId?: string;
     },
@@ -463,17 +469,58 @@ export interface OpenPracticeRepository {
     options?: { provider?: SignatureWebhookAttemptRecord["provider"]; externalId?: string },
   ): Promise<SignatureWebhookAttemptRecord[]>;
   listIntakeTemplates(firmId: string): Promise<IntakeTemplateRecord[]>;
+  createIntakeTemplate(template: IntakeTemplateRecord): Promise<IntakeTemplateRecord>;
+  updateIntakeTemplate(template: IntakeTemplateRecord): Promise<IntakeTemplateRecord>;
   listIntakeSessions(
     firmId: string,
     options?: { matterId?: string },
   ): Promise<IntakeSessionRecord[]>;
   getIntakeSession(firmId: string, sessionId: string): Promise<IntakeSessionRecord | undefined>;
   createIntakeSession(session: IntakeSessionRecord): Promise<IntakeSessionRecord>;
+  listIntakeFormLinks(
+    firmId: string,
+    options?: { matterId?: string; intakeSessionId?: string },
+  ): Promise<IntakeFormLinkRecord[]>;
+  createIntakeFormLink(link: IntakeFormLinkRecord): Promise<IntakeFormLinkRecord>;
+  getIntakeFormLink(firmId: string, id: string): Promise<IntakeFormLinkRecord | undefined>;
+  getIntakeFormLinkByTokenHash(tokenHash: string): Promise<IntakeFormLinkRecord | undefined>;
+  revokeIntakeFormLink(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<IntakeFormLinkRecord | undefined>;
+  markIntakeFormLinkSubmitted(input: {
+    firmId: string;
+    id: string;
+    submittedAt: string;
+  }): Promise<IntakeFormLinkRecord | undefined>;
+  listIntakeFormItemActions(
+    firmId: string,
+    options?: { formLinkId?: string; intakeSessionId?: string; itemId?: string },
+  ): Promise<IntakeFormItemActionRecord[]>;
+  upsertIntakeFormItemAction(
+    action: IntakeFormItemActionRecord,
+  ): Promise<IntakeFormItemActionRecord>;
   createAnswerSnapshot(snapshot: AnswerSnapshotRecord): Promise<AnswerSnapshotRecord>;
   listAnswerSnapshots(
     firmId: string,
     options?: { intakeSessionId?: string },
   ): Promise<AnswerSnapshotRecord[]>;
+  createIntakeVariableProposals(
+    proposals: IntakeVariableProposal[],
+  ): Promise<IntakeVariableProposal[]>;
+  listIntakeVariableProposals(
+    firmId: string,
+    options?: { matterId?: string; status?: IntakeVariableProposal["status"] },
+  ): Promise<IntakeVariableProposal[]>;
+  reviewIntakeVariableProposal(input: {
+    firmId: string;
+    id: string;
+    status: "approved" | "rejected";
+    reviewedByUserId: string;
+    reviewedAt: string;
+    rejectionReason?: string;
+  }): Promise<IntakeVariableProposal | undefined>;
   createGeneratedDocument(document: GeneratedDocumentRecord): Promise<GeneratedDocumentRecord>;
   createLedgerTransactionApproval(
     approval: LedgerTransactionApprovalRecord,
@@ -959,6 +1006,178 @@ function mapExternalUploadLinkRow(
   };
 }
 
+function mapIntakeFormLinkRow(
+  row: typeof schema.intakeFormLinks.$inferSelect,
+): IntakeFormLinkRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    intakeSessionId: row.intakeSessionId,
+    tokenHash: row.tokenHash,
+    requestedByUserId: row.requestedByUserId,
+    clientContactId: row.clientContactId ?? undefined,
+    expiresAt: row.expiresAt.toISOString(),
+    revokedAt: dateToIso(row.revokedAt),
+    submittedAt: dateToIso(row.submittedAt),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function intakeFormLinkInsert(
+  link: IntakeFormLinkRecord,
+): typeof schema.intakeFormLinks.$inferInsert {
+  return {
+    ...link,
+    clientContactId: link.clientContactId ?? null,
+    expiresAt: new Date(link.expiresAt),
+    revokedAt: link.revokedAt ? new Date(link.revokedAt) : null,
+    submittedAt: link.submittedAt ? new Date(link.submittedAt) : null,
+    createdAt: new Date(link.createdAt),
+  };
+}
+
+function mapIntakeFormItemActionRow(
+  row: typeof schema.intakeFormItemActions.$inferSelect,
+): IntakeFormItemActionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    intakeSessionId: row.intakeSessionId,
+    formLinkId: row.formLinkId,
+    itemId: row.itemId,
+    kind: row.kind,
+    status: row.status,
+    documentId: row.documentId ?? undefined,
+    signatureRequestId: row.signatureRequestId ?? undefined,
+    evidence: row.evidence as Record<string, unknown>,
+    createdAt: row.createdAt.toISOString(),
+    completedAt: dateToIso(row.completedAt),
+  };
+}
+
+function intakeFormItemActionInsert(
+  action: IntakeFormItemActionRecord,
+): typeof schema.intakeFormItemActions.$inferInsert {
+  return {
+    ...action,
+    documentId: action.documentId ?? null,
+    signatureRequestId: action.signatureRequestId ?? null,
+    createdAt: new Date(action.createdAt),
+    completedAt: action.completedAt ? new Date(action.completedAt) : null,
+  };
+}
+
+function mapIntakeVariableProposalRow(
+  row: typeof schema.intakeVariableProposals.$inferSelect,
+): IntakeVariableProposal {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    intakeSessionId: row.intakeSessionId,
+    answerSnapshotId: row.answerSnapshotId,
+    sourceQuestionId: row.sourceQuestionId,
+    targetScope: row.targetScope,
+    targetField: row.targetField,
+    targetRecordId: row.targetRecordId,
+    proposedValue: row.proposedValue,
+    status: row.status,
+    createdAt: row.createdAt.toISOString(),
+    reviewedByUserId: row.reviewedByUserId ?? undefined,
+    reviewedAt: dateToIso(row.reviewedAt),
+    rejectionReason: row.rejectionReason ?? undefined,
+    appliedAt: dateToIso(row.appliedAt),
+  };
+}
+
+function intakeVariableProposalInsert(
+  proposal: IntakeVariableProposal,
+): typeof schema.intakeVariableProposals.$inferInsert {
+  return {
+    ...proposal,
+    createdAt: new Date(proposal.createdAt),
+    reviewedByUserId: proposal.reviewedByUserId ?? null,
+    reviewedAt: proposal.reviewedAt ? new Date(proposal.reviewedAt) : null,
+    rejectionReason: proposal.rejectionReason ?? null,
+    appliedAt: proposal.appliedAt ? new Date(proposal.appliedAt) : null,
+  };
+}
+
+async function applyVariableProposalWithTx(
+  tx: OpenPracticeTransaction,
+  proposal: typeof schema.intakeVariableProposals.$inferSelect,
+): Promise<void> {
+  if (proposal.targetScope === "client") {
+    if (proposal.targetField === "displayName") {
+      await tx
+        .update(schema.contacts)
+        .set({ displayName: proposal.proposedValue })
+        .where(
+          and(
+            eq(schema.contacts.firmId, proposal.firmId),
+            eq(schema.contacts.id, proposal.targetRecordId),
+          ),
+        );
+      return;
+    }
+    if (proposal.targetField === "notes") {
+      await tx
+        .update(schema.contacts)
+        .set({ notes: proposal.proposedValue })
+        .where(
+          and(
+            eq(schema.contacts.firmId, proposal.firmId),
+            eq(schema.contacts.id, proposal.targetRecordId),
+          ),
+        );
+      return;
+    }
+    throw new Error(`Unsupported client variable field ${proposal.targetField}`);
+  }
+  if (proposal.targetField === "title") {
+    await tx
+      .update(schema.matters)
+      .set({ title: proposal.proposedValue })
+      .where(
+        and(
+          eq(schema.matters.firmId, proposal.firmId),
+          eq(schema.matters.id, proposal.targetRecordId),
+        ),
+      );
+    return;
+  }
+  if (proposal.targetField === "practiceArea") {
+    await tx
+      .update(schema.matters)
+      .set({ practiceArea: proposal.proposedValue })
+      .where(
+        and(
+          eq(schema.matters.firmId, proposal.firmId),
+          eq(schema.matters.id, proposal.targetRecordId),
+        ),
+      );
+    return;
+  }
+  if (proposal.targetField === "jurisdiction") {
+    if (!["BC", "ON", "CANADA", "OTHER"].includes(proposal.proposedValue)) {
+      throw new Error(`Unsupported intake proposal jurisdiction ${proposal.proposedValue}`);
+    }
+    await tx
+      .update(schema.matters)
+      .set({ jurisdiction: proposal.proposedValue as Matter["jurisdiction"] })
+      .where(
+        and(
+          eq(schema.matters.firmId, proposal.firmId),
+          eq(schema.matters.id, proposal.targetRecordId),
+        ),
+      );
+    return;
+  }
+  throw new Error(`Unsupported matter variable field ${proposal.targetField}`);
+}
+
 function externalUploadLinkInsert(
   link: ExternalUploadLinkRecord,
 ): typeof schema.externalUploadLinks.$inferInsert {
@@ -977,6 +1196,7 @@ function mapAccessLogRow(row: typeof schema.accessLogs.$inferSelect): AccessLogR
     actorId: row.actorId ?? undefined,
     shareLinkId: row.shareLinkId ?? undefined,
     externalUploadLinkId: row.externalUploadLinkId ?? undefined,
+    intakeFormLinkId: row.intakeFormLinkId ?? undefined,
     resourceType: row.resourceType,
     resourceId: row.resourceId,
     action: row.action as AccessLogRecord["action"],
@@ -994,6 +1214,7 @@ function accessLogInsert(log: AccessLogRecord): typeof schema.accessLogs.$inferI
     actorId: log.actorId ?? null,
     shareLinkId: log.shareLinkId ?? null,
     externalUploadLinkId: log.externalUploadLinkId ?? null,
+    intakeFormLinkId: log.intakeFormLinkId ?? null,
     resourceType: log.resourceType,
     resourceId: log.resourceId,
     action: log.action,
@@ -1361,6 +1582,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private signatureRequests: SignatureRequestRecord[];
   private intakeSessions: IntakeSessionRecord[];
   private answerSnapshots: AnswerSnapshotRecord[] = [];
+  private intakeFormLinks: IntakeFormLinkRecord[] = [];
+  private intakeFormItemActions: IntakeFormItemActionRecord[] = [];
+  private intakeVariableProposals: IntakeVariableProposal[] = [];
   private generatedDocuments: GeneratedDocumentRecord[];
   private firmSettings: FirmSettings[] = [];
   private providerSettings: ProviderSettingRecord[] = [];
@@ -2290,6 +2514,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     options: {
       shareLinkId?: string;
       externalUploadLinkId?: string;
+      intakeFormLinkId?: string;
       resourceType?: string;
       resourceId?: string;
     } = {},
@@ -2302,6 +2527,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
             (!options.shareLinkId || log.shareLinkId === options.shareLinkId) &&
             (!options.externalUploadLinkId ||
               log.externalUploadLinkId === options.externalUploadLinkId) &&
+            (!options.intakeFormLinkId || log.intakeFormLinkId === options.intakeFormLinkId) &&
             (!options.resourceType || log.resourceType === options.resourceType) &&
             (!options.resourceId || log.resourceId === options.resourceId),
         )
@@ -2483,6 +2709,23 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(this.intakeTemplates.filter((template) => template.firmId === firmId));
   }
 
+  async createIntakeTemplate(template: IntakeTemplateRecord): Promise<IntakeTemplateRecord> {
+    if (this.intakeTemplates.some((existing) => existing.id === template.id)) {
+      throw new Error(`Intake template ${template.id} already exists`);
+    }
+    this.intakeTemplates = [...this.intakeTemplates, clone(template)];
+    return clone(template);
+  }
+
+  async updateIntakeTemplate(template: IntakeTemplateRecord): Promise<IntakeTemplateRecord> {
+    const index = this.intakeTemplates.findIndex(
+      (candidate) => candidate.firmId === template.firmId && candidate.id === template.id,
+    );
+    if (index === -1) throw new Error(`Unknown intake template ${template.id}`);
+    this.intakeTemplates[index] = clone(template);
+    return clone(template);
+  }
+
   async listIntakeSessions(
     firmId: string,
     options: { matterId?: string } = {},
@@ -2509,6 +2752,93 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(session);
   }
 
+  async listIntakeFormLinks(
+    firmId: string,
+    options: { matterId?: string; intakeSessionId?: string } = {},
+  ): Promise<IntakeFormLinkRecord[]> {
+    return clone(
+      this.intakeFormLinks
+        .filter(
+          (link) =>
+            link.firmId === firmId &&
+            (!options.matterId || link.matterId === options.matterId) &&
+            (!options.intakeSessionId || link.intakeSessionId === options.intakeSessionId),
+        )
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    );
+  }
+
+  async createIntakeFormLink(link: IntakeFormLinkRecord): Promise<IntakeFormLinkRecord> {
+    if (this.intakeFormLinks.some((existing) => existing.tokenHash === link.tokenHash)) {
+      throw new Error("Intake form link token hash already exists");
+    }
+    this.intakeFormLinks = [...this.intakeFormLinks, clone(link)];
+    return clone(link);
+  }
+
+  async getIntakeFormLink(firmId: string, id: string): Promise<IntakeFormLinkRecord | undefined> {
+    return clone(this.intakeFormLinks.find((link) => link.firmId === firmId && link.id === id));
+  }
+
+  async getIntakeFormLinkByTokenHash(tokenHash: string): Promise<IntakeFormLinkRecord | undefined> {
+    return clone(this.intakeFormLinks.find((link) => link.tokenHash === tokenHash));
+  }
+
+  async revokeIntakeFormLink(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<IntakeFormLinkRecord | undefined> {
+    const link = this.intakeFormLinks.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+    );
+    if (!link) return undefined;
+    link.revokedAt = input.revokedAt;
+    return clone(link);
+  }
+
+  async markIntakeFormLinkSubmitted(input: {
+    firmId: string;
+    id: string;
+    submittedAt: string;
+  }): Promise<IntakeFormLinkRecord | undefined> {
+    const link = this.intakeFormLinks.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+    );
+    if (!link || link.submittedAt || link.revokedAt) return undefined;
+    link.submittedAt = input.submittedAt;
+    return clone(link);
+  }
+
+  async listIntakeFormItemActions(
+    firmId: string,
+    options: { formLinkId?: string; intakeSessionId?: string; itemId?: string } = {},
+  ): Promise<IntakeFormItemActionRecord[]> {
+    return clone(
+      this.intakeFormItemActions.filter(
+        (action) =>
+          action.firmId === firmId &&
+          (!options.formLinkId || action.formLinkId === options.formLinkId) &&
+          (!options.intakeSessionId || action.intakeSessionId === options.intakeSessionId) &&
+          (!options.itemId || action.itemId === options.itemId),
+      ),
+    );
+  }
+
+  async upsertIntakeFormItemAction(
+    action: IntakeFormItemActionRecord,
+  ): Promise<IntakeFormItemActionRecord> {
+    const existingIndex = this.intakeFormItemActions.findIndex(
+      (candidate) => candidate.firmId === action.firmId && candidate.id === action.id,
+    );
+    if (existingIndex >= 0) {
+      this.intakeFormItemActions[existingIndex] = clone(action);
+    } else {
+      this.intakeFormItemActions = [...this.intakeFormItemActions, clone(action)];
+    }
+    return clone(action);
+  }
+
   async createAnswerSnapshot(snapshot: AnswerSnapshotRecord): Promise<AnswerSnapshotRecord> {
     this.answerSnapshots = [...this.answerSnapshots, clone(snapshot)];
     return clone(snapshot);
@@ -2525,6 +2855,80 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           (!options.intakeSessionId || snapshot.intakeSessionId === options.intakeSessionId),
       ),
     );
+  }
+
+  async createIntakeVariableProposals(
+    proposals: IntakeVariableProposal[],
+  ): Promise<IntakeVariableProposal[]> {
+    const newIds = new Set(proposals.map((proposal) => proposal.id));
+    this.intakeVariableProposals = [
+      ...this.intakeVariableProposals.filter((proposal) => !newIds.has(proposal.id)),
+      ...clone(proposals),
+    ];
+    return clone(proposals);
+  }
+
+  async listIntakeVariableProposals(
+    firmId: string,
+    options: { matterId?: string; status?: IntakeVariableProposal["status"] } = {},
+  ): Promise<IntakeVariableProposal[]> {
+    return clone(
+      this.intakeVariableProposals.filter(
+        (proposal) =>
+          proposal.firmId === firmId &&
+          (!options.matterId || proposal.matterId === options.matterId) &&
+          (!options.status || proposal.status === options.status),
+      ),
+    );
+  }
+
+  async reviewIntakeVariableProposal(input: {
+    firmId: string;
+    id: string;
+    status: "approved" | "rejected";
+    reviewedByUserId: string;
+    reviewedAt: string;
+    rejectionReason?: string;
+  }): Promise<IntakeVariableProposal | undefined> {
+    const proposal = this.intakeVariableProposals.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+    );
+    if (!proposal || proposal.status !== "pending") return undefined;
+    proposal.status = input.status;
+    proposal.reviewedByUserId = input.reviewedByUserId;
+    proposal.reviewedAt = input.reviewedAt;
+    proposal.rejectionReason = input.status === "rejected" ? input.rejectionReason : undefined;
+    if (input.status === "approved") {
+      this.applyVariableProposal(proposal);
+      proposal.appliedAt = input.reviewedAt;
+    }
+    return clone(proposal);
+  }
+
+  private applyVariableProposal(proposal: IntakeVariableProposal): void {
+    if (proposal.targetScope === "client") {
+      const contact = this.contacts.find(
+        (candidate) =>
+          candidate.firmId === proposal.firmId && candidate.id === proposal.targetRecordId,
+      );
+      if (!contact) throw new Error(`Unknown intake proposal contact ${proposal.targetRecordId}`);
+      if (proposal.targetField === "displayName") contact.displayName = proposal.proposedValue;
+      if (proposal.targetField === "notes") contact.notes = proposal.proposedValue;
+      return;
+    }
+    const matter = this.matters.find(
+      (candidate) =>
+        candidate.firmId === proposal.firmId && candidate.id === proposal.targetRecordId,
+    );
+    if (!matter) throw new Error(`Unknown intake proposal matter ${proposal.targetRecordId}`);
+    if (proposal.targetField === "title") matter.title = proposal.proposedValue;
+    if (proposal.targetField === "practiceArea") matter.practiceArea = proposal.proposedValue;
+    if (proposal.targetField === "jurisdiction") {
+      if (!["BC", "ON", "CANADA", "OTHER"].includes(proposal.proposedValue)) {
+        throw new Error(`Unsupported intake proposal jurisdiction ${proposal.proposedValue}`);
+      }
+      matter.jurisdiction = proposal.proposedValue as Matter["jurisdiction"];
+    }
   }
 
   async createGeneratedDocument(
@@ -4495,6 +4899,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     options: {
       shareLinkId?: string;
       externalUploadLinkId?: string;
+      intakeFormLinkId?: string;
       resourceType?: string;
       resourceId?: string;
     } = {},
@@ -4505,6 +4910,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     }
     if (options.externalUploadLinkId) {
       conditions.push(eq(schema.accessLogs.externalUploadLinkId, options.externalUploadLinkId));
+    }
+    if (options.intakeFormLinkId) {
+      conditions.push(eq(schema.accessLogs.intakeFormLinkId, options.intakeFormLinkId));
     }
     if (options.resourceType) {
       conditions.push(eq(schema.accessLogs.resourceType, options.resourceType));
@@ -4762,6 +5170,41 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return rows.map(mapIntakeTemplateRow);
   }
 
+  async createIntakeTemplate(template: IntakeTemplateRecord): Promise<IntakeTemplateRecord> {
+    await this.db.insert(schema.intakeTemplates).values({
+      ...template,
+      createdAt: new Date(template.createdAt),
+      updatedAt: new Date(template.updatedAt),
+    });
+    return template;
+  }
+
+  async updateIntakeTemplate(template: IntakeTemplateRecord): Promise<IntakeTemplateRecord> {
+    const [row] = await this.db
+      .update(schema.intakeTemplates)
+      .set({
+        name: template.name,
+        description: template.description,
+        category: template.category,
+        provider: template.provider,
+        externalTemplateId: template.externalTemplateId,
+        active: template.active,
+        definitionVersion: template.definitionVersion,
+        definition: template.definition,
+        updatedAt: new Date(template.updatedAt),
+        metadata: template.metadata,
+      })
+      .where(
+        and(
+          eq(schema.intakeTemplates.firmId, template.firmId),
+          eq(schema.intakeTemplates.id, template.id),
+        ),
+      )
+      .returning();
+    if (!row) throw new Error(`Unknown intake template ${template.id}`);
+    return mapIntakeTemplateRow(row);
+  }
+
   async listIntakeSessions(
     firmId: string,
     options: { matterId?: string } = {},
@@ -4802,6 +5245,118 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return session;
   }
 
+  async listIntakeFormLinks(
+    firmId: string,
+    options: { matterId?: string; intakeSessionId?: string } = {},
+  ): Promise<IntakeFormLinkRecord[]> {
+    const conditions = [eq(schema.intakeFormLinks.firmId, firmId)];
+    if (options.matterId) conditions.push(eq(schema.intakeFormLinks.matterId, options.matterId));
+    if (options.intakeSessionId) {
+      conditions.push(eq(schema.intakeFormLinks.intakeSessionId, options.intakeSessionId));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.intakeFormLinks)
+      .where(and(...conditions))
+      .orderBy(desc(schema.intakeFormLinks.createdAt));
+    return rows.map(mapIntakeFormLinkRow);
+  }
+
+  async createIntakeFormLink(link: IntakeFormLinkRecord): Promise<IntakeFormLinkRecord> {
+    const [row] = await this.db
+      .insert(schema.intakeFormLinks)
+      .values(intakeFormLinkInsert(link))
+      .returning();
+    return mapIntakeFormLinkRow(row);
+  }
+
+  async getIntakeFormLink(firmId: string, id: string): Promise<IntakeFormLinkRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.intakeFormLinks)
+      .where(and(eq(schema.intakeFormLinks.firmId, firmId), eq(schema.intakeFormLinks.id, id)));
+    return row ? mapIntakeFormLinkRow(row) : undefined;
+  }
+
+  async getIntakeFormLinkByTokenHash(tokenHash: string): Promise<IntakeFormLinkRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.intakeFormLinks)
+      .where(eq(schema.intakeFormLinks.tokenHash, tokenHash));
+    return row ? mapIntakeFormLinkRow(row) : undefined;
+  }
+
+  async revokeIntakeFormLink(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<IntakeFormLinkRecord | undefined> {
+    const [row] = await this.db
+      .update(schema.intakeFormLinks)
+      .set({ revokedAt: new Date(input.revokedAt) })
+      .where(
+        and(
+          eq(schema.intakeFormLinks.firmId, input.firmId),
+          eq(schema.intakeFormLinks.id, input.id),
+        ),
+      )
+      .returning();
+    return row ? mapIntakeFormLinkRow(row) : undefined;
+  }
+
+  async markIntakeFormLinkSubmitted(input: {
+    firmId: string;
+    id: string;
+    submittedAt: string;
+  }): Promise<IntakeFormLinkRecord | undefined> {
+    const [row] = await this.db
+      .update(schema.intakeFormLinks)
+      .set({ submittedAt: new Date(input.submittedAt) })
+      .where(
+        and(
+          eq(schema.intakeFormLinks.firmId, input.firmId),
+          eq(schema.intakeFormLinks.id, input.id),
+          isNull(schema.intakeFormLinks.revokedAt),
+          isNull(schema.intakeFormLinks.submittedAt),
+        ),
+      )
+      .returning();
+    return row ? mapIntakeFormLinkRow(row) : undefined;
+  }
+
+  async listIntakeFormItemActions(
+    firmId: string,
+    options: { formLinkId?: string; intakeSessionId?: string; itemId?: string } = {},
+  ): Promise<IntakeFormItemActionRecord[]> {
+    const conditions = [eq(schema.intakeFormItemActions.firmId, firmId)];
+    if (options.formLinkId) {
+      conditions.push(eq(schema.intakeFormItemActions.formLinkId, options.formLinkId));
+    }
+    if (options.intakeSessionId) {
+      conditions.push(eq(schema.intakeFormItemActions.intakeSessionId, options.intakeSessionId));
+    }
+    if (options.itemId) conditions.push(eq(schema.intakeFormItemActions.itemId, options.itemId));
+    const rows = await this.db
+      .select()
+      .from(schema.intakeFormItemActions)
+      .where(and(...conditions));
+    return rows.map(mapIntakeFormItemActionRow);
+  }
+
+  async upsertIntakeFormItemAction(
+    action: IntakeFormItemActionRecord,
+  ): Promise<IntakeFormItemActionRecord> {
+    const [row] = await this.db
+      .insert(schema.intakeFormItemActions)
+      .values(intakeFormItemActionInsert(action))
+      .onConflictDoUpdate({
+        target: schema.intakeFormItemActions.id,
+        set: intakeFormItemActionInsert(action),
+      })
+      .returning();
+    return mapIntakeFormItemActionRow(row);
+  }
+
   async createAnswerSnapshot(snapshot: AnswerSnapshotRecord): Promise<AnswerSnapshotRecord> {
     await this.db.insert(schema.answerSnapshots).values({
       ...snapshot,
@@ -4826,6 +5381,79 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           : eq(schema.answerSnapshots.firmId, firmId),
       );
     return rows.map(mapAnswerSnapshotRow);
+  }
+
+  async createIntakeVariableProposals(
+    proposals: IntakeVariableProposal[],
+  ): Promise<IntakeVariableProposal[]> {
+    if (proposals.length === 0) return [];
+    const rows = await this.db
+      .insert(schema.intakeVariableProposals)
+      .values(proposals.map(intakeVariableProposalInsert))
+      .onConflictDoNothing()
+      .returning();
+    return rows.map(mapIntakeVariableProposalRow);
+  }
+
+  async listIntakeVariableProposals(
+    firmId: string,
+    options: { matterId?: string; status?: IntakeVariableProposal["status"] } = {},
+  ): Promise<IntakeVariableProposal[]> {
+    const conditions = [eq(schema.intakeVariableProposals.firmId, firmId)];
+    if (options.matterId) {
+      conditions.push(eq(schema.intakeVariableProposals.matterId, options.matterId));
+    }
+    if (options.status) conditions.push(eq(schema.intakeVariableProposals.status, options.status));
+    const rows = await this.db
+      .select()
+      .from(schema.intakeVariableProposals)
+      .where(and(...conditions))
+      .orderBy(desc(schema.intakeVariableProposals.createdAt));
+    return rows.map(mapIntakeVariableProposalRow);
+  }
+
+  async reviewIntakeVariableProposal(input: {
+    firmId: string;
+    id: string;
+    status: "approved" | "rejected";
+    reviewedByUserId: string;
+    reviewedAt: string;
+    rejectionReason?: string;
+  }): Promise<IntakeVariableProposal | undefined> {
+    const [current] = await this.db
+      .select()
+      .from(schema.intakeVariableProposals)
+      .where(
+        and(
+          eq(schema.intakeVariableProposals.firmId, input.firmId),
+          eq(schema.intakeVariableProposals.id, input.id),
+        ),
+      );
+    if (!current || current.status !== "pending") return undefined;
+    const reviewedAt = new Date(input.reviewedAt);
+    let row: typeof schema.intakeVariableProposals.$inferSelect | undefined;
+    await this.db.transaction(async (tx) => {
+      if (input.status === "approved") {
+        await applyVariableProposalWithTx(tx, current);
+      }
+      [row] = await tx
+        .update(schema.intakeVariableProposals)
+        .set({
+          status: input.status,
+          reviewedByUserId: input.reviewedByUserId,
+          reviewedAt,
+          rejectionReason: input.status === "rejected" ? (input.rejectionReason ?? null) : null,
+          appliedAt: input.status === "approved" ? reviewedAt : null,
+        })
+        .where(
+          and(
+            eq(schema.intakeVariableProposals.firmId, input.firmId),
+            eq(schema.intakeVariableProposals.id, input.id),
+          ),
+        )
+        .returning();
+    });
+    return row ? mapIntakeVariableProposalRow(row) : undefined;
   }
 
   async createGeneratedDocument(
