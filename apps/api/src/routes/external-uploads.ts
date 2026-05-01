@@ -13,6 +13,7 @@ import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const SIGNED_URL_EXPIRES_IN_SECONDS = 600;
@@ -39,6 +40,7 @@ const createExternalUploadBodySchema = z.object({
   matterId: z.string().min(1),
   expiresAt: z.string().datetime({ offset: true }).optional(),
   maxUploads: z.coerce.number().int().positive().default(1),
+  notificationEmail: z.string().email().optional(),
 });
 
 const externalUploadIdParamsSchema = z.object({ id: z.string().min(1) });
@@ -325,10 +327,26 @@ export function registerExternalUploadRoutes(
         maxUploads: link.maxUploads,
       },
     });
+    const queuedEmail = body.notificationEmail
+      ? await queueRouteEmailOutbox(repository, request.auth, {
+          matterId: link.matterId,
+          templateKey: "external_upload.created",
+          to: [body.notificationEmail],
+          subject: "Document upload link",
+          textBody: `A document upload link is available. Upload token: ${token}`,
+          relatedResourceType: "external_upload",
+          relatedResourceId: link.id,
+          metadata: {
+            expiresAt: link.expiresAt,
+            maxUploads: link.maxUploads,
+          },
+        })
+      : undefined;
 
     return {
       upload: serializeLink(link),
       token,
+      queuedEmail: summarizeQueuedRouteEmail(queuedEmail),
     };
   });
 

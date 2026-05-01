@@ -41,15 +41,15 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/documents/:id/upload-complete`                         | Checksum and scan-state completion for an upload intent.                                                        |
 | `POST /api/documents/:id/scan-status`                             | Explicit malware/scan-state update for an existing document.                                                    |
 | `GET /api/signature-requests?matterId=`                           | Signature requests visible firm-wide or across assigned matters.                                                |
-| `POST /api/signature-requests`                                    | Provider-neutral signature submission and initial provider event.                                               |
+| `POST /api/signature-requests`                                    | Provider-neutral signature submission, initial provider event, and SMTP-gated signer email queueing.            |
 | `POST /api/signature-requests/provider-events`                    | Authenticated legacy/provider-neutral status event for matching provider/external IDs.                          |
 | `POST /api/signature-requests/:id/embedded-events`                | Embedded signature viewed/completed/declined event with consent/evidence capture.                               |
 | `GET /api/signature-requests/:id/events`                          | Provider event history for one signature request.                                                               |
 | `GET /api/intake-sessions?matterId=`                              | Intake templates and sessions visible firm-wide or across assigned matters.                                     |
-| `POST /api/intake-sessions`                                       | Embedded intake session record, with Open Practice remaining system of record.                                  |
+| `POST /api/intake-sessions`                                       | Embedded intake session record, with Open Practice remaining system of record and SMTP-gated staff notice.      |
 | `GET /api/intake-sessions/:id/answer-snapshots`                   | Answer snapshots for one intake session.                                                                        |
 | `POST /api/intake-sessions/:id/answer-snapshots`                  | Captured intake answers for one intake session.                                                                 |
-| `POST /api/intake-sessions/:id/generated-documents`               | Generated document metadata tied to an intake session.                                                          |
+| `POST /api/intake-sessions/:id/generated-documents`               | Generated document metadata tied to an intake session, with SMTP-gated staff notice.                            |
 | `POST /api/ledger/transactions/:id/approvals`                     | Maker-checker approval decision for a trust transaction boundary.                                               |
 | `POST /api/ledger/reconciliations`                                | Trust-account reconciliation record with matched/exception status.                                              |
 | `GET /api/queues`                                                 | Permission-aware operational queues for matters, documents, signatures, intake, ledger, and audit review.       |
@@ -79,6 +79,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/jobs`                                                   | Firm-scoped PostgreSQL job lifecycle projection and queue names; Redis internals are not exposed.               |
 | `GET /api/email/status`                                           | SMTP provider status from firm provider settings.                                                               |
 | `POST /api/email/previews`                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                             |
+| `POST /api/mail/outbox`                                           | Create a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.   |
 | `GET /api/inbound-email/status`                                   | Inbound email provider status from firm provider settings.                                                      |
 | `GET /api/inbound-email/messages?matterId=`                       | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                           |
 | `GET /api/document-processing/status`                             | OCR, transcription, media, and AI provider status from firm provider settings.                                  |
@@ -86,12 +87,12 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/auth/extensions`                                        | Embedded-auth extension status for local password, OIDC/SAML placeholders, and MFA policy scaffolding.          |
 | `GET /api/shares/status`                                          | Share-link capability status and create enablement based on token-signing configuration.                        |
 | `GET /api/shares?matterId=`                                       | Persisted share-link listing with matter-scoped authorization and no token hashes in the response.              |
-| `POST /api/shares`                                                | Creates an expiring token-hashed share link and returns the raw token only once.                                |
+| `POST /api/shares`                                                | Creates an expiring token-hashed share link, returns the raw token once, and can queue one token email.         |
 | `POST /api/shares/:id/revoke`                                     | Revokes an existing matter-scoped share link and records audit evidence.                                        |
 | `GET /api/portal/shares/:token`                                   | Public token-scoped read of eligible shared document metadata with access logging.                              |
 | `GET /api/external-uploads/status`                                | External upload capability status, token-signing signal, and S3 configuration signal.                           |
 | `GET /api/external-uploads?matterId=`                             | Persisted external-upload link listing with matter-scoped authorization and no token hashes in the response.    |
-| `POST /api/external-uploads`                                      | Creates an expiring token-hashed external-upload link and returns the raw token only once.                      |
+| `POST /api/external-uploads`                                      | Creates an expiring token-hashed upload link, returns the raw token once, and can queue one token email.        |
 | `POST /api/external-uploads/:id/revoke`                           | Revokes an existing matter-scoped external-upload link and records audit evidence.                              |
 | `POST /api/portal/external-uploads/:token/intents`                | Public token-scoped S3 PUT upload intent for one external-upload link.                                          |
 | `POST /api/portal/external-uploads/:token/documents/:id/complete` | Public token-scoped checksum and scan-state completion for a document upload intent.                            |
@@ -110,17 +111,16 @@ behind the scaffolded provider settings and job lifecycle records. Inbound email
 persists parsed messages and attachment records, but webhook ingestion, provider delivery setup, and
 automatic document promotion remain deferred.
 
-| Route                                             | Purpose                                                                                          |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `GET /api/providers/status`                       | Operator-visible status for Redis/BullMQ, object storage, mail, OCR, transcription, and Ollama.  |
-| `POST /api/documents/:id/ocr-jobs`                | Enqueue Tesseract OCR for a verified document version.                                           |
-| `POST /api/media/:id/transcription-jobs`          | Enqueue FFmpeg normalization and Whisper transcription for authorized media.                     |
-| `POST /api/documents/:id/assistive-drafting-jobs` | Enqueue an Ollama-backed drafting/summarization aid with required review state.                  |
-| `POST /api/mail/outbox`                           | Create an audited outbound email record for a mail worker to deliver through the active profile. |
-| `POST /api/auth/passkeys/registration-options`    | Create a SimpleWebAuthn registration challenge for the current user.                             |
-| `POST /api/auth/passkeys/registration`            | Verify and store a passkey credential for embedded auth.                                         |
-| `POST /api/auth/passkeys/authentication-options`  | Create a passkey login challenge for configured RP ID/origin.                                    |
-| `POST /api/auth/passkeys/authentication`          | Verify passkey assertion and create an embedded session.                                         |
+| Route                                             | Purpose                                                                                         |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `GET /api/providers/status`                       | Operator-visible status for Redis/BullMQ, object storage, mail, OCR, transcription, and Ollama. |
+| `POST /api/documents/:id/ocr-jobs`                | Enqueue Tesseract OCR for a verified document version.                                          |
+| `POST /api/media/:id/transcription-jobs`          | Enqueue FFmpeg normalization and Whisper transcription for authorized media.                    |
+| `POST /api/documents/:id/assistive-drafting-jobs` | Enqueue an Ollama-backed drafting/summarization aid with required review state.                 |
+| `POST /api/auth/passkeys/registration-options`    | Create a SimpleWebAuthn registration challenge for the current user.                            |
+| `POST /api/auth/passkeys/registration`            | Verify and store a passkey credential for embedded auth.                                        |
+| `POST /api/auth/passkeys/authentication-options`  | Create a passkey login challenge for configured RP ID/origin.                                   |
+| `POST /api/auth/passkeys/authentication`          | Verify passkey assertion and create an embedded session.                                        |
 
 ## State Machines
 
@@ -134,35 +134,39 @@ clear.
 
 Secure share links store only HMAC token hashes. Authenticated v1 creation accepts document-view
 shares only, requires matter-scoped `share_link:create` access, a future expiry, and at least one
-shareable document. The create response returns the raw token once; list and revoke responses never
-expose token hashes. Public share reads resolve the supplied token to its hash, reject missing,
-revoked, expired, or email-verification-required links, filter documents through the same
-upload/checksum/scan/legal-hold/supersession gates as portal grants, and record access-log outcomes
-for granted and denied reads. Upload, message, signature, and email-verification share flows remain
-future scoped until those public flows are implemented.
+shareable document. The create response returns the raw token once; when `notificationEmail` is
+provided and SMTP is configured, the create flow queues one outbox email while the raw token is
+still available. List and revoke responses never expose token hashes. Public share reads resolve the
+supplied token to its hash, reject missing, revoked, expired, or email-verification-required links,
+filter documents through the same upload/checksum/scan/legal-hold/supersession gates as portal
+grants, and record access-log outcomes for granted and denied reads. Upload, message, signature,
+and email-verification share flows remain future scoped until those public flows are implemented.
 
 External upload links store only HMAC token hashes. Authenticated creation requires matter-scoped
 `external_upload:create` access, configured token signing, configured S3 upload signing, a future
-expiry, and a positive upload limit. The create response returns the raw token once; list and revoke
-responses never expose token hashes. Public upload-intent requests resolve the supplied token to its
-hash, reject missing, revoked, expired, or fully used links, atomically claim one upload use, create a
-document upload intent, and return only the signed PUT URL plus minimal document status fields.
-Public completion reuses the existing checksum and scan-state completion rules after verifying the
-token and document scope. Granted and denied public reads/writes are recorded in access logs when the
-link can be resolved.
+expiry, and a positive upload limit. The create response returns the raw token once; when
+`notificationEmail` is provided and SMTP is configured, the create flow queues one outbox email
+while the raw token is still available. List and revoke responses never expose token hashes. Public
+upload-intent requests resolve the supplied token to its hash, reject missing, revoked, expired, or
+fully used links, atomically claim one upload use, create a document upload intent, and return only
+the signed PUT URL plus minimal document status fields. Public completion reuses the existing
+checksum and scan-state completion rules after verifying the token and document scope. Granted and
+denied public reads/writes are recorded in access logs when the link can be resolved.
 
 Signature requests use provider statuses `draft`, `pending_provider_submission`, `sent`, `viewed`,
 `completed`, `declined`, and `provider_error`. Creating a request records the provider submission,
-signers, and an initial provider event. Provider events update the request status, set completion or
-decline timestamps for terminal statuses, and preserve terminal statuses against out-of-order
-non-terminal events. Embedded signature events capture signer consent text, actor ID, IP,
-user-agent, timestamps, and caller-provided evidence. Legacy `docuseal` requests remain historical
-records and are rejected by embedded event routes.
+signers, and an initial provider event; when SMTP is configured, the route also queues a
+`signature.requested` outbox email to the signer addresses. Provider events update the request
+status, set completion or decline timestamps for terminal statuses, and preserve terminal statuses
+against out-of-order non-terminal events. Embedded signature events capture signer consent text,
+actor ID, IP, user-agent, timestamps, and caller-provided evidence. Legacy `docuseal` requests
+remain historical records and are rejected by embedded event routes.
 
 Intake sessions use `created`, `in_progress`, `ready_to_generate`, `completed`, and
 `provider_error`. The API creates embedded sessions from embedded templates. Answer snapshots and
-generated-document metadata are stored locally. Legacy `docassemble` templates/sessions are rejected
-for new generation paths.
+generated-document metadata are stored locally. When SMTP is configured, intake session creation and
+generated-document creation queue staff-facing outbox notices to the authenticated user. Legacy
+`docassemble` templates/sessions are rejected for new generation paths.
 
 Draft records store structured TipTap/ProseMirror JSON and an optional sanitized rendered HTML
 snapshot. New drafts start at version `1`; each save through `PUT /api/drafts/:id` increments the
@@ -214,10 +218,19 @@ and chain validity.
 
 Worker jobs use `queued`, `active`, `completed`, `failed`, `dead_letter`, and `skipped`.
 PostgreSQL stores the durable job lifecycle record, queue name, BullMQ job ID, target resource,
-retry counts, error summary, timestamps, and metadata. Redis/BullMQ delivers work and retry attempts,
-but the API exposes only the PostgreSQL projection. Failed or skipped OCR, transcription, email,
-AI-assist, or media jobs must not change portal-share, billing, signature, trust, or audit state
-without an explicit reviewed transition.
+retry counts, error summary, timestamps, and routing metadata. Redis/BullMQ delivers work and retry
+attempts, but the API exposes only the PostgreSQL projection. Job metadata must not carry email
+bodies, portal tokens, generated content, or private evidence. Failed or skipped OCR, transcription,
+email, AI-assist, or media jobs must not change portal-share, billing, signature, trust, or audit
+state without an explicit reviewed transition.
+
+Outbound email queueing is SMTP-provider gated. `POST /api/mail/outbox` requires matter-scoped
+email create access and an enabled SMTP provider setting, then creates the outbox record, queued
+email event, and durable email job lifecycle record together. The audit event records IDs,
+template/provider, recipient count, matter scope, and related resource references only; email bodies
+stay in the outbox record rather than job or audit metadata. Signature, intake, share-link, and
+external-upload create flows reuse the same outbox helper; share and external-upload notification
+emails are create-time only because raw tokens are not recoverable after the response.
 
 Provider/bootstrap selection is local-first. `DATABASE_URL` selects PostgreSQL unless
 `OPEN_PRACTICE_USE_MEMORY_REPO=true` or the database URL is absent. `OPEN_PRACTICE_DEV_SEED=true`

@@ -26,6 +26,10 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
+async function auditEvents(repository: InMemoryOpenPracticeRepository) {
+  return (await repository.listAuditEvents("firm-west-legal")).events;
+}
+
 describe("billing routes", () => {
   it("returns legacy top-level error shape for invalid billing requests", async () => {
     const response = await testServer().inject({
@@ -82,7 +86,8 @@ describe("billing routes", () => {
   });
 
   it("returns the direct payload shape for successful migrated routes", async () => {
-    const response = await testServer().inject({
+    const repository = new InMemoryOpenPracticeRepository();
+    const response = await testServer({ repository }).inject({
       method: "POST",
       url: "/api/time-entries",
       payload: {
@@ -107,5 +112,318 @@ describe("billing routes", () => {
       billingStatus: "draft",
     });
     expect(response.json()).not.toHaveProperty("success");
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "time_entry.created",
+          resourceType: "time_entry",
+          resourceId: "time-route-test",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            timeEntryId: "time-route-test",
+            status: "draft",
+            minutes: 45,
+            rateCents: 18000,
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+  });
+
+  it("records concise audit events for billing mutation routes", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+
+    const time = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-audit-route-test",
+        matterId: "matter-001",
+        minutes: 30,
+        rateCents: 18000,
+        narrative: "Synthetic billing audit time entry.",
+      },
+    });
+    expect(time.statusCode).toBe(200);
+
+    const timeUpdate = await server.inject({
+      method: "PATCH",
+      url: "/api/time-entries/time-audit-route-test",
+      payload: { minutes: 45 },
+    });
+    expect(timeUpdate.statusCode).toBe(200);
+    expect(timeUpdate.json()).toMatchObject({ minutes: 45 });
+
+    for (const route of ["submit", "approve"] as const) {
+      const response = await server.inject({
+        method: "POST",
+        url: `/api/time-entries/time-audit-route-test/${route}`,
+      });
+      expect(response.statusCode).toBe(200);
+    }
+
+    const writeOffTime = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-writeoff-audit-route-test",
+        matterId: "matter-001",
+        minutes: 10,
+        rateCents: 18000,
+        narrative: "Synthetic write-off time entry.",
+      },
+    });
+    expect(writeOffTime.statusCode).toBe(200);
+    const writeOffTimeResponse = await server.inject({
+      method: "POST",
+      url: "/api/time-entries/time-writeoff-audit-route-test/write-off",
+    });
+    expect(writeOffTimeResponse.statusCode).toBe(200);
+
+    const expense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-audit-route-test",
+        matterId: "matter-001",
+        amountCents: 2500,
+        category: "Filing",
+        description: "Synthetic billing audit expense.",
+      },
+    });
+    expect(expense.statusCode).toBe(200);
+
+    const expenseUpdate = await server.inject({
+      method: "PATCH",
+      url: "/api/expense-entries/expense-audit-route-test",
+      payload: { amountCents: 3000 },
+    });
+    expect(expenseUpdate.statusCode).toBe(200);
+    expect(expenseUpdate.json()).toMatchObject({ amountCents: 3000 });
+
+    for (const route of ["submit", "approve"] as const) {
+      const response = await server.inject({
+        method: "POST",
+        url: `/api/expense-entries/expense-audit-route-test/${route}`,
+      });
+      expect(response.statusCode).toBe(200);
+    }
+
+    const writeOffExpense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-writeoff-audit-route-test",
+        matterId: "matter-001",
+        amountCents: 1100,
+        category: "Courier",
+        description: "Synthetic write-off expense.",
+      },
+    });
+    expect(writeOffExpense.statusCode).toBe(200);
+    const writeOffExpenseResponse = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries/expense-writeoff-audit-route-test/write-off",
+    });
+    expect(writeOffExpenseResponse.statusCode).toBe(200);
+
+    const invoice = await server.inject({
+      method: "POST",
+      url: "/api/invoices",
+      payload: {
+        id: "invoice-audit-route-test",
+        matterId: "matter-001",
+        timeEntryIds: ["time-audit-route-test"],
+        expenseEntryIds: ["expense-audit-route-test"],
+        taxName: "GST",
+        taxRateBps: 500,
+      },
+    });
+    expect(invoice.statusCode).toBe(200);
+    expect(invoice.json()).toMatchObject({
+      id: "invoice-audit-route-test",
+      status: "draft",
+      totalCents: 17325,
+    });
+
+    const approveInvoice = await server.inject({
+      method: "POST",
+      url: "/api/invoices/invoice-audit-route-test/approve",
+    });
+    expect(approveInvoice.statusCode).toBe(200);
+
+    const issueInvoice = await server.inject({
+      method: "POST",
+      url: "/api/invoices/invoice-audit-route-test/issue",
+    });
+    expect(issueInvoice.statusCode).toBe(200);
+
+    const payment = await server.inject({
+      method: "POST",
+      url: "/api/payments",
+      payload: {
+        id: "payment-audit-route-test",
+        matterId: "matter-001",
+        invoiceId: "invoice-audit-route-test",
+        amountCents: 2500,
+        method: "eft",
+        reference: "SYNTH-REF-1",
+        notes: "Synthetic operator note.",
+      },
+    });
+    expect(payment.statusCode).toBe(200);
+
+    const trustRequest = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests",
+      payload: {
+        id: "trust-transfer-audit-route-test",
+        matterId: "matter-001",
+        invoiceId: "invoice-audit-route-test",
+        amountCents: 1000,
+        reason: "Synthetic trust transfer request.",
+      },
+    });
+    expect(trustRequest.statusCode).toBe(200);
+    expect(trustRequest.json()).toMatchObject({
+      id: "trust-transfer-audit-route-test",
+      status: "pending_approval",
+    });
+    expect(trustRequest.json()).not.toHaveProperty("ledgerTransactionId");
+
+    const voidInvoice = await server.inject({
+      method: "POST",
+      url: "/api/invoices",
+      payload: {
+        id: "invoice-void-audit-route-test",
+        matterId: "matter-001",
+        adjustmentLines: [{ description: "Synthetic fixed fee.", unitAmountCents: 5000 }],
+      },
+    });
+    expect(voidInvoice.statusCode).toBe(200);
+    const voidResponse = await server.inject({
+      method: "POST",
+      url: "/api/invoices/invoice-void-audit-route-test/void",
+    });
+    expect(voidResponse.statusCode).toBe(200);
+
+    const events = await auditEvents(repository);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "time_entry.created",
+          resourceId: "time-audit-route-test",
+        }),
+        expect.objectContaining({
+          action: "time_entry.updated",
+          resourceId: "time-audit-route-test",
+          metadata: expect.objectContaining({ minutes: 45, status: "draft" }),
+        }),
+        expect.objectContaining({
+          action: "time_entry.submitted",
+          resourceId: "time-audit-route-test",
+          metadata: expect.objectContaining({ previousStatus: "draft", status: "submitted" }),
+        }),
+        expect.objectContaining({
+          action: "time_entry.approved",
+          resourceId: "time-audit-route-test",
+          metadata: expect.objectContaining({ previousStatus: "submitted", status: "approved" }),
+        }),
+        expect.objectContaining({
+          action: "time_entry.written_off",
+          resourceId: "time-writeoff-audit-route-test",
+        }),
+        expect.objectContaining({
+          action: "expense_entry.created",
+          resourceId: "expense-audit-route-test",
+        }),
+        expect.objectContaining({
+          action: "expense_entry.updated",
+          resourceId: "expense-audit-route-test",
+          metadata: expect.objectContaining({ amountCents: 3000, status: "draft" }),
+        }),
+        expect.objectContaining({
+          action: "expense_entry.submitted",
+          resourceId: "expense-audit-route-test",
+          metadata: expect.objectContaining({ previousStatus: "draft", status: "submitted" }),
+        }),
+        expect.objectContaining({
+          action: "expense_entry.approved",
+          resourceId: "expense-audit-route-test",
+          metadata: expect.objectContaining({ previousStatus: "submitted", status: "approved" }),
+        }),
+        expect.objectContaining({
+          action: "expense_entry.written_off",
+          resourceId: "expense-writeoff-audit-route-test",
+        }),
+        expect.objectContaining({
+          action: "invoice.created",
+          resourceId: "invoice-audit-route-test",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            timeEntryIds: ["time-audit-route-test"],
+            expenseEntryIds: ["expense-audit-route-test"],
+            totalCents: 17325,
+          }),
+        }),
+        expect.objectContaining({
+          action: "invoice.approved",
+          resourceId: "invoice-audit-route-test",
+          metadata: expect.objectContaining({ previousStatus: "draft", status: "approved" }),
+        }),
+        expect.objectContaining({
+          action: "invoice.issued",
+          resourceId: "invoice-audit-route-test",
+          metadata: expect.objectContaining({ previousStatus: "approved", status: "issued" }),
+        }),
+        expect.objectContaining({
+          action: "invoice.voided",
+          resourceId: "invoice-void-audit-route-test",
+          metadata: expect.objectContaining({ previousStatus: "draft", status: "void" }),
+        }),
+        expect.objectContaining({
+          action: "manual_payment.created",
+          resourceId: "payment-audit-route-test",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            invoiceId: "invoice-audit-route-test",
+            amountCents: 2500,
+            status: "received",
+          }),
+        }),
+        expect.objectContaining({
+          action: "trust_transfer_request.created",
+          resourceId: "trust-transfer-audit-route-test",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            invoiceId: "invoice-audit-route-test",
+            amountCents: 1000,
+            status: "pending_approval",
+          }),
+        }),
+      ]),
+    );
+
+    const privateMetadataKeys = ["narrative", "description", "memo", "notes", "reason", "evidence"];
+    const routeEvents = events.filter((event) =>
+      [
+        "time_entry.",
+        "expense_entry.",
+        "invoice.",
+        "manual_payment.",
+        "trust_transfer_request.",
+      ].some((prefix) => event.action.startsWith(prefix)),
+    );
+    for (const event of routeEvents) {
+      expect(Object.keys(event.metadata ?? {})).not.toEqual(
+        expect.arrayContaining(privateMetadataKeys),
+      );
+    }
+
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      valid: true,
+    });
   });
 });

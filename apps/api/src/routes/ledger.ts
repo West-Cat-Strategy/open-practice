@@ -9,6 +9,7 @@ import type {
 import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import { appendRouteAuditEvent } from "./audit-events.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const ledgerPostBodySchema = z.object({
@@ -61,6 +62,30 @@ function assertLedgerAccess(
   if (!access.ok) throw access.error;
 }
 
+async function assertLedgerTransactionApprovalAccess(
+  context: ApiAuthContext,
+  repository: ApiRouteDependencies["repository"],
+  transactionId: string,
+): Promise<string[]> {
+  const ledger = await repository.getLedger(context.firmId);
+  const transactionEntries = ledger.entries.filter(
+    (entry) => entry.transactionId === transactionId,
+  );
+  if (transactionEntries.length === 0) {
+    throw new Error(`Unknown ledger transaction ${transactionId}`);
+  }
+
+  const matterIds = [...new Set(transactionEntries.map((entry) => entry.matterId))];
+  for (const matterId of matterIds) {
+    assertLedgerAccess(context, {
+      resource: "trust_ledger",
+      action: "approve",
+      matterId,
+    });
+  }
+  return matterIds;
+}
+
 export function registerLedgerRoutes(
   server: FastifyInstance,
   { repository }: ApiRouteDependencies,
@@ -104,16 +129,29 @@ export function registerLedgerRoutes(
       user: request.auth.user,
       transaction,
     });
-    return repository.postLedgerTransaction(transaction);
+    const posted = await repository.postLedgerTransaction(transaction);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "ledger.transaction.posted",
+      resourceType: "ledger_transaction",
+      resourceId: posted.id,
+      metadata: {
+        transactionId: posted.id,
+        matterIds: [...new Set(posted.entries.map((entry) => entry.matterId))],
+        accountIds: [...new Set(posted.entries.map((entry) => entry.accountId))],
+        status: "posted",
+        entryCount: posted.entries.length,
+      },
+    });
+    return posted;
   });
 
   server.post("/api/ledger/transactions/:id/approvals", async (request) => {
     const params = parseRequestPart(idParamsSchema, request.params, "params");
-    assertLedgerAccess(request.auth, {
-      resource: "trust_ledger",
-      action: "approve",
-      matterId: request.auth.user.assignedMatterIds[0],
-    });
+    const matterIds = await assertLedgerTransactionApprovalAccess(
+      request.auth,
+      repository,
+      params.id,
+    );
     const body = parseRequestPart(ledgerApprovalBodySchema, request.body, "body");
     const approval: LedgerTransactionApprovalRecord = {
       id: crypto.randomUUID(),
@@ -124,14 +162,24 @@ export function registerLedgerRoutes(
       decidedAt: body.decidedAt ?? new Date().toISOString(),
       notes: body.notes,
     };
-    return repository.createLedgerTransactionApproval(approval);
+    const created = await repository.createLedgerTransactionApproval(approval);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "ledger.transaction_approval.decided",
+      resourceType: "ledger_transaction_approval",
+      resourceId: created.id,
+      metadata: {
+        transactionId: created.transactionId,
+        matterIds,
+        decision: created.decision,
+      },
+    });
+    return created;
   });
 
   server.post("/api/ledger/reconciliations", async (request) => {
     assertLedgerAccess(request.auth, {
       resource: "trust_ledger",
       action: "approve",
-      matterId: request.auth.user.assignedMatterIds[0],
     });
     const body = parseRequestPart(ledgerReconciliationBodySchema, request.body, "body");
     const reconciliation: LedgerReconciliationRecord = {
@@ -149,6 +197,16 @@ export function registerLedgerRoutes(
       evidence: body.evidence,
       createdAt: new Date().toISOString(),
     };
-    return repository.createLedgerReconciliation(reconciliation);
+    const created = await repository.createLedgerReconciliation(reconciliation);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "ledger.reconciliation.created",
+      resourceType: "ledger_reconciliation",
+      resourceId: created.id,
+      metadata: {
+        accountId: created.accountId,
+        status: created.status,
+      },
+    });
+    return created;
   });
 }

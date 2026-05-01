@@ -61,6 +61,19 @@ async function addShareableDocument(repository: InMemoryOpenPracticeRepository):
   });
 }
 
+async function enableSmtp(repository: InMemoryOpenPracticeRepository): Promise<void> {
+  await repository.upsertProviderSetting({
+    id: "provider-smtp-mailpit",
+    firmId: "firm-west-legal",
+    kind: "smtp",
+    key: "mailpit",
+    enabled: true,
+    encryptedConfig: "local-mailpit-profile",
+    createdAt: "2026-05-01T00:00:00.000Z",
+    updatedAt: "2026-05-01T00:00:00.000Z",
+  });
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -104,6 +117,8 @@ describe("share routes", () => {
           resourceId: body.share.id,
           metadata: expect.objectContaining({
             matterId: "matter-001",
+            permissions: ["view_documents"],
+            expiresAt: body.share.expiresAt,
             requireEmailVerification: true,
           }),
         }),
@@ -132,6 +147,65 @@ describe("share routes", () => {
     expect(ineligibleDocument.json()).toMatchObject({
       message: "No documents on this matter are eligible for portal sharing",
     });
+  });
+
+  it("queues optional share notifications while the raw token is available", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await addShareableDocument(repository);
+    await enableSmtp(repository);
+    const server = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/shares",
+      payload: {
+        matterId: "matter-001",
+        permissions: ["view_documents"],
+        notificationEmail: "client@example.test",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      queuedEmail: {
+        templateKey: "share_link.created",
+        status: "queued",
+      },
+    });
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          queueName: "email",
+          jobName: "send_email",
+          targetResourceType: "email_outbox",
+          metadata: expect.objectContaining({
+            provider: "mailpit",
+            templateKey: "share_link.created",
+            recipientCount: 1,
+            relatedResourceType: "share_link",
+          }),
+        }),
+      ]),
+    );
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "email_outbox.queued",
+          resourceType: "email_outbox",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            templateKey: "share_link.created",
+            provider: "mailpit",
+            recipientCount: 1,
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const queuedAudit = audit.events.find((event) => event.action === "email_outbox.queued");
+    expect(queuedAudit?.metadata).not.toHaveProperty("token");
+    expect(queuedAudit?.metadata).not.toHaveProperty("textBody");
   });
 
   it("rejects share permissions without implemented public flows", async () => {
@@ -215,6 +289,9 @@ describe("share routes", () => {
           action: "share_link.revoked",
           resourceType: "share_link",
           resourceId: created.json().share.id,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+          }),
         }),
       ]),
       valid: true,
@@ -226,6 +303,17 @@ describe("share routes", () => {
       url: `/api/portal/shares/${created.json().token}`,
     });
     expect(response.statusCode).toBe(404);
+    await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          shareLinkId: created.json().share.id,
+          resourceType: "share_link",
+          resourceId: created.json().share.id,
+          action: "view",
+          metadata: { outcome: "revoked" },
+        }),
+      ]),
+    );
   });
 
   it("hides expired share links from public reads while logging the outcome", async () => {
@@ -252,7 +340,51 @@ describe("share routes", () => {
 
     expect(response.statusCode).toBe(404);
     await expect(repository.listAccessLogs("firm-west-legal")).resolves.toMatchObject([
-      expect.objectContaining({ metadata: { outcome: "expired" } }),
+      expect.objectContaining({
+        shareLinkId: "share-link-expired",
+        resourceType: "share_link",
+        resourceId: "share-link-expired",
+        action: "view",
+        metadata: { outcome: "expired" },
+      }),
     ]);
+  });
+
+  it("requires email verification before public share reads while logging the denial", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await addShareableDocument(repository);
+    const authedServer = testServer({ repository });
+    const created = await authedServer.inject({
+      method: "POST",
+      url: "/api/shares",
+      payload: {
+        matterId: "matter-001",
+        permissions: ["view_documents"],
+        requireEmailVerification: true,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+
+    const publicServer = testServer({ repository, withAuthHook: false });
+    const response = await publicServer.inject({
+      method: "GET",
+      url: `/api/portal/shares/${created.json().token}`,
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      message: "Email verification is required for this share link",
+    });
+    await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          shareLinkId: created.json().share.id,
+          resourceType: "share_link",
+          resourceId: created.json().share.id,
+          action: "view",
+          metadata: { outcome: "email_verification_required" },
+        }),
+      ]),
+    );
   });
 });

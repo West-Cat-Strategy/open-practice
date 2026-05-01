@@ -47,13 +47,27 @@ async function createMatterTwoDocument(repository: InMemoryOpenPracticeRepositor
   });
 }
 
+async function enableSmtp(repository: InMemoryOpenPracticeRepository) {
+  await repository.upsertProviderSetting({
+    id: "provider-smtp-mailpit",
+    firmId: "firm-west-legal",
+    kind: "smtp",
+    key: "mailpit",
+    enabled: true,
+    encryptedConfig: "local-mailpit-profile",
+    createdAt: "2026-05-01T00:00:00.000Z",
+    updatedAt: "2026-05-01T00:00:00.000Z",
+  });
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
 describe("signature routes", () => {
   it("creates signature requests and returns event history through the extracted registrar", async () => {
-    const server = testServer();
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
     const created = await server.inject({
       method: "POST",
       url: "/api/signature-requests",
@@ -95,6 +109,27 @@ describe("signature routes", () => {
     expect(events.json()).toMatchObject({
       events: [expect.objectContaining({ signatureRequestId: requestId, status: "sent" })],
     });
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "signature_request.created",
+          resourceType: "signature_request",
+          resourceId: requestId,
+          metadata: {
+            matterId: "matter-001",
+            documentId: "doc-001",
+            provider: "embedded",
+            status: "sent",
+            signerCount: 1,
+          },
+        }),
+      ]),
+      valid: true,
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const auditEvent = audit.events.find((event) => event.action === "signature_request.created");
+    expect(auditEvent?.metadata).not.toHaveProperty("consentText");
+    expect(auditEvent?.metadata).not.toHaveProperty("signers");
   });
 
   it("lists only assigned-matter signatures for matter-scoped users", async () => {
@@ -126,6 +161,56 @@ describe("signature routes", () => {
     ).toEqual(["matter-001"]);
   });
 
+  it("queues signer email through the SMTP outbox when configured", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableSmtp(repository);
+    const server = testServer({ repository });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/signature-requests",
+      payload: signaturePayload(),
+    });
+
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      queuedEmail: {
+        templateKey: "signature.requested",
+        status: "queued",
+      },
+    });
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          queueName: "email",
+          jobName: "send_email",
+          targetResourceType: "email_outbox",
+          metadata: expect.objectContaining({
+            provider: "mailpit",
+            templateKey: "signature.requested",
+            recipientCount: 1,
+            relatedResourceType: "signature_request",
+          }),
+        }),
+      ]),
+    );
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "email_outbox.queued",
+          resourceType: "email_outbox",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            templateKey: "signature.requested",
+            provider: "mailpit",
+            recipientCount: 1,
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+  });
+
   it("rejects mismatched provider events for signature requests", async () => {
     const server = testServer();
     const created = await server.inject({
@@ -152,6 +237,55 @@ describe("signature routes", () => {
     });
   });
 
+  it("records successful provider events in the route audit log", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/signature-requests",
+      payload: signaturePayload(),
+    });
+    const signatureRequest = created.json<{
+      request: { id: string; externalId: string; provider: string };
+    }>().request;
+    const event = await server.inject({
+      method: "POST",
+      url: "/api/signature-requests/provider-events",
+      payload: {
+        signatureRequestId: signatureRequest.id,
+        provider: signatureRequest.provider,
+        externalId: signatureRequest.externalId,
+        status: "completed",
+        evidence: { rawProviderBlob: "not for route audit" },
+      },
+    });
+
+    expect(event.statusCode).toBe(200);
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "signature_provider_event.recorded",
+          resourceType: "signature_request",
+          resourceId: signatureRequest.id,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            signatureRequestId: signatureRequest.id,
+            provider: "embedded",
+            externalId: signatureRequest.externalId,
+            status: "completed",
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const auditEvent = audit.events.find(
+      (candidate) => candidate.action === "signature_provider_event.recorded",
+    );
+    expect(auditEvent?.metadata).not.toHaveProperty("evidence");
+    expect(auditEvent?.metadata).not.toHaveProperty("rawProviderBlob");
+  });
+
   it("rejects embedded signature events for unknown requests", async () => {
     const unknownRequest = await testServer().inject({
       method: "POST",
@@ -167,7 +301,8 @@ describe("signature routes", () => {
   });
 
   it("preserves terminal ordering for embedded signature events", async () => {
-    const server = testServer();
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
     const created = await server.inject({
       method: "POST",
       url: "/api/signature-requests",
@@ -195,6 +330,31 @@ describe("signature routes", () => {
     expect(list.json<Array<{ id: string; status: string }>>()).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: requestId, status: "completed" })]),
     );
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "signature_embedded_event.recorded",
+          resourceType: "signature_request",
+          resourceId: requestId,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            signatureRequestId: requestId,
+            provider: "embedded",
+            status: "completed",
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const auditEvent = audit.events.find(
+      (candidate) =>
+        candidate.action === "signature_embedded_event.recorded" &&
+        candidate.metadata.status === "completed",
+    );
+    expect(auditEvent?.metadata).not.toHaveProperty("consentText");
+    expect(auditEvent?.metadata).not.toHaveProperty("evidence");
+    expect(auditEvent?.metadata).not.toHaveProperty("ip");
   });
 
   it("keeps unauthorized matter access at 403", async () => {

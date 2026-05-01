@@ -19,6 +19,7 @@ import type {
 import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import { appendRouteAuditEvent } from "./audit-events.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const timeEntryBodySchema = z.object({
@@ -185,7 +186,20 @@ export function registerBillingRoutes(
       billable: body.billable,
       billingStatus: body.billingStatus,
     };
-    return repository.createTimeEntry(entry);
+    const created = await repository.createTimeEntry(entry);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "time_entry.created",
+      resourceType: "time_entry",
+      resourceId: created.id,
+      metadata: {
+        matterId: created.matterId,
+        timeEntryId: created.id,
+        status: created.billingStatus,
+        minutes: created.minutes,
+        rateCents: created.rateCents,
+      },
+    });
+    return created;
   });
 
   server.patch("/api/time-entries/:id", async (request) => {
@@ -203,7 +217,21 @@ export function registerBillingRoutes(
       });
     }
     const body = parseRequestPart(timeEntryPatchBodySchema, request.body, "body");
-    return repository.updateTimeEntry(request.auth.firmId, params.id, body);
+    const updated = await repository.updateTimeEntry(request.auth.firmId, params.id, body);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "time_entry.updated",
+      resourceType: "time_entry",
+      resourceId: updated.id,
+      metadata: {
+        matterId: updated.matterId,
+        timeEntryId: updated.id,
+        previousStatus: existing.billingStatus,
+        status: updated.billingStatus,
+        minutes: updated.minutes,
+        rateCents: updated.rateCents,
+      },
+    });
+    return updated;
   });
 
   for (const [route, nextStatus] of [
@@ -222,9 +250,21 @@ export function registerBillingRoutes(
         matterId: existing.matterId,
       });
       assertBillingStatusTransition(existing.billingStatus, nextStatus);
-      return repository.updateTimeEntry(request.auth.firmId, params.id, {
+      const updated = await repository.updateTimeEntry(request.auth.firmId, params.id, {
         billingStatus: nextStatus,
       });
+      await appendRouteAuditEvent(repository, request.auth, {
+        action: `time_entry.${route === "write-off" ? "written_off" : nextStatus}`,
+        resourceType: "time_entry",
+        resourceId: updated.id,
+        metadata: {
+          matterId: updated.matterId,
+          timeEntryId: updated.id,
+          previousStatus: existing.billingStatus,
+          status: updated.billingStatus,
+        },
+      });
+      return updated;
     });
   }
 
@@ -271,7 +311,19 @@ export function registerBillingRoutes(
       reimbursable: body.reimbursable,
       billingStatus: body.billingStatus,
     };
-    return repository.createExpenseEntry(entry);
+    const created = await repository.createExpenseEntry(entry);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "expense_entry.created",
+      resourceType: "expense_entry",
+      resourceId: created.id,
+      metadata: {
+        matterId: created.matterId,
+        expenseEntryId: created.id,
+        status: created.billingStatus,
+        amountCents: created.amountCents,
+      },
+    });
+    return created;
   });
 
   server.patch("/api/expense-entries/:id", async (request) => {
@@ -290,7 +342,20 @@ export function registerBillingRoutes(
       });
     }
     const body = parseRequestPart(expenseEntryPatchBodySchema, request.body, "body");
-    return repository.updateExpenseEntry(request.auth.firmId, params.id, body);
+    const updated = await repository.updateExpenseEntry(request.auth.firmId, params.id, body);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "expense_entry.updated",
+      resourceType: "expense_entry",
+      resourceId: updated.id,
+      metadata: {
+        matterId: updated.matterId,
+        expenseEntryId: updated.id,
+        previousStatus: existing.billingStatus,
+        status: updated.billingStatus,
+        amountCents: updated.amountCents,
+      },
+    });
+    return updated;
   });
 
   for (const [route, nextStatus] of [
@@ -309,9 +374,21 @@ export function registerBillingRoutes(
         matterId: existing.matterId,
       });
       assertBillingStatusTransition(existing.billingStatus, nextStatus);
-      return repository.updateExpenseEntry(request.auth.firmId, params.id, {
+      const updated = await repository.updateExpenseEntry(request.auth.firmId, params.id, {
         billingStatus: nextStatus,
       });
+      await appendRouteAuditEvent(repository, request.auth, {
+        action: `expense_entry.${route === "write-off" ? "written_off" : nextStatus}`,
+        resourceType: "expense_entry",
+        resourceId: updated.id,
+        metadata: {
+          matterId: updated.matterId,
+          expenseEntryId: updated.id,
+          previousStatus: existing.billingStatus,
+          status: updated.billingStatus,
+        },
+      });
+      return updated;
     });
   }
 
@@ -457,7 +534,25 @@ export function registerBillingRoutes(
       createdAt: now,
       ...totals,
     };
-    return repository.createInvoice({ invoice, lines: invoiceLines });
+    const created = await repository.createInvoice({ invoice, lines: invoiceLines });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "invoice.created",
+      resourceType: "invoice",
+      resourceId: created.id,
+      metadata: {
+        matterId: created.matterId,
+        invoiceId: created.id,
+        status: created.status,
+        timeEntryIds: body.timeEntryIds,
+        expenseEntryIds: body.expenseEntryIds,
+        lineCount: created.lines.length,
+        subtotalCents: created.subtotalCents,
+        taxCents: created.taxCents,
+        totalCents: created.totalCents,
+        balanceDueCents: created.balanceDueCents,
+      },
+    });
+    return created;
   });
 
   server.get("/api/invoices/:id", async (request) => {
@@ -496,11 +591,25 @@ export function registerBillingRoutes(
         });
       }
     }
-    return repository.updateInvoice({
+    const updated = await repository.updateInvoice({
       ...invoice,
       status: "approved",
       approvedAt: new Date().toISOString(),
     });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "invoice.approved",
+      resourceType: "invoice",
+      resourceId: updated.id,
+      metadata: {
+        matterId: updated.matterId,
+        invoiceId: updated.id,
+        previousStatus: invoice.status,
+        status: updated.status,
+        totalCents: updated.totalCents,
+        balanceDueCents: updated.balanceDueCents,
+      },
+    });
+    return updated;
   });
 
   server.post("/api/invoices/:id/issue", async (request) => {
@@ -515,11 +624,25 @@ export function registerBillingRoutes(
     if (invoice.status !== "approved") {
       throw Object.assign(new Error("Only approved invoices can be issued"), { statusCode: 409 });
     }
-    return repository.updateInvoice({
+    const updated = await repository.updateInvoice({
       ...invoice,
       status: "issued",
       issuedAt: new Date().toISOString(),
     });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "invoice.issued",
+      resourceType: "invoice",
+      resourceId: updated.id,
+      metadata: {
+        matterId: updated.matterId,
+        invoiceId: updated.id,
+        previousStatus: invoice.status,
+        status: updated.status,
+        totalCents: updated.totalCents,
+        balanceDueCents: updated.balanceDueCents,
+      },
+    });
+    return updated;
   });
 
   server.post("/api/invoices/:id/void", async (request) => {
@@ -534,11 +657,25 @@ export function registerBillingRoutes(
     if (invoice.status === "paid") {
       throw Object.assign(new Error("Paid invoices cannot be voided"), { statusCode: 409 });
     }
-    return repository.updateInvoice({
+    const updated = await repository.updateInvoice({
       ...invoice,
       status: "void",
       voidedAt: new Date().toISOString(),
     });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "invoice.voided",
+      resourceType: "invoice",
+      resourceId: updated.id,
+      metadata: {
+        matterId: updated.matterId,
+        invoiceId: updated.id,
+        previousStatus: invoice.status,
+        status: updated.status,
+        totalCents: updated.totalCents,
+        balanceDueCents: updated.balanceDueCents,
+      },
+    });
+    return updated;
   });
 
   server.get("/api/payments", async (request) => {
@@ -604,7 +741,21 @@ export function registerBillingRoutes(
       amountCents: body.amountCents,
       allocatedAt: now,
     };
-    return repository.createPayment({ payment, allocations: [allocation] });
+    const created = await repository.createPayment({ payment, allocations: [allocation] });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "manual_payment.created",
+      resourceType: "manual_payment",
+      resourceId: created.id,
+      metadata: {
+        matterId: created.matterId,
+        paymentId: created.id,
+        invoiceId: created.invoiceId,
+        status: created.status,
+        amountCents: created.amountCents,
+        allocationCount: created.allocations.length,
+      },
+    });
+    return created;
   });
 
   server.get("/api/billing/trust-transfer-requests", async (request) => {
@@ -664,7 +815,20 @@ export function registerBillingRoutes(
       ledgerTransactionId: body.ledgerTransactionId,
       evidence: body.evidence,
     };
-    return repository.createTrustTransferRequest(requestRecord);
+    const created = await repository.createTrustTransferRequest(requestRecord);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "trust_transfer_request.created",
+      resourceType: "trust_transfer_request",
+      resourceId: created.id,
+      metadata: {
+        matterId: created.matterId,
+        trustTransferRequestId: created.id,
+        invoiceId: created.invoiceId,
+        status: created.status,
+        amountCents: created.amountCents,
+      },
+    });
+    return created;
   });
 
   server.get("/api/billing/dashboard", async (request) => {
