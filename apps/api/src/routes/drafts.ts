@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import { appendRouteAuditEvent } from "./audit-events.js";
 import type { ApiRouteDependencies } from "./types.js";
 import {
   sanitizeDraftHtml,
@@ -116,7 +117,19 @@ export function registerDraftRoutes(
       metadata: body.templateId ? { ...body.metadata, templateId: body.templateId } : body.metadata,
     };
 
-    return repository.createDraft(draft);
+    const created = await repository.createDraft(draft);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "draft.created",
+      resourceType: "draft",
+      resourceId: created.id,
+      metadata: {
+        matterId: created.matterId,
+        draftId: created.id,
+        version: created.version,
+      },
+    });
+
+    return created;
   });
 
   server.put("/api/drafts/:id", async (request) => {
@@ -138,7 +151,19 @@ export function registerDraftRoutes(
       updates.renderedHtml = sanitizeDraftHtml(updates.renderedHtml);
     }
 
-    return repository.updateDraft(request.auth.firmId, params.id, updates);
+    const updated = await repository.updateDraft(request.auth.firmId, params.id, updates);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "draft.updated",
+      resourceType: "draft",
+      resourceId: updated.id,
+      metadata: {
+        matterId: updated.matterId,
+        draftId: updated.id,
+        version: updated.version,
+      },
+    });
+
+    return updated;
   });
 
   server.delete("/api/drafts/:id", async (request) => {
@@ -150,6 +175,16 @@ export function registerDraftRoutes(
     assertAccess(request.auth, "draft", "delete", existing.matterId);
 
     await repository.deleteDraft(request.auth.firmId, params.id);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "draft.deleted",
+      resourceType: "draft",
+      resourceId: params.id,
+      metadata: {
+        matterId: existing.matterId,
+        draftId: params.id,
+        version: existing.version,
+      },
+    });
     return { ok: true };
   });
 
@@ -182,6 +217,17 @@ export function registerDraftRoutes(
       metadata: body.metadata,
     };
 
-    return repository.createDraftTemplate(template);
+    const created = await repository.createDraftTemplate(template);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "draft_template.created",
+      resourceType: "draft_template",
+      resourceId: created.id,
+      metadata: {
+        templateId: created.id,
+        status: created.active ? "active" : "inactive",
+      },
+    });
+
+    return created;
   });
 }

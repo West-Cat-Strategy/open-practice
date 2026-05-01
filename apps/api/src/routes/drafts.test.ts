@@ -93,7 +93,8 @@ describe("draft routes", () => {
   });
 
   it("lets firm staff read templates but blocks template creation without permission", async () => {
-    const server = testServer();
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
     const listed = await server.inject({
       method: "GET",
       url: "/api/draft-templates",
@@ -128,10 +129,25 @@ describe("draft routes", () => {
       active: true,
       editorJson,
     });
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "draft_template.created",
+          resourceType: "draft_template",
+          resourceId: adminCreate.json<{ id: string }>().id,
+          metadata: {
+            templateId: adminCreate.json<{ id: string }>().id,
+            status: "active",
+          },
+        }),
+      ]),
+      valid: true,
+    });
   });
 
   it("creates sanitized draft snapshots and increments versions on update", async () => {
-    const server = testServer();
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
     const created = await server.inject({
       method: "POST",
       url: "/api/drafts",
@@ -167,6 +183,71 @@ describe("draft routes", () => {
       renderedHtml: "<p>Updated</p>",
       version: 2,
       updatedByUserId: "user-admin",
+    });
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "draft.created",
+          resourceType: "draft",
+          resourceId: created.json<{ id: string }>().id,
+          metadata: {
+            matterId: "matter-001",
+            draftId: created.json<{ id: string }>().id,
+            version: 1,
+          },
+        }),
+        expect.objectContaining({
+          action: "draft.updated",
+          resourceType: "draft",
+          resourceId: created.json<{ id: string }>().id,
+          metadata: {
+            matterId: "matter-001",
+            draftId: created.json<{ id: string }>().id,
+            version: 2,
+          },
+        }),
+      ]),
+      valid: true,
+    });
+  });
+
+  it("records concise audit metadata after deleting drafts", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/drafts",
+      payload: draftPayload({ title: "Delete audit draft" }),
+    });
+    const draftId = created.json<{ id: string }>().id;
+
+    const deleted = await server.inject({
+      method: "DELETE",
+      url: `/api/drafts/${draftId}`,
+    });
+    const readback = await server.inject({
+      method: "GET",
+      url: `/api/drafts/${draftId}`,
+    });
+
+    expect(created.statusCode).toBe(200);
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json()).toEqual({ ok: true });
+    expect(readback.statusCode).toBe(404);
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "draft.deleted",
+          resourceType: "draft",
+          resourceId: draftId,
+          metadata: {
+            matterId: "matter-001",
+            draftId,
+            version: 1,
+          },
+        }),
+      ]),
+      valid: true,
     });
   });
 

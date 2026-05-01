@@ -166,6 +166,27 @@ describe("planned surface route scaffolds", () => {
     });
   });
 
+  it("keeps the documented mail outbox route provider-gated until email workflow closure", async () => {
+    const server = testServer();
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "matter-update",
+        to: ["client@example.test"],
+        subject: "Matter update",
+        textBody: "Synthetic test email.",
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      message: "SMTP email delivery is not configured",
+    });
+  });
+
   it("does not enqueue document processing without a configured worker", async () => {
     const response = await testServer().inject({
       method: "POST",

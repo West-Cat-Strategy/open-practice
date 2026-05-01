@@ -27,6 +27,8 @@ export class SmtpMailSender implements MailSender {
     firmId: string;
     from: string;
     to: string[];
+    cc?: string[];
+    bcc?: string[];
     subject: string;
     html: string;
     text: string;
@@ -35,6 +37,8 @@ export class SmtpMailSender implements MailSender {
     const info = await this.transporter.sendMail({
       from: message.from,
       to: message.to.join(", "),
+      cc: message.cc?.join(", "),
+      bcc: message.bcc?.join(", "),
       subject: message.subject,
       text: message.text,
       html: message.html,

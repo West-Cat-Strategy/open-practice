@@ -59,6 +59,9 @@ importers:
       "@simplewebauthn/server":
         specifier: ^13.3.0
         version: 13.3.0
+      bullmq:
+        specifier: ^5.65.0
+        version: 5.76.2
       fastify:
         specifier: 5.8.5
         version: 5.8.5

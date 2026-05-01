@@ -63,7 +63,7 @@ Worker/provider defaults:
 
 | Variable                              | Default                                                 | Purpose                                                           |
 | ------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------- |
-| `REDIS_URL`                           | `redis://localhost:6379/0`                              | Queue broker for BullMQ workers.                                  |
+| `REDIS_URL`                           | API: empty; worker: `redis://localhost:6379/0`          | Queue broker for BullMQ email enqueueing and workers.             |
 | `WORKER_QUEUES`                       | `email,inbound_email,ai_triage,ocr,transcription,media` | Queue allow-list for the worker runtime.                          |
 | `WORKER_CONCURRENCY`                  | `2`                                                     | Per-queue BullMQ worker concurrency.                              |
 | `SMTP_HOST` / `SMTP_PORT`             | `localhost` / `1025`                                    | Mailpit SMTP endpoint for local capture.                          |

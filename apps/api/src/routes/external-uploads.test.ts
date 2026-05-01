@@ -8,6 +8,11 @@ const jwtSecret = "test-external-upload-secret-at-least-32-chars";
 const checksum = "d".repeat(64);
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
+const emailJobQueue = {
+  async add(_name: string, _data: unknown, options?: { jobId?: string }) {
+    return { id: options?.jobId ?? "email-job-test" };
+  },
+};
 
 function s3Config(): NonNullable<CreateServerOptions["s3"]> {
   return {
@@ -36,6 +41,7 @@ function testServer(overrides: Partial<CreateServerOptions> = {}) {
       rpID: "localhost",
       origin: "http://localhost:3000",
     },
+    emailJobQueue,
     ...overrides,
   });
   servers.push(server);
@@ -64,6 +70,19 @@ async function createDirectToken(input: {
     revokedAt: input.revokedAt,
   });
   return token;
+}
+
+async function enableSmtp(repository: InMemoryOpenPracticeRepository): Promise<void> {
+  await repository.upsertProviderSetting({
+    id: "provider-smtp-mailpit",
+    firmId: "firm-west-legal",
+    kind: "smtp",
+    key: "mailpit",
+    enabled: true,
+    encryptedConfig: "local-mailpit-profile",
+    createdAt: "2026-05-01T00:00:00.000Z",
+    updatedAt: "2026-05-01T00:00:00.000Z",
+  });
 }
 
 afterEach(async () => {
@@ -117,8 +136,24 @@ describe("external upload routes", () => {
 
     await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
       events: expect.arrayContaining([
-        expect.objectContaining({ action: "external_upload.created" }),
-        expect.objectContaining({ action: "external_upload.revoked" }),
+        expect.objectContaining({
+          action: "external_upload.created",
+          resourceType: "external_upload",
+          resourceId: created.json().upload.id,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            expiresAt: "2099-01-01T00:00:00.000Z",
+            maxUploads: 2,
+          }),
+        }),
+        expect.objectContaining({
+          action: "external_upload.revoked",
+          resourceType: "external_upload",
+          resourceId: created.json().upload.id,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+          }),
+        }),
       ]),
       valid: true,
     });
@@ -145,6 +180,61 @@ describe("external upload routes", () => {
     expect(s3Response.statusCode).toBe(503);
     expect(s3Response.json()).toMatchObject({
       message: "S3 upload signing is not configured",
+    });
+  });
+
+  it("queues optional upload-link notifications while the raw token is available", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableSmtp(repository);
+    const { server } = testServer({ repository, s3: s3Config() });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/external-uploads",
+      payload: {
+        matterId: "matter-001",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        maxUploads: 2,
+        notificationEmail: "client@example.test",
+      },
+    });
+
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      queuedEmail: {
+        templateKey: "external_upload.created",
+        status: "queued",
+      },
+    });
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          queueName: "email",
+          jobName: "send_email",
+          targetResourceType: "email_outbox",
+          metadata: expect.objectContaining({
+            provider: "mailpit",
+            templateKey: "external_upload.created",
+            recipientCount: 1,
+            relatedResourceType: "external_upload",
+          }),
+        }),
+      ]),
+    );
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "email_outbox.queued",
+          resourceType: "email_outbox",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            templateKey: "external_upload.created",
+            provider: "mailpit",
+            recipientCount: 1,
+          }),
+        }),
+      ]),
+      valid: true,
     });
   });
 
@@ -310,12 +400,41 @@ describe("external upload routes", () => {
         method: "POST",
         url: `/api/portal/external-uploads/${token}/intents`,
         payload: { filename: "blocked.pdf", checksumSha256: checksum },
+        headers: { "user-agent": "external-upload-denial-test" },
       });
       expect(response.statusCode).toBe(403);
       expect(response.json()).toMatchObject({
         message: "External upload link is not available",
       });
     }
+    await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalUploadLinkId: "external-upload-expired",
+          resourceType: "external_upload_link",
+          resourceId: "external-upload-expired",
+          action: "upload",
+          userAgent: "external-upload-denial-test",
+          metadata: { outcome: "denied", reason: "expired" },
+        }),
+        expect.objectContaining({
+          externalUploadLinkId: "external-upload-revoked",
+          resourceType: "external_upload_link",
+          resourceId: "external-upload-revoked",
+          action: "upload",
+          userAgent: "external-upload-denial-test",
+          metadata: { outcome: "denied", reason: "revoked" },
+        }),
+        expect.objectContaining({
+          externalUploadLinkId: "external-upload-exhausted",
+          resourceType: "external_upload_link",
+          resourceId: "external-upload-exhausted",
+          action: "upload",
+          userAgent: "external-upload-denial-test",
+          metadata: { outcome: "denied", reason: "upload_limit" },
+        }),
+      ]),
+    );
 
     const validToken = await createDirectToken({
       repository,

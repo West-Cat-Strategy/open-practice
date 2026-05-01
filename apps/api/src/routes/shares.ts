@@ -13,6 +13,7 @@ import { createSessionToken, hashToken } from "../http/auth-helpers.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const sharePermissionSchema = z.literal("view_documents");
@@ -26,6 +27,7 @@ const createShareBodySchema = z.object({
   permissions: z.array(sharePermissionSchema).nonempty().default(["view_documents"]),
   expiresAt: z.string().datetime().optional(),
   requireEmailVerification: z.boolean().default(false),
+  notificationEmail: z.string().email().optional(),
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
@@ -150,7 +152,7 @@ function accessLogForShare(input: {
 
 export function registerShareRoutes(
   server: FastifyInstance,
-  { repository, jwtSecret }: RegisterShareRouteOptions,
+  { repository, jwtSecret, emailJobQueue }: RegisterShareRouteOptions,
 ): void {
   server.get("/api/shares/status", async () => ({
     status: "available",
@@ -227,10 +229,27 @@ export function registerShareRoutes(
         requireEmailVerification: created.requireEmailVerification,
       },
     });
+    const queuedEmail = body.notificationEmail
+      ? await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
+          matterId: created.matterId,
+          templateKey: "share_link.created",
+          to: [body.notificationEmail],
+          subject: "Secure document share",
+          textBody: `A secure document share is available. Share token: ${token}`,
+          relatedResourceType: "share_link",
+          relatedResourceId: created.id,
+          metadata: {
+            permissions: created.permissions,
+            expiresAt: created.expiresAt,
+            requireEmailVerification: created.requireEmailVerification,
+          },
+        })
+      : undefined;
     reply.code(201);
     return {
       share: sanitizeShare(created),
       token,
+      queuedEmail: summarizeQueuedRouteEmail(queuedEmail),
     };
   });
 

@@ -10,6 +10,11 @@ interface TestServerOptions {
   repository?: InMemoryOpenPracticeRepository;
   automationProvider?: DocumentAutomationProvider;
 }
+const emailJobQueue = {
+  async add(_name: string, _data: unknown, options?: { jobId?: string }) {
+    return { id: options?.jobId ?? "email-job-test" };
+  },
+};
 
 function firstHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -31,6 +36,7 @@ function testServer({ repository, automationProvider }: TestServerOptions = {}) 
   registerIntakeRoutes(server, {
     repository: testRepository,
     automationProvider,
+    emailJobQueue,
   });
 
   server.setErrorHandler((error, _request, reply) => {
@@ -64,13 +70,27 @@ function intakeSessionRecord(overrides: Partial<IntakeSessionRecord> = {}): Inta
   };
 }
 
+async function enableSmtp(repository: InMemoryOpenPracticeRepository) {
+  await repository.upsertProviderSetting({
+    id: "provider-smtp-mailpit",
+    firmId: "firm-west-legal",
+    kind: "smtp",
+    key: "mailpit",
+    enabled: true,
+    encryptedConfig: "local-mailpit-profile",
+    createdAt: "2026-05-01T00:00:00.000Z",
+    updatedAt: "2026-05-01T00:00:00.000Z",
+  });
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
 describe("intake routes", () => {
   it("lists and creates intake sessions through the extracted registrar", async () => {
-    const server = testServer();
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
     const before = await server.inject({
       method: "GET",
       url: "/api/intake-sessions?matterId=matter-001",
@@ -110,10 +130,31 @@ describe("intake routes", () => {
     expect(after.json<{ sessions: Array<{ id: string }> }>().sessions).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: created.json<{ id: string }>().id })]),
     );
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "intake_session.created",
+          resourceType: "intake_session",
+          resourceId: created.json<{ id: string }>().id,
+          metadata: {
+            matterId: "matter-001",
+            templateId: "intake-template-001",
+            provider: "embedded",
+            status: "created",
+          },
+        }),
+      ]),
+      valid: true,
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const auditEvent = audit.events.find((event) => event.action === "intake_session.created");
+    expect(auditEvent?.metadata).not.toHaveProperty("evidence");
+    expect(auditEvent?.metadata).not.toHaveProperty("clientContactId");
   });
 
   it("creates and lists answer snapshots", async () => {
-    const server = testServer();
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
     const snapshot = await server.inject({
       method: "POST",
       url: "/api/intake-sessions/intake-session-001/answer-snapshots",
@@ -138,10 +179,32 @@ describe("intake routes", () => {
     expect(list.json()).toMatchObject({
       snapshots: [expect.objectContaining({ answers: { issue: "repair", urgency: "high" } })],
     });
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "intake_answer_snapshot.created",
+          resourceType: "intake_session",
+          resourceId: "intake-session-001",
+          metadata: {
+            matterId: "matter-001",
+            intakeSessionId: "intake-session-001",
+            answerCount: 2,
+          },
+        }),
+      ]),
+      valid: true,
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const auditEvent = audit.events.find(
+      (event) => event.action === "intake_answer_snapshot.created",
+    );
+    expect(auditEvent?.metadata).not.toHaveProperty("answers");
+    expect(auditEvent?.metadata).not.toHaveProperty("issue");
   });
 
   it("creates generated document records with embedded automation defaults", async () => {
-    const response = await testServer().inject({
+    const repository = new InMemoryOpenPracticeRepository();
+    const response = await testServer({ repository }).inject({
       method: "POST",
       url: "/api/intake-sessions/intake-session-001/generated-documents",
       payload: {
@@ -164,6 +227,82 @@ describe("intake routes", () => {
       storageKey: "generated/embedded-notice-package.pdf",
       checksumSha256: "a".repeat(64),
       evidence: expect.objectContaining({ mode: "embedded", requestedBy: "route-test" }),
+    });
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "intake_generated_document.created",
+          resourceType: "generated_document",
+          resourceId: response.json<{ id: string }>().id,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            intakeSessionId: "intake-session-001",
+            documentId: "doc-generated-001",
+            provider: "embedded",
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const auditEvent = audit.events.find(
+      (event) => event.action === "intake_generated_document.created",
+    );
+    expect(auditEvent?.metadata).not.toHaveProperty("evidence");
+    expect(auditEvent?.metadata).not.toHaveProperty("storageKey");
+    expect(auditEvent?.metadata).not.toHaveProperty("checksumSha256");
+    expect(auditEvent?.metadata).not.toHaveProperty("title");
+  });
+
+  it("queues intake workflow email through the SMTP outbox when configured", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableSmtp(repository);
+    const response = await testServer({ repository }).inject({
+      method: "POST",
+      url: "/api/intake-sessions/intake-session-001/generated-documents",
+      payload: {
+        title: "Embedded notice package",
+        documentId: "doc-generated-email-001",
+        storageKey: "generated/embedded-notice-package-email.pdf",
+        checksumSha256: "a".repeat(64),
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      queuedEmail: {
+        templateKey: "intake.generated_document.created",
+        status: "queued",
+      },
+    });
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          queueName: "email",
+          jobName: "send_email",
+          targetResourceType: "email_outbox",
+          metadata: expect.objectContaining({
+            provider: "mailpit",
+            templateKey: "intake.generated_document.created",
+            recipientCount: 1,
+            relatedResourceType: "generated_document",
+          }),
+        }),
+      ]),
+    );
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "email_outbox.queued",
+          resourceType: "email_outbox",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            templateKey: "intake.generated_document.created",
+            recipientCount: 1,
+          }),
+        }),
+      ]),
+      valid: true,
     });
   });
 

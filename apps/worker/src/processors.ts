@@ -69,33 +69,60 @@ export async function processOpenPracticeJob(input: {
 
 async function processEmailJob(input: {
   data: WorkerJobEnvelope;
+  repository: OpenPracticeRepository;
   mailSender: MailSender;
 }): Promise<WorkerJobResult> {
-  const { data, mailSender } = input;
+  const { data, repository, mailSender } = input;
   const metadata = data.metadata || {};
+  const emailId =
+    data.resourceType === "email_outbox" && data.resourceId
+      ? data.resourceId
+      : typeof metadata.emailId === "string"
+        ? metadata.emailId
+        : undefined;
 
-  if (!metadata.to || !metadata.subject || (!metadata.html && !metadata.text)) {
+  if (!emailId) {
     return {
       status: "skipped",
-      reason: "Missing email details in job metadata",
+      reason: "Missing email outbox id in job metadata",
       metadata: { firmId: data.firmId },
+    };
+  }
+
+  const email = await repository.getEmailOutbox(data.firmId, emailId);
+  if (!email) {
+    return {
+      status: "skipped",
+      reason: "Email outbox record not found",
+      metadata: { firmId: data.firmId, emailId },
+    };
+  }
+
+  if (!email.subject || (!email.htmlBody && !email.textBody)) {
+    return {
+      status: "skipped",
+      reason: "Missing email details in outbox record",
+      metadata: { firmId: data.firmId, emailId },
     };
   }
 
   const result = await mailSender.send({
     firmId: data.firmId,
-    from: (metadata.from as string) || "Open Practice <no-reply@open-practice.local>",
-    to: Array.isArray(metadata.to) ? (metadata.to as string[]) : [metadata.to as string],
-    subject: metadata.subject as string,
-    html: (metadata.html as string) || "",
-    text: (metadata.text as string) || "",
-    metadata: metadata.providerMetadata as Record<string, unknown>,
+    from: email.from,
+    to: email.to,
+    cc: email.cc,
+    bcc: email.bcc,
+    subject: email.subject,
+    html: email.htmlBody,
+    text: email.textBody,
+    metadata: email.metadata.providerMetadata as Record<string, unknown>,
   });
 
   return {
     status: "completed",
     metadata: {
       firmId: data.firmId,
+      emailId,
       providerMessageId: result.providerMessageId,
     },
   };

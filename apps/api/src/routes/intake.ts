@@ -9,6 +9,8 @@ import { EmbeddedAutomationProvider } from "@open-practice/providers";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import { appendRouteAuditEvent } from "./audit-events.js";
+import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const intakeSessionQuerySchema = z.object({
@@ -49,7 +51,7 @@ function assertIntakeAccess(
 
 export function registerIntakeRoutes(
   server: FastifyInstance,
-  { repository, automationProvider }: ApiRouteDependencies,
+  { repository, automationProvider, emailJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/intake-sessions", async (request) => {
     const query = parseRequestPart(intakeSessionQuerySchema, request.query, "query");
@@ -129,7 +131,34 @@ export function registerIntakeRoutes(
       createdAt: now,
       updatedAt: now,
     };
-    return repository.createIntakeSession(session);
+    const created = await repository.createIntakeSession(session);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "intake_session.created",
+      resourceType: "intake_session",
+      resourceId: created.id,
+      occurredAt: created.createdAt,
+      metadata: {
+        matterId: created.matterId,
+        templateId: created.templateId,
+        provider: created.provider,
+        status: created.status,
+      },
+    });
+    const queuedEmail = await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
+      matterId: created.matterId,
+      templateKey: "intake.session.created",
+      to: [request.auth.user.email],
+      subject: "Intake session created",
+      textBody: `An intake session was created for matter ${created.matterId}.`,
+      relatedResourceType: "intake_session",
+      relatedResourceId: created.id,
+      metadata: {
+        intakeSessionId: created.id,
+        templateId: created.templateId,
+        provider: created.provider,
+      },
+    });
+    return { ...created, queuedEmail: summarizeQueuedRouteEmail(queuedEmail) };
   });
 
   server.get("/api/intake-sessions/:id/answer-snapshots", async (request) => {
@@ -169,7 +198,19 @@ export function registerIntakeRoutes(
       capturedAt: body.capturedAt ?? new Date().toISOString(),
       answers: body.answers,
     };
-    return repository.createAnswerSnapshot(snapshot);
+    const created = await repository.createAnswerSnapshot(snapshot);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "intake_answer_snapshot.created",
+      resourceType: "intake_session",
+      resourceId: session.id,
+      occurredAt: created.capturedAt,
+      metadata: {
+        matterId: session.matterId,
+        intakeSessionId: session.id,
+        answerCount: Object.keys(created.answers).length,
+      },
+    });
+    return created;
   });
 
   server.post("/api/intake-sessions/:id/generated-documents", async (request) => {
@@ -196,7 +237,7 @@ export function registerIntakeRoutes(
       sessionExternalId: session.externalId,
       documentTitle: body.title,
     });
-    return repository.createGeneratedDocument({
+    const created = await repository.createGeneratedDocument({
       id: crypto.randomUUID(),
       firmId: request.auth.firmId,
       matterId: session.matterId,
@@ -210,5 +251,32 @@ export function registerIntakeRoutes(
       evidence: { ...body.evidence, ...(generated.evidence ?? {}) },
       createdAt: new Date().toISOString(),
     });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "intake_generated_document.created",
+      resourceType: "generated_document",
+      resourceId: created.id,
+      occurredAt: created.createdAt,
+      metadata: {
+        matterId: created.matterId,
+        intakeSessionId: session.id,
+        documentId: created.documentId,
+        provider: created.provider,
+      },
+    });
+    const queuedEmail = await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
+      matterId: created.matterId,
+      templateKey: "intake.generated_document.created",
+      to: [request.auth.user.email],
+      subject: `Generated intake document: ${created.title}`,
+      textBody: `A generated intake document is ready for matter ${created.matterId}.`,
+      relatedResourceType: "generated_document",
+      relatedResourceId: created.id,
+      metadata: {
+        intakeSessionId: session.id,
+        documentId: created.documentId,
+        provider: created.provider,
+      },
+    });
+    return { ...created, queuedEmail: summarizeQueuedRouteEmail(queuedEmail) };
   });
 }

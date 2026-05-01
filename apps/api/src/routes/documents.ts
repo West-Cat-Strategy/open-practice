@@ -6,6 +6,7 @@ import type { AccessRequest } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import { appendRouteAuditEvent } from "./audit-events.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const presignQuerySchema = z.object({
@@ -81,6 +82,19 @@ export function registerDocumentRoutes(
       legalHold: query.legalHold,
       supersedesDocumentId: query.supersedesDocumentId,
     });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "document.upload_intent.created",
+      resourceType: "document",
+      resourceId: document.id,
+      metadata: {
+        matterId: document.matterId,
+        documentId: document.id,
+        version: document.version,
+        status: document.uploadStatus,
+        checksumStatus: document.checksumStatus,
+        scanStatus: document.scanStatus,
+      },
+    });
 
     return {
       method: "PUT",
@@ -106,12 +120,27 @@ export function registerDocumentRoutes(
       matterId: document.matterId,
     });
     const body = parseRequestPart(uploadCompleteBodySchema, request.body, "body");
-    return repository.completeDocumentUpload({
+    const completed = await repository.completeDocumentUpload({
       firmId: request.auth.firmId,
       documentId: params.id,
       checksumSha256: body.checksumSha256,
       scanStatus: body.scanStatus,
     });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "document.upload.completed",
+      resourceType: "document",
+      resourceId: completed.id,
+      metadata: {
+        matterId: completed.matterId,
+        documentId: completed.id,
+        version: completed.version,
+        status: completed.uploadStatus,
+        checksumStatus: completed.checksumStatus,
+        scanStatus: completed.scanStatus,
+      },
+    });
+
+    return completed;
   });
 
   server.post("/api/documents/:id/scan-status", async (request) => {
@@ -126,10 +155,25 @@ export function registerDocumentRoutes(
       matterId: document.matterId,
     });
     const body = parseRequestPart(documentScanStatusBodySchema, request.body, "body");
-    return repository.updateDocumentScanStatus({
+    const updated = await repository.updateDocumentScanStatus({
       firmId: request.auth.firmId,
       documentId: params.id,
       scanStatus: body.scanStatus,
     });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "document.scan_status.updated",
+      resourceType: "document",
+      resourceId: updated.id,
+      metadata: {
+        matterId: updated.matterId,
+        documentId: updated.id,
+        version: updated.version,
+        status: updated.uploadStatus,
+        checksumStatus: updated.checksumStatus,
+        scanStatus: updated.scanStatus,
+      },
+    });
+
+    return updated;
   });
 }

@@ -32,6 +32,8 @@ import {
   type LedgerReconciliationRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
+  type EmailEventRecord,
+  type EmailOutboxRecord,
   type ManualPaymentRecord,
   type Matter,
   type MatterParty,
@@ -237,6 +239,16 @@ export interface OpenPracticeRepository {
   ): Promise<ProviderSettingRecord[]>;
   upsertProviderSetting(setting: ProviderSettingRecord): Promise<ProviderSettingRecord>;
   createJobLifecycleRecord(record: JobLifecycleRecord): Promise<JobLifecycleRecord>;
+  createQueuedEmailOutbox(input: {
+    email: EmailOutboxRecord;
+    event: EmailEventRecord;
+    job: JobLifecycleRecord;
+  }): Promise<{
+    email: EmailOutboxRecord;
+    event: EmailEventRecord;
+    job: JobLifecycleRecord;
+  }>;
+  getEmailOutbox(firmId: string, emailId: string): Promise<EmailOutboxRecord | undefined>;
   updateJobLifecycleRecord(
     firmId: string,
     id: string,
@@ -789,6 +801,57 @@ function mapJobLifecycleRow(
   };
 }
 
+function mapEmailOutboxRow(row: typeof schema.emailOutbox.$inferSelect): EmailOutboxRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    templateKey: row.templateKey,
+    status: row.status as EmailOutboxRecord["status"],
+    to: row.to,
+    cc: row.cc,
+    bcc: row.bcc,
+    from: row.from,
+    subject: row.subject,
+    htmlBody: row.htmlBody,
+    textBody: row.textBody,
+    relatedResourceType: row.relatedResourceType ?? undefined,
+    relatedResourceId: row.relatedResourceId ?? undefined,
+    queuedAt: row.queuedAt.toISOString(),
+    sentAt: dateToIso(row.sentAt),
+    failedAt: dateToIso(row.failedAt),
+    errorMessage: row.errorMessage ?? undefined,
+    metadata: row.metadata,
+  };
+}
+
+function emailOutboxInsert(record: EmailOutboxRecord): typeof schema.emailOutbox.$inferInsert {
+  return {
+    ...record,
+    queuedAt: new Date(record.queuedAt),
+    sentAt: record.sentAt ? new Date(record.sentAt) : null,
+    failedAt: record.failedAt ? new Date(record.failedAt) : null,
+  };
+}
+
+function mapEmailEventRow(row: typeof schema.emailEvents.$inferSelect): EmailEventRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    emailId: row.emailId,
+    eventType: row.eventType as EmailEventRecord["eventType"],
+    providerMessageId: row.providerMessageId ?? undefined,
+    occurredAt: row.occurredAt.toISOString(),
+    metadata: row.metadata,
+  };
+}
+
+function emailEventInsert(record: EmailEventRecord): typeof schema.emailEvents.$inferInsert {
+  return {
+    ...record,
+    occurredAt: new Date(record.occurredAt),
+  };
+}
+
 function jobLifecycleInsert(
   record: JobLifecycleRecord,
 ): typeof schema.jobLifecycleRecords.$inferInsert {
@@ -1235,6 +1298,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private firmSettings: FirmSettings[] = [];
   private providerSettings: ProviderSettingRecord[] = [];
   private jobLifecycleRecords: JobLifecycleRecord[] = [];
+  private emailOutbox: EmailOutboxRecord[] = [];
+  private emailEvents: EmailEventRecord[] = [];
   private authAccounts: AuthAccountRecord[] = [];
   private authSessions: AuthSessionRecord[] = [];
   private calendarCredentials: CalendarCredentialRecord[] = [];
@@ -1362,6 +1427,25 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   async createJobLifecycleRecord(record: JobLifecycleRecord): Promise<JobLifecycleRecord> {
     this.jobLifecycleRecords.push(clone(record));
     return clone(record);
+  }
+
+  async createQueuedEmailOutbox(input: {
+    email: EmailOutboxRecord;
+    event: EmailEventRecord;
+    job: JobLifecycleRecord;
+  }): Promise<{
+    email: EmailOutboxRecord;
+    event: EmailEventRecord;
+    job: JobLifecycleRecord;
+  }> {
+    this.emailOutbox.push(clone(input.email));
+    this.emailEvents.push(clone(input.event));
+    this.jobLifecycleRecords.push(clone(input.job));
+    return clone(input);
+  }
+
+  async getEmailOutbox(firmId: string, emailId: string): Promise<EmailOutboxRecord | undefined> {
+    return clone(this.emailOutbox.find((email) => email.firmId === firmId && email.id === emailId));
   }
 
   async updateJobLifecycleRecord(
@@ -2918,6 +3002,44 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .values(jobLifecycleInsert(record))
       .returning();
     return mapJobLifecycleRow(row);
+  }
+
+  async createQueuedEmailOutbox(input: {
+    email: EmailOutboxRecord;
+    event: EmailEventRecord;
+    job: JobLifecycleRecord;
+  }): Promise<{
+    email: EmailOutboxRecord;
+    event: EmailEventRecord;
+    job: JobLifecycleRecord;
+  }> {
+    return this.db.transaction(async (tx) => {
+      const [emailRow] = await tx
+        .insert(schema.emailOutbox)
+        .values(emailOutboxInsert(input.email))
+        .returning();
+      const [eventRow] = await tx
+        .insert(schema.emailEvents)
+        .values(emailEventInsert(input.event))
+        .returning();
+      const [jobRow] = await tx
+        .insert(schema.jobLifecycleRecords)
+        .values(jobLifecycleInsert(input.job))
+        .returning();
+      return {
+        email: mapEmailOutboxRow(emailRow),
+        event: mapEmailEventRow(eventRow),
+        job: mapJobLifecycleRow(jobRow),
+      };
+    });
+  }
+
+  async getEmailOutbox(firmId: string, emailId: string): Promise<EmailOutboxRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.emailOutbox)
+      .where(and(eq(schema.emailOutbox.firmId, firmId), eq(schema.emailOutbox.id, emailId)));
+    return row ? mapEmailOutboxRow(row) : undefined;
   }
 
   async updateJobLifecycleRecord(

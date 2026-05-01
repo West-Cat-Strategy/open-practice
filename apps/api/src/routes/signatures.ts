@@ -9,6 +9,8 @@ import type {
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import { appendRouteAuditEvent } from "./audit-events.js";
+import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const signatureQuerySchema = z.object({
@@ -68,7 +70,7 @@ function assertSignatureAccess(
 
 export function registerSignatureRoutes(
   server: FastifyInstance,
-  { repository, signatureProvider }: ApiRouteDependencies,
+  { repository, signatureProvider, emailJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/signature-requests", async (request) => {
     const query = parseRequestPart(signatureQuerySchema, request.query, "query");
@@ -150,7 +152,38 @@ export function registerSignatureRoutes(
       occurredAt: now,
       evidence: requestRecord.evidence,
     };
-    return repository.createSignatureRequest({ request: requestRecord, signers, event });
+    const created = await repository.createSignatureRequest({
+      request: requestRecord,
+      signers,
+      event,
+    });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "signature_request.created",
+      resourceType: "signature_request",
+      resourceId: created.request.id,
+      occurredAt: now,
+      metadata: {
+        matterId: created.request.matterId,
+        documentId: created.request.documentId,
+        provider: created.request.provider,
+        status: created.request.status,
+        signerCount: created.signers.length,
+      },
+    });
+    const queuedEmail = await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
+      matterId: created.request.matterId,
+      templateKey: "signature.requested",
+      to: created.signers.map((signer) => signer.email),
+      subject: `Signature requested: ${created.request.title}`,
+      textBody: `Please review the signature request for ${created.request.title}.`,
+      relatedResourceType: "signature_request",
+      relatedResourceId: created.request.id,
+      metadata: {
+        documentId: created.request.documentId,
+        signerCount: created.signers.length,
+      },
+    });
+    return { ...created, queuedEmail: summarizeQueuedRouteEmail(queuedEmail) };
   });
 
   server.post("/api/signature-requests/provider-events", async (request) => {
@@ -181,7 +214,21 @@ export function registerSignatureRoutes(
       occurredAt: body.occurredAt ?? new Date().toISOString(),
       evidence: body.evidence,
     };
-    return repository.recordSignatureProviderEvent(event);
+    const recorded = await repository.recordSignatureProviderEvent(event);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "signature_provider_event.recorded",
+      resourceType: "signature_request",
+      resourceId: signature.id,
+      occurredAt: recorded.occurredAt,
+      metadata: {
+        matterId: signature.matterId,
+        signatureRequestId: signature.id,
+        provider: recorded.provider,
+        externalId: recorded.externalId,
+        status: recorded.status,
+      },
+    });
+    return recorded;
   });
 
   server.post("/api/signature-requests/:id/embedded-events", async (request) => {
@@ -223,6 +270,20 @@ export function registerSignatureRoutes(
       },
     };
     const recorded = await repository.recordSignatureProviderEvent(event);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "signature_embedded_event.recorded",
+      resourceType: "signature_request",
+      resourceId: signature.id,
+      occurredAt: recorded.occurredAt,
+      metadata: {
+        matterId: signature.matterId,
+        signatureRequestId: signature.id,
+        provider: recorded.provider,
+        externalId: recorded.externalId,
+        status: recorded.status,
+        signerId: body.signerId,
+      },
+    });
     return { status: "processed", event: recorded };
   });
 
