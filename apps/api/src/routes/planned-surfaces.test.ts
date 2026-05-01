@@ -187,7 +187,7 @@ describe("planned surface route scaffolds", () => {
     });
   });
 
-  it("does not enqueue document processing without a configured worker", async () => {
+  it("does not enqueue document processing without a configured OCR queue", async () => {
     const response = await testServer().inject({
       method: "POST",
       url: "/api/document-processing/documents/doc-001/queue",
@@ -195,7 +195,7 @@ describe("planned surface route scaffolds", () => {
 
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({
-      message: "Document processing worker is not configured",
+      message: "OCR queue is not configured",
     });
   });
 

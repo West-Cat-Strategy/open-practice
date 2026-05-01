@@ -25,6 +25,7 @@ export interface ApiRouteDependencies {
   draftAssistProvider?: DraftAssistProvider;
   signatureProvider?: SignatureProvider;
   emailJobQueue?: ApiJobQueue;
+  ocrJobQueue?: ApiJobQueue;
   s3?: {
     client: S3Client;
     bucket: string;

@@ -138,6 +138,23 @@ export interface DocumentUploadIntent {
   supersedesDocumentId?: string;
 }
 
+export interface InboundAttachmentPromotionInput {
+  firmId: string;
+  messageId: string;
+  attachmentId: string;
+  matterId: string;
+  title: string;
+  classification: DocumentRecord["classification"];
+  legalHold: boolean;
+  now?: string;
+}
+
+export interface InboundAttachmentPromotionResult {
+  attachment: InboundEmailAttachmentRecord;
+  document: DocumentRecord;
+  created: boolean;
+}
+
 export interface InvoiceWithLines extends InvoiceRecord {
   lines: InvoiceLineRecord[];
 }
@@ -652,6 +669,9 @@ export interface OpenPracticeRepository {
     firmId: string,
     messageId: string,
   ): Promise<InboundEmailAttachmentRecord[]>;
+  promoteInboundEmailAttachmentToDocument(
+    input: InboundAttachmentPromotionInput,
+  ): Promise<InboundAttachmentPromotionResult>;
 }
 
 function clone<T>(value: T): T {
@@ -967,6 +987,7 @@ function mapDocumentRow(row: typeof schema.documents.$inferSelect): DocumentReco
     supersedesDocumentId: row.supersedesDocumentId ?? undefined,
     supersededAt: dateToIso(row.supersededAt),
     uploadedAt: dateToIso(row.uploadedAt),
+    verifiedAt: dateToIso(row.verifiedAt),
   };
 }
 
@@ -3432,6 +3453,62 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         (attachment) => attachment.firmId === firmId && attachment.inboundMessageId === messageId,
       ),
     );
+  }
+
+  async promoteInboundEmailAttachmentToDocument(
+    input: InboundAttachmentPromotionInput,
+  ): Promise<InboundAttachmentPromotionResult> {
+    const attachmentIndex = this.inboundEmailAttachments.findIndex(
+      (attachment) =>
+        attachment.firmId === input.firmId &&
+        attachment.inboundMessageId === input.messageId &&
+        attachment.id === input.attachmentId,
+    );
+    if (attachmentIndex === -1) throw new Error("Inbound email attachment was not found");
+    const attachment = this.inboundEmailAttachments[attachmentIndex]!;
+    if (!attachment.checksumSha256) {
+      throw new Error("Inbound email attachment checksum is required for document promotion");
+    }
+    if (attachment.documentId) {
+      const document = this.documents.find(
+        (candidate) => candidate.firmId === input.firmId && candidate.id === attachment.documentId,
+      );
+      if (!document) throw new Error("Promoted document was not found");
+      return { attachment: clone(attachment), document: clone(document), created: false };
+    }
+
+    const duplicate = this.documents.find(
+      (candidate) =>
+        candidate.firmId === input.firmId &&
+        candidate.checksumSha256 === attachment.checksumSha256 &&
+        candidate.checksumStatus === "verified",
+    );
+    const now = input.now ?? new Date().toISOString();
+    const document: DocumentRecord = {
+      id: crypto.randomUUID(),
+      firmId: input.firmId,
+      matterId: input.matterId,
+      title: input.title,
+      storageKey: attachment.storageKey,
+      checksumSha256: attachment.checksumSha256,
+      version: 1,
+      classification: input.classification,
+      legalHold: input.legalHold,
+      uploadStatus: "verified",
+      checksumStatus: duplicate ? "duplicate" : "verified",
+      scanStatus: "queued",
+      duplicateOfDocumentId: duplicate?.id,
+      uploadedAt: now,
+      verifiedAt: now,
+    };
+    this.documents = [...this.documents, clone(document)];
+    const updatedAttachment = { ...attachment, documentId: document.id };
+    this.inboundEmailAttachments[attachmentIndex] = clone(updatedAttachment);
+    return {
+      attachment: clone(updatedAttachment),
+      document: clone(document),
+      created: true,
+    };
   }
 }
 
@@ -6147,6 +6224,96 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         ),
       );
     return rows.map(mapInboundEmailAttachmentRow);
+  }
+
+  async promoteInboundEmailAttachmentToDocument(
+    input: InboundAttachmentPromotionInput,
+  ): Promise<InboundAttachmentPromotionResult> {
+    return this.db.transaction(async (tx) => {
+      const [attachmentRow] = await tx
+        .select()
+        .from(schema.inboundEmailAttachments)
+        .where(
+          and(
+            eq(schema.inboundEmailAttachments.firmId, input.firmId),
+            eq(schema.inboundEmailAttachments.inboundMessageId, input.messageId),
+            eq(schema.inboundEmailAttachments.id, input.attachmentId),
+          ),
+        )
+        .for("update");
+      if (!attachmentRow) throw new Error("Inbound email attachment was not found");
+      const attachment = mapInboundEmailAttachmentRow(attachmentRow);
+      if (!attachment.checksumSha256) {
+        throw new Error("Inbound email attachment checksum is required for document promotion");
+      }
+      if (attachment.documentId) {
+        const [documentRow] = await tx
+          .select()
+          .from(schema.documents)
+          .where(
+            and(
+              eq(schema.documents.firmId, input.firmId),
+              eq(schema.documents.id, attachment.documentId),
+            ),
+          );
+        if (!documentRow) throw new Error("Promoted document was not found");
+        return {
+          attachment,
+          document: mapDocumentRow(documentRow),
+          created: false,
+        };
+      }
+
+      const [duplicateRow] = await tx
+        .select()
+        .from(schema.documents)
+        .where(
+          and(
+            eq(schema.documents.firmId, input.firmId),
+            eq(schema.documents.checksumSha256, attachment.checksumSha256),
+            eq(schema.documents.checksumStatus, "verified"),
+          ),
+        )
+        .limit(1);
+      const now = new Date(input.now ?? new Date().toISOString());
+      const document = {
+        id: crypto.randomUUID(),
+        firmId: input.firmId,
+        matterId: input.matterId,
+        title: input.title,
+        storageKey: attachment.storageKey,
+        checksumSha256: attachment.checksumSha256,
+        version: 1,
+        classification: input.classification,
+        legalHold: input.legalHold,
+        uploadStatus: "verified" as const,
+        checksumStatus: duplicateRow ? ("duplicate" as const) : ("verified" as const),
+        scanStatus: "queued" as const,
+        duplicateOfDocumentId: duplicateRow?.id,
+        uploadedAt: now,
+        verifiedAt: now,
+      };
+      const [documentRow] = await tx.insert(schema.documents).values(document).returning();
+      if (!documentRow) throw new Error("Promoted document was not created");
+      const [updatedAttachmentRow] = await tx
+        .update(schema.inboundEmailAttachments)
+        .set({ documentId: document.id })
+        .where(
+          and(
+            eq(schema.inboundEmailAttachments.firmId, input.firmId),
+            eq(schema.inboundEmailAttachments.inboundMessageId, input.messageId),
+            eq(schema.inboundEmailAttachments.id, input.attachmentId),
+            isNull(schema.inboundEmailAttachments.documentId),
+          ),
+        )
+        .returning();
+      if (!updatedAttachmentRow) throw new Error("Inbound email attachment was not linked");
+      return {
+        attachment: mapInboundEmailAttachmentRow(updatedAttachmentRow),
+        document: mapDocumentRow(documentRow),
+        created: true,
+      };
+    });
   }
 }
 

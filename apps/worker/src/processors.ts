@@ -8,6 +8,7 @@ import type {
 } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { processInboundEmailJob } from "./processors/inbound-email.js";
+import { sanitizeJobMetadata } from "./queues.js";
 
 export interface WorkerJobEnvelope {
   firmId: string;
@@ -59,10 +60,10 @@ export async function processOpenPracticeJob(input: {
       finishedAt: new Date().toISOString(),
       attemptsMade: input.attemptsMade,
       errorMessage: result.reason,
-      metadata: {
+      metadata: sanitizeJobMetadata({
         ...data.metadata,
         ...result.metadata,
-      },
+      }),
     });
     return result;
   } catch (error) {

@@ -124,6 +124,7 @@ interface ApiOptions {
   automationProvider?: DocumentAutomationProvider;
   draftAssistProvider?: DraftAssistProvider;
   emailJobQueue?: ApiJobQueue;
+  ocrJobQueue?: ApiJobQueue;
   sessionTtlHours?: number;
   publicWebBaseUrl?: string;
   setupKey?: string;
@@ -338,7 +339,11 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerCalDavRoutes(server, { repository: options.repository });
   registerCalendarRoutes(server, { repository: options.repository });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
-  registerDocumentProcessingRoutes(server, { repository: options.repository });
+  registerDocumentProcessingRoutes(server, {
+    repository: options.repository,
+    s3: options.s3,
+    ocrJobQueue: options.ocrJobQueue,
+  });
   registerDraftRoutes(server, { repository: options.repository });
   registerDraftAssistRoutes(server, {
     repository: options.repository,
@@ -349,7 +354,10 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     repository: options.repository,
     emailJobQueue: options.emailJobQueue,
   });
-  registerInboundEmailRoutes(server, { repository: options.repository });
+  registerInboundEmailRoutes(server, {
+    repository: options.repository,
+    ocrJobQueue: options.ocrJobQueue,
+  });
   registerShareRoutes(server, {
     repository: options.repository,
     jwtSecret: options.jwtSecret,
@@ -481,11 +489,25 @@ function createEmailJobQueueFromEnv(env: ApiEnv): Queue | undefined {
   });
 }
 
+function createOcrJobQueueFromEnv(env: ApiEnv): Queue | undefined {
+  if (!env.REDIS_URL) return undefined;
+  return new Queue("ocr", {
+    connection: redisConnectionFromUrl(env.REDIS_URL),
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: { type: "exponential", delay: 60_000 },
+      removeOnComplete: 500,
+      removeOnFail: false,
+    },
+  });
+}
+
 if (process.env.NODE_ENV !== "test") {
   const env = envSchema.parse(process.env);
   validateProductionReadiness(env);
   const { repository, close } = await createRepositoryFromEnv(env);
   const emailJobQueue = createEmailJobQueueFromEnv(env);
+  const ocrJobQueue = createOcrJobQueueFromEnv(env);
   const server = createApiServer({
     repository,
     jwtSecret: env.AUTH_JWT_SECRET,
@@ -495,6 +517,7 @@ if (process.env.NODE_ENV !== "test") {
     signatureProvider: new EmbeddedSignatureProvider(),
     automationProvider: new EmbeddedAutomationProvider(),
     emailJobQueue,
+    ocrJobQueue,
     sessionTtlHours: env.SESSION_TTL_HOURS,
     publicWebBaseUrl: env.PUBLIC_WEB_BASE_URL ?? env.WEBAUTHN_ORIGIN,
     setupKey: env.OPEN_PRACTICE_SETUP_KEY,
@@ -506,7 +529,9 @@ if (process.env.NODE_ENV !== "test") {
     },
   });
   process.once("SIGTERM", () => {
-    void Promise.all([emailJobQueue?.close(), close?.()]).then(() => process.exit(0));
+    void Promise.all([emailJobQueue?.close(), ocrJobQueue?.close(), close?.()]).then(() =>
+      process.exit(0),
+    );
   });
   await server.listen({ host: "0.0.0.0", port: env.API_PORT });
 }
