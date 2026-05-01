@@ -5,6 +5,7 @@ export type OpenPracticeRouteId =
   | "billing"
   | "documents"
   | "shares"
+  | "externalUploads"
   | "drafting"
   | "signatures"
   | "intake"
@@ -13,13 +14,14 @@ export type OpenPracticeRouteId =
   | "queues";
 
 export type OpenPracticeRouteArea = "workspace" | "operations" | "finance" | "review";
+export type OpenPracticeDashboardSectionKey = DashboardSectionKey | "externalUploads";
 
 export interface OpenPracticeRouteCatalogEntry {
   id: OpenPracticeRouteId;
   title: string;
   shortLabel: string;
   path: string;
-  sectionKey?: DashboardSectionKey | "billing";
+  sectionKey?: OpenPracticeDashboardSectionKey;
   area: OpenPracticeRouteArea;
   requiresMatterContext: boolean;
   order: number;
@@ -27,11 +29,11 @@ export interface OpenPracticeRouteCatalogEntry {
 }
 
 export interface RouteCatalogSectionCapability {
-  key: DashboardSectionKey;
+  key: OpenPracticeDashboardSectionKey;
   enabled: boolean;
 }
 
-export type OpenPracticeSidebarSectionKey = DashboardSectionKey | "billing" | "shares";
+export type OpenPracticeSidebarSectionKey = OpenPracticeDashboardSectionKey | "shares";
 
 export interface OpenPracticeSidebarNavigationSection {
   key: OpenPracticeSidebarSectionKey;
@@ -92,6 +94,17 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     area: "operations",
     requiresMatterContext: true,
     order: 42,
+    showInSidebar: true,
+  },
+  {
+    id: "externalUploads",
+    title: "External Uploads",
+    shortLabel: "Uploads",
+    path: "/?section=externalUploads",
+    sectionKey: "externalUploads",
+    area: "workspace",
+    requiresMatterContext: true,
+    order: 44,
     showInSidebar: true,
   },
   {
@@ -176,6 +189,7 @@ export function buildSidebarNavigationSections(input: {
   billingCanView: boolean;
   capabilitySections: RouteCatalogSectionCapability[];
   shareLinksEnabled?: boolean;
+  externalUploadsEnabled?: boolean;
 }): OpenPracticeSidebarNavigationSection[] {
   const sidebarEntryBySectionKey = new Map(
     getSidebarRouteCatalogEntries().flatMap((entry) =>
@@ -184,6 +198,9 @@ export function buildSidebarNavigationSections(input: {
   );
   const hasBillingCapability = input.capabilitySections.some(
     (section) => section.key === "billing",
+  );
+  const hasExternalUploadsCapability = input.capabilitySections.some(
+    (section) => section.key === "externalUploads",
   );
   const displayCandidates: Array<{
     key: OpenPracticeSidebarSectionKey;
@@ -221,6 +238,18 @@ export function buildSidebarNavigationSections(input: {
     enabled: input.shareLinksEnabled ?? false,
     order: shareLinksEntry.order,
   });
+
+  if (!hasExternalUploadsCapability) {
+    const externalUploadsEntry = sidebarEntryBySectionKey.get("externalUploads");
+    if (externalUploadsEntry) {
+      displayCandidates.push({
+        key: "externalUploads",
+        label: externalUploadsEntry.shortLabel,
+        enabled: input.externalUploadsEnabled ?? false,
+        order: externalUploadsEntry.order,
+      });
+    }
+  }
 
   return displayCandidates
     .sort((left, right) => left.order - right.order)

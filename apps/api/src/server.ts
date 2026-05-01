@@ -325,7 +325,11 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerEmailRoutes(server, { repository: options.repository });
   registerInboundEmailRoutes(server, { repository: options.repository });
   registerShareRoutes(server, { repository: options.repository, jwtSecret: options.jwtSecret });
-  registerExternalUploadRoutes(server, { repository: options.repository, s3: options.s3 });
+  registerExternalUploadRoutes(server, {
+    repository: options.repository,
+    s3: options.s3,
+    jwtSecret: options.jwtSecret,
+  });
   registerAuthExtensionRoutes(server);
   registerAuditRoutes(server, { repository: options.repository });
   registerSignatureRoutes(server, {

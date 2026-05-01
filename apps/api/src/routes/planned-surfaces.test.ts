@@ -154,12 +154,15 @@ describe("planned surface route scaffolds", () => {
 
     const deniedUpload = await server.inject({
       method: "POST",
-      url: "/api/external-uploads/intents",
-      payload: { matterId: "matter-002", filename: "records.pdf" },
+      url: "/api/external-uploads",
+      payload: {
+        matterId: "matter-002",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      },
     });
     expect(deniedUpload.statusCode).toBe(403);
     expect(deniedUpload.json()).toMatchObject({
-      message: "Document access required",
+      message: "External upload access required",
     });
   });
 

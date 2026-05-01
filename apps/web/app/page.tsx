@@ -1,6 +1,11 @@
 import { cookies } from "next/headers";
 import DashboardClient from "./dashboard-client";
 import { loadDraftingDashboardData } from "./drafting-dashboard";
+import {
+  buildExternalUploadListPath,
+  externalUploadsStatusFallback,
+  loadExternalUploadsDashboardData,
+} from "./external-uploads-dashboard";
 import LoginClient from "./login-client";
 import SetupWizard from "./setup-wizard";
 import { selectStartupView } from "./setup-wizard-utils";
@@ -8,6 +13,9 @@ import type {
   BillingDashboardResponse,
   CapabilitiesResponse,
   DraftingDashboardResponse,
+  ExternalUploadsDashboardResponse,
+  ExternalUploadsListResponse,
+  ExternalUploadsStatusResponse,
   IntakeSessionsResponse,
   MatterSummary,
   PracticeOverview,
@@ -214,6 +222,24 @@ export default async function Home() {
     { createStatus: "disabled", reason: "share_routes_unavailable" },
     headers,
   );
+  const externalUploads: ExternalUploadsDashboardResponse = await loadExternalUploadsDashboardData({
+    matters,
+    getStatus: () =>
+      apiGetOptional<ExternalUploadsStatusResponse>(
+        "/api/external-uploads/status",
+        externalUploadsStatusFallback,
+        headers,
+      ),
+    listUploadsForMatter: async (matterId) => {
+      const response = await apiGetOptional<ExternalUploadsListResponse>(
+        buildExternalUploadListPath(matterId),
+        { uploads: [] },
+        headers,
+        { uploads: [] },
+      );
+      return response.uploads;
+    },
+  });
 
   return (
     <DashboardClient
@@ -222,6 +248,7 @@ export default async function Home() {
       capabilities={capabilities}
       devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}
       drafting={drafting}
+      externalUploads={externalUploads}
       intake={intake}
       matters={matters}
       overview={overview}

@@ -11,7 +11,7 @@ Foundation** and **Phase 2: Hardening & Integration**. Key accomplishments inclu
 - **Operational Dashboard**: API-backed `apps/web` with permission-aware navigation and route catalogs.
 - **Worker Foundation**: Redis/BullMQ `apps/worker` scaffold with job lifecycle persistence.
 - **Provider Adapters**: Embedded signature and document-automation adapters in `packages/providers`.
-- **Hardened Features**: WebAuthn first-run setup, matter-scoped RBAC, audit hash chains, persistent trust ledger balance guards, and billing/reporting foundations.
+- **Hardened Features**: WebAuthn first-run setup, matter-scoped RBAC, audit hash chains, persistent trust ledger balance guards, billing/reporting foundations, secure share links, and external upload links.
 - **Module extraction**: Extraction of Auth, Session, Matters, Ledger, Documents, Signatures, and Intake into owned API registrars.
 
 ## Strategic Phases
@@ -32,25 +32,30 @@ Strengthened the system of record and automated high-frequency workflows.
 Expand the ecosystem for secure collaboration, controlled automation, and operational workflows that
 stay local-first, matter-scoped, and auditable.
 
-1.  **Secure Shares**: Replace disabled share-creation scaffolding with token-hashed,
-    time-bound, revocable portal share links for documents and intake sessions.
-2.  **External Uploads**: Turn the guarded upload-intent scaffold into expiring,
-    revocable document collection links for external parties, with S3 completion checks and audit
+Completed Phase 3 slices:
+
+1.  **Secure Shares**: Token-hashed, time-bound, revocable v1 portal share links for document
+    metadata, with matter-scoped authorization, access logs, and audit events.
+2.  **External Uploads**: Expiring, revocable document collection links for external parties, with
+    token-scoped S3 intent/complete flows, S3-disabled fallback behavior, access logs, and audit
     records.
-3.  **Audit Coverage**: Broaden append-only audit events across signature, intake, drafting,
+
+Next operational scale priorities:
+
+1.  **Audit Coverage**: Broaden append-only audit events across signature, intake, drafting,
     document, billing, ledger, email, share, and external-upload state changes.
-4.  **Email Workflow Closure**: Connect the local SMTP/outbox worker foundation to API preview/send
+2.  **Email Workflow Closure**: Connect the local SMTP/outbox worker foundation to API preview/send
     flows for signature, intake, share, upload, and future meeting notices.
-5.  **Guided Intake**: Expand the embedded intake engine with branching logic, reusable packages,
+3.  **Guided Intake**: Expand the embedded intake engine with branching logic, reusable packages,
     and multi-document automation while keeping generated records inside Open Practice.
-6.  **Local AI Drafting Assist**: Add disabled-by-default Ollama/LM Studio review workflows for
+4.  **Local AI Drafting Assist**: Add disabled-by-default Ollama/LM Studio review workflows for
     draft assistance and matter/document summarization; generated text remains non-authoritative
     draft material.
-7.  **Calendaring and Meeting Management**: Grow the existing `calendar_events` schema and
+5.  **Calendaring and Meeting Management**: Grow the existing `calendar_events` schema and
     `calendar_event` permissions into matter-scoped events with attendees, reminders,
     rescheduling/cancellation records, audit events, outbound iCalendar/webcal sync, and optional
     self-hostable WebRTC meeting links behind explicit configuration.
-8.  **Specialized Workflows**: Add focused support for legal clinics, nonprofit fiscal hosts,
+6.  **Specialized Workflows**: Add focused support for legal clinics, nonprofit fiscal hosts,
     complex trust accounting, and multi-jurisdiction trust reporting without making
     jurisdiction-certified compliance claims.
 

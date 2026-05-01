@@ -22,7 +22,16 @@ import {
   isSameDraftDocument,
   loadDraftingDashboardData,
 } from "./drafting-dashboard";
-import type { MatterSummary, ShareLinkRecord } from "./types";
+import {
+  buildExternalUploadCreatePayload,
+  buildExternalUploadListPath,
+  buildExternalUploadRevokePath,
+  canCreateExternalUpload,
+  getExternalUploadLinkState,
+  loadExternalUploadsDashboardData,
+  upsertExternalUploadLink,
+} from "./external-uploads-dashboard";
+import type { ExternalUploadLinkRecord, MatterSummary, ShareLinkRecord } from "./types";
 
 const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapability["resource"]> = {
   matters: "matter",
@@ -125,6 +134,28 @@ function shareLink(overrides: Partial<ShareLinkRecord> = {}): ShareLinkRecord {
   };
 }
 
+function externalUploadLink(
+  overrides: Partial<ExternalUploadLinkRecord> = {},
+): ExternalUploadLinkRecord {
+  return {
+    ...baseExternalUploadLink(),
+    ...overrides,
+  };
+}
+
+function baseExternalUploadLink(): ExternalUploadLinkRecord {
+  return {
+    id: "external-upload-link-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    requestedByUserId: "user-admin",
+    expiresAt: "2026-05-01T12:00:00.000Z",
+    maxUploads: 2,
+    usedUploads: 0,
+    createdAt: "2026-04-29T12:00:00.000Z",
+  };
+}
+
 describe("dashboard client behavior", () => {
   it("filters matters by API-backed matter fields", () => {
     const matters = [
@@ -140,6 +171,7 @@ describe("dashboard client behavior", () => {
     const navigationSections = buildSidebarNavigationSections({
       billingCanView: true,
       shareLinksEnabled: true,
+      externalUploadsEnabled: true,
       capabilitySections: [
         capability("matters"),
         capability("funds"),
@@ -158,6 +190,7 @@ describe("dashboard client behavior", () => {
       { key: "billing", label: "Billing", enabled: true },
       { key: "documents", label: "Documents", enabled: true },
       { key: "shares", label: "Shares", enabled: true },
+      { key: "externalUploads", label: "Uploads", enabled: true },
       { key: "drafting", label: "Drafting", enabled: true },
       { key: "signatures", label: "Signatures", enabled: true },
       { key: "intake", label: "Intake", enabled: true },
@@ -169,6 +202,7 @@ describe("dashboard client behavior", () => {
     const navigationSections = buildSidebarNavigationSections({
       billingCanView: false,
       shareLinksEnabled: false,
+      externalUploadsEnabled: false,
       capabilitySections: [
         capability("matters"),
         capability("funds"),
@@ -188,6 +222,11 @@ describe("dashboard client behavior", () => {
     expect(navigationSections.find((section) => section.key === "shares")).toEqual({
       key: "shares",
       label: "Shares",
+      enabled: false,
+    });
+    expect(navigationSections.find((section) => section.key === "externalUploads")).toEqual({
+      key: "externalUploads",
+      label: "Uploads",
       enabled: false,
     });
     expect(navigationSections.map((section) => section.key)).not.toContain("queues");
@@ -278,5 +317,70 @@ describe("dashboard client behavior", () => {
     });
     expect(isSameDraftDocument(blankPayload.editorJson, updatedEditorJson)).toBe(false);
     expect(isSameDraftDocument(updatedEditorJson, updatedEditorJson)).toBe(true);
+  });
+
+  it("builds external upload paths, create payloads, and local link state", () => {
+    const expiresAtLocal = "2026-05-01T09:30";
+    const upload = externalUploadLink();
+    const updatedUpload = externalUploadLink({ usedUploads: 2 });
+
+    expect(buildExternalUploadListPath("matter 001")).toBe(
+      "/api/external-uploads?matterId=matter%20001",
+    );
+    expect(buildExternalUploadRevokePath("external/upload/001")).toBe(
+      "/api/external-uploads/external%2Fupload%2F001/revoke",
+    );
+    expect(
+      buildExternalUploadCreatePayload({
+        matterId: "matter-001",
+        maxUploads: "3",
+        expiresAtLocal,
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      maxUploads: 3,
+      expiresAt: new Date(expiresAtLocal).toISOString(),
+    });
+    expect(
+      buildExternalUploadCreatePayload({
+        matterId: "matter-001",
+        maxUploads: "0",
+        expiresAtLocal: "",
+      }),
+    ).toEqual({ matterId: "matter-001", maxUploads: 1 });
+    expect(canCreateExternalUpload({ status: "available", provider: "s3" })).toBe(true);
+    expect(canCreateExternalUpload({ status: "not_configured", provider: "s3" })).toBe(false);
+    expect(upsertExternalUploadLink({}, upload)).toEqual({ "matter-001": [upload] });
+    expect(upsertExternalUploadLink({ "matter-001": [upload] }, updatedUpload)).toEqual({
+      "matter-001": [updatedUpload],
+    });
+    expect(getExternalUploadLinkState(upload, new Date("2026-04-30T12:00:00.000Z"))).toBe("active");
+    expect(getExternalUploadLinkState(updatedUpload, new Date("2026-04-30T12:00:00.000Z"))).toBe(
+      "used",
+    );
+    expect(
+      getExternalUploadLinkState(
+        externalUploadLink({ revokedAt: "2026-04-29T13:00:00.000Z" }),
+        new Date("2026-04-30T12:00:00.000Z"),
+      ),
+    ).toBe("revoked");
+  });
+
+  it("loads external upload status and matter-scoped links for first render", async () => {
+    const upload = externalUploadLink({ matterId: "matter-002" });
+    const data = await loadExternalUploadsDashboardData({
+      matters: [matter({ id: "matter-001" }), matter({ id: "matter-002" })],
+      getStatus: async () => ({
+        status: "available",
+        provider: "s3",
+      }),
+      listUploadsForMatter: async (matterId) => (matterId === "matter-002" ? [upload] : []),
+    });
+
+    expect(data.status).toEqual({ status: "available", provider: "s3" });
+    expect(data.uploadsByMatterId).toEqual({
+      "matter-001": [],
+      "matter-002": [upload],
+    });
   });
 });
