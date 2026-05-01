@@ -49,6 +49,8 @@ documentation; dependency admission and service reuse still follow
 - Defer Google Calendar, Microsoft 365, iCloud, and other external provider sync until a provider-auth,
   conflict-resolution, consent, retention, and privacy plan is approved. Open Practice-hosted CalDAV
   account sync is the OP-T34 first sync target.
+- Calendar dashboard deadline radar displays operator-entered event dates only. It is not a
+  jurisdiction-certified limitation, filing-deadline, or recurrence calculation engine.
 - Keep DocuSeal, docassemble, OIDC providers, live payment processors, paperless-ngx, Kimai, LedgerSMB,
   CiviCRM, and Midaz out of the default runtime as recorded in the planning and reuse docs.
 

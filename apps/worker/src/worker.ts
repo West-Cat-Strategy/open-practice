@@ -80,6 +80,12 @@ export function createWorkers(input: {
             queueName,
             jobName: job.name,
             data: job.data,
+            jobLifecycleId: job.id ? String(job.id) : undefined,
+            attemptsMade: job.attemptsMade,
+            maxAttempts:
+              typeof job.opts.attempts === "number" && Number.isFinite(job.opts.attempts)
+                ? job.opts.attempts
+                : undefined,
             repository: input.repository,
             s3: input.s3,
             ocrProvider: input.ocrProvider,

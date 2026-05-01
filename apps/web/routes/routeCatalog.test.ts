@@ -31,6 +31,7 @@ describe("Open Practice route catalog", () => {
       "shares",
       "externalUploads",
       "drafting",
+      "calendar",
       "signatures",
       "intake",
       "audit",
@@ -65,6 +66,7 @@ describe("Open Practice route catalog", () => {
       "documents",
       "externalUploads",
       "drafting",
+      "calendar",
     ]);
   });
 
@@ -81,6 +83,7 @@ describe("Open Practice route catalog", () => {
       "shares",
       "externalUploads",
       "drafting",
+      "calendar",
       "signatures",
       "intake",
       "audit",
@@ -93,6 +96,7 @@ describe("Open Practice route catalog", () => {
     expect(matchRouteCatalogEntry("/?section=shares")?.id).toBe("shares");
     expect(matchRouteCatalogEntry("/?section=externalUploads")?.id).toBe("externalUploads");
     expect(matchRouteCatalogEntry("/?section=drafting")?.id).toBe("drafting");
+    expect(matchRouteCatalogEntry("/?section=calendar")?.id).toBe("calendar");
     expect(matchRouteCatalogEntry("/?section=unknown")).toBeNull();
   });
 

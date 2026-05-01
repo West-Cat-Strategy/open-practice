@@ -77,6 +77,11 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/billing/trust-transfer-requests?matterId=&status=`      | Trust-transfer-request records visible firm-wide or across assigned matters.                                         |
 | `POST /api/billing/trust-transfer-requests`                       | Create a billing-side request to pay an invoice from trust; this does not post ledger transactions.                  |
 | `GET /api/billing/dashboard`                                      | Billing dashboard payload for approved unbilled work, draft invoices, issued balances, and payments.                 |
+| `GET /api/calendar/events?matterId=&startsAfter=&startsBefore=`   | Matter-scoped operator-entered calendar events plus CalDAV and iCalendar subscription URLs for the matter dashboard. |
+| `GET /api/calendar/matters/:matterId.ics`                         | Authenticated read-only iCalendar export for one authorized matter calendar.                                         |
+| `GET /api/calendar/credentials`                                   | Current-user CalDAV app-password credentials without password hashes or one-time secrets.                            |
+| `POST /api/calendar/credentials`                                  | Creates a current-user CalDAV app password and returns the generated password only once.                             |
+| `POST /api/calendar/credentials/:id/revoke`                       | Revokes a current-user CalDAV app password and records audit evidence.                                               |
 | `GET /api/jobs`                                                   | Firm-scoped PostgreSQL job lifecycle projection and queue names; Redis internals are not exposed.                    |
 | `GET /api/email/status`                                           | SMTP provider status from firm provider settings.                                                                    |
 | `POST /api/email/previews`                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                                  |

@@ -68,6 +68,9 @@ describe("worker processors", () => {
         resourceId: "email-outbox-worker-test",
         metadata: { emailId: "email-outbox-worker-test" },
       },
+      jobLifecycleId: "job-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 3,
       repository,
       s3: {} as never,
       ocrProvider: {} as never,
@@ -91,6 +94,144 @@ describe("worker processors", () => {
         text: "Please review the signature request.",
       }),
     ]);
+    await expect(
+      repository.getEmailOutbox("firm-west-legal", "email-outbox-worker-test"),
+    ).resolves.toMatchObject({
+      status: "sent",
+      sentAt: expect.any(String),
+      errorMessage: undefined,
+    });
+    await expect(
+      repository.listEmailEvents("firm-west-legal", { emailId: "email-outbox-worker-test" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventType: "queued",
+          emailId: "email-outbox-worker-test",
+        }),
+        expect.objectContaining({
+          eventType: "sent",
+          emailId: "email-outbox-worker-test",
+          providerMessageId: "mailpit-message-001",
+        }),
+      ]),
+    );
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "job-worker-test",
+          status: "completed",
+          targetResourceId: "email-outbox-worker-test",
+          finishedAt: expect.any(String),
+        }),
+      ]),
+    );
+  });
+
+  it("marks outbound email and job lifecycle failed when delivery throws", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const mailSender: MailSender = {
+      async send() {
+        throw new Error("SMTP refused message");
+      },
+    };
+    await repository.createQueuedEmailOutbox({
+      email: {
+        id: "email-outbox-failed-worker-test",
+        firmId: "firm-west-legal",
+        templateKey: "intake.generated",
+        status: "queued",
+        to: ["staff@example.test"],
+        cc: [],
+        bcc: [],
+        from: "Open Practice <no-reply@open-practice.local>",
+        subject: "Generated intake document",
+        htmlBody: "<p>Document generated.</p>",
+        textBody: "Document generated.",
+        relatedResourceType: "intake_session",
+        relatedResourceId: "intake-001",
+        queuedAt: "2026-05-01T00:00:00.000Z",
+        metadata: { provider: "mailpit", providerMetadata: { provider: "mailpit" } },
+      },
+      event: {
+        id: "email-event-failed-worker-test",
+        firmId: "firm-west-legal",
+        emailId: "email-outbox-failed-worker-test",
+        eventType: "queued",
+        occurredAt: "2026-05-01T00:00:00.000Z",
+        metadata: { provider: "mailpit" },
+      },
+      job: {
+        id: "job-worker-failed-test",
+        firmId: "firm-west-legal",
+        queueName: "email",
+        jobName: "send_email",
+        status: "queued",
+        targetResourceType: "email_outbox",
+        targetResourceId: "email-outbox-failed-worker-test",
+        attemptsMade: 0,
+        maxAttempts: 1,
+        queuedAt: "2026-05-01T00:00:00.000Z",
+        metadata: {
+          emailId: "email-outbox-failed-worker-test",
+          templateKey: "intake.generated",
+          recipientCount: 1,
+        },
+      },
+    });
+
+    await expect(
+      processOpenPracticeJob({
+        queueName: "email",
+        jobName: "send_email",
+        data: {
+          firmId: "firm-west-legal",
+          resourceType: "email_outbox",
+          resourceId: "email-outbox-failed-worker-test",
+          metadata: { emailId: "email-outbox-failed-worker-test" },
+        },
+        jobLifecycleId: "job-worker-failed-test",
+        attemptsMade: 0,
+        maxAttempts: 1,
+        repository,
+        s3: {} as never,
+        ocrProvider: {} as never,
+        mailSender,
+        inboundEmailParser: {} as never,
+      }),
+    ).rejects.toThrow("SMTP refused message");
+
+    await expect(
+      repository.getEmailOutbox("firm-west-legal", "email-outbox-failed-worker-test"),
+    ).resolves.toMatchObject({
+      status: "failed",
+      failedAt: expect.any(String),
+      errorMessage: "SMTP refused message",
+    });
+    await expect(
+      repository.listEmailEvents("firm-west-legal", {
+        emailId: "email-outbox-failed-worker-test",
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventType: "failed",
+          emailId: "email-outbox-failed-worker-test",
+          metadata: expect.objectContaining({ provider: "mailpit" }),
+        }),
+      ]),
+    );
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "job-worker-failed-test",
+          status: "dead_letter",
+          attemptsMade: 1,
+          errorMessage: "SMTP refused message",
+          failedAt: expect.any(String),
+        }),
+      ]),
+    );
   });
 
   it("skips email jobs when the outbox record is missing", async () => {

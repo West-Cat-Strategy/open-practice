@@ -254,6 +254,7 @@ export type DashboardSectionKey =
   | "funds"
   | "documents"
   | "drafting"
+  | "calendar"
   | "billing"
   | "signatures"
   | "intake"
@@ -285,6 +286,12 @@ const dashboardSections: Array<{
     key: "drafting",
     label: "Drafting",
     resource: "draft",
+    preferredMatterScopedAction: "read",
+  },
+  {
+    key: "calendar",
+    label: "Calendar",
+    resource: "calendar_event",
     preferredMatterScopedAction: "read",
   },
   {

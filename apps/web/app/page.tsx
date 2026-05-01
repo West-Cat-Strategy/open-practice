@@ -4,6 +4,7 @@ import {
   resolveDashboardRouteSelection,
 } from "../routes/routeCatalog";
 import DashboardClient from "./dashboard-client";
+import { loadCalendarDashboardData } from "./calendar-dashboard";
 import { loadDraftingDashboardData } from "./drafting-dashboard";
 import {
   buildExternalUploadListPath,
@@ -16,6 +17,9 @@ import SetupWizard from "./setup-wizard";
 import { selectStartupView } from "./setup-wizard-utils";
 import type {
   BillingDashboardResponse,
+  CalendarCredentialsResponse,
+  CalendarDashboardResponse,
+  CalendarEventsResponse,
   CapabilitiesResponse,
   DraftingDashboardResponse,
   ExternalUploadsDashboardResponse,
@@ -216,6 +220,9 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   const canViewDrafting = capabilities.sections.some(
     (section) => section.key === "drafting" && section.enabled,
   );
+  const canViewCalendar = capabilities.sections.some(
+    (section) => section.key === "calendar" && section.enabled,
+  );
   const drafting: DraftingDashboardResponse = canViewDrafting
     ? await loadDraftingDashboardData({
         matters,
@@ -231,6 +238,19 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
           ),
       })
     : { templates: [], draftsByMatterId: {} };
+  const calendar: CalendarDashboardResponse = canViewCalendar
+    ? await loadCalendarDashboardData({
+        matters,
+        listEventsForMatter: (matterId) =>
+          apiGet<CalendarEventsResponse>(
+            `/api/calendar/events?matterId=${encodeURIComponent(matterId)}`,
+            headers,
+          ),
+        listCredentials: async () =>
+          (await apiGet<CalendarCredentialsResponse>("/api/calendar/credentials", headers))
+            .credentials,
+      })
+    : { eventsByMatterId: {}, linksByMatterId: {}, credentials: [] };
   const shareLinksStatus = await apiGetOptional<ShareLinksStatusResponse>(
     "/api/shares/status",
     { createStatus: "disabled", reason: "share_routes_unavailable" },
@@ -269,6 +289,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     <DashboardClient
       apiBaseUrl={apiBaseUrl}
       billing={billing}
+      calendar={calendar}
       capabilities={capabilities}
       devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}
       drafting={drafting}

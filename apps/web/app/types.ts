@@ -8,6 +8,7 @@ import type {
   ExpenseEntry,
   Firm,
   ActivityTimelineEntry,
+  CalendarEventRecord,
   DashboardSectionCapability,
   IntakeSessionRecord,
   IntakeTemplateRecord,
@@ -111,6 +112,49 @@ export interface ExternalUploadRevokeResponse {
 export interface ExternalUploadsDashboardResponse {
   status: ExternalUploadsStatusResponse;
   uploadsByMatterId: Record<string, ExternalUploadLinkRecord[]>;
+}
+
+export interface CalendarCredentialSummary {
+  id: string;
+  username: string;
+  label: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+}
+
+export interface CalendarEventsResponse {
+  events: CalendarEventRecord[];
+  caldavUrl: string;
+  subscriptionUrl: string;
+}
+
+export interface CalendarCredentialsResponse {
+  credentials: CalendarCredentialSummary[];
+}
+
+export interface CalendarCredentialCreateResponse {
+  credential: CalendarCredentialSummary;
+  username: string;
+  password: string;
+  caldavUrl: string;
+  principalUrl: string;
+  calendarHomeUrl: string;
+}
+
+export interface CalendarCredentialRevokeResponse {
+  credential: CalendarCredentialSummary;
+}
+
+export interface CalendarMatterLinks {
+  caldavUrl: string;
+  subscriptionUrl: string;
+}
+
+export interface CalendarDashboardResponse {
+  eventsByMatterId: Record<string, CalendarEventRecord[]>;
+  linksByMatterId: Record<string, CalendarMatterLinks>;
+  credentials: CalendarCredentialSummary[];
 }
 
 export type BillingEntryStatus = "draft" | "submitted" | "approved" | "billed" | "written_off";
