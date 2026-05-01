@@ -8,7 +8,11 @@ import {
   orderSignatureProviderStatuses,
   shouldUpdateSignatureRequestStatus,
 } from "../../domain/src/signatures.js";
-import { EmbeddedAutomationProvider, EmbeddedSignatureProvider } from "../src/index.js";
+import {
+  EmbeddedAutomationProvider,
+  EmbeddedSignatureProvider,
+  FakeDraftAssistProvider,
+} from "../src/index.js";
 
 describe("embedded providers", () => {
   it("returns a deterministic embedded signature submission", async () => {
@@ -64,6 +68,35 @@ describe("embedded providers", () => {
         packageId: "repair_notice_package",
         packageDocumentId: "repair_notice_letter",
       },
+    });
+  });
+});
+
+describe("draft assist providers", () => {
+  it("returns deterministic fake suggestions without network calls", async () => {
+    const provider = new FakeDraftAssistProvider({ providerKey: "fake-ai", model: "fake-model" });
+
+    expect(provider.getStatus()).toMatchObject({
+      status: "configured",
+      provider: "fake-ai",
+      model: "fake-model",
+      supportedTasks: ["summarize", "suggest_revision", "continue_draft"],
+    });
+    await expect(
+      provider.createSuggestion({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        sourceType: "draft",
+        draftId: "draft-001",
+        task: "summarize",
+        sourceText: "Synthetic source text.",
+        instruction: "Focus on risk.",
+      }),
+    ).resolves.toMatchObject({
+      providerKey: "fake-ai",
+      providerModel: "fake-model",
+      suggestedText: expect.stringContaining("[summarize]"),
+      metadata: { sourceWordCount: 3, instructionLength: 14 },
     });
   });
 });

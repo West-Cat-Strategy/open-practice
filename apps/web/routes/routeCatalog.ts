@@ -7,6 +7,7 @@ export type OpenPracticeRouteId =
   | "shares"
   | "externalUploads"
   | "drafting"
+  | "calendar"
   | "signatures"
   | "intake"
   | "funds"
@@ -133,6 +134,17 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     area: "workspace",
     requiresMatterContext: true,
     order: 45,
+    showInSidebar: true,
+  },
+  {
+    id: "calendar",
+    title: "Calendar Radar",
+    shortLabel: "Calendar",
+    path: "/?section=calendar",
+    sectionKey: "calendar",
+    area: "workspace",
+    requiresMatterContext: true,
+    order: 47,
     showInSidebar: true,
   },
   {

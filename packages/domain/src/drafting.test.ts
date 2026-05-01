@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { buildBasicDraftTemplates, sanitizeDraftHtml, tipTapDocumentSchema } from "./drafting.js";
+import {
+  appendPlainTextToTipTapDocument,
+  assertDraftAssistTask,
+  buildBasicDraftTemplates,
+  buildDraftAssistAuditMetadata,
+  extractTipTapPlainText,
+  reviewDraftAssistRecord,
+  sanitizeDraftHtml,
+  tipTapDocumentSchema,
+  type DraftAssistRecord,
+  type TipTapDocument,
+} from "./drafting.js";
 
 describe("drafting domain", () => {
   describe("tipTapDocumentSchema", () => {
@@ -87,6 +98,74 @@ describe("drafting domain", () => {
         "2026-04-28T12:00:00.000Z",
         "2026-04-28T12:00:00.000Z",
       ]);
+    });
+  });
+
+  describe("draft assist helpers", () => {
+    const document: TipTapDocument = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Existing draft" }] }],
+    };
+    const record: DraftAssistRecord = {
+      id: "assist-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      sourceType: "draft",
+      draftId: "draft-001",
+      task: "continue_draft",
+      providerKey: "fake-local",
+      providerModel: "test-model",
+      status: "suggested",
+      suggestedText: "Suggested private text",
+      summary: "Short summary",
+      createdByUserId: "user-admin",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+      metadata: { sourceTextLength: 42 },
+    };
+
+    it("validates supported draft assist tasks", () => {
+      expect(() => assertDraftAssistTask("summarize")).not.toThrow();
+      expect(() => assertDraftAssistTask("unsupported")).toThrow("Unsupported draft assist task");
+    });
+
+    it("transitions review status without mutating suggested text", () => {
+      expect(
+        reviewDraftAssistRecord({
+          record,
+          decision: "rejected",
+          reviewedByUserId: "user-reviewer",
+          reviewedAt: "2026-05-01T00:05:00.000Z",
+        }),
+      ).toMatchObject({
+        id: "assist-001",
+        status: "rejected",
+        reviewDecision: "rejected",
+        suggestedText: "Suggested private text",
+        reviewedByUserId: "user-reviewer",
+      });
+    });
+
+    it("builds redacted audit metadata", () => {
+      const metadata = buildDraftAssistAuditMetadata(record);
+
+      expect(metadata).toMatchObject({
+        matterId: "matter-001",
+        draftAssistRecordId: "assist-001",
+        task: "continue_draft",
+        provider: "fake-local",
+        model: "test-model",
+        suggestedTextLength: 22,
+      });
+      expect(JSON.stringify(metadata)).not.toContain("Suggested private text");
+      expect(JSON.stringify(metadata)).not.toContain("Short summary");
+    });
+
+    it("extracts and appends plain text to TipTap documents", () => {
+      const updated = appendPlainTextToTipTapDocument(document, "First suggestion\n\nSecond block");
+
+      expect(extractTipTapPlainText(updated)).toBe("Existing draft First suggestion Second block");
+      expect(document.content).toHaveLength(1);
     });
   });
 });

@@ -35,6 +35,53 @@ export async function processOpenPracticeJob(input: {
   queueName: OpenPracticeQueueName;
   jobName: string;
   data: WorkerJobEnvelope;
+  jobLifecycleId?: string;
+  attemptsMade?: number;
+  maxAttempts?: number;
+  repository: OpenPracticeRepository;
+  s3: { client: S3Client; bucket: string };
+  ocrProvider: OcrProvider;
+  mailSender: MailSender;
+  inboundEmailParser: InboundEmailParser;
+}): Promise<WorkerJobResult> {
+  const { data } = input;
+
+  await updateJobLifecycle(input, {
+    status: "active",
+    startedAt: new Date().toISOString(),
+    attemptsMade: input.attemptsMade,
+  });
+
+  try {
+    const result = await processOpenPracticeJobBody(input);
+    await updateJobLifecycle(input, {
+      status: result.status,
+      finishedAt: new Date().toISOString(),
+      attemptsMade: input.attemptsMade,
+      errorMessage: result.reason,
+      metadata: {
+        ...data.metadata,
+        ...result.metadata,
+      },
+    });
+    return result;
+  } catch (error) {
+    const failedAttempts = (input.attemptsMade ?? 0) + 1;
+    const maxAttempts = input.maxAttempts ?? 1;
+    await updateJobLifecycle(input, {
+      status: failedAttempts >= maxAttempts ? "dead_letter" : "failed",
+      failedAt: new Date().toISOString(),
+      attemptsMade: failedAttempts,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
+async function processOpenPracticeJobBody(input: {
+  queueName: OpenPracticeQueueName;
+  jobName: string;
+  data: WorkerJobEnvelope;
   repository: OpenPracticeRepository;
   s3: { client: S3Client; bucket: string };
   ocrProvider: OcrProvider;
@@ -43,17 +90,9 @@ export async function processOpenPracticeJob(input: {
 }): Promise<WorkerJobResult> {
   const { queueName, data } = input;
 
-  if (queueName === "ocr") {
-    return processOcrJob(input);
-  }
-
-  if (queueName === "email") {
-    return processEmailJob(input);
-  }
-
-  if (queueName === "inbound_email") {
-    return processInboundEmailJob(input);
-  }
+  if (queueName === "ocr") return processOcrJob(input);
+  if (queueName === "email") return processEmailJob(input);
+  if (queueName === "inbound_email") return processInboundEmailJob(input);
 
   return {
     status: "skipped",
@@ -65,6 +104,18 @@ export async function processOpenPracticeJob(input: {
       providerConfigured: false,
     },
   };
+}
+
+async function updateJobLifecycle(
+  input: {
+    data: WorkerJobEnvelope;
+    jobLifecycleId?: string;
+    repository: OpenPracticeRepository;
+  },
+  updates: Parameters<OpenPracticeRepository["updateJobLifecycleRecord"]>[2],
+): Promise<void> {
+  if (!input.jobLifecycleId) return;
+  await input.repository.updateJobLifecycleRecord(input.data.firmId, input.jobLifecycleId, updates);
 }
 
 async function processEmailJob(input: {
@@ -106,16 +157,44 @@ async function processEmailJob(input: {
     };
   }
 
-  const result = await mailSender.send({
+  let result: Awaited<ReturnType<MailSender["send"]>>;
+  try {
+    result = await mailSender.send({
+      firmId: data.firmId,
+      from: email.from,
+      to: email.to,
+      cc: email.cc,
+      bcc: email.bcc,
+      subject: email.subject,
+      html: email.htmlBody,
+      text: email.textBody,
+      metadata: email.metadata.providerMetadata as Record<string, unknown>,
+    });
+  } catch (error) {
+    await repository.recordEmailDeliveryResult({
+      firmId: data.firmId,
+      emailId,
+      status: "failed",
+      occurredAt: new Date().toISOString(),
+      errorMessage: error instanceof Error ? error.message : String(error),
+      metadata: {
+        provider: email.metadata.provider,
+        templateKey: email.templateKey,
+      },
+    });
+    throw error;
+  }
+
+  await repository.recordEmailDeliveryResult({
     firmId: data.firmId,
-    from: email.from,
-    to: email.to,
-    cc: email.cc,
-    bcc: email.bcc,
-    subject: email.subject,
-    html: email.htmlBody,
-    text: email.textBody,
-    metadata: email.metadata.providerMetadata as Record<string, unknown>,
+    emailId,
+    status: "sent",
+    occurredAt: new Date().toISOString(),
+    providerMessageId: result.providerMessageId,
+    metadata: {
+      provider: email.metadata.provider,
+      templateKey: email.templateKey,
+    },
   });
 
   return {

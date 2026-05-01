@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Banknote,
+  CalendarDays,
   CheckCircle2,
   Clock3,
   CreditCard,
@@ -18,7 +19,9 @@ import {
   Save,
   Search,
   ShieldCheck,
+  Sparkles,
   Upload,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -42,7 +45,9 @@ import {
   buildBlankDraftPayload,
   buildDraftFromTemplatePayload,
   buildDraftUpdatePayload,
+  describeDraftAssistStatus,
   extractDraftPlainText,
+  insertDraftAssistSuggestion,
   isSameDraftDocument,
 } from "./drafting-dashboard";
 import {
@@ -54,11 +59,21 @@ import {
 } from "./external-uploads-dashboard";
 import DraftEditor from "./drafting/DraftEditor";
 import { filterMatters } from "./dashboard-utils";
+import {
+  buildCalendarRadarBuckets,
+  describeCalendarEventTiming,
+  upsertCalendarCredential,
+} from "./calendar-dashboard";
 import type {
   BillingDashboardResponse,
+  CalendarCredentialCreateResponse,
+  CalendarCredentialRevokeResponse,
+  CalendarDashboardResponse,
   CapabilitiesResponse,
   ConflictResponse,
   DraftingDashboardResponse,
+  DraftAssistRecordsResponse,
+  DraftAssistStatusResponse,
   ExternalUploadCreateResponse,
   ExternalUploadRevokeResponse,
   ExternalUploadsDashboardResponse,
@@ -79,6 +94,7 @@ import type {
 interface DashboardClientProps {
   apiBaseUrl: string;
   billing: BillingDashboardResponse;
+  calendar: CalendarDashboardResponse;
   capabilities: CapabilitiesResponse;
   devHeaders: Record<string, string>;
   drafting: DraftingDashboardResponse;
@@ -95,6 +111,7 @@ interface DashboardClientProps {
 
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][number];
+type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
 
 const currency = new Intl.NumberFormat("en-CA", {
   style: "currency",
@@ -109,6 +126,7 @@ const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   shares: Link2,
   externalUploads: Upload,
   drafting: FilePenLine,
+  calendar: CalendarDays,
   signatures: FileSignature,
   intake: FileText,
   audit: ShieldCheck,
@@ -137,6 +155,7 @@ function compactDate(value?: string): string {
 export default function DashboardClient({
   apiBaseUrl,
   billing,
+  calendar,
   capabilities,
   devHeaders,
   drafting,
@@ -162,6 +181,19 @@ export default function DashboardClient({
   const [selectedDraftId, setSelectedDraftId] = useState("");
   const [draftEditorJson, setDraftEditorJson] = useState<DashboardDraft["editorJson"] | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [draftAssistStatus, setDraftAssistStatus] = useState<DraftAssistStatusResponse>({
+    status: "disabled",
+    reason: "not_configured",
+    supportedTasks: ["summarize", "suggest_revision", "continue_draft"],
+  });
+  const [draftAssistTask, setDraftAssistTask] =
+    useState<DashboardDraftAssistRecord["task"]>("summarize");
+  const [draftAssistInstruction, setDraftAssistInstruction] = useState("");
+  const [draftAssistRecordsByDraftId, setDraftAssistRecordsByDraftId] = useState<
+    Record<string, DashboardDraftAssistRecord[]>
+  >({});
+  const [draftAssistMessage, setDraftAssistMessage] = useState("Draft assist has not loaded yet.");
+  const [runningDraftAssist, setRunningDraftAssist] = useState(false);
   const [sharesByMatterId, setSharesByMatterId] = useState<Record<string, ShareLinkRecord[]>>({});
   const [shareStatus, setShareStatus] = useState("Share links have not loaded yet.");
   const [sharePermissions, setSharePermissions] = useState<ShareLinkPermission[]>([
@@ -180,6 +212,20 @@ export default function DashboardClient({
   const [externalUploadStatus, setExternalUploadStatus] = useState("No link created.");
   const [creatingExternalUpload, setCreatingExternalUpload] = useState(false);
   const [revokingExternalUploadId, setRevokingExternalUploadId] = useState("");
+  const [calendarEventsByMatterId] = useState(calendar.eventsByMatterId);
+  const [calendarCredentials, setCalendarCredentials] = useState(calendar.credentials);
+  const [calendarCredentialLabel, setCalendarCredentialLabel] = useState("iOS Calendar");
+  const [calendarCredentialStatus, setCalendarCredentialStatus] = useState(
+    calendar.credentials.length === 0
+      ? "No calendar app passwords are active."
+      : `${calendar.credentials.length} calendar app password${
+          calendar.credentials.length === 1 ? "" : "s"
+        } loaded.`,
+  );
+  const [calendarOneTimeSecret, setCalendarOneTimeSecret] =
+    useState<CalendarCredentialCreateResponse | null>(null);
+  const [creatingCalendarCredential, setCreatingCalendarCredential] = useState(false);
+  const [revokingCalendarCredentialId, setRevokingCalendarCredentialId] = useState("");
 
   const filteredMatters = useMemo(
     () => filterMatters(matters, matterSearch),
@@ -198,8 +244,19 @@ export default function DashboardClient({
   const activeExternalUploads = activeMatter
     ? (externalUploadsByMatterId[activeMatter.id] ?? [])
     : [];
+  const activeCalendarEvents = activeMatter
+    ? (calendarEventsByMatterId[activeMatter.id] ?? [])
+    : [];
+  const activeCalendarLinks = activeMatter ? calendar.linksByMatterId[activeMatter.id] : undefined;
+  const activeCalendarBuckets = useMemo(
+    () => buildCalendarRadarBuckets(activeCalendarEvents),
+    [activeCalendarEvents],
+  );
   const externalUploadCreateAvailable = canCreateExternalUpload(externalUploads.status);
   const selectedDraft = activeDrafts.find((draft) => draft.id === selectedDraftId);
+  const activeDraftAssistRecords = selectedDraft
+    ? (draftAssistRecordsByDraftId[selectedDraft.id] ?? [])
+    : [];
   const draftHasChanges =
     selectedDraft !== undefined &&
     draftEditorJson !== null &&
@@ -270,6 +327,61 @@ export default function DashboardClient({
       cancelled = true;
     };
   }, [activeMatter, apiBaseUrl, devHeaders]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDraftAssistStatus(): Promise<void> {
+      const response = await fetch(`${apiBaseUrl}/api/draft-assist/status`, {
+        credentials: "include",
+        headers: devHeaders,
+      });
+      if (cancelled) return;
+      if (!response.ok) {
+        setDraftAssistMessage(`Draft assist status failed: ${response.status}`);
+        return;
+      }
+      const payload = (await response.json()) as DraftAssistStatusResponse;
+      setDraftAssistStatus(payload);
+      setDraftAssistMessage(describeDraftAssistStatus(payload));
+    }
+
+    void loadDraftAssistStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBaseUrl, devHeaders]);
+
+  useEffect(() => {
+    if (!selectedDraft) return;
+    const selectedDraftId = selectedDraft.id;
+    let cancelled = false;
+
+    async function loadDraftAssistRecords(): Promise<void> {
+      const response = await fetch(
+        `${apiBaseUrl}/api/draft-assist/records?draftId=${encodeURIComponent(selectedDraftId)}`,
+        {
+          credentials: "include",
+          headers: devHeaders,
+        },
+      );
+      if (cancelled) return;
+      if (!response.ok) {
+        setDraftAssistMessage(`Draft assist records failed: ${response.status}`);
+        return;
+      }
+      const payload = (await response.json()) as DraftAssistRecordsResponse;
+      setDraftAssistRecordsByDraftId((current) => ({
+        ...current,
+        [selectedDraftId]: payload.records,
+      }));
+    }
+
+    void loadDraftAssistRecords();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBaseUrl, devHeaders, selectedDraft]);
 
   useEffect(() => {
     function applySectionFromUrl() {
@@ -448,6 +560,70 @@ export default function DashboardClient({
     setDraftEditorJson(null);
   }
 
+  async function runDraftAssist(): Promise<void> {
+    if (!selectedDraft || draftAssistStatus.status !== "configured") return;
+
+    setRunningDraftAssist(true);
+    setDraftAssistMessage("Requesting draft assist...");
+    const response = await fetch(`${apiBaseUrl}/api/drafts/${selectedDraft.id}/assist`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        task: draftAssistTask,
+        instruction: draftAssistInstruction.trim() || undefined,
+      }),
+    });
+
+    setRunningDraftAssist(false);
+    if (!response.ok) {
+      setDraftAssistMessage(`Draft assist failed: ${response.status}`);
+      return;
+    }
+    const record = (await response.json()) as DashboardDraftAssistRecord;
+    setDraftAssistRecordsByDraftId((current) => ({
+      ...current,
+      [selectedDraft.id]: [record, ...(current[selectedDraft.id] ?? [])],
+    }));
+    setDraftAssistMessage("Suggestion ready for review.");
+  }
+
+  async function reviewDraftAssistRecord(
+    record: DashboardDraftAssistRecord,
+    decision: "reviewed" | "rejected",
+  ): Promise<void> {
+    const response = await fetch(`${apiBaseUrl}/api/draft-assist/records/${record.id}/review`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ decision }),
+    });
+    if (!response.ok) {
+      setDraftAssistMessage(`Review update failed: ${response.status}`);
+      return;
+    }
+    const updated = (await response.json()) as DashboardDraftAssistRecord;
+    setDraftAssistRecordsByDraftId((current) => ({
+      ...current,
+      [updated.draftId ?? ""]: (current[updated.draftId ?? ""] ?? []).map((candidate) =>
+        candidate.id === updated.id ? updated : candidate,
+      ),
+    }));
+    setDraftAssistMessage(`Suggestion ${decision}.`);
+  }
+
+  function insertDraftAssistRecord(record: DashboardDraftAssistRecord): void {
+    if (!draftEditorJson) return;
+    setDraftEditorJson(insertDraftAssistSuggestion({ editorJson: draftEditorJson, record }));
+    setDraftStatus("Inserted assist suggestion locally. Save the draft to persist it.");
+  }
+
   async function createExternalUploadLink(): Promise<void> {
     if (!activeMatter) return;
     if (!externalUploadCreateAvailable) {
@@ -519,10 +695,62 @@ export default function DashboardClient({
     setRevokingExternalUploadId("");
   }
 
+  async function createCalendarCredential(): Promise<void> {
+    setCreatingCalendarCredential(true);
+    setCalendarOneTimeSecret(null);
+    setCalendarCredentialStatus("Creating calendar app password...");
+    const response = await fetch(`${apiBaseUrl}/api/calendar/credentials`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ label: calendarCredentialLabel.trim() || "iOS Calendar" }),
+    });
+
+    if (!response.ok) {
+      setCalendarCredentialStatus(`Calendar credential create failed: ${response.status}`);
+      setCreatingCalendarCredential(false);
+      return;
+    }
+
+    const payload = (await response.json()) as CalendarCredentialCreateResponse;
+    setCalendarCredentials((current) => upsertCalendarCredential(current, payload.credential));
+    setCalendarOneTimeSecret(payload);
+    setCalendarCredentialStatus("Calendar app password created.");
+    setCreatingCalendarCredential(false);
+  }
+
+  async function revokeCalendarCredential(credentialId: string): Promise<void> {
+    setRevokingCalendarCredentialId(credentialId);
+    setCalendarCredentialStatus("Revoking calendar app password...");
+    const response = await fetch(
+      `${apiBaseUrl}/api/calendar/credentials/${encodeURIComponent(credentialId)}/revoke`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: devHeaders,
+      },
+    );
+
+    if (!response.ok) {
+      setCalendarCredentialStatus(`Calendar credential revoke failed: ${response.status}`);
+      setRevokingCalendarCredentialId("");
+      return;
+    }
+
+    const payload = (await response.json()) as CalendarCredentialRevokeResponse;
+    setCalendarCredentials((current) => upsertCalendarCredential(current, payload.credential));
+    setCalendarCredentialStatus("Calendar app password revoked.");
+    setRevokingCalendarCredentialId("");
+  }
+
   function selectMatter(matterId: string): void {
     setActiveMatterId(matterId);
     setExternalUploadToken("");
     setExternalUploadStatus("No link created.");
+    setCalendarOneTimeSecret(null);
     closeDraftEditor();
   }
 
@@ -696,24 +924,23 @@ export default function DashboardClient({
           ))}
         </section>
 
-        <section className="main-grid">
-          <article className="panel matter-list">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">Matter command centre</p>
-                <h2>Active files</h2>
-              </div>
-              <Search size={18} />
+        <section className="panel matter-context-panel" aria-label="Matter context">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">Matter command centre</p>
+              <h2>Active files</h2>
             </div>
-            <label className="search-field compact">
-              <span>Search matters</span>
+            <label className="search-field matter-search-field">
+              <Search size={16} aria-hidden="true" />
               <input
                 aria-label="Search matters"
                 onChange={(event) => setMatterSearch(event.target.value)}
-                placeholder="Number, title, area, status"
+                placeholder="Search matters"
                 value={matterSearch}
               />
             </label>
+          </div>
+          <div className="matter-strip">
             {filteredMatters.map((matter) => (
               <button
                 className={matter.id === activeMatter.id ? "matter-row selected" : "matter-row"}
@@ -733,8 +960,10 @@ export default function DashboardClient({
             {filteredMatters.length === 0 ? (
               <p className="inline-empty">No matters match.</p>
             ) : null}
-          </article>
+          </div>
+        </section>
 
+        <section className="main-grid">
           <article className="panel matter-detail">
             <div className="panel-header">
               <div>
@@ -1193,6 +1422,173 @@ export default function DashboardClient({
               </>
             ) : null}
 
+            {activeSection === "calendar" ? (
+              <>
+                <div className="detail-grid">
+                  <div>
+                    <span className="field-label">Upcoming</span>
+                    <strong>
+                      {activeCalendarBuckets.nextSevenDays.length +
+                        activeCalendarBuckets.nextThirtyDays.length}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Overdue</span>
+                    <strong>{activeCalendarBuckets.overdue.length}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Tentative</span>
+                    <strong>{activeCalendarBuckets.tentative.length}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Cancelled</span>
+                    <strong>{activeCalendarBuckets.cancelled.length}</strong>
+                  </div>
+                </div>
+
+                <div className="section-title">
+                  <h3>Deadline radar</h3>
+                  <span>{activeCalendarEvents.length} matter events</span>
+                </div>
+                <div className="activity-grid calendar-radar-grid">
+                  <div className="activity-card calendar-radar-card">
+                    <AlertTriangle size={18} />
+                    <strong>{activeCalendarBuckets.overdue.length} overdue</strong>
+                    <span>operator-entered event dates before now</span>
+                  </div>
+                  <div className="activity-card calendar-radar-card">
+                    <Clock3 size={18} />
+                    <strong>{activeCalendarBuckets.nextSevenDays.length} next 7 days</strong>
+                    <span>active events starting soon</span>
+                  </div>
+                  <div className="activity-card calendar-radar-card">
+                    <CalendarDays size={18} />
+                    <strong>{activeCalendarBuckets.nextThirtyDays.length} next 30 days</strong>
+                    <span>remaining active near-term events</span>
+                  </div>
+                </div>
+
+                <div className="section-title">
+                  <h3>Matter calendar events</h3>
+                  <span>{activeMatter.number}</span>
+                </div>
+                <div className="party-list">
+                  {activeCalendarEvents.map((event) => {
+                    const timing = describeCalendarEventTiming(event);
+                    return (
+                      <div className="party-row" key={event.id}>
+                        <span>
+                          <strong>{event.title}</strong>
+                          <small>
+                            {compactDate(event.startsAt)} to {compactDate(event.endsAt)}
+                            {event.location ? ` · ${event.location}` : ""}
+                          </small>
+                        </span>
+                        <em
+                          className={
+                            event.status === "cancelled" || timing === "overdue"
+                              ? "risk"
+                              : undefined
+                          }
+                        >
+                          {event.status === "cancelled" ? "cancelled" : timing}
+                        </em>
+                      </div>
+                    );
+                  })}
+                  {activeCalendarEvents.length === 0 ? (
+                    <p className="inline-empty">No calendar events are linked to this matter.</p>
+                  ) : null}
+                </div>
+
+                <div className="section-title">
+                  <h3>Calendar sync</h3>
+                  <span>CalDAV / iCalendar</span>
+                </div>
+                <div className="upload-token calendar-sync-links">
+                  <span>Subscription URL</span>
+                  <code>{activeCalendarLinks?.subscriptionUrl ?? "Unavailable"}</code>
+                  <span>CalDAV URL</span>
+                  <code>{activeCalendarLinks?.caldavUrl ?? "Unavailable"}</code>
+                </div>
+
+                <div className="share-controls">
+                  <div className="section-title">
+                    <h3>App passwords</h3>
+                    <span>
+                      {calendarCredentials.filter((credential) => !credential.revokedAt).length}{" "}
+                      active
+                    </span>
+                  </div>
+                  <div className="share-form-row calendar-credential-form">
+                    <label className="search-field">
+                      <span>Label</span>
+                      <input
+                        onChange={(event) => setCalendarCredentialLabel(event.target.value)}
+                        value={calendarCredentialLabel}
+                      />
+                    </label>
+                    <button
+                      className="secondary-button compact-button"
+                      disabled={creatingCalendarCredential}
+                      onClick={() => void createCalendarCredential()}
+                      type="button"
+                    >
+                      <Plus size={16} />
+                      {creatingCalendarCredential ? "Creating..." : "Create password"}
+                    </button>
+                  </div>
+                  {calendarOneTimeSecret ? (
+                    <div className="upload-token calendar-secret">
+                      <span>Username</span>
+                      <code>{calendarOneTimeSecret.username}</code>
+                      <span>One-time password</span>
+                      <code>{calendarOneTimeSecret.password}</code>
+                      <span>Principal URL</span>
+                      <code>{calendarOneTimeSecret.principalUrl}</code>
+                    </div>
+                  ) : null}
+                  <p className="inline-empty">{calendarCredentialStatus}</p>
+                </div>
+
+                <div className="party-list">
+                  {calendarCredentials.map((credential) => (
+                    <div className="party-row" key={credential.id}>
+                      <span>
+                        <strong>{credential.label}</strong>
+                        <small>
+                          {credential.username} · created {compactDate(credential.createdAt)}
+                          {credential.lastUsedAt
+                            ? ` · last used ${compactDate(credential.lastUsedAt)}`
+                            : ""}
+                        </small>
+                      </span>
+                      <div className="row-actions">
+                        <em className={credential.revokedAt ? "risk" : undefined}>
+                          {credential.revokedAt ? "revoked" : "active"}
+                        </em>
+                        {!credential.revokedAt ? (
+                          <button
+                            className="secondary-button compact-button row-button"
+                            disabled={revokingCalendarCredentialId === credential.id}
+                            onClick={() => void revokeCalendarCredential(credential.id)}
+                            type="button"
+                          >
+                            {revokingCalendarCredentialId === credential.id
+                              ? "Revoking..."
+                              : "Revoke"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                  {calendarCredentials.length === 0 ? (
+                    <p className="inline-empty">No calendar app passwords have been created.</p>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+
             {activeSection === "drafting" ? (
               <>
                 {selectedDraft && draftEditorJson ? (
@@ -1229,6 +1625,88 @@ export default function DashboardClient({
                       content={draftEditorJson}
                       onChange={setDraftEditorJson}
                     />
+                    <div className="draft-assist-panel">
+                      <div className="section-title">
+                        <h3>Draft assist</h3>
+                        <span>{draftAssistStatus.status}</span>
+                      </div>
+                      <div className="draft-assist-controls">
+                        <label>
+                          <span>Task</span>
+                          <select
+                            value={draftAssistTask}
+                            onChange={(event) =>
+                              setDraftAssistTask(
+                                event.target.value as DashboardDraftAssistRecord["task"],
+                              )
+                            }
+                          >
+                            <option value="summarize">Summarize</option>
+                            <option value="suggest_revision">Suggest revision</option>
+                            <option value="continue_draft">Continue draft</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span>Instruction</span>
+                          <input
+                            value={draftAssistInstruction}
+                            onChange={(event) => setDraftAssistInstruction(event.target.value)}
+                            placeholder="Optional review instruction"
+                          />
+                        </label>
+                        <button
+                          className="secondary-button compact-button"
+                          disabled={draftAssistStatus.status !== "configured" || runningDraftAssist}
+                          onClick={() => void runDraftAssist()}
+                          type="button"
+                        >
+                          <Sparkles size={16} />
+                          {runningDraftAssist ? "Drafting..." : "Assist"}
+                        </button>
+                      </div>
+                      <p className="inline-empty">{draftAssistMessage}</p>
+                      <div className="party-list">
+                        {activeDraftAssistRecords.map((record) => (
+                          <div className="party-row draft-assist-row" key={record.id}>
+                            <span>
+                              <strong>{record.task.replaceAll("_", " ")}</strong>
+                              <small>{record.summary ?? record.suggestedText}</small>
+                              <small>
+                                {record.providerKey} · {record.providerModel} · {record.status}
+                              </small>
+                            </span>
+                            <div className="draft-assist-actions">
+                              <button
+                                className="secondary-button compact-button"
+                                onClick={() => void reviewDraftAssistRecord(record, "reviewed")}
+                                type="button"
+                              >
+                                Review
+                              </button>
+                              <button
+                                className="secondary-button compact-button"
+                                onClick={() => insertDraftAssistRecord(record)}
+                                type="button"
+                              >
+                                Insert
+                              </button>
+                              <button
+                                aria-label="Reject assist suggestion"
+                                className="icon-button"
+                                onClick={() => void reviewDraftAssistRecord(record, "rejected")}
+                                title="Reject assist suggestion"
+                                type="button"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {activeDraftAssistRecords.length === 0 ? (
+                          <p className="inline-empty">No assist suggestions for this draft.</p>
+                        ) : null}
+                      </div>
+                    </div>
                     <p className="inline-empty">{draftStatus}</p>
                   </div>
                 ) : (
@@ -1364,80 +1842,83 @@ export default function DashboardClient({
             ) : null}
           </article>
 
-          <article className="panel conflict-panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">Conflict review</p>
-                <h2>Prospective client check</h2>
+          <aside className="context-rail" aria-label="Matter review tools">
+            <article className="panel conflict-panel">
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">Conflict review</p>
+                  <h2>Prospective client check</h2>
+                </div>
+                <AlertTriangle size={20} />
               </div>
-              <AlertTriangle size={20} />
-            </div>
-            <label className="search-field">
-              <span>Prospective name</span>
-              <input
-                value={conflictName}
-                onChange={(event) => setConflictName(event.target.value)}
-                placeholder="Client, organization, alias, or adverse party"
-              />
-            </label>
-            <button
-              className="primary-button"
-              disabled={conflictName.trim().length === 0}
-              onClick={runConflictCheck}
-              type="button"
-            >
-              Run conflict check
-            </button>
-            <div className="conflict-results">
-              {conflictResults.length === 0 ? (
-                <p>{conflictStatus}</p>
-              ) : (
-                conflictResults.map((result, index) => (
-                  <div className="conflict-row" key={`${result.contactId}-${index}`}>
-                    {result.severity === "blocker" ? (
-                      <AlertTriangle size={17} />
-                    ) : (
-                      <CheckCircle2 size={17} />
-                    )}
-                    <span>
-                      <strong>{result.severity}</strong>
-                      <small>{result.reason}</small>
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </article>
+              <label className="search-field">
+                <span>Prospective name</span>
+                <input
+                  value={conflictName}
+                  onChange={(event) => setConflictName(event.target.value)}
+                  placeholder="Client, organization, alias, or adverse party"
+                />
+              </label>
+              <button
+                className="primary-button"
+                disabled={conflictName.trim().length === 0}
+                onClick={runConflictCheck}
+                type="button"
+              >
+                <Search size={16} />
+                Run conflict check
+              </button>
+              <div className="conflict-results">
+                {conflictResults.length === 0 ? (
+                  <p>{conflictStatus}</p>
+                ) : (
+                  conflictResults.map((result, index) => (
+                    <div className="conflict-row" key={`${result.contactId}-${index}`}>
+                      {result.severity === "blocker" ? (
+                        <AlertTriangle size={17} />
+                      ) : (
+                        <CheckCircle2 size={17} />
+                      )}
+                      <span>
+                        <strong>{result.severity}</strong>
+                        <small>{result.reason}</small>
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </article>
 
-          <article className="panel queue-panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">Operational queues</p>
-                <h2>Review work</h2>
+            <article className="panel queue-panel">
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">Operational queues</p>
+                  <h2>Review work</h2>
+                </div>
+                <Clock3 size={20} />
               </div>
-              <Clock3 size={20} />
-            </div>
-            <div className="party-list">
-              {queues.sections.flatMap((section) =>
-                section.items.slice(0, 3).map((item) => (
-                  <div className="party-row" key={`${section.key}-${item.id}`}>
-                    <span>
-                      <strong>{item.title}</strong>
-                      <small>
-                        {section.label} · {item.status}
-                      </small>
-                    </span>
-                    <em className={item.priority === "high" ? "risk" : undefined}>
-                      {item.priority}
-                    </em>
-                  </div>
-                )),
-              )}
-              {queues.sections.every((section) => section.items.length === 0) ? (
-                <p className="inline-empty">No queue items need attention.</p>
-              ) : null}
-            </div>
-          </article>
+              <div className="party-list">
+                {queues.sections.flatMap((section) =>
+                  section.items.slice(0, 3).map((item) => (
+                    <div className="party-row" key={`${section.key}-${item.id}`}>
+                      <span>
+                        <strong>{item.title}</strong>
+                        <small>
+                          {section.label} · {item.status}
+                        </small>
+                      </span>
+                      <em className={item.priority === "high" ? "risk" : undefined}>
+                        {item.priority}
+                      </em>
+                    </div>
+                  )),
+                )}
+                {queues.sections.every((section) => section.items.length === 0) ? (
+                  <p className="inline-empty">No queue items need attention.</p>
+                ) : null}
+              </div>
+            </article>
+          </aside>
         </section>
       </section>
     </main>

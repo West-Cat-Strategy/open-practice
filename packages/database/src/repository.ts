@@ -48,6 +48,7 @@ import {
   type User,
   type WebAuthnChallengeRecord,
   type WebAuthnCredentialRecord,
+  type DraftAssistRecord,
   type DraftRecord,
   type DraftTemplateRecord,
   type InboundEmailAddressRecord,
@@ -249,6 +250,16 @@ export interface OpenPracticeRepository {
     job: JobLifecycleRecord;
   }>;
   getEmailOutbox(firmId: string, emailId: string): Promise<EmailOutboxRecord | undefined>;
+  recordEmailDeliveryResult(input: {
+    firmId: string;
+    emailId: string;
+    status: "sent" | "failed";
+    occurredAt: string;
+    providerMessageId?: string;
+    errorMessage?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord }>;
+  listEmailEvents(firmId: string, options?: { emailId?: string }): Promise<EmailEventRecord[]>;
   updateJobLifecycleRecord(
     firmId: string,
     id: string,
@@ -551,6 +562,13 @@ export interface OpenPracticeRepository {
     >,
   ): Promise<DraftRecord>;
   deleteDraft(firmId: string, draftId: string): Promise<void>;
+  listDraftAssistRecords(
+    firmId: string,
+    options?: { matterId?: string; draftId?: string; documentId?: string },
+  ): Promise<DraftAssistRecord[]>;
+  getDraftAssistRecord(firmId: string, id: string): Promise<DraftAssistRecord | undefined>;
+  createDraftAssistRecord(record: DraftAssistRecord): Promise<DraftAssistRecord>;
+  updateDraftAssistRecord(record: DraftAssistRecord): Promise<DraftAssistRecord>;
   listDraftTemplates(
     firmId: string,
     options?: { category?: string; activeOnly?: boolean },
@@ -1217,6 +1235,30 @@ function mapDraftTemplateRow(row: typeof schema.draftTemplates.$inferSelect): Dr
   };
 }
 
+function mapDraftAssistRow(row: typeof schema.draftAssistRecords.$inferSelect): DraftAssistRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    sourceType: row.sourceType as DraftAssistRecord["sourceType"],
+    draftId: row.draftId ?? undefined,
+    documentId: row.documentId ?? undefined,
+    task: row.task as DraftAssistRecord["task"],
+    providerKey: row.providerKey,
+    providerModel: row.providerModel,
+    status: row.status as DraftAssistRecord["status"],
+    suggestedText: row.suggestedText,
+    summary: row.summary ?? undefined,
+    reviewDecision: (row.reviewDecision as DraftAssistRecord["reviewDecision"]) ?? undefined,
+    reviewedByUserId: row.reviewedByUserId ?? undefined,
+    reviewedAt: row.reviewedAt?.toISOString(),
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    metadata: row.metadata as Record<string, unknown>,
+  };
+}
+
 function mapInboundEmailAddressRow(
   row: typeof schema.inboundEmailAddresses.$inferSelect,
 ): InboundEmailAddressRecord {
@@ -1312,6 +1354,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private postedTransactions: PostedLedgerTransaction[];
   private documentTextExtractions: DocumentTextExtractionRecord[] = [];
   private drafts: DraftRecord[] = [];
+  private draftAssistRecords: DraftAssistRecord[] = [];
   private draftTemplates: DraftTemplateRecord[] = [];
   private inboundEmailAddresses: InboundEmailAddressRecord[] = [];
   private inboundEmailMessages: InboundEmailMessageRecord[] = [];
@@ -1447,6 +1490,56 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async getEmailOutbox(firmId: string, emailId: string): Promise<EmailOutboxRecord | undefined> {
     return clone(this.emailOutbox.find((email) => email.firmId === firmId && email.id === emailId));
+  }
+
+  async recordEmailDeliveryResult(input: {
+    firmId: string;
+    emailId: string;
+    status: "sent" | "failed";
+    occurredAt: string;
+    providerMessageId?: string;
+    errorMessage?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord }> {
+    const index = this.emailOutbox.findIndex(
+      (email) => email.firmId === input.firmId && email.id === input.emailId,
+    );
+    if (index === -1) throw new Error(`Email outbox record ${input.emailId} was not found`);
+
+    const existing = this.emailOutbox[index]!;
+    const email: EmailOutboxRecord = {
+      ...existing,
+      status: input.status,
+      sentAt: input.status === "sent" ? input.occurredAt : existing.sentAt,
+      failedAt: input.status === "failed" ? input.occurredAt : undefined,
+      errorMessage: input.status === "failed" ? input.errorMessage : undefined,
+    };
+    const event: EmailEventRecord = {
+      id: crypto.randomUUID(),
+      firmId: input.firmId,
+      emailId: input.emailId,
+      eventType: input.status,
+      occurredAt: input.occurredAt,
+      providerMessageId: input.providerMessageId,
+      metadata: input.metadata ?? {},
+    };
+    this.emailOutbox[index] = clone(email);
+    this.emailEvents.push(clone(event));
+    return { email: clone(email), event: clone(event) };
+  }
+
+  async listEmailEvents(
+    firmId: string,
+    options: { emailId?: string } = {},
+  ): Promise<EmailEventRecord[]> {
+    return clone(
+      this.emailEvents
+        .filter(
+          (event) =>
+            event.firmId === firmId && (!options.emailId || event.emailId === options.emailId),
+        )
+        .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt)),
+    );
   }
 
   async updateJobLifecycleRecord(
@@ -2746,6 +2839,43 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.drafts = this.drafts.filter((d) => d.firmId !== firmId || d.id !== draftId);
   }
 
+  async listDraftAssistRecords(
+    firmId: string,
+    options: { matterId?: string; draftId?: string; documentId?: string } = {},
+  ): Promise<DraftAssistRecord[]> {
+    return clone(
+      this.draftAssistRecords
+        .filter(
+          (record) =>
+            record.firmId === firmId &&
+            (!options.matterId || record.matterId === options.matterId) &&
+            (!options.draftId || record.draftId === options.draftId) &&
+            (!options.documentId || record.documentId === options.documentId),
+        )
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    );
+  }
+
+  async getDraftAssistRecord(firmId: string, id: string): Promise<DraftAssistRecord | undefined> {
+    return clone(
+      this.draftAssistRecords.find((record) => record.firmId === firmId && record.id === id),
+    );
+  }
+
+  async createDraftAssistRecord(record: DraftAssistRecord): Promise<DraftAssistRecord> {
+    this.draftAssistRecords = [...this.draftAssistRecords, clone(record)];
+    return clone(record);
+  }
+
+  async updateDraftAssistRecord(record: DraftAssistRecord): Promise<DraftAssistRecord> {
+    const index = this.draftAssistRecords.findIndex(
+      (candidate) => candidate.firmId === record.firmId && candidate.id === record.id,
+    );
+    if (index === -1) throw new Error(`Draft assist record ${record.id} was not found`);
+    this.draftAssistRecords[index] = clone(record);
+    return clone(record);
+  }
+
   async listDraftTemplates(
     firmId: string,
     options: { category?: string; activeOnly?: boolean } = {},
@@ -3041,6 +3171,65 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .from(schema.emailOutbox)
       .where(and(eq(schema.emailOutbox.firmId, firmId), eq(schema.emailOutbox.id, emailId)));
     return row ? mapEmailOutboxRow(row) : undefined;
+  }
+
+  async recordEmailDeliveryResult(input: {
+    firmId: string;
+    emailId: string;
+    status: "sent" | "failed";
+    occurredAt: string;
+    providerMessageId?: string;
+    errorMessage?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord }> {
+    return this.db.transaction(async (tx) => {
+      const occurredAt = new Date(input.occurredAt);
+      const [emailRow] = await tx
+        .update(schema.emailOutbox)
+        .set({
+          status: input.status,
+          sentAt: input.status === "sent" ? occurredAt : null,
+          failedAt: input.status === "failed" ? occurredAt : null,
+          errorMessage: input.status === "failed" ? input.errorMessage : null,
+        })
+        .where(
+          and(
+            eq(schema.emailOutbox.firmId, input.firmId),
+            eq(schema.emailOutbox.id, input.emailId),
+          ),
+        )
+        .returning();
+      if (!emailRow) throw new Error(`Email outbox record ${input.emailId} was not found`);
+
+      const event: EmailEventRecord = {
+        id: crypto.randomUUID(),
+        firmId: input.firmId,
+        emailId: input.emailId,
+        eventType: input.status,
+        occurredAt: input.occurredAt,
+        providerMessageId: input.providerMessageId,
+        metadata: input.metadata ?? {},
+      };
+      const [eventRow] = await tx
+        .insert(schema.emailEvents)
+        .values(emailEventInsert(event))
+        .returning();
+      return { email: mapEmailOutboxRow(emailRow), event: mapEmailEventRow(eventRow) };
+    });
+  }
+
+  async listEmailEvents(
+    firmId: string,
+    options: { emailId?: string } = {},
+  ): Promise<EmailEventRecord[]> {
+    const conditions = [eq(schema.emailEvents.firmId, firmId)];
+    if (options.emailId) conditions.push(eq(schema.emailEvents.emailId, options.emailId));
+    const rows = await this.db
+      .select()
+      .from(schema.emailEvents)
+      .where(and(...conditions))
+      .orderBy(asc(schema.emailEvents.occurredAt));
+    return rows.map(mapEmailEventRow);
   }
 
   async updateJobLifecycleRecord(
@@ -5064,6 +5253,66 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     await this.db
       .delete(schema.drafts)
       .where(and(eq(schema.drafts.firmId, firmId), eq(schema.drafts.id, draftId)));
+  }
+
+  async listDraftAssistRecords(
+    firmId: string,
+    options: { matterId?: string; draftId?: string; documentId?: string } = {},
+  ): Promise<DraftAssistRecord[]> {
+    const conditions = [eq(schema.draftAssistRecords.firmId, firmId)];
+    if (options.matterId) conditions.push(eq(schema.draftAssistRecords.matterId, options.matterId));
+    if (options.draftId) conditions.push(eq(schema.draftAssistRecords.draftId, options.draftId));
+    if (options.documentId)
+      conditions.push(eq(schema.draftAssistRecords.documentId, options.documentId));
+
+    const rows = await this.db
+      .select()
+      .from(schema.draftAssistRecords)
+      .where(and(...conditions))
+      .orderBy(desc(schema.draftAssistRecords.createdAt));
+    return rows.map(mapDraftAssistRow);
+  }
+
+  async getDraftAssistRecord(firmId: string, id: string): Promise<DraftAssistRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.draftAssistRecords)
+      .where(
+        and(eq(schema.draftAssistRecords.firmId, firmId), eq(schema.draftAssistRecords.id, id)),
+      );
+    return row ? mapDraftAssistRow(row) : undefined;
+  }
+
+  async createDraftAssistRecord(record: DraftAssistRecord): Promise<DraftAssistRecord> {
+    await this.db.insert(schema.draftAssistRecords).values({
+      ...record,
+      reviewedAt: record.reviewedAt ? new Date(record.reviewedAt) : null,
+      createdAt: new Date(record.createdAt),
+      updatedAt: new Date(record.updatedAt),
+    });
+    return clone(record);
+  }
+
+  async updateDraftAssistRecord(record: DraftAssistRecord): Promise<DraftAssistRecord> {
+    const [row] = await this.db
+      .update(schema.draftAssistRecords)
+      .set({
+        status: record.status,
+        reviewDecision: record.reviewDecision,
+        reviewedByUserId: record.reviewedByUserId,
+        reviewedAt: record.reviewedAt ? new Date(record.reviewedAt) : null,
+        updatedAt: new Date(record.updatedAt),
+        metadata: record.metadata,
+      })
+      .where(
+        and(
+          eq(schema.draftAssistRecords.firmId, record.firmId),
+          eq(schema.draftAssistRecords.id, record.id),
+        ),
+      )
+      .returning();
+    if (!row) throw new Error(`Draft assist record ${record.id} was not found`);
+    return mapDraftAssistRow(row);
   }
 
   async listDraftTemplates(

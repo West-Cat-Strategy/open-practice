@@ -851,4 +851,46 @@ describe("repository operations foundation", () => {
       packageDocumentId: "repair_notice_letter",
     });
   });
+
+  it("maps draft assist records and review decisions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const created = await repository.createDraftAssistRecord({
+      id: "draft-assist-record-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      sourceType: "draft",
+      draftId: "draft-001",
+      task: "summarize",
+      providerKey: "fake-local-ai",
+      providerModel: "fake-model",
+      status: "suggested",
+      suggestedText: "Synthetic suggestion",
+      summary: "Synthetic summary",
+      createdByUserId: "user-admin",
+      createdAt: now,
+      updatedAt: now,
+      metadata: { sourceTextLength: 24 },
+    });
+    const reviewed = await repository.updateDraftAssistRecord({
+      ...created,
+      status: "reviewed",
+      reviewDecision: "reviewed",
+      reviewedByUserId: "user-admin",
+      reviewedAt: "2026-05-01T00:05:00.000Z",
+      updatedAt: "2026-05-01T00:05:00.000Z",
+    });
+
+    expect(reviewed).toMatchObject({
+      id: "draft-assist-record-test",
+      status: "reviewed",
+      reviewDecision: "reviewed",
+      reviewedByUserId: "user-admin",
+    });
+    await expect(
+      repository.listDraftAssistRecords("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toEqual([expect.objectContaining({ id: "draft-assist-record-test" })]);
+    await expect(
+      repository.listDraftAssistRecords("firm-west-legal", { draftId: "missing" }),
+    ).resolves.toEqual([]);
+  });
 });

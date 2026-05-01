@@ -1,6 +1,10 @@
 import type { S3Client } from "@aws-sdk/client-s3";
 import type { OpenPracticeRepository } from "@open-practice/database";
-import type { DocumentAutomationProvider, SignatureProvider } from "@open-practice/domain";
+import type {
+  DocumentAutomationProvider,
+  DraftAssistProvider,
+  SignatureProvider,
+} from "@open-practice/domain";
 
 export interface ApiJobQueue {
   add(
@@ -18,6 +22,7 @@ export interface ApiJobQueue {
 export interface ApiRouteDependencies {
   repository: OpenPracticeRepository;
   automationProvider?: DocumentAutomationProvider;
+  draftAssistProvider?: DraftAssistProvider;
   signatureProvider?: SignatureProvider;
   emailJobQueue?: ApiJobQueue;
   s3?: {

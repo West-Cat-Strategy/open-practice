@@ -17,6 +17,7 @@ import {
   documentVersions,
   documents,
   drafts,
+  draftAssistRecords,
   draftTemplates,
   emailEvents,
   emailOutbox,
@@ -183,6 +184,34 @@ describe("database schema hardening", () => {
   it("persists guided intake sessions", () => {
     expect(getTableConfig(intakeSessions).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["matter_id", "template_id", "external_id", "status"]),
+    );
+  });
+
+  it("persists non-authoritative draft assist records", () => {
+    const config = getTableConfig(draftAssistRecords);
+
+    expect(config.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "source_type",
+        "draft_id",
+        "document_id",
+        "task",
+        "provider_key",
+        "provider_model",
+        "status",
+        "suggested_text",
+        "review_decision",
+        "metadata",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "draft_assist_records_firm_matter_idx",
+        "draft_assist_records_firm_draft_idx",
+        "draft_assist_records_firm_document_idx",
+      ]),
     );
   });
 

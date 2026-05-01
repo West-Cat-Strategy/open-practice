@@ -297,6 +297,7 @@ describe("matter-scoped RBAC", () => {
         expect.objectContaining({ key: "matters", enabled: true }),
         expect.objectContaining({ key: "funds", enabled: true }),
         expect.objectContaining({ key: "drafting", enabled: true }),
+        expect.objectContaining({ key: "calendar", enabled: true }),
         expect.objectContaining({ key: "audit", enabled: true }),
       ]),
     );
@@ -313,7 +314,10 @@ describe("matter-scoped RBAC", () => {
     expect(
       dashboardCapabilities({ user: bookkeeper, firmId: sampleFirm.id, matterId: "matter-001" }),
     ).toEqual(
-      expect.arrayContaining([expect.objectContaining({ key: "drafting", enabled: false })]),
+      expect.arrayContaining([
+        expect.objectContaining({ key: "drafting", enabled: false }),
+        expect.objectContaining({ key: "calendar", enabled: false }),
+      ]),
     );
   });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  CalendarEventRecord,
   DashboardSectionCapability,
   DashboardSectionKey,
   DraftRecord,
@@ -18,7 +19,9 @@ import {
   buildBlankDraftPayload,
   buildDraftFromTemplatePayload,
   buildDraftUpdatePayload,
+  describeDraftAssistStatus,
   extractDraftPlainText,
+  insertDraftAssistSuggestion,
   isSameDraftDocument,
   loadDraftingDashboardData,
 } from "./drafting-dashboard";
@@ -31,6 +34,12 @@ import {
   loadExternalUploadsDashboardData,
   upsertExternalUploadLink,
 } from "./external-uploads-dashboard";
+import {
+  buildCalendarRadarBuckets,
+  describeCalendarEventTiming,
+  loadCalendarDashboardData,
+  upsertCalendarCredential,
+} from "./calendar-dashboard";
 import type { ExternalUploadLinkRecord, MatterSummary, ShareLinkRecord } from "./types";
 
 const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapability["resource"]> = {
@@ -39,6 +48,7 @@ const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapabilit
   billing: "time_entry",
   documents: "document",
   drafting: "draft",
+  calendar: "calendar_event",
   signatures: "signature_request",
   intake: "intake_session",
   audit: "audit_log",
@@ -143,6 +153,25 @@ function externalUploadLink(
   };
 }
 
+function calendarEvent(overrides: Partial<CalendarEventRecord> = {}): CalendarEventRecord {
+  return {
+    id: "calendar-event-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    uid: "calendar-event-001@open-practice.local",
+    title: "Synthetic filing deadline",
+    startsAt: "2026-05-05T16:00:00.000Z",
+    endsAt: "2026-05-05T16:30:00.000Z",
+    status: "confirmed",
+    sequence: 0,
+    createdAt: "2026-04-29T12:00:00.000Z",
+    updatedAt: "2026-04-29T12:00:00.000Z",
+    createdByUserId: "user-admin",
+    updatedByUserId: "user-admin",
+    ...overrides,
+  };
+}
+
 function baseExternalUploadLink(): ExternalUploadLinkRecord {
   return {
     id: "external-upload-link-001",
@@ -177,6 +206,7 @@ describe("dashboard client behavior", () => {
         capability("funds"),
         capability("documents"),
         capability("drafting"),
+        capability("calendar"),
         capability("billing"),
         capability("signatures"),
         capability("intake"),
@@ -192,6 +222,7 @@ describe("dashboard client behavior", () => {
       { key: "shares", label: "Shares", enabled: true },
       { key: "externalUploads", label: "Uploads", enabled: true },
       { key: "drafting", label: "Drafting", enabled: true },
+      { key: "calendar", label: "Calendar", enabled: true },
       { key: "signatures", label: "Signatures", enabled: true },
       { key: "intake", label: "Intake", enabled: true },
       { key: "audit", label: "Audit", enabled: true },
@@ -208,6 +239,7 @@ describe("dashboard client behavior", () => {
         capability("funds"),
         capability("documents"),
         capability("drafting"),
+        capability("calendar", { enabled: false }),
         capability("signatures"),
         capability("intake"),
         capability("audit"),
@@ -227,6 +259,11 @@ describe("dashboard client behavior", () => {
     expect(navigationSections.find((section) => section.key === "externalUploads")).toEqual({
       key: "externalUploads",
       label: "Uploads",
+      enabled: false,
+    });
+    expect(navigationSections.find((section) => section.key === "calendar")).toEqual({
+      key: "calendar",
+      label: "Calendar",
       enabled: false,
     });
     expect(navigationSections.map((section) => section.key)).not.toContain("queues");
@@ -319,6 +356,23 @@ describe("dashboard client behavior", () => {
     expect(isSameDraftDocument(updatedEditorJson, updatedEditorJson)).toBe(true);
   });
 
+  it("describes draft assist status and inserts suggestions into local editor JSON", () => {
+    const editorJson = {
+      type: "doc" as const,
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Original draft" }] }],
+    };
+    const updated = insertDraftAssistSuggestion({
+      editorJson,
+      record: { suggestedText: "Suggested assist text" },
+    });
+
+    expect(describeDraftAssistStatus({ status: "disabled", reason: "not_configured" })).toBe(
+      "Draft assist unavailable: not configured.",
+    );
+    expect(extractDraftPlainText(updated)).toBe("Original draft Suggested assist text");
+    expect(extractDraftPlainText(editorJson)).toBe("Original draft");
+  });
+
   it("builds external upload paths, create payloads, and local link state", () => {
     const expiresAtLocal = "2026-05-01T09:30";
     const upload = externalUploadLink();
@@ -382,5 +436,71 @@ describe("dashboard client behavior", () => {
       "matter-001": [],
       "matter-002": [upload],
     });
+  });
+
+  it("buckets calendar radar events without changing source records", () => {
+    const now = new Date("2026-05-01T12:00:00.000Z");
+    const overdue = calendarEvent({
+      id: "calendar-event-overdue",
+      startsAt: "2026-04-30T12:00:00.000Z",
+    });
+    const soon = calendarEvent({ id: "calendar-event-soon", startsAt: "2026-05-03T12:00:00.000Z" });
+    const near = calendarEvent({ id: "calendar-event-near", startsAt: "2026-05-20T12:00:00.000Z" });
+    const tentative = calendarEvent({
+      id: "calendar-event-tentative",
+      startsAt: "2026-05-02T12:00:00.000Z",
+      status: "tentative",
+    });
+    const cancelled = calendarEvent({
+      id: "calendar-event-cancelled",
+      startsAt: "2026-05-02T12:00:00.000Z",
+      status: "cancelled",
+    });
+
+    const buckets = buildCalendarRadarBuckets([near, cancelled, soon, tentative, overdue], now);
+
+    expect(buckets.overdue.map((event) => event.id)).toEqual(["calendar-event-overdue"]);
+    expect(buckets.nextSevenDays.map((event) => event.id)).toEqual([
+      "calendar-event-tentative",
+      "calendar-event-soon",
+    ]);
+    expect(buckets.nextThirtyDays.map((event) => event.id)).toEqual(["calendar-event-near"]);
+    expect(buckets.tentative.map((event) => event.id)).toEqual(["calendar-event-tentative"]);
+    expect(buckets.cancelled.map((event) => event.id)).toEqual(["calendar-event-cancelled"]);
+    expect(describeCalendarEventTiming(near, now)).toBe("next 30 days");
+  });
+
+  it("loads calendar dashboard events, links, and credentials for first render", async () => {
+    const event = calendarEvent({ matterId: "matter-002" });
+    const data = await loadCalendarDashboardData({
+      matters: [matter({ id: "matter-001" }), matter({ id: "matter-002" })],
+      listEventsForMatter: async (matterId) => ({
+        events: matterId === "matter-002" ? [event] : [],
+        caldavUrl: "http://practice.example.test/caldav",
+        subscriptionUrl: `webcal://practice.example.test/api/calendar/matters/${matterId}.ics`,
+      }),
+      listCredentials: async () => [
+        {
+          id: "calendar-credential-001",
+          username: "firm.user.calendar-credential-001",
+          label: "iOS Calendar",
+          createdAt: "2026-05-01T12:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(data.eventsByMatterId).toEqual({ "matter-001": [], "matter-002": [event] });
+    expect(data.linksByMatterId["matter-001"]).toEqual({
+      caldavUrl: "http://practice.example.test/caldav",
+      subscriptionUrl: "webcal://practice.example.test/api/calendar/matters/matter-001.ics",
+    });
+    expect(
+      upsertCalendarCredential(data.credentials, {
+        ...data.credentials[0]!,
+        revokedAt: "2026-05-01T13:00:00.000Z",
+      }),
+    ).toEqual([
+      expect.objectContaining({ id: "calendar-credential-001", revokedAt: expect.any(String) }),
+    ]);
   });
 });

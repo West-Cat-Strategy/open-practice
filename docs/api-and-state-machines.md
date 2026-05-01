@@ -77,6 +77,11 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/billing/trust-transfer-requests?matterId=&status=`      | Trust-transfer-request records visible firm-wide or across assigned matters.                                         |
 | `POST /api/billing/trust-transfer-requests`                       | Create a billing-side request to pay an invoice from trust; this does not post ledger transactions.                  |
 | `GET /api/billing/dashboard`                                      | Billing dashboard payload for approved unbilled work, draft invoices, issued balances, and payments.                 |
+| `GET /api/calendar/events?matterId=&startsAfter=&startsBefore=`   | Matter-scoped operator-entered calendar events plus CalDAV and iCalendar subscription URLs for the matter dashboard. |
+| `GET /api/calendar/matters/:matterId.ics`                         | Authenticated read-only iCalendar export for one authorized matter calendar.                                         |
+| `GET /api/calendar/credentials`                                   | Current-user CalDAV app-password credentials without password hashes or one-time secrets.                            |
+| `POST /api/calendar/credentials`                                  | Creates a current-user CalDAV app password and returns the generated password only once.                             |
+| `POST /api/calendar/credentials/:id/revoke`                       | Revokes a current-user CalDAV app password and records audit evidence.                                               |
 | `GET /api/jobs`                                                   | Firm-scoped PostgreSQL job lifecycle projection and queue names; Redis internals are not exposed.                    |
 | `GET /api/email/status`                                           | SMTP provider status from firm provider settings.                                                                    |
 | `POST /api/email/previews`                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                                  |
@@ -102,6 +107,11 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/drafts/:id`                                             | Fetch an authorized draft by ID.                                                                                     |
 | `PUT /api/drafts/:id`                                             | Save structured draft content or rendered snapshot updates and increment the draft version.                          |
 | `DELETE /api/drafts/:id`                                          | Delete an authorized draft record.                                                                                   |
+| `GET /api/draft-assist/status`                                    | Disabled-by-default drafting assist status from firm AI provider settings and injected provider availability.        |
+| `GET /api/draft-assist/records?matterId=&draftId=&documentId=`    | Matter-scoped non-authoritative assist records filtered by matter, draft, or document.                               |
+| `POST /api/drafts/:id/assist`                                     | Synchronous review-first draft assist suggestion from structured draft text; does not mutate the draft.              |
+| `POST /api/documents/:id/assist`                                  | Synchronous document summary assist from completed text extraction; missing extraction returns `409`.                |
+| `PATCH /api/draft-assist/records/:id/review`                      | Mark an assist suggestion reviewed or rejected without changing source draft or document records.                    |
 | `GET /api/draft-templates?category=&activeOnly=`                  | List active firm-scoped drafting templates, including seeded operational basics.                                     |
 | `POST /api/draft-templates`                                       | Create a firm-scoped drafting template from structured TipTap/ProseMirror JSON.                                      |
 
@@ -117,7 +127,7 @@ automatic document promotion remain deferred.
 | `GET /api/providers/status`                       | Operator-visible status for Redis/BullMQ, object storage, mail, OCR, transcription, and Ollama. |
 | `POST /api/documents/:id/ocr-jobs`                | Enqueue Tesseract OCR for a verified document version.                                          |
 | `POST /api/media/:id/transcription-jobs`          | Enqueue FFmpeg normalization and Whisper transcription for authorized media.                    |
-| `POST /api/documents/:id/assistive-drafting-jobs` | Enqueue an Ollama-backed drafting/summarization aid with required review state.                 |
+| `POST /api/documents/:id/assistive-drafting-jobs` | Future async Ollama/LM Studio drafting worker job after provider and queue governance land.     |
 | `POST /api/auth/passkeys/registration-options`    | Create a SimpleWebAuthn registration challenge for the current user.                            |
 | `POST /api/auth/passkeys/registration`            | Verify and store a passkey credential for embedded auth.                                        |
 | `POST /api/auth/passkeys/authentication-options`  | Create a passkey login challenge for configured RP ID/origin.                                   |
@@ -245,10 +255,24 @@ email create access, an enabled SMTP provider setting, configured Redis/BullMQ q
 least one non-empty text or HTML body. The route creates the outbox record, queued email event,
 durable email job lifecycle record, and BullMQ email job together before returning `queued`. The
 audit event records IDs, template/provider, recipient count, matter scope, and related resource
-references only; email bodies stay in the outbox record rather than job or audit metadata.
+references only; email bodies stay in the outbox record rather than job or audit metadata. The
+worker reads message bodies from the outbox record, marks delivery `sent` or `failed`, appends
+provider result events, and advances the matching job lifecycle row to `active`, terminal success,
+retry failure, dead letter, or skipped status.
 Signature, intake, share-link, and external-upload create flows reuse the same outbox helper; share
 and external-upload notification emails are create-time only because raw tokens are not recoverable
 after the response.
+
+Draft assist is a disabled-by-default synchronous scaffold for non-authoritative suggestions.
+`GET /api/draft-assist/status` reports disabled when no enabled `ai` provider setting exists or no
+provider is injected. Configured draft/document assist creates `draft_assist_records` with provider
+and model provenance, suggested plain text, optional summary, review state, source references, and
+redacted metadata. Draft assist reads structured TipTap text and never saves draft changes; the
+dashboard can insert a suggestion into local editor state, and the existing draft save route remains
+the only persistence path. Document assist is limited to `summarize` and requires completed text
+extraction. Audit events record only IDs, task/status, provider/model, length/count metadata, and
+review decisions; raw draft text, document text, prompts, instructions, generated text, storage keys,
+checksums, and evidence bodies stay out of audit metadata.
 
 Provider/bootstrap selection is local-first. `DATABASE_URL` selects PostgreSQL unless
 `OPEN_PRACTICE_USE_MEMORY_REPO=true` or the database URL is absent. `OPEN_PRACTICE_DEV_SEED=true`
@@ -258,14 +282,14 @@ and the matching `x-open-practice-setup-key` header. Non-production setup withou
 is limited to local/private network access. Signature and intake providers default to embedded
 implementations. S3 upload signing is enabled only when endpoint and credentials are configured.
 Redis/BullMQ queues, firm provider settings, job lifecycle records, and disabled-by-default API
-scaffolds are implemented for email, AI triage, OCR, transcription, media, and auth extensions.
+scaffolds are implemented for email, AI triage, OCR, transcription, media, draft assist, and auth extensions.
 Secure share-link create/list/revoke plus token-scoped public document metadata reads are
 implemented with token hashing, matter-scoped authorization, audit events, and access logs. External
 upload link create/list/revoke plus token-scoped S3 intent and completion flows are implemented with
 token hashing, matter-scoped authorization, S3-disabled fallbacks, audit events, and access logs.
 Inbound email parsing is implemented for raw messages already stored in object storage; provider
 webhooks and automatic document promotion remain deferred. Concrete Postal, Tesseract,
-Whisper/FFmpeg, Ollama, LM Studio, SimpleWebAuthn, and TipTap behavior still requires explicit
+Whisper/FFmpeg, live Ollama/LM Studio adapters, SimpleWebAuthn, and TipTap behavior still requires explicit
 setup, provider adapters, review states, and deployment profiles. `DOCUSEAL_*`, `DOCASSEMBLE_*`, and
 `OIDC_*` variables are deprecated and rejected in production. There is no live payment processor
 configuration. Future processor keys, webhooks, and settlement imports should be introduced behind
