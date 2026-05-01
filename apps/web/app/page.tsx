@@ -1,8 +1,13 @@
 import { cookies } from "next/headers";
+import {
+  buildSidebarNavigationSections,
+  resolveDashboardRouteSelection,
+} from "../routes/routeCatalog";
 import DashboardClient from "./dashboard-client";
 import { loadDraftingDashboardData } from "./drafting-dashboard";
 import {
   buildExternalUploadListPath,
+  canCreateExternalUpload,
   externalUploadsStatusFallback,
   loadExternalUploadsDashboardData,
 } from "./external-uploads-dashboard";
@@ -27,6 +32,8 @@ import type {
 } from "./types";
 
 export const dynamic = "force-dynamic";
+
+type HomeSearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 const devHeaders = {
@@ -90,6 +97,11 @@ function canViewBilling(role: string): boolean {
   return ["owner_admin", "billing_bookkeeper", "auditor"].includes(role);
 }
 
+function firstSearchParam(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
 function buildBillingFallback(
   matters: MatterSummary[],
   session: SessionResponse,
@@ -148,7 +160,9 @@ function buildBillingFallback(
   };
 }
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams?: HomeSearchParams }) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const requestedSection = firstSearchParam(resolvedSearchParams.section);
   const setupStatus = await apiGet<SetupStatusResponse>("/api/setup/status", {});
   if (selectStartupView(setupStatus, null) === "blocked") {
     return (
@@ -240,6 +254,16 @@ export default async function Home() {
       return response.uploads;
     },
   });
+  const navigationSections = buildSidebarNavigationSections({
+    billingCanView: billing.canView,
+    capabilitySections: capabilities.sections,
+    shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
+    externalUploadsEnabled: canCreateExternalUpload(externalUploads.status),
+  });
+  const initialSection = resolveDashboardRouteSelection({
+    requestedSection,
+    navigationSections,
+  }).sectionKey;
 
   return (
     <DashboardClient
@@ -249,6 +273,7 @@ export default async function Home() {
       devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}
       drafting={drafting}
       externalUploads={externalUploads}
+      initialSection={initialSection}
       intake={intake}
       matters={matters}
       overview={overview}

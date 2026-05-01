@@ -1,12 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDashboardSectionUrl,
+  getDashboardSectionPath,
   getRouteCatalogEntry,
   getRoutesByArea,
   getSidebarRouteCatalogEntries,
   matchRouteCatalogEntry,
+  resolveDashboardRouteSelection,
   routeCatalog,
+  type OpenPracticeSidebarNavigationSection,
   type OpenPracticeRouteId,
 } from "./routeCatalog";
+
+function enabledSidebarNavigation(): OpenPracticeSidebarNavigationSection[] {
+  return getSidebarRouteCatalogEntries().map((entry) => ({
+    key: entry.sectionKey ?? "matters",
+    label: entry.shortLabel,
+    enabled: true,
+  }));
+}
 
 describe("Open Practice route catalog", () => {
   it("contains the first legal-practice workspace surfaces", () => {
@@ -34,6 +46,10 @@ describe("Open Practice route catalog", () => {
       path: "/?section=billing",
       area: "finance",
     });
+    expect(getDashboardSectionPath("billing")).toBe("/?section=billing");
+    expect(buildDashboardSectionUrl("http://localhost:3000/?matter=one#detail", "billing")).toBe(
+      "/?matter=one&section=billing#detail",
+    );
   });
 
   it("groups routes by area in display order", () => {
@@ -78,5 +94,64 @@ describe("Open Practice route catalog", () => {
     expect(matchRouteCatalogEntry("/?section=externalUploads")?.id).toBe("externalUploads");
     expect(matchRouteCatalogEntry("/?section=drafting")?.id).toBe("drafting");
     expect(matchRouteCatalogEntry("/?section=unknown")).toBeNull();
+  });
+
+  it("resolves dashboard deep links for enabled sidebar entries", () => {
+    expect(
+      resolveDashboardRouteSelection({
+        requestedSection: "drafting",
+        navigationSections: enabledSidebarNavigation(),
+      }),
+    ).toMatchObject({
+      sectionKey: "drafting",
+      status: "matched",
+      requestedSection: "drafting",
+    });
+  });
+
+  it("falls back to matters for unknown dashboard sections", () => {
+    expect(
+      resolveDashboardRouteSelection({
+        requestedSection: "not-a-section",
+        navigationSections: enabledSidebarNavigation(),
+      }),
+    ).toMatchObject({
+      sectionKey: "matters",
+      status: "unknown",
+      entry: null,
+    });
+  });
+
+  it("does not hydrate disabled sidebar entries", () => {
+    const navigationSections = enabledSidebarNavigation().map((section) =>
+      section.key === "billing" ? { ...section, enabled: false } : section,
+    );
+
+    expect(
+      resolveDashboardRouteSelection({
+        requestedSection: "billing",
+        navigationSections,
+      }),
+    ).toMatchObject({
+      sectionKey: "matters",
+      status: "disabled",
+      entry: expect.objectContaining({ id: "billing" }),
+    });
+  });
+
+  it("keeps queues and non-sidebar catalog entries from becoming active dashboard sections", () => {
+    const nonSidebarEntries = routeCatalog.filter((entry) => !entry.showInSidebar);
+
+    expect(nonSidebarEntries.map((entry) => entry.id)).toEqual(["queues"]);
+    expect(
+      resolveDashboardRouteSelection({
+        requestedSection: "queues",
+        navigationSections: enabledSidebarNavigation(),
+      }),
+    ).toMatchObject({
+      sectionKey: "matters",
+      status: "queue",
+      entry: expect.objectContaining({ id: "queues", showInSidebar: false }),
+    });
   });
 });

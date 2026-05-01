@@ -41,6 +41,23 @@ export interface OpenPracticeSidebarNavigationSection {
   enabled: boolean;
 }
 
+export type DashboardNavigationSectionKey = OpenPracticeSidebarNavigationSection["key"];
+
+export type DashboardRouteSelectionStatus =
+  | "default"
+  | "matched"
+  | "unknown"
+  | "disabled"
+  | "queue"
+  | "non_sidebar";
+
+export interface DashboardRouteSelection {
+  sectionKey: DashboardNavigationSectionKey;
+  status: DashboardRouteSelectionStatus;
+  requestedSection: string | null;
+  entry: OpenPracticeRouteCatalogEntry | null;
+}
+
 export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
   {
     id: "matters",
@@ -164,6 +181,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
 ];
 
 const routeById = new Map(routeCatalog.map((entry) => [entry.id, entry] as const));
+const defaultDashboardSectionKey = "matters" satisfies DashboardNavigationSectionKey;
 
 export function getRouteCatalogEntry(id: OpenPracticeRouteId): OpenPracticeRouteCatalogEntry {
   const entry = routeById.get(id);
@@ -256,9 +274,100 @@ export function buildSidebarNavigationSections(input: {
     .map(({ key, label, enabled }) => ({ key, label, enabled }));
 }
 
+function findRouteCatalogEntryBySection(section: string): OpenPracticeRouteCatalogEntry | null {
+  return routeCatalog.find((entry) => entry.id === section || entry.sectionKey === section) ?? null;
+}
+
+function resolveFallbackSection(
+  navigationSections: OpenPracticeSidebarNavigationSection[],
+): DashboardNavigationSectionKey {
+  const enabledDefault = navigationSections.find(
+    (section) => section.key === defaultDashboardSectionKey && section.enabled,
+  );
+  if (enabledDefault) return enabledDefault.key;
+  return navigationSections.find((section) => section.enabled)?.key ?? defaultDashboardSectionKey;
+}
+
+export function resolveDashboardRouteSelection(input: {
+  requestedSection?: string | null;
+  navigationSections: OpenPracticeSidebarNavigationSection[];
+}): DashboardRouteSelection {
+  const requestedSection = input.requestedSection?.trim() || null;
+  const fallbackSection = resolveFallbackSection(input.navigationSections);
+
+  if (!requestedSection) {
+    return {
+      sectionKey: fallbackSection,
+      status: "default",
+      requestedSection,
+      entry: getRouteCatalogEntry("matters"),
+    };
+  }
+
+  const entry = findRouteCatalogEntryBySection(requestedSection);
+  if (!entry) {
+    return {
+      sectionKey: fallbackSection,
+      status: "unknown",
+      requestedSection,
+      entry: null,
+    };
+  }
+
+  if (entry.id === "queues") {
+    return {
+      sectionKey: fallbackSection,
+      status: "queue",
+      requestedSection,
+      entry,
+    };
+  }
+
+  if (!entry.showInSidebar || !entry.sectionKey) {
+    return {
+      sectionKey: fallbackSection,
+      status: "non_sidebar",
+      requestedSection,
+      entry,
+    };
+  }
+
+  const navigationSection = input.navigationSections.find(
+    (section) => section.key === entry.sectionKey,
+  );
+  if (!navigationSection?.enabled) {
+    return {
+      sectionKey: fallbackSection,
+      status: "disabled",
+      requestedSection,
+      entry,
+    };
+  }
+
+  return {
+    sectionKey: navigationSection.key,
+    status: "matched",
+    requestedSection,
+    entry,
+  };
+}
+
+export function getDashboardSectionPath(sectionKey: DashboardNavigationSectionKey): string {
+  return `/?section=${sectionKey}`;
+}
+
+export function buildDashboardSectionUrl(
+  currentHref: string,
+  sectionKey: DashboardNavigationSectionKey,
+): string {
+  const url = new URL(currentHref, "http://open-practice.local");
+  url.searchParams.set("section", sectionKey);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 export function matchRouteCatalogEntry(path: string): OpenPracticeRouteCatalogEntry | null {
   const [, query = ""] = path.split("?");
   const section = new URLSearchParams(query).get("section");
   if (!section) return getRouteCatalogEntry("matters");
-  return routeCatalog.find((entry) => entry.id === section || entry.sectionKey === section) ?? null;
+  return findRouteCatalogEntryBySection(section);
 }

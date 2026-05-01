@@ -24,7 +24,10 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { ConflictCandidate } from "@open-practice/domain";
 import {
+  buildDashboardSectionUrl,
   buildSidebarNavigationSections,
+  resolveDashboardRouteSelection,
+  type DashboardNavigationSectionKey,
   type OpenPracticeSidebarNavigationSection,
 } from "../routes/routeCatalog";
 import {
@@ -81,6 +84,7 @@ interface DashboardClientProps {
   drafting: DraftingDashboardResponse;
   externalUploads: ExternalUploadsDashboardResponse;
   intake: IntakeSessionsResponse;
+  initialSection: DashboardNavigationSectionKey;
   overview: PracticeOverview;
   matters: MatterSummary[];
   session: SessionResponse;
@@ -138,6 +142,7 @@ export default function DashboardClient({
   drafting,
   externalUploads,
   intake,
+  initialSection,
   overview,
   matters,
   session,
@@ -146,7 +151,7 @@ export default function DashboardClient({
   shareLinksStatus,
 }: DashboardClientProps) {
   const [activeMatterId, setActiveMatterId] = useState(matters[0]?.id ?? "");
-  const [activeSection, setActiveSection] = useState<LocalDashboardSectionKey>("matters");
+  const [activeSection, setActiveSection] = useState<LocalDashboardSectionKey>(initialSection);
   const [matterSearch, setMatterSearch] = useState("");
   const [conflictName, setConflictName] = useState("");
   const [conflictResults, setConflictResults] = useState<ConflictCandidate[]>([]);
@@ -265,6 +270,20 @@ export default function DashboardClient({
       cancelled = true;
     };
   }, [activeMatter, apiBaseUrl, devHeaders]);
+
+  useEffect(() => {
+    function applySectionFromUrl() {
+      const selection = resolveDashboardRouteSelection({
+        requestedSection: new URLSearchParams(window.location.search).get("section"),
+        navigationSections,
+      });
+      setActiveSection(selection.sectionKey);
+    }
+
+    applySectionFromUrl();
+    window.addEventListener("popstate", applySectionFromUrl);
+    return () => window.removeEventListener("popstate", applySectionFromUrl);
+  }, [navigationSections]);
 
   const metrics = useMemo(
     () => [
@@ -600,6 +619,15 @@ export default function DashboardClient({
     setRevokingShareId("");
   }
 
+  function selectDashboardSection(sectionKey: LocalDashboardSectionKey): void {
+    setActiveSection(sectionKey);
+    window.history.pushState(
+      { section: sectionKey },
+      "",
+      buildDashboardSectionUrl(window.location.href, sectionKey),
+    );
+  }
+
   if (!activeMatter) {
     return (
       <main className="empty-state">
@@ -629,7 +657,7 @@ export default function DashboardClient({
                 className={key === activeSection ? "nav-item active" : "nav-item"}
                 disabled={!enabled}
                 key={label}
-                onClick={() => setActiveSection(key)}
+                onClick={() => selectDashboardSection(key)}
                 type="button"
               >
                 <Icon size={18} />
