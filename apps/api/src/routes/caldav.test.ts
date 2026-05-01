@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import type { AuditEvent, ProfessionalRole, User } from "@open-practice/domain";
+import type { AuditEvent, NewAuditEvent, ProfessionalRole, User } from "@open-practice/domain";
 import type { InjectOptions, LightMyRequestResponse } from "fastify";
 import { isPublicRoute } from "../http/auth-helpers.js";
 import { createApiServer } from "../server.js";
@@ -14,17 +14,10 @@ class AuditRecordingRepository extends InMemoryOpenPracticeRepository {
     this.recordedAuditEvents.push(event);
   }
 
-  override async listAuditEvents(
-    firmId: string,
-  ): Promise<{ events: AuditEvent[]; valid: boolean }> {
-    const audit = await super.listAuditEvents(firmId);
-    return {
-      ...audit,
-      events: [
-        ...audit.events,
-        ...this.recordedAuditEvents.filter((event) => event.firmId === firmId),
-      ],
-    };
+  override async appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent> {
+    const appended = await super.appendAuditEvent(event);
+    this.recordedAuditEvents.push(appended);
+    return appended;
   }
 }
 
@@ -229,6 +222,8 @@ describe("CalDAV routes", () => {
       payload: eventPayload.replace("iOS synced prep call", "Updated prep call"),
     });
     expect(stale.statusCode).toBe(412);
+    expect(stale.headers["content-type"]).toContain("text/plain");
+    expect(stale.body).toBe("Calendar event ETag does not match");
 
     const deleted = await server.inject({
       method: "DELETE",
@@ -299,6 +294,7 @@ describe("CalDAV routes", () => {
       payload: '<C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav" />',
     });
     expect(crossMatter.statusCode).toBe(403);
+    expect(crossMatter.headers["content-type"]).toContain("text/plain");
     expect(crossMatter.body).not.toContain("Corporate records review");
 
     const billingRead = await injectCalDav(server, {
@@ -311,6 +307,7 @@ describe("CalDAV routes", () => {
       payload: '<C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav" />',
     });
     expect(billingRead.statusCode).toBe(403);
+    expect(billingRead.headers["content-type"]).toContain("text/plain");
   });
 
   it("rejects revoked app passwords and unsupported calendar payloads", async () => {

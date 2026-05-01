@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import type { AuditEvent, ProfessionalRole, User } from "@open-practice/domain";
+import type { AuditEvent, NewAuditEvent, ProfessionalRole, User } from "@open-practice/domain";
 import { registerCalendarRoutes } from "./calendar.js";
 
 const servers: FastifyInstance[] = [];
@@ -13,17 +13,10 @@ class AuditRecordingRepository extends InMemoryOpenPracticeRepository {
     this.recordedAuditEvents.push(event);
   }
 
-  override async listAuditEvents(
-    firmId: string,
-  ): Promise<{ events: AuditEvent[]; valid: boolean }> {
-    const audit = await super.listAuditEvents(firmId);
-    return {
-      ...audit,
-      events: [
-        ...audit.events,
-        ...this.recordedAuditEvents.filter((event) => event.firmId === firmId),
-      ],
-    };
+  override async appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent> {
+    const appended = await super.appendAuditEvent(event);
+    this.recordedAuditEvents.push(appended);
+    return appended;
   }
 }
 
@@ -115,6 +108,7 @@ describe("calendar routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers["content-type"]).toContain("text/calendar");
     expect(response.body).toContain("BEGIN:VCALENDAR");
+    expect(response.body).not.toContain("DTSTAMP:19700101T000000Z");
     expect(response.body).toContain("SUMMARY:Residential tenancy filing deadline");
     expect(response.body).not.toContain("Corporate records review");
   });

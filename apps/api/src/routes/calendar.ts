@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { appendAuditEvent, buildICalendarFeed } from "@open-practice/domain";
-import type { AuditEvent, CalendarCredentialRecord, NewAuditEvent } from "@open-practice/domain";
+import { buildICalendarFeed } from "@open-practice/domain";
+import type { CalendarCredentialRecord, NewAuditEvent } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { createSessionToken, hashPassword } from "../http/auth-helpers.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -26,31 +26,14 @@ const calendarCredentialParamsSchema = z.object({
   id: z.string().min(1),
 });
 
-interface AuditEventSink {
-  recordAuditEvent(event: AuditEvent): Promise<void>;
-}
-
-function auditEventSink(
-  repository: ApiRouteDependencies["repository"],
-): AuditEventSink | undefined {
-  const candidate = repository as ApiRouteDependencies["repository"] & Partial<AuditEventSink>;
-  if (typeof candidate.recordAuditEvent !== "function") return undefined;
-  return { recordAuditEvent: candidate.recordAuditEvent.bind(candidate) };
-}
-
 async function recordCalendarAuditEvent(
   repository: ApiRouteDependencies["repository"],
   event: Omit<NewAuditEvent, "id">,
 ): Promise<void> {
-  const sink = auditEventSink(repository);
-  if (!sink) return;
-  const { events } = await repository.listAuditEvents(event.firmId);
-  await sink.recordAuditEvent(
-    appendAuditEvent(events.at(-1), {
-      ...event,
-      id: `audit-${createSessionToken().slice(0, 16)}`,
-    }),
-  );
+  await repository.appendAuditEvent({
+    ...event,
+    id: `audit-${createSessionToken().slice(0, 16)}`,
+  });
 }
 
 function assertCalendarReadAccess(context: ApiAuthContext, matterId: string): void {
@@ -178,8 +161,12 @@ export function registerCalendarRoutes(
     const events = await repository.listCalendarEvents(request.auth.firmId, {
       matterId: params.matterId,
     });
-    return reply
-      .type("text/calendar; charset=utf-8")
-      .send(buildICalendarFeed({ events, calendarName: `Open Practice ${params.matterId}` }));
+    return reply.type("text/calendar; charset=utf-8").send(
+      buildICalendarFeed({
+        events,
+        calendarName: `Open Practice ${params.matterId}`,
+        generatedAt: new Date().toISOString(),
+      }),
+    );
   });
 }

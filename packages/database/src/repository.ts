@@ -171,6 +171,18 @@ export class CalendarEventUidConflictError extends Error {
   }
 }
 
+function isPostgresUniqueViolation(error: unknown, constraintName: string): boolean {
+  let current: unknown = error;
+  while (current && typeof current === "object") {
+    const candidate = current as { code?: unknown; constraint?: unknown; cause?: unknown };
+    if (candidate.code === "23505" && candidate.constraint === constraintName) {
+      return true;
+    }
+    current = candidate.cause;
+  }
+  return false;
+}
+
 export interface AuthPasswordSetupTokenRecord {
   id: string;
   firmId: string;
@@ -3468,27 +3480,35 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       throw new CalendarEventUidConflictError(event.uid);
     }
 
-    const [row] = await this.db
-      .insert(schema.calendarEvents)
-      .values(values)
-      .onConflictDoUpdate({
-        target: schema.calendarEvents.id,
-        set: {
-          uid: values.uid,
-          title: values.title,
-          startsAt: values.startsAt,
-          endsAt: values.endsAt,
-          description: values.description,
-          location: values.location,
-          status: values.status,
-          sequence: values.sequence,
-          updatedAt: values.updatedAt,
-          deletedAt: values.deletedAt,
-          updatedByUserId: values.updatedByUserId,
-        },
-        setWhere: sql`${schema.calendarEvents.firmId} = ${event.firmId} and ${schema.calendarEvents.matterId} = ${event.matterId}`,
-      })
-      .returning();
+    let row: typeof schema.calendarEvents.$inferSelect | undefined;
+    try {
+      [row] = await this.db
+        .insert(schema.calendarEvents)
+        .values(values)
+        .onConflictDoUpdate({
+          target: schema.calendarEvents.id,
+          set: {
+            uid: values.uid,
+            title: values.title,
+            startsAt: values.startsAt,
+            endsAt: values.endsAt,
+            description: values.description,
+            location: values.location,
+            status: values.status,
+            sequence: values.sequence,
+            updatedAt: values.updatedAt,
+            deletedAt: values.deletedAt,
+            updatedByUserId: values.updatedByUserId,
+          },
+          setWhere: sql`${schema.calendarEvents.firmId} = ${event.firmId} and ${schema.calendarEvents.matterId} = ${event.matterId}`,
+        })
+        .returning();
+    } catch (error) {
+      if (isPostgresUniqueViolation(error, "calendar_events_firm_matter_uid_idx")) {
+        throw new CalendarEventUidConflictError(event.uid);
+      }
+      throw error;
+    }
     if (!row) {
       throw new CalendarEventScopeConflictError(event.id);
     }

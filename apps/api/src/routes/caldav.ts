@@ -1,13 +1,13 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { CalendarEventUidConflictError } from "@open-practice/database";
 import {
   InvalidCalendarPayloadError,
   UnsupportedCalendarPayloadError,
-  appendAuditEvent,
   buildICalendarEvent,
   calendarEventEtag,
   parseICalendarEvent,
 } from "@open-practice/domain";
-import type { AuditEvent, CalendarEventRecord, NewAuditEvent } from "@open-practice/domain";
+import type { CalendarEventRecord, NewAuditEvent } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { createSessionToken, verifyPassword } from "../http/auth-helpers.js";
 import type { ApiAuthContext } from "../server.js";
@@ -40,31 +40,14 @@ const UNSUPPORTED_CALENDAR_PROPERTIES = new Set([
 const UNSUPPORTED_CALENDAR_COMPONENTS = new Set(["VALARM", "VTODO", "VFREEBUSY", "VJOURNAL"]);
 const SUPPORTED_CALENDAR_METHODS = new Set(["PUBLISH"]);
 
-interface AuditEventSink {
-  recordAuditEvent(event: AuditEvent): Promise<void>;
-}
-
-function auditEventSink(
-  repository: ApiRouteDependencies["repository"],
-): AuditEventSink | undefined {
-  const candidate = repository as ApiRouteDependencies["repository"] & Partial<AuditEventSink>;
-  if (typeof candidate.recordAuditEvent !== "function") return undefined;
-  return { recordAuditEvent: candidate.recordAuditEvent.bind(candidate) };
-}
-
 async function recordCalDavAuditEvent(
   repository: ApiRouteDependencies["repository"],
   event: Omit<NewAuditEvent, "id">,
 ): Promise<void> {
-  const sink = auditEventSink(repository);
-  if (!sink) return;
-  const { events } = await repository.listAuditEvents(event.firmId);
-  await sink.recordAuditEvent(
-    appendAuditEvent(events.at(-1), {
-      ...event,
-      id: `audit-${createSessionToken().slice(0, 16)}`,
-    }),
-  );
+  await repository.appendAuditEvent({
+    ...event,
+    id: `audit-${createSessionToken().slice(0, 16)}`,
+  });
 }
 
 function xmlEscape(value: string): string {
@@ -349,6 +332,22 @@ function sendXml(reply: FastifyReply, statusCode: number, body: string): Fastify
   return reply.code(statusCode).type(XML_CONTENT_TYPE).send(body);
 }
 
+async function withCalDavErrors(
+  reply: FastifyReply,
+  operation: () => Promise<unknown> | unknown,
+): Promise<unknown> {
+  try {
+    return await operation();
+  } catch (error) {
+    const statusCode = (error as { statusCode?: unknown }).statusCode;
+    if (typeof statusCode === "number" && statusCode >= 400 && statusCode < 500) {
+      const message = error instanceof Error ? error.message : "CalDAV request failed";
+      return reply.code(statusCode).type("text/plain; charset=utf-8").send(message);
+    }
+    throw error;
+  }
+}
+
 function options(reply: FastifyReply): FastifyReply {
   return reply
     .header("DAV", "1, 3, calendar-access")
@@ -429,278 +428,296 @@ export function registerCalDavRoutes(
   server.route({
     method: "PROPFIND" as never,
     url: "/caldav/principals/:username/",
-    handler: async (request, reply) => {
-      const auth = await authenticateCalendarRequest(request, repository);
-      if (!auth) return unauthorized(reply);
-      const params = routeParams(request);
-      requireUsername(auth, params);
-      return sendXml(
-        reply,
-        207,
-        multistatus([
-          responseXml(
-            principalHref(auth.username),
-            `<D:displayname>${xmlEscape(auth.context.user.displayName)}</D:displayname><D:current-user-principal>${href(
+    handler: async (request, reply) =>
+      withCalDavErrors(reply, async () => {
+        const auth = await authenticateCalendarRequest(request, repository);
+        if (!auth) return unauthorized(reply);
+        const params = routeParams(request);
+        requireUsername(auth, params);
+        return sendXml(
+          reply,
+          207,
+          multistatus([
+            responseXml(
               principalHref(auth.username),
-            )}</D:current-user-principal><C:calendar-home-set>${href(
-              calendarHomeHref(auth.username),
-            )}</C:calendar-home-set>`,
-          ),
-        ]),
-      );
-    },
+              `<D:displayname>${xmlEscape(auth.context.user.displayName)}</D:displayname><D:current-user-principal>${href(
+                principalHref(auth.username),
+              )}</D:current-user-principal><C:calendar-home-set>${href(
+                calendarHomeHref(auth.username),
+              )}</C:calendar-home-set>`,
+            ),
+          ]),
+        );
+      }),
   });
 
   server.route({
     method: "PROPFIND" as never,
     url: "/caldav/calendars/:username/",
-    handler: async (request, reply) => {
-      const auth = await authenticateCalendarRequest(request, repository);
-      if (!auth) return unauthorized(reply);
-      const params = routeParams(request);
-      requireUsername(auth, params);
-      const matters = await repository.listMattersForUser(auth.context.user);
-      const responses = [
-        responseXml(
-          calendarHomeHref(auth.username),
-          "<D:resourcetype><D:collection/></D:resourcetype><D:displayname>Open Practice Calendars</D:displayname>",
-        ),
-        ...matters.map((matter) =>
+    handler: async (request, reply) =>
+      withCalDavErrors(reply, async () => {
+        const auth = await authenticateCalendarRequest(request, repository);
+        if (!auth) return unauthorized(reply);
+        const params = routeParams(request);
+        requireUsername(auth, params);
+        const matters = await repository.listMattersForUser(auth.context.user);
+        const responses = [
           responseXml(
-            calendarCollectionHref(auth.username, matter.id),
-            `<D:resourcetype><D:collection/><C:calendar/></D:resourcetype><D:displayname>${xmlEscape(
-              matter.title,
-            )}</D:displayname><C:supported-calendar-component-set><C:comp name="VEVENT"/></C:supported-calendar-component-set>`,
+            calendarHomeHref(auth.username),
+            "<D:resourcetype><D:collection/></D:resourcetype><D:displayname>Open Practice Calendars</D:displayname>",
           ),
-        ),
-      ];
-      return sendXml(reply, 207, multistatus(responses));
-    },
+          ...matters.map((matter) =>
+            responseXml(
+              calendarCollectionHref(auth.username, matter.id),
+              `<D:resourcetype><D:collection/><C:calendar/></D:resourcetype><D:displayname>${xmlEscape(
+                matter.title,
+              )}</D:displayname><C:supported-calendar-component-set><C:comp name="VEVENT"/></C:supported-calendar-component-set>`,
+            ),
+          ),
+        ];
+        return sendXml(reply, 207, multistatus(responses));
+      }),
   });
 
   server.route({
     method: "PROPFIND" as never,
     url: "/caldav/calendars/:username/:matterId/",
-    handler: async (request, reply) => {
-      const auth = await authenticateCalendarRequest(request, repository);
-      if (!auth) return unauthorized(reply);
-      const params = routeParams(request);
-      requireUsername(auth, params);
-      assertCalendarAccess(auth.context, "read", params.matterId!);
-      const events = await repository.listCalendarEvents(auth.context.firmId, {
-        matterId: params.matterId!,
-      });
-      const responses = [
-        responseXml(
-          calendarCollectionHref(auth.username, params.matterId!),
-          `<D:resourcetype><D:collection/><C:calendar/></D:resourcetype><D:displayname>${xmlEscape(
-            params.matterId!,
-          )}</D:displayname><C:supported-calendar-component-set><C:comp name="VEVENT"/></C:supported-calendar-component-set>`,
-        ),
-        ...events.map((event) =>
+    handler: async (request, reply) =>
+      withCalDavErrors(reply, async () => {
+        const auth = await authenticateCalendarRequest(request, repository);
+        if (!auth) return unauthorized(reply);
+        const params = routeParams(request);
+        requireUsername(auth, params);
+        assertCalendarAccess(auth.context, "read", params.matterId!);
+        const events = await repository.listCalendarEvents(auth.context.firmId, {
+          matterId: params.matterId!,
+        });
+        const responses = [
           responseXml(
-            calendarObjectHref(auth.username, params.matterId!, event.id),
-            eventProps(event, false),
+            calendarCollectionHref(auth.username, params.matterId!),
+            `<D:resourcetype><D:collection/><C:calendar/></D:resourcetype><D:displayname>${xmlEscape(
+              params.matterId!,
+            )}</D:displayname><C:supported-calendar-component-set><C:comp name="VEVENT"/></C:supported-calendar-component-set>`,
           ),
-        ),
-      ];
-      return sendXml(reply, 207, multistatus(responses));
-    },
+          ...events.map((event) =>
+            responseXml(
+              calendarObjectHref(auth.username, params.matterId!, event.id),
+              eventProps(event, false),
+            ),
+          ),
+        ];
+        return sendXml(reply, 207, multistatus(responses));
+      }),
   });
 
   server.route({
     method: "REPORT" as never,
     url: "/caldav/calendars/:username/:matterId/",
-    handler: async (request, reply) => {
-      const auth = await authenticateCalendarRequest(request, repository);
-      if (!auth) return unauthorized(reply);
-      const params = routeParams(request);
-      requireUsername(auth, params);
-      assertCalendarAccess(auth.context, "read", params.matterId!);
-      const body = requestBody(request);
-      try {
-        assertSupportedCalDavReportPayload(body);
-      } catch (error) {
-        if (error instanceof UnsupportedCalendarPayloadError) {
-          return reply.code(422).send(error.message);
+    handler: async (request, reply) =>
+      withCalDavErrors(reply, async () => {
+        const auth = await authenticateCalendarRequest(request, repository);
+        if (!auth) return unauthorized(reply);
+        const params = routeParams(request);
+        requireUsername(auth, params);
+        assertCalendarAccess(auth.context, "read", params.matterId!);
+        const body = requestBody(request);
+        try {
+          assertSupportedCalDavReportPayload(body);
+        } catch (error) {
+          if (error instanceof UnsupportedCalendarPayloadError) {
+            return reply.code(422).send(error.message);
+          }
+          throw error;
         }
-        throw error;
-      }
-      const events = isCalendarMultiget(body)
-        ? (
-            await Promise.all(
-              multigetEventIds(body).map((eventId) =>
-                repository.getCalendarEvent(auth.context.firmId, params.matterId!, eventId),
+        const events = isCalendarMultiget(body)
+          ? (
+              await Promise.all(
+                multigetEventIds(body).map((eventId) =>
+                  repository.getCalendarEvent(auth.context.firmId, params.matterId!, eventId),
+                ),
+              )
+            ).filter((event): event is CalendarEventRecord => Boolean(event))
+          : await repository.listCalendarEvents(auth.context.firmId, {
+              matterId: params.matterId!,
+              ...parseCalendarTimeRange(body),
+            });
+        return sendXml(
+          reply,
+          207,
+          multistatus(
+            events.map((event) =>
+              responseXml(
+                calendarObjectHref(auth.username, params.matterId!, event.id),
+                eventProps(event, true),
               ),
-            )
-          ).filter((event): event is CalendarEventRecord => Boolean(event))
-        : await repository.listCalendarEvents(auth.context.firmId, {
-            matterId: params.matterId!,
-            ...parseCalendarTimeRange(body),
-          });
-      return sendXml(
-        reply,
-        207,
-        multistatus(
-          events.map((event) =>
-            responseXml(
-              calendarObjectHref(auth.username, params.matterId!, event.id),
-              eventProps(event, true),
             ),
           ),
-        ),
-      );
-    },
+        );
+      }),
   });
 
   server.route({
     method: "GET",
     url: "/caldav/calendars/:username/:matterId/:eventId.ics",
-    handler: async (request, reply) => {
-      const auth = await authenticateCalendarRequest(request, repository);
-      if (!auth) return unauthorized(reply);
-      const params = routeParams(request);
-      requireUsername(auth, params);
-      assertCalendarAccess(auth.context, "read", params.matterId!);
-      const event = await repository.getCalendarEvent(
-        auth.context.firmId,
-        params.matterId!,
-        params.eventId!,
-      );
-      if (!event) return reply.code(404).send("Calendar event not found");
-      return reply
-        .header("ETag", calendarEventEtag(event))
-        .type("text/calendar; charset=utf-8")
-        .send(
-          `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Open Practice//Matter Calendar//EN\r\nCALSCALE:GREGORIAN\r\n${buildICalendarEvent(
-            event,
-          )}\r\nEND:VCALENDAR\r\n`,
+    handler: async (request, reply) =>
+      withCalDavErrors(reply, async () => {
+        const auth = await authenticateCalendarRequest(request, repository);
+        if (!auth) return unauthorized(reply);
+        const params = routeParams(request);
+        requireUsername(auth, params);
+        assertCalendarAccess(auth.context, "read", params.matterId!);
+        const event = await repository.getCalendarEvent(
+          auth.context.firmId,
+          params.matterId!,
+          params.eventId!,
         );
-    },
+        if (!event) return reply.code(404).send("Calendar event not found");
+        return reply
+          .header("ETag", calendarEventEtag(event))
+          .type("text/calendar; charset=utf-8")
+          .send(
+            `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Open Practice//Matter Calendar//EN\r\nCALSCALE:GREGORIAN\r\n${buildICalendarEvent(
+              event,
+            )}\r\nEND:VCALENDAR\r\n`,
+          );
+      }),
   });
 
   server.route({
     method: "PUT",
     url: "/caldav/calendars/:username/:matterId/:eventId.ics",
-    handler: async (request, reply) => {
-      const auth = await authenticateCalendarRequest(request, repository);
-      if (!auth) return unauthorized(reply);
-      const params = routeParams(request);
-      requireUsername(auth, params);
-      const existing = await repository.getCalendarEvent(
-        auth.context.firmId,
-        params.matterId!,
-        params.eventId!,
-      );
-      assertCalendarAccess(auth.context, existing ? "update" : "create", params.matterId!);
-      if (existing) {
-        assertMatchingEtag(request, existing);
-      } else {
-        assertCreatePrecondition(request);
-      }
-
-      let parsed: ReturnType<typeof parseICalendarEvent>;
-      const body = requestBody(request);
-      try {
-        assertSupportedCalendarWritePayload(body);
-        parsed = parseICalendarEvent(body);
-      } catch (error) {
-        if (error instanceof UnsupportedCalendarPayloadError) {
-          return reply.code(422).send(error.message);
+    handler: async (request, reply) =>
+      withCalDavErrors(reply, async () => {
+        const auth = await authenticateCalendarRequest(request, repository);
+        if (!auth) return unauthorized(reply);
+        const params = routeParams(request);
+        requireUsername(auth, params);
+        const existing = await repository.getCalendarEvent(
+          auth.context.firmId,
+          params.matterId!,
+          params.eventId!,
+        );
+        assertCalendarAccess(auth.context, existing ? "update" : "create", params.matterId!);
+        if (existing) {
+          assertMatchingEtag(request, existing);
+        } else {
+          assertCreatePrecondition(request);
         }
-        if (error instanceof InvalidCalendarPayloadError) {
-          return reply.code(400).send(error.message);
-        }
-        throw error;
-      }
-      const conflicting = await repository.getCalendarEventByUid(
-        auth.context.firmId,
-        params.matterId!,
-        parsed.uid,
-      );
-      if (conflicting && conflicting.id !== params.eventId) {
-        return reply.code(409).send("Calendar event UID already exists in this matter");
-      }
 
-      const now = new Date().toISOString();
-      const event = await repository.upsertCalendarEvent({
-        id: params.eventId || calendarEventIdFromUid(parsed.uid),
-        firmId: auth.context.firmId,
-        matterId: params.matterId!,
-        uid: parsed.uid,
-        title: parsed.title,
-        startsAt: parsed.startsAt,
-        endsAt: parsed.endsAt,
-        description: parsed.description,
-        location: parsed.location,
-        status: parsed.status,
-        sequence: existing ? Math.max(parsed.sequence, existing.sequence + 1) : parsed.sequence,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-        createdByUserId: existing?.createdByUserId ?? auth.context.user.id,
-        updatedByUserId: auth.context.user.id,
-      });
-      await recordCalDavAuditEvent(repository, {
-        firmId: auth.context.firmId,
-        actorId: auth.context.user.id,
-        action: existing ? "calendar.event.updated" : "calendar.event.created",
-        resourceType: "calendar_event",
-        resourceId: event.id,
-        occurredAt: now,
-        metadata: {
-          matterId: event.matterId,
-          uid: event.uid,
-          credentialId: auth.credentialId,
-          source: "caldav",
-        },
-      });
-      return reply
-        .code(existing ? 204 : 201)
-        .header("ETag", calendarEventEtag(event))
-        .send();
-    },
+        let parsed: ReturnType<typeof parseICalendarEvent>;
+        const body = requestBody(request);
+        try {
+          assertSupportedCalendarWritePayload(body);
+          parsed = parseICalendarEvent(body);
+        } catch (error) {
+          if (error instanceof UnsupportedCalendarPayloadError) {
+            return reply.code(422).send(error.message);
+          }
+          if (error instanceof InvalidCalendarPayloadError) {
+            return reply.code(400).send(error.message);
+          }
+          throw error;
+        }
+        const conflicting = await repository.getCalendarEventByUid(
+          auth.context.firmId,
+          params.matterId!,
+          parsed.uid,
+        );
+        if (conflicting && conflicting.id !== params.eventId) {
+          return reply.code(409).send("Calendar event UID already exists in this matter");
+        }
+
+        const now = new Date().toISOString();
+        let event: CalendarEventRecord;
+        try {
+          event = await repository.upsertCalendarEvent({
+            id: params.eventId || calendarEventIdFromUid(parsed.uid),
+            firmId: auth.context.firmId,
+            matterId: params.matterId!,
+            uid: parsed.uid,
+            title: parsed.title,
+            startsAt: parsed.startsAt,
+            endsAt: parsed.endsAt,
+            description: parsed.description,
+            location: parsed.location,
+            status: parsed.status,
+            sequence: existing ? Math.max(parsed.sequence, existing.sequence + 1) : parsed.sequence,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            createdByUserId: existing?.createdByUserId ?? auth.context.user.id,
+            updatedByUserId: auth.context.user.id,
+          });
+        } catch (error) {
+          if (error instanceof CalendarEventUidConflictError) {
+            return reply
+              .code(409)
+              .type("text/plain; charset=utf-8")
+              .send("Calendar event UID already exists in this matter");
+          }
+          throw error;
+        }
+        await recordCalDavAuditEvent(repository, {
+          firmId: auth.context.firmId,
+          actorId: auth.context.user.id,
+          action: existing ? "calendar.event.updated" : "calendar.event.created",
+          resourceType: "calendar_event",
+          resourceId: event.id,
+          occurredAt: now,
+          metadata: {
+            matterId: event.matterId,
+            uid: event.uid,
+            credentialId: auth.credentialId,
+            source: "caldav",
+          },
+        });
+        return reply
+          .code(existing ? 204 : 201)
+          .header("ETag", calendarEventEtag(event))
+          .send();
+      }),
   });
 
   server.route({
     method: "DELETE",
     url: "/caldav/calendars/:username/:matterId/:eventId.ics",
-    handler: async (request, reply) => {
-      const auth = await authenticateCalendarRequest(request, repository);
-      if (!auth) return unauthorized(reply);
-      const params = routeParams(request);
-      requireUsername(auth, params);
-      assertCalendarAccess(auth.context, "delete", params.matterId!);
-      const existing = await repository.getCalendarEvent(
-        auth.context.firmId,
-        params.matterId!,
-        params.eventId!,
-      );
-      if (!existing) return reply.code(404).send("Calendar event not found");
-      assertMatchingEtag(request, existing);
-      const deleted = await repository.deleteCalendarEvent({
-        firmId: auth.context.firmId,
-        matterId: params.matterId!,
-        eventId: params.eventId!,
-        deletedAt: new Date().toISOString(),
-        updatedByUserId: auth.context.user.id,
-      });
-      if (deleted) {
-        await recordCalDavAuditEvent(repository, {
+    handler: async (request, reply) =>
+      withCalDavErrors(reply, async () => {
+        const auth = await authenticateCalendarRequest(request, repository);
+        if (!auth) return unauthorized(reply);
+        const params = routeParams(request);
+        requireUsername(auth, params);
+        assertCalendarAccess(auth.context, "delete", params.matterId!);
+        const existing = await repository.getCalendarEvent(
+          auth.context.firmId,
+          params.matterId!,
+          params.eventId!,
+        );
+        if (!existing) return reply.code(404).send("Calendar event not found");
+        assertMatchingEtag(request, existing);
+        const deleted = await repository.deleteCalendarEvent({
           firmId: auth.context.firmId,
-          actorId: auth.context.user.id,
-          action: "calendar.event.deleted",
-          resourceType: "calendar_event",
-          resourceId: deleted.id,
-          occurredAt: deleted.deletedAt ?? deleted.updatedAt,
-          metadata: {
-            matterId: deleted.matterId,
-            uid: deleted.uid,
-            credentialId: auth.credentialId,
-            source: "caldav",
-          },
+          matterId: params.matterId!,
+          eventId: params.eventId!,
+          deletedAt: new Date().toISOString(),
+          updatedByUserId: auth.context.user.id,
         });
-      }
-      return reply.code(204).send();
-    },
+        if (deleted) {
+          await recordCalDavAuditEvent(repository, {
+            firmId: auth.context.firmId,
+            actorId: auth.context.user.id,
+            action: "calendar.event.deleted",
+            resourceType: "calendar_event",
+            resourceId: deleted.id,
+            occurredAt: deleted.deletedAt ?? deleted.updatedAt,
+            metadata: {
+              matterId: deleted.matterId,
+              uid: deleted.uid,
+              credentialId: auth.credentialId,
+              source: "caldav",
+            },
+          });
+        }
+        return reply.code(204).send();
+      }),
   });
 }
