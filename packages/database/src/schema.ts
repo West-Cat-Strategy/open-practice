@@ -1380,6 +1380,8 @@ export const intakeTemplates = pgTable("intake_templates", {
     .notNull()
     .references(() => firms.id),
   name: text("name").notNull(),
+  description: text("description"),
+  category: text("category").notNull().default("general"),
   provider: text("provider").notNull(),
   externalTemplateId: text("external_template_id").notNull(),
   active: boolean("active").notNull().default(true),
@@ -1390,6 +1392,9 @@ export const intakeTemplates = pgTable("intake_templates", {
     branchRules: [],
     packages: [],
   }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
 });
 
 export const intakeSessions = pgTable("intake_sessions", {

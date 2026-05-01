@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   appendAuditEvent,
   buildBasicDraftTemplates,
+  buildPracticePresetTemplates,
   calculateInvoiceTotals,
   canShareDocumentThroughPortal,
   clientTrustBalanceByMatter,
@@ -213,6 +214,7 @@ export interface FirstRunSetupInput {
   firstContact?: Contact;
   firstMatter?: Matter;
   firstMatterParty?: MatterParty;
+  selectedPresetIds?: string[];
   auditEvent: AuditEvent;
 }
 
@@ -1259,6 +1261,26 @@ function mapDraftAssistRow(row: typeof schema.draftAssistRecords.$inferSelect): 
   };
 }
 
+function mapIntakeTemplateRow(
+  row: typeof schema.intakeTemplates.$inferSelect,
+): IntakeTemplateRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    name: row.name,
+    description: row.description ?? undefined,
+    category: row.category,
+    provider: row.provider as IntakeTemplateRecord["provider"],
+    externalTemplateId: row.externalTemplateId,
+    active: row.active,
+    definitionVersion: row.definitionVersion,
+    definition: row.definition,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    metadata: row.metadata as Record<string, unknown>,
+  };
+}
+
 function mapInboundEmailAddressRow(
   row: typeof schema.inboundEmailAddresses.$inferSelect,
 ): InboundEmailAddressRecord {
@@ -1427,7 +1449,16 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     if (input.firstMatter) this.matters = [clone(input.firstMatter)];
     if (input.firstMatterParty) this.matterParties = [clone(input.firstMatterParty)];
     if (input.webAuthnCredential) this.webAuthnCredentials = [clone(input.webAuthnCredential)];
-    this.draftTemplates = buildBasicDraftTemplates(input.firm.id, input.settings.createdAt);
+    const presetTemplates = buildPracticePresetTemplates({
+      firmId: input.firm.id,
+      timestamp: input.settings.createdAt,
+      selectedPresetIds: input.selectedPresetIds ?? [],
+    });
+    this.draftTemplates = [
+      ...buildBasicDraftTemplates(input.firm.id, input.settings.createdAt),
+      ...presetTemplates.draftTemplates,
+    ];
+    this.intakeTemplates = presetTemplates.intakeTemplates;
     this.auditEvents = [clone(input.auditEvent)];
 
     return {
@@ -3060,13 +3091,30 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
             : null,
         });
       }
+      const presetTemplates = buildPracticePresetTemplates({
+        firmId: input.firm.id,
+        timestamp: input.settings.createdAt,
+        selectedPresetIds: input.selectedPresetIds ?? [],
+      });
       await tx.insert(schema.draftTemplates).values(
-        buildBasicDraftTemplates(input.firm.id, input.settings.createdAt).map((template) => ({
+        [
+          ...buildBasicDraftTemplates(input.firm.id, input.settings.createdAt),
+          ...presetTemplates.draftTemplates,
+        ].map((template) => ({
           ...template,
           createdAt: new Date(template.createdAt),
           updatedAt: new Date(template.updatedAt),
         })),
       );
+      if (presetTemplates.intakeTemplates.length > 0) {
+        await tx.insert(schema.intakeTemplates).values(
+          presetTemplates.intakeTemplates.map((template) => ({
+            ...template,
+            createdAt: new Date(template.createdAt),
+            updatedAt: new Date(template.updatedAt),
+          })),
+        );
+      }
       await tx.insert(schema.auditEvents).values({
         ...input.auditEvent,
         occurredAt: new Date(input.auditEvent.occurredAt),
@@ -4688,16 +4736,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .select()
       .from(schema.intakeTemplates)
       .where(eq(schema.intakeTemplates.firmId, firmId));
-    return rows.map((row) => ({
-      id: row.id,
-      firmId: row.firmId,
-      name: row.name,
-      provider: row.provider as IntakeTemplateRecord["provider"],
-      externalTemplateId: row.externalTemplateId,
-      active: row.active,
-      definitionVersion: row.definitionVersion,
-      definition: row.definition,
-    }));
+    return rows.map(mapIntakeTemplateRow);
   }
 
   async listIntakeSessions(

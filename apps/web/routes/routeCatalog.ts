@@ -15,7 +15,7 @@ export type OpenPracticeRouteId =
   | "queues";
 
 export type OpenPracticeRouteArea = "workspace" | "operations" | "finance" | "review";
-export type OpenPracticeDashboardSectionKey = DashboardSectionKey | "externalUploads";
+export type OpenPracticeDashboardSectionKey = DashboardSectionKey | "externalUploads" | "queues";
 
 export interface OpenPracticeRouteCatalogEntry {
   id: OpenPracticeRouteId;
@@ -49,7 +49,6 @@ export type DashboardRouteSelectionStatus =
   | "matched"
   | "unknown"
   | "disabled"
-  | "queue"
   | "non_sidebar";
 
 export interface DashboardRouteSelection {
@@ -185,10 +184,11 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     title: "Operational Queues",
     shortLabel: "Queues",
     path: "/?section=queues",
+    sectionKey: "queues",
     area: "operations",
     requiresMatterContext: false,
     order: 80,
-    showInSidebar: false,
+    showInSidebar: true,
   },
 ];
 
@@ -280,6 +280,16 @@ export function buildSidebarNavigationSections(input: {
       });
     }
   }
+  const queuesEntry = sidebarEntryBySectionKey.get("queues");
+  const hasQueuesCandidate = displayCandidates.some((candidate) => candidate.key === "queues");
+  if (queuesEntry && !hasQueuesCandidate) {
+    displayCandidates.push({
+      key: "queues",
+      label: queuesEntry.shortLabel,
+      enabled: true,
+      order: queuesEntry.order,
+    });
+  }
 
   return displayCandidates
     .sort((left, right) => left.order - right.order)
@@ -323,15 +333,6 @@ export function resolveDashboardRouteSelection(input: {
       status: "unknown",
       requestedSection,
       entry: null,
-    };
-  }
-
-  if (entry.id === "queues") {
-    return {
-      sectionKey: fallbackSection,
-      status: "queue",
-      requestedSection,
-      entry,
     };
   }
 

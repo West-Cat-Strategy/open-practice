@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyPracticeSetupPreset,
+  parsePracticeAreas,
+  practiceSetupPresets,
   selectStartupView,
   validateSetupWizardState,
   type SetupWizardState,
@@ -41,6 +44,7 @@ function state(overrides: Partial<SetupWizardState> = {}): SetupWizardState {
     matterTitle: "",
     matterPracticeArea: "",
     matterJurisdiction: "BC",
+    selectedPresetIds: [],
     ...overrides,
   };
 }
@@ -131,5 +135,51 @@ describe("setup wizard startup and validation", () => {
         }),
       ).valid,
     ).toBe(true);
+  });
+
+  it("applies a practice preset while keeping overridden fields valid", () => {
+    const preset = practiceSetupPresets.find(
+      (candidate) => candidate.id === "bc-residential-tenancy",
+    );
+    expect(preset).toBeDefined();
+
+    const presetState = applyPracticeSetupPreset(state(), preset!);
+    expect(parsePracticeAreas(presetState.practiceAreasText)).toEqual(["Residential tenancy"]);
+    expect(parsePracticeAreas(presetState.practitionerJurisdictionsText)).toEqual(["BC"]);
+    expect(presetState.selectedPresetIds).toEqual(["bc-residential-tenancy"]);
+    expect(presetState.createFirstMatter).toBe(false);
+    expect(presetState.matterPracticeArea).toBe("Residential tenancy");
+    expect(presetState.matterJurisdiction).toBe("BC");
+
+    const manuallyOverridden = {
+      ...presetState,
+      practiceAreasText: `${presetState.practiceAreasText}\nIndigenous law`,
+      practitionerJurisdictionsText: "BC\nCANADA",
+      createFirstMatter: true,
+      clientName: "Synthetic Client",
+      matterTitle: "Custom first file",
+      matterPracticeArea: "Indigenous law",
+    };
+
+    const validation = validateSetupWizardState(manuallyOverridden);
+    expect(validation.valid).toBe(true);
+    expect(validation.practiceAreas).toContain("Indigenous law");
+    expect(validation.jurisdictions).toEqual(["BC", "CANADA"]);
+  });
+
+  it("surfaces multi-jurisdiction preset defaults without locking customization", () => {
+    const preset = practiceSetupPresets.find(
+      (candidate) => candidate.id === "canada-small-business-records",
+    );
+    expect(preset).toBeDefined();
+
+    const presetState = applyPracticeSetupPreset(state(), preset!);
+
+    expect(parsePracticeAreas(presetState.practitionerJurisdictionsText)).toEqual([
+      "BC",
+      "ON",
+      "CANADA",
+    ]);
+    expect(presetState.matterJurisdiction).toBe("BC");
   });
 });

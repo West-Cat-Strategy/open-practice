@@ -70,10 +70,11 @@ describe("Open Practice route catalog", () => {
     ]);
   });
 
-  it("keeps queues cataloged without showing it in the sidebar order", () => {
+  it("keeps queues cataloged in the sidebar order", () => {
     expect(getRouteCatalogEntry("queues")).toMatchObject({
       title: "Operational Queues",
-      showInSidebar: false,
+      sectionKey: "queues",
+      showInSidebar: true,
     });
     expect(getSidebarRouteCatalogEntries().map((entry) => entry.id)).toEqual([
       "matters",
@@ -87,6 +88,7 @@ describe("Open Practice route catalog", () => {
       "signatures",
       "intake",
       "audit",
+      "queues",
     ]);
   });
 
@@ -97,6 +99,7 @@ describe("Open Practice route catalog", () => {
     expect(matchRouteCatalogEntry("/?section=externalUploads")?.id).toBe("externalUploads");
     expect(matchRouteCatalogEntry("/?section=drafting")?.id).toBe("drafting");
     expect(matchRouteCatalogEntry("/?section=calendar")?.id).toBe("calendar");
+    expect(matchRouteCatalogEntry("/?section=queues")?.id).toBe("queues");
     expect(matchRouteCatalogEntry("/?section=unknown")).toBeNull();
   });
 
@@ -143,19 +146,22 @@ describe("Open Practice route catalog", () => {
     });
   });
 
-  it("keeps queues and non-sidebar catalog entries from becoming active dashboard sections", () => {
-    const nonSidebarEntries = routeCatalog.filter((entry) => !entry.showInSidebar);
-
-    expect(nonSidebarEntries.map((entry) => entry.id)).toEqual(["queues"]);
+  it("hydrates queue dashboard links as a real section", () => {
     expect(
       resolveDashboardRouteSelection({
         requestedSection: "queues",
         navigationSections: enabledSidebarNavigation(),
       }),
     ).toMatchObject({
-      sectionKey: "matters",
-      status: "queue",
-      entry: expect.objectContaining({ id: "queues", showInSidebar: false }),
+      sectionKey: "queues",
+      status: "matched",
+      entry: expect.objectContaining({ id: "queues", showInSidebar: true }),
     });
+  });
+
+  it("keeps non-sidebar catalog entries from becoming active dashboard sections", () => {
+    const nonSidebarEntries = routeCatalog.filter((entry) => !entry.showInSidebar);
+
+    expect(nonSidebarEntries).toEqual([]);
   });
 });

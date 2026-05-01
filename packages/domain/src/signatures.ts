@@ -332,11 +332,16 @@ export interface IntakeTemplateRecord {
   id: string;
   firmId: string;
   name: string;
+  description?: string;
+  category: string;
   provider: AutomationSessionRef["provider"];
   externalTemplateId: string;
   active: boolean;
   definitionVersion: number;
   definition: EmbeddedIntakeTemplateDefinition;
+  createdAt: string;
+  updatedAt: string;
+  metadata: Record<string, unknown>;
 }
 
 export interface IntakeSessionRecord {
