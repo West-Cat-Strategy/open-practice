@@ -40,6 +40,11 @@ type PublicDocument = Pick<
   "id" | "matterId" | "title" | "classification" | "version" | "uploadedAt" | "verifiedAt"
 >;
 
+type PublicShare = Pick<
+  ShareLinkRecord,
+  "id" | "permissions" | "expiresAt" | "requireEmailVerification" | "createdAt"
+>;
+
 function assertShareAccess(
   context: ApiAuthContext,
   request: Omit<AccessRequest, "firmId" | "user">,
@@ -57,6 +62,16 @@ function sanitizeShare(link: ShareLinkRecord): Omit<ShareLinkRecord, "tokenHash"
     permissions: link.permissions,
     expiresAt: link.expiresAt,
     revokedAt: link.revokedAt,
+    requireEmailVerification: link.requireEmailVerification,
+    createdAt: link.createdAt,
+  };
+}
+
+function publicShare(link: ShareLinkRecord): PublicShare {
+  return {
+    id: link.id,
+    permissions: link.permissions,
+    expiresAt: link.expiresAt,
     requireEmailVerification: link.requireEmailVerification,
     createdAt: link.createdAt,
   };
@@ -99,7 +114,11 @@ function eligibleDocumentsForShare(
 
 function requireShareSecret(jwtSecret: string | undefined): string {
   if (jwtSecret) return jwtSecret;
-  throw Object.assign(new Error("Share link token signing is not configured"), { statusCode: 503 });
+  throw new ApiHttpError(
+    503,
+    "SHARE_TOKEN_SIGNING_NOT_CONFIGURED",
+    "Share link token signing is not configured",
+  );
 }
 
 function defaultExpiry(now: Date): string {
@@ -217,9 +236,7 @@ export function registerShareRoutes(
 
   server.post("/api/shares/:id/revoke", async (request) => {
     const params = parseRequestPart(idParamsSchema, request.params, "params");
-    const existing = (await repository.listShareLinks(request.auth.firmId)).find(
-      (link) => link.id === params.id,
-    );
+    const existing = await repository.getShareLink(request.auth.firmId, params.id);
     if (!existing) {
       throw new ApiHttpError(404, "SHARE_LINK_NOT_FOUND", "Share link was not found");
     }
@@ -246,7 +263,10 @@ export function registerShareRoutes(
         metadata: { matterId: revoked.matterId },
       });
     }
-    return { share: revoked ? sanitizeShare(revoked) : undefined };
+    if (!revoked) {
+      throw new ApiHttpError(404, "SHARE_LINK_NOT_FOUND", "Share link was not found");
+    }
+    return { share: sanitizeShare(revoked) };
   });
 
   server.get("/api/portal/shares/:token", async (request) => {
@@ -282,7 +302,7 @@ export function registerShareRoutes(
           metadata: { outcome: "expired" },
         }),
       );
-      throw new ApiHttpError(410, "SHARE_LINK_EXPIRED", "Share link has expired");
+      throw new ApiHttpError(404, "SHARE_LINK_NOT_FOUND", "Share link was not found");
     }
     if (link.requireEmailVerification) {
       await repository.createAccessLog(
@@ -316,7 +336,7 @@ export function registerShareRoutes(
     );
 
     return {
-      share: sanitizeShare(link),
+      share: publicShare(link),
       documents: eligibleDocuments,
     };
   });

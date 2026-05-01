@@ -175,6 +175,7 @@ export function getSidebarRouteCatalogEntries(): OpenPracticeRouteCatalogEntry[]
 export function buildSidebarNavigationSections(input: {
   billingCanView: boolean;
   capabilitySections: RouteCatalogSectionCapability[];
+  shareLinksEnabled?: boolean;
 }): OpenPracticeSidebarNavigationSection[] {
   const sidebarEntryBySectionKey = new Map(
     getSidebarRouteCatalogEntries().flatMap((entry) =>
@@ -183,9 +184,6 @@ export function buildSidebarNavigationSections(input: {
   );
   const hasBillingCapability = input.capabilitySections.some(
     (section) => section.key === "billing",
-  );
-  const documentsCapability = input.capabilitySections.find(
-    (section) => section.key === "documents",
   );
   const displayCandidates: Array<{
     key: OpenPracticeSidebarSectionKey;
@@ -220,7 +218,7 @@ export function buildSidebarNavigationSections(input: {
   displayCandidates.push({
     key: "shares",
     label: shareLinksEntry.shortLabel,
-    enabled: documentsCapability?.enabled ?? false,
+    enabled: input.shareLinksEnabled ?? false,
     order: shareLinksEntry.order,
   });
 

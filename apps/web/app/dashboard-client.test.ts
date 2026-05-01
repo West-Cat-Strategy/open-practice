@@ -139,6 +139,7 @@ describe("dashboard client behavior", () => {
   it("builds sidebar navigation from catalog order and labels", () => {
     const navigationSections = buildSidebarNavigationSections({
       billingCanView: true,
+      shareLinksEnabled: true,
       capabilitySections: [
         capability("matters"),
         capability("funds"),
@@ -167,6 +168,7 @@ describe("dashboard client behavior", () => {
   it("keeps billing visibility compatible with billing dashboard access", () => {
     const navigationSections = buildSidebarNavigationSections({
       billingCanView: false,
+      shareLinksEnabled: false,
       capabilitySections: [
         capability("matters"),
         capability("funds"),
@@ -186,7 +188,7 @@ describe("dashboard client behavior", () => {
     expect(navigationSections.find((section) => section.key === "shares")).toEqual({
       key: "shares",
       label: "Shares",
-      enabled: true,
+      enabled: false,
     });
     expect(navigationSections.map((section) => section.key)).not.toContain("queues");
   });

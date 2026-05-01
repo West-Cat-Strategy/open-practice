@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
+import { hashToken } from "../http/auth-helpers.js";
 import { registerShareRoutes } from "./shares.js";
 
 const jwtSecret = "test-share-secret-at-least-32-chars";
@@ -169,7 +170,7 @@ describe("share routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      share: { matterId: "matter-001", permissions: ["view_documents"] },
+      share: { id: created.json().share.id, permissions: ["view_documents"] },
       documents: [
         {
           id: "doc-shareable-001",
@@ -177,6 +178,9 @@ describe("share routes", () => {
         },
       ],
     });
+    expect(response.json().share).not.toHaveProperty("firmId");
+    expect(response.json().share).not.toHaveProperty("matterId");
+    expect(response.json().share).not.toHaveProperty("grantedByUserId");
     expect(response.json().documents[0]).not.toHaveProperty("storageKey");
 
     await expect(repository.listAccessLogs("firm-west-legal")).resolves.toMatchObject([
@@ -222,5 +226,33 @@ describe("share routes", () => {
       url: `/api/portal/shares/${created.json().token}`,
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it("hides expired share links from public reads while logging the outcome", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await addShareableDocument(repository);
+    const token = "expired-share-token-at-least-32-chars";
+    await repository.createShareLink({
+      id: "share-link-expired",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      tokenHash: hashToken(token, jwtSecret),
+      grantedByUserId: "user-admin",
+      permissions: ["view_documents"],
+      requireEmailVerification: false,
+      expiresAt: "2000-01-01T00:00:00.000Z",
+      createdAt: "1999-12-31T00:00:00.000Z",
+    });
+
+    const publicServer = testServer({ repository, withAuthHook: false });
+    const response = await publicServer.inject({
+      method: "GET",
+      url: `/api/portal/shares/${token}`,
+    });
+
+    expect(response.statusCode).toBe(404);
+    await expect(repository.listAccessLogs("firm-west-legal")).resolves.toMatchObject([
+      expect.objectContaining({ metadata: { outcome: "expired" } }),
+    ]);
   });
 });

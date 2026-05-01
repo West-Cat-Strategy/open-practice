@@ -301,6 +301,7 @@ export interface OpenPracticeRepository {
   listPortalGrants(firmId: string): Promise<PortalGrant[]>;
   listShareLinks(firmId: string, options?: { matterId?: string }): Promise<ShareLinkRecord[]>;
   createShareLink(link: ShareLinkRecord): Promise<ShareLinkRecord>;
+  getShareLink(firmId: string, id: string): Promise<ShareLinkRecord | undefined>;
   getShareLinkByTokenHash(tokenHash: string): Promise<ShareLinkRecord | undefined>;
   revokeShareLink(input: {
     firmId: string;
@@ -1615,10 +1616,15 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     options: { matterId?: string } = {},
   ): Promise<ShareLinkRecord[]> {
     return clone(
-      this.shareLinks.filter(
-        (link) =>
-          link.firmId === firmId && (!options.matterId || link.matterId === options.matterId),
-      ),
+      this.shareLinks
+        .filter(
+          (link) =>
+            link.firmId === firmId && (!options.matterId || link.matterId === options.matterId),
+        )
+        .sort(
+          (left, right) =>
+            right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id),
+        ),
     );
   }
 
@@ -1637,6 +1643,10 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
     this.shareLinks = [...this.shareLinks, clone(link)];
     return clone(link);
+  }
+
+  async getShareLink(firmId: string, id: string): Promise<ShareLinkRecord | undefined> {
+    return clone(this.shareLinks.find((link) => link.firmId === firmId && link.id === id));
   }
 
   async getShareLinkByTokenHash(tokenHash: string): Promise<ShareLinkRecord | undefined> {
@@ -1666,13 +1676,18 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     options: { shareLinkId?: string; resourceType?: string; resourceId?: string } = {},
   ): Promise<AccessLogRecord[]> {
     return clone(
-      this.accessLogs.filter(
-        (log) =>
-          log.firmId === firmId &&
-          (!options.shareLinkId || log.shareLinkId === options.shareLinkId) &&
-          (!options.resourceType || log.resourceType === options.resourceType) &&
-          (!options.resourceId || log.resourceId === options.resourceId),
-      ),
+      this.accessLogs
+        .filter(
+          (log) =>
+            log.firmId === firmId &&
+            (!options.shareLinkId || log.shareLinkId === options.shareLinkId) &&
+            (!options.resourceType || log.resourceType === options.resourceType) &&
+            (!options.resourceId || log.resourceId === options.resourceId),
+        )
+        .sort(
+          (left, right) =>
+            right.occurredAt.localeCompare(left.occurredAt) || left.id.localeCompare(right.id),
+        ),
     );
   }
 
@@ -3248,7 +3263,19 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   }
 
   async appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent> {
-    const previous = (await this.listAuditEvents(event.firmId)).events.at(-1);
+    const [previousRow] = await this.db
+      .select()
+      .from(schema.auditEvents)
+      .where(eq(schema.auditEvents.firmId, event.firmId))
+      .orderBy(desc(schema.auditEvents.occurredAt))
+      .limit(1);
+    const previous = previousRow
+      ? {
+          ...previousRow,
+          occurredAt: previousRow.occurredAt.toISOString(),
+          metadata: previousRow.metadata as Record<string, unknown>,
+        }
+      : undefined;
     const appended = appendAuditEvent(previous, event);
     await this.db.insert(schema.auditEvents).values({
       ...appended,
@@ -3302,6 +3329,14 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       createdAt: new Date(link.createdAt),
     });
     return clone(link);
+  }
+
+  async getShareLink(firmId: string, id: string): Promise<ShareLinkRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.shareLinks)
+      .where(and(eq(schema.shareLinks.firmId, firmId), eq(schema.shareLinks.id, id)));
+    return row ? mapShareLinkRow(row) : undefined;
   }
 
   async getShareLinkByTokenHash(tokenHash: string): Promise<ShareLinkRecord | undefined> {

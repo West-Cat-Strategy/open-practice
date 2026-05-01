@@ -183,8 +183,9 @@ export default function DashboardClient({
     return buildSidebarNavigationSections({
       billingCanView: billing.canView,
       capabilitySections: capabilities.sections,
+      shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
     });
-  }, [billing.canView, capabilities.sections]);
+  }, [billing.canView, capabilities.sections, shareLinksStatus.createStatus]);
 
   useEffect(() => {
     if (!activeMatter) return;
