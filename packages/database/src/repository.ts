@@ -580,6 +580,8 @@ export interface OpenPracticeRepository {
     firmId: string,
     address: string,
   ): Promise<InboundEmailAddressRecord | undefined>;
+  listInboundEmailAddresses(firmId: string): Promise<InboundEmailAddressRecord[]>;
+  createInboundEmailAddress(address: InboundEmailAddressRecord): Promise<InboundEmailAddressRecord>;
   listInboundEmailMessages(
     firmId: string,
     options?: { matterId?: string; status?: InboundEmailMessageRecord["status"] },
@@ -2937,6 +2939,27 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           candidate.firmId === firmId && candidate.address.trim().toLowerCase() === normalized,
       ),
     );
+  }
+
+  async listInboundEmailAddresses(firmId: string): Promise<InboundEmailAddressRecord[]> {
+    return clone(this.inboundEmailAddresses.filter((address) => address.firmId === firmId));
+  }
+
+  async createInboundEmailAddress(
+    address: InboundEmailAddressRecord,
+  ): Promise<InboundEmailAddressRecord> {
+    const normalized = address.address.trim().toLowerCase();
+    if (
+      this.inboundEmailAddresses.some(
+        (candidate) =>
+          candidate.firmId === address.firmId &&
+          candidate.address.trim().toLowerCase() === normalized,
+      )
+    ) {
+      throw new Error("Inbound email address already exists");
+    }
+    this.inboundEmailAddresses = [...this.inboundEmailAddresses, clone(address)];
+    return clone(address);
   }
 
   async listInboundEmailMessages(
@@ -5391,6 +5414,25 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return rows
       .map(mapInboundEmailAddressRow)
       .find((candidate) => candidate.address.trim().toLowerCase() === normalized);
+  }
+
+  async listInboundEmailAddresses(firmId: string): Promise<InboundEmailAddressRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.inboundEmailAddresses)
+      .where(eq(schema.inboundEmailAddresses.firmId, firmId))
+      .orderBy(asc(schema.inboundEmailAddresses.address));
+    return rows.map(mapInboundEmailAddressRow);
+  }
+
+  async createInboundEmailAddress(
+    address: InboundEmailAddressRecord,
+  ): Promise<InboundEmailAddressRecord> {
+    await this.db.insert(schema.inboundEmailAddresses).values({
+      ...address,
+      createdAt: new Date(address.createdAt),
+    });
+    return address;
   }
 
   async listInboundEmailMessages(
