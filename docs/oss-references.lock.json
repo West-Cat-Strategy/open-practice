@@ -2,6 +2,13 @@
   "generatedFrom": "pnpm refs:clone",
   "references": [
     {
+      "name": "jlawyerorg__j-lawyer-org",
+      "url": "https://github.com/jlawyerorg/j-lawyer-org.git",
+      "commit": "f1d7d6ebe711d836dccd8e6964e1fb471bd3973d",
+      "centralPath": "../reference-repos/repos/jlawyerorg__j-lawyer-org",
+      "compatibilityPath": ".references/oss/jlawyerorg__j-lawyer-org"
+    },
+    {
       "name": "ArkCase__ArkCase",
       "url": "https://github.com/ArkCase/ArkCase.git",
       "commit": "cda48134fe489ce6297030264da0abe886d58b7b",
@@ -9,39 +16,11 @@
       "compatibilityPath": ".references/oss/ArkCase__ArkCase"
     },
     {
-      "name": "LerianStudio__midaz",
-      "url": "https://github.com/LerianStudio/midaz.git",
-      "commit": "12e93bf5a9245814fc268d94ace3bef33252d62d",
-      "centralPath": "../reference-repos/repos/lerianstudio__midaz",
-      "compatibilityPath": ".references/oss/LerianStudio__midaz"
-    },
-    {
-      "name": "apache__fineract",
-      "url": "https://github.com/apache/fineract.git",
-      "commit": "ca738eb752ecb94ed2dcdf29d54bf196866acd79",
-      "centralPath": "../reference-repos/repos/apache__fineract",
-      "compatibilityPath": ".references/oss/apache__fineract"
-    },
-    {
-      "name": "blnkfinance__blnk",
-      "url": "https://github.com/blnkfinance/blnk.git",
-      "commit": "834fdfbb4e3f8ad8f8437f67f5f18e829405d98d",
-      "centralPath": "../reference-repos/repos/blnkfinance__blnk",
-      "compatibilityPath": ".references/oss/blnkfinance__blnk"
-    },
-    {
-      "name": "civicrm__civicrm-core",
-      "url": "https://github.com/civicrm/civicrm-core.git",
-      "commit": "172cdfcdb34b5a114e81646daedcc534293a91cc",
-      "centralPath": "../reference-repos/repos/civicrm__civicrm-core",
-      "compatibilityPath": ".references/oss/civicrm__civicrm-core"
-    },
-    {
-      "name": "docusealco__docuseal",
-      "url": "https://github.com/docusealco/docuseal.git",
-      "commit": "daaa289a5c6830198d7b9d8dec39bad9c03b10ad",
-      "centralPath": "../reference-repos/repos/docusealco__docuseal",
-      "compatibilityPath": ".references/oss/docusealco__docuseal"
+      "name": "NodineLegal__OpenLawOffice",
+      "url": "https://github.com/NodineLegal/OpenLawOffice.git",
+      "commit": "7e0f52004be5b75ccb85124ac8600c6eca38c7d2",
+      "centralPath": "../reference-repos/repos/nodinelegal__openlawoffice",
+      "compatibilityPath": ".references/oss/NodineLegal__OpenLawOffice"
     },
     {
       "name": "jhpyle__docassemble",
@@ -51,11 +30,32 @@
       "compatibilityPath": ".references/oss/jhpyle__docassemble"
     },
     {
-      "name": "jlawyerorg__j-lawyer-org",
-      "url": "https://github.com/jlawyerorg/j-lawyer-org.git",
-      "commit": "f1d7d6ebe711d836dccd8e6964e1fb471bd3973d",
-      "centralPath": "../reference-repos/repos/jlawyerorg__j-lawyer-org",
-      "compatibilityPath": ".references/oss/jlawyerorg__j-lawyer-org"
+      "name": "paperless-ngx__paperless-ngx",
+      "url": "https://github.com/paperless-ngx/paperless-ngx.git",
+      "commit": "b38d112691aa0a74dd6620c62a0932125c9a7dd7",
+      "centralPath": "../reference-repos/repos/paperless-ngx__paperless-ngx",
+      "compatibilityPath": ".references/oss/paperless-ngx__paperless-ngx"
+    },
+    {
+      "name": "papermerge__papermerge-core",
+      "url": "https://github.com/papermerge/papermerge-core.git",
+      "commit": "4a69d097d9f635fad8de57929d775e2199ba5ae8",
+      "centralPath": "../reference-repos/repos/papermerge__papermerge-core",
+      "compatibilityPath": ".references/oss/papermerge__papermerge-core"
+    },
+    {
+      "name": "mayan-edms__Mayan-EDMS",
+      "url": "https://github.com/mayan-edms/Mayan-EDMS.git",
+      "commit": "71788a5196547c61c1ee457ba386cfee98b77daf",
+      "centralPath": "../reference-repos/repos/mayan-edms__mayan-edms",
+      "compatibilityPath": ".references/oss/mayan-edms__Mayan-EDMS"
+    },
+    {
+      "name": "Open-Source-Legal__OpenContracts",
+      "url": "https://github.com/Open-Source-Legal/OpenContracts.git",
+      "commit": "5f3b4536fb8ba71e8646109c1c3d4669d6f49a4a",
+      "centralPath": "../reference-repos/repos/open-source-legal__opencontracts",
+      "compatibilityPath": ".references/oss/Open-Source-Legal__OpenContracts"
     },
     {
       "name": "kimai__kimai",
@@ -65,11 +65,18 @@
       "compatibilityPath": ".references/oss/kimai__kimai"
     },
     {
-      "name": "ledgersmb__LedgerSMB",
-      "url": "https://github.com/ledgersmb/LedgerSMB.git",
-      "commit": "4d91acb523108bc312c0f8964f7791b5cf8a51f7",
-      "centralPath": "../reference-repos/repos/ledgersmb__ledgersmb",
-      "compatibilityPath": ".references/oss/ledgersmb__LedgerSMB"
+      "name": "docusealco__docuseal",
+      "url": "https://github.com/docusealco/docuseal.git",
+      "commit": "daaa289a5c6830198d7b9d8dec39bad9c03b10ad",
+      "centralPath": "../reference-repos/repos/docusealco__docuseal",
+      "compatibilityPath": ".references/oss/docusealco__docuseal"
+    },
+    {
+      "name": "documenso__documenso",
+      "url": "https://github.com/documenso/documenso.git",
+      "commit": "c428170b5ccba392f77a9613b7c088cf1f046574",
+      "centralPath": "../reference-repos/repos/documenso__documenso",
+      "compatibilityPath": ".references/oss/documenso__documenso"
     },
     {
       "name": "opencollective__opencollective",
@@ -93,11 +100,144 @@
       "compatibilityPath": ".references/oss/opencollective__opencollective-frontend"
     },
     {
-      "name": "paperless-ngx__paperless-ngx",
-      "url": "https://github.com/paperless-ngx/paperless-ngx.git",
-      "commit": "b38d112691aa0a74dd6620c62a0932125c9a7dd7",
-      "centralPath": "../reference-repos/repos/paperless-ngx__paperless-ngx",
-      "compatibilityPath": ".references/oss/paperless-ngx__paperless-ngx"
+      "name": "nextcloud__server",
+      "url": "https://github.com/nextcloud/server.git",
+      "commit": "585ca9836712fa3cfb8d821b6363556c02814281",
+      "centralPath": "../reference-repos/repos/nextcloud__server",
+      "compatibilityPath": ".references/oss/nextcloud__server"
+    },
+    {
+      "name": "espocrm__espocrm",
+      "url": "https://github.com/espocrm/espocrm.git",
+      "commit": "96e2c0e0b0a75f731b6178f5d7e1c46a662d2be8",
+      "centralPath": "../reference-repos/repos/espocrm__espocrm",
+      "compatibilityPath": ".references/oss/espocrm__espocrm"
+    },
+    {
+      "name": "SuiteCRM__SuiteCRM-Core",
+      "url": "https://github.com/SuiteCRM/SuiteCRM-Core.git",
+      "commit": "42338167acb43c5c6fa2eb09a892fd75f8f7bad6",
+      "centralPath": "../reference-repos/repos/suitecrm__suitecrm-core",
+      "compatibilityPath": ".references/oss/SuiteCRM__SuiteCRM-Core"
+    },
+    {
+      "name": "twentyhq__twenty",
+      "url": "https://github.com/twentyhq/twenty.git",
+      "commit": "85752f8a6162e2bc4f19c9b0120aa132bdbe1af0",
+      "centralPath": "../reference-repos/repos/twentyhq__twenty",
+      "compatibilityPath": ".references/oss/twentyhq__twenty"
+    },
+    {
+      "name": "formbricks__formbricks",
+      "url": "https://github.com/formbricks/formbricks.git",
+      "commit": "5fae207cd7b91b3ae48cfb2b1d88489a527de26d",
+      "centralPath": "../reference-repos/repos/formbricks__formbricks",
+      "compatibilityPath": ".references/oss/formbricks__formbricks"
+    },
+    {
+      "name": "chatwoot__chatwoot",
+      "url": "https://github.com/chatwoot/chatwoot.git",
+      "commit": "517b67dfd6fee65d91d7de059f6f4e8c564184a4",
+      "centralPath": "../reference-repos/repos/chatwoot__chatwoot",
+      "compatibilityPath": ".references/oss/chatwoot__chatwoot"
+    },
+    {
+      "name": "zulip__zulip",
+      "url": "https://github.com/zulip/zulip.git",
+      "commit": "3d3c754304ee6d86ba2d8d08d457918f12b877c2",
+      "centralPath": "../reference-repos/repos/zulip__zulip",
+      "compatibilityPath": ".references/oss/zulip__zulip"
+    },
+    {
+      "name": "jitsi__jitsi-meet",
+      "url": "https://github.com/jitsi/jitsi-meet.git",
+      "commit": "e165cb53eab01e0109b9625dbab421d09f263e8d",
+      "centralPath": "../reference-repos/repos/jitsi__jitsi-meet",
+      "compatibilityPath": ".references/oss/jitsi__jitsi-meet"
+    },
+    {
+      "name": "element-hq__synapse",
+      "url": "https://github.com/element-hq/synapse.git",
+      "commit": "2e7019ebc8df9b3439ca8fbda37a175a41c77d3e",
+      "centralPath": "../reference-repos/repos/element-hq__synapse",
+      "compatibilityPath": ".references/oss/element-hq__synapse"
+    },
+    {
+      "name": "mattermost__mattermost",
+      "url": "https://github.com/mattermost/mattermost.git",
+      "commit": "082f6ba85a9b019885e9a99ef0a6cf751a452f8a",
+      "centralPath": "../reference-repos/repos/mattermost__mattermost",
+      "compatibilityPath": ".references/oss/mattermost__mattermost"
+    },
+    {
+      "name": "calcom__cal.com",
+      "url": "https://github.com/calcom/cal.com.git",
+      "commit": "1591a50bc5e3769e9cc912b24404bcce38f35d78",
+      "centralPath": "../reference-repos/repos/calcom__cal.com",
+      "compatibilityPath": ".references/oss/calcom__cal.com"
+    },
+    {
+      "name": "activepieces__activepieces",
+      "url": "https://github.com/activepieces/activepieces.git",
+      "commit": "40476cf06f9f89ab6f700f6b6b35ca4ece3b8401",
+      "centralPath": "../reference-repos/repos/activepieces__activepieces",
+      "compatibilityPath": ".references/oss/activepieces__activepieces"
+    },
+    {
+      "name": "surveyjs__survey-library",
+      "url": "https://github.com/surveyjs/survey-library.git",
+      "commit": "332e95aa5b79c31aaf3951c287d2dad7d4185fb5",
+      "centralPath": "../reference-repos/repos/surveyjs__survey-library",
+      "compatibilityPath": ".references/oss/surveyjs__survey-library"
+    },
+    {
+      "name": "apache__camel",
+      "url": "https://github.com/apache/camel.git",
+      "commit": "90e696a5615d206d2ff5815d3c0609baf6de0b41",
+      "centralPath": "../reference-repos/repos/apache__camel",
+      "compatibilityPath": ".references/oss/apache__camel"
+    },
+    {
+      "name": "temporalio__temporal",
+      "url": "https://github.com/temporalio/temporal.git",
+      "commit": "92e1b7b95a5a50eb8783fd250c5ad79963b8b49a",
+      "centralPath": "../reference-repos/repos/temporalio__temporal",
+      "compatibilityPath": ".references/oss/temporalio__temporal"
+    },
+    {
+      "name": "blnkfinance__blnk",
+      "url": "https://github.com/blnkfinance/blnk.git",
+      "commit": "834fdfbb4e3f8ad8f8437f67f5f18e829405d98d",
+      "centralPath": "../reference-repos/repos/blnkfinance__blnk",
+      "compatibilityPath": ".references/oss/blnkfinance__blnk"
+    },
+    {
+      "name": "LerianStudio__midaz",
+      "url": "https://github.com/LerianStudio/midaz.git",
+      "commit": "12e93bf5a9245814fc268d94ace3bef33252d62d",
+      "centralPath": "../reference-repos/repos/lerianstudio__midaz",
+      "compatibilityPath": ".references/oss/LerianStudio__midaz"
+    },
+    {
+      "name": "apache__fineract",
+      "url": "https://github.com/apache/fineract.git",
+      "commit": "ca738eb752ecb94ed2dcdf29d54bf196866acd79",
+      "centralPath": "../reference-repos/repos/apache__fineract",
+      "compatibilityPath": ".references/oss/apache__fineract"
+    },
+    {
+      "name": "civicrm__civicrm-core",
+      "url": "https://github.com/civicrm/civicrm-core.git",
+      "commit": "172cdfcdb34b5a114e81646daedcc534293a91cc",
+      "centralPath": "../reference-repos/repos/civicrm__civicrm-core",
+      "compatibilityPath": ".references/oss/civicrm__civicrm-core"
+    },
+    {
+      "name": "ledgersmb__LedgerSMB",
+      "url": "https://github.com/ledgersmb/LedgerSMB.git",
+      "commit": "4d91acb523108bc312c0f8964f7791b5cf8a51f7",
+      "centralPath": "../reference-repos/repos/ledgersmb__ledgersmb",
+      "compatibilityPath": ".references/oss/ledgersmb__LedgerSMB"
     }
   ]
 }
