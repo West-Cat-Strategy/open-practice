@@ -51,7 +51,7 @@ function assertIntakeAccess(
 
 export function registerIntakeRoutes(
   server: FastifyInstance,
-  { repository, automationProvider }: ApiRouteDependencies,
+  { repository, automationProvider, emailJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/intake-sessions", async (request) => {
     const query = parseRequestPart(intakeSessionQuerySchema, request.query, "query");
@@ -144,7 +144,7 @@ export function registerIntakeRoutes(
         status: created.status,
       },
     });
-    const queuedEmail = await queueRouteEmailOutbox(repository, request.auth, {
+    const queuedEmail = await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
       matterId: created.matterId,
       templateKey: "intake.session.created",
       to: [request.auth.user.email],
@@ -263,7 +263,7 @@ export function registerIntakeRoutes(
         provider: created.provider,
       },
     });
-    const queuedEmail = await queueRouteEmailOutbox(repository, request.auth, {
+    const queuedEmail = await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
       matterId: created.matterId,
       templateKey: "intake.generated_document.created",
       to: [request.auth.user.email],

@@ -23,24 +23,29 @@ const emailPreviewBodySchema = z.object({
   to: z.array(z.string().email()).default([]),
 });
 
-const emailOutboxBodySchema = z.object({
-  matterId: z.string().min(1),
-  templateKey: z.string().min(1),
-  to: z.array(z.string().email()).min(1),
-  cc: z.array(z.string().email()).default([]),
-  bcc: z.array(z.string().email()).default([]),
-  from: z.string().min(1).default("Open Practice <no-reply@open-practice.local>"),
-  subject: z.string().min(1),
-  htmlBody: z.string().default(""),
-  textBody: z.string().default(""),
-  relatedResourceType: relatedResourceTypeSchema.optional(),
-  relatedResourceId: z.string().min(1).optional(),
-  metadata: z
-    .object({
-      correlationId: z.string().min(1).max(128).optional(),
-    })
-    .default({}),
-});
+const emailOutboxBodySchema = z
+  .object({
+    matterId: z.string().min(1),
+    templateKey: z.string().min(1),
+    to: z.array(z.string().email()).min(1),
+    cc: z.array(z.string().email()).default([]),
+    bcc: z.array(z.string().email()).default([]),
+    from: z.string().min(1).default("Open Practice <no-reply@open-practice.local>"),
+    subject: z.string().min(1),
+    htmlBody: z.string().default(""),
+    textBody: z.string().default(""),
+    relatedResourceType: relatedResourceTypeSchema.optional(),
+    relatedResourceId: z.string().min(1).optional(),
+    metadata: z
+      .object({
+        correlationId: z.string().min(1).max(128).optional(),
+      })
+      .default({}),
+  })
+  .refine((body) => body.htmlBody.trim().length > 0 || body.textBody.trim().length > 0, {
+    path: ["textBody"],
+    message: "Either htmlBody or textBody is required",
+  });
 
 type RelatedResourceType = z.infer<typeof relatedResourceTypeSchema>;
 
@@ -118,7 +123,7 @@ async function assertRelatedResourceMatchesMatter(
 
 export function registerEmailRoutes(
   server: FastifyInstance,
-  { repository }: ApiRouteDependencies,
+  { repository, emailJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/email/status", async (request) => {
     const providers = await repository.listProviderSettings(request.auth.firmId, { kind: "smtp" });
@@ -159,7 +164,7 @@ export function registerEmailRoutes(
     });
     await assertRelatedResourceMatchesMatter(repository, request.auth, body);
 
-    const queued = await queueRouteEmailOutbox(repository, request.auth, {
+    const queued = await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
       matterId: body.matterId,
       templateKey: body.templateKey,
       to: body.to,

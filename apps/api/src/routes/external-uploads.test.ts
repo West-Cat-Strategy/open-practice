@@ -8,6 +8,11 @@ const jwtSecret = "test-external-upload-secret-at-least-32-chars";
 const checksum = "d".repeat(64);
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
+const emailJobQueue = {
+  async add(_name: string, _data: unknown, options?: { jobId?: string }) {
+    return { id: options?.jobId ?? "email-job-test" };
+  },
+};
 
 function s3Config(): NonNullable<CreateServerOptions["s3"]> {
   return {
@@ -36,6 +41,7 @@ function testServer(overrides: Partial<CreateServerOptions> = {}) {
       rpID: "localhost",
       origin: "http://localhost:3000",
     },
+    emailJobQueue,
     ...overrides,
   });
   servers.push(server);

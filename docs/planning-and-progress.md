@@ -33,7 +33,7 @@ backlog ideas, and `docs/planning-completed-archive.md` for historical validatio
 
 | ID     | Outcome                            | Concise Proof                                                                                                                                                                         |
 | ------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OP-T36 | Email workflow closure             | Generic SMTP-gated `/api/mail/outbox`, shared outbox helper, source-specific signature/intake notifications, optional create-time share/upload token emails, and tests.               |
+| OP-T36 | Email workflow closure             | Generic SMTP/Redis-gated `/api/mail/outbox`, shared outbox helper, source-specific signature/intake notifications, optional create-time share/upload token emails, and tests.         |
 | OP-T30 | Audit event coverage pass          | Route audit events and assertions cover signatures, intake, drafts, documents, billing, ledger, email outbox, shares, and external uploads, with bodies/tokens out of audit metadata. |
 | OP-T31 | Dashboard section deep links       | `/?section=...` dashboard hydration, sidebar URL sync, and route-catalog fallback behavior for unknown, disabled, queue, and non-sidebar entries without API changes.                 |
 | OP-T29 | External upload capability flow    | Repository-backed upload links, token-scoped S3 intent/complete flow, S3-disabled fallback, access logs, dashboard controls, route catalog coverage, docs, and local gates.           |

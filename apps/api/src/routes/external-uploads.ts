@@ -253,7 +253,7 @@ async function resolvePublicLink(
 
 export function registerExternalUploadRoutes(
   server: FastifyInstance,
-  { repository, s3, jwtSecret }: ApiRouteDependencies & { jwtSecret?: string },
+  { repository, s3, jwtSecret, emailJobQueue }: ApiRouteDependencies & { jwtSecret?: string },
 ): void {
   server.get("/api/external-uploads/status", async () => ({
     status: s3 && jwtSecret ? "available" : "not_configured",
@@ -328,7 +328,7 @@ export function registerExternalUploadRoutes(
       },
     });
     const queuedEmail = body.notificationEmail
-      ? await queueRouteEmailOutbox(repository, request.auth, {
+      ? await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
           matterId: link.matterId,
           templateKey: "external_upload.created",
           to: [body.notificationEmail],

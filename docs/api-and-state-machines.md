@@ -225,12 +225,14 @@ email, AI-assist, or media jobs must not change portal-share, billing, signature
 state without an explicit reviewed transition.
 
 Outbound email queueing is SMTP-provider gated. `POST /api/mail/outbox` requires matter-scoped
-email create access and an enabled SMTP provider setting, then creates the outbox record, queued
-email event, and durable email job lifecycle record together. The audit event records IDs,
-template/provider, recipient count, matter scope, and related resource references only; email bodies
-stay in the outbox record rather than job or audit metadata. Signature, intake, share-link, and
-external-upload create flows reuse the same outbox helper; share and external-upload notification
-emails are create-time only because raw tokens are not recoverable after the response.
+email create access, an enabled SMTP provider setting, configured Redis/BullMQ queue access, and at
+least one non-empty text or HTML body. The route creates the outbox record, queued email event,
+durable email job lifecycle record, and BullMQ email job together before returning `queued`. The
+audit event records IDs, template/provider, recipient count, matter scope, and related resource
+references only; email bodies stay in the outbox record rather than job or audit metadata.
+Signature, intake, share-link, and external-upload create flows reuse the same outbox helper; share
+and external-upload notification emails are create-time only because raw tokens are not recoverable
+after the response.
 
 Provider/bootstrap selection is local-first. `DATABASE_URL` selects PostgreSQL unless
 `OPEN_PRACTICE_USE_MEMORY_REPO=true` or the database URL is absent. `OPEN_PRACTICE_DEV_SEED=true`

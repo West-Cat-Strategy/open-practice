@@ -152,7 +152,7 @@ function accessLogForShare(input: {
 
 export function registerShareRoutes(
   server: FastifyInstance,
-  { repository, jwtSecret }: RegisterShareRouteOptions,
+  { repository, jwtSecret, emailJobQueue }: RegisterShareRouteOptions,
 ): void {
   server.get("/api/shares/status", async () => ({
     status: "available",
@@ -230,7 +230,7 @@ export function registerShareRoutes(
       },
     });
     const queuedEmail = body.notificationEmail
-      ? await queueRouteEmailOutbox(repository, request.auth, {
+      ? await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
           matterId: created.matterId,
           templateKey: "share_link.created",
           to: [body.notificationEmail],

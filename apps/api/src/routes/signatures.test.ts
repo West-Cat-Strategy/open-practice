@@ -5,6 +5,11 @@ import { createApiServer } from "../server.js";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
+const emailJobQueue = {
+  async add(_name: string, _data: unknown, options?: { jobId?: string }) {
+    return { id: options?.jobId ?? "email-job-test" };
+  },
+};
 
 function testServer(overrides: Partial<CreateServerOptions> = {}) {
   const repository = overrides.repository ?? new InMemoryOpenPracticeRepository();
@@ -17,6 +22,7 @@ function testServer(overrides: Partial<CreateServerOptions> = {}) {
       rpID: "localhost",
       origin: "http://localhost:3000",
     },
+    emailJobQueue,
     ...overrides,
   });
   servers.push(server);

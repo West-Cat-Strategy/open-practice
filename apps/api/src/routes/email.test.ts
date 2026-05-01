@@ -5,6 +5,11 @@ import type { ProfessionalRole, User } from "@open-practice/domain";
 import { registerEmailRoutes } from "./email.js";
 
 const servers: FastifyInstance[] = [];
+const emailJobQueue = {
+  async add(_name: string, _data: unknown, options?: { jobId?: string }) {
+    return { id: options?.jobId ?? "email-job-test" };
+  },
+};
 
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
   return {
@@ -27,7 +32,7 @@ function testServer(input: {
   server.addHook("preHandler", async (request) => {
     request.auth = { firmId: authUser.firmId, user: authUser };
   });
-  registerEmailRoutes(server, { repository: input.repository });
+  registerEmailRoutes(server, { repository: input.repository, emailJobQueue });
   servers.push(server);
   return server;
 }
@@ -122,6 +127,7 @@ describe("email routes", () => {
       }),
     ]);
     const [job] = await repository.listJobLifecycleRecords("firm-west-legal");
+    expect(job.bullJobId).toBe(payload.job.id);
     expect(job.metadata).not.toHaveProperty("to");
     expect(job.metadata).not.toHaveProperty("subject");
     expect(job.metadata).not.toHaveProperty("html");
@@ -143,6 +149,34 @@ describe("email routes", () => {
         }),
       ]),
     });
+  });
+
+  it("rejects outbox requests without message body content", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-mailpit",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "mailpit",
+      enabled: true,
+      encryptedConfig: "local-mailpit-profile",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+
+    const response = await testServer({ repository, authUser: user("licensee") }).inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "signature.requested",
+        to: ["client@example.test"],
+        subject: "Signature requested",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
   });
 
   it("rejects misleading related resource links on public outbox requests", async () => {

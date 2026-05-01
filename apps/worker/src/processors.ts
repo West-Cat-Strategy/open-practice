@@ -110,6 +110,8 @@ async function processEmailJob(input: {
     firmId: data.firmId,
     from: email.from,
     to: email.to,
+    cc: email.cc,
+    bcc: email.bcc,
     subject: email.subject,
     html: email.htmlBody,
     text: email.textBody,

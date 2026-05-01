@@ -70,7 +70,7 @@ function assertSignatureAccess(
 
 export function registerSignatureRoutes(
   server: FastifyInstance,
-  { repository, signatureProvider }: ApiRouteDependencies,
+  { repository, signatureProvider, emailJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/signature-requests", async (request) => {
     const query = parseRequestPart(signatureQuerySchema, request.query, "query");
@@ -170,7 +170,7 @@ export function registerSignatureRoutes(
         signerCount: created.signers.length,
       },
     });
-    const queuedEmail = await queueRouteEmailOutbox(repository, request.auth, {
+    const queuedEmail = await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
       matterId: created.request.matterId,
       templateKey: "signature.requested",
       to: created.signers.map((signer) => signer.email),

@@ -10,6 +10,11 @@ interface TestServerOptions {
   repository?: InMemoryOpenPracticeRepository;
   automationProvider?: DocumentAutomationProvider;
 }
+const emailJobQueue = {
+  async add(_name: string, _data: unknown, options?: { jobId?: string }) {
+    return { id: options?.jobId ?? "email-job-test" };
+  },
+};
 
 function firstHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -31,6 +36,7 @@ function testServer({ repository, automationProvider }: TestServerOptions = {}) 
   registerIntakeRoutes(server, {
     repository: testRepository,
     automationProvider,
+    emailJobQueue,
   });
 
   server.setErrorHandler((error, _request, reply) => {

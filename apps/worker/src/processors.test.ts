@@ -20,8 +20,8 @@ describe("worker processors", () => {
         templateKey: "signature.requested",
         status: "queued",
         to: ["client@example.test"],
-        cc: [],
-        bcc: [],
+        cc: ["copy@example.test"],
+        bcc: ["blind-copy@example.test"],
         from: "Open Practice <no-reply@open-practice.local>",
         subject: "Signature requested",
         htmlBody: "",
@@ -54,7 +54,7 @@ describe("worker processors", () => {
           emailId: "email-outbox-worker-test",
           matterId: "matter-001",
           templateKey: "signature.requested",
-          recipientCount: 1,
+          recipientCount: 3,
         },
       },
     });
@@ -85,6 +85,8 @@ describe("worker processors", () => {
     expect(sentMessages).toEqual([
       expect.objectContaining({
         to: ["client@example.test"],
+        cc: ["copy@example.test"],
+        bcc: ["blind-copy@example.test"],
         subject: "Signature requested",
         text: "Please review the signature request.",
       }),

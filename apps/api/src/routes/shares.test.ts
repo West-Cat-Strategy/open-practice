@@ -7,6 +7,11 @@ import { registerShareRoutes } from "./shares.js";
 
 const jwtSecret = "test-share-secret-at-least-32-chars";
 const servers: FastifyInstance[] = [];
+const emailJobQueue = {
+  async add(_name: string, _data: unknown, options?: { jobId?: string }) {
+    return { id: options?.jobId ?? "email-job-test" };
+  },
+};
 
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
   const idByRole: Partial<Record<ProfessionalRole, string>> = {
@@ -37,7 +42,7 @@ function testServer(input: {
       request.auth = { firmId: authUser.firmId, user: authUser };
     });
   }
-  registerShareRoutes(server, { repository: input.repository, jwtSecret });
+  registerShareRoutes(server, { repository: input.repository, jwtSecret, emailJobQueue });
   servers.push(server);
   return server;
 }

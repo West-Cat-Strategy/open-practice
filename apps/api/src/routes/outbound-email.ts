@@ -8,6 +8,7 @@ import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
+import type { ApiJobQueue } from "./types.js";
 
 const DEFAULT_FROM = "Open Practice <no-reply@open-practice.local>";
 
@@ -56,6 +57,7 @@ export function summarizeQueuedRouteEmail(
 
 export async function queueRouteEmailOutbox(
   repository: OpenPracticeRepository,
+  emailJobQueue: ApiJobQueue | undefined,
   auth: ApiAuthContext,
   input: QueueRouteEmailInput,
 ): Promise<QueuedRouteEmail | undefined> {
@@ -74,6 +76,12 @@ export async function queueRouteEmailOutbox(
     }
     return undefined;
   }
+  if (!emailJobQueue) {
+    if (input.required) {
+      throw new ApiHttpError(503, "EMAIL_QUEUE_NOT_CONFIGURED", "Email queue is not configured");
+    }
+    return undefined;
+  }
 
   const now = new Date().toISOString();
   const emailId = crypto.randomUUID();
@@ -81,6 +89,15 @@ export async function queueRouteEmailOutbox(
   const to = [...input.to];
   const cc = [...(input.cc ?? [])];
   const bcc = [...(input.bcc ?? [])];
+  const htmlBody = input.htmlBody?.trim() ? input.htmlBody : "";
+  const textBody = input.textBody?.trim() ? input.textBody : "";
+  if (!htmlBody && !textBody) {
+    throw new ApiHttpError(
+      400,
+      "EMAIL_BODY_REQUIRED",
+      "Email delivery requires either htmlBody or textBody",
+    );
+  }
   const metadata = {
     ...(input.metadata ?? {}),
     matterId: input.matterId,
@@ -97,8 +114,8 @@ export async function queueRouteEmailOutbox(
       bcc,
       from: input.from ?? DEFAULT_FROM,
       subject: input.subject,
-      htmlBody: input.htmlBody ?? "",
-      textBody: input.textBody ?? "",
+      htmlBody,
+      textBody,
       relatedResourceType: input.relatedResourceType,
       relatedResourceId: input.relatedResourceId,
       queuedAt: now,
@@ -134,6 +151,28 @@ export async function queueRouteEmailOutbox(
       },
     },
   });
+  const bullJob = await emailJobQueue.add(
+    "send_email",
+    {
+      firmId: auth.firmId,
+      resourceType: "email_outbox",
+      resourceId: emailId,
+      metadata: {
+        emailId,
+        matterId: input.matterId,
+        provider: enabledProvider.key,
+        templateKey: input.templateKey,
+        recipientCount: to.length + cc.length + bcc.length,
+        relatedResourceType: input.relatedResourceType,
+        relatedResourceId: input.relatedResourceId,
+      },
+    },
+    { jobId },
+  );
+  const updatedJob = await repository.updateJobLifecycleRecord(auth.firmId, queued.job.id, {
+    bullJobId: bullJob.id === undefined ? undefined : String(bullJob.id),
+  });
+  const queuedWithJob = { ...queued, job: updatedJob };
 
   await appendRouteAuditEvent(repository, auth, {
     action: "email_outbox.queued",
@@ -147,9 +186,10 @@ export async function queueRouteEmailOutbox(
       recipientCount: to.length + cc.length + bcc.length,
       relatedResourceType: queued.email.relatedResourceType,
       relatedResourceId: queued.email.relatedResourceId,
-      jobId: queued.job.id,
+      jobId: queuedWithJob.job.id,
+      bullJobId: queuedWithJob.job.bullJobId,
     },
   });
 
-  return queued;
+  return queuedWithJob;
 }

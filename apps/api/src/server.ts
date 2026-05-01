@@ -1,6 +1,7 @@
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { S3Client } from "@aws-sdk/client-s3";
+import { Queue } from "bullmq";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { jwtVerify } from "jose";
 import { z } from "zod";
@@ -36,6 +37,7 @@ import { registerShareRoutes } from "./routes/shares.js";
 import { registerSignatureRoutes } from "./routes/signatures.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerWebAuthnRoutes } from "./routes/webauthn.js";
+import type { ApiJobQueue } from "./routes/types.js";
 import {
   hashToken,
   hashPassword,
@@ -71,6 +73,7 @@ export const envSchema = z.object({
   S3_BUCKET: z.string().default("open-practice-documents"),
   S3_ACCESS_KEY: optionalString,
   S3_SECRET_KEY: optionalString,
+  REDIS_URL: optionalUrl,
   SESSION_TTL_HOURS: z.coerce.number().int().positive().default(12),
   OPEN_PRACTICE_SETUP_KEY: optionalString,
   DOCUSEAL_BASE_URL: optionalUrl,
@@ -110,6 +113,7 @@ interface ApiOptions {
   devFirmId: string;
   signatureProvider?: SignatureProvider;
   automationProvider?: DocumentAutomationProvider;
+  emailJobQueue?: ApiJobQueue;
   sessionTtlHours?: number;
   setupKey?: string;
   s3?: {
@@ -326,23 +330,33 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerDocumentProcessingRoutes(server, { repository: options.repository });
   registerDraftRoutes(server, { repository: options.repository });
   registerJobsRoutes(server, { repository: options.repository });
-  registerEmailRoutes(server, { repository: options.repository });
+  registerEmailRoutes(server, {
+    repository: options.repository,
+    emailJobQueue: options.emailJobQueue,
+  });
   registerInboundEmailRoutes(server, { repository: options.repository });
-  registerShareRoutes(server, { repository: options.repository, jwtSecret: options.jwtSecret });
+  registerShareRoutes(server, {
+    repository: options.repository,
+    jwtSecret: options.jwtSecret,
+    emailJobQueue: options.emailJobQueue,
+  });
   registerExternalUploadRoutes(server, {
     repository: options.repository,
     s3: options.s3,
     jwtSecret: options.jwtSecret,
+    emailJobQueue: options.emailJobQueue,
   });
   registerAuthExtensionRoutes(server);
   registerAuditRoutes(server, { repository: options.repository });
   registerSignatureRoutes(server, {
     repository: options.repository,
     signatureProvider: options.signatureProvider ?? new EmbeddedSignatureProvider(),
+    emailJobQueue: options.emailJobQueue,
   });
   registerIntakeRoutes(server, {
     repository: options.repository,
     automationProvider: options.automationProvider ?? new EmbeddedAutomationProvider(),
+    emailJobQueue: options.emailJobQueue,
   });
   registerQueuesRoutes(server, { repository: options.repository });
 
@@ -402,10 +416,44 @@ function createS3FromEnv(env: ApiEnv): ApiOptions["s3"] {
   };
 }
 
+function redisConnectionFromUrl(redisUrl: string): {
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+  db?: number;
+  tls?: Record<string, never>;
+} {
+  const parsed = new URL(redisUrl);
+  const db = parsed.pathname && parsed.pathname !== "/" ? Number(parsed.pathname.slice(1)) : 0;
+  return {
+    host: parsed.hostname,
+    port: parsed.port ? Number(parsed.port) : 6379,
+    username: parsed.username ? decodeURIComponent(parsed.username) : undefined,
+    password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
+    db: Number.isFinite(db) ? db : 0,
+    tls: parsed.protocol === "rediss:" ? {} : undefined,
+  };
+}
+
+function createEmailJobQueueFromEnv(env: ApiEnv): Queue | undefined {
+  if (!env.REDIS_URL) return undefined;
+  return new Queue("email", {
+    connection: redisConnectionFromUrl(env.REDIS_URL),
+    defaultJobOptions: {
+      attempts: 5,
+      backoff: { type: "exponential", delay: 30_000 },
+      removeOnComplete: 1_000,
+      removeOnFail: false,
+    },
+  });
+}
+
 if (process.env.NODE_ENV !== "test") {
   const env = envSchema.parse(process.env);
   validateProductionReadiness(env);
   const { repository, close } = await createRepositoryFromEnv(env);
+  const emailJobQueue = createEmailJobQueueFromEnv(env);
   const server = createApiServer({
     repository,
     jwtSecret: env.AUTH_JWT_SECRET,
@@ -414,6 +462,7 @@ if (process.env.NODE_ENV !== "test") {
     devUserId: env.DEV_AUTH_USER_ID,
     signatureProvider: new EmbeddedSignatureProvider(),
     automationProvider: new EmbeddedAutomationProvider(),
+    emailJobQueue,
     sessionTtlHours: env.SESSION_TTL_HOURS,
     setupKey: env.OPEN_PRACTICE_SETUP_KEY,
     s3: createS3FromEnv(env),
@@ -423,6 +472,8 @@ if (process.env.NODE_ENV !== "test") {
       origin: env.WEBAUTHN_ORIGIN,
     },
   });
-  process.once("SIGTERM", () => void close?.());
+  process.once("SIGTERM", () => {
+    void Promise.all([emailJobQueue?.close(), close?.()]).then(() => process.exit(0));
+  });
   await server.listen({ host: "0.0.0.0", port: env.API_PORT });
 }
