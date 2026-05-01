@@ -27,6 +27,7 @@ import {
   sampleTrustTransferRequests,
   sampleUsers,
 } from "@open-practice/domain/sample-data";
+import { eq } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "./runtime.js";
 import * as schema from "./schema.js";
 
@@ -252,6 +253,19 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
       .onConflictDoNothing();
   }
   await db.insert(schema.intakeTemplates).values(sampleIntakeTemplates).onConflictDoNothing();
+  for (const template of sampleIntakeTemplates) {
+    await db
+      .update(schema.intakeTemplates)
+      .set({
+        name: template.name,
+        provider: template.provider,
+        externalTemplateId: template.externalTemplateId,
+        active: template.active,
+        definitionVersion: template.definitionVersion,
+        definition: template.definition,
+      })
+      .where(eq(schema.intakeTemplates.id, template.id));
+  }
   await db
     .insert(schema.draftTemplates)
     .values(

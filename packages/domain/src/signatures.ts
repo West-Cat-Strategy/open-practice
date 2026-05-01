@@ -1,3 +1,5 @@
+import type { EmbeddedIntakeTemplateDefinition, IntakeResolutionSnapshot } from "./intake.js";
+
 export interface SignatureSigner {
   name: string;
   email: string;
@@ -307,6 +309,8 @@ export interface RenderAutomatedDocumentInput {
   matterId: string;
   sessionExternalId: string;
   documentTitle: string;
+  packageId?: string;
+  packageDocumentId?: string;
 }
 
 export interface GeneratedDocumentRef {
@@ -331,6 +335,8 @@ export interface IntakeTemplateRecord {
   provider: AutomationSessionRef["provider"];
   externalTemplateId: string;
   active: boolean;
+  definitionVersion: number;
+  definition: EmbeddedIntakeTemplateDefinition;
 }
 
 export interface IntakeSessionRecord {
@@ -354,6 +360,7 @@ export interface AnswerSnapshotRecord {
   intakeSessionId: string;
   capturedAt: string;
   answers: Record<string, unknown>;
+  resolution: IntakeResolutionSnapshot;
 }
 
 export interface GeneratedDocumentRecord {
@@ -365,6 +372,8 @@ export interface GeneratedDocumentRecord {
   externalId: string;
   title: string;
   documentId?: string;
+  packageId?: string;
+  packageDocumentId?: string;
   storageKey?: string;
   checksumSha256?: string;
   evidence: Record<string, unknown>;

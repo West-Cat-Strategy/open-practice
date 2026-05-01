@@ -27,6 +27,8 @@ import {
   inboundEmailMessages,
   invoiceLines,
   invoices,
+  generatedDocuments,
+  intakeTemplates,
   intakeSessions,
   jobLifecycleRecords,
   manualPayments,
@@ -312,7 +314,19 @@ describe("database schema hardening", () => {
 
   it("persists answer snapshots for intake sessions", () => {
     expect(getTableConfig(answerSnapshots).columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["firm_id", "intake_session_id", "captured_at", "answers"]),
+      expect.arrayContaining([
+        "firm_id",
+        "intake_session_id",
+        "captured_at",
+        "answers",
+        "resolution",
+      ]),
+    );
+    expect(getTableConfig(intakeTemplates).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["definition_version", "definition"]),
+    );
+    expect(getTableConfig(generatedDocuments).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["package_id", "package_document_id"]),
     );
   });
 

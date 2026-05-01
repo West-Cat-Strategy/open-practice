@@ -19,90 +19,91 @@ The billing lane exposes operational APIs for time, expenses, invoices, manual p
 trust-transfer-request records. It does not include live payment processing, jurisdiction-certified
 accounting/tax advice, or automatic trust-ledger posting from billing actions.
 
-| Route                                                             | Purpose                                                                                                         |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `GET /health`                                                     | Liveness and repository mode (`memory` or `postgres`).                                                          |
-| `GET /api/setup/status`                                           | First-run bootstrap status, including blocked partial-state and setup-key requirement flags.                    |
-| `POST /api/setup/complete`                                        | Guarded first-run creation of firm settings, owner admin auth, optional first matter, audit event, and session. |
-| `POST /api/auth/login`                                            | Embedded session login with firm ID, email, and password.                                                       |
-| `POST /api/auth/logout`                                           | Revokes the current embedded session and clears the session cookie.                                             |
-| `GET /api/auth/session`                                           | Current embedded-auth session user.                                                                             |
-| `POST /api/auth/password-setup-tokens`                            | Owner-admin password setup token creation for local invitation/setup flows.                                     |
-| `POST /api/auth/password-setup`                                   | Consumes a setup token and stores a local password hash.                                                        |
-| `GET /api/session`                                                | Current authenticated user.                                                                                     |
-| `GET /api/capabilities`                                           | Permission-aware dashboard sections for the current user and first assigned matter.                             |
-| `GET /api/overview`                                               | Firm overview metrics.                                                                                          |
-| `GET /api/matters`                                                | Matters visible to the current user.                                                                            |
-| `POST /api/conflicts/check`                                       | Conflict search with audit recording for prospective names, aliases, identifiers, and party role.               |
-| `GET /api/ledger?matterId=`                                       | Trust ledger accounts, entries, posted transactions, and balances. Matter-scoped users must provide matter ID.  |
-| `POST /api/ledger/transactions`                                   | Balanced, idempotent trust transaction posting.                                                                 |
-| `GET /api/audit`                                                  | Firm audit events and hash-chain validity.                                                                      |
-| `GET /api/documents/presign-upload`                               | S3 PUT upload intent, storage key, document intent record, and required scan marker.                            |
-| `POST /api/documents/:id/upload-complete`                         | Checksum and scan-state completion for an upload intent.                                                        |
-| `POST /api/documents/:id/scan-status`                             | Explicit malware/scan-state update for an existing document.                                                    |
-| `GET /api/signature-requests?matterId=`                           | Signature requests visible firm-wide or across assigned matters.                                                |
-| `POST /api/signature-requests`                                    | Provider-neutral signature submission, initial provider event, and SMTP-gated signer email queueing.            |
-| `POST /api/signature-requests/provider-events`                    | Authenticated legacy/provider-neutral status event for matching provider/external IDs.                          |
-| `POST /api/signature-requests/:id/embedded-events`                | Embedded signature viewed/completed/declined event with consent/evidence capture.                               |
-| `GET /api/signature-requests/:id/events`                          | Provider event history for one signature request.                                                               |
-| `GET /api/intake-sessions?matterId=`                              | Intake templates and sessions visible firm-wide or across assigned matters.                                     |
-| `POST /api/intake-sessions`                                       | Embedded intake session record, with Open Practice remaining system of record and SMTP-gated staff notice.      |
-| `GET /api/intake-sessions/:id/answer-snapshots`                   | Answer snapshots for one intake session.                                                                        |
-| `POST /api/intake-sessions/:id/answer-snapshots`                  | Captured intake answers for one intake session.                                                                 |
-| `POST /api/intake-sessions/:id/generated-documents`               | Generated document metadata tied to an intake session, with SMTP-gated staff notice.                            |
-| `POST /api/ledger/transactions/:id/approvals`                     | Maker-checker approval decision for a trust transaction boundary.                                               |
-| `POST /api/ledger/reconciliations`                                | Trust-account reconciliation record with matched/exception status.                                              |
-| `GET /api/queues`                                                 | Permission-aware operational queues for matters, documents, signatures, intake, ledger, and audit review.       |
-| `GET /api/time-entries?matterId=&status=`                         | Time entries visible firm-wide or across assigned matters.                                                      |
-| `POST /api/time-entries`                                          | Time-entry capture with performed date, immutable rate snapshot, and draft billing status.                      |
-| `PATCH /api/time-entries/:id`                                     | Draft/submitted time-entry edits before billing or write-off.                                                   |
-| `POST /api/time-entries/:id/submit`                               | Move a draft time entry to submitted.                                                                           |
-| `POST /api/time-entries/:id/approve`                              | Approve a submitted time entry for invoicing.                                                                   |
-| `POST /api/time-entries/:id/write-off`                            | Mark an unbilled time entry as written off.                                                                     |
-| `GET /api/expense-entries?matterId=&status=`                      | Expense entries visible firm-wide or across assigned matters.                                                   |
-| `POST /api/expense-entries`                                       | Expense capture with incurred date, immutable amount snapshot, and draft billing status.                        |
-| `PATCH /api/expense-entries/:id`                                  | Draft/submitted expense-entry edits before billing or write-off.                                                |
-| `POST /api/expense-entries/:id/submit`                            | Move a draft expense entry to submitted.                                                                        |
-| `POST /api/expense-entries/:id/approve`                           | Approve a submitted expense entry for invoicing.                                                                |
-| `POST /api/expense-entries/:id/write-off`                         | Mark an unbilled expense entry as written off.                                                                  |
-| `GET /api/invoices?matterId=&status=`                             | Invoice summaries visible firm-wide or across assigned matters.                                                 |
-| `POST /api/invoices`                                              | Create a draft invoice from approved unbilled time/expense entries and optional adjustment lines.               |
-| `GET /api/invoices/:id`                                           | Invoice detail with immutable line, tax, total, payment, and balance snapshots.                                 |
-| `POST /api/invoices/:id/approve`                                  | Approve a draft invoice and mark source time/expense entries as billed.                                         |
-| `POST /api/invoices/:id/issue`                                    | Issue an approved invoice without changing stored line snapshots.                                               |
-| `POST /api/invoices/:id/void`                                     | Void an unpaid invoice while preserving source and audit evidence.                                              |
-| `GET /api/payments?matterId=&invoiceId=`                          | Manual payments and allocations visible firm-wide or across assigned matters.                                   |
-| `POST /api/payments`                                              | Record a manual payment allocation; over-allocation is rejected and invoice balance/status is recalculated.     |
-| `GET /api/billing/trust-transfer-requests?matterId=&status=`      | Trust-transfer-request records visible firm-wide or across assigned matters.                                    |
-| `POST /api/billing/trust-transfer-requests`                       | Create a billing-side request to pay an invoice from trust; this does not post ledger transactions.             |
-| `GET /api/billing/dashboard`                                      | Billing dashboard payload for approved unbilled work, draft invoices, issued balances, and payments.            |
-| `GET /api/jobs`                                                   | Firm-scoped PostgreSQL job lifecycle projection and queue names; Redis internals are not exposed.               |
-| `GET /api/email/status`                                           | SMTP provider status from firm provider settings.                                                               |
-| `POST /api/email/previews`                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                             |
-| `POST /api/mail/outbox`                                           | Create a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.   |
-| `GET /api/inbound-email/status`                                   | Inbound email provider status from firm provider settings.                                                      |
-| `GET /api/inbound-email/messages?matterId=`                       | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                           |
-| `GET /api/document-processing/status`                             | OCR, transcription, media, and AI provider status from firm provider settings.                                  |
-| `POST /api/document-processing/documents/:id/queue`               | Auth-gated disabled scaffold for future document processing jobs.                                               |
-| `GET /api/auth/extensions`                                        | Embedded-auth extension status for local password, OIDC/SAML placeholders, and MFA policy scaffolding.          |
-| `GET /api/shares/status`                                          | Share-link capability status and create enablement based on token-signing configuration.                        |
-| `GET /api/shares?matterId=`                                       | Persisted share-link listing with matter-scoped authorization and no token hashes in the response.              |
-| `POST /api/shares`                                                | Creates an expiring token-hashed share link, returns the raw token once, and can queue one token email.         |
-| `POST /api/shares/:id/revoke`                                     | Revokes an existing matter-scoped share link and records audit evidence.                                        |
-| `GET /api/portal/shares/:token`                                   | Public token-scoped read of eligible shared document metadata with access logging.                              |
-| `GET /api/external-uploads/status`                                | External upload capability status, token-signing signal, and S3 configuration signal.                           |
-| `GET /api/external-uploads?matterId=`                             | Persisted external-upload link listing with matter-scoped authorization and no token hashes in the response.    |
-| `POST /api/external-uploads`                                      | Creates an expiring token-hashed upload link, returns the raw token once, and can queue one token email.        |
-| `POST /api/external-uploads/:id/revoke`                           | Revokes an existing matter-scoped external-upload link and records audit evidence.                              |
-| `POST /api/portal/external-uploads/:token/intents`                | Public token-scoped S3 PUT upload intent for one external-upload link.                                          |
-| `POST /api/portal/external-uploads/:token/documents/:id/complete` | Public token-scoped checksum and scan-state completion for a document upload intent.                            |
-| `GET /api/drafts?matterId=&userId=`                               | Matter-scoped structured drafts with TipTap/ProseMirror JSON and sanitized rendered snapshots.                  |
-| `POST /api/drafts`                                                | Create a structured draft from either TipTap/ProseMirror JSON or an active draft template.                      |
-| `GET /api/drafts/:id`                                             | Fetch an authorized draft by ID.                                                                                |
-| `PUT /api/drafts/:id`                                             | Save structured draft content or rendered snapshot updates and increment the draft version.                     |
-| `DELETE /api/drafts/:id`                                          | Delete an authorized draft record.                                                                              |
-| `GET /api/draft-templates?category=&activeOnly=`                  | List active firm-scoped drafting templates, including seeded operational basics.                                |
-| `POST /api/draft-templates`                                       | Create a firm-scoped drafting template from structured TipTap/ProseMirror JSON.                                 |
+| Route                                                             | Purpose                                                                                                              |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`                                                     | Liveness and repository mode (`memory` or `postgres`).                                                               |
+| `GET /api/setup/status`                                           | First-run bootstrap status, including blocked partial-state and setup-key requirement flags.                         |
+| `POST /api/setup/complete`                                        | Guarded first-run creation of firm settings, owner admin auth, optional first matter, audit event, and session.      |
+| `POST /api/auth/login`                                            | Embedded session login with firm ID, email, and password.                                                            |
+| `POST /api/auth/logout`                                           | Revokes the current embedded session and clears the session cookie.                                                  |
+| `GET /api/auth/session`                                           | Current embedded-auth session user.                                                                                  |
+| `POST /api/auth/password-setup-tokens`                            | Owner-admin password setup token creation for local invitation/setup flows.                                          |
+| `POST /api/auth/password-setup`                                   | Consumes a setup token and stores a local password hash.                                                             |
+| `GET /api/session`                                                | Current authenticated user.                                                                                          |
+| `GET /api/capabilities`                                           | Permission-aware dashboard sections for the current user and first assigned matter.                                  |
+| `GET /api/overview`                                               | Firm overview metrics.                                                                                               |
+| `GET /api/matters`                                                | Matters visible to the current user.                                                                                 |
+| `POST /api/conflicts/check`                                       | Conflict search with audit recording for prospective names, aliases, identifiers, and party role.                    |
+| `GET /api/ledger?matterId=`                                       | Trust ledger accounts, entries, posted transactions, and balances. Matter-scoped users must provide matter ID.       |
+| `POST /api/ledger/transactions`                                   | Balanced, idempotent trust transaction posting.                                                                      |
+| `GET /api/audit`                                                  | Firm audit events and hash-chain validity.                                                                           |
+| `GET /api/documents/presign-upload`                               | S3 PUT upload intent, storage key, document intent record, and required scan marker.                                 |
+| `POST /api/documents/:id/upload-complete`                         | Checksum and scan-state completion for an upload intent.                                                             |
+| `POST /api/documents/:id/scan-status`                             | Explicit malware/scan-state update for an existing document.                                                         |
+| `GET /api/signature-requests?matterId=`                           | Signature requests visible firm-wide or across assigned matters.                                                     |
+| `POST /api/signature-requests`                                    | Provider-neutral signature submission, initial provider event, and SMTP-gated signer email queueing.                 |
+| `POST /api/signature-requests/provider-events`                    | Authenticated legacy/provider-neutral status event for matching provider/external IDs.                               |
+| `POST /api/signature-requests/:id/embedded-events`                | Embedded signature viewed/completed/declined event with consent/evidence capture.                                    |
+| `GET /api/signature-requests/:id/events`                          | Provider event history for one signature request.                                                                    |
+| `GET /api/intake-sessions?matterId=`                              | Intake templates, including embedded definition metadata, and sessions visible firm-wide or across assigned matters. |
+| `POST /api/intake-sessions`                                       | Embedded intake session record, with Open Practice remaining system of record and SMTP-gated staff notice.           |
+| `GET /api/intake-sessions/:id/answer-snapshots`                   | Answer snapshots for one intake session.                                                                             |
+| `POST /api/intake-sessions/:id/answer-snapshots`                  | Captured intake answers plus computed embedded resolution for visible questions and eligible packages.               |
+| `POST /api/intake-sessions/:id/generated-documents`               | Generated document metadata tied to an intake session, with SMTP-gated staff notice.                                 |
+| `POST /api/intake-sessions/:id/generated-packages`                | Generated document records and SMTP availability summary for an eligible embedded intake package.                    |
+| `POST /api/ledger/transactions/:id/approvals`                     | Maker-checker approval decision for a trust transaction boundary.                                                    |
+| `POST /api/ledger/reconciliations`                                | Trust-account reconciliation record with matched/exception status.                                                   |
+| `GET /api/queues`                                                 | Permission-aware operational queues for matters, documents, signatures, intake, ledger, and audit review.            |
+| `GET /api/time-entries?matterId=&status=`                         | Time entries visible firm-wide or across assigned matters.                                                           |
+| `POST /api/time-entries`                                          | Time-entry capture with performed date, immutable rate snapshot, and draft billing status.                           |
+| `PATCH /api/time-entries/:id`                                     | Draft/submitted time-entry edits before billing or write-off.                                                        |
+| `POST /api/time-entries/:id/submit`                               | Move a draft time entry to submitted.                                                                                |
+| `POST /api/time-entries/:id/approve`                              | Approve a submitted time entry for invoicing.                                                                        |
+| `POST /api/time-entries/:id/write-off`                            | Mark an unbilled time entry as written off.                                                                          |
+| `GET /api/expense-entries?matterId=&status=`                      | Expense entries visible firm-wide or across assigned matters.                                                        |
+| `POST /api/expense-entries`                                       | Expense capture with incurred date, immutable amount snapshot, and draft billing status.                             |
+| `PATCH /api/expense-entries/:id`                                  | Draft/submitted expense-entry edits before billing or write-off.                                                     |
+| `POST /api/expense-entries/:id/submit`                            | Move a draft expense entry to submitted.                                                                             |
+| `POST /api/expense-entries/:id/approve`                           | Approve a submitted expense entry for invoicing.                                                                     |
+| `POST /api/expense-entries/:id/write-off`                         | Mark an unbilled expense entry as written off.                                                                       |
+| `GET /api/invoices?matterId=&status=`                             | Invoice summaries visible firm-wide or across assigned matters.                                                      |
+| `POST /api/invoices`                                              | Create a draft invoice from approved unbilled time/expense entries and optional adjustment lines.                    |
+| `GET /api/invoices/:id`                                           | Invoice detail with immutable line, tax, total, payment, and balance snapshots.                                      |
+| `POST /api/invoices/:id/approve`                                  | Approve a draft invoice and mark source time/expense entries as billed.                                              |
+| `POST /api/invoices/:id/issue`                                    | Issue an approved invoice without changing stored line snapshots.                                                    |
+| `POST /api/invoices/:id/void`                                     | Void an unpaid invoice while preserving source and audit evidence.                                                   |
+| `GET /api/payments?matterId=&invoiceId=`                          | Manual payments and allocations visible firm-wide or across assigned matters.                                        |
+| `POST /api/payments`                                              | Record a manual payment allocation; over-allocation is rejected and invoice balance/status is recalculated.          |
+| `GET /api/billing/trust-transfer-requests?matterId=&status=`      | Trust-transfer-request records visible firm-wide or across assigned matters.                                         |
+| `POST /api/billing/trust-transfer-requests`                       | Create a billing-side request to pay an invoice from trust; this does not post ledger transactions.                  |
+| `GET /api/billing/dashboard`                                      | Billing dashboard payload for approved unbilled work, draft invoices, issued balances, and payments.                 |
+| `GET /api/jobs`                                                   | Firm-scoped PostgreSQL job lifecycle projection and queue names; Redis internals are not exposed.                    |
+| `GET /api/email/status`                                           | SMTP provider status from firm provider settings.                                                                    |
+| `POST /api/email/previews`                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                                  |
+| `POST /api/mail/outbox`                                           | Create a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.        |
+| `GET /api/inbound-email/status`                                   | Inbound email provider status from firm provider settings.                                                           |
+| `GET /api/inbound-email/messages?matterId=`                       | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                                |
+| `GET /api/document-processing/status`                             | OCR, transcription, media, and AI provider status from firm provider settings.                                       |
+| `POST /api/document-processing/documents/:id/queue`               | Auth-gated disabled scaffold for future document processing jobs.                                                    |
+| `GET /api/auth/extensions`                                        | Embedded-auth extension status for local password, OIDC/SAML placeholders, and MFA policy scaffolding.               |
+| `GET /api/shares/status`                                          | Share-link capability status and create enablement based on token-signing configuration.                             |
+| `GET /api/shares?matterId=`                                       | Persisted share-link listing with matter-scoped authorization and no token hashes in the response.                   |
+| `POST /api/shares`                                                | Creates an expiring token-hashed share link, returns the raw token once, and can queue one token email.              |
+| `POST /api/shares/:id/revoke`                                     | Revokes an existing matter-scoped share link and records audit evidence.                                             |
+| `GET /api/portal/shares/:token`                                   | Public token-scoped read of eligible shared document metadata with access logging.                                   |
+| `GET /api/external-uploads/status`                                | External upload capability status, token-signing signal, and S3 configuration signal.                                |
+| `GET /api/external-uploads?matterId=`                             | Persisted external-upload link listing with matter-scoped authorization and no token hashes in the response.         |
+| `POST /api/external-uploads`                                      | Creates an expiring token-hashed upload link, returns the raw token once, and can queue one token email.             |
+| `POST /api/external-uploads/:id/revoke`                           | Revokes an existing matter-scoped external-upload link and records audit evidence.                                   |
+| `POST /api/portal/external-uploads/:token/intents`                | Public token-scoped S3 PUT upload intent for one external-upload link.                                               |
+| `POST /api/portal/external-uploads/:token/documents/:id/complete` | Public token-scoped checksum and scan-state completion for a document upload intent.                                 |
+| `GET /api/drafts?matterId=&userId=`                               | Matter-scoped structured drafts with TipTap/ProseMirror JSON and sanitized rendered snapshots.                       |
+| `POST /api/drafts`                                                | Create a structured draft from either TipTap/ProseMirror JSON or an active draft template.                           |
+| `GET /api/drafts/:id`                                             | Fetch an authorized draft by ID.                                                                                     |
+| `PUT /api/drafts/:id`                                             | Save structured draft content or rendered snapshot updates and increment the draft version.                          |
+| `DELETE /api/drafts/:id`                                          | Delete an authorized draft record.                                                                                   |
+| `GET /api/draft-templates?category=&activeOnly=`                  | List active firm-scoped drafting templates, including seeded operational basics.                                     |
+| `POST /api/draft-templates`                                       | Create a firm-scoped drafting template from structured TipTap/ProseMirror JSON.                                      |
 
 ## Deferred Worker And Provider Surfaces
 
@@ -163,10 +164,25 @@ actor ID, IP, user-agent, timestamps, and caller-provided evidence. Legacy `docu
 remain historical records and are rejected by embedded event routes.
 
 Intake sessions use `created`, `in_progress`, `ready_to_generate`, `completed`, and
-`provider_error`. The API creates embedded sessions from embedded templates. Answer snapshots and
-generated-document metadata are stored locally. When SMTP is configured, intake session creation and
-generated-document creation queue staff-facing outbox notices to the authenticated user. Legacy
-`docassemble` templates/sessions are rejected for new generation paths.
+`provider_error`. The API creates embedded sessions from embedded templates. Embedded template
+records store `definitionVersion` plus provider-neutral JSON definitions with questions, branch
+rules, reusable packages, and package document metadata. `GET /api/intake-sessions` returns those
+definitions with the template list so clients can render the current embedded intake shape.
+
+Answer snapshots keep the existing request shape, but the response and persisted record include a
+computed `resolution` with the template ID/version, visible question IDs, eligible and selected
+package IDs, and resolved package document references. Branch-only questions are visible only after
+their branch rule matches. `POST /api/intake-sessions/:id/generated-packages` accepts a package ID
+and renders package document records from the latest stored resolution snapshot, so later template
+edits do not change the documents selected by a captured answer set. The response includes a
+`queuedEmail` summary: disabled when no SMTP provider is enabled, or not queued when SMTP is
+available but no recipient-specific email action has been requested. When SMTP is configured,
+intake session creation and generated-document creation queue staff-facing outbox notices to the
+authenticated user. Legacy `docassemble` templates/sessions are rejected for new generation paths.
+
+Intake audit events record only IDs, counts, status, provider, and package/document references.
+Raw answers, evidence bodies, storage keys, checksums, and generated content stay out of audit
+metadata.
 
 Draft records store structured TipTap/ProseMirror JSON and an optional sanitized rendered HTML
 snapshot. New drafts start at version `1`; each save through `PUT /api/drafts/:id` increments the

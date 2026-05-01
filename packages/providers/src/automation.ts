@@ -33,14 +33,20 @@ export class EmbeddedAutomationProvider implements DocumentAutomationProvider {
   }
 
   async renderDocument(input: RenderAutomatedDocumentInput): Promise<GeneratedDocumentRef> {
+    const documentRef =
+      input.packageId && input.packageDocumentId
+        ? `${input.packageId}:${input.packageDocumentId}`
+        : input.documentTitle;
     return {
       provider: "embedded",
-      externalId: `embedded:${input.sessionExternalId}:${input.documentTitle}`,
+      externalId: `embedded:${input.sessionExternalId}:${documentRef}`,
       title: input.documentTitle,
       evidence: {
         mode: "embedded",
         firmId: input.firmId,
         matterId: input.matterId,
+        packageId: input.packageId,
+        packageDocumentId: input.packageDocumentId,
       },
     };
   }

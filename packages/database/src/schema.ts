@@ -12,6 +12,10 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type {
+  EmbeddedIntakeTemplateDefinition,
+  IntakeResolutionSnapshot,
+} from "@open-practice/domain";
 
 export const province = pgEnum("province", ["BC", "ON", "CANADA", "OTHER"]);
 export const userRole = pgEnum("user_role", [
@@ -1378,6 +1382,13 @@ export const intakeTemplates = pgTable("intake_templates", {
   provider: text("provider").notNull(),
   externalTemplateId: text("external_template_id").notNull(),
   active: boolean("active").notNull().default(true),
+  definitionVersion: integer("definition_version").notNull().default(1),
+  definition: jsonb("definition").$type<EmbeddedIntakeTemplateDefinition>().notNull().default({
+    schemaVersion: 1,
+    questions: [],
+    branchRules: [],
+    packages: [],
+  }),
 });
 
 export const intakeSessions = pgTable("intake_sessions", {
@@ -1411,6 +1422,14 @@ export const answerSnapshots = pgTable("answer_snapshots", {
     .references(() => intakeSessions.id),
   capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
   answers: jsonb("answers").notNull(),
+  resolution: jsonb("resolution").$type<IntakeResolutionSnapshot>().notNull().default({
+    templateId: "",
+    templateVersion: 1,
+    visibleQuestionIds: [],
+    eligiblePackageIds: [],
+    selectedPackageIds: [],
+    packageDocuments: [],
+  }),
 });
 
 export const generatedDocuments = pgTable("generated_documents", {
@@ -1428,6 +1447,8 @@ export const generatedDocuments = pgTable("generated_documents", {
   externalId: text("external_id").notNull(),
   title: text("title").notNull(),
   documentId: text("document_id").references(() => documents.id),
+  packageId: text("package_id"),
+  packageDocumentId: text("package_document_id"),
   storageKey: text("storage_key"),
   checksumSha256: text("checksum_sha256"),
   evidence: jsonb("evidence").notNull(),
