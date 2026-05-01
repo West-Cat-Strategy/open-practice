@@ -249,17 +249,19 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
   const ActiveIcon = steps[step].icon;
 
   return (
-    <main className="setup-shell">
-      <section className="setup-frame" aria-labelledby="setup-title">
-        <aside className="setup-rail">
+    <main className="setup-shell legal-ops-shell">
+      <section className="setup-frame setup-entry-frame" aria-labelledby="setup-title">
+        <aside className="setup-rail" aria-label="Setup progress">
           <div className="brand">
-            <span className="brand-mark">OP</span>
+            <span className="brand-mark" aria-hidden="true">
+              OP
+            </span>
             <div>
               <strong>Open Practice</strong>
               <span>First run setup</span>
             </div>
           </div>
-          <nav className="setup-step-list">
+          <nav className="setup-step-list" aria-label="Setup steps">
             {steps.map((item, index) => {
               const Icon = item.icon;
               const isCompleted = index < step;
@@ -268,11 +270,18 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                 <button
                   className={`setup-step ${isActive ? "active" : ""} ${isCompleted ? "completed" : ""}`}
                   aria-current={isActive ? "step" : undefined}
+                  aria-label={`${item.label}: step ${index + 1} of ${steps.length}${
+                    isCompleted ? ", complete" : isActive ? ", current" : ""
+                  }`}
                   key={item.label}
                   onClick={() => index <= step && setStep(index)}
                   type="button"
                 >
-                  {isCompleted ? <CheckCircle2 size={17} /> : <Icon size={17} />}
+                  {isCompleted ? (
+                    <CheckCircle2 size={17} aria-hidden="true" />
+                  ) : (
+                    <Icon size={17} aria-hidden="true" />
+                  )}
                   <span>{item.label}</span>
                 </button>
               );
@@ -280,20 +289,27 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
           </nav>
         </aside>
 
-        <section className="setup-panel">
+        <section
+          className="setup-panel"
+          aria-labelledby="setup-title"
+          aria-describedby="setup-step-summary"
+        >
           <header className="setup-heading">
-            <div className="setup-icon-box">
+            <div className="setup-icon-box" aria-hidden="true">
               <ActiveIcon size={28} />
             </div>
             <div>
               <p className="eyebrow">Step {step + 1} of 5</p>
               <h1 id="setup-title">{steps[step].label}</h1>
+              <p id="setup-step-summary" className="setup-step-summary">
+                Configure the required practice records for this step.
+              </p>
             </div>
           </header>
 
           <div className="setup-content-area">
             {step === 0 && (
-              <>
+              <section className="setup-step-pane firm-step-pane" aria-label="Firm profile">
                 <PracticePresetChooser
                   selectedPresetId={selectedPresetId}
                   onSelectPreset={selectPreset}
@@ -377,11 +393,14 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     />
                   </label>
                 </div>
-              </>
+              </section>
             )}
 
             {step === 1 && (
-              <div className="setup-grid">
+              <section
+                className="setup-grid setup-step-pane compliance-step-pane"
+                aria-label="Compliance settings"
+              >
                 <label className="form-field wide">
                   <span>Practice areas</span>
                   <textarea
@@ -421,11 +440,14 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     jurisdiction-certified compliance advice.
                   </span>
                 </label>
-              </div>
+              </section>
             )}
 
             {step === 2 && (
-              <div className="setup-grid">
+              <section
+                className="setup-grid setup-step-pane owner-step-pane"
+                aria-label="Owner account"
+              >
                 <TextField
                   label="Full name"
                   placeholder="John Doe"
@@ -452,6 +474,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                 <div className="passkey-section wide">
                   <button
                     className={`passkey-button ${state.webAuthnCredential ? "verified" : ""}`}
+                    aria-describedby="passkey-hint"
                     onClick={registerPasskey}
                     disabled={submitting || !state.ownerEmail}
                     type="button"
@@ -469,8 +492,8 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                         : "Register a Passkey (Recommended)"}
                     </span>
                   </button>
-                  <p className="field-hint">
-                    Passkeys provide biometric security and a passwordless experience.
+                  <p className="field-hint" id="passkey-hint">
+                    Optional. Adds biometric sign-in after setup.
                   </p>
                 </div>
 
@@ -510,11 +533,14 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                   value={state.ownerPasswordConfirmation}
                   onChange={(value) => update("ownerPasswordConfirmation", value)}
                 />
-              </div>
+              </section>
             )}
 
             {step === 3 && (
-              <div className="setup-grid">
+              <section
+                className="setup-grid setup-step-pane matter-step-pane"
+                aria-label="Initial matter"
+              >
                 <label className="check-row wide glass-card highlight">
                   <input
                     checked={state.createFirstMatter}
@@ -571,11 +597,14 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     />
                   </div>
                 )}
-              </div>
+              </section>
             )}
 
             {step === 4 && (
-              <div className="review-container">
+              <section
+                className="review-container setup-step-pane review-step-pane"
+                aria-label="Setup review"
+              >
                 <div className="review-grid">
                   <ReviewCard
                     icon={Building2}
@@ -622,13 +651,19 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     </div>
                   </div>
                 )}
-              </div>
+              </section>
             )}
           </div>
 
           <footer className="setup-actions-bar">
-            <div className="status-message" role="status" aria-live="polite" aria-atomic="true">
-              {submitting && <Loader2 className="animate-spin" size={16} />}
+            <div
+              className="status-message"
+              id="setup-status"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              {submitting && <Loader2 className="animate-spin" size={16} aria-hidden="true" />}
               <span>{status}</span>
             </div>
             <div className="button-group">
@@ -638,7 +673,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                 onClick={() => setStep(step - 1)}
                 type="button"
               >
-                <ChevronLeft size={18} />
+                <ChevronLeft size={18} aria-hidden="true" />
                 <span>Back</span>
               </button>
               {step < steps.length - 1 ? (
@@ -649,7 +684,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                   type="button"
                 >
                   <span>Next Step</span>
-                  <ChevronRight size={18} />
+                  <ChevronRight size={18} aria-hidden="true" />
                 </button>
               ) : (
                 <button
@@ -659,7 +694,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                   type="button"
                 >
                   <span>Complete Setup</span>
-                  <CheckCircle2 size={18} />
+                  <CheckCircle2 size={18} aria-hidden="true" />
                 </button>
               )}
             </div>

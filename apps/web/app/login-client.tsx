@@ -34,27 +34,39 @@ export default function LoginClient({ apiBaseUrl }: LoginClientProps) {
   }
 
   return (
-    <main className="setup-shell">
-      <section className="auth-panel" aria-labelledby="login-title">
-        <div className="setup-heading">
-          <LogIn size={24} />
+    <main className="setup-shell auth-entry-shell legal-ops-shell">
+      <section className="auth-panel auth-entry-panel" aria-labelledby="login-title">
+        <header className="setup-heading auth-heading">
+          <span className="setup-icon-box auth-icon-box" aria-hidden="true">
+            <LogIn size={24} />
+          </span>
           <div>
             <p className="eyebrow">Open Practice</p>
             <h1 id="login-title">Sign In</h1>
           </div>
-        </div>
-        <div className="setup-grid one-column">
+        </header>
+        <div className="setup-grid one-column auth-form-grid" aria-label="Session credentials">
           <label className="form-field">
             <span>Firm ID</span>
-            <input onChange={(event) => setFirmId(event.target.value)} value={firmId} />
+            <input
+              autoComplete="organization"
+              onChange={(event) => setFirmId(event.target.value)}
+              value={firmId}
+            />
           </label>
           <label className="form-field">
             <span>Email</span>
-            <input onChange={(event) => setEmail(event.target.value)} type="email" value={email} />
+            <input
+              autoComplete="email"
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+              value={email}
+            />
           </label>
           <label className="form-field">
             <span>Password</span>
             <input
+              autoComplete="current-password"
               onChange={(event) => setPassword(event.target.value)}
               type="password"
               value={password}
@@ -62,14 +74,23 @@ export default function LoginClient({ apiBaseUrl }: LoginClientProps) {
           </label>
         </div>
         <footer className="setup-actions">
-          <span>{status}</span>
+          <span
+            className="status-message auth-status-message"
+            id="login-status"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {status}
+          </span>
           <button
-            className="primary-button"
+            className="primary-button auth-submit-button"
             disabled={submitting || !firmId || !email || !password}
             onClick={login}
             type="button"
           >
-            Sign In
+            <LogIn className="button-icon" size={18} aria-hidden="true" />
+            <span>Sign In</span>
           </button>
         </footer>
       </section>
