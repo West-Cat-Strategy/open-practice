@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { S3Client } from "@aws-sdk/client-s3";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import type { MailSender } from "@open-practice/domain";
+import type { MailSender, OcrProvider } from "@open-practice/domain";
 import { processOpenPracticeJob } from "./processors.js";
 
 describe("worker processors", () => {
@@ -259,5 +260,138 @@ describe("worker processors", () => {
       reason: "Email outbox record not found",
       metadata: { emailId: "missing-email" },
     });
+  });
+
+  it("runs OCR jobs from document storage and completes lifecycle records", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const requestedObjects: string[] = [];
+    const s3 = {
+      bucket: "open-practice-documents",
+      client: {
+        async send(command: unknown) {
+          const input = (command as { input: { Key: string } }).input;
+          requestedObjects.push(input.Key);
+          return {
+            Body: {
+              async transformToByteArray() {
+                return new TextEncoder().encode("Synthetic PDF bytes");
+              },
+            },
+          };
+        },
+      } as unknown as S3Client,
+    };
+    const ocrProvider: OcrProvider = {
+      async extractText(input) {
+        expect(input).toMatchObject({
+          firmId: "firm-west-legal",
+          documentId: "doc-001",
+          language: "eng",
+        });
+        expect(new TextDecoder().decode(input.content)).toBe("Synthetic PDF bytes");
+        return {
+          confidence: 94,
+          extractedText: "Synthetic extracted retainer text.",
+          metadata: { engineVersion: "test", rawText: "Synthetic provider text should stay out" },
+        };
+      },
+    };
+    await repository.createJobLifecycleRecord({
+      id: "job-ocr-worker-test",
+      firmId: "firm-west-legal",
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "queued",
+      targetResourceType: "document",
+      targetResourceId: "doc-001",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      queuedAt: "2026-05-01T00:00:00.000Z",
+      metadata: {
+        documentId: "doc-001",
+        language: "eng",
+        title: "Retainer agreement.pdf",
+        extractedText: "Do not persist queued text in job metadata",
+      },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "document",
+        resourceId: "doc-001",
+        metadata: {
+          documentId: "doc-001",
+          language: "eng",
+          title: "Retainer agreement.pdf",
+          extractedText: "Do not persist queued text in job metadata",
+        },
+      },
+      jobLifecycleId: "job-ocr-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      repository,
+      s3,
+      ocrProvider,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      metadata: {
+        firmId: "firm-west-legal",
+        documentId: "doc-001",
+        confidence: 94,
+        textLength: "Synthetic extracted retainer text.".length,
+      },
+    });
+    expect(requestedObjects).toEqual(["matters/matter-001/retainer-v1.pdf"]);
+    await expect(
+      repository.getDocumentTextExtractions("firm-west-legal", "doc-001"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        documentId: "doc-001",
+        engine: "tesseract",
+        status: "completed",
+        language: "eng",
+        confidence: 94,
+        extractedText: "Synthetic extracted retainer text.",
+        metadata: { engineVersion: "test", rawText: "Synthetic provider text should stay out" },
+      }),
+    ]);
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "ocr" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "job-ocr-worker-test",
+          status: "completed",
+          attemptsMade: 0,
+          finishedAt: expect.any(String),
+          metadata: expect.objectContaining({
+            documentId: "doc-001",
+            confidence: 94,
+            textLength: "Synthetic extracted retainer text.".length,
+          }),
+        }),
+      ]),
+    );
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "ocr" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "job-ocr-worker-test",
+          metadata: expect.not.objectContaining({
+            extractedText: expect.any(String),
+            rawText: expect.any(String),
+            title: expect.any(String),
+          }),
+        }),
+      ]),
+    );
   });
 });

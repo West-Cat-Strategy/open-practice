@@ -8,6 +8,7 @@ import type {
   User,
 } from "@open-practice/domain";
 import { registerInboundEmailRoutes } from "./inbound-email.js";
+import type { ApiJobQueue } from "./types.js";
 
 const firmId = "firm-west-legal";
 const now = "2026-04-29T12:00:00.000Z";
@@ -34,12 +35,13 @@ function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001
 function testServer(
   repository: InMemoryOpenPracticeRepository,
   authUser: User = user("owner_admin", ["matter-001", "matter-002"]),
+  ocrJobQueue?: ApiJobQueue,
 ): FastifyInstance {
   const server = Fastify({ logger: false });
   server.addHook("preHandler", async (request) => {
     request.auth = { firmId: authUser.firmId, user: authUser };
   });
-  registerInboundEmailRoutes(server, { repository });
+  registerInboundEmailRoutes(server, { repository, ocrJobQueue });
   servers.push(server);
   return server;
 }
@@ -78,6 +80,17 @@ function attachment(
     checksumSha256: "a".repeat(64),
     ...overrides,
   };
+}
+
+function fakeOcrQueue() {
+  const jobs: Array<{ name: string; data: unknown; jobId?: string }> = [];
+  const queue: ApiJobQueue = {
+    async add(name, data, options) {
+      jobs.push({ name, data, jobId: options?.jobId });
+      return { id: options?.jobId ?? "bull-ocr-job" };
+    },
+  };
+  return { queue, jobs };
 }
 
 afterEach(async () => {
@@ -179,6 +192,220 @@ describe("inbound email routes", () => {
     });
     expect(response.json().attachments).toHaveLength(1);
     expect(response.json().attachments[0]).not.toHaveProperty("documentId");
+  });
+
+  it("promotes a matter-scoped attachment to a document", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message());
+    await repository.createInboundEmailAttachment(attachment());
+    const { queue, jobs } = fakeOcrQueue();
+
+    const response = await testServer(repository, user("licensee", ["matter-001"]), queue).inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-001/promote-document",
+      payload: {
+        title: "Filed materials.pdf",
+        classification: "work_product",
+        legalHold: true,
+        language: "eng",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload).toMatchObject({
+      status: "promoted",
+      created: true,
+      inboundMessageId: "inbound-message-001",
+      attachment: {
+        id: "inbound-attachment-001",
+        documentId: expect.any(String),
+      },
+      document: {
+        title: "Filed materials.pdf",
+        matterId: "matter-001",
+        storageKey: "inbound/message-001/filing.pdf",
+        checksumSha256: "a".repeat(64),
+        classification: "work_product",
+        legalHold: true,
+        uploadStatus: "verified",
+        checksumStatus: "verified",
+        scanStatus: "queued",
+      },
+      queuedOcr: {
+        status: "queued",
+        task: "ocr",
+        language: "eng",
+        documentId: expect.any(String),
+        job: {
+          queueName: "ocr",
+          jobName: "extract_document_text",
+          status: "queued",
+          targetResourceType: "document",
+          targetResourceId: expect.any(String),
+        },
+      },
+    });
+    expect(payload.document.id).toBe(payload.attachment.documentId);
+    expect(payload.queuedOcr.documentId).toBe(payload.document.id);
+    expect(payload.queuedOcr.job.targetResourceId).toBe(payload.document.id);
+    expect(jobs).toEqual([
+      expect.objectContaining({
+        name: "extract_document_text",
+        jobId: payload.queuedOcr.job.id,
+        data: expect.objectContaining({
+          firmId,
+          resourceType: "document",
+          resourceId: payload.document.id,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            documentId: payload.document.id,
+            task: "ocr",
+            language: "eng",
+            checksumStatus: "verified",
+            scanStatus: "queued",
+          }),
+        }),
+      }),
+    ]);
+
+    const detail = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages/inbound-message-001",
+    });
+    expect(detail.json().attachments[0]).toMatchObject({ documentId: payload.document.id });
+
+    const audit = await repository.listAuditEvents(firmId);
+    const promotionAudit = audit.events.find(
+      (event) => event.action === "inbound_email.attachment.promoted_to_document",
+    );
+    expect(promotionAudit?.metadata).toMatchObject({
+      matterId: "matter-001",
+      inboundMessageId: "inbound-message-001",
+      attachmentId: "inbound-attachment-001",
+      documentId: payload.document.id,
+      created: true,
+      promotionStatus: "promoted",
+      documentUploadStatus: "verified",
+      checksumStatus: "verified",
+      scanStatus: "queued",
+    });
+    const auditMetadata = JSON.stringify(promotionAudit?.metadata);
+    expect(auditMetadata).not.toContain("Please review");
+    expect(auditMetadata).not.toContain("inbound/message-001/filing.pdf");
+    expect(auditMetadata).not.toContain("a".repeat(64));
+  });
+
+  it("returns the existing promoted document without duplicating it", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message());
+    await repository.createInboundEmailAttachment(attachment());
+    const server = testServer(repository);
+
+    const first = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-001/promote-document",
+      payload: { queueOcr: false },
+    });
+    const second = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-001/promote-document",
+      payload: { queueOcr: false },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(first.json()).toMatchObject({ created: true });
+    expect(second.json()).toMatchObject({
+      created: false,
+      document: { id: first.json().document.id },
+      attachment: { documentId: first.json().document.id },
+    });
+  });
+
+  it("keeps default OCR queueing atomic when no OCR queue is configured", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message());
+    await repository.createInboundEmailAttachment(attachment());
+
+    const response = await testServer(repository).inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-001/promote-document",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ message: "OCR queue is not configured" });
+    const detail = await testServer(repository).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages/inbound-message-001",
+    });
+    expect(detail.json().attachments[0]).not.toHaveProperty("documentId");
+  });
+
+  it("returns 409 for unscoped messages and attachments without checksums", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(
+      message({
+        id: "inbound-message-unscoped",
+        matterId: undefined,
+        addressId: undefined,
+        status: "triage_pending",
+      }),
+    );
+    await repository.createInboundEmailAttachment(
+      attachment({ inboundMessageId: "inbound-message-unscoped" }),
+    );
+
+    const unscoped = await testServer(repository).inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-unscoped/attachments/inbound-attachment-001/promote-document",
+    });
+    expect(unscoped.statusCode).toBe(409);
+    expect(unscoped.json()).toMatchObject({
+      message: "Inbound email message must be matter-scoped before promotion",
+    });
+
+    await repository.createInboundEmailMessage(message({ id: "inbound-message-no-checksum" }));
+    await repository.createInboundEmailAttachment(
+      attachment({
+        id: "inbound-attachment-no-checksum",
+        inboundMessageId: "inbound-message-no-checksum",
+        checksumSha256: undefined,
+      }),
+    );
+    const missingChecksum = await testServer(repository).inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-no-checksum/attachments/inbound-attachment-no-checksum/promote-document",
+    });
+    expect(missingChecksum.statusCode).toBe(409);
+    expect(missingChecksum.json()).toMatchObject({
+      message: "Inbound email attachment checksum is required for document promotion",
+    });
+  });
+
+  it("requires the attachment to belong to the message and both promotion permissions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message());
+    await repository.createInboundEmailMessage(message({ id: "inbound-message-002" }));
+    await repository.createInboundEmailAttachment(
+      attachment({
+        id: "inbound-attachment-other",
+        inboundMessageId: "inbound-message-002",
+      }),
+    );
+
+    const wrongMessage = await testServer(repository).inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-other/promote-document",
+    });
+    expect(wrongMessage.statusCode).toBe(404);
+
+    await repository.createInboundEmailAttachment(attachment());
+    const auditorDenied = await testServer(repository, user("auditor", [])).inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-001/promote-document",
+    });
+    expect(auditorDenied.statusCode).toBe(403);
   });
 
   it("denies assigned users outside their matter and for unscoped messages", async () => {

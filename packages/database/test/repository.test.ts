@@ -97,6 +97,46 @@ function setupInput(): FirstRunSetupInput {
   };
 }
 
+async function createInboundMessageWithAttachment(
+  repository: InMemoryOpenPracticeRepository,
+  options: {
+    messageId: string;
+    attachmentId: string;
+    matterId?: string;
+    checksumSha256?: string;
+  },
+) {
+  const matterId = options.matterId ?? "matter-002";
+  const message = await repository.createInboundEmailMessage({
+    id: options.messageId,
+    firmId: "firm-west-legal",
+    matterId,
+    fromAddress: "client@example.test",
+    toAddresses: [`${matterId}@open-practice.test`],
+    subject: "Filed materials",
+    receivedAt: now,
+    rawStorageKey: `inbound/raw/${options.messageId}.eml`,
+    labels: [],
+    status: "triaged",
+    metadata: {},
+  });
+  const attachmentInput = {
+    id: options.attachmentId,
+    firmId: "firm-west-legal",
+    inboundMessageId: message.id,
+    filename: "filing.pdf",
+    contentType: "application/pdf",
+    sizeBytes: 128,
+    storageKey: `inbound/${message.id}/filing.pdf`,
+  };
+  const attachment = await repository.createInboundEmailAttachment(
+    options.checksumSha256
+      ? { ...attachmentInput, checksumSha256: options.checksumSha256 }
+      : attachmentInput,
+  );
+  return { message, attachment };
+}
+
 describe("repository first-run setup", () => {
   it("reports setup as required only for an empty repository", async () => {
     await expect(new InMemoryOpenPracticeRepository().getSetupStatus()).resolves.toEqual({
@@ -951,6 +991,109 @@ describe("repository operations foundation", () => {
       },
     ]);
     expect(attachments[0]).not.toHaveProperty("documentId");
+
+    const promoted = await repository.promoteInboundEmailAttachmentToDocument({
+      firmId: "firm-west-legal",
+      messageId: message.id,
+      attachmentId: "inbound-attachment-001",
+      matterId: "matter-001",
+      title: "Filed materials.pdf",
+      classification: "work_product",
+      legalHold: true,
+      now,
+    });
+    expect(promoted).toMatchObject({
+      created: true,
+      attachment: { id: "inbound-attachment-001", documentId: promoted.document.id },
+      document: {
+        title: "Filed materials.pdf",
+        matterId: "matter-001",
+        storageKey: "inbound/message-001/filing.pdf",
+        checksumSha256: "a".repeat(64),
+        classification: "work_product",
+        legalHold: true,
+        uploadStatus: "verified",
+        checksumStatus: "verified",
+        scanStatus: "queued",
+        uploadedAt: now,
+        verifiedAt: now,
+      },
+    });
+    await expect(
+      repository.listInboundEmailAttachments("firm-west-legal", message.id),
+    ).resolves.toMatchObject([{ documentId: promoted.document.id }]);
+
+    await expect(
+      repository.promoteInboundEmailAttachmentToDocument({
+        firmId: "firm-west-legal",
+        messageId: message.id,
+        attachmentId: "inbound-attachment-001",
+        matterId: "matter-001",
+        title: "Duplicate call.pdf",
+        classification: "general",
+        legalHold: false,
+      }),
+    ).resolves.toMatchObject({
+      created: false,
+      document: { id: promoted.document.id, title: "Filed materials.pdf" },
+    });
+  });
+
+  it("marks promoted inbound attachments as duplicates when their checksum already exists", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { message, attachment } = await createInboundMessageWithAttachment(repository, {
+      messageId: "inbound-message-duplicate",
+      attachmentId: "inbound-attachment-duplicate",
+      checksumSha256: "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c",
+    });
+
+    await expect(
+      repository.promoteInboundEmailAttachmentToDocument({
+        firmId: "firm-west-legal",
+        messageId: message.id,
+        attachmentId: attachment.id,
+        matterId: "matter-002",
+        title: "Duplicate retainer.pdf",
+        classification: "general",
+        legalHold: false,
+        now,
+      }),
+    ).resolves.toMatchObject({
+      created: true,
+      document: {
+        checksumStatus: "duplicate",
+        duplicateOfDocumentId: "doc-001",
+        uploadStatus: "verified",
+        scanStatus: "queued",
+      },
+    });
+  });
+
+  it("rejects inbound attachment promotion when the attachment has no checksum", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { message, attachment } = await createInboundMessageWithAttachment(repository, {
+      messageId: "inbound-message-missing-checksum",
+      attachmentId: "inbound-attachment-missing-checksum",
+    });
+
+    await expect(
+      repository.promoteInboundEmailAttachmentToDocument({
+        firmId: "firm-west-legal",
+        messageId: message.id,
+        attachmentId: attachment.id,
+        matterId: "matter-002",
+        title: "Missing checksum.pdf",
+        classification: "general",
+        legalHold: false,
+        now,
+      }),
+    ).rejects.toThrow(/checksum is required/);
+    await expect(
+      repository.listInboundEmailAttachments("firm-west-legal", message.id),
+    ).resolves.toMatchObject([{ id: attachment.id }]);
+    await expect(repository.listMatterDocuments("firm-west-legal", "matter-002")).resolves.toEqual(
+      [],
+    );
   });
 
   it("preserves embedded intake template definitions and answer resolution snapshots", async () => {

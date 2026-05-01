@@ -82,6 +82,50 @@ export function createOpenPracticeQueue(queueName: OpenPracticeQueueName, redisU
   });
 }
 
+const allowedJobMetadataKeys = new Set([
+  "attachmentCount",
+  "attachmentId",
+  "bullJobId",
+  "checksumStatus",
+  "confidence",
+  "documentId",
+  "emailId",
+  "firmId",
+  "inboundMessageId",
+  "jobId",
+  "language",
+  "matterId",
+  "provider",
+  "providerConfigured",
+  "providerMessageId",
+  "recipientCount",
+  "resourceId",
+  "resourceType",
+  "scanStatus",
+  "task",
+  "templateKey",
+  "textLength",
+]);
+
+function safeMetadataValue(value: unknown): string | number | boolean | undefined {
+  if (typeof value === "string") return value.slice(0, 256);
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "boolean") return value;
+  return undefined;
+}
+
+export function sanitizeJobMetadata(
+  metadata: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (!allowedJobMetadataKeys.has(key)) continue;
+    const safeValue = safeMetadataValue(value);
+    if (safeValue !== undefined) sanitized[key] = safeValue;
+  }
+  return sanitized;
+}
+
 export function createQueuedJobLifecycleRecord(input: {
   id: string;
   firmId: string;
@@ -107,7 +151,7 @@ export function createQueuedJobLifecycleRecord(input: {
     maxAttempts:
       input.maxAttempts ?? Number(defaultJobOptionsByQueue[input.queueName].attempts ?? 1),
     queuedAt: input.now ?? new Date().toISOString(),
-    metadata: input.metadata ?? {},
+    metadata: sanitizeJobMetadata(input.metadata),
   };
 }
 

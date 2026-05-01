@@ -105,9 +105,10 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/mail/outbox`                                                     | Create a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.                              |
 | `GET /api/inbound-email/status`                                             | Inbound email provider status plus configured firm inbound addresses.                                                                      |
 | `GET /api/inbound-email/messages?matterId=`                                 | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                                                      |
-| `GET /api/inbound-email/messages/:id`                                       | Matter-scoped parsed inbound email detail with inbound-email attachment records.                                                           |
+| `GET /api/inbound-email/messages/:id`                                       | Matter-scoped parsed inbound email detail with inbound-email attachment records and promoted `documentId` links when present.              |
+| `POST /api/inbound-email/messages/:id/attachments/:attachmentId/promote-document` | Explicitly promotes one matter-scoped inbound attachment to a verified document record and optionally queues OCR.                          |
 | `GET /api/document-processing/status`                                       | OCR, transcription, media, and AI provider status from firm provider settings.                                                             |
-| `POST /api/document-processing/documents/:id/queue`                         | Auth-gated disabled scaffold for future document processing jobs.                                                                          |
+| `POST /api/document-processing/documents/:id/queue`                         | Queues OCR for an authorized verified document when the OCR worker queue is configured.                                                    |
 | `GET /api/auth/extensions`                                                  | Embedded-auth extension status for local password, OIDC/SAML placeholders, and MFA policy scaffolding.                                     |
 | `GET /api/shares/status`                                                    | Share-link capability status and create enablement based on token-signing configuration.                                                   |
 | `GET /api/shares?matterId=`                                                 | Persisted share-link listing with matter-scoped authorization and no token hashes in the response.                                         |
@@ -137,14 +138,14 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 
 These routes remain deferred until their persistence, authorization, and worker implementations land
 behind the scaffolded provider settings and job lifecycle records. Inbound email parsing now
-persists parsed messages and attachment records, and inbound status exposes configured firm
-recipient addresses; webhook ingestion, provider delivery setup, and automatic document promotion
-remain deferred.
+persists parsed messages and attachment records, inbound status exposes configured firm recipient
+addresses, staff can explicitly promote matter-scoped inbound attachments to documents, and verified
+documents can be handed to the OCR queue. Webhook ingestion, provider delivery setup, automatic
+document promotion, transcription, media processing, and async AI drafting remain deferred.
 
 | Route                                             | Purpose                                                                                         |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `GET /api/providers/status`                       | Operator-visible status for Redis/BullMQ, object storage, mail, OCR, transcription, and Ollama. |
-| `POST /api/documents/:id/ocr-jobs`                | Enqueue Tesseract OCR for a verified document version.                                          |
 | `POST /api/media/:id/transcription-jobs`          | Enqueue FFmpeg normalization and Whisper transcription for authorized media.                    |
 | `POST /api/documents/:id/assistive-drafting-jobs` | Future async Ollama/LM Studio drafting worker job after provider and queue governance land.     |
 | `POST /api/auth/passkeys/registration-options`    | Create a SimpleWebAuthn registration challenge for the current user.                            |

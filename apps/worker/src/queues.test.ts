@@ -56,6 +56,35 @@ describe("worker queue foundation", () => {
     });
   });
 
+  it("redacts queued job metadata to routing and lifecycle fields", () => {
+    expect(
+      createQueuedJobLifecycleRecord({
+        id: "job-ocr-1",
+        firmId: "firm-1",
+        queueName: "ocr",
+        jobName: "extract_document_text",
+        targetResourceType: "document",
+        targetResourceId: "doc-1",
+        metadata: {
+          documentId: "doc-1",
+          matterId: "matter-1",
+          attachmentCount: 1,
+          language: "eng",
+          checksumStatus: "verified",
+          extractedText: "privileged extracted text",
+          title: "Privileged document.pdf",
+          providerMetadata: { body: "provider payload" },
+        },
+      }).metadata,
+    ).toEqual({
+      documentId: "doc-1",
+      matterId: "matter-1",
+      attachmentCount: 1,
+      language: "eng",
+      checksumStatus: "verified",
+    });
+  });
+
   it("keeps processors disabled until providers are configured", async () => {
     await expect(
       processOpenPracticeJob({
