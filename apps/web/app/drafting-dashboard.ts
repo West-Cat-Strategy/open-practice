@@ -64,6 +64,22 @@ export function buildDraftUpdatePayload(input: { editorJson: TipTapDocument }): 
   };
 }
 
+export function formatDraftApiFailure(
+  action: "creation" | "save",
+  status: number,
+  payload?: unknown,
+): string {
+  const message =
+    payload &&
+    typeof payload === "object" &&
+    "message" in payload &&
+    typeof payload.message === "string"
+      ? `: ${payload.message}`
+      : "";
+
+  return `Draft ${action} failed: ${status}${message}`;
+}
+
 export function isSameDraftDocument(left: TipTapDocument, right: TipTapDocument): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }

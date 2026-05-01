@@ -21,6 +21,7 @@ import {
   buildDraftUpdatePayload,
   describeDraftAssistStatus,
   extractDraftPlainText,
+  formatDraftApiFailure,
   insertDraftAssistSuggestion,
   isSameDraftDocument,
   loadDraftingDashboardData,
@@ -354,6 +355,10 @@ describe("dashboard client behavior", () => {
     });
     expect(isSameDraftDocument(blankPayload.editorJson, updatedEditorJson)).toBe(false);
     expect(isSameDraftDocument(updatedEditorJson, updatedEditorJson)).toBe(true);
+    expect(formatDraftApiFailure("creation", 400, { message: "Invalid request body" })).toBe(
+      "Draft creation failed: 400: Invalid request body",
+    );
+    expect(formatDraftApiFailure("save", 500)).toBe("Draft save failed: 500");
   });
 
   it("describes draft assist status and inserts suggestions into local editor JSON", () => {

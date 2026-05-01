@@ -47,6 +47,7 @@ import {
   buildDraftUpdatePayload,
   describeDraftAssistStatus,
   extractDraftPlainText,
+  formatDraftApiFailure,
   insertDraftAssistSuggestion,
   isSameDraftDocument,
 } from "./drafting-dashboard";
@@ -463,28 +464,38 @@ export default function DashboardClient({
 
     setCreatingTemplateId(template.id);
     setDraftStatus("Creating draft...");
-    const response = await fetch(`${apiBaseUrl}/api/drafts`, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        ...devHeaders,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(buildDraftFromTemplatePayload({ matter: activeMatter, template })),
-    });
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/drafts`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(buildDraftFromTemplatePayload({ matter: activeMatter, template })),
+      });
 
-    if (!response.ok) {
-      setDraftStatus(`Draft creation failed: ${response.status}`);
+      if (!response.ok) {
+        setDraftStatus(
+          formatDraftApiFailure(
+            "creation",
+            response.status,
+            await response.json().catch(() => undefined),
+          ),
+        );
+        return;
+      }
+
+      const draft = (await response.json()) as DashboardDraft;
+      setDraftsByMatterId((current) => appendDraftToMatterDrafts(current, draft));
+      setSelectedDraftId(draft.id);
+      setDraftEditorJson(draft.editorJson);
+      setDraftStatus(`Created ${draft.title}.`);
+    } catch {
+      setDraftStatus("Draft creation failed: network error");
+    } finally {
       setCreatingTemplateId("");
-      return;
     }
-
-    const draft = (await response.json()) as DashboardDraft;
-    setDraftsByMatterId((current) => appendDraftToMatterDrafts(current, draft));
-    setSelectedDraftId(draft.id);
-    setDraftEditorJson(draft.editorJson);
-    setDraftStatus(`Created ${draft.title}.`);
-    setCreatingTemplateId("");
   }
 
   async function createBlankDraft(): Promise<void> {
@@ -492,28 +503,38 @@ export default function DashboardClient({
 
     setCreatingTemplateId("blank");
     setDraftStatus("Creating draft...");
-    const response = await fetch(`${apiBaseUrl}/api/drafts`, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        ...devHeaders,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(buildBlankDraftPayload({ matter: activeMatter })),
-    });
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/drafts`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(buildBlankDraftPayload({ matter: activeMatter })),
+      });
 
-    if (!response.ok) {
-      setDraftStatus(`Draft creation failed: ${response.status}`);
+      if (!response.ok) {
+        setDraftStatus(
+          formatDraftApiFailure(
+            "creation",
+            response.status,
+            await response.json().catch(() => undefined),
+          ),
+        );
+        return;
+      }
+
+      const draft = (await response.json()) as DashboardDraft;
+      setDraftsByMatterId((current) => appendDraftToMatterDrafts(current, draft));
+      setSelectedDraftId(draft.id);
+      setDraftEditorJson(draft.editorJson);
+      setDraftStatus(`Created ${draft.title}.`);
+    } catch {
+      setDraftStatus("Draft creation failed: network error");
+    } finally {
       setCreatingTemplateId("");
-      return;
     }
-
-    const draft = (await response.json()) as DashboardDraft;
-    setDraftsByMatterId((current) => appendDraftToMatterDrafts(current, draft));
-    setSelectedDraftId(draft.id);
-    setDraftEditorJson(draft.editorJson);
-    setDraftStatus(`Created ${draft.title}.`);
-    setCreatingTemplateId("");
   }
 
   async function saveDraft(): Promise<void> {
@@ -521,32 +542,42 @@ export default function DashboardClient({
 
     setSavingDraft(true);
     setDraftStatus("Saving draft...");
-    const response = await fetch(`${apiBaseUrl}/api/drafts/${selectedDraft.id}`, {
-      method: "PUT",
-      credentials: "include",
-      headers: {
-        ...devHeaders,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(buildDraftUpdatePayload({ editorJson: draftEditorJson })),
-    });
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/drafts/${selectedDraft.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(buildDraftUpdatePayload({ editorJson: draftEditorJson })),
+      });
 
-    if (!response.ok) {
-      setDraftStatus(`Draft save failed: ${response.status}`);
+      if (!response.ok) {
+        setDraftStatus(
+          formatDraftApiFailure(
+            "save",
+            response.status,
+            await response.json().catch(() => undefined),
+          ),
+        );
+        return;
+      }
+
+      const draft = (await response.json()) as DashboardDraft;
+      setDraftsByMatterId((current) => ({
+        ...current,
+        [draft.matterId ?? activeMatter.id]: (
+          current[draft.matterId ?? activeMatter.id] ?? []
+        ).map((candidate) => (candidate.id === draft.id ? draft : candidate)),
+      }));
+      setDraftEditorJson(draft.editorJson);
+      setDraftStatus(`Saved ${draft.title}.`);
+    } catch {
+      setDraftStatus("Draft save failed: network error");
+    } finally {
       setSavingDraft(false);
-      return;
     }
-
-    const draft = (await response.json()) as DashboardDraft;
-    setDraftsByMatterId((current) => ({
-      ...current,
-      [draft.matterId ?? activeMatter.id]: (current[draft.matterId ?? activeMatter.id] ?? []).map(
-        (candidate) => (candidate.id === draft.id ? draft : candidate),
-      ),
-    }));
-    setDraftEditorJson(draft.editorJson);
-    setDraftStatus(`Saved ${draft.title}.`);
-    setSavingDraft(false);
   }
 
   function openDraft(draft: DashboardDraft): void {
