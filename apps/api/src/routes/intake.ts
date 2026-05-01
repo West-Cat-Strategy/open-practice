@@ -3,7 +3,12 @@ import { z } from "zod";
 import type {
   AccessRequest,
   AnswerSnapshotRecord,
+  GeneratedDocumentRecord,
   IntakeSessionRecord,
+} from "@open-practice/domain";
+import {
+  resolveEmbeddedIntakeAnswers,
+  validateEmbeddedIntakeTemplateDefinition,
 } from "@open-practice/domain";
 import { EmbeddedAutomationProvider } from "@open-practice/providers";
 import { requireAccess } from "../http/auth-guards.js";
@@ -34,6 +39,11 @@ const generatedDocumentBodySchema = z.object({
   evidence: z.record(z.string(), z.unknown()).default({}),
 });
 
+const generatedPackageBodySchema = z.object({
+  packageId: z.string().min(1),
+  evidence: z.record(z.string(), z.unknown()).default({}),
+});
+
 const answerSnapshotBodySchema = z.object({
   answers: z.record(z.string(), z.unknown()),
   capturedAt: z.string().datetime().optional(),
@@ -47,6 +57,46 @@ function assertIntakeAccess(
 ): void {
   const access = requireAccess(context, request);
   if (!access.ok) throw access.error;
+}
+
+async function getEmbeddedTemplate(
+  repository: ApiRouteDependencies["repository"],
+  firmId: string,
+  templateId: string,
+) {
+  const template = (await repository.listIntakeTemplates(firmId)).find(
+    (candidate) => candidate.id === templateId,
+  );
+  if (!template) {
+    throw Object.assign(new Error("Intake template was not found"), { statusCode: 404 });
+  }
+  if (!template.active) {
+    throw Object.assign(new Error("Intake template is inactive"), { statusCode: 409 });
+  }
+  if (template.provider === "docassemble") {
+    throw Object.assign(new Error("docassemble intake templates are deprecated"), {
+      statusCode: 410,
+    });
+  }
+  validateEmbeddedIntakeTemplateDefinition(template.definition);
+  return template;
+}
+
+async function getQueuedEmailSummary(
+  repository: ApiRouteDependencies["repository"],
+  firmId: string,
+): Promise<
+  | { status: "disabled"; reason: "not_configured"; provider?: undefined }
+  | { status: "not_queued"; reason: "recipient_not_specified"; provider: string }
+> {
+  const providers = await repository.listProviderSettings(firmId, { kind: "smtp" });
+  const enabled = providers.find((provider) => provider.enabled);
+  if (!enabled) return { status: "disabled", reason: "not_configured" };
+  return {
+    status: "not_queued",
+    reason: "recipient_not_specified",
+    provider: enabled.key,
+  };
 }
 
 export function registerIntakeRoutes(
@@ -97,17 +147,7 @@ export function registerIntakeRoutes(
       action: "create",
       matterId: body.matterId,
     });
-    const template = (await repository.listIntakeTemplates(request.auth.firmId)).find(
-      (candidate) => candidate.id === body.templateId,
-    );
-    if (!template) {
-      throw Object.assign(new Error("Intake template was not found"), { statusCode: 404 });
-    }
-    if (template.provider === "docassemble") {
-      throw Object.assign(new Error("docassemble intake templates are deprecated"), {
-        statusCode: 410,
-      });
-    }
+    const template = await getEmbeddedTemplate(repository, request.auth.firmId, body.templateId);
     const now = new Date().toISOString();
     const provider = automationProvider ?? new EmbeddedAutomationProvider();
     const providerRef = await provider.startInterview({
@@ -191,12 +231,20 @@ export function registerIntakeRoutes(
       matterId: session.matterId,
     });
     const body = parseRequestPart(answerSnapshotBodySchema, request.body, "body");
+    const template = await getEmbeddedTemplate(repository, request.auth.firmId, session.templateId);
+    const resolution = resolveEmbeddedIntakeAnswers({
+      templateId: template.id,
+      templateVersion: template.definitionVersion,
+      definition: template.definition,
+      answers: body.answers,
+    });
     const snapshot: AnswerSnapshotRecord = {
       id: crypto.randomUUID(),
       firmId: request.auth.firmId,
       intakeSessionId: session.id,
       capturedAt: body.capturedAt ?? new Date().toISOString(),
       answers: body.answers,
+      resolution,
     };
     const created = await repository.createAnswerSnapshot(snapshot);
     await appendRouteAuditEvent(repository, request.auth, {
@@ -207,7 +255,12 @@ export function registerIntakeRoutes(
       metadata: {
         matterId: session.matterId,
         intakeSessionId: session.id,
+        templateId: template.id,
+        templateVersion: template.definitionVersion,
         answerCount: Object.keys(created.answers).length,
+        visibleQuestionCount: resolution.visibleQuestionIds.length,
+        eligiblePackageCount: resolution.eligiblePackageIds.length,
+        selectedPackageCount: resolution.selectedPackageIds.length,
       },
     });
     return created;
@@ -278,5 +331,106 @@ export function registerIntakeRoutes(
       },
     });
     return { ...created, queuedEmail: summarizeQueuedRouteEmail(queuedEmail) };
+  });
+
+  server.post("/api/intake-sessions/:id/generated-packages", async (request) => {
+    const params = parseRequestPart(idParamsSchema, request.params, "params");
+    const session = await repository.getIntakeSession(request.auth.firmId, params.id);
+    if (!session) {
+      throw Object.assign(new Error("Intake session was not found"), { statusCode: 404 });
+    }
+    assertIntakeAccess(request.auth, {
+      resource: "intake_session",
+      action: "update",
+      matterId: session.matterId,
+    });
+    if (session.provider === "docassemble") {
+      throw Object.assign(new Error("docassemble generated documents are deprecated"), {
+        statusCode: 410,
+      });
+    }
+    const body = parseRequestPart(generatedPackageBodySchema, request.body, "body");
+    const snapshots = await repository.listAnswerSnapshots(request.auth.firmId, {
+      intakeSessionId: session.id,
+    });
+    const latestSnapshot = [...snapshots].sort((left, right) =>
+      right.capturedAt.localeCompare(left.capturedAt),
+    )[0];
+    if (!latestSnapshot) {
+      throw Object.assign(new Error("Answer snapshot is required before package generation"), {
+        statusCode: 409,
+      });
+    }
+    if (!latestSnapshot.resolution.selectedPackageIds.includes(body.packageId)) {
+      throw Object.assign(new Error("Requested package is not eligible for this intake session"), {
+        statusCode: 409,
+      });
+    }
+    const packageDocuments = latestSnapshot.resolution.packageDocuments.filter(
+      (document) => document.packageId === body.packageId,
+    );
+    if (packageDocuments.length === 0) {
+      throw Object.assign(new Error("Requested package has no resolved documents"), {
+        statusCode: 409,
+      });
+    }
+
+    const provider = automationProvider ?? new EmbeddedAutomationProvider();
+    const documents: GeneratedDocumentRecord[] = [];
+    for (const packageDocument of packageDocuments) {
+      const generated = await provider.renderDocument({
+        firmId: request.auth.firmId,
+        matterId: session.matterId,
+        sessionExternalId: session.externalId,
+        documentTitle: packageDocument.title,
+        packageId: packageDocument.packageId,
+        packageDocumentId: packageDocument.packageDocumentId,
+      });
+      documents.push(
+        await repository.createGeneratedDocument({
+          id: crypto.randomUUID(),
+          firmId: request.auth.firmId,
+          matterId: session.matterId,
+          intakeSessionId: session.id,
+          provider: generated.provider,
+          externalId: generated.externalId,
+          title: generated.title,
+          packageId: packageDocument.packageId,
+          packageDocumentId: packageDocument.packageDocumentId,
+          storageKey: generated.storageKey,
+          checksumSha256: generated.checksumSha256,
+          evidence: {
+            ...body.evidence,
+            ...(generated.evidence ?? {}),
+            answerSnapshotId: latestSnapshot.id,
+          },
+          createdAt: new Date().toISOString(),
+        }),
+      );
+    }
+
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "intake.package.generated",
+      resourceType: "intake_session",
+      resourceId: session.id,
+      occurredAt: new Date().toISOString(),
+      metadata: {
+        matterId: session.matterId,
+        intakeSessionId: session.id,
+        templateId: latestSnapshot.resolution.templateId,
+        templateVersion: latestSnapshot.resolution.templateVersion,
+        answerSnapshotId: latestSnapshot.id,
+        packageId: body.packageId,
+        packageDocumentIds: packageDocuments.map((document) => document.packageDocumentId),
+        documentCount: documents.length,
+        providers: [...new Set(documents.map((document) => document.provider))],
+      },
+    });
+
+    return {
+      packageId: body.packageId,
+      documents,
+      queuedEmail: await getQueuedEmailSummary(repository, request.auth.firmId),
+    };
   });
 }

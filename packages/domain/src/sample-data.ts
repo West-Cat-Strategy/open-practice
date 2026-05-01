@@ -18,6 +18,7 @@ import type {
   User,
 } from "./models.js";
 import type { LedgerAccount, LedgerEntry } from "./ledger.js";
+import type { EmbeddedIntakeTemplateDefinition } from "./intake.js";
 import type {
   GeneratedDocumentRecord,
   IntakeSessionRecord,
@@ -210,6 +211,77 @@ export const sampleSignatureProviderEvents: SignatureProviderEventRecord[] = [
 
 export const sampleSignatureWebhookAttempts: SignatureWebhookAttemptRecord[] = [];
 
+export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDefinition = {
+  schemaVersion: 1,
+  questions: [
+    {
+      id: "issue_type",
+      label: "Issue type",
+      type: "select",
+      required: true,
+      options: [
+        { value: "repair", label: "Repair or maintenance" },
+        { value: "deposit", label: "Security deposit" },
+        { value: "notice", label: "Notice to end tenancy" },
+      ],
+    },
+    {
+      id: "urgent",
+      label: "Urgent deadline",
+      type: "boolean",
+    },
+    {
+      id: "repair_details",
+      label: "Repair details",
+      type: "textarea",
+    },
+  ],
+  branchRules: [
+    {
+      id: "repair-package",
+      questionId: "issue_type",
+      operator: "equals",
+      value: "repair",
+      showQuestionIds: ["repair_details"],
+      eligiblePackageIds: ["repair_notice_package"],
+    },
+    {
+      id: "urgent-review-package",
+      questionId: "urgent",
+      operator: "equals",
+      value: true,
+      eligiblePackageIds: ["urgent_review_package"],
+    },
+  ],
+  packages: [
+    {
+      id: "repair_notice_package",
+      title: "Repair notice package",
+      default: true,
+      documents: [
+        {
+          id: "repair_notice_letter",
+          title: "Repair notice letter",
+        },
+        {
+          id: "client_instruction_summary",
+          title: "Client instruction summary",
+        },
+      ],
+    },
+    {
+      id: "urgent_review_package",
+      title: "Urgent review package",
+      documents: [
+        {
+          id: "urgent_review_memo",
+          title: "Urgent review memo",
+        },
+      ],
+    },
+  ],
+};
+
 export const sampleIntakeTemplates: IntakeTemplateRecord[] = [
   {
     id: "intake-template-001",
@@ -218,6 +290,8 @@ export const sampleIntakeTemplates: IntakeTemplateRecord[] = [
     provider: "embedded",
     externalTemplateId: "residential-tenancy-intake",
     active: true,
+    definitionVersion: 1,
+    definition: sampleResidentialTenancyIntakeDefinition,
   },
 ];
 

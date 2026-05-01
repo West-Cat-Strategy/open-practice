@@ -790,4 +790,65 @@ describe("repository operations foundation", () => {
     ]);
     expect(attachments[0]).not.toHaveProperty("documentId");
   });
+
+  it("preserves embedded intake template definitions and answer resolution snapshots", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const [template] = await repository.listIntakeTemplates("firm-west-legal");
+    const resolution = {
+      templateId: template.id,
+      templateVersion: template.definitionVersion,
+      visibleQuestionIds: ["issue_type", "urgent", "repair_details"],
+      eligiblePackageIds: ["repair_notice_package"],
+      selectedPackageIds: ["repair_notice_package"],
+      packageDocuments: [
+        {
+          packageId: "repair_notice_package",
+          packageDocumentId: "repair_notice_letter",
+          title: "Repair notice letter",
+        },
+      ],
+    };
+
+    expect(template).toMatchObject({
+      id: "intake-template-001",
+      definitionVersion: 1,
+      definition: expect.objectContaining({
+        schemaVersion: 1,
+        packages: expect.arrayContaining([
+          expect.objectContaining({ id: "repair_notice_package" }),
+        ]),
+      }),
+    });
+    await repository.createAnswerSnapshot({
+      id: "answer-snapshot-resolution",
+      firmId: "firm-west-legal",
+      intakeSessionId: "intake-session-001",
+      capturedAt: now,
+      answers: { issue_type: "repair" },
+      resolution,
+    });
+    await expect(
+      repository.listAnswerSnapshots("firm-west-legal", {
+        intakeSessionId: "intake-session-001",
+      }),
+    ).resolves.toEqual([expect.objectContaining({ resolution })]);
+    await expect(
+      repository.createGeneratedDocument({
+        id: "generated-package-doc",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        intakeSessionId: "intake-session-001",
+        provider: "embedded",
+        externalId: "embedded:intake-session-001:repair_notice_package:repair_notice_letter",
+        title: "Repair notice letter",
+        packageId: "repair_notice_package",
+        packageDocumentId: "repair_notice_letter",
+        evidence: {},
+        createdAt: now,
+      }),
+    ).resolves.toMatchObject({
+      packageId: "repair_notice_package",
+      packageDocumentId: "repair_notice_letter",
+    });
+  });
 });

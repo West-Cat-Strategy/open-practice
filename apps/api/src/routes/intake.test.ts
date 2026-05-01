@@ -112,7 +112,19 @@ describe("intake routes", () => {
 
     expect(before.statusCode).toBe(200);
     expect(before.json()).toMatchObject({
-      templates: [expect.objectContaining({ id: "intake-template-001", provider: "embedded" })],
+      templates: [
+        expect.objectContaining({
+          id: "intake-template-001",
+          provider: "embedded",
+          definitionVersion: 1,
+          definition: expect.objectContaining({
+            schemaVersion: 1,
+            packages: expect.arrayContaining([
+              expect.objectContaining({ id: "repair_notice_package" }),
+            ]),
+          }),
+        }),
+      ],
       sessions: [expect.objectContaining({ id: "intake-session-001", matterId: "matter-001" })],
     });
     expect(created.statusCode).toBe(200);
@@ -160,7 +172,7 @@ describe("intake routes", () => {
       url: "/api/intake-sessions/intake-session-001/answer-snapshots",
       payload: {
         capturedAt: "2026-04-25T12:10:00.000Z",
-        answers: { issue: "repair", urgency: "high" },
+        answers: { issue_type: "repair", urgent: true },
       },
     });
     const list = await server.inject({
@@ -173,11 +185,147 @@ describe("intake routes", () => {
       firmId: "firm-west-legal",
       intakeSessionId: "intake-session-001",
       capturedAt: "2026-04-25T12:10:00.000Z",
-      answers: { issue: "repair", urgency: "high" },
+      answers: { issue_type: "repair", urgent: true },
+      resolution: expect.objectContaining({
+        templateId: "intake-template-001",
+        templateVersion: 1,
+        visibleQuestionIds: expect.arrayContaining(["issue_type", "urgent", "repair_details"]),
+        eligiblePackageIds: expect.arrayContaining([
+          "repair_notice_package",
+          "urgent_review_package",
+        ]),
+        selectedPackageIds: expect.arrayContaining([
+          "repair_notice_package",
+          "urgent_review_package",
+        ]),
+      }),
     });
     expect(list.statusCode).toBe(200);
     expect(list.json()).toMatchObject({
-      snapshots: [expect.objectContaining({ answers: { issue: "repair", urgency: "high" } })],
+      snapshots: [
+        expect.objectContaining({
+          answers: { issue_type: "repair", urgent: true },
+          resolution: expect.objectContaining({
+            packageDocuments: expect.arrayContaining([
+              expect.objectContaining({
+                packageId: "repair_notice_package",
+                packageDocumentId: "repair_notice_letter",
+              }),
+            ]),
+          }),
+        }),
+      ],
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const snapshotAudit = audit.events.find(
+      (event) => event.action === "intake_answer_snapshot.created",
+    );
+    expect(snapshotAudit?.metadata).toMatchObject({
+      intakeSessionId: "intake-session-001",
+      templateId: "intake-template-001",
+      answerCount: 2,
+      selectedPackageCount: 2,
+    });
+    expect(JSON.stringify(snapshotAudit?.metadata)).not.toContain("repair");
+    expect(JSON.stringify(snapshotAudit?.metadata)).not.toContain("urgent");
+  });
+
+  it("generates eligible embedded intake packages from the latest answer snapshot", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    await server.inject({
+      method: "POST",
+      url: "/api/intake-sessions/intake-session-001/answer-snapshots",
+      payload: {
+        capturedAt: "2026-04-25T12:10:00.000Z",
+        answers: { issue_type: "repair", urgent: true },
+      },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/intake-sessions/intake-session-001/generated-packages",
+      payload: {
+        packageId: "repair_notice_package",
+        evidence: { requestedBy: "route-test" },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      packageId: "repair_notice_package",
+      documents: [
+        expect.objectContaining({
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          intakeSessionId: "intake-session-001",
+          provider: "embedded",
+          title: "Repair notice letter",
+          packageId: "repair_notice_package",
+          packageDocumentId: "repair_notice_letter",
+          externalId:
+            "embedded:embedded:intake-session-001:repair_notice_package:repair_notice_letter",
+          evidence: expect.objectContaining({
+            mode: "embedded",
+            requestedBy: "route-test",
+            packageId: "repair_notice_package",
+            packageDocumentId: "repair_notice_letter",
+          }),
+        }),
+        expect.objectContaining({
+          title: "Client instruction summary",
+          packageDocumentId: "client_instruction_summary",
+        }),
+      ],
+      queuedEmail: {
+        status: "disabled",
+        reason: "not_configured",
+      },
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const packageAudit = audit.events.find((event) => event.action === "intake.package.generated");
+    expect(packageAudit?.metadata).toMatchObject({
+      intakeSessionId: "intake-session-001",
+      templateId: "intake-template-001",
+      packageId: "repair_notice_package",
+      documentCount: 2,
+      packageDocumentIds: ["repair_notice_letter", "client_instruction_summary"],
+      providers: ["embedded"],
+    });
+    expect(JSON.stringify(packageAudit?.metadata)).not.toContain("route-test");
+    expect(JSON.stringify(packageAudit?.metadata)).not.toContain("storageKey");
+    expect(JSON.stringify(packageAudit?.metadata)).not.toContain("checksum");
+  });
+
+  it("rejects package generation without an eligible answer snapshot", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const missingSnapshot = await testServer({ repository }).inject({
+      method: "POST",
+      url: "/api/intake-sessions/intake-session-001/generated-packages",
+      payload: { packageId: "repair_notice_package" },
+    });
+    const server = testServer({ repository });
+    await server.inject({
+      method: "POST",
+      url: "/api/intake-sessions/intake-session-001/answer-snapshots",
+      payload: {
+        capturedAt: "2026-04-25T12:10:00.000Z",
+        answers: { issue_type: "deposit", urgent: false },
+      },
+    });
+    const ineligible = await server.inject({
+      method: "POST",
+      url: "/api/intake-sessions/intake-session-001/generated-packages",
+      payload: { packageId: "urgent_review_package" },
+    });
+
+    expect(missingSnapshot.statusCode).toBe(409);
+    expect(missingSnapshot.json()).toMatchObject({
+      message: "Answer snapshot is required before package generation",
+    });
+    expect(ineligible.statusCode).toBe(409);
+    expect(ineligible.json()).toMatchObject({
+      message: "Requested package is not eligible for this intake session",
     });
     await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
       events: expect.arrayContaining([
@@ -185,11 +333,11 @@ describe("intake routes", () => {
           action: "intake_answer_snapshot.created",
           resourceType: "intake_session",
           resourceId: "intake-session-001",
-          metadata: {
+          metadata: expect.objectContaining({
             matterId: "matter-001",
             intakeSessionId: "intake-session-001",
             answerCount: 2,
-          },
+          }),
         }),
       ]),
       valid: true,

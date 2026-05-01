@@ -44,6 +44,27 @@ describe("embedded providers", () => {
       externalId: "embedded:matter-001:intake-retainer",
       status: "created",
     });
+
+    await expect(
+      provider.renderDocument({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        sessionExternalId: "embedded:matter-001:intake-retainer",
+        documentTitle: "Repair notice letter",
+        packageId: "repair_notice_package",
+        packageDocumentId: "repair_notice_letter",
+      }),
+    ).resolves.toMatchObject({
+      provider: "embedded",
+      externalId:
+        "embedded:embedded:matter-001:intake-retainer:repair_notice_package:repair_notice_letter",
+      title: "Repair notice letter",
+      evidence: {
+        mode: "embedded",
+        packageId: "repair_notice_package",
+        packageDocumentId: "repair_notice_letter",
+      },
+    });
   });
 });
 

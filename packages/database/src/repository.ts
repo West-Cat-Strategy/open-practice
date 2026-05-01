@@ -1030,6 +1030,7 @@ function mapAnswerSnapshotRow(
     intakeSessionId: row.intakeSessionId,
     capturedAt: row.capturedAt.toISOString(),
     answers: row.answers as Record<string, unknown>,
+    resolution: row.resolution as AnswerSnapshotRecord["resolution"],
   };
 }
 
@@ -4505,6 +4506,8 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       provider: row.provider as IntakeTemplateRecord["provider"],
       externalTemplateId: row.externalTemplateId,
       active: row.active,
+      definitionVersion: row.definitionVersion,
+      definition: row.definition,
     }));
   }
 

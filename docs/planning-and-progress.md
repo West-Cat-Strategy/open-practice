@@ -10,10 +10,10 @@ backlog ideas, and `docs/planning-completed-archive.md` for historical validatio
 
 | Snapshot              | Value                                                                                  |
 | --------------------- | -------------------------------------------------------------------------------------- |
-| Current focus         | `OP-T32` guided intake first-slice design                                              |
-| Next recommended pick | `OP-T32` embedded template metadata, branching/packages, and answer snapshots          |
+| Current focus         | `OP-T33` Local AI drafting assist                                                      |
+| Next recommended pick | `OP-T33` disabled-by-default drafting provider slice                                   |
 | Ready rows            | 1                                                                                      |
-| Candidate rows        | 3                                                                                      |
+| Candidate rows        | 2                                                                                      |
 | In progress rows      | 0                                                                                      |
 | Review rows           | 0                                                                                      |
 | Blocked rows          | 0                                                                                      |
@@ -22,17 +22,17 @@ backlog ideas, and `docs/planning-completed-archive.md` for historical validatio
 
 ## Forward Development Plan
 
-| Status    | ID     | Task                             | Immediate Next Move                                                                                                                                                     | Validation Plan                                                                                                                                                                                          |
-| --------- | ------ | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ready     | OP-T32 | Guided intake branching/packages | Implement versioned embedded-template JSON for branching/packages plus generated-session snapshots; avoid broad dashboard changes in the first slice.                   | Run selector on intake domain/API/database/provider/docs paths; include focused intake/provider/domain tests, API intake route tests, `db:check` if repository contracts change, and docs/policy checks. |
-| Candidate | OP-T33 | Local AI drafting assist         | Scout disabled-by-default Ollama/LM Studio config, non-authoritative draft-assist review states, audit boundaries, and the minimum API shape before implementation.     | Run selector on provider/worker/API/domain/database/web/docs paths; include provider/worker/API/web tests and typechecks, docs/policy checks, and `pnpm ci:local` for broad worker/provider integration. |
-| Candidate | OP-T34 | Calendar/meeting foundation      | Implement authenticated calendar CRUD/dashboard affordances first and defer WebRTC to disabled tokenized meeting-link scaffolding.                                      | Run selector on calendar domain/database/API/web/worker/docs paths; include API/domain/database/web tests, `db:check`, docs/policy checks, and full local gate for meeting/link capability boundaries.   |
-| Candidate | OP-T35 | Specialized workflows            | Scout legal clinics as the first vertical because it can reuse intake, email, calendar, documents, and matter-scoped collaboration without a parallel accounting model. | Start with docs/API/domain design selector; expand to API/domain/database/web tests only after the first workflow surface is chosen and implemented.                                                     |
+| Status    | ID     | Task                        | Immediate Next Move                                                                                                                                                              | Validation Plan                                                                                                                                                                                          |
+| --------- | ------ | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ready     | OP-T33 | Local AI drafting assist    | Add disabled-by-default Ollama/LM Studio provider settings, document-summary/draft-assist API workflows, review state, and a narrow drafting dashboard assist panel.             | Run selector on provider/worker/API/domain/database/web/docs paths; include provider/worker/API/web tests and typechecks, docs/policy checks, and `pnpm ci:local` for broad worker/provider integration. |
+| Candidate | OP-T34 | Calendar/meeting foundation | Implement matter-scoped calendar event CRUD, outbound iCalendar/webcal sync, invitation email, tokenized recipient meeting links, and disabled-until-configured WebRTC controls. | Run selector on calendar domain/database/API/web/worker/docs paths; include API/domain/database/web tests, `db:check`, docs/policy checks, and full local gate for meeting/link capability boundaries.   |
+| Candidate | OP-T35 | Specialized workflows       | Define the first scoped workflow for legal clinics, nonprofit fiscal hosts, complex trust accounting, or multi-jurisdiction reporting without compliance overclaims.             | Start with docs/API/domain design selector; expand to API/domain/database/web tests only after the first workflow surface is chosen and implemented.                                                     |
 
 ## Recently Completed
 
 | ID     | Outcome                            | Concise Proof                                                                                                                                                                         |
 | ------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OP-T32 | Guided intake branching/packages   | Embedded template definitions, branch resolution, package document generation, snapshot-authoritative rendering, persistence, redacted audit events, docs, and local gates.           |
 | OP-T36 | Email workflow closure             | Generic SMTP/Redis-gated `/api/mail/outbox`, shared outbox helper, source-specific signature/intake notifications, optional create-time share/upload token emails, and tests.         |
 | OP-T30 | Audit event coverage pass          | Route audit events and assertions cover signatures, intake, drafts, documents, billing, ledger, email outbox, shares, and external uploads, with bodies/tokens out of audit metadata. |
 | OP-T31 | Dashboard section deep links       | `/?section=...` dashboard hydration, sidebar URL sync, and route-catalog fallback behavior for unknown, disabled, queue, and non-sidebar entries without API changes.                 |
@@ -43,7 +43,6 @@ backlog ideas, and `docs/planning-completed-archive.md` for historical validatio
 | OP-T26 | Trust/funds DB approval hardening  | Persistent client-balance guards, atomic ledger updates, approval/reconciliation persistence, package tests/typechecks, migration replay, docs/policy, and verify.                    |
 | OP-T25 | Inbound email parsing and triage   | `mailparser` parsing, parsed-message persistence, matter-scoped reads, provider/worker/database/API/domain checks, docs/policy checks, and `pnpm verify`.                             |
 | OP-T24 | Drafting foundation and templates  | Repository-backed draft APIs, TipTap/ProseMirror validation, sanitized snapshots, migrations, route regressions, docs/policy alignment, and `pnpm verify`.                            |
-| OP-T23 | SimpleWebAuthn MFA and recovery    | Passkey management, MFA enforcement, recovery bypass, API route tests, and build proof.                                                                                               |
 
 See [Planning Completed Archive](planning-completed-archive.md) for the full historical workboard and validation ledger.
 
