@@ -7,6 +7,8 @@ import {
 } from "@open-practice/domain";
 import {
   InMemoryOpenPracticeRepository,
+  CalendarEventScopeConflictError,
+  CalendarEventUidConflictError,
   FirstRunSetupConflictError,
   type FirstRunSetupInput,
 } from "../src/repository.js";
@@ -474,6 +476,187 @@ describe("repository operations foundation", () => {
     await expect(
       repository.listAccessLogs("firm-west-legal", { externalUploadLinkId: activeLink.id }),
     ).resolves.toMatchObject([{ id: "access-upload" }]);
+  });
+
+  it("lists matter-scoped calendar events with optional start filters", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await expect(
+      repository.listCalendarEvents("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toMatchObject([
+      { id: "calendar-event-001", matterId: "matter-001" },
+      { id: "calendar-event-002", matterId: "matter-001" },
+    ]);
+
+    await expect(
+      repository.listCalendarEvents("firm-west-legal", {
+        matterId: "matter-001",
+        startsAfter: "2026-05-06T00:00:00.000Z",
+      }),
+    ).resolves.toMatchObject([{ id: "calendar-event-002", matterId: "matter-001" }]);
+
+    await expect(
+      repository.listCalendarEvents("firm-west-legal", { matterId: "matter-002" }),
+    ).resolves.toMatchObject([{ id: "calendar-event-003", matterId: "matter-002" }]);
+  });
+
+  it("creates, updates, and soft-deletes matter-scoped calendar events", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const event = await repository.upsertCalendarEvent({
+      id: "calendar-event-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      uid: "calendar-event-test@example.test",
+      title: "Synthetic CalDAV event",
+      startsAt: "2026-05-12T16:00:00.000Z",
+      endsAt: "2026-05-12T17:00:00.000Z",
+      description: "Created by repository test.",
+      location: "Office",
+      status: "confirmed",
+      sequence: 0,
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+    });
+
+    await expect(
+      repository.getCalendarEvent("firm-west-legal", "matter-001", event.id),
+    ).resolves.toMatchObject({ uid: "calendar-event-test@example.test", sequence: 0 });
+    await expect(
+      repository.getCalendarEventByUid("firm-west-legal", "matter-001", event.uid),
+    ).resolves.toMatchObject({ id: event.id });
+
+    await repository.upsertCalendarEvent({
+      ...event,
+      title: "Updated synthetic CalDAV event",
+      sequence: 1,
+      updatedAt: "2026-04-25T12:10:00.000Z",
+    });
+    await expect(
+      repository.getCalendarEvent("firm-west-legal", "matter-001", event.id),
+    ).resolves.toMatchObject({ title: "Updated synthetic CalDAV event", sequence: 1 });
+
+    await expect(
+      repository.deleteCalendarEvent({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: event.id,
+        deletedAt: "2026-04-25T12:15:00.000Z",
+        updatedByUserId: "user-licensee",
+      }),
+    ).resolves.toMatchObject({ deletedAt: "2026-04-25T12:15:00.000Z", sequence: 2 });
+    await expect(
+      repository.listCalendarEvents("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.not.toEqual(expect.arrayContaining([expect.objectContaining({ id: event.id })]));
+
+    await expect(
+      repository.upsertCalendarEvent({
+        ...event,
+        id: "calendar-event-test-recreated",
+        sequence: 0,
+        createdAt: "2026-04-25T12:20:00.000Z",
+        updatedAt: "2026-04-25T12:20:00.000Z",
+      }),
+    ).resolves.toMatchObject({
+      id: "calendar-event-test-recreated",
+      uid: "calendar-event-test@example.test",
+    });
+  });
+
+  it("rejects calendar event writes that would cross firm or matter scope", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await expect(
+      repository.upsertCalendarEvent({
+        id: "calendar-event-001",
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        uid: "cross-scope@example.test",
+        title: "Cross-scope attempt",
+        startsAt: "2026-05-12T16:00:00.000Z",
+        endsAt: "2026-05-12T17:00:00.000Z",
+        status: "confirmed",
+        sequence: 0,
+        createdAt: now,
+        updatedAt: now,
+        createdByUserId: "user-licensee",
+        updatedByUserId: "user-licensee",
+      }),
+    ).rejects.toBeInstanceOf(CalendarEventScopeConflictError);
+
+    await expect(
+      repository.getCalendarEvent("firm-west-legal", "matter-001", "calendar-event-001"),
+    ).resolves.toMatchObject({
+      matterId: "matter-001",
+      title: "Residential tenancy filing deadline",
+    });
+  });
+
+  it("enforces active-only calendar UID uniqueness per matter", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await expect(
+      repository.upsertCalendarEvent({
+        id: "calendar-event-uid-conflict",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        uid: "calendar-event-001@open-practice.local",
+        title: "Duplicate UID attempt",
+        startsAt: "2026-05-12T16:00:00.000Z",
+        endsAt: "2026-05-12T17:00:00.000Z",
+        status: "confirmed",
+        sequence: 0,
+        createdAt: now,
+        updatedAt: now,
+        createdByUserId: "user-licensee",
+        updatedByUserId: "user-licensee",
+      }),
+    ).rejects.toBeInstanceOf(CalendarEventUidConflictError);
+  });
+
+  it("stores and revokes calendar app-password credentials", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await expect(
+      repository.createCalendarCredential({
+        id: "calendar-credential-test",
+        firmId: "firm-west-legal",
+        userId: "user-licensee",
+        username: "firm-west-legal.user-licensee.calendar-credential-test",
+        label: "Mina iPhone",
+        passwordHash: "pbkdf2:sha256:1:salt:hash",
+        createdAt: now,
+        createdByUserId: "user-licensee",
+      }),
+    ).resolves.toMatchObject({ label: "Mina iPhone" });
+
+    await expect(
+      repository.getCalendarCredentialByUsername(
+        "firm-west-legal.user-licensee.calendar-credential-test",
+      ),
+    ).resolves.toMatchObject({ id: "calendar-credential-test" });
+
+    await repository.touchCalendarCredential(
+      "calendar-credential-test",
+      "2026-04-25T12:20:00.000Z",
+    );
+    await expect(
+      repository.listCalendarCredentials("firm-west-legal", "user-licensee"),
+    ).resolves.toMatchObject([{ lastUsedAt: "2026-04-25T12:20:00.000Z" }]);
+
+    await expect(
+      repository.revokeCalendarCredential({
+        firmId: "firm-west-legal",
+        userId: "user-licensee",
+        credentialId: "calendar-credential-test",
+        revokedAt: "2026-04-25T12:30:00.000Z",
+      }),
+    ).resolves.toMatchObject({ revokedAt: "2026-04-25T12:30:00.000Z" });
+    await expect(
+      repository.getCalendarCredentialByUsername(
+        "firm-west-legal.user-licensee.calendar-credential-test",
+      ),
+    ).resolves.toBeUndefined();
   });
 
   it("guards trust approval and reconciliation persistence", async () => {

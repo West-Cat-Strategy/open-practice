@@ -17,6 +17,8 @@ import { registerAuditRoutes } from "./routes/audit.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerAuthExtensionRoutes } from "./routes/auth-extensions.js";
 import { registerBillingRoutes } from "./routes/billing.js";
+import { registerCalDavRoutes } from "./routes/caldav.js";
+import { registerCalendarRoutes } from "./routes/calendar.js";
 import { registerDocumentProcessingRoutes } from "./routes/document-processing.js";
 import { registerDocumentRoutes } from "./routes/documents.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
@@ -318,6 +320,8 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerMatterRoutes(server, { repository: options.repository });
   registerLedgerRoutes(server, { repository: options.repository });
   registerBillingRoutes(server, { repository: options.repository });
+  registerCalDavRoutes(server, { repository: options.repository });
+  registerCalendarRoutes(server, { repository: options.repository });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
   registerDocumentProcessingRoutes(server, { repository: options.repository });
   registerDraftRoutes(server, { repository: options.repository });
