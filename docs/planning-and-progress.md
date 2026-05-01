@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-04-29
+**Last Updated:** 2026-05-01
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
