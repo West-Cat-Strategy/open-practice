@@ -516,6 +516,53 @@ h3 {
   padding: 0 12px;
 }
 
+.share-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.share-control-grid {
+  margin-bottom: 14px;
+}
+
+.permission-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.share-form-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.7fr) minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.share-check-row {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 0 10px;
+}
+
+.share-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.share-row-actions .compact-button,
+.share-form-row .compact-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  border-radius: 8px;
+  padding: 0 12px;
+}
+
 .search-field {
   display: grid;
   gap: 7px;
@@ -859,6 +906,8 @@ h3 {
   .main-grid,
   .detail-grid,
   .activity-grid,
+  .permission-toggle-grid,
+  .share-form-row,
   .nav-list,
   .setup-grid {
     grid-template-columns: 1fr;

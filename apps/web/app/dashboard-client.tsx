@@ -12,6 +12,7 @@ import {
   FileSignature,
   Files,
   Gavel,
+  Link2,
   LockKeyhole,
   Plus,
   Save,
@@ -19,12 +20,19 @@ import {
   ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ConflictCandidate } from "@open-practice/domain";
 import {
   buildSidebarNavigationSections,
   type OpenPracticeSidebarNavigationSection,
 } from "../routes/routeCatalog";
+import {
+  buildCreateShareLinkPayload,
+  describeShareLinkState,
+  formatSharePermission,
+  replaceShareLink,
+  shareLinkPermissions,
+} from "./share-links-dashboard";
 import {
   appendDraftToMatterDrafts,
   buildBlankDraftPayload,
@@ -44,7 +52,13 @@ import type {
   MatterSummary,
   PracticeOverview,
   QueuesResponse,
+  CreateShareLinkResponse,
+  RevokeShareLinkResponse,
   SessionResponse,
+  ShareLinkPermission,
+  ShareLinkRecord,
+  ShareLinksResponse,
+  ShareLinksStatusResponse,
   SignatureRequestsResponse,
 } from "./types";
 
@@ -58,6 +72,7 @@ interface DashboardClientProps {
   overview: PracticeOverview;
   matters: MatterSummary[];
   session: SessionResponse;
+  shareLinksStatus: ShareLinksStatusResponse;
   signatures: SignatureRequestsResponse;
   queues: QueuesResponse;
 }
@@ -75,6 +90,7 @@ const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   funds: Banknote,
   billing: CreditCard,
   documents: Files,
+  shares: Link2,
   drafting: FilePenLine,
   signatures: FileSignature,
   intake: FileText,
@@ -103,6 +119,7 @@ export default function DashboardClient({
   session,
   signatures,
   queues,
+  shareLinksStatus,
 }: DashboardClientProps) {
   const [activeMatterId, setActiveMatterId] = useState(matters[0]?.id ?? "");
   const [activeSection, setActiveSection] = useState<LocalDashboardSectionKey>("matters");
@@ -116,6 +133,15 @@ export default function DashboardClient({
   const [selectedDraftId, setSelectedDraftId] = useState("");
   const [draftEditorJson, setDraftEditorJson] = useState<DashboardDraft["editorJson"] | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [sharesByMatterId, setSharesByMatterId] = useState<Record<string, ShareLinkRecord[]>>({});
+  const [shareStatus, setShareStatus] = useState("Share links have not loaded yet.");
+  const [sharePermissions, setSharePermissions] = useState<ShareLinkPermission[]>([
+    "view_documents",
+  ]);
+  const [shareExpiresAt, setShareExpiresAt] = useState("");
+  const requireEmailVerification = false;
+  const [creatingShare, setCreatingShare] = useState(false);
+  const [revokingShareId, setRevokingShareId] = useState("");
 
   const filteredMatters = useMemo(
     () => filterMatters(matters, matterSearch),
@@ -129,6 +155,7 @@ export default function DashboardClient({
     (sessionRecord) => sessionRecord.matterId === activeMatter?.id,
   );
   const activeDocuments = activeMatter?.documents ?? [];
+  const activeShares = activeMatter ? (sharesByMatterId[activeMatter.id] ?? []) : [];
   const activeDrafts = activeMatter ? (draftsByMatterId[activeMatter.id] ?? []) : [];
   const selectedDraft = activeDrafts.find((draft) => draft.id === selectedDraftId);
   const draftHasChanges =
@@ -156,8 +183,45 @@ export default function DashboardClient({
     return buildSidebarNavigationSections({
       billingCanView: billing.canView,
       capabilitySections: capabilities.sections,
+      shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
     });
-  }, [billing.canView, capabilities.sections]);
+  }, [billing.canView, capabilities.sections, shareLinksStatus.createStatus]);
+
+  useEffect(() => {
+    if (!activeMatter) return;
+    let cancelled = false;
+
+    async function loadMatterShares(): Promise<void> {
+      setShareStatus("Loading share links...");
+      const response = await fetch(
+        `${apiBaseUrl}/api/shares?matterId=${encodeURIComponent(activeMatter.id)}`,
+        {
+          credentials: "include",
+          headers: devHeaders,
+        },
+      );
+      if (cancelled) return;
+      if (!response.ok) {
+        setShareStatus(`Share links failed to load: ${response.status}`);
+        return;
+      }
+      const payload = (await response.json()) as ShareLinksResponse;
+      setSharesByMatterId((current) => ({
+        ...current,
+        [activeMatter.id]: payload.shares,
+      }));
+      setShareStatus(
+        payload.shares.length === 0
+          ? "No share links are active for this matter."
+          : `${payload.shares.length} share link${payload.shares.length === 1 ? "" : "s"} loaded.`,
+      );
+    }
+
+    void loadMatterShares();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMatter, apiBaseUrl, devHeaders]);
 
   const metrics = useMemo(
     () => [
@@ -325,6 +389,99 @@ export default function DashboardClient({
   function selectMatter(matterId: string): void {
     setActiveMatterId(matterId);
     closeDraftEditor();
+  }
+
+  function toggleSharePermission(permission: ShareLinkPermission): void {
+    setSharePermissions((current) => {
+      if (current.includes(permission)) {
+        return current.length === 1
+          ? current
+          : current.filter((candidate) => candidate !== permission);
+      }
+      return [...current, permission];
+    });
+  }
+
+  async function createShareLink(): Promise<void> {
+    if (!activeMatter || shareLinksStatus.createStatus !== "enabled") return;
+
+    setCreatingShare(true);
+    setShareStatus("Creating share link...");
+    const response = await fetch(`${apiBaseUrl}/api/shares`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        buildCreateShareLinkPayload({
+          matterId: activeMatter.id,
+          permissions: sharePermissions,
+          expiresAt: shareExpiresAt,
+          requireEmailVerification,
+        }),
+      ),
+    });
+
+    if (!response.ok) {
+      setShareStatus(`Share link creation failed: ${response.status}`);
+      setCreatingShare(false);
+      return;
+    }
+
+    const payload = (await response.json()) as CreateShareLinkResponse;
+    if (!payload.share) {
+      setShareStatus(
+        payload.reason
+          ? `Share link creation unavailable: ${payload.reason}`
+          : "Share link creation unavailable.",
+      );
+      setCreatingShare(false);
+      return;
+    }
+
+    const createdShare = payload.share;
+    setSharesByMatterId((current) => ({
+      ...current,
+      [activeMatter.id]: [createdShare, ...(current[activeMatter.id] ?? [])],
+    }));
+    setShareStatus(
+      payload.token
+        ? `Created share link. One-time token: ${payload.token}`
+        : "Created share link.",
+    );
+    setCreatingShare(false);
+  }
+
+  async function revokeShareLink(share: ShareLinkRecord): Promise<void> {
+    setRevokingShareId(share.id);
+    setShareStatus("Revoking share link...");
+    const response = await fetch(
+      `${apiBaseUrl}/api/shares/${encodeURIComponent(share.id)}/revoke`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: devHeaders,
+      },
+    );
+
+    if (!response.ok) {
+      setShareStatus(`Share link revoke failed: ${response.status}`);
+      setRevokingShareId("");
+      return;
+    }
+
+    const payload = (await response.json()) as RevokeShareLinkResponse;
+    setSharesByMatterId((current) => ({
+      ...current,
+      [payload.share.matterId]: replaceShareLink(
+        current[payload.share.matterId] ?? [],
+        payload.share,
+      ),
+    }));
+    setShareStatus("Share link revoked.");
+    setRevokingShareId("");
   }
 
   if (!activeMatter) {
@@ -675,6 +832,113 @@ export default function DashboardClient({
                   <p className="inline-empty">No documents are linked to this matter.</p>
                 ) : null}
               </div>
+            ) : null}
+
+            {activeSection === "shares" ? (
+              <>
+                <div className="detail-grid share-control-grid">
+                  <div>
+                    <span className="field-label">Create status</span>
+                    <strong>{shareLinksStatus.createStatus}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Provider</span>
+                    <strong>
+                      {shareLinksStatus.provider ?? shareLinksStatus.status ?? "shares"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Matter links</span>
+                    <strong>{activeShares.length}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Active links</span>
+                    <strong>{activeShares.filter((share) => !share.revokedAt).length}</strong>
+                  </div>
+                </div>
+
+                <div className="share-controls">
+                  <div className="section-title">
+                    <h3>Create share link</h3>
+                    <span>{shareLinksStatus.reason ?? "matter-scoped"}</span>
+                  </div>
+                  <div className="permission-toggle-grid">
+                    {shareLinkPermissions.map((permission) => (
+                      <label className="check-row share-check-row" key={permission}>
+                        <input
+                          checked={sharePermissions.includes(permission)}
+                          disabled={shareLinksStatus.createStatus !== "enabled"}
+                          onChange={() => toggleSharePermission(permission)}
+                          type="checkbox"
+                        />
+                        <span>{formatSharePermission(permission)}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="share-form-row">
+                    <label className="search-field">
+                      <span>Expiry date</span>
+                      <input
+                        disabled={shareLinksStatus.createStatus !== "enabled"}
+                        onChange={(event) => setShareExpiresAt(event.target.value)}
+                        type="date"
+                        value={shareExpiresAt}
+                      />
+                    </label>
+                    <button
+                      className="secondary-button compact-button"
+                      disabled={shareLinksStatus.createStatus !== "enabled" || creatingShare}
+                      onClick={() => void createShareLink()}
+                      type="button"
+                    >
+                      <Link2 size={16} />
+                      {creatingShare ? "Creating..." : "Create link"}
+                    </button>
+                  </div>
+                  <p className="inline-empty">{shareStatus}</p>
+                </div>
+
+                <div className="section-title">
+                  <h3>Matter share links</h3>
+                  <span>{activeShares.length} records</span>
+                </div>
+                <div className="party-list">
+                  {activeShares.map((share) => {
+                    const state = describeShareLinkState(share);
+                    return (
+                      <div className="party-row" key={share.id}>
+                        <span>
+                          <strong>{share.id}</strong>
+                          <small>
+                            {share.permissions.map(formatSharePermission).join(", ")}
+                            {share.expiresAt
+                              ? ` · expires ${new Date(share.expiresAt).toLocaleDateString(
+                                  "en-CA",
+                                )}`
+                              : " · no expiry"}
+                          </small>
+                        </span>
+                        <span className="share-row-actions">
+                          <em className={state.tone === "risk" ? "risk" : undefined}>
+                            {state.label}
+                          </em>
+                          <button
+                            className="secondary-button compact-button"
+                            disabled={Boolean(share.revokedAt) || revokingShareId.length > 0}
+                            onClick={() => void revokeShareLink(share)}
+                            type="button"
+                          >
+                            {revokingShareId === share.id ? "Revoking..." : "Revoke"}
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {activeShares.length === 0 ? (
+                    <p className="inline-empty">No share links are linked to this matter.</p>
+                  ) : null}
+                </div>
+              </>
             ) : null}
 
             {activeSection === "drafting" ? (

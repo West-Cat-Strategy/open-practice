@@ -16,6 +16,7 @@ describe("Open Practice route catalog", () => {
       "funds",
       "billing",
       "documents",
+      "shares",
       "drafting",
       "signatures",
       "intake",
@@ -37,6 +38,7 @@ describe("Open Practice route catalog", () => {
   it("groups routes by area in display order", () => {
     expect(getRoutesByArea("finance").map((entry) => entry.id)).toEqual(["funds", "billing"]);
     expect(getRoutesByArea("operations").map((entry) => entry.id)).toEqual([
+      "shares",
       "signatures",
       "intake",
       "queues",
@@ -58,6 +60,7 @@ describe("Open Practice route catalog", () => {
       "funds",
       "billing",
       "documents",
+      "shares",
       "drafting",
       "signatures",
       "intake",
@@ -68,6 +71,7 @@ describe("Open Practice route catalog", () => {
   it("matches dashboard section URLs without changing runtime behavior", () => {
     expect(matchRouteCatalogEntry("/")?.id).toBe("matters");
     expect(matchRouteCatalogEntry("/?section=documents")?.id).toBe("documents");
+    expect(matchRouteCatalogEntry("/?section=shares")?.id).toBe("shares");
     expect(matchRouteCatalogEntry("/?section=drafting")?.id).toBe("drafting");
     expect(matchRouteCatalogEntry("/?section=unknown")).toBeNull();
   });

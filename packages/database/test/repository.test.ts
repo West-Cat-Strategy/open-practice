@@ -255,6 +255,85 @@ describe("repository operations foundation", () => {
     ).resolves.toMatchObject([{ id: "job-email-1", errorMessage: "SMTP unavailable" }]);
   });
 
+  it("persists share links and access logs in memory", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const share = await repository.createShareLink({
+      id: "share-link-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      tokenHash: "share-token-hash-001",
+      grantedByUserId: "user-admin",
+      permissions: ["view_documents"],
+      requireEmailVerification: false,
+      expiresAt: "2026-05-01T00:00:00.000Z",
+      createdAt: now,
+    });
+    await repository.createShareLink({
+      id: "share-link-002",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      tokenHash: "share-token-hash-002",
+      grantedByUserId: "user-admin",
+      permissions: ["view_documents"],
+      requireEmailVerification: false,
+      expiresAt: "2026-05-01T00:00:00.000Z",
+      createdAt: "2026-04-25T13:00:00.000Z",
+    });
+
+    await expect(repository.listShareLinks("firm-west-legal")).resolves.toMatchObject([
+      { id: "share-link-002", matterId: "matter-001" },
+      { id: share.id, matterId: "matter-001" },
+    ]);
+    await expect(repository.getShareLink("firm-west-legal", share.id)).resolves.toMatchObject({
+      id: share.id,
+    });
+    await expect(repository.getShareLinkByTokenHash("share-token-hash-001")).resolves.toMatchObject(
+      { id: share.id },
+    );
+    await expect(repository.createShareLink({ ...share, id: "duplicate-token" })).rejects.toThrow(
+      "Share link token hash already exists",
+    );
+
+    await repository.createAccessLog({
+      id: "access-log-001",
+      firmId: "firm-west-legal",
+      shareLinkId: share.id,
+      resourceType: "share_link",
+      resourceId: share.id,
+      action: "view",
+      occurredAt: now,
+      ipAddress: "127.0.0.1",
+      userAgent: "vitest",
+      metadata: { outcome: "granted" },
+    });
+    await repository.createAccessLog({
+      id: "access-log-002",
+      firmId: "firm-west-legal",
+      shareLinkId: share.id,
+      resourceType: "share_link",
+      resourceId: share.id,
+      action: "view",
+      occurredAt: "2026-04-25T13:00:00.000Z",
+      ipAddress: "127.0.0.1",
+      userAgent: "vitest",
+      metadata: { outcome: "expired" },
+    });
+    await expect(
+      repository.listAccessLogs("firm-west-legal", { shareLinkId: share.id }),
+    ).resolves.toMatchObject([
+      { resourceId: share.id, metadata: { outcome: "expired" } },
+      { resourceId: share.id, metadata: { outcome: "granted" } },
+    ]);
+
+    await expect(
+      repository.revokeShareLink({
+        firmId: "firm-west-legal",
+        id: share.id,
+        revokedAt: "2026-04-25T13:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({ revokedAt: "2026-04-25T13:00:00.000Z" });
+  });
+
   it("guards trust approval and reconciliation persistence", async () => {
     const repository = new InMemoryOpenPracticeRepository();
 

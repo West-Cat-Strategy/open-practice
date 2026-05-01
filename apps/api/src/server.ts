@@ -324,7 +324,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerJobsRoutes(server, { repository: options.repository });
   registerEmailRoutes(server, { repository: options.repository });
   registerInboundEmailRoutes(server, { repository: options.repository });
-  registerShareRoutes(server, { repository: options.repository });
+  registerShareRoutes(server, { repository: options.repository, jwtSecret: options.jwtSecret });
   registerExternalUploadRoutes(server, { repository: options.repository, s3: options.s3 });
   registerAuthExtensionRoutes(server);
   registerAuditRoutes(server, { repository: options.repository });
