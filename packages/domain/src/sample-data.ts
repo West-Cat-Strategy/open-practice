@@ -287,11 +287,16 @@ export const sampleIntakeTemplates: IntakeTemplateRecord[] = [
     id: "intake-template-001",
     firmId: sampleFirm.id,
     name: "Residential tenancy intake",
+    category: "residential-tenancy",
+    description: "Synthetic embedded intake for a sample residential tenancy matter.",
     provider: "embedded",
     externalTemplateId: "residential-tenancy-intake",
     active: true,
     definitionVersion: 1,
     definition: sampleResidentialTenancyIntakeDefinition,
+    createdAt: "2026-04-01T00:00:00.000Z",
+    updatedAt: "2026-04-01T00:00:00.000Z",
+    metadata: { source: "open-practice-sample" },
   },
 ];
 

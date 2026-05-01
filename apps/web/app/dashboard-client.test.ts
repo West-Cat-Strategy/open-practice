@@ -7,7 +7,11 @@ import type {
   DraftTemplateRecord,
 } from "@open-practice/domain";
 import { buildSidebarNavigationSections } from "../routes/routeCatalog";
-import { filterMatters } from "./dashboard-utils";
+import {
+  describeDisabledNavigationReason,
+  filterMatters,
+  summarizeQueues,
+} from "./dashboard-utils";
 import {
   buildCreateShareLinkPayload,
   describeShareLinkState,
@@ -227,6 +231,7 @@ describe("dashboard client behavior", () => {
       { key: "signatures", label: "Signatures", enabled: true },
       { key: "intake", label: "Intake", enabled: true },
       { key: "audit", label: "Audit", enabled: true },
+      { key: "queues", label: "Queues", enabled: true },
     ]);
   });
 
@@ -267,7 +272,50 @@ describe("dashboard client behavior", () => {
       label: "Calendar",
       enabled: false,
     });
-    expect(navigationSections.map((section) => section.key)).not.toContain("queues");
+    expect(navigationSections.find((section) => section.key === "queues")).toEqual({
+      key: "queues",
+      label: "Queues",
+      enabled: true,
+    });
+  });
+
+  it("describes disabled dashboard navigation and summarizes queues for live regions", () => {
+    expect(
+      describeDisabledNavigationReason({ key: "billing", label: "Billing", enabled: false }),
+    ).toBe("Billing is unavailable for your current role.");
+    expect(
+      describeDisabledNavigationReason({
+        key: "externalUploads",
+        label: "Uploads",
+        enabled: false,
+      }),
+    ).toBe("External uploads are unavailable until the storage provider is configured.");
+    expect(
+      summarizeQueues({
+        sections: [
+          {
+            key: "review",
+            label: "Review",
+            items: [
+              {
+                id: "queue-001",
+                matterId: "matter-001",
+                title: "Review draft",
+                status: "ready",
+                priority: "high",
+              },
+              {
+                id: "queue-002",
+                title: "Check intake",
+                status: "waiting",
+                priority: "medium",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBe("2 queue items need attention. 1 high priority item.");
+    expect(summarizeQueues({ sections: [] })).toBe("No queue items need attention.");
   });
 
   it("builds share-link payloads and replaces revoked links without leaking token hashes", () => {

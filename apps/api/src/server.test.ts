@@ -244,6 +244,71 @@ describe("API auth and persistence boundaries", () => {
     expect(matters.json<Array<{ number: string }>>()).toMatchObject([{ number: "2026-0001" }]);
   });
 
+  it("accepts selected setup presets and persists firm-scoped templates", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const server = testServer({
+      repository,
+      jwtSecret: "production-test-secret-at-least-32-characters",
+      setupKey: "setup-key",
+    });
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      headers: { "x-open-practice-setup-key": "setup-key" },
+      payload: setupPayload({
+        selectedPresetIds: ["bc-notarial", "canada-small-business-records"],
+        firstMatter: undefined,
+      }),
+    });
+    const body = response.json<{ user: { firmId: string } }>();
+
+    expect(response.statusCode).toBe(200);
+    await expect(repository.listDraftTemplates(body.user.firmId)).resolves.toMatchObject([
+      { id: "draft-template-legal-letter" },
+      { id: "draft-template-meeting-notes" },
+      {
+        id: "draft-template-preset-bc-notarial-checklist",
+        category: "notarial",
+        metadata: { presetId: "bc-notarial" },
+      },
+      {
+        id: "draft-template-preset-canada-small-business-records-request",
+        category: "business-records",
+        metadata: { presetId: "canada-small-business-records" },
+      },
+    ]);
+    await expect(repository.listIntakeTemplates(body.user.firmId)).resolves.toMatchObject([
+      {
+        id: "intake-template-preset-bc-notarial",
+        category: "notarial",
+        metadata: { presetId: "bc-notarial", editable: true },
+      },
+      {
+        id: "intake-template-preset-canada-small-business-records",
+        category: "business-records",
+        metadata: { presetId: "canada-small-business-records" },
+      },
+    ]);
+  });
+
+  it("rejects unknown setup preset ids", async () => {
+    const response = await testServer({
+      repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
+      jwtSecret: "production-test-secret-at-least-32-characters",
+      setupKey: "setup-key",
+    }).inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      headers: { "x-open-practice-setup-key": "setup-key" },
+      payload: setupPayload({ selectedPresetIds: ["unknown-preset"] }),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      message: expect.stringContaining("Unknown practice preset id"),
+    });
+  });
+
   it("rejects repeated setup and reports partial setup state as blocked", async () => {
     const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
     const server = testServer({

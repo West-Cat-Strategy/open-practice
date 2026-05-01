@@ -41,6 +41,7 @@ export interface SetupWizardState {
   matterTitle: string;
   matterPracticeArea: string;
   matterJurisdiction: string;
+  selectedPresetIds: string[];
   webAuthnCredential?: SetupWebAuthnCredential;
 }
 
@@ -49,6 +50,95 @@ export interface SetupValidationResult {
   errors: string[];
   practiceAreas: string[];
   jurisdictions: string[];
+}
+
+interface PracticePresetSeed {
+  id: string;
+  name: string;
+  description: string;
+  jurisdictions: readonly string[];
+  practiceAreas: readonly string[];
+}
+
+export interface SetupPracticePreset {
+  id: string;
+  label: string;
+  description: string;
+  practiceAreas: string[];
+  practitionerJurisdictions: string[];
+  firstMatterDefaults: {
+    title: string;
+    practiceArea: string;
+    jurisdiction: string;
+  };
+}
+
+const browserSafePracticePresetCatalog: readonly PracticePresetSeed[] = [
+  {
+    id: "general-canada",
+    name: "General Canada practice",
+    description: "Operational starter templates for broad Canadian matter intake and drafting.",
+    jurisdictions: ["CANADA", "OTHER"],
+    practiceAreas: ["General practice"],
+  },
+  {
+    id: "bc-residential-tenancy",
+    name: "BC residential tenancy",
+    description: "Operational starter templates for BC rental housing matter triage.",
+    jurisdictions: ["BC"],
+    practiceAreas: ["Residential tenancy"],
+  },
+  {
+    id: "bc-notarial",
+    name: "BC notarial",
+    description: "Operational starter templates for BC notarial appointment preparation.",
+    jurisdictions: ["BC"],
+    practiceAreas: ["Notarial services"],
+  },
+  {
+    id: "canada-small-business-records",
+    name: "Canada small-business records",
+    description: "Operational starter templates for Canadian small-business record requests.",
+    jurisdictions: ["BC", "ON", "CANADA"],
+    practiceAreas: ["Business records"],
+  },
+];
+
+function formatFirstMatterTitle(practiceArea: string): string {
+  return `New ${practiceArea.toLowerCase()} file`;
+}
+
+function toSetupPracticePreset(preset: PracticePresetSeed): SetupPracticePreset {
+  const practiceArea = preset.practiceAreas[0] ?? "General practice";
+  return {
+    id: preset.id,
+    label: preset.name,
+    description: preset.description,
+    practiceAreas: [...preset.practiceAreas],
+    practitionerJurisdictions: [...preset.jurisdictions],
+    firstMatterDefaults: {
+      title: formatFirstMatterTitle(practiceArea),
+      practiceArea,
+      jurisdiction: preset.jurisdictions[0] ?? "CANADA",
+    },
+  };
+}
+
+export const practiceSetupPresets = browserSafePracticePresetCatalog.map(toSetupPracticePreset);
+
+export function applyPracticeSetupPreset(
+  state: SetupWizardState,
+  preset: SetupPracticePreset,
+): SetupWizardState {
+  return {
+    ...state,
+    practiceAreasText: preset.practiceAreas.join("\n"),
+    practitionerJurisdictionsText: preset.practitionerJurisdictions.join("\n"),
+    matterTitle: preset.firstMatterDefaults.title,
+    matterPracticeArea: preset.firstMatterDefaults.practiceArea,
+    matterJurisdiction: preset.firstMatterDefaults.jurisdiction,
+    selectedPresetIds: [preset.id],
+  };
 }
 
 export function selectStartupView(

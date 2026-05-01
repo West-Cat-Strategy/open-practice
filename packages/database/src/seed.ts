@@ -252,7 +252,16 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
       )
       .onConflictDoNothing();
   }
-  await db.insert(schema.intakeTemplates).values(sampleIntakeTemplates).onConflictDoNothing();
+  await db
+    .insert(schema.intakeTemplates)
+    .values(
+      sampleIntakeTemplates.map((template) => ({
+        ...template,
+        createdAt: new Date(template.createdAt),
+        updatedAt: new Date(template.updatedAt),
+      })),
+    )
+    .onConflictDoNothing();
   for (const template of sampleIntakeTemplates) {
     await db
       .update(schema.intakeTemplates)
@@ -263,6 +272,10 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
         active: template.active,
         definitionVersion: template.definitionVersion,
         definition: template.definition,
+        description: template.description,
+        category: template.category,
+        updatedAt: new Date(template.updatedAt),
+        metadata: template.metadata,
       })
       .where(eq(schema.intakeTemplates.id, template.id));
   }

@@ -24,7 +24,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ConflictCandidate } from "@open-practice/domain";
 import {
   buildDashboardSectionUrl,
@@ -59,7 +59,11 @@ import {
   upsertExternalUploadLink,
 } from "./external-uploads-dashboard";
 import DraftEditor from "./drafting/DraftEditor";
-import { filterMatters } from "./dashboard-utils";
+import {
+  describeDisabledNavigationReason,
+  filterMatters,
+  summarizeQueues,
+} from "./dashboard-utils";
 import {
   buildCalendarRadarBuckets,
   describeCalendarEventTiming,
@@ -131,6 +135,7 @@ const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   signatures: FileSignature,
   intake: FileText,
   audit: ShieldCheck,
+  queues: Clock3,
 };
 
 function cents(value: number): string {
@@ -170,6 +175,9 @@ export default function DashboardClient({
   queues,
   shareLinksStatus,
 }: DashboardClientProps) {
+  const detailPanelRef = useRef<HTMLElement>(null);
+  const shouldFocusDetailRef = useRef(false);
+  const hasAppliedUrlSectionRef = useRef(false);
   const [activeMatterId, setActiveMatterId] = useState(matters[0]?.id ?? "");
   const [activeSection, setActiveSection] = useState<LocalDashboardSectionKey>(initialSection);
   const [matterSearch, setMatterSearch] = useState("");
@@ -292,6 +300,18 @@ export default function DashboardClient({
     externalUploadCreateAvailable,
     shareLinksStatus.createStatus,
   ]);
+  const activeSectionLabel =
+    activeSection === "matters"
+      ? activeMatter?.title
+      : (navigationSections.find((section) => section.key === activeSection)?.label ?? "Dashboard");
+  const matterActionSections = useMemo(
+    () =>
+      navigationSections.filter((section) =>
+        ["drafting", "shares", "externalUploads", "queues"].includes(section.key),
+      ),
+    [navigationSections],
+  );
+  const queueSummary = useMemo(() => summarizeQueues(queues), [queues]);
 
   useEffect(() => {
     if (!activeMatter) return;
@@ -390,6 +410,8 @@ export default function DashboardClient({
         requestedSection: new URLSearchParams(window.location.search).get("section"),
         navigationSections,
       });
+      if (hasAppliedUrlSectionRef.current) shouldFocusDetailRef.current = true;
+      hasAppliedUrlSectionRef.current = true;
       setActiveSection(selection.sectionKey);
     }
 
@@ -397,6 +419,12 @@ export default function DashboardClient({
     window.addEventListener("popstate", applySectionFromUrl);
     return () => window.removeEventListener("popstate", applySectionFromUrl);
   }, [navigationSections]);
+
+  useEffect(() => {
+    if (!shouldFocusDetailRef.current) return;
+    detailPanelRef.current?.focus();
+    shouldFocusDetailRef.current = false;
+  }, [activeSection]);
 
   const metrics = useMemo(
     () => [
@@ -567,9 +595,9 @@ export default function DashboardClient({
       const draft = (await response.json()) as DashboardDraft;
       setDraftsByMatterId((current) => ({
         ...current,
-        [draft.matterId ?? activeMatter.id]: (
-          current[draft.matterId ?? activeMatter.id] ?? []
-        ).map((candidate) => (candidate.id === draft.id ? draft : candidate)),
+        [draft.matterId ?? activeMatter.id]: (current[draft.matterId ?? activeMatter.id] ?? []).map(
+          (candidate) => (candidate.id === draft.id ? draft : candidate),
+        ),
       }));
       setDraftEditorJson(draft.editorJson);
       setDraftStatus(`Saved ${draft.title}.`);
@@ -879,6 +907,7 @@ export default function DashboardClient({
   }
 
   function selectDashboardSection(sectionKey: LocalDashboardSectionKey): void {
+    shouldFocusDetailRef.current = true;
     setActiveSection(sectionKey);
     window.history.pushState(
       { section: sectionKey },
@@ -898,6 +927,9 @@ export default function DashboardClient({
 
   return (
     <main className="app-shell">
+      <a className="skip-link" href="#matter-workspace">
+        Skip to matter workspace
+      </a>
       <aside className="sidebar" aria-label="Primary">
         <div className="brand">
           <span className="brand-mark">OP</span>
@@ -907,11 +939,15 @@ export default function DashboardClient({
           </div>
         </div>
 
-        <nav className="nav-list">
+        <nav className="nav-list" aria-label="Dashboard sections">
           {navigationSections.map(({ key, label, enabled }) => {
             const Icon = navIcons[key];
+            const disabledReason = describeDisabledNavigationReason({ key, label, enabled });
+            const disabledReasonId = `nav-disabled-${key}`;
             return (
               <button
+                aria-current={key === activeSection ? "page" : undefined}
+                aria-describedby={disabledReason ? disabledReasonId : undefined}
                 aria-disabled={!enabled}
                 className={key === activeSection ? "nav-item active" : "nav-item"}
                 disabled={!enabled}
@@ -920,7 +956,14 @@ export default function DashboardClient({
                 type="button"
               >
                 <Icon size={18} />
-                {label}
+                <span>
+                  <strong>{label}</strong>
+                  {disabledReason ? (
+                    <small className="nav-disabled-reason" id={disabledReasonId}>
+                      {disabledReason}
+                    </small>
+                  ) : null}
+                </span>
               </button>
             );
           })}
@@ -995,17 +1038,43 @@ export default function DashboardClient({
         </section>
 
         <section className="main-grid">
-          <article className="panel matter-detail">
+          <article
+            className="panel matter-detail"
+            id="matter-workspace"
+            ref={detailPanelRef}
+            tabIndex={-1}
+          >
             <div className="panel-header">
               <div>
                 <p className="eyebrow">{activeMatter.number}</p>
-                <h2>
-                  {activeSection === "matters"
-                    ? activeMatter.title
-                    : navigationSections.find((section) => section.key === activeSection)?.label}
-                </h2>
+                <h2>{activeSectionLabel}</h2>
               </div>
               <span className="status-chip">{activeMatter.jurisdiction}</span>
+            </div>
+            <div className="matter-action-strip" aria-label="Matter actions">
+              {matterActionSections.map((section) => {
+                const disabledReason = describeDisabledNavigationReason(section);
+                return (
+                  <button
+                    aria-current={section.key === activeSection ? "page" : undefined}
+                    aria-label={
+                      disabledReason ? `${section.label}: ${disabledReason}` : section.label
+                    }
+                    className={
+                      section.key === activeSection
+                        ? "action-strip-button active"
+                        : "action-strip-button"
+                    }
+                    disabled={!section.enabled}
+                    key={section.key}
+                    onClick={() => selectDashboardSection(section.key)}
+                    title={disabledReason ?? section.label}
+                    type="button"
+                  >
+                    {section.label}
+                  </button>
+                );
+              })}
             </div>
 
             {activeSection === "matters" ? (
@@ -1299,7 +1368,9 @@ export default function DashboardClient({
                       {creatingShare ? "Creating..." : "Create link"}
                     </button>
                   </div>
-                  <p className="inline-empty">{shareStatus}</p>
+                  <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+                    {shareStatus}
+                  </p>
                 </div>
 
                 <div className="section-title">
@@ -1409,7 +1480,9 @@ export default function DashboardClient({
                     <code>{externalUploadToken}</code>
                   </div>
                 ) : null}
-                <p className="inline-empty">{externalUploadStatus}</p>
+                <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+                  {externalUploadStatus}
+                </p>
 
                 <div className="section-title">
                   <h3>External upload links</h3>
@@ -1738,7 +1811,9 @@ export default function DashboardClient({
                         ) : null}
                       </div>
                     </div>
-                    <p className="inline-empty">{draftStatus}</p>
+                    <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+                      {draftStatus}
+                    </p>
                   </div>
                 ) : (
                   <>
@@ -1779,7 +1854,9 @@ export default function DashboardClient({
                     {drafting.templates.length === 0 ? (
                       <p className="inline-empty">No active drafting templates are available.</p>
                     ) : null}
-                    <p className="inline-empty">{draftStatus}</p>
+                    <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+                      {draftStatus}
+                    </p>
 
                     <div className="section-title">
                       <h3>Matter drafts</h3>
@@ -1871,6 +1948,72 @@ export default function DashboardClient({
                 ) : null}
               </div>
             ) : null}
+
+            {activeSection === "queues" ? (
+              <>
+                <div className="detail-grid queue-summary-grid">
+                  <div>
+                    <span className="field-label">Queue sections</span>
+                    <strong>{queues.sections.length}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Open items</span>
+                    <strong>
+                      {queues.sections.reduce((sum, section) => sum + section.items.length, 0)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="field-label">High priority</span>
+                    <strong>
+                      {
+                        queues.sections
+                          .flatMap((section) => section.items)
+                          .filter((item) => item.priority === "high").length
+                      }
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Hydration</span>
+                    <strong>Route-backed</strong>
+                  </div>
+                </div>
+                <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+                  {queueSummary}
+                </p>
+                <div className="party-list queue-section-list">
+                  {queues.sections.map((section) => (
+                    <section className="queue-section" key={section.key}>
+                      <div className="section-title">
+                        <h3>{section.label}</h3>
+                        <span>{section.items.length} items</span>
+                      </div>
+                      {section.items.map((item) => (
+                        <button
+                          className="party-row queue-item-row"
+                          key={item.id}
+                          onClick={() => item.matterId && selectMatter(item.matterId)}
+                          type="button"
+                        >
+                          <span>
+                            <strong>{item.title}</strong>
+                            <small>{item.status}</small>
+                          </span>
+                          <em className={item.priority === "high" ? "risk" : undefined}>
+                            {item.priority}
+                          </em>
+                        </button>
+                      ))}
+                      {section.items.length === 0 ? (
+                        <p className="inline-empty">No items in this queue.</p>
+                      ) : null}
+                    </section>
+                  ))}
+                  {queues.sections.length === 0 ? (
+                    <p className="inline-empty">No operational queues were returned.</p>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
           </article>
 
           <aside className="context-rail" aria-label="Matter review tools">
@@ -1928,6 +2071,7 @@ export default function DashboardClient({
                 </div>
                 <Clock3 size={20} />
               </div>
+              <p className="inline-empty">{queueSummary}</p>
               <div className="party-list">
                 {queues.sections.flatMap((section) =>
                   section.items.slice(0, 3).map((item) => (

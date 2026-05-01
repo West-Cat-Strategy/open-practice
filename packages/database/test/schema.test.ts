@@ -357,6 +357,9 @@ describe("database schema hardening", () => {
     expect(getTableConfig(generatedDocuments).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["package_id", "package_document_id"]),
     );
+    expect(getTableConfig(intakeTemplates).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["description", "category", "created_at", "updated_at", "metadata"]),
+    );
   });
 
   it("persists structured drafts and draft templates", () => {

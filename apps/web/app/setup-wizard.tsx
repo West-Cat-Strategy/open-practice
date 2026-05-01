@@ -14,7 +14,13 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { startRegistration } from "@simplewebauthn/browser";
-import { validateSetupWizardState, type SetupWizardState } from "./setup-wizard-utils";
+import {
+  applyPracticeSetupPreset,
+  practiceSetupPresets,
+  validateSetupWizardState,
+  type SetupPracticePreset,
+  type SetupWizardState,
+} from "./setup-wizard-utils";
 
 interface SetupWizardProps {
   apiBaseUrl: string;
@@ -58,6 +64,7 @@ const initialState: SetupWizardState = {
   matterTitle: "",
   matterPracticeArea: "",
   matterJurisdiction: "BC",
+  selectedPresetIds: [],
 };
 
 const steps = [
@@ -68,10 +75,19 @@ const steps = [
   { label: "Review", icon: FileText },
 ];
 
+const presetControlledFields = new Set<keyof SetupWizardState>([
+  "practiceAreasText",
+  "practitionerJurisdictionsText",
+  "matterTitle",
+  "matterPracticeArea",
+  "matterJurisdiction",
+]);
+
 export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizardProps) {
   const [state, setState] = useState<SetupWizardState>(initialState);
   const [step, setStep] = useState(0);
   const [status, setStatus] = useState("");
+  const [selectedPresetId, setSelectedPresetId] = useState("custom");
   const [submitting, setSubmitting] = useState(false);
   const validation = useMemo(
     () => validateSetupWizardState(state, setupKeyRequired),
@@ -79,7 +95,24 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
   );
 
   function update<K extends keyof SetupWizardState>(key: K, value: SetupWizardState[K]) {
+    if (presetControlledFields.has(key)) {
+      setSelectedPresetId("custom");
+      setState((current) => ({ ...current, [key]: value, selectedPresetIds: [] }));
+      return;
+    }
     setState((current) => ({ ...current, [key]: value }));
+  }
+
+  function selectPreset(preset: SetupPracticePreset) {
+    setSelectedPresetId(preset.id);
+    setState((current) => applyPracticeSetupPreset(current, preset));
+    setStatus(`${preset.label} preset applied. You can edit every field before setup.`);
+  }
+
+  function selectCustomPreset() {
+    setSelectedPresetId("custom");
+    setState((current) => ({ ...current, selectedPresetIds: [] }));
+    setStatus("Manual setup selected. Existing field values are unchanged.");
   }
 
   async function registerPasskey() {
@@ -142,6 +175,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
           ...(setupKeyRequired ? { "x-open-practice-setup-key": state.setupKey } : {}),
         },
         body: JSON.stringify({
+          selectedPresetIds: state.selectedPresetIds,
           firm: {
             name: state.firmName,
             defaultProvince: state.defaultProvince,
@@ -233,6 +267,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
               return (
                 <button
                   className={`setup-step ${isActive ? "active" : ""} ${isCompleted ? "completed" : ""}`}
+                  aria-current={isActive ? "step" : undefined}
                   key={item.label}
                   onClick={() => index <= step && setStep(index)}
                   type="button"
@@ -258,84 +293,91 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
 
           <div className="setup-content-area">
             {step === 0 && (
-              <div className="setup-grid">
-                <TextField
-                  label="Firm name"
-                  placeholder="e.g. West Coast Legal"
-                  value={state.firmName}
-                  onChange={(value) => update("firmName", value)}
+              <>
+                <PracticePresetChooser
+                  selectedPresetId={selectedPresetId}
+                  onSelectPreset={selectPreset}
+                  onSelectCustom={selectCustomPreset}
                 />
-                <SelectField
-                  label="Default province"
-                  value={state.defaultProvince}
-                  onChange={(value) => update("defaultProvince", value)}
-                />
-                <TextField
-                  className="wide"
-                  label="Business address"
-                  placeholder="123 Practice Lane"
-                  value={state.addressLine1}
-                  onChange={(value) => update("addressLine1", value)}
-                />
-                <TextField
-                  label="Address line 2"
-                  placeholder="Suite 400"
-                  value={state.addressLine2}
-                  onChange={(value) => update("addressLine2", value)}
-                />
-                <TextField
-                  label="City"
-                  value={state.city}
-                  onChange={(value) => update("city", value)}
-                />
-                <SelectField
-                  label="Address province"
-                  value={state.addressProvince}
-                  onChange={(value) => update("addressProvince", value)}
-                />
-                <TextField
-                  label="Postal code"
-                  value={state.postalCode}
-                  onChange={(value) => update("postalCode", value)}
-                />
-                <TextField
-                  label="Country"
-                  value={state.country}
-                  onChange={(value) => update("country", value)}
-                />
-                <TextField
-                  label="Office email"
-                  type="email"
-                  value={state.officeEmail}
-                  onChange={(value) => update("officeEmail", value)}
-                />
-                <TextField
-                  label="Office phone"
-                  value={state.officePhone}
-                  onChange={(value) => update("officePhone", value)}
-                />
-                <TextField
-                  label="Website"
-                  placeholder="https://example.com"
-                  value={state.website}
-                  onChange={(value) => update("website", value)}
-                />
-                <TextField
-                  label="Business number"
-                  placeholder="BN-123456789"
-                  value={state.businessNumber}
-                  onChange={(value) => update("businessNumber", value)}
-                />
-                <label className="form-field wide">
-                  <span>Practice description</span>
-                  <textarea
-                    placeholder="Short summary of your practice..."
-                    onChange={(event) => update("description", event.target.value)}
-                    rows={3}
-                    value={state.description}
+                <div className="setup-grid">
+                  <TextField
+                    label="Firm name"
+                    placeholder="e.g. West Coast Legal"
+                    value={state.firmName}
+                    onChange={(value) => update("firmName", value)}
                   />
-                </label>
-              </div>
+                  <SelectField
+                    label="Default province"
+                    value={state.defaultProvince}
+                    onChange={(value) => update("defaultProvince", value)}
+                  />
+                  <TextField
+                    className="wide"
+                    label="Business address"
+                    placeholder="123 Practice Lane"
+                    value={state.addressLine1}
+                    onChange={(value) => update("addressLine1", value)}
+                  />
+                  <TextField
+                    label="Address line 2"
+                    placeholder="Suite 400"
+                    value={state.addressLine2}
+                    onChange={(value) => update("addressLine2", value)}
+                  />
+                  <TextField
+                    label="City"
+                    value={state.city}
+                    onChange={(value) => update("city", value)}
+                  />
+                  <SelectField
+                    label="Address province"
+                    value={state.addressProvince}
+                    onChange={(value) => update("addressProvince", value)}
+                  />
+                  <TextField
+                    label="Postal code"
+                    value={state.postalCode}
+                    onChange={(value) => update("postalCode", value)}
+                  />
+                  <TextField
+                    label="Country"
+                    value={state.country}
+                    onChange={(value) => update("country", value)}
+                  />
+                  <TextField
+                    label="Office email"
+                    type="email"
+                    value={state.officeEmail}
+                    onChange={(value) => update("officeEmail", value)}
+                  />
+                  <TextField
+                    label="Office phone"
+                    value={state.officePhone}
+                    onChange={(value) => update("officePhone", value)}
+                  />
+                  <TextField
+                    label="Website"
+                    placeholder="https://example.com"
+                    value={state.website}
+                    onChange={(value) => update("website", value)}
+                  />
+                  <TextField
+                    label="Business number"
+                    placeholder="BN-123456789"
+                    value={state.businessNumber}
+                    onChange={(value) => update("businessNumber", value)}
+                  />
+                  <label className="form-field wide">
+                    <span>Practice description</span>
+                    <textarea
+                      placeholder="Short summary of your practice..."
+                      onChange={(event) => update("description", event.target.value)}
+                      rows={3}
+                      value={state.description}
+                    />
+                  </label>
+                </div>
+              </>
             )}
 
             {step === 1 && (
@@ -585,7 +627,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
           </div>
 
           <footer className="setup-actions-bar">
-            <div className="status-message">
+            <div className="status-message" role="status" aria-live="polite" aria-atomic="true">
               {submitting && <Loader2 className="animate-spin" size={16} />}
               <span>{status}</span>
             </div>
@@ -625,6 +667,50 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
         </section>
       </section>
     </main>
+  );
+}
+
+function PracticePresetChooser({
+  selectedPresetId,
+  onSelectCustom,
+  onSelectPreset,
+}: {
+  selectedPresetId: string;
+  onSelectCustom: () => void;
+  onSelectPreset: (preset: SetupPracticePreset) => void;
+}) {
+  return (
+    <section className="preset-section" aria-labelledby="practice-preset-heading">
+      <div className="section-title preset-title">
+        <div>
+          <p className="eyebrow">Practice presets</p>
+          <h2 id="practice-preset-heading">Start from a practice shape</h2>
+        </div>
+        <button
+          aria-pressed={selectedPresetId === "custom"}
+          className={selectedPresetId === "custom" ? "preset-card selected" : "preset-card"}
+          onClick={onSelectCustom}
+          type="button"
+        >
+          <strong>Manual</strong>
+          <span>Keep fields custom</span>
+        </button>
+      </div>
+      <div className="preset-grid">
+        {practiceSetupPresets.map((preset) => (
+          <button
+            aria-pressed={selectedPresetId === preset.id}
+            className={selectedPresetId === preset.id ? "preset-card selected" : "preset-card"}
+            key={preset.id}
+            onClick={() => onSelectPreset(preset)}
+            type="button"
+          >
+            <strong>{preset.label}</strong>
+            <span>{preset.description}</span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 

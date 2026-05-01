@@ -11,6 +11,12 @@ import {
   type DraftAssistRecord,
   type TipTapDocument,
 } from "./drafting.js";
+import {
+  buildPracticePresetTemplates,
+  normalizePracticePresetIds,
+  PRACTICE_PRESET_CATALOG,
+  PRACTICE_PRESET_IDS,
+} from "./practice-presets.js";
 
 describe("drafting domain", () => {
   describe("tipTapDocumentSchema", () => {
@@ -166,6 +172,79 @@ describe("drafting domain", () => {
 
       expect(extractTipTapPlainText(updated)).toBe("Existing draft First suggestion Second block");
       expect(document.content).toHaveLength(1);
+    });
+  });
+
+  describe("practice preset builders", () => {
+    it("exposes the four clean-room starter presets", () => {
+      expect(PRACTICE_PRESET_IDS).toEqual([
+        "general-canada",
+        "bc-residential-tenancy",
+        "bc-notarial",
+        "canada-small-business-records",
+      ]);
+      expect(PRACTICE_PRESET_CATALOG).toHaveLength(4);
+      expect(
+        PRACTICE_PRESET_CATALOG.flatMap((preset) => [
+          ...preset.draftTemplates.map((template) => template.metadata.source),
+          ...preset.intakeTemplates.map((template) => template.metadata.source),
+        ]),
+      ).toEqual(expect.arrayContaining(["open-practice-preset"]));
+    });
+
+    it("deduplicates selected presets in catalog order", () => {
+      expect(
+        normalizePracticePresetIds([
+          "bc-notarial",
+          "general-canada",
+          "bc-notarial",
+          "canada-small-business-records",
+        ]),
+      ).toEqual(["general-canada", "bc-notarial", "canada-small-business-records"]);
+    });
+
+    it("creates deterministic firm-scoped draft and intake templates", () => {
+      const built = buildPracticePresetTemplates({
+        firmId: "firm-example",
+        timestamp: "2026-04-30T12:00:00.000Z",
+        selectedPresetIds: ["bc-residential-tenancy", "general-canada"],
+      });
+
+      expect(built.selectedPresetIds).toEqual(["general-canada", "bc-residential-tenancy"]);
+      expect(built.draftTemplates).toMatchObject([
+        {
+          id: "draft-template-preset-general-canada-matter-summary",
+          firmId: "firm-example",
+          category: "general-practice",
+          active: true,
+          createdAt: "2026-04-30T12:00:00.000Z",
+          metadata: {
+            presetId: "general-canada",
+            presetVersion: 1,
+            jurisdictions: ["CANADA", "OTHER"],
+            editable: true,
+          },
+        },
+        {
+          id: "draft-template-preset-bc-tenancy-chronology",
+          category: "residential-tenancy",
+          metadata: { presetId: "bc-residential-tenancy", jurisdictions: ["BC"] },
+        },
+      ]);
+      expect(built.intakeTemplates).toMatchObject([
+        {
+          id: "intake-template-preset-general-canada",
+          category: "general-practice",
+          provider: "embedded",
+          metadata: { presetId: "general-canada" },
+        },
+        {
+          id: "intake-template-preset-bc-tenancy",
+          category: "residential-tenancy",
+          provider: "embedded",
+          metadata: { presetId: "bc-residential-tenancy" },
+        },
+      ]);
     });
   });
 });

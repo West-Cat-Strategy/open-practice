@@ -130,7 +130,47 @@ describe("repository first-run setup", () => {
       { id: "draft-template-legal-letter" },
       { id: "draft-template-meeting-notes" },
     ]);
+    await expect(repository.listIntakeTemplates(input.firm.id)).resolves.toEqual([]);
     await expect(repository.listMattersForUser(input.owner)).resolves.toHaveLength(1);
+  });
+
+  it("creates selected preset draft and intake templates during first-run setup", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const input = setupInput();
+
+    await repository.completeFirstRunSetup({
+      ...input,
+      selectedPresetIds: ["bc-residential-tenancy", "general-canada"],
+    });
+
+    await expect(repository.listDraftTemplates(input.firm.id)).resolves.toMatchObject([
+      { id: "draft-template-legal-letter", metadata: { source: "open-practice-basic" } },
+      { id: "draft-template-meeting-notes", metadata: { source: "open-practice-basic" } },
+      {
+        id: "draft-template-preset-general-canada-matter-summary",
+        category: "general-practice",
+        metadata: { source: "open-practice-preset", presetId: "general-canada" },
+      },
+      {
+        id: "draft-template-preset-bc-tenancy-chronology",
+        category: "residential-tenancy",
+        metadata: { presetId: "bc-residential-tenancy" },
+      },
+    ]);
+    await expect(repository.listIntakeTemplates(input.firm.id)).resolves.toMatchObject([
+      {
+        id: "intake-template-preset-general-canada",
+        category: "general-practice",
+        description: expect.any(String),
+        createdAt: now,
+        metadata: { presetId: "general-canada", editable: true },
+      },
+      {
+        id: "intake-template-preset-bc-tenancy",
+        category: "residential-tenancy",
+        metadata: { presetId: "bc-residential-tenancy" },
+      },
+    ]);
   });
 
   it("rejects a second setup attempt", async () => {

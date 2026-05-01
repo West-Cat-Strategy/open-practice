@@ -1,12 +1,19 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { timingSafeEqual, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { appendAuditEvent } from "@open-practice/domain";
+import { appendAuditEvent, isPracticePresetId } from "@open-practice/domain";
 import { FirstRunSetupConflictError, type OpenPracticeRepository } from "@open-practice/database";
 
 const provinceSchema = z.enum(["BC", "ON", "CANADA", "OTHER"]);
 
 const setupBodySchema = z.object({
+  selectedPresetIds: z
+    .array(
+      z.string().trim().min(1).refine(isPracticePresetId, {
+        message: "Unknown practice preset id",
+      }),
+    )
+    .default([]),
   firm: z.object({
     name: z.string().trim().min(1),
     defaultProvince: provinceSchema,
@@ -375,6 +382,7 @@ export function registerSetupRoutes(
           firstContact,
           firstMatter,
           firstMatterParty,
+          selectedPresetIds: body.selectedPresetIds,
           auditEvent: appendAuditEvent(undefined, {
             id: id("audit"),
             firmId: newFirmId,
@@ -386,6 +394,7 @@ export function registerSetupRoutes(
             metadata: {
               practiceAreas: body.settings.practiceAreas,
               firstMatterCreated: Boolean(firstMatter),
+              selectedPresetIds: body.selectedPresetIds,
             },
           }),
         })
