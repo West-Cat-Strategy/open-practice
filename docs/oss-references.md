@@ -1,6 +1,6 @@
 # OSS Reuse Decision Matrix
 
-Open Practice keeps its Apache-2.0 TypeScript core independently authored. Reference clones live under `.references/oss/`, which is ignored by git. This matrix decides how each researched or cloned project may influence the product.
+Open Practice keeps its Apache-2.0 TypeScript core independently authored. Canonical reference clones default to `../reference-repos/repos/` from the repo root, or `REFERENCE_REPOS_ROOT` when set; `.references/oss/` contains ignored compatibility symlinks for existing scripts and docs. This matrix decides how each researched or cloned project may influence the product.
 
 ## Decision Classes
 
@@ -46,4 +46,4 @@ Open Practice keeps its Apache-2.0 TypeScript core independently authored. Refer
 
 No project should be forked in the next phase.
 
-Run `pnpm refs:clone` after install to create local shallow clones. The pinned clone commits are recorded in `docs/oss-references.lock.json`.
+Run `pnpm refs:clone` after install to create or refresh central shallow clones and compatibility symlinks. Set `REFERENCE_REPOS_ROOT` to override the central store. The pinned clone commits are recorded in `docs/oss-references.lock.json`.

@@ -60,7 +60,7 @@ If the ratchet fails, prefer moving code toward the intended boundary. If the bo
 
 ## Reuse And License Hygiene
 
-- `.references/oss/` must remain ignored and must not be imported or read by `apps/**` or `packages/**`.
+- `.references/oss/` must remain ignored compatibility symlinks to the central reference repo store; neither path may be imported or read by `apps/**` or `packages/**`.
 - Do not copy implementation code, schemas, migrations, tests, UI markup, styles, assets, or distinctive expression from reference-only projects.
 - New dependencies must pass [Reuse Decision Policy](../reuse-decision-policy.md) and [License Policy](../license-policy.md).
 - Cite reference influence in docs or issues when it materially shapes a design.

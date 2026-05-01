@@ -13,7 +13,7 @@ Detailed reuse classes and admission rules live in `docs/reuse-decision-policy.m
 ## Not Allowed in Core Without Review
 
 - Copying AGPL, GPL, LGPL, source-available, or unknown-license implementation code.
-- Moving files from `.references/oss/` into tracked source directories.
+- Moving files from `.references/oss/` or the central reference repo store into tracked source directories.
 - Adding dependencies with unclear commercial or network-use obligations.
 
 ## Optional Services

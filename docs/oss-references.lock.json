@@ -4,72 +4,100 @@
     {
       "name": "ArkCase__ArkCase",
       "url": "https://github.com/ArkCase/ArkCase.git",
-      "commit": "cda48134fe489ce6297030264da0abe886d58b7b"
+      "commit": "cda48134fe489ce6297030264da0abe886d58b7b",
+      "centralPath": "../reference-repos/repos/arkcase__arkcase",
+      "compatibilityPath": ".references/oss/ArkCase__ArkCase"
     },
     {
       "name": "LerianStudio__midaz",
       "url": "https://github.com/LerianStudio/midaz.git",
-      "commit": "7b68b01c45fd38b72f9b14c08c804cd070125198"
+      "commit": "12e93bf5a9245814fc268d94ace3bef33252d62d",
+      "centralPath": "../reference-repos/repos/lerianstudio__midaz",
+      "compatibilityPath": ".references/oss/LerianStudio__midaz"
     },
     {
       "name": "apache__fineract",
       "url": "https://github.com/apache/fineract.git",
-      "commit": "21ca05fa7314c494bdb50995cf8437d977ad4338"
+      "commit": "ca738eb752ecb94ed2dcdf29d54bf196866acd79",
+      "centralPath": "../reference-repos/repos/apache__fineract",
+      "compatibilityPath": ".references/oss/apache__fineract"
     },
     {
       "name": "blnkfinance__blnk",
       "url": "https://github.com/blnkfinance/blnk.git",
-      "commit": "c8fddaf45def5225eadba545fd3030b663187d32"
+      "commit": "834fdfbb4e3f8ad8f8437f67f5f18e829405d98d",
+      "centralPath": "../reference-repos/repos/blnkfinance__blnk",
+      "compatibilityPath": ".references/oss/blnkfinance__blnk"
     },
     {
       "name": "civicrm__civicrm-core",
       "url": "https://github.com/civicrm/civicrm-core.git",
-      "commit": "4d73ca97f8e8d9e67b02ffc7443aa60a96bd13a6"
+      "commit": "172cdfcdb34b5a114e81646daedcc534293a91cc",
+      "centralPath": "../reference-repos/repos/civicrm__civicrm-core",
+      "compatibilityPath": ".references/oss/civicrm__civicrm-core"
     },
     {
       "name": "docusealco__docuseal",
       "url": "https://github.com/docusealco/docuseal.git",
-      "commit": "eea44bda347ea13515554fefd0225e79603c64ac"
+      "commit": "daaa289a5c6830198d7b9d8dec39bad9c03b10ad",
+      "centralPath": "../reference-repos/repos/docusealco__docuseal",
+      "compatibilityPath": ".references/oss/docusealco__docuseal"
     },
     {
       "name": "jhpyle__docassemble",
       "url": "https://github.com/jhpyle/docassemble.git",
-      "commit": "e71c93989a872bd9350910bd6ea77dc7c363c753"
+      "commit": "e71c93989a872bd9350910bd6ea77dc7c363c753",
+      "centralPath": "../reference-repos/repos/jhpyle__docassemble",
+      "compatibilityPath": ".references/oss/jhpyle__docassemble"
     },
     {
       "name": "jlawyerorg__j-lawyer-org",
       "url": "https://github.com/jlawyerorg/j-lawyer-org.git",
-      "commit": "ff997e2c979885cddd67ed8b136d55257491dd32"
+      "commit": "f1d7d6ebe711d836dccd8e6964e1fb471bd3973d",
+      "centralPath": "../reference-repos/repos/jlawyerorg__j-lawyer-org",
+      "compatibilityPath": ".references/oss/jlawyerorg__j-lawyer-org"
     },
     {
       "name": "kimai__kimai",
       "url": "https://github.com/kimai/kimai.git",
-      "commit": "f6c956631ab6a1e5289087ff97b8371fef99a0e1"
+      "commit": "ebb54e9c0c5c6ae342bcff3bf63beebfda838cfd",
+      "centralPath": "../reference-repos/repos/kimai__kimai",
+      "compatibilityPath": ".references/oss/kimai__kimai"
     },
     {
       "name": "ledgersmb__LedgerSMB",
       "url": "https://github.com/ledgersmb/LedgerSMB.git",
-      "commit": "75df7b6894958e9810d52314d88720c9ad78da81"
+      "commit": "4d91acb523108bc312c0f8964f7791b5cf8a51f7",
+      "centralPath": "../reference-repos/repos/ledgersmb__ledgersmb",
+      "compatibilityPath": ".references/oss/ledgersmb__LedgerSMB"
     },
     {
       "name": "opencollective__opencollective",
       "url": "https://github.com/opencollective/opencollective.git",
-      "commit": "386eb94706518a13319c909a1816e059237ee7c0"
+      "commit": "386eb94706518a13319c909a1816e059237ee7c0",
+      "centralPath": "../reference-repos/repos/opencollective__opencollective",
+      "compatibilityPath": ".references/oss/opencollective__opencollective"
     },
     {
       "name": "opencollective__opencollective-api",
       "url": "https://github.com/opencollective/opencollective-api.git",
-      "commit": "3a09b02c4e84b2201f3c55bf1abde8d7f1e29a07"
+      "commit": "8571da42069b2597269bdaf97f13719f4fd5a31d",
+      "centralPath": "../reference-repos/repos/opencollective__opencollective-api",
+      "compatibilityPath": ".references/oss/opencollective__opencollective-api"
     },
     {
       "name": "opencollective__opencollective-frontend",
       "url": "https://github.com/opencollective/opencollective-frontend.git",
-      "commit": "1326c6580cdf1ad1a9d58e1e21f509752b4142c5"
+      "commit": "54f52a3349866389bd1ec7444bd70c10c234c0db",
+      "centralPath": "../reference-repos/repos/opencollective__opencollective-frontend",
+      "compatibilityPath": ".references/oss/opencollective__opencollective-frontend"
     },
     {
       "name": "paperless-ngx__paperless-ngx",
       "url": "https://github.com/paperless-ngx/paperless-ngx.git",
-      "commit": "ff6ba7526ccda5339e3e61d7e3f0a36727d5b196"
+      "commit": "b38d112691aa0a74dd6620c62a0932125c9a7dd7",
+      "centralPath": "../reference-repos/repos/paperless-ngx__paperless-ngx",
+      "compatibilityPath": ".references/oss/paperless-ngx__paperless-ngx"
     }
   ]
 }
