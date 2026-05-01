@@ -18,7 +18,9 @@ import {
   Save,
   Search,
   ShieldCheck,
+  Sparkles,
   Upload,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -42,7 +44,9 @@ import {
   buildBlankDraftPayload,
   buildDraftFromTemplatePayload,
   buildDraftUpdatePayload,
+  describeDraftAssistStatus,
   extractDraftPlainText,
+  insertDraftAssistSuggestion,
   isSameDraftDocument,
 } from "./drafting-dashboard";
 import {
@@ -59,6 +63,8 @@ import type {
   CapabilitiesResponse,
   ConflictResponse,
   DraftingDashboardResponse,
+  DraftAssistRecordsResponse,
+  DraftAssistStatusResponse,
   ExternalUploadCreateResponse,
   ExternalUploadRevokeResponse,
   ExternalUploadsDashboardResponse,
@@ -95,6 +101,7 @@ interface DashboardClientProps {
 
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][number];
+type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
 
 const currency = new Intl.NumberFormat("en-CA", {
   style: "currency",
@@ -162,6 +169,19 @@ export default function DashboardClient({
   const [selectedDraftId, setSelectedDraftId] = useState("");
   const [draftEditorJson, setDraftEditorJson] = useState<DashboardDraft["editorJson"] | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [draftAssistStatus, setDraftAssistStatus] = useState<DraftAssistStatusResponse>({
+    status: "disabled",
+    reason: "not_configured",
+    supportedTasks: ["summarize", "suggest_revision", "continue_draft"],
+  });
+  const [draftAssistTask, setDraftAssistTask] =
+    useState<DashboardDraftAssistRecord["task"]>("summarize");
+  const [draftAssistInstruction, setDraftAssistInstruction] = useState("");
+  const [draftAssistRecordsByDraftId, setDraftAssistRecordsByDraftId] = useState<
+    Record<string, DashboardDraftAssistRecord[]>
+  >({});
+  const [draftAssistMessage, setDraftAssistMessage] = useState("Draft assist has not loaded yet.");
+  const [runningDraftAssist, setRunningDraftAssist] = useState(false);
   const [sharesByMatterId, setSharesByMatterId] = useState<Record<string, ShareLinkRecord[]>>({});
   const [shareStatus, setShareStatus] = useState("Share links have not loaded yet.");
   const [sharePermissions, setSharePermissions] = useState<ShareLinkPermission[]>([
@@ -200,6 +220,9 @@ export default function DashboardClient({
     : [];
   const externalUploadCreateAvailable = canCreateExternalUpload(externalUploads.status);
   const selectedDraft = activeDrafts.find((draft) => draft.id === selectedDraftId);
+  const activeDraftAssistRecords = selectedDraft
+    ? (draftAssistRecordsByDraftId[selectedDraft.id] ?? [])
+    : [];
   const draftHasChanges =
     selectedDraft !== undefined &&
     draftEditorJson !== null &&
@@ -270,6 +293,61 @@ export default function DashboardClient({
       cancelled = true;
     };
   }, [activeMatter, apiBaseUrl, devHeaders]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDraftAssistStatus(): Promise<void> {
+      const response = await fetch(`${apiBaseUrl}/api/draft-assist/status`, {
+        credentials: "include",
+        headers: devHeaders,
+      });
+      if (cancelled) return;
+      if (!response.ok) {
+        setDraftAssistMessage(`Draft assist status failed: ${response.status}`);
+        return;
+      }
+      const payload = (await response.json()) as DraftAssistStatusResponse;
+      setDraftAssistStatus(payload);
+      setDraftAssistMessage(describeDraftAssistStatus(payload));
+    }
+
+    void loadDraftAssistStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBaseUrl, devHeaders]);
+
+  useEffect(() => {
+    if (!selectedDraft) return;
+    const selectedDraftId = selectedDraft.id;
+    let cancelled = false;
+
+    async function loadDraftAssistRecords(): Promise<void> {
+      const response = await fetch(
+        `${apiBaseUrl}/api/draft-assist/records?draftId=${encodeURIComponent(selectedDraftId)}`,
+        {
+          credentials: "include",
+          headers: devHeaders,
+        },
+      );
+      if (cancelled) return;
+      if (!response.ok) {
+        setDraftAssistMessage(`Draft assist records failed: ${response.status}`);
+        return;
+      }
+      const payload = (await response.json()) as DraftAssistRecordsResponse;
+      setDraftAssistRecordsByDraftId((current) => ({
+        ...current,
+        [selectedDraftId]: payload.records,
+      }));
+    }
+
+    void loadDraftAssistRecords();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBaseUrl, devHeaders, selectedDraft]);
 
   useEffect(() => {
     function applySectionFromUrl() {
@@ -446,6 +524,70 @@ export default function DashboardClient({
   function closeDraftEditor(): void {
     setSelectedDraftId("");
     setDraftEditorJson(null);
+  }
+
+  async function runDraftAssist(): Promise<void> {
+    if (!selectedDraft || draftAssistStatus.status !== "configured") return;
+
+    setRunningDraftAssist(true);
+    setDraftAssistMessage("Requesting draft assist...");
+    const response = await fetch(`${apiBaseUrl}/api/drafts/${selectedDraft.id}/assist`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        task: draftAssistTask,
+        instruction: draftAssistInstruction.trim() || undefined,
+      }),
+    });
+
+    setRunningDraftAssist(false);
+    if (!response.ok) {
+      setDraftAssistMessage(`Draft assist failed: ${response.status}`);
+      return;
+    }
+    const record = (await response.json()) as DashboardDraftAssistRecord;
+    setDraftAssistRecordsByDraftId((current) => ({
+      ...current,
+      [selectedDraft.id]: [record, ...(current[selectedDraft.id] ?? [])],
+    }));
+    setDraftAssistMessage("Suggestion ready for review.");
+  }
+
+  async function reviewDraftAssistRecord(
+    record: DashboardDraftAssistRecord,
+    decision: "reviewed" | "rejected",
+  ): Promise<void> {
+    const response = await fetch(`${apiBaseUrl}/api/draft-assist/records/${record.id}/review`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ decision }),
+    });
+    if (!response.ok) {
+      setDraftAssistMessage(`Review update failed: ${response.status}`);
+      return;
+    }
+    const updated = (await response.json()) as DashboardDraftAssistRecord;
+    setDraftAssistRecordsByDraftId((current) => ({
+      ...current,
+      [updated.draftId ?? ""]: (current[updated.draftId ?? ""] ?? []).map((candidate) =>
+        candidate.id === updated.id ? updated : candidate,
+      ),
+    }));
+    setDraftAssistMessage(`Suggestion ${decision}.`);
+  }
+
+  function insertDraftAssistRecord(record: DashboardDraftAssistRecord): void {
+    if (!draftEditorJson) return;
+    setDraftEditorJson(insertDraftAssistSuggestion({ editorJson: draftEditorJson, record }));
+    setDraftStatus("Inserted assist suggestion locally. Save the draft to persist it.");
   }
 
   async function createExternalUploadLink(): Promise<void> {
@@ -1229,6 +1371,88 @@ export default function DashboardClient({
                       content={draftEditorJson}
                       onChange={setDraftEditorJson}
                     />
+                    <div className="draft-assist-panel">
+                      <div className="section-title">
+                        <h3>Draft assist</h3>
+                        <span>{draftAssistStatus.status}</span>
+                      </div>
+                      <div className="draft-assist-controls">
+                        <label>
+                          <span>Task</span>
+                          <select
+                            value={draftAssistTask}
+                            onChange={(event) =>
+                              setDraftAssistTask(
+                                event.target.value as DashboardDraftAssistRecord["task"],
+                              )
+                            }
+                          >
+                            <option value="summarize">Summarize</option>
+                            <option value="suggest_revision">Suggest revision</option>
+                            <option value="continue_draft">Continue draft</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span>Instruction</span>
+                          <input
+                            value={draftAssistInstruction}
+                            onChange={(event) => setDraftAssistInstruction(event.target.value)}
+                            placeholder="Optional review instruction"
+                          />
+                        </label>
+                        <button
+                          className="secondary-button compact-button"
+                          disabled={draftAssistStatus.status !== "configured" || runningDraftAssist}
+                          onClick={() => void runDraftAssist()}
+                          type="button"
+                        >
+                          <Sparkles size={16} />
+                          {runningDraftAssist ? "Drafting..." : "Assist"}
+                        </button>
+                      </div>
+                      <p className="inline-empty">{draftAssistMessage}</p>
+                      <div className="party-list">
+                        {activeDraftAssistRecords.map((record) => (
+                          <div className="party-row draft-assist-row" key={record.id}>
+                            <span>
+                              <strong>{record.task.replaceAll("_", " ")}</strong>
+                              <small>{record.summary ?? record.suggestedText}</small>
+                              <small>
+                                {record.providerKey} · {record.providerModel} · {record.status}
+                              </small>
+                            </span>
+                            <div className="draft-assist-actions">
+                              <button
+                                className="secondary-button compact-button"
+                                onClick={() => void reviewDraftAssistRecord(record, "reviewed")}
+                                type="button"
+                              >
+                                Review
+                              </button>
+                              <button
+                                className="secondary-button compact-button"
+                                onClick={() => insertDraftAssistRecord(record)}
+                                type="button"
+                              >
+                                Insert
+                              </button>
+                              <button
+                                aria-label="Reject assist suggestion"
+                                className="icon-button"
+                                onClick={() => void reviewDraftAssistRecord(record, "rejected")}
+                                title="Reject assist suggestion"
+                                type="button"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {activeDraftAssistRecords.length === 0 ? (
+                          <p className="inline-empty">No assist suggestions for this draft.</p>
+                        ) : null}
+                      </div>
+                    </div>
                     <p className="inline-empty">{draftStatus}</p>
                   </div>
                 ) : (

@@ -1,5 +1,6 @@
 import type {
   DraftRecord,
+  DraftAssistRecord,
   DraftTemplateRecord,
   TipTapDocument,
   TipTapNode,
@@ -94,4 +95,36 @@ export function extractDraftPlainText(node: TipTapNode | DraftRecord["editorJson
   visit(node);
 
   return parts.join(" ").replace(/\s+/g, " ").trim() || "No preview text.";
+}
+
+function appendPlainTextToDraftDocument(
+  document: TipTapDocument,
+  plainText: string,
+): TipTapDocument {
+  const paragraphs = plainText
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map<TipTapNode>((paragraph) => ({
+      type: "paragraph",
+      content: [{ type: "text", text: paragraph }],
+    }));
+
+  if (paragraphs.length === 0) return structuredClone(document);
+  return {
+    ...structuredClone(document),
+    content: [...(document.content ?? []), ...paragraphs],
+  };
+}
+
+export function insertDraftAssistSuggestion(input: {
+  editorJson: TipTapDocument;
+  record: Pick<DraftAssistRecord, "suggestedText">;
+}): TipTapDocument {
+  return appendPlainTextToDraftDocument(input.editorJson, input.record.suggestedText);
+}
+
+export function describeDraftAssistStatus(input: { status: string; reason?: string }): string {
+  if (input.status === "configured") return "Draft assist is available for review-first use.";
+  return `Draft assist unavailable${input.reason ? `: ${input.reason.replaceAll("_", " ")}` : ""}.`;
 }

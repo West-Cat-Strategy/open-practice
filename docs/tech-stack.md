@@ -26,7 +26,7 @@ documentation; dependency admission and service reuse still follow
 | Inbound email parsing | [mailparser](https://nodemailer.com/extras/mailparser/)                                                            | Parse raw messages already stored in object storage. Parsed attachments remain inbound-email records until document promotion is explicitly designed.                   |
 | OCR                   | [Tesseract](https://tesseract-ocr.github.io/tessdoc/)                                                              | Optional local document worker for OCR text. Keep OCR output reviewed and tied to document version/checksum.                                                            |
 | Transcription         | [FFmpeg](https://www.ffmpeg.org/documentation.html) plus [Whisper](https://github.com/openai/whisper)              | Optional local media worker. FFmpeg normalizes media; Whisper produces draft transcripts that require provenance and review.                                            |
-| Local LLM             | [Ollama](https://docs.ollama.com/)                                                                                 | Optional local assistive worker for summarization, classification, and drafting aids. Disabled by default; never system of record.                                      |
+| Local LLM             | [Ollama](https://docs.ollama.com/)                                                                                 | Optional local assistive provider for summarization, classification, and drafting aids. Disabled by default; never system of record.                                    |
 | Passkeys              | [SimpleWebAuthn](https://simplewebauthn.dev/docs/)                                                                 | Accepted future embedded-auth extension for passkeys, bound to configured RP ID and origin.                                                                             |
 | Rich text             | [TipTap](https://tiptap.dev/docs) editor core                                                                      | Accepted for local notes, drafts, templates, and portal text. Store structured editor JSON plus rendered snapshots; avoid cloud/pro services unless reviewed.           |
 | Calendar sync         | [CalDAV](https://datatracker.ietf.org/doc/rfc4791/) and [iCalendar](https://datatracker.ietf.org/doc/html/rfc5545) | Open Practice-hosted matter calendars sync to iOS Calendar through revocable app-password CalDAV accounts. Authenticated `.ics` export remains read-only compatibility. |
@@ -40,8 +40,9 @@ documentation; dependency admission and service reuse still follow
 - Reject Mailpit for production email delivery.
 - Defer Postal until mail governance, deliverability, incident response, and webhook verification are
   implemented.
-- Defer Whisper transcription, Ollama assistive tasks, and any provider-backed drafting assistance
-  until their API, worker, and review surfaces are implemented.
+- Defer Whisper transcription and live Ollama/LM Studio adapters until their worker, provider, and
+  deployment profiles are implemented. The first drafting assist slice is a disabled synchronous
+  scaffold with fake-provider tests only.
 - Defer WebRTC meeting rooms until self-hostable/private signaling, STUN/TURN configuration,
   meeting-scoped access tokens, meeting chat, temporary document upload, and audit persistence are
   implemented.
@@ -72,7 +73,7 @@ Worker/provider defaults:
 | `SMTP_USERNAME` / `SMTP_PASSWORD`     | empty                                                   | Optional authenticated SMTP credentials.                          |
 | `INBOUND_EMAIL_WEBHOOK_SECRET`        | empty                                                   | Empty value keeps inbound webhook verification unconfigured.      |
 | `INBOUND_EMAIL_DOMAIN`                | empty                                                   | Optional firm-address domain for inbound email routing.           |
-| `AI_PROVIDER`                         | `disabled`                                              | Keeps AI triage disabled until setup opts in to a local provider. |
+| `AI_PROVIDER`                         | `disabled`                                              | Keeps AI triage and draft assist disabled until setup opts in.    |
 | `AI_ENDPOINT`                         | `http://localhost:11434/v1`                             | OpenAI-compatible local endpoint for Ollama or LM Studio.         |
 | `AI_MODEL`                            | empty                                                   | Empty model keeps assistive AI inactive.                          |
 | `OCR_DEFAULT_LANGUAGE`                | `eng`                                                   | Tesseract language baseline for OCR jobs.                         |
@@ -86,5 +87,7 @@ Worker/provider defaults:
 Open Practice defaults to self-hosted infrastructure. Documents, intake answers, audio, transcripts,
 signature evidence, billing records, trust/funds records, and audit events stay in PostgreSQL and private
 object storage. Workers fetch sensitive content through matter-scoped service authorization; queue messages
-must contain only identifiers, small control metadata, and idempotency keys. Optional AI/OCR/transcription
-outputs are drafts with provenance, review state, and retention controls.
+must contain only identifiers, small control metadata, and idempotency keys. Optional
+AI/OCR/transcription outputs are drafts with provenance, review state, and retention controls.
+Draft assist records are non-authoritative suggestions; raw source text, prompts, instructions, and
+generated text are excluded from audit/job metadata.

@@ -12,7 +12,12 @@ import {
   seedSampleData,
   type OpenPracticeRepository,
 } from "@open-practice/database";
-import type { DocumentAutomationProvider, SignatureProvider, User } from "@open-practice/domain";
+import type {
+  DocumentAutomationProvider,
+  DraftAssistProvider,
+  SignatureProvider,
+  User,
+} from "@open-practice/domain";
 import { EmbeddedAutomationProvider, EmbeddedSignatureProvider } from "@open-practice/providers";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerAuthRoutes } from "./routes/auth.js";
@@ -22,6 +27,7 @@ import { registerCalDavRoutes } from "./routes/caldav.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
 import { registerDocumentProcessingRoutes } from "./routes/document-processing.js";
 import { registerDocumentRoutes } from "./routes/documents.js";
+import { registerDraftAssistRoutes } from "./routes/draft-assist.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
 import { registerEmailRoutes } from "./routes/email.js";
 import { registerExternalUploadRoutes } from "./routes/external-uploads.js";
@@ -113,6 +119,7 @@ interface ApiOptions {
   devFirmId: string;
   signatureProvider?: SignatureProvider;
   automationProvider?: DocumentAutomationProvider;
+  draftAssistProvider?: DraftAssistProvider;
   emailJobQueue?: ApiJobQueue;
   sessionTtlHours?: number;
   setupKey?: string;
@@ -329,6 +336,10 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
   registerDocumentProcessingRoutes(server, { repository: options.repository });
   registerDraftRoutes(server, { repository: options.repository });
+  registerDraftAssistRoutes(server, {
+    repository: options.repository,
+    draftAssistProvider: options.draftAssistProvider,
+  });
   registerJobsRoutes(server, { repository: options.repository });
   registerEmailRoutes(server, {
     repository: options.repository,

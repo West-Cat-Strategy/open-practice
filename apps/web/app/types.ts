@@ -3,6 +3,7 @@ import type {
   ConflictCandidate,
   DocumentRecord,
   DraftRecord,
+  DraftAssistRecord,
   DraftTemplateRecord,
   ExpenseEntry,
   Firm,
@@ -61,6 +62,18 @@ export type SignatureRequestsResponse = SignatureRequestRecord[];
 export interface DraftingDashboardResponse {
   templates: DraftTemplateRecord[];
   draftsByMatterId: Record<string, DraftRecord[]>;
+}
+
+export interface DraftAssistStatusResponse {
+  status: "disabled" | "configured";
+  reason?: string;
+  provider?: string;
+  model?: string;
+  supportedTasks: Array<"summarize" | "suggest_revision" | "continue_draft">;
+}
+
+export interface DraftAssistRecordsResponse {
+  records: DraftAssistRecord[];
 }
 
 export interface ExternalUploadLinkRecord {

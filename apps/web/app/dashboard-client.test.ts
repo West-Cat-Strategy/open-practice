@@ -18,7 +18,9 @@ import {
   buildBlankDraftPayload,
   buildDraftFromTemplatePayload,
   buildDraftUpdatePayload,
+  describeDraftAssistStatus,
   extractDraftPlainText,
+  insertDraftAssistSuggestion,
   isSameDraftDocument,
   loadDraftingDashboardData,
 } from "./drafting-dashboard";
@@ -317,6 +319,23 @@ describe("dashboard client behavior", () => {
     });
     expect(isSameDraftDocument(blankPayload.editorJson, updatedEditorJson)).toBe(false);
     expect(isSameDraftDocument(updatedEditorJson, updatedEditorJson)).toBe(true);
+  });
+
+  it("describes draft assist status and inserts suggestions into local editor JSON", () => {
+    const editorJson = {
+      type: "doc" as const,
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Original draft" }] }],
+    };
+    const updated = insertDraftAssistSuggestion({
+      editorJson,
+      record: { suggestedText: "Suggested assist text" },
+    });
+
+    expect(describeDraftAssistStatus({ status: "disabled", reason: "not_configured" })).toBe(
+      "Draft assist unavailable: not configured.",
+    );
+    expect(extractDraftPlainText(updated)).toBe("Original draft Suggested assist text");
+    expect(extractDraftPlainText(editorJson)).toBe("Original draft");
   });
 
   it("builds external upload paths, create payloads, and local link state", () => {
