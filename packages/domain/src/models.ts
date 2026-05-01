@@ -182,6 +182,40 @@ export interface ExpenseEntry {
   billingStatus: BillingStatus;
 }
 
+export type CalendarEventStatus = "confirmed" | "tentative" | "cancelled";
+
+export interface CalendarEventRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  uid: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  description?: string;
+  location?: string;
+  status: CalendarEventStatus;
+  sequence: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
+  createdByUserId: string;
+  updatedByUserId: string;
+}
+
+export interface CalendarCredentialRecord {
+  id: string;
+  firmId: string;
+  userId: string;
+  username: string;
+  label: string;
+  passwordHash: string;
+  createdAt: string;
+  createdByUserId: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+}
+
 export interface ActivityTimelineEntry {
   id: string;
   firmId: string;

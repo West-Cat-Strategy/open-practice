@@ -65,10 +65,26 @@ export function readSessionToken(requestHeaders: {
   return undefined;
 }
 
+const CALDAV_PUBLIC_ROUTE_PATTERNS = [
+  /^\/caldav\/?$/,
+  /^\/caldav\/principals\/[^/]+\/$/,
+  /^\/caldav\/calendars\/[^/]+\/$/,
+  /^\/caldav\/calendars\/[^/]+\/[^/]+\/$/,
+  /^\/caldav\/calendars\/[^/]+\/[^/]+\/[^/]+\.ics$/,
+];
+
+function isPublicCalDavRoute(path: string): boolean {
+  return (
+    path === "/.well-known/caldav" ||
+    CALDAV_PUBLIC_ROUTE_PATTERNS.some((pattern) => pattern.test(path))
+  );
+}
+
 export function isPublicRoute(method: string, url: string): boolean {
   const path = url.split("?")[0];
   return (
     path === "/health" ||
+    isPublicCalDavRoute(path) ||
     (method === "GET" && path === "/api/setup/status") ||
     (method === "POST" && path === "/api/setup/complete") ||
     (method === "POST" && path === "/api/setup/webauthn-options") ||

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import {
@@ -10,6 +11,8 @@ import {
   authActionTokens,
   authChallenges,
   billingTrustTransferRequests,
+  calendarCredentials,
+  calendarEvents,
   documentTextExtractions,
   documentVersions,
   documents,
@@ -84,6 +87,83 @@ describe("database schema hardening", () => {
         "verified_at",
       ]),
     );
+  });
+
+  it("persists matter-scoped calendar events", () => {
+    const config = getTableConfig(calendarEvents);
+    const columns = config.columns.map((column) => column.name);
+    const uidIndex = config.indexes.find(
+      (index) => index.config.name === "calendar_events_firm_matter_uid_idx",
+    );
+
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "uid",
+        "title",
+        "starts_at",
+        "ends_at",
+        "description",
+        "location",
+        "status",
+        "sequence",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "created_by_user_id",
+        "updated_by_user_id",
+      ]),
+    );
+    expect(uidIndex?.config.unique).toBe(true);
+    expect(uidIndex?.config.where).toBeDefined();
+  });
+
+  it("persists revocable calendar app-password credentials", () => {
+    const config = getTableConfig(calendarCredentials);
+    const usernameIndex = config.indexes.find(
+      (index) => index.config.name === "calendar_credentials_username_idx",
+    );
+
+    expect(config.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "user_id",
+        "username",
+        "label",
+        "password_hash",
+        "created_at",
+        "created_by_user_id",
+        "last_used_at",
+        "revoked_at",
+      ]),
+    );
+    expect(usernameIndex?.config.unique).toBe(true);
+  });
+
+  it("documents the calendar migration cleanup before matter-scoped constraints", () => {
+    const migration = readFileSync(
+      new URL("../migrations/0011_tiny_lethal_legion.sql", import.meta.url),
+      "utf8",
+    );
+    const cleanupIndex = migration.indexOf(
+      'DELETE FROM "calendar_events" WHERE "matter_id" IS NULL;',
+    );
+    const matterRequiredIndex = migration.indexOf(
+      'ALTER TABLE "calendar_events" ALTER COLUMN "matter_id" SET NOT NULL;',
+    );
+    const createdByRequiredIndex = migration.indexOf(
+      'ALTER TABLE "calendar_events" ALTER COLUMN "created_by_user_id" SET NOT NULL;',
+    );
+    const userBackfillIndex = migration.indexOf(
+      'UPDATE "calendar_events" AS "event"\nSET "created_by_user_id" = "matter"."responsible_user_id"',
+    );
+
+    expect(migration).toContain("legacy rows without a matter cannot be exposed safely");
+    expect(cleanupIndex).toBeGreaterThanOrEqual(0);
+    expect(cleanupIndex).toBeLessThan(matterRequiredIndex);
+    expect(userBackfillIndex).toBeGreaterThan(matterRequiredIndex);
+    expect(userBackfillIndex).toBeLessThan(createdByRequiredIndex);
   });
 
   it("persists signature lifecycle tables", () => {

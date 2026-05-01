@@ -242,6 +242,36 @@ export const authSessions = pgTable(
   }),
 );
 
+export const calendarCredentials = pgTable(
+  "calendar_credentials",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    username: text("username").notNull(),
+    label: text("label").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => ({
+    username: uniqueIndex("calendar_credentials_username_idx").on(table.username),
+    userActive: index("calendar_credentials_user_active_idx").on(
+      table.firmId,
+      table.userId,
+      table.revokedAt,
+    ),
+  }),
+);
+
 export const authPasswordSetupTokens = pgTable(
   "auth_password_setup_tokens",
   {
@@ -1228,16 +1258,45 @@ export const tasks = pgTable("tasks", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });
 
-export const calendarEvents = pgTable("calendar_events", {
-  id: text("id").primaryKey(),
-  firmId: text("firm_id")
-    .notNull()
-    .references(() => firms.id),
-  matterId: text("matter_id").references(() => matters.id),
-  title: text("title").notNull(),
-  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
-  endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
-});
+export const calendarEvents = pgTable(
+  "calendar_events",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    uid: text("uid").notNull(),
+    title: text("title").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    description: text("description"),
+    location: text("location"),
+    status: text("status").notNull().default("confirmed"),
+    sequence: integer("sequence").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    updatedByUserId: text("updated_by_user_id")
+      .notNull()
+      .references(() => users.id),
+  },
+  (table) => ({
+    firmMatterUid: uniqueIndex("calendar_events_firm_matter_uid_idx")
+      .on(table.firmId, table.matterId, table.uid)
+      .where(sql`${table.deletedAt} is null`),
+    matterStart: index("calendar_events_matter_start_idx").on(
+      table.firmId,
+      table.matterId,
+      table.startsAt,
+    ),
+  }),
+);
 
 export const signatureRequests = pgTable("signature_requests", {
   id: text("id").primaryKey(),

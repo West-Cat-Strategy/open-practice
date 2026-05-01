@@ -1,5 +1,6 @@
 export * from "./audit.js";
 export * from "./billing.js";
+export * from "./calendar.js";
 export * from "./conflicts.js";
 export * from "./ledger.js";
 export * from "./models.js";

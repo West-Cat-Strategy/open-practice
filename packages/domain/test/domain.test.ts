@@ -191,6 +191,52 @@ describe("matter-scoped RBAC", () => {
     ).toBe(true);
   });
 
+  it("allows assigned users to read calendar events only inside their matter scope", () => {
+    const user = sampleUsers.find((candidate) => candidate.id === "user-licensee")!;
+
+    expect(
+      canAccess({
+        user,
+        firmId: sampleFirm.id,
+        resource: "calendar_event",
+        action: "read",
+        matterId: "matter-001",
+      }),
+    ).toBe(true);
+
+    expect(
+      canAccess({
+        user,
+        firmId: sampleFirm.id,
+        resource: "calendar_event",
+        action: "read",
+        matterId: "matter-002",
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps billing bookkeepers out of calendar event reads", () => {
+    const user: User = {
+      id: "user-bookkeeper",
+      firmId: sampleFirm.id,
+      displayName: "Synthetic Bookkeeper",
+      email: "bookkeeper@example.test",
+      role: "billing_bookkeeper",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    };
+
+    expect(
+      canAccess({
+        user,
+        firmId: sampleFirm.id,
+        resource: "calendar_event",
+        action: "read",
+        matterId: "matter-001",
+      }),
+    ).toBe(false);
+  });
+
   it("denies matter-scoped access without an explicit matter scope", () => {
     const user = sampleUsers.find((candidate) => candidate.id === "user-licensee")!;
 
