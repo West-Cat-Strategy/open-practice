@@ -32,6 +32,7 @@ import { registerDraftRoutes } from "./routes/drafts.js";
 import { registerEmailRoutes } from "./routes/email.js";
 import { registerExternalUploadRoutes } from "./routes/external-uploads.js";
 import { registerInboundEmailRoutes } from "./routes/inbound-email.js";
+import { registerIntakeFormRoutes } from "./routes/intake-forms.js";
 import { registerIntakeRoutes } from "./routes/intake.js";
 import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
@@ -52,6 +53,7 @@ import {
   readSessionToken,
   isPublicRoute,
 } from "./http/auth-helpers.js";
+import { ApiHttpError } from "./http/response.js";
 
 const DEV_EXAMPLE_JWT_SECRET = "dev-only-change-me-at-least-16-chars";
 
@@ -96,6 +98,7 @@ export const envSchema = z.object({
   WEBAUTHN_RP_NAME: z.string().default("Open Practice"),
   WEBAUTHN_RP_ID: z.string().default("localhost"),
   WEBAUTHN_ORIGIN: z.string().default("http://localhost:3000"),
+  PUBLIC_WEB_BASE_URL: optionalUrl,
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;
@@ -122,6 +125,7 @@ interface ApiOptions {
   draftAssistProvider?: DraftAssistProvider;
   emailJobQueue?: ApiJobQueue;
   sessionTtlHours?: number;
+  publicWebBaseUrl?: string;
   setupKey?: string;
   s3?: {
     client: S3Client;
@@ -369,6 +373,13 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     automationProvider: options.automationProvider ?? new EmbeddedAutomationProvider(),
     emailJobQueue: options.emailJobQueue,
   });
+  registerIntakeFormRoutes(server, {
+    repository: options.repository,
+    s3: options.s3,
+    jwtSecret: options.jwtSecret,
+    emailJobQueue: options.emailJobQueue,
+    publicWebBaseUrl: options.publicWebBaseUrl,
+  });
   registerQueuesRoutes(server, { repository: options.repository });
 
   server.setErrorHandler((error, _request, reply) => {
@@ -380,6 +391,16 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
         : reply.statusCode >= 400
           ? reply.statusCode
           : 400;
+    if (error instanceof ApiHttpError) {
+      const body = {
+        error: error.name,
+        code: error.code,
+        message: error.message,
+        ...(error.details === undefined ? {} : { details: error.details }),
+      };
+      reply.status(statusCode).send(body);
+      return;
+    }
     reply.status(statusCode).send({
       error: normalizedError.name ?? normalizedError.error ?? normalizedError.code ?? "Error",
       message: normalizedError.message,
@@ -475,6 +496,7 @@ if (process.env.NODE_ENV !== "test") {
     automationProvider: new EmbeddedAutomationProvider(),
     emailJobQueue,
     sessionTtlHours: env.SESSION_TTL_HOURS,
+    publicWebBaseUrl: env.PUBLIC_WEB_BASE_URL ?? env.WEBAUTHN_ORIGIN,
     setupKey: env.OPEN_PRACTICE_SETUP_KEY,
     s3: createS3FromEnv(env),
     webAuthn: {

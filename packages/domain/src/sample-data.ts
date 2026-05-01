@@ -212,7 +212,7 @@ export const sampleSignatureProviderEvents: SignatureProviderEventRecord[] = [
 export const sampleSignatureWebhookAttempts: SignatureWebhookAttemptRecord[] = [];
 
 export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   questions: [
     {
       id: "issue_type",
@@ -234,6 +234,24 @@ export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDef
       id: "repair_details",
       label: "Repair details",
       type: "textarea",
+    },
+    {
+      id: "client_display_name",
+      label: "Preferred client name",
+      type: "text",
+      variableMapping: {
+        targetScope: "client",
+        targetField: "displayName",
+      },
+    },
+    {
+      id: "matter_title",
+      label: "Short matter title",
+      type: "text",
+      variableMapping: {
+        targetScope: "matter",
+        targetField: "title",
+      },
     },
   ],
   branchRules: [
@@ -280,6 +298,66 @@ export const sampleResidentialTenancyIntakeDefinition: EmbeddedIntakeTemplateDef
       ],
     },
   ],
+  sections: [
+    {
+      id: "client-basics",
+      title: "Client basics",
+      items: [
+        {
+          id: "intro",
+          kind: "display",
+          body: "Synthetic intake form instructions for the client.",
+        },
+        {
+          id: "client-name-item",
+          kind: "question",
+          questionId: "client_display_name",
+        },
+        {
+          id: "matter-title-item",
+          kind: "question",
+          questionId: "matter_title",
+        },
+      ],
+    },
+    {
+      id: "issue-details",
+      title: "Issue details",
+      items: [
+        {
+          id: "issue-type-item",
+          kind: "question",
+          questionId: "issue_type",
+        },
+        {
+          id: "urgent-item",
+          kind: "question",
+          questionId: "urgent",
+        },
+        {
+          id: "repair-details-item",
+          kind: "question",
+          questionId: "repair_details",
+        },
+        {
+          id: "evidence-upload",
+          kind: "upload",
+          label: "Upload supporting evidence",
+          required: true,
+          acceptedFileTypes: ["application/pdf", "image/png", "image/jpeg"],
+          classification: "privileged",
+          legalHold: false,
+        },
+        {
+          id: "client-attestation",
+          kind: "signature",
+          label: "Client attestation",
+          required: true,
+          consentText: "I confirm these synthetic intake answers are accurate.",
+        },
+      ],
+    },
+  ],
 };
 
 export const sampleIntakeTemplates: IntakeTemplateRecord[] = [
@@ -292,7 +370,7 @@ export const sampleIntakeTemplates: IntakeTemplateRecord[] = [
     provider: "embedded",
     externalTemplateId: "residential-tenancy-intake",
     active: true,
-    definitionVersion: 1,
+    definitionVersion: 2,
     definition: sampleResidentialTenancyIntakeDefinition,
     createdAt: "2026-04-01T00:00:00.000Z",
     updatedAt: "2026-04-01T00:00:00.000Z",

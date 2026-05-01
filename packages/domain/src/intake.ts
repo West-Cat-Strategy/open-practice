@@ -11,6 +11,7 @@ export interface EmbeddedIntakeQuestion {
   type: EmbeddedIntakeQuestionType;
   required?: boolean;
   options?: EmbeddedIntakeQuestionOption[];
+  variableMapping?: IntakeVariableMapping;
 }
 
 export type EmbeddedIntakeBranchOperator = "equals" | "not_equals" | "includes" | "present";
@@ -45,7 +46,120 @@ export interface EmbeddedIntakeTemplateDefinitionV1 {
   packages: EmbeddedIntakePackage[];
 }
 
-export type EmbeddedIntakeTemplateDefinition = EmbeddedIntakeTemplateDefinitionV1;
+export type EmbeddedIntakeFormItem =
+  | {
+      id: string;
+      kind: "display";
+      label?: string;
+      body: string;
+    }
+  | {
+      id: string;
+      kind: "question";
+      questionId: string;
+    }
+  | {
+      id: string;
+      kind: "upload";
+      label: string;
+      required?: boolean;
+      acceptedFileTypes?: string[];
+      classification?: "general" | "privileged" | "work_product" | "financial" | "identity";
+      legalHold?: boolean;
+    }
+  | {
+      id: string;
+      kind: "signature";
+      label: string;
+      required?: boolean;
+      consentText: string;
+      documentId?: string;
+    };
+
+export interface EmbeddedIntakeFormSection {
+  id: string;
+  title: string;
+  description?: string;
+  items: EmbeddedIntakeFormItem[];
+}
+
+export interface EmbeddedIntakeTemplateDefinitionV2 {
+  schemaVersion: 2;
+  questions: EmbeddedIntakeQuestion[];
+  branchRules: EmbeddedIntakeBranchRule[];
+  packages: EmbeddedIntakePackage[];
+  sections: EmbeddedIntakeFormSection[];
+}
+
+export type EmbeddedIntakeTemplateDefinition =
+  | EmbeddedIntakeTemplateDefinitionV1
+  | EmbeddedIntakeTemplateDefinitionV2;
+
+export type IntakeVariableTargetScope = "client" | "matter";
+
+export type IntakeClientVariableField = "displayName" | "notes";
+
+export type IntakeMatterVariableField = "title" | "practiceArea" | "jurisdiction";
+
+export interface IntakeVariableMapping {
+  targetScope: IntakeVariableTargetScope;
+  targetField: IntakeClientVariableField | IntakeMatterVariableField;
+}
+
+export type IntakeVariableProposalStatus = "pending" | "approved" | "rejected";
+
+export interface IntakeVariableProposal {
+  id: string;
+  firmId: string;
+  matterId: string;
+  intakeSessionId: string;
+  answerSnapshotId: string;
+  sourceQuestionId: string;
+  targetScope: IntakeVariableTargetScope;
+  targetField: IntakeClientVariableField | IntakeMatterVariableField;
+  targetRecordId: string;
+  proposedValue: string;
+  status: IntakeVariableProposalStatus;
+  createdAt: string;
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  appliedAt?: string;
+}
+
+export interface IntakeFormLinkRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  intakeSessionId: string;
+  tokenHash: string;
+  requestedByUserId: string;
+  clientContactId?: string;
+  expiresAt: string;
+  revokedAt?: string;
+  submittedAt?: string;
+  createdAt: string;
+}
+
+export type IntakeFormItemActionKind = "upload" | "signature";
+
+export type IntakeFormItemActionStatus = "intent_created" | "uploaded" | "completed" | "declined";
+
+export interface IntakeFormItemActionRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  intakeSessionId: string;
+  formLinkId: string;
+  itemId: string;
+  kind: IntakeFormItemActionKind;
+  status: IntakeFormItemActionStatus;
+  documentId?: string;
+  signatureRequestId?: string;
+  evidence: Record<string, unknown>;
+  createdAt: string;
+  completedAt?: string;
+}
 
 export interface IntakePackageDocumentResolution {
   packageId: string;
@@ -57,6 +171,8 @@ export interface IntakeResolutionSnapshot {
   templateId: string;
   templateVersion: number;
   visibleQuestionIds: string[];
+  visibleFormItemIds?: string[];
+  requiredIncompleteItemIds?: string[];
   eligiblePackageIds: string[];
   selectedPackageIds: string[];
   packageDocuments: IntakePackageDocumentResolution[];
@@ -65,8 +181,9 @@ export interface IntakeResolutionSnapshot {
 export function validateEmbeddedIntakeTemplateDefinition(
   definition: EmbeddedIntakeTemplateDefinition,
 ): EmbeddedIntakeTemplateDefinition {
-  if (definition.schemaVersion !== 1) {
-    throw new Error(`Unsupported embedded intake schema version ${definition.schemaVersion}`);
+  const schemaVersion = (definition as { schemaVersion?: number }).schemaVersion;
+  if (schemaVersion !== 1 && schemaVersion !== 2) {
+    throw new Error(`Unsupported embedded intake schema version ${String(schemaVersion)}`);
   }
 
   const questionIds = assertUniqueIds(
@@ -79,6 +196,9 @@ export function validateEmbeddedIntakeTemplateDefinition(
   );
 
   for (const question of definition.questions) {
+    if (question.variableMapping) {
+      assertVariableMapping(question.variableMapping);
+    }
     if (question.type === "select") {
       const optionIds = assertUniqueIds(
         `option for question ${question.id}`,
@@ -120,6 +240,43 @@ export function validateEmbeddedIntakeTemplateDefinition(
     );
   }
 
+  if (definition.schemaVersion === 2) {
+    assertUniqueIds(
+      "form section",
+      definition.sections.map((section) => section.id),
+    );
+    const formItemIds = assertUniqueIds(
+      "form item",
+      definition.sections.flatMap((section) => section.items.map((item) => item.id)),
+    );
+    for (const section of definition.sections) {
+      if (section.items.length === 0) {
+        throw new Error(`Form section ${section.id} must define at least one item`);
+      }
+      for (const item of section.items) {
+        if (!formItemIds.has(item.id)) {
+          throw new Error(`Form item ${item.id} is not registered`);
+        }
+        if (item.kind === "question" && !questionIds.has(item.questionId)) {
+          throw new Error(`Form item ${item.id} references unknown question ${item.questionId}`);
+        }
+        if (item.kind === "upload") {
+          for (const acceptedFileType of item.acceptedFileTypes ?? []) {
+            if (acceptedFileType.trim().length === 0) {
+              throw new Error(`Upload item ${item.id} has an empty accepted file type`);
+            }
+          }
+        }
+        if (item.kind === "signature" && item.required && item.consentText.trim().length === 0) {
+          throw new Error(`Signature item ${item.id} requires consent text`);
+        }
+        if (item.kind === "signature" && item.documentId) {
+          throw new Error(`Signature item ${item.id} must use embedded attestation evidence`);
+        }
+      }
+    }
+  }
+
   return definition;
 }
 
@@ -129,6 +286,7 @@ export function resolveEmbeddedIntakeAnswers(input: {
   definition: EmbeddedIntakeTemplateDefinition;
   answers: Record<string, unknown>;
   selectedPackageIds?: string[];
+  completedItemIds?: string[];
 }): IntakeResolutionSnapshot {
   const definition = validateEmbeddedIntakeTemplateDefinition(input.definition);
   const conditionalQuestionIds = new Set(
@@ -163,14 +321,80 @@ export function resolveEmbeddedIntakeAnswers(input: {
       })),
     );
 
+  const visibleFormItems =
+    definition.schemaVersion === 2
+      ? definition.sections
+          .flatMap((section) => section.items)
+          .filter((item) => item.kind !== "question" || visibleQuestionIds.has(item.questionId))
+      : undefined;
+  const visibleFormItemIds = visibleFormItems?.map((item) => item.id);
+  const completedItemIds = new Set(input.completedItemIds ?? []);
+  const requiredIncompleteItemIds =
+    definition.schemaVersion === 2
+      ? (visibleFormItems ?? [])
+          .filter((item) => {
+            if (item.kind === "question") {
+              const question = definition.questions.find(
+                (candidate) => candidate.id === item.questionId,
+              );
+              return (
+                Boolean(question?.required) && !answerIsPresent(input.answers[item.questionId])
+              );
+            }
+            if (item.kind === "display") return false;
+            if (!item.required) return false;
+            return !completedItemIds.has(item.id);
+          })
+          .map((item) => item.id)
+      : undefined;
+
   return {
     templateId: input.templateId,
     templateVersion: input.templateVersion,
     visibleQuestionIds: [...visibleQuestionIds],
+    visibleFormItemIds,
+    requiredIncompleteItemIds,
     eligiblePackageIds: [...eligiblePackageIds],
     selectedPackageIds,
     packageDocuments,
   };
+}
+
+export function createIntakeVariableProposals(input: {
+  firmId: string;
+  matterId: string;
+  clientContactId?: string;
+  intakeSessionId: string;
+  answerSnapshotId: string;
+  definition: EmbeddedIntakeTemplateDefinition;
+  answers: Record<string, unknown>;
+  now: string;
+}): IntakeVariableProposal[] {
+  const definition = validateEmbeddedIntakeTemplateDefinition(input.definition);
+  return definition.questions.flatMap((question) => {
+    if (!question.variableMapping) return [];
+    const value = input.answers[question.id];
+    if (!answerIsPresent(value)) return [];
+    const targetRecordId =
+      question.variableMapping.targetScope === "client" ? input.clientContactId : input.matterId;
+    if (!targetRecordId) return [];
+    return [
+      {
+        id: `${input.answerSnapshotId}:${question.id}:${question.variableMapping.targetScope}:${question.variableMapping.targetField}`,
+        firmId: input.firmId,
+        matterId: input.matterId,
+        intakeSessionId: input.intakeSessionId,
+        answerSnapshotId: input.answerSnapshotId,
+        sourceQuestionId: question.id,
+        targetScope: question.variableMapping.targetScope,
+        targetField: question.variableMapping.targetField,
+        targetRecordId,
+        proposedValue: String(value),
+        status: "pending" as const,
+        createdAt: input.now,
+      },
+    ];
+  });
 }
 
 function assertUniqueIds(label: string, ids: string[]): Set<string> {
@@ -183,8 +407,33 @@ function assertUniqueIds(label: string, ids: string[]): Set<string> {
   return seen;
 }
 
+function assertVariableMapping(mapping: IntakeVariableMapping): void {
+  const clientFields = new Set<IntakeClientVariableField>(["displayName", "notes"]);
+  const matterFields = new Set<IntakeMatterVariableField>([
+    "title",
+    "practiceArea",
+    "jurisdiction",
+  ]);
+  if (
+    mapping.targetScope === "client" &&
+    !clientFields.has(mapping.targetField as IntakeClientVariableField)
+  ) {
+    throw new Error(`Unsupported client variable field ${mapping.targetField}`);
+  }
+  if (
+    mapping.targetScope === "matter" &&
+    !matterFields.has(mapping.targetField as IntakeMatterVariableField)
+  ) {
+    throw new Error(`Unsupported matter variable field ${mapping.targetField}`);
+  }
+}
+
+function answerIsPresent(answer: unknown): boolean {
+  return answer !== undefined && answer !== null && answer !== "";
+}
+
 function branchRuleMatches(rule: EmbeddedIntakeBranchRule, answer: unknown): boolean {
-  if (rule.operator === "present") return answer !== undefined && answer !== null && answer !== "";
+  if (rule.operator === "present") return answerIsPresent(answer);
   if (rule.operator === "includes") {
     return Array.isArray(answer) && answer.includes(rule.value);
   }

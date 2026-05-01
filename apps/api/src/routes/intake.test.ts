@@ -116,9 +116,10 @@ describe("intake routes", () => {
         expect.objectContaining({
           id: "intake-template-001",
           provider: "embedded",
-          definitionVersion: 1,
+          definitionVersion: 2,
           definition: expect.objectContaining({
-            schemaVersion: 1,
+            schemaVersion: 2,
+            sections: expect.arrayContaining([expect.objectContaining({ id: "issue-details" })]),
             packages: expect.arrayContaining([
               expect.objectContaining({ id: "repair_notice_package" }),
             ]),
@@ -188,8 +189,17 @@ describe("intake routes", () => {
       answers: { issue_type: "repair", urgent: true },
       resolution: expect.objectContaining({
         templateId: "intake-template-001",
-        templateVersion: 1,
+        templateVersion: 2,
         visibleQuestionIds: expect.arrayContaining(["issue_type", "urgent", "repair_details"]),
+        visibleFormItemIds: expect.arrayContaining([
+          "issue-type-item",
+          "urgent-item",
+          "repair-details-item",
+        ]),
+        requiredIncompleteItemIds: expect.arrayContaining([
+          "evidence-upload",
+          "client-attestation",
+        ]),
         eligiblePackageIds: expect.arrayContaining([
           "repair_notice_package",
           "urgent_review_package",

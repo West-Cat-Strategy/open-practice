@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createIntakeVariableProposals,
   resolveEmbeddedIntakeAnswers,
   validateEmbeddedIntakeTemplateDefinition,
   type EmbeddedIntakeTemplateDefinition,
@@ -48,15 +49,22 @@ describe("embedded intake templates", () => {
   it("resolves visible questions and package documents from answers", () => {
     const resolution = resolveEmbeddedIntakeAnswers({
       templateId: "intake-template-001",
-      templateVersion: 1,
+      templateVersion: 2,
       definition: sampleResidentialTenancyIntakeDefinition,
       answers: { issue_type: "repair", urgent: true },
+      completedItemIds: ["evidence-upload", "client-attestation"],
     });
 
     expect(resolution).toMatchObject({
       templateId: "intake-template-001",
-      templateVersion: 1,
+      templateVersion: 2,
       visibleQuestionIds: expect.arrayContaining(["issue_type", "urgent", "repair_details"]),
+      visibleFormItemIds: expect.arrayContaining([
+        "issue-type-item",
+        "evidence-upload",
+        "client-attestation",
+      ]),
+      requiredIncompleteItemIds: [],
       eligiblePackageIds: expect.arrayContaining([
         "repair_notice_package",
         "urgent_review_package",
@@ -83,12 +91,179 @@ describe("embedded intake templates", () => {
   it("keeps branch-only questions hidden until their branch matches", () => {
     const resolution = resolveEmbeddedIntakeAnswers({
       templateId: "intake-template-001",
-      templateVersion: 1,
+      templateVersion: 2,
       definition: sampleResidentialTenancyIntakeDefinition,
       answers: { issue_type: "deposit", urgent: false },
     });
 
-    expect(resolution.visibleQuestionIds).toEqual(["issue_type", "urgent"]);
+    expect(resolution.visibleQuestionIds).toEqual([
+      "issue_type",
+      "urgent",
+      "client_display_name",
+      "matter_title",
+    ]);
     expect(resolution.visibleQuestionIds).not.toContain("repair_details");
+  });
+
+  it("tracks required upload and signature form items independently from answers", () => {
+    const incomplete = resolveEmbeddedIntakeAnswers({
+      templateId: "intake-template-001",
+      templateVersion: 2,
+      definition: sampleResidentialTenancyIntakeDefinition,
+      answers: { issue_type: "repair", urgent: true },
+    });
+    const complete = resolveEmbeddedIntakeAnswers({
+      templateId: "intake-template-001",
+      templateVersion: 2,
+      definition: sampleResidentialTenancyIntakeDefinition,
+      answers: { issue_type: "repair", urgent: true },
+      completedItemIds: ["evidence-upload", "client-attestation"],
+    });
+
+    expect(incomplete.requiredIncompleteItemIds).toEqual(["evidence-upload", "client-attestation"]);
+    expect(complete.requiredIncompleteItemIds).toEqual([]);
+  });
+
+  it("gates only visible required V2 items and preserves upload file type metadata", () => {
+    const definition: EmbeddedIntakeTemplateDefinition = {
+      schemaVersion: 2,
+      questions: [
+        {
+          id: "issue",
+          label: "Issue",
+          type: "select",
+          options: [{ value: "other", label: "Other" }],
+        },
+        { id: "hidden_required", label: "Hidden", type: "text", required: true },
+      ],
+      branchRules: [
+        {
+          id: "show-hidden",
+          questionId: "issue",
+          operator: "equals",
+          value: "repair",
+          showQuestionIds: ["hidden_required"],
+        },
+      ],
+      packages: [{ id: "base", title: "Base", documents: [{ id: "doc", title: "Doc" }] }],
+      sections: [
+        {
+          id: "details",
+          title: "Details",
+          items: [
+            { id: "issue-item", kind: "question", questionId: "issue" },
+            { id: "hidden-required-item", kind: "question", questionId: "hidden_required" },
+            {
+              id: "evidence-upload",
+              kind: "upload",
+              label: "Evidence",
+              acceptedFileTypes: ["application/pdf", "image/png"],
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(validateEmbeddedIntakeTemplateDefinition(definition)).toBe(definition);
+    expect(
+      resolveEmbeddedIntakeAnswers({
+        templateId: "intake-template-001",
+        templateVersion: 2,
+        definition,
+        answers: { issue: "other" },
+      }).requiredIncompleteItemIds,
+    ).toEqual([]);
+    expect(
+      resolveEmbeddedIntakeAnswers({
+        templateId: "intake-template-001",
+        templateVersion: 2,
+        definition,
+        answers: { issue: "repair" },
+      }).requiredIncompleteItemIds,
+    ).toEqual(["hidden-required-item"]);
+  });
+
+  it("rejects invalid structured upload and embedded signature definitions", () => {
+    const invalidUpload: EmbeddedIntakeTemplateDefinition = {
+      schemaVersion: 2,
+      questions: [],
+      branchRules: [],
+      packages: [{ id: "base", title: "Base", documents: [{ id: "doc", title: "Doc" }] }],
+      sections: [
+        {
+          id: "uploads",
+          title: "Uploads",
+          items: [
+            {
+              id: "bad-upload",
+              kind: "upload",
+              label: "Bad upload",
+              acceptedFileTypes: ["application/pdf", ""],
+            },
+          ],
+        },
+      ],
+    };
+    const attachedSignature: EmbeddedIntakeTemplateDefinition = {
+      schemaVersion: 2,
+      questions: [],
+      branchRules: [],
+      packages: [{ id: "base", title: "Base", documents: [{ id: "doc", title: "Doc" }] }],
+      sections: [
+        {
+          id: "signatures",
+          title: "Signatures",
+          items: [
+            {
+              id: "attached-signature",
+              kind: "signature",
+              label: "Attached signature",
+              consentText: "I agree.",
+              documentId: "doc-001",
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(() => validateEmbeddedIntakeTemplateDefinition(invalidUpload)).toThrow(
+      "Upload item bad-upload has an empty accepted file type",
+    );
+    expect(() => validateEmbeddedIntakeTemplateDefinition(attachedSignature)).toThrow(
+      "Signature item attached-signature must use embedded attestation evidence",
+    );
+  });
+
+  it("creates reviewed variable proposals without mutating client or matter records", () => {
+    const proposals = createIntakeVariableProposals({
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      clientContactId: "contact-ada",
+      intakeSessionId: "intake-session-001",
+      answerSnapshotId: "answer-snapshot-001",
+      definition: sampleResidentialTenancyIntakeDefinition,
+      answers: {
+        client_display_name: "Ada M.",
+        matter_title: "Ada tenancy repairs",
+      },
+      now: "2026-05-01T12:00:00.000Z",
+    });
+
+    expect(proposals).toEqual([
+      expect.objectContaining({
+        targetScope: "client",
+        targetField: "displayName",
+        targetRecordId: "contact-ada",
+        proposedValue: "Ada M.",
+        status: "pending",
+      }),
+      expect.objectContaining({
+        targetScope: "matter",
+        targetField: "title",
+        targetRecordId: "matter-001",
+        proposedValue: "Ada tenancy repairs",
+        status: "pending",
+      }),
+    ]);
   });
 });

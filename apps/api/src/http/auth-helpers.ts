@@ -94,6 +94,16 @@ export function isPublicRoute(method: string, url: string): boolean {
     (method === "POST" && path === "/api/auth/password-setup") ||
     (method === "POST" && path === "/api/auth/recovery-codes/verify") ||
     (method === "GET" && path?.startsWith("/api/portal/shares/")) ||
+    (method === "GET" && /^\/api\/portal\/intake-forms\/[^/]+$/.test(path ?? "")) ||
+    (method === "POST" && /^\/api\/portal\/intake-forms\/[^/]+\/submit$/.test(path ?? "")) ||
+    (method === "POST" &&
+      /^\/api\/portal\/intake-forms\/[^/]+\/items\/[^/]+\/uploads$/.test(path ?? "")) ||
+    (method === "POST" &&
+      /^\/api\/portal\/intake-forms\/[^/]+\/items\/[^/]+\/documents\/[^/]+\/complete$/.test(
+        path ?? "",
+      )) ||
+    (method === "POST" &&
+      /^\/api\/portal\/intake-forms\/[^/]+\/items\/[^/]+\/signature$/.test(path ?? "")) ||
     (method === "POST" && /^\/api\/portal\/external-uploads\/[^/]+\/intents$/.test(path ?? "")) ||
     (method === "POST" &&
       /^\/api\/portal\/external-uploads\/[^/]+\/documents\/[^/]+\/complete$/.test(path ?? ""))

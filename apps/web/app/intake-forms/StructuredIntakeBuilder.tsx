@@ -1,0 +1,560 @@
+"use client";
+
+import { Plus, Save, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import type {
+  EmbeddedIntakeFormItem,
+  EmbeddedIntakeQuestion,
+  EmbeddedIntakeTemplateDefinitionV2,
+  IntakeVariableTargetScope,
+} from "@open-practice/domain";
+import {
+  buildVariableMapping,
+  itemKinds,
+  makeIntakeItem,
+  questionTypes,
+  variableTargetFields,
+} from "../intake-forms-dashboard";
+
+interface StructuredIntakeBuilderProps {
+  definition: EmbeddedIntakeTemplateDefinitionV2;
+  name: string;
+  saving: boolean;
+  status: string;
+  onDefinitionChange: (definition: EmbeddedIntakeTemplateDefinitionV2) => void;
+  onNameChange: (name: string) => void;
+  onSave: () => void;
+}
+
+function cloneDefinition(
+  definition: EmbeddedIntakeTemplateDefinitionV2,
+): EmbeddedIntakeTemplateDefinitionV2 {
+  return JSON.parse(JSON.stringify(definition)) as EmbeddedIntakeTemplateDefinitionV2;
+}
+
+function uniqueId(prefix: string, existing: string[]): string {
+  let index = existing.length + 1;
+  let id = `${prefix}-${index}`;
+  while (existing.includes(id)) {
+    index += 1;
+    id = `${prefix}-${index}`;
+  }
+  return id;
+}
+
+function mappingScope(question: EmbeddedIntakeQuestion): IntakeVariableTargetScope | "none" {
+  return question.variableMapping?.targetScope ?? "none";
+}
+
+function normalizeAcceptedTypes(value: string): string[] | undefined {
+  const items = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : undefined;
+}
+
+export default function StructuredIntakeBuilder({
+  definition,
+  name,
+  saving,
+  status,
+  onDefinitionChange,
+  onNameChange,
+  onSave,
+}: StructuredIntakeBuilderProps) {
+  const [jsonOpen, setJsonOpen] = useState(false);
+  const [jsonValue, setJsonValue] = useState(JSON.stringify(definition, null, 2));
+  const [jsonStatus, setJsonStatus] = useState("Advanced JSON ready.");
+
+  useEffect(() => {
+    if (!jsonOpen) setJsonValue(JSON.stringify(definition, null, 2));
+  }, [definition, jsonOpen]);
+
+  function updateDefinition(updater: (draft: EmbeddedIntakeTemplateDefinitionV2) => void): void {
+    const next = cloneDefinition(definition);
+    updater(next);
+    onDefinitionChange(next);
+  }
+
+  function addSection(): void {
+    updateDefinition((draft) => {
+      const id = uniqueId(
+        "section",
+        draft.sections.map((section) => section.id),
+      );
+      draft.sections.push({ id, title: "New section", items: [] });
+    });
+  }
+
+  function removeSection(sectionIndex: number): void {
+    updateDefinition((draft) => {
+      draft.sections.splice(sectionIndex, 1);
+    });
+  }
+
+  function addItem(sectionIndex: number, kind: (typeof itemKinds)[number]): void {
+    updateDefinition((draft) => {
+      const existingItemIds = draft.sections.flatMap((section) =>
+        section.items.map((item) => item.id),
+      );
+      if (kind === "question") {
+        const questionId = uniqueId(
+          "question",
+          draft.questions.map((question) => question.id),
+        );
+        draft.questions.push({
+          id: questionId,
+          label: "New question",
+          type: "text",
+          required: false,
+        });
+        draft.sections[sectionIndex]?.items.push({
+          id: uniqueId("question-item", existingItemIds),
+          kind,
+          questionId,
+        });
+        return;
+      }
+      draft.sections[sectionIndex]?.items.push(makeIntakeItem(kind, existingItemIds.length));
+    });
+  }
+
+  function removeItem(sectionIndex: number, itemIndex: number): void {
+    updateDefinition((draft) => {
+      const [removed] = draft.sections[sectionIndex]?.items.splice(itemIndex, 1) ?? [];
+      if (removed?.kind === "question") {
+        const stillReferenced = draft.sections.some((section) =>
+          section.items.some(
+            (item) => item.kind === "question" && item.questionId === removed.questionId,
+          ),
+        );
+        if (!stillReferenced) {
+          draft.questions = draft.questions.filter(
+            (question) => question.id !== removed.questionId,
+          );
+        }
+      }
+    });
+  }
+
+  function updateItem(
+    sectionIndex: number,
+    itemIndex: number,
+    updater: (item: EmbeddedIntakeFormItem) => void,
+  ): void {
+    updateDefinition((draft) => {
+      const item = draft.sections[sectionIndex]?.items[itemIndex];
+      if (item) updater(item);
+    });
+  }
+
+  function updateQuestion(
+    questionId: string,
+    updater: (question: EmbeddedIntakeQuestion) => void,
+  ): void {
+    updateDefinition((draft) => {
+      const question = draft.questions.find((candidate) => candidate.id === questionId);
+      if (question) updater(question);
+    });
+  }
+
+  function applyJson(): void {
+    try {
+      const parsed = JSON.parse(jsonValue) as EmbeddedIntakeTemplateDefinitionV2;
+      if (parsed.schemaVersion !== 2) {
+        setJsonStatus("Only schema version 2 can be applied here.");
+        return;
+      }
+      onDefinitionChange(parsed);
+      setJsonStatus("Applied JSON to structured builder.");
+    } catch {
+      setJsonStatus("Advanced JSON is invalid.");
+    }
+  }
+
+  return (
+    <div className="intake-template-editor">
+      <label className="form-field">
+        <span>Template name</span>
+        <input onChange={(event) => onNameChange(event.target.value)} value={name} />
+      </label>
+
+      <div className="section-title">
+        <h3>Sections</h3>
+        <button className="secondary-button compact-button" onClick={addSection} type="button">
+          <Plus size={16} />
+          Add section
+        </button>
+      </div>
+
+      <div className="intake-section-editor-list">
+        {definition.sections.map((section, sectionIndex) => (
+          <div className="intake-section-editor" key={section.id}>
+            <div className="intake-section-editor-header">
+              <label className="form-field">
+                <span>Section title</span>
+                <input
+                  onChange={(event) =>
+                    updateDefinition((draft) => {
+                      draft.sections[sectionIndex]!.title = event.target.value;
+                    })
+                  }
+                  value={section.title}
+                />
+              </label>
+              <button
+                aria-label={`Remove ${section.title}`}
+                className="icon-button"
+                onClick={() => removeSection(sectionIndex)}
+                title="Remove section"
+                type="button"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+            <label className="form-field">
+              <span>Description</span>
+              <input
+                onChange={(event) =>
+                  updateDefinition((draft) => {
+                    draft.sections[sectionIndex]!.description = event.target.value || undefined;
+                  })
+                }
+                value={section.description ?? ""}
+              />
+            </label>
+
+            <div className="intake-item-add-row">
+              {itemKinds.map((kind) => (
+                <button
+                  className="secondary-button compact-button"
+                  key={kind}
+                  onClick={() => addItem(sectionIndex, kind)}
+                  type="button"
+                >
+                  <Plus size={14} />
+                  {kind}
+                </button>
+              ))}
+            </div>
+
+            <div className="intake-item-editor-list">
+              {section.items.map((item, itemIndex) => (
+                <div className="intake-item-editor" key={item.id}>
+                  <div className="intake-item-editor-header">
+                    <strong>{item.kind}</strong>
+                    <button
+                      aria-label={`Remove ${item.kind} item`}
+                      className="icon-button"
+                      onClick={() => removeItem(sectionIndex, itemIndex)}
+                      title="Remove item"
+                      type="button"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                  {item.kind === "display" ? (
+                    <label className="form-field">
+                      <span>Display text</span>
+                      <textarea
+                        onChange={(event) =>
+                          updateItem(sectionIndex, itemIndex, (draftItem) => {
+                            if (draftItem.kind === "display") draftItem.body = event.target.value;
+                          })
+                        }
+                        value={item.body}
+                      />
+                    </label>
+                  ) : null}
+                  {item.kind === "question" ? (
+                    <QuestionItemEditor
+                      question={
+                        definition.questions.find((question) => question.id === item.questionId)!
+                      }
+                      updateQuestion={updateQuestion}
+                    />
+                  ) : null}
+                  {item.kind === "upload" ? (
+                    <UploadItemEditor
+                      item={item}
+                      updateItem={(updater) => updateItem(sectionIndex, itemIndex, updater)}
+                    />
+                  ) : null}
+                  {item.kind === "signature" ? (
+                    <SignatureItemEditor
+                      item={item}
+                      updateItem={(updater) => updateItem(sectionIndex, itemIndex, updater)}
+                    />
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <details
+        className="advanced-json-editor"
+        open={jsonOpen}
+        onToggle={(event) => setJsonOpen(event.currentTarget.open)}
+      >
+        <summary>Advanced JSON</summary>
+        <label className="form-field">
+          <span>Definition JSON</span>
+          <textarea
+            onChange={(event) => setJsonValue(event.target.value)}
+            spellCheck={false}
+            value={jsonValue}
+          />
+        </label>
+        <div className="row-actions">
+          <button className="secondary-button compact-button" onClick={applyJson} type="button">
+            Apply JSON
+          </button>
+          <p className="inline-empty">{jsonStatus}</p>
+        </div>
+      </details>
+
+      <div className="row-actions">
+        <button
+          className="secondary-button compact-button"
+          disabled={saving}
+          onClick={onSave}
+          type="button"
+        >
+          <Save size={16} />
+          {saving ? "Saving..." : "Save form"}
+        </button>
+        <p className="inline-empty">{status}</p>
+      </div>
+    </div>
+  );
+}
+
+function QuestionItemEditor({
+  question,
+  updateQuestion,
+}: {
+  question: EmbeddedIntakeQuestion;
+  updateQuestion: (questionId: string, updater: (question: EmbeddedIntakeQuestion) => void) => void;
+}) {
+  const scope = mappingScope(question);
+  const mappingField = question.variableMapping?.targetField ?? "";
+
+  return (
+    <div className="intake-question-editor">
+      <label className="form-field">
+        <span>Question label</span>
+        <input
+          onChange={(event) =>
+            updateQuestion(question.id, (draft) => {
+              draft.label = event.target.value;
+            })
+          }
+          value={question.label}
+        />
+      </label>
+      <div className="intake-question-grid">
+        <label className="form-field">
+          <span>Type</span>
+          <select
+            onChange={(event) =>
+              updateQuestion(question.id, (draft) => {
+                draft.type = event.target.value as EmbeddedIntakeQuestion["type"];
+                if (draft.type === "select" && !draft.options?.length) {
+                  draft.options = [{ value: "option", label: "Option" }];
+                }
+              })
+            }
+            value={question.type}
+          >
+            {questionTypes.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="check-row share-check-row">
+          <input
+            checked={Boolean(question.required)}
+            onChange={(event) =>
+              updateQuestion(question.id, (draft) => {
+                draft.required = event.target.checked;
+              })
+            }
+            type="checkbox"
+          />
+          <span>Required</span>
+        </label>
+      </div>
+
+      {question.type === "select" ? (
+        <label className="form-field">
+          <span>Options</span>
+          <textarea
+            onChange={(event) =>
+              updateQuestion(question.id, (draft) => {
+                draft.options = event.target.value
+                  .split("\n")
+                  .map((line) => line.trim())
+                  .filter(Boolean)
+                  .map((line) => {
+                    const [value, label] = line.split("|").map((part) => part.trim());
+                    return { value: value ?? "", label: label || value || "Option" };
+                  });
+              })
+            }
+            value={(question.options ?? [])
+              .map((option) => `${option.value}|${option.label}`)
+              .join("\n")}
+          />
+        </label>
+      ) : null}
+
+      <div className="intake-question-grid">
+        <label className="form-field">
+          <span>Mapping scope</span>
+          <select
+            onChange={(event) =>
+              updateQuestion(question.id, (draft) => {
+                const nextScope = event.target.value as IntakeVariableTargetScope | "none";
+                draft.variableMapping =
+                  nextScope === "none"
+                    ? undefined
+                    : buildVariableMapping(nextScope, variableTargetFields(nextScope)[0] ?? "");
+              })
+            }
+            value={scope}
+          >
+            <option value="none">none</option>
+            <option value="client">client</option>
+            <option value="matter">matter</option>
+          </select>
+        </label>
+        <label className="form-field">
+          <span>Mapping field</span>
+          <select
+            disabled={scope === "none"}
+            onChange={(event) =>
+              updateQuestion(question.id, (draft) => {
+                if (scope !== "none") {
+                  draft.variableMapping = buildVariableMapping(scope, event.target.value);
+                }
+              })
+            }
+            value={mappingField}
+          >
+            {scope === "none" ? <option value="">none</option> : null}
+            {scope !== "none"
+              ? variableTargetFields(scope).map((field) => (
+                  <option key={field} value={field}>
+                    {field}
+                  </option>
+                ))
+              : null}
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function UploadItemEditor({
+  item,
+  updateItem,
+}: {
+  item: Extract<EmbeddedIntakeFormItem, { kind: "upload" }>;
+  updateItem: (updater: (item: EmbeddedIntakeFormItem) => void) => void;
+}) {
+  return (
+    <>
+      <label className="form-field">
+        <span>Upload label</span>
+        <input
+          onChange={(event) =>
+            updateItem((draft) => {
+              if (draft.kind === "upload") draft.label = event.target.value;
+            })
+          }
+          value={item.label}
+        />
+      </label>
+      <div className="intake-question-grid">
+        <label className="form-field">
+          <span>Accepted file types</span>
+          <input
+            onChange={(event) =>
+              updateItem((draft) => {
+                if (draft.kind === "upload") {
+                  draft.acceptedFileTypes = normalizeAcceptedTypes(event.target.value);
+                }
+              })
+            }
+            value={(item.acceptedFileTypes ?? []).join(", ")}
+          />
+        </label>
+        <label className="check-row share-check-row">
+          <input
+            checked={Boolean(item.required)}
+            onChange={(event) =>
+              updateItem((draft) => {
+                if (draft.kind === "upload") draft.required = event.target.checked;
+              })
+            }
+            type="checkbox"
+          />
+          <span>Required</span>
+        </label>
+      </div>
+    </>
+  );
+}
+
+function SignatureItemEditor({
+  item,
+  updateItem,
+}: {
+  item: Extract<EmbeddedIntakeFormItem, { kind: "signature" }>;
+  updateItem: (updater: (item: EmbeddedIntakeFormItem) => void) => void;
+}) {
+  return (
+    <>
+      <label className="form-field">
+        <span>Attestation label</span>
+        <input
+          onChange={(event) =>
+            updateItem((draft) => {
+              if (draft.kind === "signature") draft.label = event.target.value;
+            })
+          }
+          value={item.label}
+        />
+      </label>
+      <label className="form-field">
+        <span>Consent text</span>
+        <textarea
+          onChange={(event) =>
+            updateItem((draft) => {
+              if (draft.kind === "signature") draft.consentText = event.target.value;
+            })
+          }
+          value={item.consentText}
+        />
+      </label>
+      <label className="check-row share-check-row">
+        <input
+          checked={Boolean(item.required)}
+          onChange={(event) =>
+            updateItem((draft) => {
+              if (draft.kind === "signature") draft.required = event.target.checked;
+            })
+          }
+          type="checkbox"
+        />
+        <span>Required</span>
+      </label>
+    </>
+  );
+}

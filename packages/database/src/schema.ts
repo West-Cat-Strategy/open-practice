@@ -15,7 +15,9 @@ import { sql } from "drizzle-orm";
 import type {
   DraftAssistRecord,
   EmbeddedIntakeTemplateDefinition,
+  IntakeFormItemActionRecord,
   IntakeResolutionSnapshot,
+  IntakeVariableProposal,
 } from "@open-practice/domain";
 
 export const province = pgEnum("province", ["BC", "ON", "CANADA", "OTHER"]);
@@ -726,6 +728,7 @@ export const accessLogs = pgTable(
     actorId: text("actor_id").references(() => users.id),
     shareLinkId: text("share_link_id").references(() => shareLinks.id),
     externalUploadLinkId: text("external_upload_link_id").references(() => externalUploadLinks.id),
+    intakeFormLinkId: text("intake_form_link_id").references(() => intakeFormLinks.id),
     resourceType: text("resource_type").notNull(),
     resourceId: text("resource_id").notNull(),
     action: text("action").notNull(),
@@ -1437,6 +1440,102 @@ export const answerSnapshots = pgTable("answer_snapshots", {
     packageDocuments: [],
   }),
 });
+
+export const intakeFormLinks = pgTable(
+  "intake_form_links",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    intakeSessionId: text("intake_session_id")
+      .notNull()
+      .references(() => intakeSessions.id),
+    tokenHash: text("token_hash").notNull(),
+    requestedByUserId: text("requested_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    clientContactId: text("client_contact_id").references(() => contacts.id),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenHash: uniqueIndex("intake_form_links_token_hash_idx").on(table.tokenHash),
+    matterExpiry: index("intake_form_links_matter_expiry_idx").on(table.matterId, table.expiresAt),
+  }),
+);
+
+export const intakeFormItemActions = pgTable(
+  "intake_form_item_actions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    intakeSessionId: text("intake_session_id")
+      .notNull()
+      .references(() => intakeSessions.id),
+    formLinkId: text("form_link_id")
+      .notNull()
+      .references(() => intakeFormLinks.id),
+    itemId: text("item_id").notNull(),
+    kind: text("kind").$type<IntakeFormItemActionRecord["kind"]>().notNull(),
+    status: text("status").$type<IntakeFormItemActionRecord["status"]>().notNull(),
+    documentId: text("document_id").references(() => documents.id),
+    signatureRequestId: text("signature_request_id").references(() => signatureRequests.id),
+    evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => ({
+    linkItem: index("intake_form_item_actions_link_item_idx").on(table.formLinkId, table.itemId),
+  }),
+);
+
+export const intakeVariableProposals = pgTable(
+  "intake_variable_proposals",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    intakeSessionId: text("intake_session_id")
+      .notNull()
+      .references(() => intakeSessions.id),
+    answerSnapshotId: text("answer_snapshot_id")
+      .notNull()
+      .references(() => answerSnapshots.id),
+    sourceQuestionId: text("source_question_id").notNull(),
+    targetScope: text("target_scope").$type<IntakeVariableProposal["targetScope"]>().notNull(),
+    targetField: text("target_field").$type<IntakeVariableProposal["targetField"]>().notNull(),
+    targetRecordId: text("target_record_id").notNull(),
+    proposedValue: text("proposed_value").notNull(),
+    status: text("status").$type<IntakeVariableProposal["status"]>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    rejectionReason: text("rejection_reason"),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+  },
+  (table) => ({
+    matterStatus: index("intake_variable_proposals_matter_status_idx").on(
+      table.matterId,
+      table.status,
+    ),
+    snapshot: index("intake_variable_proposals_snapshot_idx").on(table.answerSnapshotId),
+  }),
+);
 
 export const generatedDocuments = pgTable("generated_documents", {
   id: text("id").primaryKey(),
