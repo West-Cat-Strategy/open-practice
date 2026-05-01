@@ -40,6 +40,26 @@ const events: CalendarEventRecord[] = [
     updatedAt: "2026-04-30T12:05:00.000Z",
     createdByUserId: "user-licensee",
     updatedByUserId: "user-licensee",
+    attendees: [
+      {
+        id: "calendar-attendee-001",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-001",
+        name: "Ada Morgan",
+        email: "ada.morgan@example.test",
+        role: "required",
+        responseStatus: "accepted",
+        invitationStatus: "queued",
+        invitedAt: "2026-04-30T12:04:00.000Z",
+        invitationEmailId: "email-001",
+        invitationJobId: "job-001",
+        createdAt: "2026-04-30T12:00:00.000Z",
+        updatedAt: "2026-04-30T12:04:00.000Z",
+        createdByUserId: "user-licensee",
+        updatedByUserId: "user-licensee",
+      },
+    ],
   },
 ];
 
@@ -57,6 +77,9 @@ describe("iCalendar feed serialization", () => {
     expect(feed).toContain("SUMMARY:Client conference\\nSynthetic notes only");
     expect(feed).toContain("DESCRIPTION:Prepare documents\\, questions\\; and next steps.");
     expect(feed).toContain("LOCATION:Room 2");
+    expect(feed.replace(/\r\n /g, "")).toContain(
+      'ATTENDEE;CN="Ada Morgan";ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED:mailto:ada.morgan@example.test',
+    );
     expect(feed).toContain("STATUS:TENTATIVE");
     expect(feed).toContain("SEQUENCE:1");
     expect(feed).toContain("SUMMARY:Follow-up\\, filing\\; and review\\\\prep");
@@ -75,6 +98,8 @@ DTEND:20260510T170000Z\r
 SUMMARY:Client call\\, filing review\r
 DESCRIPTION:Line one\\nLine two\r
 LOCATION:Office\\; Room 3\r
+ATTENDEE;CN="Ada Morgan";ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED:mailto:ada.morgan@example.test\r
+ATTENDEE;CN="Optional Reviewer";ROLE=OPT-PARTICIPANT;PARTSTAT=NEEDS-ACTION:mailto:reviewer@example.test\r
 STATUS:CONFIRMED\r
 SEQUENCE:4\r
 LAST-MODIFIED:20260430T121000Z\r
@@ -91,6 +116,20 @@ END:VCALENDAR\r
       location: "Office; Room 3",
       status: "confirmed",
       sequence: 4,
+      attendees: [
+        {
+          name: "Ada Morgan",
+          email: "ada.morgan@example.test",
+          role: "required",
+          responseStatus: "accepted",
+        },
+        {
+          name: "Optional Reviewer",
+          email: "reviewer@example.test",
+          role: "optional",
+          responseStatus: "needs_action",
+        },
+      ],
     });
   });
 
@@ -107,7 +146,7 @@ END:VCALENDAR`),
     ).toThrow(InvalidCalendarPayloadError);
   });
 
-  it("rejects unsupported recurrence, attendee, alarm, task, free-busy, and scheduling payloads", () => {
+  it("rejects unsupported recurrence, alarm, task, free-busy, and scheduling payloads", () => {
     const supportedEvent = `BEGIN:VEVENT
 UID:unsupported
 DTSTART:20260510T160000Z
@@ -117,9 +156,6 @@ END:VEVENT`;
     const unsupportedPayloads = [
       `BEGIN:VCALENDAR
 ${supportedEvent.replace("END:VEVENT", "RRULE:FREQ=DAILY\nEND:VEVENT")}
-END:VCALENDAR`,
-      `BEGIN:VCALENDAR
-${supportedEvent.replace("END:VEVENT", "ATTENDEE:mailto:person@example.test\nEND:VEVENT")}
 END:VCALENDAR`,
       `BEGIN:VCALENDAR
 ${supportedEvent.replace(

@@ -336,7 +336,10 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerLedgerRoutes(server, { repository: options.repository });
   registerBillingRoutes(server, { repository: options.repository });
   registerCalDavRoutes(server, { repository: options.repository });
-  registerCalendarRoutes(server, { repository: options.repository });
+  registerCalendarRoutes(server, {
+    repository: options.repository,
+    emailJobQueue: options.emailJobQueue,
+  });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
   registerDocumentProcessingRoutes(server, { repository: options.repository });
   registerDraftRoutes(server, { repository: options.repository });

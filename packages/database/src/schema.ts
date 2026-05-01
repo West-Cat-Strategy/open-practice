@@ -1306,6 +1306,62 @@ export const calendarEvents = pgTable(
   }),
 );
 
+export const calendarEventAttendees = pgTable(
+  "calendar_event_attendees",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => calendarEvents.id),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    role: text("role").notNull().default("required"),
+    responseStatus: text("response_status").notNull().default("needs_action"),
+    invitationStatus: text("invitation_status").notNull().default("not_sent"),
+    invitedAt: timestamp("invited_at", { withTimezone: true }),
+    invitationEmailId: text("invitation_email_id").references(() => emailOutbox.id),
+    invitationJobId: text("invitation_job_id").references(() => jobLifecycleRecords.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    updatedByUserId: text("updated_by_user_id")
+      .notNull()
+      .references(() => users.id),
+  },
+  (table) => ({
+    firmEventEmail: uniqueIndex("calendar_event_attendees_firm_event_email_idx")
+      .on(table.firmId, table.eventId, table.email)
+      .where(sql`${table.deletedAt} is null`),
+    eventActive: index("calendar_event_attendees_event_active_idx").on(
+      table.firmId,
+      table.matterId,
+      table.eventId,
+      table.deletedAt,
+    ),
+    roleValue: check(
+      "calendar_event_attendees_role_value",
+      sql`${table.role} in ('required', 'optional')`,
+    ),
+    responseStatusValue: check(
+      "calendar_event_attendees_response_status_value",
+      sql`${table.responseStatus} in ('needs_action', 'accepted', 'tentative', 'declined')`,
+    ),
+    invitationStatusValue: check(
+      "calendar_event_attendees_invitation_status_value",
+      sql`${table.invitationStatus} in ('not_sent', 'queued', 'skipped')`,
+    ),
+  }),
+);
+
 export const signatureRequests = pgTable("signature_requests", {
   id: text("id").primaryKey(),
   firmId: text("firm_id")

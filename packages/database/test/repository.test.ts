@@ -525,7 +525,11 @@ describe("repository operations foundation", () => {
       repository.listCalendarEvents("firm-west-legal", { matterId: "matter-001" }),
     ).resolves.toMatchObject([
       { id: "calendar-event-001", matterId: "matter-001" },
-      { id: "calendar-event-002", matterId: "matter-001" },
+      {
+        id: "calendar-event-002",
+        matterId: "matter-001",
+        attendees: [{ id: "calendar-attendee-001", email: "ada.morgan@example.test" }],
+      },
     ]);
 
     await expect(
@@ -538,6 +542,84 @@ describe("repository operations foundation", () => {
     await expect(
       repository.listCalendarEvents("firm-west-legal", { matterId: "matter-002" }),
     ).resolves.toMatchObject([{ id: "calendar-event-003", matterId: "matter-002" }]);
+  });
+
+  it("creates, updates, soft-deletes, and replaces calendar event attendees", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const attendee = await repository.upsertCalendarEventAttendee({
+      id: "calendar-attendee-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-001",
+      name: "Synthetic Attendee",
+      email: "synthetic.attendee@example.test",
+      role: "required",
+      responseStatus: "needs_action",
+      invitationStatus: "not_sent",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+    });
+
+    await expect(
+      repository.listCalendarEventAttendees("firm-west-legal", "matter-001", "calendar-event-001"),
+    ).resolves.toMatchObject([{ id: attendee.id, invitationStatus: "not_sent" }]);
+
+    await expect(
+      repository.upsertCalendarEventAttendee({
+        ...attendee,
+        responseStatus: "accepted",
+        invitationStatus: "queued",
+        invitationEmailId: "email-test",
+        invitationJobId: "job-test",
+        invitedAt: "2026-04-25T12:05:00.000Z",
+        updatedAt: "2026-04-25T12:05:00.000Z",
+      }),
+    ).resolves.toMatchObject({
+      responseStatus: "accepted",
+      invitationStatus: "queued",
+      invitationEmailId: "email-test",
+    });
+
+    await expect(
+      repository.deleteCalendarEventAttendee({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-001",
+        attendeeId: attendee.id,
+        deletedAt: "2026-04-25T12:10:00.000Z",
+        updatedByUserId: "user-licensee",
+      }),
+    ).resolves.toMatchObject({ deletedAt: "2026-04-25T12:10:00.000Z" });
+
+    await expect(
+      repository.replaceCalendarEventAttendees({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-001",
+        replacedAt: "2026-04-25T12:15:00.000Z",
+        updatedByUserId: "user-licensee",
+        attendees: [
+          {
+            ...attendee,
+            id: "calendar-attendee-replaced",
+            email: "replacement@example.test",
+            invitationStatus: "not_sent",
+            invitationEmailId: undefined,
+            invitationJobId: undefined,
+            invitedAt: undefined,
+            deletedAt: undefined,
+            createdAt: "2026-04-25T12:15:00.000Z",
+            updatedAt: "2026-04-25T12:15:00.000Z",
+          },
+        ],
+      }),
+    ).resolves.toMatchObject([{ id: "calendar-attendee-replaced" }]);
+
+    await expect(
+      repository.listCalendarEventAttendees("firm-west-legal", "matter-002", "calendar-event-001"),
+    ).resolves.toEqual([]);
   });
 
   it("creates, updates, and soft-deletes matter-scoped calendar events", async () => {

@@ -44,6 +44,8 @@ import {
   buildCalendarRadarBuckets,
   describeCalendarEventTiming,
   loadCalendarDashboardData,
+  removeCalendarEventAttendee,
+  upsertCalendarEventAttendee,
   upsertCalendarCredential,
 } from "./calendar-dashboard";
 import {
@@ -618,6 +620,47 @@ describe("dashboard client behavior", () => {
     ).toEqual([
       expect.objectContaining({ id: "calendar-credential-001", revokedAt: expect.any(String) }),
     ]);
+  });
+
+  it("updates calendar attendee state without mutating unrelated matter events", () => {
+    const event = calendarEvent({
+      id: "calendar-event-meeting",
+      matterId: "matter-001",
+      attendees: [],
+    });
+    const updated = upsertCalendarEventAttendee(
+      { "matter-001": [event], "matter-002": [calendarEvent({ matterId: "matter-002" })] },
+      "matter-001",
+      event.id,
+      {
+        id: "calendar-attendee-test",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: event.id,
+        name: "Synthetic Reviewer",
+        email: "reviewer@example.test",
+        role: "optional",
+        responseStatus: "needs_action",
+        invitationStatus: "queued",
+        createdAt: "2026-05-01T12:00:00.000Z",
+        updatedAt: "2026-05-01T12:00:00.000Z",
+        createdByUserId: "user-licensee",
+        updatedByUserId: "user-licensee",
+      },
+    );
+
+    expect(updated["matter-001"]![0]!.attendees).toMatchObject([
+      {
+        id: "calendar-attendee-test",
+        invitationStatus: "queued",
+      },
+    ]);
+    expect(
+      removeCalendarEventAttendee(updated, "matter-001", event.id, "calendar-attendee-test")[
+        "matter-001"
+      ]![0]!.attendees,
+    ).toEqual([]);
+    expect(updated["matter-002"]).toHaveLength(1);
   });
 
   it("builds intake form link paths, create payloads, and review state", async () => {

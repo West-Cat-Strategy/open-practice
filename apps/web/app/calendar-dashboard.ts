@@ -1,4 +1,4 @@
-import type { CalendarEventRecord } from "@open-practice/domain";
+import type { CalendarEventAttendeeRecord, CalendarEventRecord } from "@open-practice/domain";
 import type {
   CalendarCredentialSummary,
   CalendarDashboardResponse,
@@ -66,6 +66,50 @@ export function upsertCalendarCredential(
   const exists = credentials.some((candidate) => candidate.id === credential.id);
   if (!exists) return [...credentials, credential];
   return credentials.map((candidate) => (candidate.id === credential.id ? credential : candidate));
+}
+
+export function upsertCalendarEventAttendee(
+  eventsByMatterId: Record<string, CalendarEventRecord[]>,
+  matterId: string,
+  eventId: string,
+  attendee: CalendarEventAttendeeRecord,
+): Record<string, CalendarEventRecord[]> {
+  return {
+    ...eventsByMatterId,
+    [matterId]: (eventsByMatterId[matterId] ?? []).map((event) => {
+      if (event.id !== eventId) return event;
+      const attendees = event.attendees ?? [];
+      const exists = attendees.some((candidate) => candidate.id === attendee.id);
+      const nextAttendees = exists
+        ? attendees.map((candidate) => (candidate.id === attendee.id ? attendee : candidate))
+        : [...attendees, attendee];
+      return {
+        ...event,
+        attendees: nextAttendees
+          .filter((candidate) => !candidate.deletedAt)
+          .sort((left, right) => left.email.localeCompare(right.email)),
+      };
+    }),
+  };
+}
+
+export function removeCalendarEventAttendee(
+  eventsByMatterId: Record<string, CalendarEventRecord[]>,
+  matterId: string,
+  eventId: string,
+  attendeeId: string,
+): Record<string, CalendarEventRecord[]> {
+  return {
+    ...eventsByMatterId,
+    [matterId]: (eventsByMatterId[matterId] ?? []).map((event) =>
+      event.id === eventId
+        ? {
+            ...event,
+            attendees: (event.attendees ?? []).filter((attendee) => attendee.id !== attendeeId),
+          }
+        : event,
+    ),
+  };
 }
 
 export async function loadCalendarDashboardData(input: {

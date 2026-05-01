@@ -91,6 +91,10 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/billing/trust-transfer-requests`                                 | Create a billing-side request to pay an invoice from trust; this does not post ledger transactions.                                        |
 | `GET /api/billing/dashboard`                                                | Billing dashboard payload for approved unbilled work, draft invoices, issued balances, and payments.                                       |
 | `GET /api/calendar/events?matterId=&startsAfter=&startsBefore=`             | Matter-scoped operator-entered calendar events plus CalDAV and iCalendar subscription URLs for the matter dashboard.                       |
+| `POST /api/calendar/events/:eventId/attendees`                              | Adds a matter-scoped event attendee with role, response status, and not-yet-sent invitation state.                                         |
+| `PATCH /api/calendar/events/:eventId/attendees/:attendeeId`                 | Updates an attendee name, email, role, or response status for one authorized matter event.                                                 |
+| `DELETE /api/calendar/events/:eventId/attendees/:attendeeId?matterId=`      | Soft-deletes an attendee from one authorized matter event.                                                                                 |
+| `POST /api/calendar/events/:eventId/invitations`                            | Optionally queues attendee invitation email through the SMTP outbox or marks invitations skipped when email delivery is not configured.    |
 | `GET /api/calendar/matters/:matterId.ics`                                   | Authenticated read-only iCalendar export for one authorized matter calendar.                                                               |
 | `GET /api/calendar/credentials`                                             | Current-user CalDAV app-password credentials without password hashes or one-time secrets.                                                  |
 | `POST /api/calendar/credentials`                                            | Creates a current-user CalDAV app password and returns the generated password only once.                                                   |
@@ -296,9 +300,13 @@ references only; email bodies stay in the outbox record rather than job or audit
 worker reads message bodies from the outbox record, marks delivery `sent` or `failed`, appends
 provider result events, and advances the matching job lifecycle row to `active`, terminal success,
 retry failure, dead letter, or skipped status.
-Signature, intake, share-link, and external-upload create flows reuse the same outbox helper; share
-and external-upload notification emails are create-time only because raw tokens are not recoverable
-after the response.
+Signature, intake, share-link, external-upload, and calendar-invitation flows reuse the same outbox
+helper; share and external-upload notification emails are create-time only because raw tokens are not
+recoverable after the response. Calendar attendees are stored as matter-scoped event children with
+required/optional role, response status, and invitation state. Invitation attempts are optional:
+when SMTP or queue delivery is unavailable, the API records a skipped attendee invitation state
+without failing attendee management. Calendar audit metadata records event, attendee, email, job,
+status, and count identifiers only; invitation message bodies remain in the outbox record.
 
 Draft assist is a disabled-by-default synchronous scaffold for non-authoritative suggestions.
 `GET /api/draft-assist/status` reports disabled when no enabled `ai` provider setting exists or no

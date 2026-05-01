@@ -183,6 +183,29 @@ export interface ExpenseEntry {
 }
 
 export type CalendarEventStatus = "confirmed" | "tentative" | "cancelled";
+export type CalendarAttendeeRole = "required" | "optional";
+export type CalendarAttendeeResponseStatus = "needs_action" | "accepted" | "tentative" | "declined";
+export type CalendarInvitationStatus = "not_sent" | "queued" | "skipped";
+
+export interface CalendarEventAttendeeRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  eventId: string;
+  name: string;
+  email: string;
+  role: CalendarAttendeeRole;
+  responseStatus: CalendarAttendeeResponseStatus;
+  invitationStatus: CalendarInvitationStatus;
+  invitedAt?: string;
+  invitationEmailId?: string;
+  invitationJobId?: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
+  createdByUserId: string;
+  updatedByUserId: string;
+}
 
 export interface CalendarEventRecord {
   id: string;
@@ -201,6 +224,7 @@ export interface CalendarEventRecord {
   deletedAt?: string;
   createdByUserId: string;
   updatedByUserId: string;
+  attendees?: CalendarEventAttendeeRecord[];
 }
 
 export interface CalendarCredentialRecord {

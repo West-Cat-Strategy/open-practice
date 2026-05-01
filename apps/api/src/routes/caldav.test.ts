@@ -98,6 +98,7 @@ DTEND:20260510T170000Z\r
 SUMMARY:iOS synced prep call\r
 DESCRIPTION:Synthetic CalDAV write\r
 LOCATION:Open Practice office\r
+ATTENDEE;CN="Ada Morgan";ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED:mailto:ada.morgan@example.test\r
 STATUS:CONFIRMED\r
 SEQUENCE:0\r
 END:VEVENT\r
@@ -197,6 +198,8 @@ describe("CalDAV routes", () => {
     });
     expect(fetched.statusCode).toBe(200);
     expect(fetched.body).toContain("SUMMARY:iOS synced prep call");
+    expect(fetched.body).toContain("ATTENDEE");
+    expect(fetched.body.replace(/\r\n /g, "")).toContain("ada.morgan@example.test");
 
     const updated = await server.inject({
       method: "PUT",
@@ -315,7 +318,6 @@ describe("CalDAV routes", () => {
     const credential = await createCalendarCredential(server);
     const unsupportedPayloads = [
       eventPayload.replace("END:VEVENT", "RRULE:FREQ=DAILY\r\nEND:VEVENT"),
-      eventPayload.replace("END:VEVENT", "ATTENDEE:mailto:person@example.test\r\nEND:VEVENT"),
       eventPayload.replace(
         "END:VEVENT",
         "BEGIN:VALARM\r\nTRIGGER:-PT15M\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nEND:VALARM\r\nEND:VEVENT",
@@ -365,7 +367,6 @@ describe("CalDAV routes", () => {
     const credential = await createCalendarCredential(server);
     const unsupportedReports = [
       '<C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav"><C:filter><C:comp-filter name="VCALENDAR"><C:comp-filter name="VEVENT"><C:prop-filter name="RRULE"/></C:comp-filter></C:comp-filter></C:filter></C:calendar-query>',
-      '<C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav"><C:filter><C:comp-filter name="VCALENDAR"><C:comp-filter name="VEVENT"><C:prop-filter name="ATTENDEE"/></C:comp-filter></C:comp-filter></C:filter></C:calendar-query>',
       '<C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav"><C:filter><C:comp-filter name="VCALENDAR"><C:comp-filter name="VEVENT"><C:comp-filter name="VALARM"/></C:comp-filter></C:comp-filter></C:filter></C:calendar-query>',
       '<C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav"><C:filter><C:comp-filter name="VCALENDAR"><C:comp-filter name="VTODO"/></C:filter></C:calendar-query>',
       '<C:free-busy-query xmlns:C="urn:ietf:params:xml:ns:caldav"><C:time-range start="20260510T160000Z" end="20260510T170000Z"/></C:free-busy-query>',
