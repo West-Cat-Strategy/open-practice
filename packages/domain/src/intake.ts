@@ -270,9 +270,6 @@ export function validateEmbeddedIntakeTemplateDefinition(
         if (item.kind === "signature" && item.required && item.consentText.trim().length === 0) {
           throw new Error(`Signature item ${item.id} requires consent text`);
         }
-        if (item.kind === "signature" && item.documentId) {
-          throw new Error(`Signature item ${item.id} must use embedded attestation evidence`);
-        }
       }
     }
   }

@@ -148,7 +148,7 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
 
   async function recordSignature(item: Extract<EmbeddedIntakeFormItem, { kind: "signature" }>) {
     setBusyItemId(item.id);
-    setStatus("Recording attestation...");
+    setStatus(item.documentId ? "Creating signature request..." : "Recording attestation...");
     const response = await fetch(
       `${apiBaseUrl}/api/portal/intake-forms/${encodeURIComponent(token)}/items/${encodeURIComponent(
         item.id,
@@ -165,7 +165,7 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
     );
     if (!response.ok) {
       const body = await readApiError(response);
-      setStatus(errorMessage(body, `Attestation failed: ${response.status}`));
+      setStatus(errorMessage(body, `Signature failed: ${response.status}`));
       setBusyItemId("");
       return;
     }
@@ -181,7 +181,7 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
           }
         : current,
     );
-    setStatus("Attestation recorded.");
+    setStatus(item.documentId ? "Signature request completed." : "Attestation recorded.");
     setBusyItemId("");
   }
 
@@ -297,7 +297,15 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
                     <div className="public-form-action" key={item.id}>
                       <div>
                         <strong>{item.label}</strong>
-                        <small>{actionComplete(action) ? "signed" : item.consentText}</small>
+                        <small>
+                          {actionComplete(action)
+                            ? action?.signatureRequestId
+                              ? "signature request completed"
+                              : "signed"
+                            : item.documentId
+                              ? "signature request"
+                              : item.consentText}
+                        </small>
                       </div>
                       <label className="check-row share-check-row signature-consent">
                         <input

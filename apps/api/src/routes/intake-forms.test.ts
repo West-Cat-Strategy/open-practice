@@ -63,6 +63,26 @@ async function restrictEvidenceUpload(repository: OpenPracticeRepository): Promi
   await repository.updateIntakeTemplate({ ...template, definition });
 }
 
+async function setClientSignatureDocument(
+  repository: OpenPracticeRepository,
+  documentId: string,
+): Promise<void> {
+  const template = (await repository.listIntakeTemplates("firm-west-legal")).find(
+    (candidate) => candidate.id === "intake-template-001",
+  );
+  if (!template || template.definition.schemaVersion !== 2) {
+    throw new Error("Seeded V2 intake template is required for this test");
+  }
+  const definition = JSON.parse(JSON.stringify(template.definition)) as typeof template.definition;
+  if (definition.schemaVersion !== 2) throw new Error("Seeded V2 intake template is required");
+  for (const item of definition.sections.flatMap((section) => section.items)) {
+    if (item.id === "client-attestation" && item.kind === "signature") {
+      item.documentId = documentId;
+    }
+  }
+  await repository.updateIntakeTemplate({ ...template, definition });
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -261,6 +281,191 @@ describe("intake form builder routes", () => {
         expect.objectContaining({ action: "submit", resourceType: "answer_snapshot" }),
       ]),
     );
+  });
+
+  it("creates document-backed signature requests from public signature items", async () => {
+    const { repository, server } = testServer({ s3: s3Config() });
+    await setClientSignatureDocument(repository, "doc-001");
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/intake-form-links",
+      payload: {
+        intakeSessionId: "intake-session-001",
+        expiresAt: "2099-06-01T00:00:00.000Z",
+      },
+    });
+    const token = created.json<{ token: string }>().token;
+
+    const signature = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${token}/items/client-attestation/signature`,
+      payload: {
+        status: "completed",
+        consentText: "I confirm these synthetic intake answers are accurate.",
+        evidence: { acceptedInBrowser: true },
+      },
+    });
+
+    expect(signature.statusCode).toBe(200);
+    const signatureAction = signature.json<{
+      action: { signatureRequestId: string; evidence: Record<string, unknown> };
+    }>().action;
+    expect(signature.json()).toMatchObject({
+      action: expect.objectContaining({
+        status: "completed",
+        documentId: "doc-001",
+        signatureRequestId: expect.any(String),
+        evidence: {
+          mode: "embedded_intake_signature_request",
+          provider: "embedded",
+          documentId: "doc-001",
+          signatureRequestId: expect.any(String),
+          signerCount: 1,
+        },
+      }),
+      signatureRequest: {
+        id: signatureAction.signatureRequestId,
+        status: "completed",
+      },
+    });
+    expect(signatureAction.evidence).not.toHaveProperty("consentText");
+    expect(signatureAction.evidence).not.toHaveProperty("ip");
+    await expect(repository.listSignatureRequests("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: signatureAction.signatureRequestId,
+          matterId: "matter-001",
+          documentId: "doc-001",
+          title: "Client attestation",
+          status: "completed",
+        }),
+      ]),
+    );
+    await expect(
+      repository.listSignatureProviderEvents("firm-west-legal", {
+        signatureRequestId: signatureAction.signatureRequestId,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ status: "sent" }),
+      expect.objectContaining({
+        status: "completed",
+        evidence: expect.objectContaining({
+          mode: "embedded_intake_signature_request",
+          signerId: expect.any(String),
+          consentText: "I confirm these synthetic intake answers are accurate.",
+        }),
+      }),
+    ]);
+    await expect(
+      repository.listAccessLogs("firm-west-legal", {
+        intakeFormLinkId: created.json().link.id,
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "sign",
+          resourceType: "signature_request",
+          resourceId: signatureAction.signatureRequestId,
+          metadata: expect.objectContaining({
+            documentId: "doc-001",
+            signatureRequestId: signatureAction.signatureRequestId,
+          }),
+        }),
+      ]),
+    );
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "intake_signature_request.created",
+          resourceType: "signature_request",
+          resourceId: signatureAction.signatureRequestId,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            documentId: "doc-001",
+            provider: "embedded",
+            status: "completed",
+            signerCount: 1,
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const auditEvent = audit.events.find(
+      (event) => event.action === "intake_signature_request.created",
+    );
+    expect(auditEvent?.metadata).not.toHaveProperty("consentText");
+    expect(auditEvent?.metadata).not.toHaveProperty("signers");
+  });
+
+  it("rejects document-backed signature items with missing document or signer email", async () => {
+    const { repository, server } = testServer();
+    await setClientSignatureDocument(repository, "missing-document");
+    const missingDocumentLink = await server.inject({
+      method: "POST",
+      url: "/api/intake-form-links",
+      payload: {
+        intakeSessionId: "intake-session-001",
+        expiresAt: "2099-06-01T00:00:00.000Z",
+      },
+    });
+    const missingDocument = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${missingDocumentLink.json<{ token: string }>().token}/items/client-attestation/signature`,
+      payload: {
+        status: "completed",
+        consentText: "I confirm these synthetic intake answers are accurate.",
+      },
+    });
+
+    expect(missingDocument.statusCode).toBe(409);
+    expect(missingDocument.json()).toMatchObject({
+      code: "INTAKE_SIGNATURE_DOCUMENT_UNAVAILABLE",
+    });
+    await expect(repository.listSignatureRequests("firm-west-legal")).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ documentId: "missing-document" })]),
+    );
+
+    await setClientSignatureDocument(repository, "doc-001");
+    await repository.createIntakeSession({
+      id: "intake-session-no-email",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      templateId: "intake-template-001",
+      provider: "embedded",
+      externalId: "embedded:intake-session-no-email",
+      status: "in_progress",
+      clientContactId: "contact-northstar",
+      evidence: { mode: "test" },
+      createdAt: "2026-05-01T12:00:00.000Z",
+      updatedAt: "2026-05-01T12:00:00.000Z",
+    });
+    const missingEmailLink = await server.inject({
+      method: "POST",
+      url: "/api/intake-form-links",
+      payload: {
+        intakeSessionId: "intake-session-no-email",
+        expiresAt: "2099-06-01T00:00:00.000Z",
+      },
+    });
+    const missingEmail = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${missingEmailLink.json<{ token: string }>().token}/items/client-attestation/signature`,
+      payload: {
+        status: "completed",
+        consentText: "I confirm these synthetic intake answers are accurate.",
+      },
+    });
+
+    expect(missingEmail.statusCode).toBe(409);
+    expect(missingEmail.json()).toMatchObject({
+      code: "INTAKE_SIGNATURE_SIGNER_UNAVAILABLE",
+    });
+    await expect(
+      repository.listIntakeFormItemActions("firm-west-legal", {
+        formLinkId: missingEmailLink.json<{ link: { id: string } }>().link.id,
+      }),
+    ).resolves.toEqual([]);
   });
 
   it("enforces matter scope for link listing and proposal review", async () => {
