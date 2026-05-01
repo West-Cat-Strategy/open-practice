@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -19,6 +19,10 @@ const policy = read("docs/reuse-decision-policy.md");
 const lock = JSON.parse(read("docs/oss-references.lock.json"));
 
 assert(gitignore.includes(".references/oss/"), ".references/oss/ must remain ignored");
+assert(
+  matrix.includes("../reference-repos/repos") && matrix.includes("REFERENCE_REPOS_ROOT"),
+  "Matrix must document the default reference repo root and override",
+);
 assert(
   /\|\s*Midaz\s*\|\s*Ledger architecture concepts\s*\|\s*Elastic License 2\.0/.test(matrix),
   "Midaz must be documented as Elastic License 2.0",
@@ -57,6 +61,16 @@ for (const reference of lock.references) {
     reference.name && reference.url && reference.commit,
     "Every lock entry needs name/url/commit",
   );
+  assert(
+    reference.centralPath &&
+      !isAbsolute(reference.centralPath) &&
+      reference.centralPath.startsWith("../reference-repos/repos/"),
+    `${reference.name} centralPath must use the repo-relative default reference store`,
+  );
+  assert(
+    reference.compatibilityPath?.startsWith(".references/oss/"),
+    `${reference.name} compatibilityPath must use .references/oss`,
+  );
 }
 
 function scanSourceTree(directory) {
@@ -70,10 +84,12 @@ function scanSourceTree(directory) {
       continue;
     }
     const contents = read(path);
-    assert(
-      !contents.includes(".references/oss"),
-      `${path} must not import or read implementation code from .references/oss`,
-    );
+    for (const marker of [".references/oss", "reference-repos/repos"]) {
+      assert(
+        !contents.includes(marker),
+        `${path} must not import or read implementation code from ${marker}`,
+      );
+    }
   }
 }
 

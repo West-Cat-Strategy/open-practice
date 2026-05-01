@@ -63,6 +63,7 @@ temp/
 *.bak
 *.backup
 
-# Reference-only upstream projects. These are intentionally not part of the
-# Apache-2.0 core and may carry copyleft or incompatible licenses.
+# Compatibility symlinks for reference-only upstream projects. Canonical clones
+# live outside this checkout and may carry copyleft or incompatible licenses, so
+# they stay outside the Apache-2.0 core.
 .references/oss/

@@ -1,10 +1,13 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const referencesRoot = join(root, ".references", "oss");
+const compatibilityRoot = join(root, ".references", "oss");
+const referencesRoot = resolve(
+  process.env.REFERENCE_REPOS_ROOT ?? join(root, "..", "reference-repos", "repos"),
+);
 
 const repositories = [
   ["jlawyerorg__j-lawyer-org", "https://github.com/jlawyerorg/j-lawyer-org.git"],
@@ -29,18 +32,56 @@ const repositories = [
   ["ledgersmb__LedgerSMB", "https://github.com/ledgersmb/LedgerSMB.git"],
 ];
 
+function centralDirectoryName(url) {
+  const parsed = new URL(url);
+  const [owner, repo] = parsed.pathname.replace(/^\/|\.git$/g, "").split("/");
+  return `${owner.toLowerCase()}__${repo.toLowerCase()}`;
+}
+
+function lstatIfExists(path) {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function ensureCompatibilityLink(directory, target) {
+  const link = join(compatibilityRoot, directory);
+  const stat = lstatIfExists(link);
+  if (stat) {
+    if (stat.isSymbolicLink()) {
+      const currentTarget = resolve(dirname(link), readlinkSync(link));
+      if (currentTarget === target) {
+        return;
+      }
+      rmSync(link);
+    } else if (existsSync(join(link, ".git"))) {
+      console.warn(`${link} is a local clone; leaving it in place instead of replacing it`);
+      return;
+    } else {
+      throw new Error(`${link} exists but is not a reference repo or symlink`);
+    }
+  }
+
+  symlinkSync(target, link, "dir");
+}
+
 mkdirSync(referencesRoot, { recursive: true });
+mkdirSync(compatibilityRoot, { recursive: true });
 
 for (const [directory, url] of repositories) {
-  const target = join(referencesRoot, directory);
+  const target = join(referencesRoot, centralDirectoryName(url));
   if (existsSync(join(target, ".git"))) {
-    console.log(`Already cloned: ${directory}`);
+    console.log(`Already cloned: ${target}`);
+    ensureCompatibilityLink(directory, target);
     continue;
   }
 
   mkdirSync(dirname(target), { recursive: true });
   console.log(`Cloning ${url} -> ${target}`);
-  const result = spawnSync("git", ["clone", "--depth", "1", url, target], {
+  const result = spawnSync("git", ["clone", "--depth", "1", "--filter=blob:none", url, target], {
     stdio: "inherit",
   });
 
@@ -48,4 +89,6 @@ for (const [directory, url] of repositories) {
     process.exitCode = result.status ?? 1;
     break;
   }
+
+  ensureCompatibilityLink(directory, target);
 }

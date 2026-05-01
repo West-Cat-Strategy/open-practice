@@ -28,5 +28,5 @@ deployment, scripts, docs, or test fixtures.
 
 ## License Hygiene
 
-Do not copy implementation code from `.references/oss/` into core packages. If a reference project informs a design, cite the idea in docs or an issue rather than copying source.
-The `.references/oss/` directory is ignored and must stay out of commits.
+Do not copy implementation code from `.references/oss/` or the central reference repo store into core packages. If a reference project informs a design, cite the idea in docs or an issue rather than copying source.
+The `.references/oss/` directory contains ignored compatibility symlinks to the central reference repo store and must stay out of commits.

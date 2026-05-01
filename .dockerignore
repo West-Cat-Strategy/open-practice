@@ -33,6 +33,7 @@ yarn-error.log*
 uploads
 tmp
 temp
+# Central reference repos are symlinked here for local review only.
 .references/oss
 
 *.pem
