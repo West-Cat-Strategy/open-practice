@@ -47,6 +47,7 @@ import {
 import {
   buildCalendarRadarBuckets,
   describeCalendarEventTiming,
+  describeMeetingInvitationBoundary,
   loadCalendarDashboardData,
   removeCalendarEventAttendee,
   upsertCalendarEventAttendee,
@@ -975,6 +976,24 @@ describe("dashboard client behavior", () => {
       ]![0]!.attendees,
     ).toEqual([]);
     expect(updated["matter-002"]).toHaveLength(1);
+  });
+
+  it("describes meeting invitation boundaries without exposing links or tokens", () => {
+    expect(describeMeetingInvitationBoundary(undefined)).toBe("Meeting links disabled.");
+    expect(
+      describeMeetingInvitationBoundary({
+        meetingLinks: { status: "disabled", reason: "not_configured" },
+        guestAccess: { status: "disabled", reason: "not_configured" },
+        invitationEmail: { status: "disabled", reason: "smtp_not_configured" },
+      }),
+    ).toBe("Meeting links disabled. Guest access tokens disabled.");
+    expect(
+      describeMeetingInvitationBoundary({
+        meetingLinks: { status: "configured", provider: "synthetic-meeting" },
+        guestAccess: { status: "configured", provider: "synthetic-meeting" },
+        invitationEmail: { status: "configured", provider: "mailpit" },
+      }),
+    ).toBe("Meeting links configured (synthetic-meeting). Guest access tokens configured.");
   });
 
   it("builds intake form link paths, create payloads, and review state", async () => {

@@ -4,6 +4,7 @@ import type {
   CalendarEventAttendeeRecord,
   CalendarEventRecord,
   CalendarEventStatus,
+  CalendarMeetingInvitationBoundary,
 } from "./models.js";
 
 const DEFAULT_PRODUCT_ID = "-//Open Practice//Matter Calendar//EN";
@@ -48,6 +49,13 @@ export interface ParsedCalendarAttendeeInput {
   email: string;
   role: CalendarAttendeeRole;
   responseStatus: CalendarAttendeeResponseStatus;
+}
+
+export interface CalendarMeetingInvitationBoundaryInput {
+  meetingProviderKey?: string;
+  guestAccessTokenSigningConfigured?: boolean;
+  invitationEmailProviderKey?: string;
+  emailQueueConfigured?: boolean;
 }
 
 export class UnsupportedCalendarPayloadError extends Error {
@@ -124,6 +132,57 @@ function eventUid(event: CalendarEventRecord): string {
 
 export function calendarEventEtag(event: CalendarEventRecord): string {
   return `"${event.id}-${event.sequence}-${Date.parse(event.updatedAt)}"`;
+}
+
+export function buildCalendarMeetingInvitationBoundary(
+  input: CalendarMeetingInvitationBoundaryInput = {},
+): CalendarMeetingInvitationBoundary {
+  const meetingLinks: CalendarMeetingInvitationBoundary["meetingLinks"] = input.meetingProviderKey
+    ? { status: "configured", provider: input.meetingProviderKey }
+    : { status: "disabled", reason: "not_configured" };
+  const guestAccess: CalendarMeetingInvitationBoundary["guestAccess"] =
+    input.meetingProviderKey && input.guestAccessTokenSigningConfigured
+      ? { status: "configured", provider: input.meetingProviderKey }
+      : {
+          status: "disabled",
+          reason: input.meetingProviderKey ? "token_signing_not_configured" : "not_configured",
+          provider: input.meetingProviderKey,
+        };
+  const invitationEmail: CalendarMeetingInvitationBoundary["invitationEmail"] =
+    input.invitationEmailProviderKey && input.emailQueueConfigured
+      ? { status: "configured", provider: input.invitationEmailProviderKey }
+      : {
+          status: "disabled",
+          reason: input.invitationEmailProviderKey
+            ? "email_queue_not_configured"
+            : "smtp_not_configured",
+          provider: input.invitationEmailProviderKey,
+        };
+
+  return {
+    meetingLinks,
+    guestAccess,
+    invitationEmail,
+  };
+}
+
+export function calendarMeetingInvitationBoundaryMetadata(
+  boundary: CalendarMeetingInvitationBoundary,
+): Record<string, string> {
+  const metadata = {
+    meetingLinksStatus: boundary.meetingLinks.status,
+    meetingLinksReason: boundary.meetingLinks.reason,
+    meetingLinksProvider: boundary.meetingLinks.provider,
+    guestAccessStatus: boundary.guestAccess.status,
+    guestAccessReason: boundary.guestAccess.reason,
+    guestAccessProvider: boundary.guestAccess.provider,
+    invitationEmailStatus: boundary.invitationEmail.status,
+    invitationEmailReason: boundary.invitationEmail.reason,
+    invitationEmailProvider: boundary.invitationEmail.provider,
+  };
+  return Object.fromEntries(
+    Object.entries(metadata).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
 }
 
 export function buildICalendarEvent(event: CalendarEventRecord, generatedAt?: string): string {

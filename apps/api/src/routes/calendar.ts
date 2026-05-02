@@ -1,14 +1,20 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { buildICalendarFeed } from "@open-practice/domain";
+import {
+  buildCalendarMeetingInvitationBoundary,
+  buildICalendarFeed,
+  calendarMeetingInvitationBoundaryMetadata,
+} from "@open-practice/domain";
 import type {
   CalendarCredentialRecord,
   CalendarEventAttendeeRecord,
   CalendarEventRecord,
+  CalendarMeetingInvitationBoundary,
   NewAuditEvent,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { createSessionToken, hashPassword } from "../http/auth-helpers.js";
+import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
@@ -58,6 +64,8 @@ const calendarAttendeePatchBodySchema = calendarAttendeeBodySchema.partial().ext
 const calendarInvitationBodySchema = z.object({
   matterId: z.string().min(1),
   attendeeIds: z.array(z.string().min(1)).optional(),
+  includeMeetingLink: z.boolean().default(false),
+  issueGuestAccessToken: z.boolean().default(false),
 });
 
 const calendarAttendeeDeleteQuerySchema = z.object({
@@ -125,16 +133,71 @@ function calendarInvitationText(
     .join("\n");
 }
 
+async function calendarMeetingInvitationBoundaryForRequest(
+  { repository, emailJobQueue, meetingLinks }: ApiRouteDependencies,
+  firmId: string,
+): Promise<CalendarMeetingInvitationBoundary> {
+  const smtpProviders = await repository.listProviderSettings(firmId, { kind: "smtp" });
+  const enabledSmtp = smtpProviders.find((provider) => provider.enabled);
+  return buildCalendarMeetingInvitationBoundary({
+    meetingProviderKey: meetingLinks?.providerKey,
+    guestAccessTokenSigningConfigured: meetingLinks?.guestAccessTokenSigningConfigured,
+    invitationEmailProviderKey: enabledSmtp?.key,
+    emailQueueConfigured: Boolean(emailJobQueue),
+  });
+}
+
+function calendarEventResponse(
+  event: CalendarEventRecord,
+  meetingInvitationBoundary: CalendarMeetingInvitationBoundary,
+): CalendarEventRecord {
+  return {
+    ...event,
+    meetingInvitationBoundary,
+  };
+}
+
+function assertMeetingIssuanceAllowed(input: {
+  includeMeetingLink: boolean;
+  issueGuestAccessToken: boolean;
+  meetingInvitationBoundary: CalendarMeetingInvitationBoundary;
+}): void {
+  if (
+    input.includeMeetingLink &&
+    input.meetingInvitationBoundary.meetingLinks.status !== "configured"
+  ) {
+    throw new ApiHttpError(503, "MEETING_LINKS_NOT_CONFIGURED", "Meeting links are not configured");
+  }
+  if (
+    input.issueGuestAccessToken &&
+    input.meetingInvitationBoundary.guestAccess.status !== "configured"
+  ) {
+    throw new ApiHttpError(
+      503,
+      "MEETING_GUEST_ACCESS_NOT_CONFIGURED",
+      "Meeting guest access tokens are not configured",
+    );
+  }
+}
+
 export function registerCalendarRoutes(
   server: FastifyInstance,
-  { repository, emailJobQueue }: ApiRouteDependencies,
+  dependencies: ApiRouteDependencies,
 ): void {
+  const { repository, emailJobQueue } = dependencies;
+
   server.get("/api/calendar/events", async (request) => {
     const query = parseRequestPart(calendarEventsQuerySchema, request.query, "query");
     assertCalendarAccess(request.auth, query.matterId, "read");
+    const meetingInvitationBoundary = await calendarMeetingInvitationBoundaryForRequest(
+      dependencies,
+      request.auth.firmId,
+    );
 
     return {
-      events: await repository.listCalendarEvents(request.auth.firmId, query),
+      events: (await repository.listCalendarEvents(request.auth.firmId, query)).map((event) =>
+        calendarEventResponse(event, meetingInvitationBoundary),
+      ),
       caldavUrl: `${baseUrl(request)}/caldav`,
       subscriptionUrl: webcalSubscriptionUrl(request, query.matterId),
     };
@@ -271,11 +334,21 @@ export function registerCalendarRoutes(
       params.eventId,
     );
     if (!event) return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    const meetingInvitationBoundary = await calendarMeetingInvitationBoundaryForRequest(
+      dependencies,
+      request.auth.firmId,
+    );
+    assertMeetingIssuanceAllowed({
+      includeMeetingLink: body.includeMeetingLink,
+      issueGuestAccessToken: body.issueGuestAccessToken,
+      meetingInvitationBoundary,
+    });
     const attendeeIds = new Set(body.attendeeIds ?? []);
     const attendees = (
       await repository.listCalendarEventAttendees(request.auth.firmId, body.matterId, event.id)
     ).filter((attendee) => attendeeIds.size === 0 || attendeeIds.has(attendee.id));
     const results = [];
+    const boundaryMetadata = calendarMeetingInvitationBoundaryMetadata(meetingInvitationBoundary);
     for (const attendee of attendees) {
       const queuedEmail = await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
         matterId: event.matterId,
@@ -288,22 +361,46 @@ export function registerCalendarRoutes(
         metadata: {
           attendeeId: attendee.id,
           eventId: event.id,
+          requestedMeetingLink: body.includeMeetingLink,
+          requestedGuestAccessToken: body.issueGuestAccessToken,
+          ...boundaryMetadata,
         },
       });
+      const queuedEmailWithAttemptMetadata = queuedEmail
+        ? {
+            ...queuedEmail,
+            job: await repository.updateJobLifecycleRecord(
+              request.auth.firmId,
+              queuedEmail.job.id,
+              {
+                metadata: {
+                  ...queuedEmail.job.metadata,
+                  attendeeId: attendee.id,
+                  eventId: event.id,
+                  requestedMeetingLink: body.includeMeetingLink,
+                  requestedGuestAccessToken: body.issueGuestAccessToken,
+                  ...boundaryMetadata,
+                },
+              },
+            ),
+          }
+        : undefined;
       const now = new Date().toISOString();
       const updated = await repository.upsertCalendarEventAttendee({
         ...attendee,
-        invitationStatus: queuedEmail ? "queued" : "skipped",
+        invitationStatus: queuedEmailWithAttemptMetadata ? "queued" : "skipped",
         invitedAt: now,
-        invitationEmailId: queuedEmail?.email.id,
-        invitationJobId: queuedEmail?.job.id,
+        invitationEmailId: queuedEmailWithAttemptMetadata?.email.id,
+        invitationJobId: queuedEmailWithAttemptMetadata?.job.id,
         updatedAt: now,
         updatedByUserId: request.auth.user.id,
       });
       await recordCalendarAuditEvent(repository, {
         firmId: request.auth.firmId,
         actorId: request.auth.user.id,
-        action: queuedEmail ? "calendar.invitation.queued" : "calendar.invitation.skipped",
+        action: queuedEmailWithAttemptMetadata
+          ? "calendar.invitation.queued"
+          : "calendar.invitation.skipped",
         resourceType: "calendar_event",
         resourceId: event.id,
         occurredAt: now,
@@ -311,16 +408,19 @@ export function registerCalendarRoutes(
           matterId: event.matterId,
           attendeeId: attendee.id,
           invitationStatus: updated.invitationStatus,
-          emailId: queuedEmail?.email.id,
-          jobId: queuedEmail?.job.id,
+          emailId: queuedEmailWithAttemptMetadata?.email.id,
+          jobId: queuedEmailWithAttemptMetadata?.job.id,
+          requestedMeetingLink: body.includeMeetingLink,
+          requestedGuestAccessToken: body.issueGuestAccessToken,
+          ...boundaryMetadata,
         },
       });
       results.push({
         attendee: updated,
-        queuedEmail: summarizeQueuedRouteEmail(queuedEmail),
+        queuedEmail: summarizeQueuedRouteEmail(queuedEmailWithAttemptMetadata),
       });
     }
-    return { results };
+    return { results, meetingInvitationBoundary };
   });
 
   server.post("/api/calendar/credentials", async (request, reply) => {

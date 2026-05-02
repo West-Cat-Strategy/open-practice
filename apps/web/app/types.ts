@@ -10,6 +10,7 @@ import type {
   ActivityTimelineEntry,
   CalendarEventRecord,
   CalendarEventAttendeeRecord,
+  CalendarMeetingInvitationBoundary,
   ContactDossier,
   DashboardSectionCapability,
   IntakeSessionRecord,
@@ -243,6 +244,7 @@ export interface CalendarInvitationResult {
 
 export interface CalendarInvitationResponse {
   results: CalendarInvitationResult[];
+  meetingInvitationBoundary?: CalendarMeetingInvitationBoundary;
 }
 
 export interface CalendarMatterLinks {

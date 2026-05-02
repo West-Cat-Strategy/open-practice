@@ -216,6 +216,24 @@ export type CalendarEventStatus = "confirmed" | "tentative" | "cancelled";
 export type CalendarAttendeeRole = "required" | "optional";
 export type CalendarAttendeeResponseStatus = "needs_action" | "accepted" | "tentative" | "declined";
 export type CalendarInvitationStatus = "not_sent" | "queued" | "skipped";
+export type CalendarMeetingBoundaryStatus = "disabled" | "configured";
+export type CalendarMeetingBoundaryReason =
+  | "not_configured"
+  | "smtp_not_configured"
+  | "email_queue_not_configured"
+  | "token_signing_not_configured";
+
+export interface CalendarMeetingBoundaryCapability {
+  status: CalendarMeetingBoundaryStatus;
+  reason?: CalendarMeetingBoundaryReason;
+  provider?: string;
+}
+
+export interface CalendarMeetingInvitationBoundary {
+  meetingLinks: CalendarMeetingBoundaryCapability;
+  guestAccess: CalendarMeetingBoundaryCapability;
+  invitationEmail: CalendarMeetingBoundaryCapability;
+}
 
 export interface CalendarEventAttendeeRecord {
   id: string;
@@ -255,6 +273,7 @@ export interface CalendarEventRecord {
   createdByUserId: string;
   updatedByUserId: string;
   attendees?: CalendarEventAttendeeRecord[];
+  meetingInvitationBoundary?: CalendarMeetingInvitationBoundary;
 }
 
 export interface CalendarCredentialRecord {

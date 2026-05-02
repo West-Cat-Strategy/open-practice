@@ -24,6 +24,10 @@ export interface ApiRouteDependencies {
   automationProvider?: DocumentAutomationProvider;
   draftAssistProvider?: DraftAssistProvider;
   signatureProvider?: SignatureProvider;
+  meetingLinks?: {
+    providerKey: string;
+    guestAccessTokenSigningConfigured?: boolean;
+  };
   emailJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
   s3?: {

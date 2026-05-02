@@ -1,4 +1,8 @@
-import type { CalendarEventAttendeeRecord, CalendarEventRecord } from "@open-practice/domain";
+import type {
+  CalendarEventAttendeeRecord,
+  CalendarEventRecord,
+  CalendarMeetingInvitationBoundary,
+} from "@open-practice/domain";
 import type {
   CalendarCredentialSummary,
   CalendarDashboardResponse,
@@ -57,6 +61,21 @@ export function describeCalendarEventTiming(
   if (startsAt <= currentTime + 7 * 24 * 60 * 60 * 1000) return "next 7 days";
   if (startsAt <= currentTime + 30 * 24 * 60 * 60 * 1000) return "next 30 days";
   return "later";
+}
+
+export function describeMeetingInvitationBoundary(
+  boundary: CalendarMeetingInvitationBoundary | undefined,
+): string {
+  if (!boundary) return "Meeting links disabled.";
+  const linkStatus =
+    boundary.meetingLinks.status === "configured"
+      ? `Meeting links configured${boundary.meetingLinks.provider ? ` (${boundary.meetingLinks.provider})` : ""}.`
+      : "Meeting links disabled.";
+  const guestAccessStatus =
+    boundary.guestAccess.status === "configured"
+      ? "Guest access tokens configured."
+      : "Guest access tokens disabled.";
+  return `${linkStatus} ${guestAccessStatus}`;
 }
 
 export function upsertCalendarCredential(
