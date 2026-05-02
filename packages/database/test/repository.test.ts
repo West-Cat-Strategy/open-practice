@@ -237,6 +237,28 @@ describe("repository first-run setup", () => {
 });
 
 describe("repository operations foundation", () => {
+  it("derives contact dossiers from matters visible to the current user", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const user = await repository.getUser("firm-west-legal", "user-licensee");
+    expect(user).toBeDefined();
+
+    const dossiers = await repository.listContactDossiersForUser(user!);
+
+    expect(dossiers.map((dossier) => dossier.contact.id)).toEqual(["contact-ada", "contact-river"]);
+    expect(dossiers).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ contact: { id: "contact-northstar" } })]),
+    );
+    expect(dossiers.find((dossier) => dossier.contact.id === "contact-river")).toMatchObject({
+      matters: [expect.objectContaining({ matterId: "matter-001", adverse: true })],
+      conflictCues: [
+        expect.objectContaining({
+          severity: "blocker",
+          matterId: "matter-001",
+        }),
+      ],
+    });
+  });
+
   it("seeds basic draft templates and versions draft updates", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await expect(repository.listDraftTemplates("firm-west-legal")).resolves.toMatchObject([

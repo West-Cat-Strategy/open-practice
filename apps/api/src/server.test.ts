@@ -567,12 +567,29 @@ describe("API auth and persistence boundaries", () => {
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: "matters", enabled: true }),
+        expect.objectContaining({ key: "contacts", enabled: true }),
         expect.objectContaining({ key: "documents", enabled: true }),
         expect.objectContaining({ key: "drafting", enabled: true }),
         expect.objectContaining({ key: "calendar", enabled: true }),
         expect.objectContaining({ key: "signatures", enabled: true }),
       ]),
     );
+  });
+
+  it("returns contact dossiers through the registered API surface", async () => {
+    const response = await testServer().inject({
+      method: "GET",
+      url: "/api/contacts/dossiers",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      response.json<Array<{ contact: { id: string } }>>().map((dossier) => dossier.contact.id),
+    ).toEqual(["contact-ada", "contact-river"]);
   });
 
   it("requires explicit matter scope for matter-scoped ledger reads", async () => {

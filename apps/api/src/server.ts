@@ -25,6 +25,7 @@ import { registerAuthExtensionRoutes } from "./routes/auth-extensions.js";
 import { registerBillingRoutes } from "./routes/billing.js";
 import { registerCalDavRoutes } from "./routes/caldav.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
+import { registerContactRoutes } from "./routes/contacts.js";
 import { registerDocumentProcessingRoutes } from "./routes/document-processing.js";
 import { registerDocumentRoutes } from "./routes/documents.js";
 import { registerDraftAssistRoutes } from "./routes/draft-assist.js";
@@ -334,6 +335,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   });
   registerSessionRoutes(server);
   registerMatterRoutes(server, { repository: options.repository });
+  registerContactRoutes(server, { repository: options.repository });
   registerLedgerRoutes(server, { repository: options.repository });
   registerBillingRoutes(server, { repository: options.repository });
   registerCalDavRoutes(server, { repository: options.repository });

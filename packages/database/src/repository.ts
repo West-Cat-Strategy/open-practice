@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   appendAuditEvent,
   buildBasicDraftTemplates,
+  buildContactDossiers,
   buildPracticePresetTemplates,
   calculateInvoiceTotals,
   canShareDocumentThroughPortal,
@@ -22,6 +23,7 @@ import {
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
   type Contact,
+  type ContactDossier,
   type DocumentRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
@@ -352,6 +354,7 @@ export interface OpenPracticeRepository {
   listRecoveryCodes(firmId: string, userId: string): Promise<RecoveryCodeRecord[]>;
   getOverview(firmId: string): Promise<PracticeOverview>;
   listMattersForUser(user: User): Promise<MatterSummary[]>;
+  listContactDossiersForUser(user: User): Promise<ContactDossier[]>;
   getContact(firmId: string, contactId: string): Promise<Contact | undefined>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
   listMatterDocuments(firmId: string, matterId: string): Promise<DocumentRecord[]>;
@@ -2181,6 +2184,29 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           ),
         };
       });
+  }
+
+  async listContactDossiersForUser(user: User): Promise<ContactDossier[]> {
+    const matters = await this.listMattersForUser(user);
+    const matterParties = matters.flatMap((matter) =>
+      matter.parties.map((party) => ({
+        id: party.id,
+        firmId: party.firmId,
+        matterId: party.matterId,
+        contactId: party.contactId,
+        role: party.role,
+        adverse: party.adverse,
+        confidential: party.confidential,
+      })),
+    );
+    const contacts = matters.flatMap((matter) => matter.parties.map((party) => party.contact));
+    return buildContactDossiers({
+      firmId: user.firmId,
+      contacts,
+      matters,
+      matterParties,
+      portalGrants: this.portalGrants,
+    });
   }
 
   async getContact(firmId: string, contactId: string): Promise<Contact | undefined> {
@@ -4410,6 +4436,30 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         }),
         trustBalanceCents: matterTrustBalance(ledger.entries, ledger.accounts, matter, allParties),
       };
+    });
+  }
+
+  async listContactDossiersForUser(user: User): Promise<ContactDossier[]> {
+    const matters = await this.listMattersForUser(user);
+    const matterParties = matters.flatMap((matter) =>
+      matter.parties.map((party) => ({
+        id: party.id,
+        firmId: party.firmId,
+        matterId: party.matterId,
+        contactId: party.contactId,
+        role: party.role,
+        adverse: party.adverse,
+        confidential: party.confidential,
+      })),
+    );
+    const contacts = matters.flatMap((matter) => matter.parties.map((party) => party.contact));
+    const portalGrants = await this.listPortalGrants(user.firmId);
+    return buildContactDossiers({
+      firmId: user.firmId,
+      contacts,
+      matters,
+      matterParties,
+      portalGrants,
     });
   }
 

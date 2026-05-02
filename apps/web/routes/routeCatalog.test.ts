@@ -25,6 +25,7 @@ describe("Open Practice route catalog", () => {
     const routeIds = routeCatalog.map((entry) => entry.id);
     const expected: OpenPracticeRouteId[] = [
       "matters",
+      "contacts",
       "funds",
       "billing",
       "documents",
@@ -63,6 +64,7 @@ describe("Open Practice route catalog", () => {
     ]);
     expect(getRoutesByArea("workspace").map((entry) => entry.id)).toEqual([
       "matters",
+      "contacts",
       "documents",
       "externalUploads",
       "drafting",
@@ -78,6 +80,7 @@ describe("Open Practice route catalog", () => {
     });
     expect(getSidebarRouteCatalogEntries().map((entry) => entry.id)).toEqual([
       "matters",
+      "contacts",
       "funds",
       "billing",
       "documents",
@@ -94,6 +97,7 @@ describe("Open Practice route catalog", () => {
 
   it("matches dashboard section URLs without changing runtime behavior", () => {
     expect(matchRouteCatalogEntry("/")?.id).toBe("matters");
+    expect(matchRouteCatalogEntry("/?section=contacts")?.id).toBe("contacts");
     expect(matchRouteCatalogEntry("/?section=documents")?.id).toBe("documents");
     expect(matchRouteCatalogEntry("/?section=shares")?.id).toBe("shares");
     expect(matchRouteCatalogEntry("/?section=externalUploads")?.id).toBe("externalUploads");

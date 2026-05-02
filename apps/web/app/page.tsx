@@ -26,6 +26,7 @@ import type {
   CalendarDashboardResponse,
   CalendarEventsResponse,
   CapabilitiesResponse,
+  ContactDossiersResponse,
   DraftingDashboardResponse,
   ExternalUploadsDashboardResponse,
   ExternalUploadsListResponse,
@@ -196,16 +197,19 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   let signatures: SignatureRequestsResponse;
   let intake: IntakeSessionsResponse;
   let queues: QueuesResponse;
+  let contactDossiers: ContactDossiersResponse;
   try {
-    [session, capabilities, overview, matters, signatures, intake, queues] = await Promise.all([
-      apiGet<SessionResponse>("/api/session", headers),
-      apiGet<CapabilitiesResponse>("/api/capabilities", headers),
-      apiGet<PracticeOverview>("/api/overview", headers),
-      apiGet<MatterSummary[]>("/api/matters", headers),
-      apiGet<SignatureRequestsResponse>("/api/signature-requests", headers),
-      apiGet<IntakeSessionsResponse>("/api/intake-sessions", headers),
-      apiGet<QueuesResponse>("/api/queues", headers),
-    ]);
+    [session, capabilities, overview, matters, signatures, intake, queues, contactDossiers] =
+      await Promise.all([
+        apiGet<SessionResponse>("/api/session", headers),
+        apiGet<CapabilitiesResponse>("/api/capabilities", headers),
+        apiGet<PracticeOverview>("/api/overview", headers),
+        apiGet<MatterSummary[]>("/api/matters", headers),
+        apiGet<SignatureRequestsResponse>("/api/signature-requests", headers),
+        apiGet<IntakeSessionsResponse>("/api/intake-sessions", headers),
+        apiGet<QueuesResponse>("/api/queues", headers),
+        apiGet<ContactDossiersResponse>("/api/contacts/dossiers", headers),
+      ]);
   } catch (error) {
     if (
       error instanceof ApiRequestError &&
@@ -320,6 +324,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       billing={billing}
       calendar={calendar}
       capabilities={capabilities}
+      contactDossiers={contactDossiers}
       devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}
       drafting={drafting}
       externalUploads={externalUploads}

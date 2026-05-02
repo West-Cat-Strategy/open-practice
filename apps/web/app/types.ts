@@ -10,6 +10,7 @@ import type {
   ActivityTimelineEntry,
   CalendarEventRecord,
   CalendarEventAttendeeRecord,
+  ContactDossier,
   DashboardSectionCapability,
   IntakeSessionRecord,
   IntakeTemplateRecord,
@@ -23,6 +24,8 @@ import type {
   TimeEntry,
   User,
 } from "@open-practice/domain";
+
+export type { ContactDossier };
 
 export interface MatterSummary extends Matter {
   parties: Array<MatterParty & { contact: Contact }>;
@@ -57,6 +60,8 @@ export interface SessionResponse {
 export interface CapabilitiesResponse {
   sections: DashboardSectionCapability[];
 }
+
+export type ContactDossiersResponse = ContactDossier[];
 
 export interface IntakeSessionsResponse {
   templates: IntakeTemplateRecord[];

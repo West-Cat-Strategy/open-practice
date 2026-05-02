@@ -49,6 +49,11 @@ import {
   upsertCalendarCredential,
 } from "./calendar-dashboard";
 import {
+  contactDossierRiskClass,
+  filterContactDossiers,
+  summarizeContactDossier,
+} from "./contact-dossiers-dashboard";
+import {
   buildIntakeFormLinkCreatePayload,
   buildIntakeFormLinkListPath,
   buildIntakePortalPath,
@@ -80,6 +85,7 @@ import type {
 
 const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapability["resource"]> = {
   matters: "matter",
+  contacts: "contact",
   funds: "trust_ledger",
   billing: "time_entry",
   documents: "document",
@@ -256,6 +262,81 @@ function publicRunnerPayload(
 }
 
 describe("dashboard client behavior", () => {
+  it("filters and summarizes contact dossiers without requiring contact edits", () => {
+    const dossiers = [
+      {
+        contact: {
+          id: "contact-ada",
+          firmId: "firm-west-legal",
+          kind: "person" as const,
+          displayName: "Ada Morgan",
+          aliases: ["Ada M. Nguyen"],
+          identifiers: [{ type: "email" as const, value: "ada@example.test" }],
+        },
+        matters: [
+          {
+            matterId: "matter-001",
+            matterNumber: "2026-0001",
+            matterTitle: "Morgan tenancy dispute",
+            matterStatus: "open" as const,
+            practiceArea: "Residential tenancy",
+            role: "client" as const,
+            adverse: false,
+            confidential: true,
+            portalActive: true,
+            portalPermissions: ["view_documents" as const],
+          },
+        ],
+        portal: { activeGrantCount: 1, permissionLabels: ["view_documents" as const] },
+        conflictCues: [
+          {
+            severity: "review" as const,
+            reason: "Linked to a confidential matter party record",
+            matterId: "matter-001",
+          },
+        ],
+      },
+      {
+        contact: {
+          id: "contact-river",
+          firmId: "firm-west-legal",
+          kind: "organization" as const,
+          displayName: "River City Rentals Inc.",
+          aliases: [],
+          identifiers: [],
+        },
+        matters: [
+          {
+            matterId: "matter-001",
+            matterNumber: "2026-0001",
+            matterTitle: "Morgan tenancy dispute",
+            matterStatus: "open" as const,
+            practiceArea: "Residential tenancy",
+            role: "opposing_party" as const,
+            adverse: true,
+            confidential: false,
+            portalActive: false,
+            portalPermissions: [],
+          },
+        ],
+        portal: { activeGrantCount: 0, permissionLabels: [] },
+        conflictCues: [
+          {
+            severity: "blocker" as const,
+            reason: "Linked as an adverse party on an accessible matter",
+            matterId: "matter-001",
+          },
+        ],
+      },
+    ];
+
+    expect(filterContactDossiers(dossiers, "nguyen").map((dossier) => dossier.contact.id)).toEqual([
+      "contact-ada",
+    ]);
+    expect(summarizeContactDossier(dossiers[0]!)).toBe("confidential / portal active");
+    expect(contactDossierRiskClass(dossiers[1]!)).toBe("risk");
+  });
+
   it("filters matters by API-backed matter fields", () => {
     const matters = [
       matter({ id: "matter-001", title: "Morgan tenancy dispute" }),
@@ -273,6 +354,7 @@ describe("dashboard client behavior", () => {
       externalUploadsEnabled: true,
       capabilitySections: [
         capability("matters"),
+        capability("contacts"),
         capability("funds"),
         capability("documents"),
         capability("drafting"),
@@ -286,6 +368,7 @@ describe("dashboard client behavior", () => {
 
     expect(navigationSections).toEqual([
       { key: "matters", label: "Matters", enabled: true },
+      { key: "contacts", label: "Contacts", enabled: true },
       { key: "funds", label: "Funds", enabled: true },
       { key: "billing", label: "Billing", enabled: true },
       { key: "documents", label: "Documents", enabled: true },
@@ -307,6 +390,7 @@ describe("dashboard client behavior", () => {
       externalUploadsEnabled: false,
       capabilitySections: [
         capability("matters"),
+        capability("contacts"),
         capability("funds"),
         capability("documents"),
         capability("drafting"),

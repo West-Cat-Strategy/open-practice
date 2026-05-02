@@ -2,6 +2,7 @@ import type { DashboardSectionKey } from "@open-practice/domain";
 
 export type OpenPracticeRouteId =
   | "matters"
+  | "contacts"
   | "billing"
   | "documents"
   | "shares"
@@ -68,6 +69,17 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     area: "workspace",
     requiresMatterContext: true,
     order: 10,
+    showInSidebar: true,
+  },
+  {
+    id: "contacts",
+    title: "Contacts",
+    shortLabel: "Contacts",
+    path: "/?section=contacts",
+    sectionKey: "contacts",
+    area: "workspace",
+    requiresMatterContext: false,
+    order: 15,
     showInSidebar: true,
   },
   {

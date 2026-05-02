@@ -251,6 +251,7 @@ export function assertAccess(request: AccessRequest): void {
 
 export type DashboardSectionKey =
   | "matters"
+  | "contacts"
   | "funds"
   | "documents"
   | "drafting"
@@ -275,6 +276,7 @@ const dashboardSections: Array<{
   preferredMatterScopedAction?: Action;
 }> = [
   { key: "matters", label: "Matters", resource: "matter", preferredMatterScopedAction: "read" },
+  { key: "contacts", label: "Contacts", resource: "contact" },
   { key: "funds", label: "Funds", resource: "trust_ledger", preferredMatterScopedAction: "read" },
   {
     key: "documents",
