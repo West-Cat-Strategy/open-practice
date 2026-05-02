@@ -18,6 +18,7 @@ import type {
   User,
 } from "./models.js";
 import type { LedgerAccount, LedgerEntry } from "./ledger.js";
+import type { LegalClinicMatterProfile, LegalClinicProgram } from "./legal-clinics.js";
 import type { EmbeddedIntakeTemplateDefinition } from "./intake.js";
 import type {
   GeneratedDocumentRecord,
@@ -145,6 +146,72 @@ export const sampleMatterParties: MatterParty[] = [
     role: "notary_client",
     adverse: false,
     confidential: true,
+  },
+];
+
+export const sampleLegalClinicPrograms: LegalClinicProgram[] = [
+  {
+    id: "clinic-program-tenancy-stability",
+    firmId: sampleFirm.id,
+    name: "Tenancy Stability Clinic",
+    status: "active",
+    serviceArea: "Residential tenancy",
+    eligibilitySummary:
+      "Synthetic low-barrier screening for tenants with urgent housing stability issues.",
+    defaultReferralSource: "community_partner",
+    defaultReferralStatus: "referral_needed",
+    createdAt: "2026-04-01T00:00:00.000Z",
+    updatedAt: "2026-04-01T00:00:00.000Z",
+    metadata: { source: "open-practice-sample", providerNeutral: true },
+  },
+  {
+    id: "clinic-program-records-access",
+    firmId: sampleFirm.id,
+    name: "Records Access Clinic",
+    status: "active",
+    serviceArea: "Records access",
+    eligibilitySummary:
+      "Synthetic screening for straightforward records access and identity-document needs.",
+    defaultReferralSource: "internal_intake",
+    defaultReferralStatus: "not_referred",
+    createdAt: "2026-04-01T00:00:00.000Z",
+    updatedAt: "2026-04-01T00:00:00.000Z",
+    metadata: { source: "open-practice-sample", providerNeutral: true },
+  },
+];
+
+export const sampleLegalClinicMatterProfiles: LegalClinicMatterProfile[] = [
+  {
+    id: "clinic-profile-matter-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    programId: "clinic-program-tenancy-stability",
+    eligibilityStatus: "likely_eligible",
+    referralSource: "community_partner",
+    referralStatus: "referred",
+    referralDate: "2026-04-01",
+    nextReviewDate: "2026-04-08T17:00:00.000Z",
+    clinicRelationshipRole: "clinic client",
+    notes: "Synthetic operational note for clinic screening.",
+    updatedAt: "2026-04-01T18:15:00.000Z",
+    createdAt: "2026-04-01T18:15:00.000Z",
+    updatedByUserId: "user-licensee",
+    metadata: { source: "open-practice-sample" },
+  },
+  {
+    id: "clinic-profile-matter-002",
+    firmId: sampleFirm.id,
+    matterId: "matter-002",
+    programId: "clinic-program-records-access",
+    eligibilityStatus: "needs_review",
+    referralSource: "internal_intake",
+    referralStatus: "not_referred",
+    clinicRelationshipRole: "clinic intake prospect",
+    notes: "Synthetic screening started for records access clinic.",
+    createdAt: "2026-04-02T16:00:00.000Z",
+    updatedAt: "2026-04-02T16:00:00.000Z",
+    updatedByUserId: "user-admin",
+    metadata: { source: "open-practice-sample" },
   },
 ];
 

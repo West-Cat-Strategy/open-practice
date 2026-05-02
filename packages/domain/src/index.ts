@@ -4,6 +4,7 @@ export * from "./calendar.js";
 export * from "./conflicts.js";
 export * from "./intake.js";
 export * from "./ledger.js";
+export * from "./legal-clinics.js";
 export * from "./models.js";
 export * from "./operations.js";
 export * from "./permissions.js";

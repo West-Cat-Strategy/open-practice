@@ -12,6 +12,8 @@ import {
   sampleIntakeTemplates,
   sampleInvoiceLines,
   sampleInvoices,
+  sampleLegalClinicMatterProfiles,
+  sampleLegalClinicPrograms,
   sampleLedgerAccounts,
   sampleLedgerEntries,
   sampleManualPayments,
@@ -65,6 +67,28 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
     )
     .onConflictDoNothing();
   await db.insert(schema.matterParties).values(sampleMatterParties).onConflictDoNothing();
+  await db
+    .insert(schema.legalClinicPrograms)
+    .values(
+      sampleLegalClinicPrograms.map((program) => ({
+        ...program,
+        createdAt: new Date(program.createdAt),
+        updatedAt: new Date(program.updatedAt),
+      })),
+    )
+    .onConflictDoNothing();
+  await db
+    .insert(schema.legalClinicMatterProfiles)
+    .values(
+      sampleLegalClinicMatterProfiles.map((profile) => ({
+        ...profile,
+        referralDate: profile.referralDate ? new Date(profile.referralDate) : null,
+        nextReviewDate: profile.nextReviewDate ? new Date(profile.nextReviewDate) : null,
+        createdAt: new Date(profile.createdAt),
+        updatedAt: new Date(profile.updatedAt),
+      })),
+    )
+    .onConflictDoNothing();
   await db
     .insert(schema.documents)
     .values(

@@ -81,6 +81,11 @@ import {
   upsertCalendarEventAttendee,
   upsertCalendarCredential,
 } from "./calendar-dashboard";
+import {
+  describeLegalClinicProfileStatus,
+  describeLegalClinicProgram,
+  findLegalClinicProgram,
+} from "./legal-clinic-dashboard";
 import type {
   CalendarAttendeeMutationResponse,
   BillingDashboardResponse,
@@ -101,6 +106,7 @@ import type {
   IntakeFormLinkCreateResponse,
   IntakeFormLinkRevokeResponse,
   IntakeTemplateSavePayload,
+  LegalClinicDashboardResponse,
   MatterSummary,
   PracticeOverview,
   QueuesResponse,
@@ -125,6 +131,7 @@ interface DashboardClientProps {
   externalUploads: ExternalUploadsDashboardResponse;
   intake: IntakeSessionsResponse;
   intakeForms: IntakeFormsDashboardResponse;
+  legalClinic: LegalClinicDashboardResponse;
   initialSection: DashboardNavigationSectionKey;
   overview: PracticeOverview;
   matters: MatterSummary[];
@@ -189,6 +196,7 @@ export default function DashboardClient({
   externalUploads,
   intake,
   intakeForms,
+  legalClinic,
   initialSection,
   overview,
   matters,
@@ -347,6 +355,13 @@ export default function DashboardClient({
   const activeIntakeVariableProposals = activeMatter
     ? (intakeVariableProposalsByMatterId[activeMatter.id] ?? [])
     : [];
+  const activeLegalClinicProfile = activeMatter
+    ? legalClinic.profilesByMatterId[activeMatter.id]?.[0]
+    : undefined;
+  const activeLegalClinicProgram = findLegalClinicProgram(
+    legalClinic.programs,
+    activeLegalClinicProfile,
+  );
   const activePendingIntakeVariableProposals = activeIntakeVariableProposals.filter(
     (proposal) => proposal.status === "pending",
   );
@@ -1528,6 +1543,54 @@ export default function DashboardClient({
                     <span>tracked expenses</span>
                   </div>
                 </div>
+
+                {activeLegalClinicProfile ? (
+                  <>
+                    <div className="section-title">
+                      <h3>Clinic workflow</h3>
+                      <span>{describeLegalClinicProfileStatus(activeLegalClinicProfile)}</span>
+                    </div>
+                    <div className="party-list">
+                      <div className="party-row">
+                        <span>
+                          <strong>
+                            {describeLegalClinicProgram(
+                              activeLegalClinicProgram,
+                              activeLegalClinicProfile,
+                            )}
+                          </strong>
+                          <small>
+                            {activeLegalClinicProgram?.eligibilitySummary ??
+                              "Clinic program profile is linked to this matter."}
+                          </small>
+                        </span>
+                        <em>{activeLegalClinicProgram?.serviceArea ?? "program"}</em>
+                      </div>
+                      <div className="party-row">
+                        <span>
+                          <strong>
+                            {compactStatus(activeLegalClinicProfile.eligibilityStatus)}
+                          </strong>
+                          <small>Eligibility status recorded on the matter profile.</small>
+                        </span>
+                        <em>{activeLegalClinicProfile.clinicRelationshipRole}</em>
+                      </div>
+                      <div className="party-row">
+                        <span>
+                          <strong>{compactStatus(activeLegalClinicProfile.referralStatus)}</strong>
+                          <small>
+                            {activeLegalClinicProfile.referralSource ??
+                              activeLegalClinicProgram?.defaultReferralSource ??
+                              "Referral source is not recorded."}
+                          </small>
+                        </span>
+                        <em>
+                          {activeLegalClinicProfile.nextReviewDate ? "review set" : "no review"}
+                        </em>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
               </>
             ) : null}
 
@@ -2425,6 +2488,38 @@ export default function DashboardClient({
                     <strong>{activePendingIntakeVariableProposals.length}</strong>
                   </div>
                 </div>
+
+                {activeLegalClinicProfile ? (
+                  <>
+                    <div className="section-title">
+                      <h3>Eligibility and referral</h3>
+                      <span>
+                        {describeLegalClinicProgram(
+                          activeLegalClinicProgram,
+                          activeLegalClinicProfile,
+                        )}
+                      </span>
+                    </div>
+                    <div className="detail-grid">
+                      <div>
+                        <span className="field-label">Eligibility</span>
+                        <strong>{compactStatus(activeLegalClinicProfile.eligibilityStatus)}</strong>
+                      </div>
+                      <div>
+                        <span className="field-label">Referral</span>
+                        <strong>{compactStatus(activeLegalClinicProfile.referralStatus)}</strong>
+                      </div>
+                      <div>
+                        <span className="field-label">Relationship</span>
+                        <strong>{activeLegalClinicProfile.clinicRelationshipRole}</strong>
+                      </div>
+                      <div>
+                        <span className="field-label">Next review</span>
+                        <strong>{compactDate(activeLegalClinicProfile.nextReviewDate)}</strong>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
 
                 <div className="section-title">
                   <h3>Form builder</h3>

@@ -4,7 +4,9 @@ import {
   type AccessLogRecord,
   type ExternalUploadLinkRecord,
   type Firm,
+  type LegalClinicMatterProfile,
 } from "@open-practice/domain";
+import { sampleLegalClinicMatterProfiles } from "@open-practice/domain/sample-data";
 import {
   InMemoryOpenPracticeRepository,
   CalendarEventScopeConflictError,
@@ -1215,5 +1217,38 @@ describe("repository operations foundation", () => {
     await expect(
       repository.listDraftAssistRecords("firm-west-legal", { draftId: "missing" }),
     ).resolves.toEqual([]);
+  });
+
+  it("lists clinic programs and upserts one clinic profile per matter", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await expect(repository.listLegalClinicPrograms("firm-west-legal")).resolves.toMatchObject([
+      { id: "clinic-program-records-access", serviceArea: "Records access" },
+      { id: "clinic-program-tenancy-stability", serviceArea: "Residential tenancy" },
+    ]);
+    await expect(
+      repository.listLegalClinicPrograms("firm-west-legal", { status: "active" }),
+    ).resolves.toHaveLength(2);
+
+    const profile: LegalClinicMatterProfile = {
+      ...sampleLegalClinicMatterProfiles[0]!,
+      id: "clinic-profile-updated",
+      eligibilityStatus: "needs_review",
+      referralStatus: "accepted",
+      updatedAt: "2026-04-02T18:15:00.000Z",
+      metadata: { source: "test" },
+    };
+
+    await expect(repository.upsertLegalClinicMatterProfile(profile)).resolves.toMatchObject({
+      id: "clinic-profile-updated",
+      matterId: "matter-001",
+      eligibilityStatus: "needs_review",
+    });
+    await expect(
+      repository.getLegalClinicMatterProfile("firm-west-legal", "matter-001"),
+    ).resolves.toMatchObject({
+      id: "clinic-profile-updated",
+      referralStatus: "accepted",
+      metadata: { source: "test" },
+    });
   });
 });

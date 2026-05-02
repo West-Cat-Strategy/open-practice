@@ -33,6 +33,10 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/capabilities`                                                           | Permission-aware dashboard sections for the current user and first assigned matter.                                                        |
 | `GET /api/overview`                                                               | Firm overview metrics.                                                                                                                     |
 | `GET /api/matters`                                                                | Matters visible to the current user.                                                                                                       |
+| `GET /api/legal-clinic/programs`                                                  | Firm-scoped clinic programs with provider-neutral eligibility/referral defaults.                                                           |
+| `POST /api/legal-clinic/programs`                                                 | Creates a firm-scoped clinic program and records redacted program audit metadata.                                                          |
+| `GET /api/legal-clinic/profiles?matterId=`                                        | Lists the authorized matter's clinic profile as an empty or single-item profile array.                                                     |
+| `PUT /api/legal-clinic/profiles/:matterId`                                        | Upserts the authorized matter's clinic profile and records redacted eligibility/referral audit metadata.                                   |
 | `POST /api/conflicts/check`                                                       | Conflict search with audit recording for prospective names, aliases, identifiers, and party role.                                          |
 | `GET /api/ledger?matterId=`                                                       | Trust ledger accounts, entries, posted transactions, and balances. Matter-scoped users must provide matter ID.                             |
 | `POST /api/ledger/transactions`                                                   | Balanced, idempotent trust transaction posting.                                                                                            |
@@ -176,6 +180,16 @@ action strip for existing matter-scoped features. These are UI affordances only;
 remains authoritative. Presets and queue labels must remain operational and must not claim
 jurisdiction-certified compliance, accounting, tax, trust-account, retention, e-signature, or
 legal-records status.
+
+Legal clinic workflow data is modeled as firm-scoped clinic programs plus at most one clinic matter
+profile per matter. Program records carry operational status, service area, eligibility summary,
+and default referral source/status metadata. Matter profiles carry program linkage,
+eligibility/referral statuses, referral source/date, next review date, clinic relationship role,
+notes, and redaction-safe metadata. The dashboard treats those records as read-only context: the
+Matters section may show a `Clinic workflow` summary and the Intake section may show
+`Eligibility and referral` when a profile is returned for the active matter. Mutation UI, navigation,
+provider claims, and automatic intake/referral actions remain out of scope for this foundation
+slice.
 
 Document upload state starts at `intent_created` with `checksumStatus=pending` and
 `scanStatus=pending`. Upload completion moves to `verified` only when the supplied checksum matches
