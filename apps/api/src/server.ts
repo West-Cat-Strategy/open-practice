@@ -37,6 +37,7 @@ import { registerIntakeFormRoutes } from "./routes/intake-forms.js";
 import { registerIntakeRoutes } from "./routes/intake.js";
 import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
+import { registerLegalClinicRoutes } from "./routes/legal-clinics.js";
 import { registerMatterRoutes } from "./routes/matters.js";
 import { registerQueuesRoutes } from "./routes/queues.js";
 import { registerRecoveryRoutes } from "./routes/recovery.js";
@@ -336,6 +337,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerSessionRoutes(server);
   registerMatterRoutes(server, { repository: options.repository });
   registerContactRoutes(server, { repository: options.repository });
+  registerLegalClinicRoutes(server, { repository: options.repository });
   registerLedgerRoutes(server, { repository: options.repository });
   registerBillingRoutes(server, { repository: options.repository });
   registerCalDavRoutes(server, { repository: options.repository });

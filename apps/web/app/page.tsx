@@ -17,6 +17,12 @@ import {
   buildIntakeVariableProposalListPath,
   loadIntakeFormsDashboardData,
 } from "./intake-forms-dashboard";
+import {
+  buildLegalClinicMatterProfilePath,
+  coerceLegalClinicProfilesResponse,
+  legalClinicProgramsPath,
+  loadLegalClinicDashboardData,
+} from "./legal-clinic-dashboard";
 import LoginClient from "./login-client";
 import SetupWizard from "./setup-wizard";
 import { selectStartupView } from "./setup-wizard-utils";
@@ -35,6 +41,10 @@ import type {
   IntakeFormsDashboardResponse,
   IntakeFormLinksResponse,
   IntakeVariableProposalsResponse,
+  LegalClinicDashboardResponse,
+  LegalClinicProfileResponse,
+  LegalClinicProfilesResponse,
+  LegalClinicProgramsResponse,
   MatterSummary,
   PracticeOverview,
   QueuesResponse,
@@ -307,6 +317,24 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       return response.proposals;
     },
   });
+  const legalClinic: LegalClinicDashboardResponse = await loadLegalClinicDashboardData({
+    matters,
+    listPrograms: async () => {
+      const response = await apiGetOptional<LegalClinicProgramsResponse>(
+        legalClinicProgramsPath,
+        { programs: [] },
+        headers,
+        { programs: [] },
+      );
+      return response.programs;
+    },
+    listProfilesForMatter: async (matterId) => {
+      const response = await apiGetOptional<
+        LegalClinicProfilesResponse | LegalClinicProfileResponse
+      >(buildLegalClinicMatterProfilePath(matterId), { profile: null }, headers, { profile: null });
+      return coerceLegalClinicProfilesResponse(response);
+    },
+  });
   const navigationSections = buildSidebarNavigationSections({
     billingCanView: billing.canView,
     capabilitySections: capabilities.sections,
@@ -331,6 +359,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       initialSection={initialSection}
       intake={intake}
       intakeForms={intakeForms}
+      legalClinic={legalClinic}
       matters={matters}
       overview={overview}
       queues={queues}

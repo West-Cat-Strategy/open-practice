@@ -223,6 +223,55 @@ export interface CalendarDashboardResponse {
   credentials: CalendarCredentialSummary[];
 }
 
+export interface LegalClinicProgramSummary {
+  id: string;
+  firmId: string;
+  name: string;
+  status: "active" | "paused" | "archived";
+  serviceArea: string;
+  eligibilitySummary: string;
+  defaultReferralSource?: string;
+  defaultReferralStatus: "not_referred" | "referral_needed" | "referred" | "accepted" | "declined";
+  createdAt: string;
+  updatedAt: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface MatterLegalClinicProfileSummary {
+  id: string;
+  firmId: string;
+  matterId: string;
+  programId: string;
+  eligibilityStatus: "unknown" | "likely_eligible" | "ineligible" | "needs_review";
+  referralSource?: string;
+  referralStatus: "not_referred" | "referral_needed" | "referred" | "accepted" | "declined";
+  referralDate?: string;
+  nextReviewDate?: string;
+  clinicRelationshipRole: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  updatedByUserId: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface LegalClinicProgramsResponse {
+  programs: LegalClinicProgramSummary[];
+}
+
+export interface LegalClinicProfilesResponse {
+  profiles: MatterLegalClinicProfileSummary[];
+}
+
+export interface LegalClinicProfileResponse {
+  profile: MatterLegalClinicProfileSummary | null;
+}
+
+export interface LegalClinicDashboardResponse {
+  programs: LegalClinicProgramSummary[];
+  profilesByMatterId: Record<string, MatterLegalClinicProfileSummary[]>;
+}
+
 export type BillingEntryStatus = "draft" | "submitted" | "approved" | "billed" | "written_off";
 
 export interface BillingTimeItem {

@@ -34,6 +34,10 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/overview`                                                               | Firm overview metrics.                                                                                                                         |
 | `GET /api/matters`                                                                | Matters visible to the current user.                                                                                                           |
 | `GET /api/contacts/dossiers`                                                      | Read-only contact dossiers derived from visible matter-party links, active portal grants, aliases, identifiers, and adverse/confidential cues. |
+| `GET /api/legal-clinic/programs`                                                  | Firm-scoped clinic programs with provider-neutral eligibility/referral defaults.                                                               |
+| `POST /api/legal-clinic/programs`                                                 | Creates a firm-scoped clinic program and records redacted program audit metadata.                                                              |
+| `GET /api/legal-clinic/profiles?matterId=`                                        | Lists the authorized matter's clinic profile as an empty or single-item profile array.                                                         |
+| `PUT /api/legal-clinic/profiles/:matterId`                                        | Upserts the authorized matter's clinic profile and records redacted eligibility/referral audit metadata.                                       |
 | `POST /api/conflicts/check`                                                       | Conflict search with audit recording for prospective names, aliases, identifiers, and party role.                                              |
 | `GET /api/ledger?matterId=`                                                       | Trust ledger accounts, entries, posted transactions, and balances. Matter-scoped users must provide matter ID.                                 |
 | `POST /api/ledger/transactions`                                                   | Balanced, idempotent trust transaction posting.                                                                                                |
@@ -175,6 +179,16 @@ Contact dossiers are a read-only `/?section=contacts` dashboard surface backed b
 `GET /api/contacts/dossiers`. Dossiers reuse existing contacts, visible matter-party links, active
 portal grants, aliases, identifiers, and adverse/confidential party cues; they do not add contact
 editing, duplicate merges, conflict-check history persistence, or cross-scope matter disclosure.
+
+Legal clinic workflow data is modeled as firm-scoped clinic programs plus at most one clinic matter
+profile per matter. Program records carry operational status, service area, eligibility summary,
+and default referral source/status metadata. Matter profiles carry program linkage,
+eligibility/referral statuses, referral source/date, next review date, clinic relationship role,
+notes, and redaction-safe metadata. The dashboard treats those records as read-only context: the
+Matters section may show a `Clinic workflow` summary and the Intake section may show
+`Eligibility and referral` when a profile is returned for the active matter. Mutation UI,
+navigation, provider claims, and automatic intake/referral actions remain out of scope for this
+foundation slice.
 
 Dashboard queues are a first-class `/?section=queues` surface. The web shell also exposes active
 section state, live workflow status text, skip/focus handling, disabled-section reasons, and a matter

@@ -33,6 +33,8 @@ import {
   intakeTemplates,
   intakeSessions,
   jobLifecycleRecords,
+  legalClinicMatterProfiles,
+  legalClinicPrograms,
   manualPayments,
   mediaDerivatives,
   mediaTranscripts,
@@ -220,6 +222,43 @@ describe("database schema hardening", () => {
     expect(getTableConfig(intakeSessions).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["matter_id", "template_id", "external_id", "status"]),
     );
+  });
+
+  it("persists legal clinic programs and one matter profile per matter", () => {
+    const programConfig = getTableConfig(legalClinicPrograms);
+    const profileConfig = getTableConfig(legalClinicMatterProfiles);
+    const profileMatterIndex = profileConfig.indexes.find(
+      (index) => index.config.name === "legal_clinic_matter_profiles_firm_matter_idx",
+    );
+
+    expect(programConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "name",
+        "status",
+        "service_area",
+        "eligibility_summary",
+        "default_referral_source",
+        "default_referral_status",
+        "metadata",
+      ]),
+    );
+    expect(profileConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "program_id",
+        "eligibility_status",
+        "referral_source",
+        "referral_status",
+        "referral_date",
+        "next_review_date",
+        "clinic_relationship_role",
+        "notes",
+        "updated_by_user_id",
+      ]),
+    );
+    expect(profileMatterIndex?.config.unique).toBe(true);
   });
 
   it("persists non-authoritative draft assist records", () => {

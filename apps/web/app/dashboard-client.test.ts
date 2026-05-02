@@ -68,6 +68,15 @@ import {
   upsertIntakeVariableProposal,
 } from "./intake-forms-dashboard";
 import {
+  buildLegalClinicMatterProfilePath,
+  coerceLegalClinicProfilesResponse,
+  describeLegalClinicProfileStatus,
+  describeLegalClinicProgram,
+  findLegalClinicProgram,
+  legalClinicProgramsPath,
+  loadLegalClinicDashboardData,
+} from "./legal-clinic-dashboard";
+import {
   actionComplete,
   coerceAnswer,
   errorMessage,
@@ -936,5 +945,63 @@ describe("dashboard client behavior", () => {
     expect(errorMessage({ message: "Upload type is not accepted" }, "fallback")).toBe(
       "Upload type is not accepted",
     );
+  });
+
+  it("loads optional legal clinic programs and matter profiles for dashboard summaries", async () => {
+    const program = {
+      id: "clinic-program-tenancy",
+      firmId: "firm-west-legal",
+      name: "Tenancy Clinic",
+      status: "active" as const,
+      serviceArea: "Residential tenancy",
+      eligibilitySummary: "Low-income tenant eligibility screening.",
+      defaultReferralSource: "community_partner",
+      defaultReferralStatus: "referral_needed" as const,
+      createdAt: "2026-05-01T12:00:00.000Z",
+      updatedAt: "2026-05-01T12:00:00.000Z",
+      metadata: {},
+    };
+    const profile = {
+      id: "clinic-profile-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-002",
+      programId: program.id,
+      eligibilityStatus: "likely_eligible" as const,
+      referralSource: "community_partner",
+      referralStatus: "referred" as const,
+      referralDate: "2026-05-01",
+      nextReviewDate: "2026-05-08T12:00:00.000Z",
+      clinicRelationshipRole: "clinic client",
+      notes: "Synthetic eligibility notes.",
+      createdAt: "2026-05-01T12:00:00.000Z",
+      updatedAt: "2026-05-01T12:00:00.000Z",
+      updatedByUserId: "user-licensee",
+      metadata: {},
+    };
+    const profileCalls: string[] = [];
+
+    const data = await loadLegalClinicDashboardData({
+      matters: [matter({ id: "matter-001" }), matter({ id: "matter-002" })],
+      listPrograms: async () => [program],
+      listProfilesForMatter: async (matterId) => {
+        profileCalls.push(matterId);
+        return matterId === "matter-002" ? [profile] : [];
+      },
+    });
+
+    expect(legalClinicProgramsPath).toBe("/api/legal-clinic/programs");
+    expect(buildLegalClinicMatterProfilePath("matter 002")).toBe(
+      "/api/legal-clinic/profiles?matterId=matter%20002",
+    );
+    expect(profileCalls).toEqual(["matter-001", "matter-002"]);
+    expect(data.profilesByMatterId).toEqual({
+      "matter-001": [],
+      "matter-002": [profile],
+    });
+    expect(coerceLegalClinicProfilesResponse({ profile })).toEqual([profile]);
+    expect(coerceLegalClinicProfilesResponse({ profile: null })).toEqual([]);
+    expect(findLegalClinicProgram(data.programs, profile)).toEqual(program);
+    expect(describeLegalClinicProgram(program, profile)).toBe("Tenancy Clinic");
+    expect(describeLegalClinicProfileStatus(profile)).toBe("likely eligible / referred");
   });
 });

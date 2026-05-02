@@ -34,6 +34,8 @@ import {
   type IntakeVariableProposal,
   type InvoiceLineRecord,
   type InvoiceRecord,
+  type LegalClinicMatterProfile,
+  type LegalClinicProgram,
   type LedgerAccount,
   type LedgerEntry,
   type LedgerReconciliationRecord,
@@ -76,6 +78,8 @@ import {
   sampleIntakeTemplates,
   sampleInvoiceLines,
   sampleInvoices,
+  sampleLegalClinicMatterProfiles,
+  sampleLegalClinicPrograms,
   sampleLedgerAccounts,
   sampleLedgerEntries,
   sampleManualPayments,
@@ -358,6 +362,18 @@ export interface OpenPracticeRepository {
   getContact(firmId: string, contactId: string): Promise<Contact | undefined>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
   listMatterDocuments(firmId: string, matterId: string): Promise<DocumentRecord[]>;
+  listLegalClinicPrograms(
+    firmId: string,
+    options?: { status?: LegalClinicProgram["status"] },
+  ): Promise<LegalClinicProgram[]>;
+  createLegalClinicProgram(program: LegalClinicProgram): Promise<LegalClinicProgram>;
+  getLegalClinicMatterProfile(
+    firmId: string,
+    matterId: string,
+  ): Promise<LegalClinicMatterProfile | undefined>;
+  upsertLegalClinicMatterProfile(
+    profile: LegalClinicMatterProfile,
+  ): Promise<LegalClinicMatterProfile>;
   listCalendarEvents(
     firmId: string,
     options: { matterId: string; startsAfter?: string; startsBefore?: string },
@@ -1072,6 +1088,46 @@ function mapDocumentRow(row: typeof schema.documents.$inferSelect): DocumentReco
   };
 }
 
+function mapLegalClinicProgramRow(
+  row: typeof schema.legalClinicPrograms.$inferSelect,
+): LegalClinicProgram {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    name: row.name,
+    status: row.status,
+    serviceArea: row.serviceArea,
+    eligibilitySummary: row.eligibilitySummary,
+    defaultReferralSource: row.defaultReferralSource ?? undefined,
+    defaultReferralStatus: row.defaultReferralStatus,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    metadata: row.metadata,
+  };
+}
+
+function mapLegalClinicMatterProfileRow(
+  row: typeof schema.legalClinicMatterProfiles.$inferSelect,
+): LegalClinicMatterProfile {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    programId: row.programId,
+    eligibilityStatus: row.eligibilityStatus,
+    referralSource: row.referralSource ?? undefined,
+    referralStatus: row.referralStatus,
+    referralDate: dateToIso(row.referralDate),
+    nextReviewDate: dateToIso(row.nextReviewDate),
+    clinicRelationshipRole: row.clinicRelationshipRole,
+    notes: row.notes ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    updatedByUserId: row.updatedByUserId,
+    metadata: row.metadata,
+  };
+}
+
 function mapDocumentTextExtractionRow(
   row: typeof schema.documentTextExtractions.$inferSelect,
 ): DocumentTextExtractionRecord {
@@ -1664,6 +1720,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private matters: Matter[];
   private matterParties: MatterParty[];
   private documents: DocumentRecord[];
+  private legalClinicPrograms: LegalClinicProgram[];
+  private legalClinicMatterProfiles: LegalClinicMatterProfile[];
   private calendarEvents: CalendarEventRecord[];
   private portalGrants: PortalGrant[];
   private externalUploadLinks: ExternalUploadLinkRecord[] = [];
@@ -1720,6 +1778,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.matters = seeded ? clone(sampleMatters) : [];
     this.matterParties = seeded ? clone(sampleMatterParties) : [];
     this.documents = seeded ? clone(sampleDocuments) : [];
+    this.legalClinicPrograms = seeded ? clone(sampleLegalClinicPrograms) : [];
+    this.legalClinicMatterProfiles = seeded ? clone(sampleLegalClinicMatterProfiles) : [];
     this.calendarEvents = seeded ? clone(sampleCalendarEvents) : [];
     this.portalGrants = seeded ? clone(samplePortalGrants) : [];
     this.timeEntries = seeded ? clone(sampleTimeEntries) : [];
@@ -2227,6 +2287,59 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         (document) => document.firmId === firmId && document.matterId === matterId,
       ),
     );
+  }
+
+  async listLegalClinicPrograms(
+    firmId: string,
+    options: { status?: LegalClinicProgram["status"] } = {},
+  ): Promise<LegalClinicProgram[]> {
+    return clone(
+      this.legalClinicPrograms
+        .filter(
+          (program) =>
+            program.firmId === firmId && (!options.status || program.status === options.status),
+        )
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    );
+  }
+
+  async createLegalClinicProgram(program: LegalClinicProgram): Promise<LegalClinicProgram> {
+    if (
+      this.legalClinicPrograms.some(
+        (candidate) =>
+          candidate.firmId === program.firmId &&
+          candidate.name.trim().toLowerCase() === program.name.trim().toLowerCase(),
+      )
+    ) {
+      throw new Error("Legal clinic program already exists");
+    }
+    this.legalClinicPrograms = [...this.legalClinicPrograms, clone(program)];
+    return clone(program);
+  }
+
+  async getLegalClinicMatterProfile(
+    firmId: string,
+    matterId: string,
+  ): Promise<LegalClinicMatterProfile | undefined> {
+    return clone(
+      this.legalClinicMatterProfiles.find(
+        (profile) => profile.firmId === firmId && profile.matterId === matterId,
+      ),
+    );
+  }
+
+  async upsertLegalClinicMatterProfile(
+    profile: LegalClinicMatterProfile,
+  ): Promise<LegalClinicMatterProfile> {
+    const existingIndex = this.legalClinicMatterProfiles.findIndex(
+      (candidate) => candidate.firmId === profile.firmId && candidate.matterId === profile.matterId,
+    );
+    if (existingIndex >= 0) {
+      this.legalClinicMatterProfiles[existingIndex] = clone(profile);
+    } else {
+      this.legalClinicMatterProfiles = [...this.legalClinicMatterProfiles, clone(profile)];
+    }
+    return clone(profile);
   }
 
   async listCalendarEvents(
@@ -4485,6 +4598,82 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .from(schema.documents)
       .where(and(eq(schema.documents.firmId, firmId), eq(schema.documents.matterId, matterId)));
     return rows.map(mapDocumentRow);
+  }
+
+  async listLegalClinicPrograms(
+    firmId: string,
+    options: { status?: LegalClinicProgram["status"] } = {},
+  ): Promise<LegalClinicProgram[]> {
+    const filters = [eq(schema.legalClinicPrograms.firmId, firmId)];
+    if (options.status) filters.push(eq(schema.legalClinicPrograms.status, options.status));
+    const rows = await this.db
+      .select()
+      .from(schema.legalClinicPrograms)
+      .where(and(...filters))
+      .orderBy(asc(schema.legalClinicPrograms.name));
+    return rows.map(mapLegalClinicProgramRow);
+  }
+
+  async createLegalClinicProgram(program: LegalClinicProgram): Promise<LegalClinicProgram> {
+    await this.db.insert(schema.legalClinicPrograms).values({
+      ...program,
+      createdAt: new Date(program.createdAt),
+      updatedAt: new Date(program.updatedAt),
+    });
+    return clone(program);
+  }
+
+  async getLegalClinicMatterProfile(
+    firmId: string,
+    matterId: string,
+  ): Promise<LegalClinicMatterProfile | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.legalClinicMatterProfiles)
+      .where(
+        and(
+          eq(schema.legalClinicMatterProfiles.firmId, firmId),
+          eq(schema.legalClinicMatterProfiles.matterId, matterId),
+        ),
+      );
+    return row ? mapLegalClinicMatterProfileRow(row) : undefined;
+  }
+
+  async upsertLegalClinicMatterProfile(
+    profile: LegalClinicMatterProfile,
+  ): Promise<LegalClinicMatterProfile> {
+    const [row] = await this.db
+      .insert(schema.legalClinicMatterProfiles)
+      .values({
+        ...profile,
+        referralDate: profile.referralDate ? new Date(profile.referralDate) : null,
+        nextReviewDate: profile.nextReviewDate ? new Date(profile.nextReviewDate) : null,
+        createdAt: new Date(profile.createdAt),
+        updatedAt: new Date(profile.updatedAt),
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.legalClinicMatterProfiles.firmId,
+          schema.legalClinicMatterProfiles.matterId,
+        ],
+        set: {
+          id: profile.id,
+          programId: profile.programId,
+          eligibilityStatus: profile.eligibilityStatus,
+          referralSource: profile.referralSource,
+          referralStatus: profile.referralStatus,
+          referralDate: profile.referralDate ? new Date(profile.referralDate) : null,
+          nextReviewDate: profile.nextReviewDate ? new Date(profile.nextReviewDate) : null,
+          clinicRelationshipRole: profile.clinicRelationshipRole,
+          notes: profile.notes,
+          createdAt: new Date(profile.createdAt),
+          updatedAt: new Date(profile.updatedAt),
+          updatedByUserId: profile.updatedByUserId,
+          metadata: profile.metadata,
+        },
+      })
+      .returning();
+    return mapLegalClinicMatterProfileRow(row!);
   }
 
   private async attachCalendarEventAttendees(
