@@ -11,6 +11,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./participant-roles": {
+      "types": "./dist/participant-roles.d.ts",
+      "default": "./dist/participant-roles.js"
+    },
     "./sample-data": {
       "types": "./dist/sample-data.d.ts",
       "default": "./dist/sample-data.js"
