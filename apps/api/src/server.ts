@@ -356,7 +356,11 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     repository: options.repository,
     draftAssistProvider: options.draftAssistProvider,
   });
-  registerJobsRoutes(server, { repository: options.repository });
+  registerJobsRoutes(server, {
+    repository: options.repository,
+    emailJobQueue: options.emailJobQueue,
+    ocrJobQueue: options.ocrJobQueue,
+  });
   registerEmailRoutes(server, {
     repository: options.repository,
     emailJobQueue: options.emailJobQueue,

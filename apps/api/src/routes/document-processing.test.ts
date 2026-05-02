@@ -57,6 +57,93 @@ afterEach(async () => {
 });
 
 describe("document processing routes", () => {
+  it("reports disabled providers, worker queue availability, and redacted job summaries", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-ocr-disabled",
+      firmId,
+      kind: "ocr",
+      key: "local-tesseract",
+      enabled: false,
+      encryptedConfig: "synthetic-disabled-config",
+      createdAt: "2026-05-02T09:00:00.000Z",
+      updatedAt: "2026-05-02T09:00:00.000Z",
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-ocr-dead",
+      firmId,
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "dead_letter",
+      targetResourceType: "document",
+      targetResourceId: "doc-001",
+      attemptsMade: 3,
+      maxAttempts: 3,
+      queuedAt: "2026-05-02T09:10:00.000Z",
+      failedAt: "2026-05-02T09:12:00.000Z",
+      errorMessage: "Synthetic OCR provider unavailable",
+      metadata: {
+        matterId: "matter-001",
+        documentId: "doc-001",
+        task: "ocr",
+        providerConfigured: false,
+        content: "Do not return document text",
+        storageKey: "matters/matter-001/doc-001.pdf",
+      },
+    });
+
+    const response = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/document-processing/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "disabled",
+      reason: "provider_disabled",
+      workerQueues: expect.arrayContaining([
+        { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
+      ]),
+      providerStatus: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "ocr",
+          status: "disabled",
+          reason: "provider_disabled",
+          providers: [
+            {
+              key: "local-tesseract",
+              enabled: false,
+              updatedAt: "2026-05-02T09:00:00.000Z",
+            },
+          ],
+        }),
+      ]),
+      summary: {
+        total: 1,
+        failed: 1,
+        terminal: 1,
+      },
+      jobs: [
+        expect.objectContaining({
+          id: "job-ocr-dead",
+          queueName: "ocr",
+          status: "dead_letter",
+          failed: true,
+          terminal: true,
+          retryable: false,
+          metadata: {
+            matterId: "matter-001",
+            documentId: "doc-001",
+            task: "ocr",
+            providerConfigured: false,
+          },
+        }),
+      ],
+    });
+    expect(response.json().jobs[0].metadata).not.toHaveProperty("content");
+    expect(response.json().jobs[0].metadata).not.toHaveProperty("storageKey");
+  });
+
   it("queues OCR jobs with durable redacted lifecycle metadata", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const { queue, jobs } = fakeOcrQueue();
