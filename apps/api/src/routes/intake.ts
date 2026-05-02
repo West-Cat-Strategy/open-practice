@@ -99,6 +99,38 @@ async function getQueuedEmailSummary(
   };
 }
 
+function buildPackageRuntimeSummary(input: {
+  snapshot: AnswerSnapshotRecord;
+  packageId: string;
+  documents: GeneratedDocumentRecord[];
+}) {
+  const packageSummary = input.snapshot.resolution.packageSummaries.find(
+    (candidate) => candidate.packageId === input.packageId,
+  );
+  return {
+    packageId: input.packageId,
+    packageTitle: packageSummary?.title,
+    templateId: input.snapshot.resolution.templateId,
+    templateVersion: input.snapshot.resolution.templateVersion,
+    answerSnapshotId: input.snapshot.id,
+    replayProof: {
+      capturedAt: input.snapshot.capturedAt,
+      matchedBranchRuleIds: input.snapshot.resolution.matchedBranchRuleIds,
+      visibleQuestionIds: input.snapshot.resolution.visibleQuestionIds,
+      eligiblePackageIds: input.snapshot.resolution.eligiblePackageIds,
+      selectedPackageIds: input.snapshot.resolution.selectedPackageIds,
+      requiredIncompleteItemIds: input.snapshot.resolution.requiredIncompleteItemIds ?? [],
+    },
+    generatedDocuments: input.documents.map((document) => ({
+      id: document.id,
+      title: document.title,
+      packageDocumentId: document.packageDocumentId,
+      documentId: document.documentId,
+      provider: document.provider,
+    })),
+  };
+}
+
 export function registerIntakeRoutes(
   server: FastifyInstance,
   { repository, automationProvider, emailJobQueue }: ApiRouteDependencies,
@@ -429,6 +461,11 @@ export function registerIntakeRoutes(
 
     return {
       packageId: body.packageId,
+      packageRuntime: buildPackageRuntimeSummary({
+        snapshot: latestSnapshot,
+        packageId: body.packageId,
+        documents,
+      }),
       documents,
       queuedEmail: await getQueuedEmailSummary(repository, request.auth.firmId),
     };

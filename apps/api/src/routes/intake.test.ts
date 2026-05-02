@@ -264,6 +264,38 @@ describe("intake routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       packageId: "repair_notice_package",
+      packageRuntime: {
+        packageId: "repair_notice_package",
+        packageTitle: "Repair notice package",
+        templateId: "intake-template-001",
+        templateVersion: 2,
+        answerSnapshotId: expect.any(String),
+        replayProof: expect.objectContaining({
+          capturedAt: "2026-04-25T12:10:00.000Z",
+          matchedBranchRuleIds: expect.arrayContaining(["repair-package", "urgent-review-package"]),
+          visibleQuestionIds: expect.arrayContaining(["issue_type", "urgent", "repair_details"]),
+          eligiblePackageIds: expect.arrayContaining([
+            "repair_notice_package",
+            "urgent_review_package",
+          ]),
+          selectedPackageIds: expect.arrayContaining([
+            "repair_notice_package",
+            "urgent_review_package",
+          ]),
+        }),
+        generatedDocuments: [
+          expect.objectContaining({
+            title: "Repair notice letter",
+            packageDocumentId: "repair_notice_letter",
+            provider: "embedded",
+          }),
+          expect.objectContaining({
+            title: "Client instruction summary",
+            packageDocumentId: "client_instruction_summary",
+            provider: "embedded",
+          }),
+        ],
+      },
       documents: [
         expect.objectContaining({
           firmId: "firm-west-legal",
@@ -297,6 +329,7 @@ describe("intake routes", () => {
     expect(packageAudit?.metadata).toMatchObject({
       intakeSessionId: "intake-session-001",
       templateId: "intake-template-001",
+      templateVersion: 2,
       packageId: "repair_notice_package",
       documentCount: 2,
       packageDocumentIds: ["repair_notice_letter", "client_instruction_summary"],

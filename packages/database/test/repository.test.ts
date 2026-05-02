@@ -1260,8 +1260,18 @@ describe("repository operations foundation", () => {
         "client-attestation",
       ],
       requiredIncompleteItemIds: ["evidence-upload", "client-attestation"],
+      matchedBranchRuleIds: ["repair-package"],
       eligiblePackageIds: ["repair_notice_package"],
       selectedPackageIds: ["repair_notice_package"],
+      packageSummaries: [
+        {
+          packageId: "repair_notice_package",
+          title: "Repair notice package",
+          default: true,
+          documentCount: 1,
+          documentIds: ["repair_notice_letter"],
+        },
+      ],
       packageDocuments: [
         {
           packageId: "repair_notice_package",

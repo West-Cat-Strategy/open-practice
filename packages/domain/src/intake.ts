@@ -167,14 +167,25 @@ export interface IntakePackageDocumentResolution {
   title: string;
 }
 
+export interface IntakeSelectedPackageSummary {
+  packageId: string;
+  title: string;
+  description?: string;
+  default?: boolean;
+  documentCount: number;
+  documentIds: string[];
+}
+
 export interface IntakeResolutionSnapshot {
   templateId: string;
   templateVersion: number;
   visibleQuestionIds: string[];
   visibleFormItemIds?: string[];
   requiredIncompleteItemIds?: string[];
+  matchedBranchRuleIds: string[];
   eligiblePackageIds: string[];
   selectedPackageIds: string[];
+  packageSummaries: IntakeSelectedPackageSummary[];
   packageDocuments: IntakePackageDocumentResolution[];
 }
 
@@ -297,9 +308,11 @@ export function resolveEmbeddedIntakeAnswers(input: {
   const eligiblePackageIds = new Set(
     definition.packages.filter((intakePackage) => intakePackage.default).map((item) => item.id),
   );
+  const matchedBranchRuleIds: string[] = [];
 
   for (const rule of definition.branchRules) {
     if (!branchRuleMatches(rule, input.answers[rule.questionId])) continue;
+    matchedBranchRuleIds.push(rule.id);
     for (const questionId of rule.showQuestionIds ?? []) visibleQuestionIds.add(questionId);
     for (const packageId of rule.eligiblePackageIds ?? []) eligiblePackageIds.add(packageId);
   }
@@ -317,6 +330,16 @@ export function resolveEmbeddedIntakeAnswers(input: {
         title: document.title,
       })),
     );
+  const packageSummaries = definition.packages
+    .filter((intakePackage) => selectedPackageIds.includes(intakePackage.id))
+    .map((intakePackage) => ({
+      packageId: intakePackage.id,
+      title: intakePackage.title,
+      description: intakePackage.description,
+      default: intakePackage.default,
+      documentCount: intakePackage.documents.length,
+      documentIds: intakePackage.documents.map((document) => document.id),
+    }));
 
   const visibleFormItems =
     definition.schemaVersion === 2
@@ -351,8 +374,10 @@ export function resolveEmbeddedIntakeAnswers(input: {
     visibleQuestionIds: [...visibleQuestionIds],
     visibleFormItemIds,
     requiredIncompleteItemIds,
+    matchedBranchRuleIds,
     eligiblePackageIds: [...eligiblePackageIds],
     selectedPackageIds,
+    packageSummaries,
     packageDocuments,
   };
 }
