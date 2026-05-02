@@ -2409,12 +2409,20 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       })),
     );
     const contacts = matters.flatMap((matter) => matter.parties.map((party) => party.contact));
+    const intakeVariableProposals = this.intakeVariableProposals.filter(
+      (proposal) =>
+        proposal.firmId === user.firmId &&
+        proposal.status === "approved" &&
+        Boolean(proposal.appliedAt) &&
+        matters.some((matter) => matter.id === proposal.matterId),
+    );
     return buildContactDossiers({
       firmId: user.firmId,
       contacts,
       matters,
       matterParties,
       portalGrants: this.portalGrants,
+      intakeVariableProposals,
     });
   }
 
@@ -4880,12 +4888,21 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     );
     const contacts = matters.flatMap((matter) => matter.parties.map((party) => party.contact));
     const portalGrants = await this.listPortalGrants(user.firmId);
+    const intakeVariableProposals = (
+      await this.listIntakeVariableProposals(user.firmId, {
+        status: "approved",
+      })
+    ).filter(
+      (proposal) =>
+        Boolean(proposal.appliedAt) && matters.some((matter) => matter.id === proposal.matterId),
+    );
     return buildContactDossiers({
       firmId: user.firmId,
       contacts,
       matters,
       matterParties,
       portalGrants,
+      intakeVariableProposals,
     });
   }
 

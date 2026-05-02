@@ -433,6 +433,27 @@ describe("dashboard client behavior", () => {
             matterId: "matter-001",
           },
         ],
+        qualityReview: {
+          summary: {
+            duplicateCandidateCount: 0,
+            sensitivePartyCueCount: 2,
+            revalidationPromptCount: 0,
+          },
+          signals: [
+            {
+              kind: "protected_party_cue" as const,
+              severity: "review" as const,
+              reason: "Confidential party link requires scoped handling",
+              matterId: "matter-001",
+            },
+            {
+              kind: "protected_party_cue" as const,
+              severity: "review" as const,
+              reason: "Active portal access protects contact-matter communications",
+              matterId: "matter-001",
+            },
+          ],
+        },
       },
       {
         contact: {
@@ -465,13 +486,51 @@ describe("dashboard client behavior", () => {
             matterId: "matter-001",
           },
         ],
+        qualityReview: {
+          summary: {
+            duplicateCandidateCount: 1,
+            sensitivePartyCueCount: 1,
+            revalidationPromptCount: 1,
+          },
+          signals: [
+            {
+              kind: "duplicate_candidate" as const,
+              severity: "review" as const,
+              reason: "Possible duplicate contact identifier",
+              relatedContactIds: ["contact-river-duplicate"],
+              matchedOn: "identifier" as const,
+              matchedValue: "email:legal@rivercity.example",
+            },
+            {
+              kind: "protected_party_cue" as const,
+              severity: "blocker" as const,
+              reason: "Adverse party link requires sensitive-party caution",
+              matterId: "matter-001",
+            },
+            {
+              kind: "conflict_revalidation" as const,
+              severity: "review" as const,
+              reason:
+                "Approved contact name change should prompt manual conflict-check revalidation",
+              matterId: "matter-001",
+              sourceRecordId: "proposal-river-name",
+              changedAt: "2026-05-01T11:00:00.000Z",
+            },
+          ],
+        },
       },
     ];
 
     expect(filterContactDossiers(dossiers, "nguyen").map((dossier) => dossier.contact.id)).toEqual([
       "contact-ada",
     ]);
+    expect(
+      filterContactDossiers(dossiers, "proposal-river-name").map((dossier) => dossier.contact.id),
+    ).toEqual(["contact-river"]);
     expect(summarizeContactDossier(dossiers[0]!)).toBe("confidential / portal active");
+    expect(summarizeContactDossier(dossiers[1]!)).toBe(
+      "duplicate review / conflict recheck / adverse",
+    );
     expect(contactDossierRiskClass(dossiers[1]!)).toBe("risk");
   });
 

@@ -1,4 +1,6 @@
 import type { Contact, Matter, MatterParty, PortalGrant } from "./models.js";
+import type { IntakeVariableProposal } from "./intake.js";
+import { normalizeConflictToken } from "./conflicts.js";
 
 export type ContactDossierContactSummary = Omit<Contact, "notes">;
 
@@ -21,6 +23,32 @@ export interface ContactDossierConflictCue {
   matterId?: string;
 }
 
+export type ContactDossierQualitySignalKind =
+  | "duplicate_candidate"
+  | "protected_party_cue"
+  | "conflict_revalidation";
+
+export interface ContactDossierQualitySignal {
+  kind: ContactDossierQualitySignalKind;
+  severity: "blocker" | "review" | "info";
+  reason: string;
+  matterId?: string;
+  relatedContactIds?: string[];
+  matchedOn?: "name" | "alias" | "identifier";
+  matchedValue?: string;
+  sourceRecordId?: string;
+  changedAt?: string;
+}
+
+export interface ContactDossierQualityReview {
+  summary: {
+    duplicateCandidateCount: number;
+    sensitivePartyCueCount: number;
+    revalidationPromptCount: number;
+  };
+  signals: ContactDossierQualitySignal[];
+}
+
 export interface ContactDossier {
   contact: ContactDossierContactSummary;
   matters: ContactDossierMatterLink[];
@@ -29,6 +57,7 @@ export interface ContactDossier {
     permissionLabels: PortalGrant["permissions"];
   };
   conflictCues: ContactDossierConflictCue[];
+  qualityReview: ContactDossierQualityReview;
 }
 
 export interface BuildContactDossiersInput {
@@ -37,6 +66,7 @@ export interface BuildContactDossiersInput {
   matters: Matter[];
   matterParties: MatterParty[];
   portalGrants: PortalGrant[];
+  intakeVariableProposals?: IntakeVariableProposal[];
   now?: string;
 }
 
@@ -86,6 +116,172 @@ function summarizeContact(contact: Contact): ContactDossierContactSummary {
   };
 }
 
+function normalizedContactNames(
+  contact: Contact,
+): Array<{ matchedOn: "name" | "alias"; matchedValue: string; normalizedValue: string }> {
+  return [
+    { matchedOn: "name" as const, matchedValue: contact.displayName },
+    ...contact.aliases.map((alias) => ({ matchedOn: "alias" as const, matchedValue: alias })),
+  ]
+    .map((entry) => ({ ...entry, normalizedValue: normalizeConflictToken(entry.matchedValue) }))
+    .filter((entry) => entry.normalizedValue.length > 0);
+}
+
+function normalizedContactIdentifiers(
+  contact: Contact,
+): Array<{ matchedValue: string; normalizedValue: string }> {
+  return contact.identifiers
+    .map((identifier) => ({
+      matchedValue: `${identifier.type}:${identifier.value}`,
+      normalizedValue: `${identifier.type}:${normalizeConflictToken(identifier.value)}`,
+    }))
+    .filter((entry) => entry.normalizedValue.length > entry.normalizedValue.indexOf(":") + 1);
+}
+
+function buildDuplicateSignals(
+  contact: Contact,
+  contacts: Contact[],
+): ContactDossierQualitySignal[] {
+  const signals: ContactDossierQualitySignal[] = [];
+  const seen = new Set<string>();
+  const names = normalizedContactNames(contact);
+  const identifiers = normalizedContactIdentifiers(contact);
+
+  for (const candidate of contacts) {
+    if (candidate.id === contact.id) continue;
+
+    const candidateNames = normalizedContactNames(candidate);
+    const nameMatch = names.find((entry) =>
+      candidateNames.some(
+        (candidateEntry) => candidateEntry.normalizedValue === entry.normalizedValue,
+      ),
+    );
+    if (nameMatch) {
+      const key = `${candidate.id}:name:${nameMatch.normalizedValue}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        signals.push({
+          kind: "duplicate_candidate",
+          severity: "review",
+          reason: "Possible duplicate contact name or alias",
+          relatedContactIds: [candidate.id],
+          matchedOn: nameMatch.matchedOn,
+          matchedValue: nameMatch.matchedValue,
+        });
+      }
+    }
+
+    const candidateIdentifiers = normalizedContactIdentifiers(candidate);
+    const identifierMatch = identifiers.find((entry) =>
+      candidateIdentifiers.some(
+        (candidateEntry) => candidateEntry.normalizedValue === entry.normalizedValue,
+      ),
+    );
+    if (identifierMatch) {
+      const key = `${candidate.id}:identifier:${identifierMatch.normalizedValue}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        signals.push({
+          kind: "duplicate_candidate",
+          severity: "review",
+          reason: "Possible duplicate contact identifier",
+          relatedContactIds: [candidate.id],
+          matchedOn: "identifier",
+          matchedValue: identifierMatch.matchedValue,
+        });
+      }
+    }
+  }
+
+  return signals;
+}
+
+function buildSensitivePartySignals(
+  links: ContactDossierMatterLink[],
+): ContactDossierQualitySignal[] {
+  return links.flatMap((link) => {
+    const signals: ContactDossierQualitySignal[] = [];
+    if (link.adverse) {
+      signals.push({
+        kind: "protected_party_cue",
+        severity: "blocker",
+        reason: "Adverse party link requires sensitive-party caution",
+        matterId: link.matterId,
+      });
+    }
+    if (link.confidential) {
+      signals.push({
+        kind: "protected_party_cue",
+        severity: "review",
+        reason: "Confidential party link requires scoped handling",
+        matterId: link.matterId,
+      });
+    }
+    if (link.portalActive) {
+      signals.push({
+        kind: "protected_party_cue",
+        severity: "review",
+        reason: "Active portal access protects contact-matter communications",
+        matterId: link.matterId,
+      });
+    }
+    return signals;
+  });
+}
+
+function buildRevalidationSignals(
+  contact: Contact,
+  proposals: IntakeVariableProposal[],
+  visibleMatterIds: Set<string>,
+): ContactDossierQualitySignal[] {
+  return proposals
+    .filter(
+      (proposal) =>
+        proposal.firmId === contact.firmId &&
+        proposal.targetScope === "client" &&
+        proposal.targetField === "displayName" &&
+        proposal.targetRecordId === contact.id &&
+        proposal.status === "approved" &&
+        Boolean(proposal.appliedAt) &&
+        visibleMatterIds.has(proposal.matterId),
+    )
+    .map((proposal) => ({
+      kind: "conflict_revalidation" as const,
+      severity: "review" as const,
+      reason: "Approved contact name change should prompt manual conflict-check revalidation",
+      matterId: proposal.matterId,
+      sourceRecordId: proposal.id,
+      changedAt: proposal.appliedAt,
+    }));
+}
+
+function buildQualityReview(input: {
+  contact: Contact;
+  contacts: Contact[];
+  links: ContactDossierMatterLink[];
+  intakeVariableProposals: IntakeVariableProposal[];
+  visibleMatterIds: Set<string>;
+}): ContactDossierQualityReview {
+  const duplicateSignals = buildDuplicateSignals(input.contact, input.contacts);
+  const sensitivePartySignals = buildSensitivePartySignals(input.links);
+  const revalidationSignals = buildRevalidationSignals(
+    input.contact,
+    input.intakeVariableProposals,
+    input.visibleMatterIds,
+  );
+  const duplicateContactIds = new Set(
+    duplicateSignals.flatMap((signal) => signal.relatedContactIds ?? []),
+  );
+  return {
+    summary: {
+      duplicateCandidateCount: duplicateContactIds.size,
+      sensitivePartyCueCount: sensitivePartySignals.length,
+      revalidationPromptCount: revalidationSignals.length,
+    },
+    signals: [...duplicateSignals, ...sensitivePartySignals, ...revalidationSignals],
+  };
+}
+
 export function buildContactDossiers(input: BuildContactDossiersInput): ContactDossier[] {
   const now = input.now ?? new Date().toISOString();
   const visibleMatterById = new Map(
@@ -98,6 +294,8 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
       .filter((contact) => contact.firmId === input.firmId)
       .map((contact) => [contact.id, contact] as const),
   );
+  const visibleMatterIds = new Set(visibleMatterById.keys());
+  const visibleContacts = Array.from(contactById.values());
   const activePortalGrants = input.portalGrants.filter(
     (grant) =>
       grant.firmId === input.firmId &&
@@ -147,6 +345,13 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
           permissionLabels: uniquePermissions(contactGrants),
         },
         conflictCues: buildConflictCues(sortedMatters),
+        qualityReview: buildQualityReview({
+          contact,
+          contacts: visibleContacts,
+          links: sortedMatters,
+          intakeVariableProposals: input.intakeVariableProposals ?? [],
+          visibleMatterIds,
+        }),
       };
     })
     .sort((left, right) => left.contact.displayName.localeCompare(right.contact.displayName));

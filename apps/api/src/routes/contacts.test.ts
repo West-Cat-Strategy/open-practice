@@ -54,16 +54,62 @@ afterEach(async () => {
 
 describe("contact routes", () => {
   it("returns read-only contact dossiers for accessible matters only", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createIntakeVariableProposals([
+      {
+        id: "proposal-contact-name",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        intakeSessionId: "intake-001",
+        answerSnapshotId: "snapshot-001",
+        sourceQuestionId: "client_display_name",
+        targetScope: "client",
+        targetField: "displayName",
+        targetRecordId: "contact-ada",
+        proposedValue: "Ada M. Nguyen",
+        status: "approved",
+        createdAt: "2026-05-01T10:00:00.000Z",
+        reviewedByUserId: "user-licensee",
+        reviewedAt: "2026-05-01T11:00:00.000Z",
+        appliedAt: "2026-05-01T11:00:00.000Z",
+      },
+    ]);
     const response = await testServer({
+      repository,
       user: user("licensee", ["matter-001"]),
     }).inject({ method: "GET", url: "/api/contacts/dossiers" });
 
     expect(response.statusCode).toBe(200);
-    const payload = response.json<Array<{ contact: { id: string }; matters: unknown[] }>>();
+    const payload = response.json<
+      Array<{
+        contact: { id: string };
+        matters: unknown[];
+        qualityReview: { summary: { revalidationPromptCount: number }; signals: unknown[] };
+      }>
+    >();
     expect(payload.map((dossier) => dossier.contact.id)).toEqual(["contact-ada", "contact-river"]);
     expect(payload).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ contact: { id: "contact-northstar" } })]),
     );
+    expect(payload.find((dossier) => dossier.contact.id === "contact-ada")).toMatchObject({
+      qualityReview: {
+        summary: { revalidationPromptCount: 1 },
+        signals: [
+          expect.objectContaining({
+            kind: "protected_party_cue",
+            matterId: "matter-001",
+          }),
+          expect.objectContaining({
+            kind: "protected_party_cue",
+            matterId: "matter-001",
+          }),
+          expect.objectContaining({
+            kind: "conflict_revalidation",
+            sourceRecordId: "proposal-contact-name",
+          }),
+        ],
+      },
+    });
   });
 
   it("rejects users without contact read access", async () => {
