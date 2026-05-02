@@ -368,6 +368,12 @@ derived from matter-scoped data already visible to the authenticated user, and t
 redacted IDs/counts/status labels rather than raw tokens, message bodies, contact names, private
 notes, or privileged document content.
 
+`@open-practice/domain` exports the audit event taxonomy used to classify known action names,
+expected resource types, matter-scope hints, actor-source hints, and safe metadata keys for operator
+summaries. Unknown actions remain valid hash-chain records, but any new audit-producing route or
+worker transition should add taxonomy coverage and focused tests before relying on the action in
+review queues, summaries, or future enforcement.
+
 Worker jobs use `queued`, `active`, `completed`, `failed`, `dead_letter`, and `skipped`.
 PostgreSQL stores the durable job lifecycle record, queue name, BullMQ job ID, target resource,
 retry counts, error summary, timestamps, and routing metadata. Redis/BullMQ delivers work and retry
