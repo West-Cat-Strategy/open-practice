@@ -1606,8 +1606,10 @@ export const answerSnapshots = pgTable("answer_snapshots", {
     templateId: "",
     templateVersion: 1,
     visibleQuestionIds: [],
+    matchedBranchRuleIds: [],
     eligiblePackageIds: [],
     selectedPackageIds: [],
+    packageSummaries: [],
     packageDocuments: [],
   }),
 });

@@ -65,6 +65,7 @@ describe("embedded intake templates", () => {
         "client-attestation",
       ]),
       requiredIncompleteItemIds: [],
+      matchedBranchRuleIds: expect.arrayContaining(["repair-package", "urgent-review-package"]),
       eligiblePackageIds: expect.arrayContaining([
         "repair_notice_package",
         "urgent_review_package",
@@ -85,6 +86,20 @@ describe("embedded intake templates", () => {
           title: "Urgent review memo",
         },
       ]),
+      packageSummaries: expect.arrayContaining([
+        expect.objectContaining({
+          packageId: "repair_notice_package",
+          title: "Repair notice package",
+          documentCount: 2,
+          documentIds: ["repair_notice_letter", "client_instruction_summary"],
+        }),
+        expect.objectContaining({
+          packageId: "urgent_review_package",
+          title: "Urgent review package",
+          documentCount: 1,
+          documentIds: ["urgent_review_memo"],
+        }),
+      ]),
     });
   });
 
@@ -102,6 +117,7 @@ describe("embedded intake templates", () => {
       "client_display_name",
       "matter_title",
     ]);
+    expect(resolution.matchedBranchRuleIds).toEqual([]);
     expect(resolution.visibleQuestionIds).not.toContain("repair_details");
   });
 
