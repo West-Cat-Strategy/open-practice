@@ -1120,6 +1120,65 @@ describe("repository operations foundation", () => {
     );
   });
 
+  it("tracks uploaded document review status without deleting original records", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const checksumSha256 = "e".repeat(64);
+
+    const intent = await repository.createDocumentUploadIntent({
+      id: "document-upload-review-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      title: "Synthetic upload review.pdf",
+      storageKey: "external-uploads/external-upload-review/document-upload-review-001.pdf",
+      checksumSha256,
+      classification: "general",
+      legalHold: false,
+      reviewStatus: "pending_review",
+      externalUploadLinkId: "external-upload-review",
+    });
+    expect(intent).toMatchObject({
+      reviewStatus: "pending_review",
+      reviewMetadata: {},
+    });
+
+    await expect(
+      repository.completeDocumentUpload({
+        firmId: "firm-west-legal",
+        documentId: intent.id,
+        checksumSha256,
+      }),
+    ).resolves.toMatchObject({
+      uploadStatus: "verified",
+      checksumStatus: "verified",
+      reviewStatus: "pending_review",
+    });
+
+    await expect(
+      repository.reviewUploadedDocument({
+        firmId: "firm-west-legal",
+        documentId: intent.id,
+        status: "discarded",
+        decision: "discard",
+        reason: "wrong_matter",
+        metadata: { decision: "discard", status: "discarded" },
+        reviewedByUserId: "user-admin",
+        reviewedAt: now,
+      }),
+    ).resolves.toMatchObject({
+      id: intent.id,
+      storageKey: "external-uploads/external-upload-review/document-upload-review-001.pdf",
+      reviewStatus: "discarded",
+      reviewDecision: "discard",
+      reviewReason: "wrong_matter",
+      reviewedByUserId: "user-admin",
+      reviewedAt: now,
+    });
+    await expect(repository.getDocument("firm-west-legal", intent.id)).resolves.toMatchObject({
+      id: intent.id,
+      reviewStatus: "discarded",
+    });
+  });
+
   it("preserves embedded intake template definitions and answer resolution snapshots", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const [template] = await repository.listIntakeTemplates("firm-west-legal");

@@ -97,6 +97,7 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
         supersededAt: document.supersededAt ? new Date(document.supersededAt) : null,
         uploadedAt: document.uploadedAt ? new Date(document.uploadedAt) : null,
         verifiedAt: document.verifiedAt ? new Date(document.verifiedAt) : null,
+        reviewedAt: document.reviewedAt ? new Date(document.reviewedAt) : null,
       })),
     )
     .onConflictDoNothing();

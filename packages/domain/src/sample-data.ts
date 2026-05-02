@@ -229,6 +229,8 @@ export const sampleDocuments: DocumentRecord[] = [
     uploadStatus: "verified",
     checksumStatus: "verified",
     scanStatus: "passed",
+    reviewStatus: "not_required",
+    reviewMetadata: { source: "seed" },
     uploadedAt: "2026-04-01T20:15:00.000Z",
     verifiedAt: "2026-04-01T20:16:00.000Z",
   },

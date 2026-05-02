@@ -127,6 +127,13 @@
       "when": 1777692714256,
       "tag": "0017_third_komodo",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1777718673838,
+      "tag": "0018_polite_thunderbolt",
+      "breakpoints": true
     }
   ]
 }

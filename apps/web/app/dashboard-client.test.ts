@@ -32,12 +32,16 @@ import {
   loadDraftingDashboardData,
 } from "./drafting-dashboard";
 import {
+  buildExternalUploadReviewPayload,
+  buildExternalUploadReviewPath,
   buildExternalUploadCreatePayload,
   buildExternalUploadListPath,
   buildExternalUploadRevokePath,
   canCreateExternalUpload,
+  describeExternalUploadReviewState,
   getExternalUploadLinkState,
   loadExternalUploadsDashboardData,
+  upsertExternalUploadDocument,
   upsertExternalUploadLink,
 } from "./external-uploads-dashboard";
 import {
@@ -87,6 +91,7 @@ import {
 } from "./intake-forms/runner-utils";
 import type {
   ExternalUploadLinkRecord,
+  ExternalUploadReviewItem,
   IntakeFormLinkSummary,
   MatterSummary,
   ShareLinkRecord,
@@ -200,6 +205,28 @@ function externalUploadLink(
 ): ExternalUploadLinkRecord {
   return {
     ...baseExternalUploadLink(),
+    ...overrides,
+  };
+}
+
+function externalUploadDocument(
+  overrides: Partial<ExternalUploadReviewItem> = {},
+): ExternalUploadReviewItem {
+  return {
+    id: "external-upload-document-001",
+    matterId: "matter-001",
+    externalUploadLinkId: "external-upload-link-001",
+    title: "Synthetic upload.pdf",
+    version: 1,
+    classification: "general",
+    legalHold: false,
+    uploadStatus: "verified",
+    checksumStatus: "verified",
+    scanStatus: "queued",
+    reviewStatus: "pending_review",
+    reviewMetadata: {},
+    uploadedAt: "2026-04-29T12:05:00.000Z",
+    verifiedAt: "2026-04-29T12:06:00.000Z",
     ...overrides,
   };
 }
@@ -588,12 +615,20 @@ describe("dashboard client behavior", () => {
     const expiresAtLocal = "2026-05-01T09:30";
     const upload = externalUploadLink();
     const updatedUpload = externalUploadLink({ usedUploads: 2 });
+    const document = externalUploadDocument();
+    const acceptedDocument = externalUploadDocument({
+      reviewStatus: "accepted",
+      reviewDecision: "accept",
+    });
 
     expect(buildExternalUploadListPath("matter 001")).toBe(
       "/api/external-uploads?matterId=matter%20001",
     );
     expect(buildExternalUploadRevokePath("external/upload/001")).toBe(
       "/api/external-uploads/external%2Fupload%2F001/revoke",
+    );
+    expect(buildExternalUploadReviewPath("external/document/001")).toBe(
+      "/api/external-uploads/documents/external%2Fdocument%2F001/review",
     );
     expect(
       buildExternalUploadCreatePayload({
@@ -619,6 +654,24 @@ describe("dashboard client behavior", () => {
     expect(upsertExternalUploadLink({ "matter-001": [upload] }, updatedUpload)).toEqual({
       "matter-001": [updatedUpload],
     });
+    expect(upsertExternalUploadDocument({}, document)).toEqual({ "matter-001": [document] });
+    expect(upsertExternalUploadDocument({ "matter-001": [document] }, acceptedDocument)).toEqual({
+      "matter-001": [acceptedDocument],
+    });
+    expect(buildExternalUploadReviewPayload({ decision: "accept" })).toEqual({
+      decision: "accept",
+    });
+    expect(
+      buildExternalUploadReviewPayload({
+        decision: "discard",
+        duplicateOfDocumentId: "doc-001",
+        note: "  Synthetic note  ",
+      }),
+    ).toEqual({
+      decision: "discard",
+      duplicateOfDocumentId: "doc-001",
+      note: "Synthetic note",
+    });
     expect(getExternalUploadLinkState(upload, new Date("2026-04-30T12:00:00.000Z"))).toBe("active");
     expect(getExternalUploadLinkState(updatedUpload, new Date("2026-04-30T12:00:00.000Z"))).toBe(
       "used",
@@ -629,23 +682,40 @@ describe("dashboard client behavior", () => {
         new Date("2026-04-30T12:00:00.000Z"),
       ),
     ).toBe("revoked");
+    expect(describeExternalUploadReviewState(document)).toEqual({
+      label: "Pending review",
+      tone: "neutral",
+    });
+    expect(
+      describeExternalUploadReviewState(
+        externalUploadDocument({ reviewStatus: "retry_requested" }),
+      ),
+    ).toEqual({ label: "Retry requested", tone: "risk" });
   });
 
   it("loads external upload status and matter-scoped links for first render", async () => {
     const upload = externalUploadLink({ matterId: "matter-002" });
+    const document = externalUploadDocument({ matterId: "matter-002" });
     const data = await loadExternalUploadsDashboardData({
       matters: [matter({ id: "matter-001" }), matter({ id: "matter-002" })],
       getStatus: async () => ({
         status: "available",
         provider: "s3",
       }),
-      listUploadsForMatter: async (matterId) => (matterId === "matter-002" ? [upload] : []),
+      listUploadsForMatter: async (matterId) =>
+        matterId === "matter-002"
+          ? { uploads: [upload], reviewItems: [document] }
+          : { uploads: [] },
     });
 
     expect(data.status).toEqual({ status: "available", provider: "s3" });
     expect(data.uploadsByMatterId).toEqual({
       "matter-001": [],
       "matter-002": [upload],
+    });
+    expect(data.reviewItemsByMatterId).toEqual({
+      "matter-001": [],
+      "matter-002": [document],
     });
   });
 

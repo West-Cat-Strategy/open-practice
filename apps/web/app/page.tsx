@@ -289,11 +289,11 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     listUploadsForMatter: async (matterId) => {
       const response = await apiGetOptional<ExternalUploadsListResponse>(
         buildExternalUploadListPath(matterId),
-        { uploads: [] },
+        { uploads: [], reviewItems: [] },
         headers,
-        { uploads: [] },
+        { uploads: [], reviewItems: [] },
       );
-      return response.uploads;
+      return response;
     },
   });
   const intakeForms: IntakeFormsDashboardResponse = await loadIntakeFormsDashboardData({

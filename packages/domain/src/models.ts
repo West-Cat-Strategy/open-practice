@@ -27,6 +27,29 @@ export type DocumentChecksumStatus = "pending" | "verified" | "mismatch" | "dupl
 
 export type DocumentScanStatus = "pending" | "queued" | "passed" | "failed" | "not_required";
 
+export type DocumentUploadReviewStatus =
+  | "not_required"
+  | "pending_review"
+  | "needs_metadata"
+  | "accepted"
+  | "retry_requested"
+  | "discarded";
+
+export type DocumentUploadReviewDecision =
+  | "accept"
+  | "request_metadata"
+  | "request_retry"
+  | "discard";
+
+export type DocumentUploadReviewReason =
+  | "duplicate"
+  | "missing_metadata"
+  | "checksum_mismatch"
+  | "scan_failed"
+  | "wrong_matter"
+  | "unreadable"
+  | "other";
+
 export type PartyRole =
   | "client"
   | "prospective_client"
@@ -139,6 +162,13 @@ export interface DocumentRecord {
   uploadStatus: DocumentUploadStatus;
   checksumStatus: DocumentChecksumStatus;
   scanStatus: DocumentScanStatus;
+  reviewStatus: DocumentUploadReviewStatus;
+  reviewDecision?: DocumentUploadReviewDecision;
+  reviewReason?: DocumentUploadReviewReason;
+  reviewMetadata: Record<string, unknown>;
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  externalUploadLinkId?: string;
   duplicateOfDocumentId?: string;
   supersedesDocumentId?: string;
   supersededAt?: string;

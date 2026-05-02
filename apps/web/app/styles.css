@@ -1116,6 +1116,16 @@ h3 {
   align-items: flex-start;
 }
 
+.upload-review-row {
+  align-items: flex-start;
+}
+
+.upload-review-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 520px;
+}
+
 .calendar-radar-card span {
   min-height: 34px;
 }

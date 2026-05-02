@@ -136,6 +136,33 @@ export interface ExternalUploadLinkRecord {
   revokedAt?: string;
 }
 
+export interface ExternalUploadReviewItem {
+  id: string;
+  matterId: string;
+  externalUploadLinkId?: string;
+  title: string;
+  version: number;
+  classification: string;
+  legalHold: boolean;
+  uploadStatus: string;
+  checksumStatus: string;
+  scanStatus: string;
+  reviewStatus: string;
+  reviewDecision?: string;
+  reviewReason?: string;
+  reviewMetadata: Record<string, unknown>;
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  duplicateOfDocumentId?: string;
+  uploadedAt?: string;
+  verifiedAt?: string;
+  accessLogProof?: {
+    total: number;
+    latestAt?: string;
+    outcomes: string[];
+  };
+}
+
 export interface ExternalUploadsStatusResponse {
   status: string;
   provider?: string;
@@ -144,6 +171,7 @@ export interface ExternalUploadsStatusResponse {
 
 export interface ExternalUploadsListResponse {
   uploads: ExternalUploadLinkRecord[];
+  reviewItems?: ExternalUploadReviewItem[];
 }
 
 export interface ExternalUploadCreateResponse {
@@ -159,6 +187,7 @@ export interface ExternalUploadRevokeResponse {
 export interface ExternalUploadsDashboardResponse {
   status: ExternalUploadsStatusResponse;
   uploadsByMatterId: Record<string, ExternalUploadLinkRecord[]>;
+  reviewItemsByMatterId: Record<string, ExternalUploadReviewItem[]>;
 }
 
 export interface CalendarCredentialSummary {

@@ -55,12 +55,13 @@ async function createDirectToken(input: {
   maxUploads?: number;
   usedUploads?: number;
   revokedAt?: string;
+  matterId?: string;
 }): Promise<string> {
   const token = `${input.id}-opaque-token`;
   await input.repository.createExternalUploadLink({
     id: input.id,
     firmId: "firm-west-legal",
-    matterId: "matter-001",
+    matterId: input.matterId ?? "matter-001",
     tokenHash: hashToken(token, jwtSecret),
     requestedByUserId: "user-admin",
     expiresAt: input.expiresAt,
@@ -324,6 +325,7 @@ describe("external upload routes", () => {
         title: "external evidence.pdf",
         uploadStatus: "intent_created",
         checksumStatus: "pending",
+        reviewStatus: "pending_review",
       },
     });
     expect(intent.json()).not.toHaveProperty("storageKey");
@@ -339,6 +341,26 @@ describe("external upload routes", () => {
     );
     expect(externalDocument?.version).toBe(1);
     expect(externalDocument?.supersedesDocumentId).toBeUndefined();
+    expect(externalDocument?.reviewStatus).toBe("pending_review");
+
+    const listedWithDocument = await server.inject({
+      method: "GET",
+      url: "/api/external-uploads?matterId=matter-001",
+    });
+    expect(listedWithDocument.statusCode).toBe(200);
+    expect(listedWithDocument.json()).toMatchObject({
+      reviewItems: [
+        expect.objectContaining({
+          id: intent.json().document.id,
+          externalUploadLinkId: created.json().upload.id,
+          reviewStatus: "pending_review",
+          accessLogProof: expect.objectContaining({
+            total: expect.any(Number),
+            outcomes: expect.arrayContaining(["intent_created"]),
+          }),
+        }),
+      ],
+    });
 
     const complete = await server.inject({
       method: "POST",
@@ -352,6 +374,30 @@ describe("external upload routes", () => {
         uploadStatus: "verified",
         checksumStatus: "verified",
         scanStatus: "queued",
+        reviewStatus: "pending_review",
+      },
+    });
+
+    const reviewed = await server.inject({
+      method: "PATCH",
+      url: `/api/external-uploads/documents/${intent.json().document.id}/review`,
+      payload: {
+        decision: "accept",
+        note: "Reviewed\twith synthetic metadata\nonly",
+      },
+      headers: { "user-agent": "external-upload-review-test" },
+    });
+    expect(reviewed.statusCode).toBe(200);
+    expect(reviewed.json()).toMatchObject({
+      reviewItem: {
+        id: intent.json().document.id,
+        reviewStatus: "accepted",
+        reviewDecision: "accept",
+        reviewMetadata: {
+          decision: "accept",
+          status: "accepted",
+          note: "Reviewed with synthetic metadata only",
+        },
       },
     });
 
@@ -369,8 +415,168 @@ describe("external upload routes", () => {
           action: "upload",
           metadata: expect.objectContaining({ outcome: "verified" }),
         }),
+        expect.objectContaining({
+          action: "upload",
+          actorId: "user-admin",
+          userAgent: "external-upload-review-test",
+          metadata: expect.objectContaining({
+            outcome: "document_reviewed",
+            decision: "accept",
+            status: "accepted",
+          }),
+        }),
       ]),
     );
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "external_upload.document_reviewed",
+          resourceType: "document",
+          resourceId: intent.json().document.id,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            externalUploadLinkId: created.json().upload.id,
+            decision: "accept",
+            status: "accepted",
+            noteLength: 37,
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+  });
+
+  it("flags duplicate uploads for review while preserving the original duplicate pointer", async () => {
+    const { repository, server } = testServer({ s3: s3Config() });
+    const originalCreated = await server.inject({
+      method: "POST",
+      url: "/api/external-uploads",
+      payload: {
+        matterId: "matter-001",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        maxUploads: 1,
+      },
+    });
+    const originalIntent = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${originalCreated.json().token}/intents`,
+      payload: {
+        filename: "original.pdf",
+        checksumSha256: checksum,
+      },
+    });
+    await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${originalCreated.json().token}/documents/${originalIntent.json().document.id}/complete`,
+      payload: { checksumSha256: checksum },
+    });
+
+    const duplicateCreated = await server.inject({
+      method: "POST",
+      url: "/api/external-uploads",
+      payload: {
+        matterId: "matter-001",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        maxUploads: 1,
+      },
+    });
+    const duplicateIntent = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${duplicateCreated.json().token}/intents`,
+      payload: {
+        filename: "duplicate.pdf",
+        checksumSha256: checksum,
+      },
+    });
+    const duplicateComplete = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${duplicateCreated.json().token}/documents/${duplicateIntent.json().document.id}/complete`,
+      payload: { checksumSha256: checksum },
+    });
+
+    expect(duplicateComplete.statusCode).toBe(200);
+    expect(duplicateComplete.json()).toMatchObject({
+      document: {
+        checksumStatus: "duplicate",
+        reviewStatus: "pending_review",
+        reviewReason: "duplicate",
+      },
+    });
+
+    const reviewedDuplicate = await server.inject({
+      method: "PATCH",
+      url: `/api/external-uploads/documents/${duplicateIntent.json().document.id}/review`,
+      payload: {
+        decision: "accept",
+        duplicateOfDocumentId: originalIntent.json().document.id,
+      },
+    });
+    expect(reviewedDuplicate.statusCode).toBe(200);
+    expect(reviewedDuplicate.json()).toMatchObject({
+      reviewItem: {
+        id: duplicateIntent.json().document.id,
+        duplicateOfDocumentId: originalIntent.json().document.id,
+        reviewStatus: "accepted",
+        reviewDecision: "accept",
+        reviewReason: "duplicate",
+      },
+    });
+    await expect(
+      repository.getDocument("firm-west-legal", duplicateIntent.json().document.id),
+    ).resolves.toMatchObject({
+      duplicateOfDocumentId: originalIntent.json().document.id,
+      reviewStatus: "accepted",
+    });
+  });
+
+  it("matter-scopes upload review decisions and keeps discard as a preserved state", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { server } = testServer({ repository, s3: s3Config() });
+    const token = await createDirectToken({
+      repository,
+      id: "external-upload-review-matter-002",
+      matterId: "matter-002",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+    const intent = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${token}/intents`,
+      payload: { filename: "matter-two.pdf", checksumSha256: checksum },
+    });
+    expect(intent.statusCode).toBe(200);
+
+    const limited = await server.inject({
+      method: "PATCH",
+      url: `/api/external-uploads/documents/${intent.json().document.id}/review`,
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: { decision: "discard" },
+    });
+    expect(limited.statusCode).toBe(403);
+
+    const discarded = await server.inject({
+      method: "PATCH",
+      url: `/api/external-uploads/documents/${intent.json().document.id}/review`,
+      payload: { decision: "discard", reason: "wrong_matter" },
+    });
+    expect(discarded.statusCode).toBe(200);
+    expect(discarded.json()).toMatchObject({
+      reviewItem: {
+        id: intent.json().document.id,
+        reviewStatus: "discarded",
+        reviewDecision: "discard",
+        reviewReason: "wrong_matter",
+      },
+    });
+    await expect(
+      repository.getDocument("firm-west-legal", intent.json().document.id),
+    ).resolves.toMatchObject({
+      id: intent.json().document.id,
+      storageKey: expect.stringContaining("external-upload-review-matter-002"),
+      reviewStatus: "discarded",
+    });
   });
 
   it("rejects exhausted, revoked, expired, and wrong-scope public uploads", async () => {

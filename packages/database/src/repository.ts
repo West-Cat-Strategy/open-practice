@@ -142,6 +142,8 @@ export interface DocumentUploadIntent {
   checksumSha256: string;
   classification: DocumentRecord["classification"];
   legalHold: boolean;
+  reviewStatus?: DocumentRecord["reviewStatus"];
+  externalUploadLinkId?: string;
   supersedesDocumentId?: string;
 }
 
@@ -506,6 +508,16 @@ export interface OpenPracticeRepository {
     firmId: string;
     documentId: string;
     scanStatus: DocumentRecord["scanStatus"];
+  }): Promise<DocumentRecord>;
+  reviewUploadedDocument(input: {
+    firmId: string;
+    documentId: string;
+    status: DocumentRecord["reviewStatus"];
+    decision: DocumentRecord["reviewDecision"];
+    reason?: DocumentRecord["reviewReason"];
+    metadata: Record<string, unknown>;
+    reviewedByUserId: string;
+    reviewedAt: string;
   }): Promise<DocumentRecord>;
   listSignatureRequests(
     firmId: string,
@@ -1080,6 +1092,13 @@ function mapDocumentRow(row: typeof schema.documents.$inferSelect): DocumentReco
     uploadStatus: row.uploadStatus as DocumentRecord["uploadStatus"],
     checksumStatus: row.checksumStatus as DocumentRecord["checksumStatus"],
     scanStatus: row.scanStatus as DocumentRecord["scanStatus"],
+    reviewStatus: row.reviewStatus as DocumentRecord["reviewStatus"],
+    reviewDecision: (row.reviewDecision as DocumentRecord["reviewDecision"] | null) ?? undefined,
+    reviewReason: (row.reviewReason as DocumentRecord["reviewReason"] | null) ?? undefined,
+    reviewMetadata: row.reviewMetadata as Record<string, unknown>,
+    reviewedByUserId: row.reviewedByUserId ?? undefined,
+    reviewedAt: dateToIso(row.reviewedAt),
+    externalUploadLinkId: row.externalUploadLinkId ?? undefined,
     duplicateOfDocumentId: row.duplicateOfDocumentId ?? undefined,
     supersedesDocumentId: row.supersedesDocumentId ?? undefined,
     supersededAt: dateToIso(row.supersededAt),
@@ -2918,6 +2937,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       uploadStatus: "intent_created",
       checksumStatus: "pending",
       scanStatus: "pending",
+      reviewStatus: input.reviewStatus ?? "not_required",
+      reviewMetadata: {},
+      externalUploadLinkId: input.externalUploadLinkId,
       supersedesDocumentId: input.supersedesDocumentId,
     };
     this.documents.push(document);
@@ -2950,6 +2972,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       document.uploadStatus = "rejected";
       document.checksumStatus = "mismatch";
       document.scanStatus = "failed";
+      if (document.externalUploadLinkId) {
+        document.reviewStatus = "retry_requested";
+        document.reviewReason = "checksum_mismatch";
+        document.reviewMetadata = { automatedOutcome: "checksum_mismatch" };
+      }
       return clone(document);
     }
 
@@ -2957,6 +2984,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     document.checksumStatus = duplicate ? "duplicate" : "verified";
     document.duplicateOfDocumentId = duplicate?.id;
     document.scanStatus = input.scanStatus ?? "queued";
+    document.reviewStatus = document.externalUploadLinkId ? "pending_review" : "not_required";
+    document.reviewReason = duplicate ? "duplicate" : undefined;
+    document.reviewMetadata = duplicate
+      ? { automatedOutcome: "duplicate_detected", duplicateOfDocumentId: duplicate.id }
+      : {};
     return clone(document);
   }
 
@@ -2970,6 +3002,29 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     );
     if (!document) throw new Error(`Unknown document ${input.documentId}`);
     document.scanStatus = input.scanStatus;
+    return clone(document);
+  }
+
+  async reviewUploadedDocument(input: {
+    firmId: string;
+    documentId: string;
+    status: DocumentRecord["reviewStatus"];
+    decision: DocumentRecord["reviewDecision"];
+    reason?: DocumentRecord["reviewReason"];
+    metadata: Record<string, unknown>;
+    reviewedByUserId: string;
+    reviewedAt: string;
+  }): Promise<DocumentRecord> {
+    const document = this.documents.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.documentId,
+    );
+    if (!document) throw new Error(`Unknown document ${input.documentId}`);
+    document.reviewStatus = input.status;
+    document.reviewDecision = input.decision;
+    document.reviewReason = input.reason;
+    document.reviewMetadata = clone(input.metadata);
+    document.reviewedByUserId = input.reviewedByUserId;
+    document.reviewedAt = input.reviewedAt;
     return clone(document);
   }
 
@@ -3827,6 +3882,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       uploadStatus: "verified",
       checksumStatus: duplicate ? "duplicate" : "verified",
       scanStatus: "queued",
+      reviewStatus: "not_required",
+      reviewDecision: undefined,
+      reviewReason: duplicate ? "duplicate" : "other",
+      reviewMetadata: duplicate
+        ? { automatedOutcome: "duplicate_detected", duplicateOfDocumentId: duplicate.id }
+        : { source: "inbound_email_promotion" },
       duplicateOfDocumentId: duplicate?.id,
       uploadedAt: now,
       verifiedAt: now,
@@ -5647,6 +5708,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       uploadStatus: "intent_created" as const,
       checksumStatus: "pending" as const,
       scanStatus: "pending" as const,
+      reviewStatus: input.reviewStatus ?? ("not_required" as const),
+      reviewMetadata: {},
+      externalUploadLinkId: input.externalUploadLinkId,
       supersedesDocumentId: input.supersedesDocumentId,
     };
     await this.db.transaction(async (tx) => {
@@ -5689,9 +5753,50 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         uploadStatus: checksumMatches ? "verified" : "rejected",
         checksumStatus: checksumMatches ? (duplicate ? "duplicate" : "verified") : "mismatch",
         scanStatus: checksumMatches ? (input.scanStatus ?? "queued") : "failed",
+        reviewStatus: document.externalUploadLinkId
+          ? checksumMatches
+            ? "pending_review"
+            : "retry_requested"
+          : "not_required",
+        reviewReason: checksumMatches ? (duplicate ? "duplicate" : null) : "checksum_mismatch",
+        reviewMetadata: checksumMatches
+          ? duplicate
+            ? { automatedOutcome: "duplicate_detected", duplicateOfDocumentId: duplicate.id }
+            : {}
+          : document.externalUploadLinkId
+            ? { automatedOutcome: "checksum_mismatch" }
+            : {},
         duplicateOfDocumentId: duplicate?.id,
         uploadedAt: now,
         verifiedAt: now,
+      })
+      .where(
+        and(eq(schema.documents.firmId, input.firmId), eq(schema.documents.id, input.documentId)),
+      )
+      .returning();
+    if (!row) throw new Error(`Unknown document ${input.documentId}`);
+    return mapDocumentRow(row);
+  }
+
+  async reviewUploadedDocument(input: {
+    firmId: string;
+    documentId: string;
+    status: DocumentRecord["reviewStatus"];
+    decision: DocumentRecord["reviewDecision"];
+    reason?: DocumentRecord["reviewReason"];
+    metadata: Record<string, unknown>;
+    reviewedByUserId: string;
+    reviewedAt: string;
+  }): Promise<DocumentRecord> {
+    const [row] = await this.db
+      .update(schema.documents)
+      .set({
+        reviewStatus: input.status,
+        reviewDecision: input.decision,
+        reviewReason: input.reason ?? null,
+        reviewMetadata: input.metadata,
+        reviewedByUserId: input.reviewedByUserId,
+        reviewedAt: new Date(input.reviewedAt),
       })
       .where(
         and(eq(schema.documents.firmId, input.firmId), eq(schema.documents.id, input.documentId)),
@@ -6899,6 +7004,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         uploadStatus: "verified" as const,
         checksumStatus: duplicateRow ? ("duplicate" as const) : ("verified" as const),
         scanStatus: "queued" as const,
+        reviewStatus: "not_required" as const,
+        reviewDecision: undefined,
+        reviewReason: duplicateRow ? ("duplicate" as const) : ("other" as const),
+        reviewMetadata: duplicateRow
+          ? { automatedOutcome: "duplicate_detected", duplicateOfDocumentId: duplicateRow.id }
+          : { source: "inbound_email_promotion" },
         duplicateOfDocumentId: duplicateRow?.id,
         uploadedAt: now,
         verifiedAt: now,
