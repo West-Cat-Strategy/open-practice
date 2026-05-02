@@ -93,6 +93,11 @@ import {
   summarizeContactDossier,
 } from "./contact-dossiers-dashboard";
 import {
+  formatCalendarAttendeeRoleLabel,
+  formatMatterPartyRoleLabel,
+  formatProfessionalRoleLabel,
+} from "./participant-role-labels";
+import {
   describeLegalClinicProfileStatus,
   describeLegalClinicProgram,
   findLegalClinicProgram,
@@ -1523,7 +1528,7 @@ export default function DashboardClient({
           </div>
           <div className="user-pill topbar-user-pill">
             <span>{session.user.displayName}</span>
-            <strong>{session.user.role.replace("_", " ")}</strong>
+            <strong>{formatProfessionalRoleLabel(session.user.role)}</strong>
           </div>
         </header>
 
@@ -1658,7 +1663,7 @@ export default function DashboardClient({
                     <div className="party-row" key={party.id}>
                       <span>
                         <strong>{party.contact.displayName}</strong>
-                        <small>{party.role.replace("_", " ")}</small>
+                        <small>{formatMatterPartyRoleLabel(party.role)}</small>
                       </span>
                       {party.adverse ? <em className="risk">Adverse</em> : <em>Client-side</em>}
                     </div>
@@ -1917,7 +1922,7 @@ export default function DashboardClient({
                                 <strong>{link.matterTitle}</strong>
                                 <small>
                                   {link.matterNumber} · {link.practiceArea} ·{" "}
-                                  {compactStatus(link.role)}
+                                  {formatMatterPartyRoleLabel(link.role)}
                                 </small>
                               </span>
                               <em className={link.adverse ? "risk" : undefined}>
@@ -2267,7 +2272,8 @@ export default function DashboardClient({
                 </>
               ) : (
                 <p className="inline-empty">
-                  Billing details are hidden for {session.user.role.replace("_", " ")} users.
+                  Billing details are hidden for {formatProfessionalRoleLabel(session.user.role)}{" "}
+                  users.
                 </p>
               )
             ) : null}
@@ -2699,7 +2705,8 @@ export default function DashboardClient({
                               <span>
                                 <strong>{attendee.name}</strong>
                                 <small>
-                                  {attendee.email} · {attendee.role} ·{" "}
+                                  {attendee.email} ·{" "}
+                                  {formatCalendarAttendeeRoleLabel(attendee.role)} ·{" "}
                                   {attendee.responseStatus.replace("_", " ")}
                                 </small>
                               </span>
