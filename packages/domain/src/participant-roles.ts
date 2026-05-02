@@ -1,9 +1,4 @@
-import type {
-  CalendarAttendeeRole,
-  PartyRole,
-  PortalGrant,
-  ProfessionalRole,
-} from "./models.js";
+import type { CalendarAttendeeRole, PartyRole, PortalGrant, ProfessionalRole } from "./models.js";
 
 export type { CalendarAttendeeRole, PartyRole, ProfessionalRole } from "./models.js";
 
@@ -315,7 +310,8 @@ const genericSignerRoleDescriptor = {
   value: "signer",
   label: "Signer",
   shortLabel: "Signer",
-  description: "Participant asked to sign a document through a provider-neutral signature workflow.",
+  description:
+    "Participant asked to sign a document through a provider-neutral signature workflow.",
   audience: "external",
   matterScoped: true,
 } as const satisfies ParticipantRoleDescriptor;

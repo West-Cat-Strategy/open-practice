@@ -42,7 +42,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/ledger?matterId=`                                                       | Trust ledger accounts, entries, posted transactions, and balances. Matter-scoped users must provide matter ID.                                                         |
 | `GET /api/ledger/controls?matterId=`                                              | Read-only trust controls workbench payload with ledger balances, approvals, reconciliations, and diagnostics. Matter-scoped users must provide matter ID.              |
 | `POST /api/ledger/transactions`                                                   | Balanced, idempotent trust transaction posting.                                                                                                                        |
-| `GET /api/audit`                                                                  | Firm audit events and hash-chain validity.                                                                                                                             |
+| `GET /api/audit`                                                                  | Firm audit events, hash-chain validity, and additive taxonomy summary counts without metadata values.                                                                  |
 | `GET /api/documents/presign-upload`                                               | S3 PUT upload intent, storage key, document intent record, and required scan marker.                                                                                   |
 | `POST /api/documents/:id/upload-complete`                                         | Checksum and scan-state completion for an upload intent.                                                                                                               |
 | `POST /api/documents/:id/scan-status`                                             | Explicit malware/scan-state update for an existing document.                                                                                                           |
@@ -72,7 +72,10 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/portal/intake-forms/:token/items/:itemId/signature`                    | Public embedded attestation fallback or document-backed signature request creation for an intake signature item.                                                       |
 | `POST /api/ledger/transactions/:id/approvals`                                     | Maker-checker approval decision for a trust transaction boundary.                                                                                                      |
 | `POST /api/ledger/reconciliations`                                                | Trust-account reconciliation record with matched/exception status.                                                                                                     |
-| `GET /api/queues`                                                                 | Permission-aware operational queues for matters, documents, signatures, intake, ledger, and audit review.                                                              |
+| `GET /api/queues`                                                                 | Permission-aware operational queues for matters, documents, signatures, intake, ledger, task deadlines, and audit review.                                              |
+| `GET /api/tasks/workbench?matterId=`                                              | Matter-scoped task/deadline projections, my/team counters, matter queues, and contact queues.                                                                          |
+| `PATCH /api/tasks/:taskId/complete`                                               | Completes one authorized matter task/deadline and records audit-safe completion metadata.                                                                              |
+| `GET /api/operational-views`                                                      | Built-in matter-scoped operational view definitions and redacted results for stale matters, awaiting work, expiring links, conflict cues, and overdue deadlines.       |
 | `GET /api/time-entries?matterId=&status=`                                         | Time entries visible firm-wide or across assigned matters.                                                                                                             |
 | `POST /api/time-entries`                                                          | Time-entry capture with performed date, immutable rate snapshot, and draft billing status.                                                                             |
 | `PATCH /api/time-entries/:id`                                                     | Draft/submitted time-entry edits before billing or write-off.                                                                                                          |
@@ -351,7 +354,19 @@ transaction is evidence/reference only.
 
 Audit events are append-only records with hash-chain validation. Conflict checks and other repository
 operations that create audit events should preserve firm scoping, actor identity, canonical payloads,
-and chain validity.
+and chain validity. `GET /api/audit` includes a derived taxonomy summary for existing events with
+category, resource, matter-scope, actor-hint, and unknown-event counts; the summary is additive and
+must not expose raw metadata values.
+
+Task/deadline records are matter-scoped operational records for assignment, due-date, completion,
+and contact/matter queue review. The workbench API returns projected task state, bucketed counters,
+and queue groupings only for authorized matters. Completing a task records actor ID, completion
+timestamp, and an audit event without changing calendar deadlines, billing entries, or trust state.
+
+Operational views are built-in computed views, not user-persisted saved filters yet. Results must be
+derived from matter-scoped data already visible to the authenticated user, and they should expose
+redacted IDs/counts/status labels rather than raw tokens, message bodies, contact names, private
+notes, or privileged document content.
 
 Worker jobs use `queued`, `active`, `completed`, `failed`, `dead_letter`, and `skipped`.
 PostgreSQL stores the durable job lifecycle record, queue name, BullMQ job ID, target resource,

@@ -1,10 +1,5 @@
 import type { ContactDossier } from "./contacts.js";
-import type {
-  ActivityTimelineEntry,
-  CalendarEventRecord,
-  Matter,
-  MatterParty,
-} from "./models.js";
+import type { ActivityTimelineEntry, CalendarEventRecord, Matter, MatterParty } from "./models.js";
 import type {
   EmailOutboxRecord,
   ExternalUploadLinkRecord,
@@ -49,11 +44,10 @@ export interface BuiltInOperationalView {
   results: OperationalViewResult[];
 }
 
-export interface OperationalMatterInput
-  extends Pick<
-    Matter,
-    "id" | "firmId" | "number" | "title" | "practiceArea" | "status" | "openedOn"
-  > {
+export interface OperationalMatterInput extends Pick<
+  Matter,
+  "id" | "firmId" | "number" | "title" | "practiceArea" | "status" | "openedOn"
+> {
   parties?: Array<Pick<MatterParty, "role" | "contactId" | "adverse" | "confidential">>;
   activity?: ActivityTimelineEntry[];
 }
