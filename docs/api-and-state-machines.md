@@ -108,7 +108,8 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/calendar/credentials`                                                   | Current-user CalDAV app-password credentials without password hashes or one-time secrets.                                                                              |
 | `POST /api/calendar/credentials`                                                  | Creates a current-user CalDAV app password and returns the generated password only once.                                                                               |
 | `POST /api/calendar/credentials/:id/revoke`                                       | Revokes a current-user CalDAV app password and records audit evidence.                                                                                                 |
-| `GET /api/jobs`                                                                   | Firm-scoped PostgreSQL job lifecycle projection, queue summaries, redacted run details, and queue names; Redis internals are not exposed.                              |
+| `GET /api/jobs`                                                                   | Firm-scoped PostgreSQL job lifecycle projection, redacted run summaries, queue status, and queue names; Redis internals are not exposed.                               |
+| `GET /api/jobs/:jobId`                                                            | Firm-scoped redacted job-run detail with terminal/retryable state, retry timing, error summary, target resource IDs, and safe metadata only.                           |
 | `GET /api/email/status`                                                           | SMTP provider status from firm provider settings.                                                                                                                      |
 | `POST /api/email/previews`                                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                                                                                    |
 | `POST /api/mail/outbox`                                                           | Create a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.                                                          |
@@ -118,7 +119,8 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/inbound-email/messages?matterId=`                                       | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                                                                                  |
 | `GET /api/inbound-email/messages/:id`                                             | Matter-scoped parsed inbound email detail with inbound-email attachment records and promoted `documentId` links when present.                                          |
 | `POST /api/inbound-email/messages/:id/attachments/:attachmentId/promote-document` | Explicitly promotes one matter-scoped inbound attachment to a verified document record and optionally queues OCR.                                                      |
-| `GET /api/document-processing/status`                                             | OCR, transcription, media, and AI provider status from firm provider settings plus redacted document-processing queue/job summaries.                                   |
+| `GET /api/document-processing/status`                                             | OCR, transcription, media, and AI provider status, worker queue availability, and redacted processing job summaries from firm settings and job records.                |
+| `GET /api/document-processing/workbench?matterId=`                                | Matter-scoped document processing workbench with sanitized document states, queue eligibility, provider/worker status, and redacted latest job/extraction summaries.   |
 | `POST /api/document-processing/documents/:id/queue`                               | Queues OCR for an authorized verified document when the OCR worker queue is configured.                                                                                |
 | `GET /api/auth/extensions`                                                        | Embedded-auth extension status for local password, OIDC/SAML placeholders, and MFA policy scaffolding.                                                                 |
 | `GET /api/shares/status`                                                          | Share-link capability status and create enablement based on token-signing configuration.                                                                               |
@@ -377,12 +379,13 @@ review queues, summaries, or future enforcement.
 Worker jobs use `queued`, `active`, `completed`, `failed`, `dead_letter`, and `skipped`.
 PostgreSQL stores the durable job lifecycle record, queue name, BullMQ job ID, target resource,
 retry counts, error summary, timestamps, and routing metadata. Redis/BullMQ delivers work and retry
-attempts, but the API exposes only the PostgreSQL projection. `GET /api/jobs` adds queue summaries
-and redacted run details for terminal state, failed-step/error context, retry/next-attempt hints, and
-metadata keys that are safe for operators. `GET /api/document-processing/status` reuses the same
-redacted summaries for OCR/document-processing workbench state, including provider-disabled and
-queue-unconfigured cases. Job metadata must not carry email bodies, portal tokens, generated content,
-storage keys, raw evidence, or private secrets. Failed or skipped OCR, transcription, email,
+attempts, but the API exposes only the PostgreSQL projection. `GET /api/jobs` adds queue summaries,
+and `GET /api/jobs/:jobId` returns redacted run details for terminal state, failed-step/error
+context, retry/next-attempt hints, and metadata keys that are safe for operators.
+`GET /api/document-processing/status` and `GET /api/document-processing/workbench?matterId=` reuse
+the same redacted summaries for OCR/document-processing workbench state, including provider-disabled
+and queue-unconfigured cases. Job metadata must not carry email bodies, portal tokens, generated
+content, storage keys, raw evidence, or private secrets. Failed or skipped OCR, transcription, email,
 AI-assist, or media jobs must not change portal-share, billing, signature, trust, or audit state
 without an explicit reviewed transition.
 

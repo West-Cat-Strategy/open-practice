@@ -113,4 +113,76 @@ describe("jobs routes", () => {
     expect(response.json().jobs[0].metadata).not.toHaveProperty("rawBody");
     expect(response.json().jobs[0].metadata).not.toHaveProperty("secret");
   });
+
+  it("returns one firm-scoped redacted job detail", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-visible",
+      firmId,
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "failed",
+      targetResourceType: "document",
+      targetResourceId: "doc-001",
+      attemptsMade: 2,
+      maxAttempts: 3,
+      queuedAt: "2026-05-02T11:00:00.000Z",
+      failedAt: "2026-05-02T11:01:00.000Z",
+      errorMessage: "Synthetic provider timeout with private payload details".repeat(12),
+      metadata: {
+        matterId: "matter-001",
+        documentId: "doc-001",
+        task: "ocr",
+        nextRetryAt: "2026-05-02T11:05:00.000Z",
+        storageKey: "matters/matter-001/private.pdf",
+        body: "Do not expose body text",
+      },
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-other-firm",
+      firmId: "firm-other",
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "completed",
+      targetResourceType: "document",
+      targetResourceId: "doc-other",
+      attemptsMade: 1,
+      maxAttempts: 1,
+      queuedAt: "2026-05-02T12:00:00.000Z",
+      finishedAt: "2026-05-02T12:01:00.000Z",
+      metadata: { matterId: "matter-other", documentId: "doc-other" },
+    });
+
+    const response = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/jobs/job-visible",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      job: {
+        id: "job-visible",
+        status: "failed",
+        terminal: false,
+        failed: true,
+        retryable: true,
+        nextAttemptAt: "2026-05-02T11:05:00.000Z",
+        errorSummary: expect.stringContaining("Synthetic provider timeout"),
+        metadata: {
+          matterId: "matter-001",
+          documentId: "doc-001",
+          task: "ocr",
+          nextRetryAt: "2026-05-02T11:05:00.000Z",
+        },
+      },
+    });
+    expect(response.json().job.metadata).not.toHaveProperty("storageKey");
+    expect(response.json().job.metadata).not.toHaveProperty("body");
+
+    const otherFirm = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/jobs/job-other-firm",
+    });
+    expect(otherFirm.statusCode).toBe(404);
+  });
 });

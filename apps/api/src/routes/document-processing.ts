@@ -1,6 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { AccessRequest, DocumentRecord, JobLifecycleRecord } from "@open-practice/domain";
+import type {
+  AccessRequest,
+  DocumentRecord,
+  DocumentTextExtractionRecord,
+  JobLifecycleRecord,
+} from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -11,16 +16,35 @@ import {
   documentProcessingQueueNames,
   providerStatus,
   queueStatus,
+  redactedMetadata,
   serializeJobRun,
   summarizeJobRuns,
 } from "./job-status.js";
 import type { ApiJobQueue, ApiRouteDependencies } from "./types.js";
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
+const workbenchQuerySchema = z.object({ matterId: z.string().min(1) });
 const queueDocumentProcessingBodySchema = z.object({
   task: z.enum(["ocr"]).default("ocr"),
   language: z.string().trim().min(2).max(24).default("eng"),
 });
+
+type DocumentWorkbenchGroup = "ready_to_process" | "queued_or_active" | "needs_review" | "blocked";
+
+type QueueEligibility =
+  | { eligible: true }
+  | {
+      eligible: false;
+      reason:
+        | "already_queued_or_active"
+        | "ocr_queue_not_configured"
+        | "ocr_provider_disabled"
+        | "ocr_provider_not_configured"
+        | "review_required"
+        | "upload_not_verified"
+        | "checksum_not_verified"
+        | "scan_failed";
+    };
 
 export interface QueueDocumentOcrInput {
   repository: OpenPracticeRepository;
@@ -70,6 +94,123 @@ function assertDocumentProcessable(document: DocumentRecord): void {
       statusCode: 409,
     });
   }
+}
+
+function sanitizeDocument(document: DocumentRecord) {
+  return {
+    id: document.id,
+    matterId: document.matterId,
+    title: document.title,
+    version: document.version,
+    classification: document.classification,
+    legalHold: document.legalHold,
+    uploadStatus: document.uploadStatus,
+    checksumStatus: document.checksumStatus,
+    scanStatus: document.scanStatus,
+    reviewStatus: document.reviewStatus,
+    reviewDecision: document.reviewDecision,
+    reviewReason: document.reviewReason,
+    reviewedAt: document.reviewedAt,
+    duplicateOfDocumentId: document.duplicateOfDocumentId,
+    uploadedAt: document.uploadedAt,
+    verifiedAt: document.verifiedAt,
+  };
+}
+
+function latestByTimestamp<T>(
+  records: T[],
+  timestamp: (record: T) => string | undefined,
+): T | undefined {
+  return records
+    .slice()
+    .sort((left, right) => (timestamp(right) ?? "").localeCompare(timestamp(left) ?? ""))
+    .at(0);
+}
+
+function latestDocumentJob(
+  document: DocumentRecord,
+  jobs: JobLifecycleRecord[],
+): JobLifecycleRecord | undefined {
+  return latestByTimestamp(
+    jobs.filter(
+      (job) =>
+        job.targetResourceId === document.id ||
+        (typeof job.metadata.documentId === "string" && job.metadata.documentId === document.id),
+    ),
+    (job) => job.queuedAt,
+  );
+}
+
+function sanitizeTextExtraction(extraction: DocumentTextExtractionRecord | undefined) {
+  if (!extraction) return undefined;
+  return {
+    id: extraction.id,
+    engine: extraction.engine,
+    status: extraction.status,
+    language: extraction.language,
+    confidence: extraction.confidence,
+    createdAt: extraction.createdAt,
+    completedAt: extraction.completedAt,
+    metadata: redactedMetadata(extraction.metadata),
+  };
+}
+
+function latestTextExtraction(
+  extractions: DocumentTextExtractionRecord[],
+): DocumentTextExtractionRecord | undefined {
+  return latestByTimestamp(
+    extractions,
+    (extraction) => extraction.completedAt ?? extraction.createdAt,
+  );
+}
+
+function queueEligibility(input: {
+  document: DocumentRecord;
+  latestJob?: JobLifecycleRecord;
+  ocrQueueConfigured: boolean;
+  ocrProviderStatus: ReturnType<typeof providerStatus>;
+}): QueueEligibility {
+  if (input.latestJob?.status === "queued" || input.latestJob?.status === "active") {
+    return { eligible: false, reason: "already_queued_or_active" };
+  }
+  if (!input.ocrQueueConfigured) return { eligible: false, reason: "ocr_queue_not_configured" };
+  if (input.ocrProviderStatus.status !== "configured") {
+    return {
+      eligible: false,
+      reason:
+        input.ocrProviderStatus.reason === "provider_disabled"
+          ? "ocr_provider_disabled"
+          : "ocr_provider_not_configured",
+    };
+  }
+  if (input.document.externalUploadLinkId && input.document.reviewStatus !== "accepted") {
+    return { eligible: false, reason: "review_required" };
+  }
+  if (input.document.uploadStatus !== "verified") {
+    return { eligible: false, reason: "upload_not_verified" };
+  }
+  if (
+    input.document.checksumStatus !== "verified" &&
+    input.document.checksumStatus !== "duplicate"
+  ) {
+    return { eligible: false, reason: "checksum_not_verified" };
+  }
+  if (input.document.scanStatus === "failed") return { eligible: false, reason: "scan_failed" };
+  return { eligible: true };
+}
+
+function documentWorkbenchGroup(input: {
+  document: DocumentRecord;
+  latestJob?: JobLifecycleRecord;
+  eligibility: QueueEligibility;
+}): DocumentWorkbenchGroup {
+  if (input.latestJob?.status === "queued" || input.latestJob?.status === "active") {
+    return "queued_or_active";
+  }
+  if (input.document.externalUploadLinkId && input.document.reviewStatus !== "accepted") {
+    return "needs_review";
+  }
+  return input.eligibility.eligible ? "ready_to_process" : "blocked";
 }
 
 export async function queueDocumentOcr(
@@ -194,6 +335,82 @@ export function registerDocumentProcessingRoutes(
       providerStatus: providerStates,
       summary: summarizeJobRuns(jobs),
       jobs: jobs.map(serializeJobRun),
+    };
+  });
+
+  server.get("/api/document-processing/workbench", async (request) => {
+    const query = parseRequestPart(workbenchQuerySchema, request.query, "query");
+    assertDocumentProcessingAccess(request.auth, {
+      resource: "document_processing",
+      action: "read",
+      matterId: query.matterId,
+    });
+
+    const providers = await Promise.all([
+      repository.listProviderSettings(request.auth.firmId, { kind: "ocr" }),
+      repository.listProviderSettings(request.auth.firmId, { kind: "transcription" }),
+      repository.listProviderSettings(request.auth.firmId, { kind: "media" }),
+      repository.listProviderSettings(request.auth.firmId, { kind: "ai" }),
+    ]);
+    const providerStates = documentProcessingProviderKinds.map((kind, index) =>
+      providerStatus(kind, providers[index] ?? []),
+    );
+    const ocrProviderState =
+      providerStates.find((providerState) => providerState.kind === "ocr") ??
+      providerStatus("ocr", []);
+    const configured = providers.flat().filter((provider) => provider.enabled);
+    const workerQueues = documentProcessingQueueNames.map((queueName) =>
+      queueStatus(queueName, queueName === "ocr" ? ocrJobQueue : undefined),
+    );
+    const ocrQueueConfigured = workerQueues.some(
+      (queue) => queue.queueName === "ocr" && queue.status === "configured",
+    );
+    const documents = await repository.listMatterDocuments(request.auth.firmId, query.matterId);
+    const documentIds = new Set(documents.map((document) => document.id));
+    const jobs = (await repository.listJobLifecycleRecords(request.auth.firmId)).filter(
+      (job) =>
+        documentProcessingQueueNames.some((queueName) => queueName === job.queueName) &&
+        ((typeof job.metadata.matterId === "string" && job.metadata.matterId === query.matterId) ||
+          (typeof job.targetResourceId === "string" && documentIds.has(job.targetResourceId)) ||
+          (typeof job.metadata.documentId === "string" &&
+            documentIds.has(job.metadata.documentId))),
+    );
+
+    const documentItems = await Promise.all(
+      documents.map(async (document) => {
+        const latestJob = latestDocumentJob(document, jobs);
+        const eligibility = queueEligibility({
+          document,
+          latestJob,
+          ocrQueueConfigured,
+          ocrProviderStatus: ocrProviderState,
+        });
+        const latestExtraction = latestTextExtraction(
+          await repository.getDocumentTextExtractions(request.auth.firmId, document.id),
+        );
+        return {
+          document: sanitizeDocument(document),
+          group: documentWorkbenchGroup({ document, latestJob, eligibility }),
+          queueEligibility: eligibility,
+          latestJob: latestJob ? serializeJobRun(latestJob) : undefined,
+          latestExtraction: sanitizeTextExtraction(latestExtraction),
+        };
+      }),
+    );
+
+    return {
+      matterId: query.matterId,
+      status: configured.length > 0 ? "configured" : "disabled",
+      reason:
+        configured.length > 0
+          ? undefined
+          : providerStates.some((provider) => provider.reason === "provider_disabled")
+            ? "provider_disabled"
+            : "not_configured",
+      providerStatus: providerStates,
+      workerQueues,
+      summary: summarizeJobRuns(jobs),
+      documents: documentItems,
     };
   });
 

@@ -239,6 +239,203 @@ describe("document processing routes", () => {
     }
   });
 
+  it("returns a matter-scoped sanitized document processing workbench", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-ocr-enabled",
+      firmId,
+      kind: "ocr",
+      key: "local-tesseract",
+      enabled: true,
+      encryptedConfig: "synthetic-config-not-returned",
+      createdAt: "2026-05-02T12:00:00.000Z",
+      updatedAt: "2026-05-02T12:00:00.000Z",
+    });
+    await repository.createDocumentUploadIntent({
+      id: "doc-matter-002",
+      firmId,
+      matterId: "matter-002",
+      title: "Other matter record.pdf",
+      storageKey: "matters/matter-002/other.pdf",
+      checksumSha256: "e".repeat(64),
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-matter-002",
+      checksumSha256: "e".repeat(64),
+      scanStatus: "passed",
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-doc-001-active",
+      firmId,
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      bullJobId: "bull-doc-001",
+      status: "active",
+      targetResourceType: "document",
+      targetResourceId: "doc-001",
+      attemptsMade: 1,
+      maxAttempts: 3,
+      queuedAt: "2026-05-02T12:10:00.000Z",
+      startedAt: "2026-05-02T12:10:05.000Z",
+      metadata: {
+        matterId: "matter-001",
+        documentId: "doc-001",
+        task: "ocr",
+        language: "eng",
+        storageKey: "matters/matter-001/private.pdf",
+        providerPayload: { private: true },
+      },
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-other-matter",
+      firmId,
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "queued",
+      targetResourceType: "document",
+      targetResourceId: "doc-matter-002",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      queuedAt: "2026-05-02T12:15:00.000Z",
+      metadata: { matterId: "matter-002", documentId: "doc-matter-002", task: "ocr" },
+    });
+    await repository.createDocumentTextExtraction({
+      id: "extraction-doc-001",
+      firmId,
+      documentId: "doc-001",
+      engine: "tesseract",
+      status: "completed",
+      language: "eng",
+      confidence: 0.93,
+      textStorageKey: "matters/matter-001/doc-001.txt",
+      extractedText: "Synthetic private extracted text that must not leave the server.",
+      metadata: {
+        language: "eng",
+        textLength: 243,
+        storageKey: "matters/matter-001/doc-001.txt",
+        token: "private-token",
+        providerPayload: { private: true },
+      },
+      createdAt: "2026-05-02T12:11:00.000Z",
+      completedAt: "2026-05-02T12:12:00.000Z",
+    });
+
+    const response = await testServer({ repository, ocrJobQueue: fakeOcrQueue().queue }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      matterId: "matter-001",
+      status: "configured",
+      providerStatus: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "ocr",
+          status: "configured",
+          providers: [
+            {
+              key: "local-tesseract",
+              enabled: true,
+              updatedAt: "2026-05-02T12:00:00.000Z",
+            },
+          ],
+        }),
+      ]),
+      workerQueues: expect.arrayContaining([{ queueName: "ocr", status: "configured" }]),
+      summary: {
+        total: 1,
+        active: 1,
+      },
+      documents: [
+        expect.objectContaining({
+          group: "queued_or_active",
+          queueEligibility: { eligible: false, reason: "already_queued_or_active" },
+          document: {
+            id: "doc-001",
+            matterId: "matter-001",
+            title: "Retainer agreement.pdf",
+            version: 1,
+            classification: "privileged",
+            legalHold: true,
+            uploadStatus: "verified",
+            checksumStatus: "verified",
+            scanStatus: "passed",
+            reviewStatus: "not_required",
+            uploadedAt: "2026-04-01T20:15:00.000Z",
+            verifiedAt: "2026-04-01T20:16:00.000Z",
+          },
+          latestJob: expect.objectContaining({
+            id: "job-doc-001-active",
+            status: "active",
+            terminal: false,
+            retryable: false,
+            metadata: {
+              matterId: "matter-001",
+              documentId: "doc-001",
+              task: "ocr",
+              language: "eng",
+            },
+          }),
+          latestExtraction: {
+            id: "extraction-doc-001",
+            engine: "tesseract",
+            status: "completed",
+            language: "eng",
+            confidence: 0.93,
+            createdAt: "2026-05-02T12:11:00.000Z",
+            completedAt: "2026-05-02T12:12:00.000Z",
+            metadata: {
+              language: "eng",
+              textLength: 243,
+            },
+          },
+        }),
+      ],
+    });
+    const documentItem = response.json().documents[0];
+    expect(documentItem.document).not.toHaveProperty("firmId");
+    expect(documentItem.document).not.toHaveProperty("storageKey");
+    expect(documentItem.document).not.toHaveProperty("checksumSha256");
+    expect(documentItem.document).not.toHaveProperty("reviewMetadata");
+    expect(documentItem.latestJob.metadata).not.toHaveProperty("storageKey");
+    expect(documentItem.latestJob.metadata).not.toHaveProperty("providerPayload");
+    expect(documentItem.latestExtraction).not.toHaveProperty("extractedText");
+    expect(documentItem.latestExtraction).not.toHaveProperty("textStorageKey");
+    expect(documentItem.latestExtraction.metadata).not.toHaveProperty("storageKey");
+    expect(documentItem.latestExtraction.metadata).not.toHaveProperty("token");
+    expect(documentItem.latestExtraction.metadata).not.toHaveProperty("providerPayload");
+  });
+
+  it("applies matter access to the document processing workbench", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const denied = await testServer({
+      repository,
+      authUser: user("licensee", ["matter-002"]),
+    }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001",
+    });
+    expect(denied.statusCode).toBe(403);
+
+    const allowed = await testServer({
+      repository,
+      authUser: user("licensee", ["matter-001"]),
+    }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001",
+    });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json().documents).toEqual([
+      expect.objectContaining({
+        document: expect.objectContaining({ id: "doc-001", matterId: "matter-001" }),
+      }),
+    ]);
+  });
+
   it("returns 503 when the OCR queue is not configured", async () => {
     const response = await testServer().inject({
       method: "POST",

@@ -45,6 +45,18 @@ import {
   upsertExternalUploadLink,
 } from "./external-uploads-dashboard";
 import {
+  buildDocumentProcessingQueuePath,
+  buildDocumentProcessingWorkbenchPath,
+  describeDocumentQueueAction,
+  describeLatestDocumentJob,
+  describeLatestExtraction,
+  documentProcessingRowsForMatter,
+  emptyDocumentProcessingWorkbench,
+  loadDocumentProcessingDashboardData,
+  replaceDocumentProcessingWorkbench,
+  summarizeDocumentProcessingWorkbench,
+} from "./document-processing-dashboard";
+import {
   buildCalendarRadarBuckets,
   describeCalendarEventTiming,
   describeMeetingInvitationBoundary,
@@ -101,6 +113,7 @@ import {
 import type {
   ExternalUploadLinkRecord,
   ExternalUploadReviewItem,
+  DocumentProcessingWorkbenchResponse,
   IntakeFormLinkSummary,
   MatterSummary,
   ShareLinkRecord,
@@ -237,6 +250,74 @@ function externalUploadDocument(
     reviewMetadata: {},
     uploadedAt: "2026-04-29T12:05:00.000Z",
     verifiedAt: "2026-04-29T12:06:00.000Z",
+    ...overrides,
+  };
+}
+
+function documentRecord(
+  overrides: Partial<MatterSummary["documents"][number]> = {},
+): MatterSummary["documents"][number] {
+  return {
+    id: "doc-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    title: "Residential tenancy evidence",
+    storageKey: "private/storage/key.pdf",
+    checksumSha256: "not-rendered-in-web",
+    version: 1,
+    classification: "general",
+    legalHold: false,
+    uploadStatus: "verified",
+    checksumStatus: "verified",
+    scanStatus: "passed",
+    reviewStatus: "accepted",
+    reviewMetadata: {},
+    uploadedAt: "2026-05-01T12:00:00.000Z",
+    verifiedAt: "2026-05-01T12:01:00.000Z",
+    ...overrides,
+  };
+}
+
+function documentProcessingWorkbench(
+  overrides: Partial<DocumentProcessingWorkbenchResponse> = {},
+): DocumentProcessingWorkbenchResponse {
+  return {
+    matterId: "matter-001",
+    status: "configured",
+    providerStatus: [{ kind: "ocr", status: "configured", providers: [] }],
+    workerQueues: [{ queueName: "ocr", status: "configured" }],
+    summary: { total: 1, queued: 0, active: 0, failed: 0, terminal: 1, byQueue: [] },
+    documents: [
+      {
+        document: {
+          id: "doc-001",
+          matterId: "matter-001",
+          title: "Residential tenancy evidence",
+          version: 1,
+          classification: "general",
+          legalHold: false,
+          uploadStatus: "verified",
+          checksumStatus: "verified",
+          scanStatus: "passed",
+          reviewStatus: "accepted",
+        },
+        group: "ready_to_process",
+        queueEligibility: { eligible: true },
+        latestJob: {
+          id: "job-001",
+          queueName: "ocr",
+          status: "completed",
+          terminal: true,
+          failed: false,
+        },
+        latestExtraction: {
+          status: "completed",
+          language: "eng",
+          pageCount: 2,
+          confidence: 0.91,
+        },
+      },
+    ],
     ...overrides,
   };
 }
@@ -712,6 +793,149 @@ describe("dashboard client behavior", () => {
       }),
     ).toBe("2 queue items need attention. 1 high priority item.");
     expect(summarizeQueues({ sections: [] })).toBe("No queue items need attention.");
+  });
+
+  it("loads document-processing workbenches and preserves sanitized document fallbacks", async () => {
+    const activeDocument = documentRecord();
+    const activeMatter = matter({ id: "matter-001", documents: [activeDocument] });
+    const fallback = emptyDocumentProcessingWorkbench("matter-001");
+    const loaded = await loadDocumentProcessingDashboardData({
+      matters: [activeMatter],
+      getWorkbench: async () => fallback,
+    });
+    const rows = documentProcessingRowsForMatter(
+      activeMatter.documents,
+      loaded.workbenchesByMatterId["matter-001"]!,
+    );
+
+    expect(buildDocumentProcessingWorkbenchPath("matter 001")).toBe(
+      "/api/document-processing/workbench?matterId=matter%20001",
+    );
+    expect(buildDocumentProcessingQueuePath("doc/001")).toBe(
+      "/api/document-processing/documents/doc%2F001/queue",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.document).toEqual(
+      expect.objectContaining({
+        id: "doc-001",
+        title: "Residential tenancy evidence",
+        reviewStatus: "accepted",
+      }),
+    );
+    expect(rows[0]!.document).not.toHaveProperty("storageKey");
+    expect(rows[0]!.document).not.toHaveProperty("checksumSha256");
+    expect(summarizeDocumentProcessingWorkbench(fallback)).toContain("Document list is preserved");
+  });
+
+  it("describes document-processing queue states without raw extraction fields", () => {
+    const workbench = documentProcessingWorkbench();
+    const item = workbench.documents[0]!;
+
+    expect(describeDocumentQueueAction(item, workbench)).toEqual({
+      canQueue: true,
+      label: "Queue OCR",
+      tone: "ready",
+    });
+    expect(describeLatestDocumentJob(item.latestJob)).toEqual({
+      label: "completed",
+      tone: "ready",
+    });
+    expect(
+      describeLatestExtraction({
+        status: "completed",
+        language: "eng",
+        pageCount: 3,
+        confidence: 0.88,
+        extractedText: "raw text must not render",
+        storageKey: "private/storage/key.txt",
+      } as unknown as Parameters<typeof describeLatestExtraction>[0]),
+    ).toBe("completed · language eng · 3 pages · 88% confidence");
+    expect(summarizeDocumentProcessingWorkbench(workbench)).toBe(
+      "1 providers configured. 1/1 worker queues configured. 0 active or queued jobs. 0 failed jobs.",
+    );
+
+    const disabled = documentProcessingWorkbench({
+      status: "disabled",
+      reason: "provider_disabled",
+    });
+    expect(describeDocumentQueueAction(item, disabled)).toEqual({
+      canQueue: false,
+      label: "Queue OCR",
+      disabledReason: "provider disabled",
+      tone: "risk",
+    });
+    expect(
+      describeDocumentQueueAction(
+        item,
+        documentProcessingWorkbench({
+          workerQueues: [
+            { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
+          ],
+        }),
+      ),
+    ).toEqual({
+      canQueue: false,
+      label: "Queue OCR",
+      disabledReason: "queue not configured",
+      tone: "risk",
+    });
+
+    expect(
+      describeDocumentQueueAction(
+        {
+          ...item,
+          queueEligibility: { eligible: false, reason: "review_required" },
+          group: "needs_review",
+        },
+        workbench,
+      ),
+    ).toEqual({
+      canQueue: false,
+      label: "Queue OCR",
+      disabledReason: "review required",
+      tone: "risk",
+    });
+    expect(
+      describeDocumentQueueAction(
+        {
+          ...item,
+          group: "queued_or_active",
+          latestJob: { id: "job-queued", queueName: "ocr", status: "queued" },
+        },
+        workbench,
+      ),
+    ).toEqual({
+      canQueue: false,
+      label: "queued",
+      disabledReason: "job already queued",
+      tone: "neutral",
+    });
+    expect(
+      describeDocumentQueueAction(
+        {
+          ...item,
+          group: "blocked",
+          latestJob: {
+            id: "job-failed",
+            queueName: "ocr",
+            status: "failed",
+            failed: true,
+            errorSummary: "Provider returned a retryable error",
+          },
+        },
+        workbench,
+      ),
+    ).toEqual({
+      canQueue: true,
+      label: "Retry OCR",
+      tone: "risk",
+    });
+    expect(
+      replaceDocumentProcessingWorkbench(
+        {},
+        documentProcessingWorkbench({ matterId: "matter-002" }),
+      ),
+    ).toHaveProperty("matter-002");
   });
 
   it("builds share-link payloads and replaces revoked links without leaking token hashes", () => {

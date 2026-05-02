@@ -88,6 +88,20 @@ import {
   upsertCalendarCredential,
 } from "./calendar-dashboard";
 import {
+  buildDocumentProcessingQueuePath,
+  buildDocumentProcessingWorkbenchPath,
+  compactDocumentProcessingReason,
+  describeDocumentQueueAction,
+  describeLatestDocumentJob,
+  describeLatestExtraction,
+  documentProcessingGroupLabel,
+  documentProcessingGroupOrder,
+  documentProcessingRowsForMatter,
+  emptyDocumentProcessingWorkbench,
+  replaceDocumentProcessingWorkbench,
+  summarizeDocumentProcessingWorkbench,
+} from "./document-processing-dashboard";
+import {
   contactDossierRiskClass,
   filterContactDossiers,
   summarizeContactDossier,
@@ -122,6 +136,8 @@ import type {
   CapabilitiesResponse,
   ConflictResponse,
   ContactDossiersResponse,
+  DocumentProcessingDashboardResponse,
+  DocumentProcessingWorkbenchResponse,
   DraftingDashboardResponse,
   DraftAssistRecordsResponse,
   DraftAssistStatusResponse,
@@ -159,6 +175,7 @@ interface DashboardClientProps {
   capabilities: CapabilitiesResponse;
   contactDossiers: ContactDossiersResponse;
   devHeaders: Record<string, string>;
+  documentProcessing: DocumentProcessingDashboardResponse;
   drafting: DraftingDashboardResponse;
   emailDeliveryHistory: EmailDeliveryDashboardResponse;
   externalUploads: ExternalUploadsDashboardResponse;
@@ -229,6 +246,7 @@ export default function DashboardClient({
   capabilities,
   contactDossiers,
   devHeaders,
+  documentProcessing,
   drafting,
   emailDeliveryHistory,
   externalUploads,
@@ -290,6 +308,13 @@ export default function DashboardClient({
   const [externalUploadDocumentsByMatterId, setExternalUploadDocumentsByMatterId] = useState(
     externalUploads.reviewItemsByMatterId,
   );
+  const [documentProcessingByMatterId, setDocumentProcessingByMatterId] = useState(
+    documentProcessing.workbenchesByMatterId,
+  );
+  const [documentProcessingStatus, setDocumentProcessingStatus] = useState(
+    "Document processing workbench loaded.",
+  );
+  const [queueingDocumentId, setQueueingDocumentId] = useState("");
   const [trustControlsByMatterId, setTrustControlsByMatterId] = useState<
     Record<string, TrustControlsDashboardResponse>
   >(() => (matters[0] ? { [matters[0].id]: trustControls } : {}));
@@ -383,6 +408,18 @@ export default function DashboardClient({
     (sessionRecord) => sessionRecord.matterId === activeMatter?.id,
   );
   const activeDocuments = activeMatter?.documents ?? [];
+  const activeDocumentProcessing = activeMatter
+    ? (documentProcessingByMatterId[activeMatter.id] ??
+      emptyDocumentProcessingWorkbench(activeMatter.id))
+    : emptyDocumentProcessingWorkbench("");
+  const activeDocumentProcessingRows = useMemo(
+    () => documentProcessingRowsForMatter(activeDocuments, activeDocumentProcessing),
+    [activeDocuments, activeDocumentProcessing],
+  );
+  const documentProcessingSummary = useMemo(
+    () => summarizeDocumentProcessingWorkbench(activeDocumentProcessing),
+    [activeDocumentProcessing],
+  );
   const activeShares = activeMatter ? (sharesByMatterId[activeMatter.id] ?? []) : [];
   const activeDrafts = activeMatter ? (draftsByMatterId[activeMatter.id] ?? []) : [];
   const activeExternalUploads = activeMatter
@@ -1024,6 +1061,59 @@ export default function DashboardClient({
     );
     setExternalUploadStatus("Upload review updated.");
     setReviewingExternalUploadDocumentId("");
+  }
+
+  async function refreshDocumentProcessingWorkbench(
+    matterId: string,
+  ): Promise<DocumentProcessingWorkbenchResponse | null> {
+    const response = await fetch(`${apiBaseUrl}${buildDocumentProcessingWorkbenchPath(matterId)}`, {
+      credentials: "include",
+      headers: devHeaders,
+    });
+
+    if (!response.ok) {
+      const fallback = emptyDocumentProcessingWorkbench(
+        matterId,
+        response.status === 403 ? "access_denied" : "workbench_unavailable",
+      );
+      setDocumentProcessingByMatterId((current) =>
+        replaceDocumentProcessingWorkbench(current, fallback),
+      );
+      return null;
+    }
+
+    const payload = (await response.json()) as DocumentProcessingWorkbenchResponse;
+    setDocumentProcessingByMatterId((current) =>
+      replaceDocumentProcessingWorkbench(current, payload),
+    );
+    return payload;
+  }
+
+  async function queueDocumentOcr(documentId: string): Promise<void> {
+    if (!activeMatter) return;
+    setQueueingDocumentId(documentId);
+    setDocumentProcessingStatus("Queueing OCR...");
+    const response = await fetch(`${apiBaseUrl}${buildDocumentProcessingQueuePath(documentId)}`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ task: "ocr", language: "eng" }),
+    });
+
+    if (!response.ok) {
+      setDocumentProcessingStatus(`OCR queue failed: ${response.status}`);
+      setQueueingDocumentId("");
+      return;
+    }
+
+    const refreshed = await refreshDocumentProcessingWorkbench(activeMatter.id);
+    setDocumentProcessingStatus(
+      refreshed ? "OCR queued; workbench refreshed." : "OCR queued; workbench unavailable.",
+    );
+    setQueueingDocumentId("");
   }
 
   async function createCalendarCredential(): Promise<void> {
@@ -2291,23 +2381,162 @@ export default function DashboardClient({
             ) : null}
 
             {activeSection === "documents" ? (
-              <div className="party-list">
-                {activeDocuments.map((document) => (
-                  <div className="party-row" key={document.id}>
-                    <span>
-                      <strong>{document.title}</strong>
-                      <small>
-                        {document.uploadStatus} · checksum {document.checksumStatus} · scan{" "}
-                        {document.scanStatus} · review {document.reviewStatus}
-                      </small>
-                    </span>
-                    <em>{document.classification.replace("_", " ")}</em>
+              <>
+                <div className="detail-grid">
+                  <div>
+                    <span className="field-label">Workbench</span>
+                    <strong>
+                      {compactDocumentProcessingReason(activeDocumentProcessing.status)}
+                    </strong>
                   </div>
-                ))}
-                {activeDocuments.length === 0 ? (
-                  <p className="inline-empty">No documents are linked to this matter.</p>
+                  <div>
+                    <span className="field-label">Provider state</span>
+                    <strong>
+                      {
+                        activeDocumentProcessing.providerStatus.filter(
+                          (provider) => provider.status === "configured",
+                        ).length
+                      }
+                      /{activeDocumentProcessing.providerStatus.length}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Worker queues</span>
+                    <strong>
+                      {
+                        activeDocumentProcessing.workerQueues.filter(
+                          (queue) => queue.status === "configured",
+                        ).length
+                      }
+                      /{activeDocumentProcessing.workerQueues.length}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Jobs</span>
+                    <strong>
+                      {activeDocumentProcessing.summary.queued +
+                        activeDocumentProcessing.summary.active}{" "}
+                      active · {activeDocumentProcessing.summary.failed} failed
+                    </strong>
+                  </div>
+                </div>
+                <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+                  {documentProcessingStatus} {documentProcessingSummary}
+                </p>
+
+                {activeDocumentProcessing.providerStatus.length > 0 ? (
+                  <>
+                    <div className="section-title">
+                      <h3>Providers and workers</h3>
+                      <span>{activeMatter.number}</span>
+                    </div>
+                    <div className="party-list">
+                      {activeDocumentProcessing.providerStatus.map((provider) => (
+                        <div className="party-row" key={`provider:${provider.kind}`}>
+                          <span>
+                            <strong>{compactDocumentProcessingReason(provider.kind)}</strong>
+                            <small>
+                              {compactDocumentProcessingReason(provider.reason)} ·{" "}
+                              {provider.providers?.filter((candidate) => candidate.enabled)
+                                .length ?? 0}{" "}
+                              enabled providers
+                            </small>
+                          </span>
+                          <em className={provider.status === "disabled" ? "risk" : undefined}>
+                            {compactDocumentProcessingReason(provider.status)}
+                          </em>
+                        </div>
+                      ))}
+                      {activeDocumentProcessing.workerQueues.map((queue) => (
+                        <div className="party-row" key={`queue:${queue.queueName}`}>
+                          <span>
+                            <strong>{compactDocumentProcessingReason(queue.queueName)}</strong>
+                            <small>{compactDocumentProcessingReason(queue.reason)}</small>
+                          </span>
+                          <em className={queue.status === "not_configured" ? "risk" : undefined}>
+                            {compactDocumentProcessingReason(queue.status)}
+                          </em>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 ) : null}
-              </div>
+
+                <div className="section-title">
+                  <h3>Document processing workbench</h3>
+                  <span>{activeDocumentProcessingRows.length} documents</span>
+                </div>
+                <div className="party-list queue-section-list">
+                  {documentProcessingGroupOrder.map((group) => {
+                    const groupRows = activeDocumentProcessingRows.filter(
+                      (item) => item.group === group,
+                    );
+                    if (groupRows.length === 0) return null;
+                    return (
+                      <section className="queue-section" key={group}>
+                        <div className="section-title">
+                          <h3>{documentProcessingGroupLabel(group)}</h3>
+                          <span>{groupRows.length}</span>
+                        </div>
+                        {groupRows.map((item) => {
+                          const action = describeDocumentQueueAction(
+                            item,
+                            activeDocumentProcessing,
+                          );
+                          const job = describeLatestDocumentJob(item.latestJob);
+                          return (
+                            <div className="party-row upload-review-row" key={item.document.id}>
+                              <span>
+                                <strong>{item.document.title}</strong>
+                                <small>
+                                  v{item.document.version} ·{" "}
+                                  {compactDocumentProcessingReason(item.document.classification)} ·{" "}
+                                  upload{" "}
+                                  {compactDocumentProcessingReason(item.document.uploadStatus)} ·
+                                  checksum{" "}
+                                  {compactDocumentProcessingReason(item.document.checksumStatus)} ·
+                                  scan {compactDocumentProcessingReason(item.document.scanStatus)} ·
+                                  review{" "}
+                                  {compactDocumentProcessingReason(item.document.reviewStatus)}
+                                  {item.document.legalHold ? " · legal hold" : ""}
+                                </small>
+                                <small>
+                                  Job {job.label} ·{" "}
+                                  {describeLatestExtraction(item.latestExtraction)}
+                                  {item.latestJob?.errorSummary
+                                    ? ` · ${item.latestJob.errorSummary}`
+                                    : ""}
+                                </small>
+                                {action.disabledReason ? (
+                                  <small>Disabled: {action.disabledReason}</small>
+                                ) : null}
+                              </span>
+                              <div className="row-actions upload-review-actions">
+                                <em className={action.tone === "risk" ? "risk" : undefined}>
+                                  {documentProcessingGroupLabel(item.group)}
+                                </em>
+                                <button
+                                  className="secondary-button compact-button row-button"
+                                  disabled={!action.canQueue || queueingDocumentId.length > 0}
+                                  onClick={() => void queueDocumentOcr(item.document.id)}
+                                  type="button"
+                                >
+                                  {queueingDocumentId === item.document.id
+                                    ? "Queueing..."
+                                    : action.label}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </section>
+                    );
+                  })}
+                  {activeDocumentProcessingRows.length === 0 ? (
+                    <p className="inline-empty">No documents are linked to this matter.</p>
+                  ) : null}
+                </div>
+              </>
             ) : null}
 
             {activeSection === "shares" ? (
