@@ -63,6 +63,7 @@ import type {
   ShareLinksStatusResponse,
   SetupStatusResponse,
   SignatureRequestsResponse,
+  TaskDeadlineWorkbenchResponse,
   TrustControlsDashboardResponse,
 } from "./types";
 
@@ -242,6 +243,19 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     throw error;
   }
   const billingFallback = buildBillingFallback(matters, session);
+  const taskWorkbench = await apiGetOptional<TaskDeadlineWorkbenchResponse>(
+    "/api/tasks/workbench",
+    {
+      tasks: [],
+      counters: {
+        my: { overdue: 0, today: 0, upcoming: 0 },
+        team: { overdue: 0, today: 0, upcoming: 0 },
+        matterQueues: [],
+        contactQueues: [],
+      },
+    },
+    headers,
+  );
   const billing = await apiGetOptional<BillingDashboardResponse>(
     "/api/billing/dashboard",
     billingFallback,
@@ -401,6 +415,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       session={session}
       shareLinksStatus={shareLinksStatus}
       signatures={signatures}
+      taskWorkbench={taskWorkbench}
       trustControls={trustControls}
     />
   );

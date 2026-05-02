@@ -14,6 +14,7 @@ import type {
   Matter,
   MatterParty,
   PortalGrant,
+  TaskDeadlineRecord,
   TimeEntry,
   User,
 } from "./models.js";
@@ -547,6 +548,42 @@ export const sampleCalendarEvents: CalendarEventRecord[] = [
     updatedAt: "2026-04-30T12:00:00.000Z",
     createdByUserId: "user-admin",
     updatedByUserId: "user-admin",
+  },
+];
+
+export const sampleTaskDeadlines: TaskDeadlineRecord[] = [
+  {
+    id: "task-deadline-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    assignedToUserId: "user-licensee",
+    title: "Review tenant evidence package",
+    dueAt: "2026-05-01T19:00:00.000Z",
+  },
+  {
+    id: "task-deadline-002",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    assignedToUserId: "user-staff",
+    title: "Prepare filing checklist",
+    dueAt: "2026-05-02T22:00:00.000Z",
+  },
+  {
+    id: "task-deadline-003",
+    firmId: sampleFirm.id,
+    matterId: "matter-002",
+    assignedToUserId: "user-admin",
+    title: "Confirm corporate records request",
+    dueAt: "2026-05-06T17:00:00.000Z",
+  },
+  {
+    id: "task-deadline-004",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    assignedToUserId: "user-licensee",
+    title: "Send synthetic retainer follow-up",
+    dueAt: "2026-04-29T20:00:00.000Z",
+    completedAt: "2026-04-30T17:30:00.000Z",
   },
 ];
 

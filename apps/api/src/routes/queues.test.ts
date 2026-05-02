@@ -167,6 +167,7 @@ describe("queue routes", () => {
     expect(response.statusCode).toBe(200);
     expect(payload.sections.map((candidate) => candidate.key)).toEqual([
       "matters",
+      "task-deadlines",
       "documents",
       "signatures",
       "intake",
@@ -175,6 +176,16 @@ describe("queue routes", () => {
     ]);
     expect(section(payload, "matters").items).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "matter-002" })]),
+    );
+    expect(section(payload, "task-deadlines").items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "task-deadline-001",
+          matterId: "matter-001",
+          status: "overdue",
+          priority: "high",
+        }),
+      ]),
     );
     expect(section(payload, "documents").items).toEqual(
       expect.arrayContaining([
@@ -243,7 +254,7 @@ describe("queue routes", () => {
     expect(section(payload, "matters").items).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "matter-002" })]),
     );
-    for (const key of ["documents", "signatures", "intake"]) {
+    for (const key of ["task-deadlines", "documents", "signatures", "intake"]) {
       expect(section(payload, key).items).not.toEqual(
         expect.arrayContaining([expect.objectContaining({ matterId: "matter-002" })]),
       );

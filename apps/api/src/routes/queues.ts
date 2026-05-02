@@ -1,5 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { canAccess, canShareDocumentThroughPortal } from "@open-practice/domain";
+import {
+  buildTaskDeadlineWorkbench,
+  canAccess,
+  canShareDocumentThroughPortal,
+} from "@open-practice/domain";
 import { hasFirmWideLedgerAccess } from "../http/auth-guards.js";
 import type { ApiRouteDependencies } from "./types.js";
 
@@ -27,6 +31,13 @@ export function registerQueuesRoutes(
     const visibleSignatures = signatures.filter((signature) => matterIds.has(signature.matterId));
     const visibleIntake = intake.filter((session) => matterIds.has(session.matterId));
     const documents = matters.flatMap((matter) => matter.documents);
+    const taskWorkbench = buildTaskDeadlineWorkbench({
+      tasks: await repository.listTaskDeadlines(request.auth.firmId, {
+        matterIds: [...matterIds],
+      }),
+      matterParties: matters.flatMap((matter) => matter.parties),
+      userId: request.auth.user.id,
+    });
 
     return {
       sections: [
@@ -41,6 +52,19 @@ export function registerQueuesRoutes(
               title: matter.title,
               status: matter.status,
               priority: matter.status === "intake" ? "medium" : "low",
+            })),
+        },
+        {
+          key: "task-deadlines",
+          label: "Task deadlines",
+          items: taskWorkbench.tasks
+            .filter((task) => task.completionStatus === "open" && task.bucket !== "unscheduled")
+            .map((task) => ({
+              id: task.id,
+              matterId: task.matterId,
+              title: task.title,
+              status: task.bucket,
+              priority: task.bucket === "overdue" ? "high" : "medium",
             })),
         },
         {

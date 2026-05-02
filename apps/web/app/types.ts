@@ -26,6 +26,7 @@ import type {
   Matter,
   MatterParty,
   SignatureRequestRecord,
+  TaskDeadlineWorkbench,
   TimeEntry,
   User,
 } from "@open-practice/domain";
@@ -441,6 +442,8 @@ export interface QueueSection {
 export interface QueuesResponse {
   sections: QueueSection[];
 }
+
+export type TaskDeadlineWorkbenchResponse = TaskDeadlineWorkbench;
 
 export type ShareLinkPermission = "view_documents";
 

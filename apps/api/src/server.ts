@@ -45,6 +45,7 @@ import { registerSessionRoutes } from "./routes/session.js";
 import { registerShareRoutes } from "./routes/shares.js";
 import { registerSignatureRoutes } from "./routes/signatures.js";
 import { registerSetupRoutes } from "./routes/setup.js";
+import { registerTaskRoutes } from "./routes/tasks.js";
 import { registerWebAuthnRoutes } from "./routes/webauthn.js";
 import type { ApiJobQueue } from "./routes/types.js";
 import {
@@ -400,6 +401,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     emailJobQueue: options.emailJobQueue,
     publicWebBaseUrl: options.publicWebBaseUrl,
   });
+  registerTaskRoutes(server, { repository: options.repository });
   registerQueuesRoutes(server, { repository: options.repository });
 
   server.setErrorHandler((error, _request, reply) => {
