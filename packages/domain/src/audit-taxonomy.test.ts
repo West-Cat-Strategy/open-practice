@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { AuditEvent } from "./audit.js";
+import { appendAuditEvent, verifyAuditChain, type AuditEvent } from "./audit.js";
 import { classifyAuditEvent, summarizeAuditEventTaxonomy } from "./audit-taxonomy.js";
+import { sampleAuditEvents } from "./sample-data.js";
 
 function auditEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
   return {
@@ -59,13 +60,20 @@ describe("audit event taxonomy", () => {
       auditEvent(),
       auditEvent({
         id: "audit-test-002",
+        action: "signature_request.created",
+        resourceType: "signature_request",
+        resourceId: "signature-001",
+        metadata: { signerCount: 1 },
+      }),
+      auditEvent({
+        id: "audit-test-003",
         action: "signature_provider_event.recorded",
         resourceType: "provider_event",
         resourceId: "provider-event-001",
         metadata: { matterId: "matter-sensitive", provider: "embedded" },
       }),
       auditEvent({
-        id: "audit-test-003",
+        id: "audit-test-004",
         action: "custom.workflow.executed",
         resourceType: "custom_resource",
         resourceId: "custom-001",
@@ -74,11 +82,12 @@ describe("audit event taxonomy", () => {
     ]);
 
     expect(summary).toMatchObject({
-      total: 3,
-      known: 2,
+      total: 4,
+      known: 3,
       unknown: 1,
-      byCategory: { communications: 1, signatures: 1, unknown: 1 },
-      byActorHint: { authenticated_user: 1, provider_callback: 1, unknown: 1 },
+      byCategory: { communications: 1, signatures: 2, unknown: 1 },
+      byActorHint: { authenticated_user: 2, provider_callback: 1, unknown: 1 },
+      matterScopedWithoutMatterId: 1,
       unknownActions: ["custom.workflow.executed"],
       resourceTypeMismatches: [
         {
@@ -91,5 +100,50 @@ describe("audit event taxonomy", () => {
     });
     expect(JSON.stringify(summary)).not.toContain("matter-sensitive");
     expect(JSON.stringify(summary)).not.toContain("private synthetic note");
+  });
+
+  it("keeps unknown actions classified without breaking audit-chain verification", () => {
+    const first = appendAuditEvent(undefined, {
+      id: "audit-test-unknown-001",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      action: "custom.workflow.executed",
+      resourceType: "custom_resource",
+      resourceId: "custom-001",
+      occurredAt: "2026-05-02T13:00:00.000Z",
+      metadata: { matterId: "matter-001" },
+    });
+    const second = appendAuditEvent(first, {
+      id: "audit-test-unknown-002",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      action: "email_outbox.queued",
+      resourceType: "email_outbox",
+      resourceId: "email-001",
+      occurredAt: "2026-05-02T13:01:00.000Z",
+      metadata: { matterId: "matter-001", recipientCount: 1 },
+    });
+
+    expect(classifyAuditEvent(first)).toMatchObject({
+      action: "custom.workflow.executed",
+      category: "unknown",
+      known: false,
+    });
+    expect(verifyAuditChain([first, second])).toBe(true);
+  });
+
+  it("classifies the synthetic seed audit events", () => {
+    expect(sampleAuditEvents.map((event) => classifyAuditEvent(event))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "matter.opened", known: true }),
+        expect.objectContaining({ action: "portal.grant.created", known: true }),
+      ]),
+    );
+    expect(summarizeAuditEventTaxonomy(sampleAuditEvents)).toMatchObject({
+      total: sampleAuditEvents.length,
+      known: sampleAuditEvents.length,
+      unknown: 0,
+      unknownActions: [],
+    });
   });
 });
