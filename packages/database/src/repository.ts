@@ -276,12 +276,20 @@ export interface OpenPracticeRepository {
     job: JobLifecycleRecord;
   }>;
   getEmailOutbox(firmId: string, emailId: string): Promise<EmailOutboxRecord | undefined>;
+  listEmailOutbox(
+    firmId: string,
+    options?: { matterId?: string; limit?: number },
+  ): Promise<EmailOutboxRecord[]>;
   recordEmailDeliveryResult(input: {
     firmId: string;
     emailId: string;
-    status: "sent" | "failed";
+    status: "sending" | "sent" | "failed";
     occurredAt: string;
     providerMessageId?: string;
+    attemptNumber?: number;
+    jobId?: string;
+    source?: EmailEventRecord["source"];
+    terminal?: boolean;
     errorMessage?: string;
     metadata?: Record<string, unknown>;
   }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord }>;
@@ -960,6 +968,7 @@ function mapEmailOutboxRow(row: typeof schema.emailOutbox.$inferSelect): EmailOu
   return {
     id: row.id,
     firmId: row.firmId,
+    matterId: row.matterId,
     templateKey: row.templateKey,
     status: row.status as EmailOutboxRecord["status"],
     to: row.to,
@@ -974,6 +983,10 @@ function mapEmailOutboxRow(row: typeof schema.emailOutbox.$inferSelect): EmailOu
     queuedAt: row.queuedAt.toISOString(),
     sentAt: dateToIso(row.sentAt),
     failedAt: dateToIso(row.failedAt),
+    attemptCount: row.attemptCount,
+    lastAttemptAt: dateToIso(row.lastAttemptAt),
+    terminalFailureAt: dateToIso(row.terminalFailureAt),
+    terminalFailureReason: row.terminalFailureReason ?? undefined,
     errorMessage: row.errorMessage ?? undefined,
     metadata: row.metadata,
   };
@@ -985,6 +998,8 @@ function emailOutboxInsert(record: EmailOutboxRecord): typeof schema.emailOutbox
     queuedAt: new Date(record.queuedAt),
     sentAt: record.sentAt ? new Date(record.sentAt) : null,
     failedAt: record.failedAt ? new Date(record.failedAt) : null,
+    lastAttemptAt: record.lastAttemptAt ? new Date(record.lastAttemptAt) : null,
+    terminalFailureAt: record.terminalFailureAt ? new Date(record.terminalFailureAt) : null,
   };
 }
 
@@ -996,6 +1011,10 @@ function mapEmailEventRow(row: typeof schema.emailEvents.$inferSelect): EmailEve
     eventType: row.eventType as EmailEventRecord["eventType"],
     providerMessageId: row.providerMessageId ?? undefined,
     occurredAt: row.occurredAt.toISOString(),
+    attemptNumber: row.attemptNumber ?? undefined,
+    jobId: row.jobId ?? undefined,
+    source: row.source as EmailEventRecord["source"],
+    errorMessage: row.errorMessage ?? undefined,
     metadata: row.metadata,
   };
 }
@@ -1004,7 +1023,20 @@ function emailEventInsert(record: EmailEventRecord): typeof schema.emailEvents.$
   return {
     ...record,
     occurredAt: new Date(record.occurredAt),
+    attemptNumber: record.attemptNumber ?? null,
+    jobId: record.jobId ?? null,
+    source: record.source,
+    errorMessage: record.errorMessage ?? null,
   };
+}
+
+function sanitizeEmailFailureSummary(message: string | undefined): string | undefined {
+  if (!message) return undefined;
+  return message.replace(/\s+/g, " ").trim().slice(0, 240) || undefined;
+}
+
+function nextEmailAttemptCount(existing: EmailOutboxRecord, attemptNumber: number | undefined) {
+  return Math.max(existing.attemptCount, attemptNumber ?? existing.attemptCount);
 }
 
 function jobLifecycleInsert(
@@ -1848,12 +1880,33 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(this.emailOutbox.find((email) => email.firmId === firmId && email.id === emailId));
   }
 
+  async listEmailOutbox(
+    firmId: string,
+    options: { matterId?: string; limit?: number } = {},
+  ): Promise<EmailOutboxRecord[]> {
+    const limit = options.limit ?? 50;
+    return clone(
+      this.emailOutbox
+        .filter((email) => {
+          if (email.firmId !== firmId) return false;
+          if (options.matterId && email.matterId !== options.matterId) return false;
+          return true;
+        })
+        .sort((left, right) => right.queuedAt.localeCompare(left.queuedAt))
+        .slice(0, limit),
+    );
+  }
+
   async recordEmailDeliveryResult(input: {
     firmId: string;
     emailId: string;
-    status: "sent" | "failed";
+    status: "sending" | "sent" | "failed";
     occurredAt: string;
     providerMessageId?: string;
+    attemptNumber?: number;
+    jobId?: string;
+    source?: EmailEventRecord["source"];
+    terminal?: boolean;
     errorMessage?: string;
     metadata?: Record<string, unknown>;
   }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord }> {
@@ -1863,12 +1916,22 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     if (index === -1) throw new Error(`Email outbox record ${input.emailId} was not found`);
 
     const existing = this.emailOutbox[index]!;
+    const terminal = input.terminal ?? input.status === "failed";
+    const failureSummary = sanitizeEmailFailureSummary(input.errorMessage);
+    const attemptCount = nextEmailAttemptCount(existing, input.attemptNumber);
     const email: EmailOutboxRecord = {
       ...existing,
-      status: input.status,
+      status:
+        input.status === "failed" && !terminal
+          ? "queued"
+          : (input.status as EmailOutboxRecord["status"]),
       sentAt: input.status === "sent" ? input.occurredAt : existing.sentAt,
-      failedAt: input.status === "failed" ? input.occurredAt : undefined,
-      errorMessage: input.status === "failed" ? input.errorMessage : undefined,
+      failedAt: input.status === "failed" && terminal ? input.occurredAt : undefined,
+      attemptCount,
+      lastAttemptAt: input.attemptNumber ? input.occurredAt : existing.lastAttemptAt,
+      terminalFailureAt: input.status === "failed" && terminal ? input.occurredAt : undefined,
+      terminalFailureReason: input.status === "failed" && terminal ? failureSummary : undefined,
+      errorMessage: input.status === "failed" && terminal ? failureSummary : undefined,
     };
     const event: EmailEventRecord = {
       id: crypto.randomUUID(),
@@ -1877,6 +1940,10 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       eventType: input.status,
       occurredAt: input.occurredAt,
       providerMessageId: input.providerMessageId,
+      attemptNumber: input.attemptNumber,
+      jobId: input.jobId,
+      source: input.source ?? "worker",
+      errorMessage: input.status === "failed" ? failureSummary : undefined,
       metadata: input.metadata ?? {},
     };
     this.emailOutbox[index] = clone(email);
@@ -3916,24 +3983,65 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return row ? mapEmailOutboxRow(row) : undefined;
   }
 
+  async listEmailOutbox(
+    firmId: string,
+    options: { matterId?: string; limit?: number } = {},
+  ): Promise<EmailOutboxRecord[]> {
+    const conditions = [eq(schema.emailOutbox.firmId, firmId)];
+    if (options.matterId) conditions.push(eq(schema.emailOutbox.matterId, options.matterId));
+    const rows = await this.db
+      .select()
+      .from(schema.emailOutbox)
+      .where(and(...conditions))
+      .orderBy(desc(schema.emailOutbox.queuedAt))
+      .limit(options.limit ?? 50);
+    return rows.map(mapEmailOutboxRow);
+  }
+
   async recordEmailDeliveryResult(input: {
     firmId: string;
     emailId: string;
-    status: "sent" | "failed";
+    status: "sending" | "sent" | "failed";
     occurredAt: string;
     providerMessageId?: string;
+    attemptNumber?: number;
+    jobId?: string;
+    source?: EmailEventRecord["source"];
+    terminal?: boolean;
     errorMessage?: string;
     metadata?: Record<string, unknown>;
   }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord }> {
     return this.db.transaction(async (tx) => {
       const occurredAt = new Date(input.occurredAt);
+      const [existingRow] = await tx
+        .select()
+        .from(schema.emailOutbox)
+        .where(
+          and(
+            eq(schema.emailOutbox.firmId, input.firmId),
+            eq(schema.emailOutbox.id, input.emailId),
+          ),
+        );
+      if (!existingRow) throw new Error(`Email outbox record ${input.emailId} was not found`);
+      const existing = mapEmailOutboxRow(existingRow);
+      const terminal = input.terminal ?? input.status === "failed";
+      const failureSummary = sanitizeEmailFailureSummary(input.errorMessage);
+      const attemptCount = nextEmailAttemptCount(existing, input.attemptNumber);
       const [emailRow] = await tx
         .update(schema.emailOutbox)
         .set({
-          status: input.status,
+          status:
+            input.status === "failed" && !terminal
+              ? "queued"
+              : (input.status as EmailOutboxRecord["status"]),
           sentAt: input.status === "sent" ? occurredAt : null,
-          failedAt: input.status === "failed" ? occurredAt : null,
-          errorMessage: input.status === "failed" ? input.errorMessage : null,
+          failedAt: input.status === "failed" && terminal ? occurredAt : null,
+          attemptCount,
+          lastAttemptAt: input.attemptNumber ? occurredAt : null,
+          terminalFailureAt: input.status === "failed" && terminal ? occurredAt : null,
+          terminalFailureReason:
+            input.status === "failed" && terminal ? (failureSummary ?? null) : null,
+          errorMessage: input.status === "failed" && terminal ? (failureSummary ?? null) : null,
         })
         .where(
           and(
@@ -3942,7 +4050,6 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           ),
         )
         .returning();
-      if (!emailRow) throw new Error(`Email outbox record ${input.emailId} was not found`);
 
       const event: EmailEventRecord = {
         id: crypto.randomUUID(),
@@ -3951,6 +4058,10 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         eventType: input.status,
         occurredAt: input.occurredAt,
         providerMessageId: input.providerMessageId,
+        attemptNumber: input.attemptNumber,
+        jobId: input.jobId,
+        source: input.source ?? "worker",
+        errorMessage: input.status === "failed" ? failureSummary : undefined,
         metadata: input.metadata ?? {},
       };
       const [eventRow] = await tx

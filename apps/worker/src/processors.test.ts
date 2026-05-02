@@ -18,6 +18,7 @@ describe("worker processors", () => {
       email: {
         id: "email-outbox-worker-test",
         firmId: "firm-west-legal",
+        matterId: "matter-001",
         templateKey: "signature.requested",
         status: "queued",
         to: ["client@example.test"],
@@ -30,6 +31,7 @@ describe("worker processors", () => {
         relatedResourceType: "signature_request",
         relatedResourceId: "sig-001",
         queuedAt: "2026-05-01T00:00:00.000Z",
+        attemptCount: 0,
         metadata: { providerMetadata: { provider: "mailpit" } },
       },
       event: {
@@ -38,6 +40,8 @@ describe("worker processors", () => {
         emailId: "email-outbox-worker-test",
         eventType: "queued",
         occurredAt: "2026-05-01T00:00:00.000Z",
+        jobId: "job-worker-test",
+        source: "api",
         metadata: { provider: "mailpit" },
       },
       job: {
@@ -99,21 +103,30 @@ describe("worker processors", () => {
       repository.getEmailOutbox("firm-west-legal", "email-outbox-worker-test"),
     ).resolves.toMatchObject({
       status: "sent",
+      attemptCount: 1,
+      lastAttemptAt: expect.any(String),
       sentAt: expect.any(String),
       errorMessage: undefined,
     });
-    await expect(
-      repository.listEmailEvents("firm-west-legal", { emailId: "email-outbox-worker-test" }),
-    ).resolves.toEqual(
+    const events = await repository.listEmailEvents("firm-west-legal", {
+      emailId: "email-outbox-worker-test",
+    });
+    expect(events.map((event) => event.eventType)).toEqual(["queued", "sending", "sent"]);
+    expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          eventType: "queued",
+          eventType: "sending",
           emailId: "email-outbox-worker-test",
+          attemptNumber: 1,
+          jobId: "job-worker-test",
+          source: "worker",
         }),
         expect.objectContaining({
           eventType: "sent",
           emailId: "email-outbox-worker-test",
           providerMessageId: "mailpit-message-001",
+          attemptNumber: 1,
+          jobId: "job-worker-test",
         }),
       ]),
     );
@@ -140,6 +153,7 @@ describe("worker processors", () => {
       email: {
         id: "email-outbox-failed-worker-test",
         firmId: "firm-west-legal",
+        matterId: "matter-001",
         templateKey: "intake.generated",
         status: "queued",
         to: ["staff@example.test"],
@@ -152,6 +166,7 @@ describe("worker processors", () => {
         relatedResourceType: "intake_session",
         relatedResourceId: "intake-001",
         queuedAt: "2026-05-01T00:00:00.000Z",
+        attemptCount: 0,
         metadata: { provider: "mailpit", providerMetadata: { provider: "mailpit" } },
       },
       event: {
@@ -160,6 +175,8 @@ describe("worker processors", () => {
         emailId: "email-outbox-failed-worker-test",
         eventType: "queued",
         occurredAt: "2026-05-01T00:00:00.000Z",
+        jobId: "job-worker-failed-test",
+        source: "api",
         metadata: { provider: "mailpit" },
       },
       job: {
@@ -206,22 +223,25 @@ describe("worker processors", () => {
       repository.getEmailOutbox("firm-west-legal", "email-outbox-failed-worker-test"),
     ).resolves.toMatchObject({
       status: "failed",
+      attemptCount: 1,
       failedAt: expect.any(String),
+      terminalFailureAt: expect.any(String),
+      terminalFailureReason: "SMTP refused message",
       errorMessage: "SMTP refused message",
     });
-    await expect(
-      repository.listEmailEvents("firm-west-legal", {
-        emailId: "email-outbox-failed-worker-test",
-      }),
-    ).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          eventType: "failed",
-          emailId: "email-outbox-failed-worker-test",
-          metadata: expect.objectContaining({ provider: "mailpit" }),
-        }),
-      ]),
-    );
+    const events = await repository.listEmailEvents("firm-west-legal", {
+      emailId: "email-outbox-failed-worker-test",
+    });
+    expect(events.map((event) => event.eventType)).toEqual(["queued", "sending", "failed"]);
+    expect(events.at(-1)).toMatchObject({
+      eventType: "failed",
+      emailId: "email-outbox-failed-worker-test",
+      attemptNumber: 1,
+      jobId: "job-worker-failed-test",
+      source: "worker",
+      errorMessage: "SMTP refused message",
+      metadata: expect.objectContaining({ provider: "mailpit", terminal: true }),
+    });
     await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -230,6 +250,121 @@ describe("worker processors", () => {
           attemptsMade: 1,
           errorMessage: "SMTP refused message",
           failedAt: expect.any(String),
+        }),
+      ]),
+    );
+  });
+
+  it("keeps retryable outbound email failures queued with attempt provenance", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const mailSender: MailSender = {
+      async send() {
+        throw new Error("Temporary SMTP outage");
+      },
+    };
+    await repository.createQueuedEmailOutbox({
+      email: {
+        id: "email-outbox-retryable-worker-test",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        templateKey: "calendar.invitation",
+        status: "queued",
+        to: ["attendee@example.test"],
+        cc: [],
+        bcc: [],
+        from: "Open Practice <no-reply@open-practice.local>",
+        subject: "Calendar invitation",
+        htmlBody: "",
+        textBody: "Synthetic invitation.",
+        relatedResourceType: "calendar_event",
+        relatedResourceId: "calendar-event-001",
+        queuedAt: "2026-05-01T00:00:00.000Z",
+        attemptCount: 1,
+        metadata: { provider: "mailpit", providerMetadata: { provider: "mailpit" } },
+      },
+      event: {
+        id: "email-event-retryable-worker-test",
+        firmId: "firm-west-legal",
+        emailId: "email-outbox-retryable-worker-test",
+        eventType: "queued",
+        occurredAt: "2026-05-01T00:00:00.000Z",
+        jobId: "job-worker-retryable-test",
+        source: "api",
+        metadata: { provider: "mailpit" },
+      },
+      job: {
+        id: "job-worker-retryable-test",
+        firmId: "firm-west-legal",
+        queueName: "email",
+        jobName: "send_email",
+        status: "queued",
+        targetResourceType: "email_outbox",
+        targetResourceId: "email-outbox-retryable-worker-test",
+        attemptsMade: 1,
+        maxAttempts: 3,
+        queuedAt: "2026-05-01T00:00:00.000Z",
+        metadata: {
+          emailId: "email-outbox-retryable-worker-test",
+          matterId: "matter-001",
+          templateKey: "calendar.invitation",
+          recipientCount: 1,
+        },
+      },
+    });
+
+    await expect(
+      processOpenPracticeJob({
+        queueName: "email",
+        jobName: "send_email",
+        data: {
+          firmId: "firm-west-legal",
+          resourceType: "email_outbox",
+          resourceId: "email-outbox-retryable-worker-test",
+          metadata: { emailId: "email-outbox-retryable-worker-test" },
+        },
+        jobLifecycleId: "job-worker-retryable-test",
+        attemptsMade: 1,
+        maxAttempts: 3,
+        repository,
+        s3: {} as never,
+        ocrProvider: {} as never,
+        mailSender,
+        inboundEmailParser: {} as never,
+      }),
+    ).rejects.toThrow("Temporary SMTP outage");
+
+    await expect(
+      repository.getEmailOutbox("firm-west-legal", "email-outbox-retryable-worker-test"),
+    ).resolves.toMatchObject({
+      status: "queued",
+      attemptCount: 2,
+      failedAt: undefined,
+      terminalFailureAt: undefined,
+      terminalFailureReason: undefined,
+      errorMessage: undefined,
+    });
+    await expect(
+      repository.listEmailEvents("firm-west-legal", {
+        emailId: "email-outbox-retryable-worker-test",
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventType: "failed",
+          attemptNumber: 2,
+          source: "worker",
+          errorMessage: "Temporary SMTP outage",
+          metadata: expect.objectContaining({ terminal: false }),
+        }),
+      ]),
+    );
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "job-worker-retryable-test",
+          status: "failed",
+          attemptsMade: 2,
+          errorMessage: "Temporary SMTP outage",
         }),
       ]),
     );

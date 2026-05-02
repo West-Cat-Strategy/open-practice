@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { AccessRequest } from "@open-practice/domain";
+import type { AccessRequest, EmailEventRecord, EmailOutboxRecord } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
@@ -21,6 +21,11 @@ const emailPreviewBodySchema = z.object({
   matterId: z.string().min(1),
   template: z.string().min(1),
   to: z.array(z.string().email()).default([]),
+});
+
+const emailHistoryQuerySchema = z.object({
+  matterId: z.string().min(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 const emailOutboxBodySchema = z
@@ -48,6 +53,51 @@ const emailOutboxBodySchema = z
   });
 
 type RelatedResourceType = z.infer<typeof relatedResourceTypeSchema>;
+
+function sanitizeDeliveryFailureSummary(message: string | undefined): string | undefined {
+  if (!message) return undefined;
+  return message.replace(/\s+/g, " ").trim().slice(0, 240) || undefined;
+}
+
+function recipientCount(email: EmailOutboxRecord): number {
+  return email.to.length + email.cc.length + email.bcc.length;
+}
+
+function serializeDeliveryEvent(event: EmailEventRecord) {
+  return {
+    id: event.id,
+    eventType: event.eventType,
+    occurredAt: event.occurredAt,
+    providerMessageId: event.providerMessageId,
+    attemptNumber: event.attemptNumber,
+    jobId: event.jobId,
+    source: event.source,
+    errorSummary: sanitizeDeliveryFailureSummary(event.errorMessage),
+  };
+}
+
+function serializeDeliveryHistory(email: EmailOutboxRecord, events: EmailEventRecord[]) {
+  const latestFailure = [...events].reverse().find((event) => event.eventType === "failed");
+  return {
+    id: email.id,
+    matterId: email.matterId,
+    templateKey: email.templateKey,
+    status: email.status,
+    relatedResourceType: email.relatedResourceType,
+    relatedResourceId: email.relatedResourceId,
+    recipientCount: recipientCount(email),
+    attemptCount: email.attemptCount,
+    queuedAt: email.queuedAt,
+    lastAttemptAt: email.lastAttemptAt,
+    sentAt: email.sentAt,
+    failedAt: email.failedAt,
+    terminalFailureAt: email.terminalFailureAt,
+    failureSummary:
+      sanitizeDeliveryFailureSummary(email.terminalFailureReason) ??
+      sanitizeDeliveryFailureSummary(latestFailure?.errorMessage),
+    events: events.map(serializeDeliveryEvent),
+  };
+}
 
 function assertEmailAccess(
   context: ApiAuthContext,
@@ -140,6 +190,35 @@ export function registerEmailRoutes(
     };
   });
 
+  server.get("/api/mail/outbox", async (request) => {
+    const query = parseRequestPart(emailHistoryQuerySchema, request.query, "query");
+    assertEmailAccess(request.auth, {
+      resource: "email",
+      action: "read",
+      matterId: query.matterId,
+    });
+
+    const emails = await repository.listEmailOutbox(request.auth.firmId, {
+      matterId: query.matterId,
+      limit: query.limit,
+    });
+    const eventsByEmailId = new Map<string, EmailEventRecord[]>();
+    await Promise.all(
+      emails.map(async (email) => {
+        eventsByEmailId.set(
+          email.id,
+          await repository.listEmailEvents(request.auth.firmId, { emailId: email.id }),
+        );
+      }),
+    );
+
+    return {
+      emails: emails.map((email) =>
+        serializeDeliveryHistory(email, eventsByEmailId.get(email.id) ?? []),
+      ),
+    };
+  });
+
   server.post("/api/email/previews", async (request) => {
     const body = parseRequestPart(emailPreviewBodySchema, request.body, "body");
     assertEmailAccess(request.auth, {
@@ -177,6 +256,7 @@ export function registerEmailRoutes(
       relatedResourceType: body.relatedResourceType,
       relatedResourceId: body.relatedResourceId,
       metadata: body.metadata,
+      source: "api.mail_outbox",
       required: true,
     });
     if (!queued) throw new Error("SMTP email delivery is not configured");
@@ -186,10 +266,12 @@ export function registerEmailRoutes(
       queuedEmail: summarizeQueuedRouteEmail(queued),
       email: {
         id: queued.email.id,
+        matterId: queued.email.matterId,
         templateKey: queued.email.templateKey,
         status: queued.email.status,
         relatedResourceType: queued.email.relatedResourceType,
         relatedResourceId: queued.email.relatedResourceId,
+        attemptCount: queued.email.attemptCount,
         queuedAt: queued.email.queuedAt,
       },
       event: {

@@ -49,6 +49,11 @@ import {
   upsertCalendarCredential,
 } from "./calendar-dashboard";
 import {
+  buildEmailDeliveryHistoryPath,
+  describeEmailDeliveryState,
+  loadEmailDeliveryDashboardData,
+} from "./email-delivery-dashboard";
+import {
   buildIntakeFormLinkCreatePayload,
   buildIntakeFormLinkListPath,
   buildIntakePortalPath,
@@ -73,6 +78,7 @@ import {
 } from "./intake-forms/runner-utils";
 import type {
   ExternalUploadLinkRecord,
+  EmailDeliveryHistoryItem,
   IntakeFormLinkSummary,
   MatterSummary,
   ShareLinkRecord,
@@ -185,6 +191,42 @@ function externalUploadLink(
 ): ExternalUploadLinkRecord {
   return {
     ...baseExternalUploadLink(),
+    ...overrides,
+  };
+}
+
+function emailDeliveryHistory(
+  overrides: Partial<EmailDeliveryHistoryItem> = {},
+): EmailDeliveryHistoryItem {
+  return {
+    id: "email-history-001",
+    matterId: "matter-001",
+    templateKey: "signature.requested",
+    status: "failed",
+    relatedResourceType: "signature_request",
+    relatedResourceId: "sig-001",
+    recipientCount: 1,
+    attemptCount: 1,
+    queuedAt: "2026-05-01T12:00:00.000Z",
+    lastAttemptAt: "2026-05-01T12:02:00.000Z",
+    terminalFailureAt: "2026-05-01T12:02:00.000Z",
+    failureSummary: "SMTP refused synthetic message",
+    events: [
+      {
+        id: "email-event-queued",
+        eventType: "queued",
+        occurredAt: "2026-05-01T12:00:00.000Z",
+        source: "api",
+      },
+      {
+        id: "email-event-failed",
+        eventType: "failed",
+        occurredAt: "2026-05-01T12:02:00.000Z",
+        attemptNumber: 1,
+        source: "worker",
+        errorSummary: "SMTP refused synthetic message",
+      },
+    ],
     ...overrides,
   };
 }
@@ -620,6 +662,33 @@ describe("dashboard client behavior", () => {
     ).toEqual([
       expect.objectContaining({ id: "calendar-credential-001", revokedAt: expect.any(String) }),
     ]);
+  });
+
+  it("loads and describes redacted email delivery history", async () => {
+    const failed = emailDeliveryHistory({ matterId: "matter-002" });
+    const sent = emailDeliveryHistory({
+      id: "email-history-sent",
+      matterId: "matter-002",
+      status: "sent",
+      failureSummary: undefined,
+      terminalFailureAt: undefined,
+    });
+    const data = await loadEmailDeliveryDashboardData({
+      matters: [matter({ id: "matter-001" }), matter({ id: "matter-002" })],
+      listDeliveryHistoryForMatter: async (matterId) => ({
+        emails: matterId === "matter-002" ? [failed, sent] : [],
+      }),
+    });
+
+    expect(buildEmailDeliveryHistoryPath("matter 001", 3)).toBe(
+      "/api/mail/outbox?matterId=matter%20001&limit=3",
+    );
+    expect(data.emailsByMatterId).toEqual({
+      "matter-001": [],
+      "matter-002": [failed, sent],
+    });
+    expect(describeEmailDeliveryState(failed)).toEqual({ label: "failed", tone: "risk" });
+    expect(describeEmailDeliveryState(sent)).toEqual({ label: "sent" });
   });
 
   it("updates calendar attendee state without mutating unrelated matter events", () => {

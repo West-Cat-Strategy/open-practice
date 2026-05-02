@@ -7,6 +7,10 @@ import DashboardClient from "./dashboard-client";
 import { loadCalendarDashboardData } from "./calendar-dashboard";
 import { loadDraftingDashboardData } from "./drafting-dashboard";
 import {
+  buildEmailDeliveryHistoryPath,
+  loadEmailDeliveryDashboardData,
+} from "./email-delivery-dashboard";
+import {
   buildExternalUploadListPath,
   canCreateExternalUpload,
   externalUploadsStatusFallback,
@@ -27,6 +31,8 @@ import type {
   CalendarEventsResponse,
   CapabilitiesResponse,
   DraftingDashboardResponse,
+  EmailDeliveryDashboardResponse,
+  EmailDeliveryHistoryResponse,
   ExternalUploadsDashboardResponse,
   ExternalUploadsListResponse,
   ExternalUploadsStatusResponse,
@@ -259,6 +265,18 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
             .credentials,
       })
     : { eventsByMatterId: {}, linksByMatterId: {}, credentials: [] };
+  const emailDeliveryHistory: EmailDeliveryDashboardResponse = await loadEmailDeliveryDashboardData(
+    {
+      matters,
+      listDeliveryHistoryForMatter: (matterId) =>
+        apiGetOptional<EmailDeliveryHistoryResponse>(
+          buildEmailDeliveryHistoryPath(matterId),
+          { emails: [] },
+          headers,
+          { emails: [] },
+        ),
+    },
+  );
   const shareLinksStatus = await apiGetOptional<ShareLinksStatusResponse>(
     "/api/shares/status",
     { createStatus: "disabled", reason: "share_routes_unavailable" },
@@ -322,6 +340,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       capabilities={capabilities}
       devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}
       drafting={drafting}
+      emailDeliveryHistory={emailDeliveryHistory}
       externalUploads={externalUploads}
       initialSection={initialSection}
       intake={intake}

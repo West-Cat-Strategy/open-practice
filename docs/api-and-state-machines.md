@@ -103,6 +103,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/email/status`                                                           | SMTP provider status from firm provider settings.                                                                                          |
 | `POST /api/email/previews`                                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                                                        |
 | `POST /api/mail/outbox`                                                           | Create a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.                              |
+| `GET /api/mail/outbox?matterId=&limit=`                                           | Matter-scoped outbound email delivery history with redacted attempt and failure provenance.                                                |
 | `GET /api/inbound-email/status`                                                   | Inbound email provider status plus configured firm inbound addresses.                                                                      |
 | `GET /api/inbound-email/messages?matterId=`                                       | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                                                      |
 | `GET /api/inbound-email/messages/:id`                                             | Matter-scoped parsed inbound email detail with inbound-email attachment records and promoted `documentId` links when present.              |
@@ -302,13 +303,18 @@ state without an explicit reviewed transition.
 
 Outbound email queueing is SMTP-provider gated. `POST /api/mail/outbox` requires matter-scoped
 email create access, an enabled SMTP provider setting, configured Redis/BullMQ queue access, and at
-least one non-empty text or HTML body. The route creates the outbox record, queued email event,
-durable email job lifecycle record, and BullMQ email job together before returning `queued`. The
-audit event records IDs, template/provider, recipient count, matter scope, and related resource
-references only; email bodies stay in the outbox record rather than job or audit metadata. The
-worker reads message bodies from the outbox record, marks delivery `sent` or `failed`, appends
-provider result events, and advances the matching job lifecycle row to `active`, terminal success,
-retry failure, dead letter, or skipped status.
+least one non-empty text or HTML body. The route creates the matter-scoped outbox record, queued
+email event, durable email job lifecycle record, and BullMQ email job together before returning
+`queued`. The audit event records IDs, template/provider, recipient count, matter scope, and related
+resource references only; email bodies stay in the outbox record rather than job, event, dashboard,
+or audit metadata. The worker reads message bodies from the outbox record, records `sending`
+attempt provenance, marks delivery `sent` or records retryable/terminal `failed` events, and
+advances the matching job lifecycle row to `active`, terminal success, retry failure, dead letter, or
+skipped status. `GET /api/mail/outbox?matterId=` requires `email:read` on that matter and returns
+redacted delivery history only: IDs, template key, related resource, recipient count, attempt count,
+timestamps, source/job references, provider message ID when available, and capped failure summaries.
+Manual retry, connector registry records, provider webhook delivery events, and queue-agnostic worker
+inspection remain future work.
 Signature, intake, share-link, external-upload, and calendar-invitation flows reuse the same outbox
 helper; share and external-upload notification emails are create-time only because raw tokens are not
 recoverable after the response. Calendar attendees are stored as matter-scoped event children with

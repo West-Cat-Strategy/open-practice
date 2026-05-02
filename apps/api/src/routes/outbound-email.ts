@@ -11,6 +11,7 @@ import { appendRouteAuditEvent } from "./audit-events.js";
 import type { ApiJobQueue } from "./types.js";
 
 const DEFAULT_FROM = "Open Practice <no-reply@open-practice.local>";
+export const EMAIL_JOB_MAX_ATTEMPTS = 5;
 
 export interface QueueRouteEmailInput {
   matterId: string;
@@ -25,6 +26,7 @@ export interface QueueRouteEmailInput {
   relatedResourceType?: string;
   relatedResourceId?: string;
   metadata?: Record<string, unknown>;
+  source?: string;
   required?: boolean;
 }
 
@@ -107,6 +109,7 @@ export async function queueRouteEmailOutbox(
     email: {
       id: emailId,
       firmId: auth.firmId,
+      matterId: input.matterId,
       templateKey: input.templateKey,
       status: "queued",
       to,
@@ -119,6 +122,7 @@ export async function queueRouteEmailOutbox(
       relatedResourceType: input.relatedResourceType,
       relatedResourceId: input.relatedResourceId,
       queuedAt: now,
+      attemptCount: 0,
       metadata,
     },
     event: {
@@ -127,7 +131,13 @@ export async function queueRouteEmailOutbox(
       emailId,
       eventType: "queued",
       occurredAt: now,
-      metadata: { matterId: input.matterId, provider: enabledProvider.key },
+      jobId,
+      source: "api",
+      metadata: {
+        matterId: input.matterId,
+        provider: enabledProvider.key,
+        source: input.source ?? "api.route",
+      },
     },
     job: {
       id: jobId,
@@ -138,12 +148,13 @@ export async function queueRouteEmailOutbox(
       targetResourceType: "email_outbox",
       targetResourceId: emailId,
       attemptsMade: 0,
-      maxAttempts: 3,
+      maxAttempts: EMAIL_JOB_MAX_ATTEMPTS,
       queuedAt: now,
       metadata: {
         emailId,
         matterId: input.matterId,
         provider: enabledProvider.key,
+        source: input.source ?? "api.route",
         templateKey: input.templateKey,
         recipientCount: to.length + cc.length + bcc.length,
         relatedResourceType: input.relatedResourceType,
@@ -161,6 +172,7 @@ export async function queueRouteEmailOutbox(
         emailId,
         matterId: input.matterId,
         provider: enabledProvider.key,
+        source: input.source ?? "api.route",
         templateKey: input.templateKey,
         recipientCount: to.length + cc.length + bcc.length,
         relatedResourceType: input.relatedResourceType,

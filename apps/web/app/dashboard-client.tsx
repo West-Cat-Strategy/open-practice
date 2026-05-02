@@ -81,6 +81,7 @@ import {
   upsertCalendarEventAttendee,
   upsertCalendarCredential,
 } from "./calendar-dashboard";
+import { describeEmailDeliveryState } from "./email-delivery-dashboard";
 import type {
   CalendarAttendeeMutationResponse,
   BillingDashboardResponse,
@@ -93,6 +94,7 @@ import type {
   DraftingDashboardResponse,
   DraftAssistRecordsResponse,
   DraftAssistStatusResponse,
+  EmailDeliveryDashboardResponse,
   ExternalUploadCreateResponse,
   ExternalUploadRevokeResponse,
   ExternalUploadsDashboardResponse,
@@ -122,6 +124,7 @@ interface DashboardClientProps {
   capabilities: CapabilitiesResponse;
   devHeaders: Record<string, string>;
   drafting: DraftingDashboardResponse;
+  emailDeliveryHistory: EmailDeliveryDashboardResponse;
   externalUploads: ExternalUploadsDashboardResponse;
   intake: IntakeSessionsResponse;
   intakeForms: IntakeFormsDashboardResponse;
@@ -186,6 +189,7 @@ export default function DashboardClient({
   capabilities,
   devHeaders,
   drafting,
+  emailDeliveryHistory,
   externalUploads,
   intake,
   intakeForms,
@@ -322,6 +326,9 @@ export default function DashboardClient({
     : [];
   const activeCalendarEvents = activeMatter
     ? (calendarEventsByMatterId[activeMatter.id] ?? [])
+    : [];
+  const activeEmailDeliveries = activeMatter
+    ? (emailDeliveryHistory.emailsByMatterId[activeMatter.id] ?? [])
     : [];
   const activeCalendarLinks = activeMatter ? calendar.linksByMatterId[activeMatter.id] : undefined;
   const activeCalendarBuckets = useMemo(
@@ -1527,6 +1534,38 @@ export default function DashboardClient({
                     </strong>
                     <span>tracked expenses</span>
                   </div>
+                </div>
+
+                <div className="section-title">
+                  <h3>Email delivery history</h3>
+                  <span>{activeEmailDeliveries.length} recent records</span>
+                </div>
+                <div className="party-list">
+                  {activeEmailDeliveries.map((email) => {
+                    const state = describeEmailDeliveryState(email);
+                    const latestEvent = email.events.at(-1);
+                    return (
+                      <div className="party-row" key={email.id}>
+                        <span>
+                          <strong>{email.templateKey}</strong>
+                          <small>
+                            {email.recipientCount} recipients · {email.attemptCount} attempts ·{" "}
+                            {compactDate(email.lastAttemptAt ?? email.queuedAt)}
+                            {latestEvent ? ` · ${latestEvent.eventType}` : ""}
+                          </small>
+                          {email.failureSummary ? <small>{email.failureSummary}</small> : null}
+                        </span>
+                        <em className={state.tone === "risk" ? "risk" : undefined}>
+                          {state.label}
+                        </em>
+                      </div>
+                    );
+                  })}
+                  {activeEmailDeliveries.length === 0 ? (
+                    <p className="inline-empty">
+                      No outbound email history is linked to this matter.
+                    </p>
+                  ) : null}
                 </div>
               </>
             ) : null}
