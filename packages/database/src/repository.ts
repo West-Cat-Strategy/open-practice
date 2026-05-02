@@ -1206,6 +1206,27 @@ function mapDocumentTextExtractionRow(
   };
 }
 
+function mapGeneratedDocumentRow(
+  row: typeof schema.generatedDocuments.$inferSelect,
+): GeneratedDocumentRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    intakeSessionId: row.intakeSessionId,
+    provider: row.provider as GeneratedDocumentRecord["provider"],
+    externalId: row.externalId,
+    title: row.title,
+    documentId: row.documentId ?? undefined,
+    packageId: row.packageId ?? undefined,
+    packageDocumentId: row.packageDocumentId ?? undefined,
+    storageKey: row.storageKey ?? undefined,
+    checksumSha256: row.checksumSha256 ?? undefined,
+    evidence: row.evidence as Record<string, unknown>,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
 function mapExternalUploadLinkRow(
   row: typeof schema.externalUploadLinks.$inferSelect,
 ): ExternalUploadLinkRecord {
@@ -1557,42 +1578,128 @@ function mapLedgerReconciliationRow(
   };
 }
 
+const EPOCH_OCCURRED_AT = new Date(0).toISOString();
+
+function matterDateToOccurredAt(value?: string): string {
+  if (!value) return EPOCH_OCCURRED_AT;
+  return value.includes("T") ? value : `${value}T00:00:00.000Z`;
+}
+
+function safeAuditMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  const blockedKeyFragments = [
+    "body",
+    "evidence",
+    "html",
+    "interviewurl",
+    "ipaddress",
+    "narrative",
+    "note",
+    "password",
+    "raw",
+    "reason",
+    "reference",
+    "secret",
+    "signingurl",
+    "storagekey",
+    "text",
+    "token",
+    "useragent",
+  ];
+  return Object.fromEntries(
+    Object.entries(metadata).filter(([key]) => {
+      const normalized = key.toLowerCase();
+      return !blockedKeyFragments.some((fragment) => normalized.includes(fragment));
+    }),
+  );
+}
+
 function buildActivityTimeline(input: {
   firmId: string;
-  matterId: string;
+  matter: Matter;
+  contacts: Contact[];
+  matterParties: MatterParty[];
   documents: DocumentRecord[];
   portalGrants: PortalGrant[];
+  shareLinks: ShareLinkRecord[];
+  externalUploadLinks: ExternalUploadLinkRecord[];
+  accessLogs: AccessLogRecord[];
   auditEvents: AuditEvent[];
   signatureRequests: SignatureRequestRecord[];
   intakeSessions: IntakeSessionRecord[];
+  generatedDocuments: GeneratedDocumentRecord[];
+  calendarEvents: CalendarEventRecord[];
+  timeEntries: TimeEntry[];
+  expenses: ExpenseEntry[];
+  invoices: InvoiceWithLines[];
+  payments: PaymentWithAllocations[];
+  trustTransferRequests: TrustTransferRequestRecord[];
+  ledgerAccounts: LedgerAccount[];
+  ledgerEntries: LedgerEntry[];
 }): ActivityTimelineEntry[] {
+  const matterId = input.matter.id;
+  const matterOpenedAt = matterDateToOccurredAt(input.matter.openedOn);
+  const contactsById = new Map(input.contacts.map((contact) => [contact.id, contact]));
+  const shareMatterIds = new Map(input.shareLinks.map((link) => [link.id, link.matterId]));
+  const uploadMatterIds = new Map(
+    input.externalUploadLinks.map((link) => [link.id, link.matterId]),
+  );
+  const accountTypesById = new Map(
+    input.ledgerAccounts.map((account) => [account.id, account.type]),
+  );
+  const ledgerGroups = new Map<string, LedgerEntry[]>();
+  for (const entry of input.ledgerEntries.filter(
+    (entry) => entry.firmId === input.firmId && entry.matterId === matterId,
+  )) {
+    const key = `${entry.transactionId}:${entry.matterId}:${entry.postedAt}`;
+    ledgerGroups.set(key, [...(ledgerGroups.get(key) ?? []), entry]);
+  }
+
   const entries: ActivityTimelineEntry[] = [
     ...input.auditEvents
       .filter((event) => event.firmId === input.firmId)
       .filter(
         (event) =>
-          event.resourceId === input.matterId ||
-          event.metadata.matterId === input.matterId ||
-          event.resourceType === "conflict_check",
+          event.resourceId === matterId ||
+          event.metadata.matterId === matterId ||
+          (event.resourceType === "conflict_check" && event.metadata.matterId === matterId),
       )
       .map((event) => ({
         id: event.id,
         firmId: event.firmId,
-        matterId:
-          typeof event.metadata.matterId === "string" ? event.metadata.matterId : input.matterId,
+        matterId: typeof event.metadata.matterId === "string" ? event.metadata.matterId : matterId,
         occurredAt: event.occurredAt,
         title: event.action.replaceAll("_", " ").replaceAll(".", " "),
         kind: event.resourceType === "conflict_check" ? ("conflict" as const) : ("audit" as const),
         actorId: event.actorId,
-        metadata: event.metadata,
+        metadata: safeAuditMetadata(event.metadata),
       })),
+    ...input.matterParties
+      .filter((party) => party.firmId === input.firmId && party.matterId === matterId)
+      .map((party) => {
+        const contact = contactsById.get(party.contactId);
+        return {
+          id: `party:${party.id}`,
+          firmId: party.firmId,
+          matterId: party.matterId,
+          occurredAt: matterOpenedAt,
+          title: `Matter party: ${contact?.displayName ?? party.contactId}`,
+          kind: "contact" as const,
+          metadata: {
+            contactId: party.contactId,
+            contactKind: contact?.kind,
+            role: party.role,
+            adverse: party.adverse,
+            confidential: party.confidential,
+          },
+        };
+      }),
     ...input.documents
-      .filter((document) => document.matterId === input.matterId)
+      .filter((document) => document.firmId === input.firmId && document.matterId === matterId)
       .map((document) => ({
         id: `document:${document.id}`,
         firmId: document.firmId,
         matterId: document.matterId,
-        occurredAt: document.verifiedAt ?? document.uploadedAt ?? new Date(0).toISOString(),
+        occurredAt: document.verifiedAt ?? document.uploadedAt ?? EPOCH_OCCURRED_AT,
         title: `Document ${document.uploadStatus}: ${document.title}`,
         kind: "document" as const,
         metadata: {
@@ -1604,19 +1711,79 @@ function buildActivityTimeline(input: {
         },
       })),
     ...input.portalGrants
-      .filter((grant) => grant.matterId === input.matterId)
+      .filter((grant) => grant.firmId === input.firmId && grant.matterId === matterId)
       .map((grant) => ({
         id: `portal:${grant.id}`,
         firmId: grant.firmId,
         matterId: grant.matterId,
-        occurredAt: grant.expiresAt ?? new Date(0).toISOString(),
+        occurredAt: grant.revokedAt ?? grant.expiresAt ?? matterOpenedAt,
         title: grant.revokedAt ? "Portal grant revoked" : "Portal grant active",
         kind: "portal" as const,
         actorId: grant.grantedByUserId,
         metadata: { permissions: grant.permissions, contactId: grant.contactId },
       })),
+    ...input.shareLinks
+      .filter((link) => link.firmId === input.firmId && link.matterId === matterId)
+      .map((link) => ({
+        id: `share:${link.id}`,
+        firmId: link.firmId,
+        matterId: link.matterId,
+        occurredAt: link.revokedAt ?? link.createdAt,
+        title: link.revokedAt ? "Share link revoked" : "Share link created",
+        kind: "share" as const,
+        actorId: link.grantedByUserId,
+        metadata: {
+          expiresAt: link.expiresAt,
+          permissions: link.permissions,
+          requireEmailVerification: link.requireEmailVerification,
+          revoked: Boolean(link.revokedAt),
+        },
+      })),
+    ...input.externalUploadLinks
+      .filter((link) => link.firmId === input.firmId && link.matterId === matterId)
+      .map((link) => ({
+        id: `upload-link:${link.id}`,
+        firmId: link.firmId,
+        matterId: link.matterId,
+        occurredAt: link.revokedAt ?? link.createdAt,
+        title: link.revokedAt ? "External upload link revoked" : "External upload link created",
+        kind: "upload" as const,
+        actorId: link.requestedByUserId,
+        metadata: {
+          expiresAt: link.expiresAt,
+          maxUploads: link.maxUploads,
+          usedUploads: link.usedUploads,
+          revoked: Boolean(link.revokedAt),
+        },
+      })),
+    ...input.accessLogs
+      .filter((log) => log.firmId === input.firmId)
+      .flatMap((log): ActivityTimelineEntry[] => {
+        const accessMatterId = log.shareLinkId
+          ? shareMatterIds.get(log.shareLinkId)
+          : log.externalUploadLinkId
+            ? uploadMatterIds.get(log.externalUploadLinkId)
+            : undefined;
+        if (accessMatterId !== matterId) return [];
+        return [
+          {
+            id: `access:${log.id}`,
+            firmId: log.firmId,
+            matterId: accessMatterId,
+            occurredAt: log.occurredAt,
+            title: `${log.shareLinkId ? "Share" : "External upload"} ${log.action}`,
+            kind: log.shareLinkId ? "share" : "upload",
+            actorId: log.actorId,
+            metadata: {
+              action: log.action,
+              resourceType: log.resourceType,
+              resourceId: log.resourceId,
+            },
+          },
+        ];
+      }),
     ...input.signatureRequests
-      .filter((request) => request.matterId === input.matterId)
+      .filter((request) => request.firmId === input.firmId && request.matterId === matterId)
       .map((request) => ({
         id: `signature:${request.id}`,
         firmId: request.firmId,
@@ -1628,7 +1795,7 @@ function buildActivityTimeline(input: {
         metadata: { provider: request.provider, documentId: request.documentId },
       })),
     ...input.intakeSessions
-      .filter((session) => session.matterId === input.matterId)
+      .filter((session) => session.firmId === input.firmId && session.matterId === matterId)
       .map((session) => ({
         id: `intake:${session.id}`,
         firmId: session.firmId,
@@ -1638,11 +1805,157 @@ function buildActivityTimeline(input: {
         kind: "intake" as const,
         metadata: { templateId: session.templateId, provider: session.provider },
       })),
+    ...input.generatedDocuments
+      .filter((document) => document.firmId === input.firmId && document.matterId === matterId)
+      .map((document) => ({
+        id: `generated-document:${document.id}`,
+        firmId: document.firmId,
+        matterId: document.matterId,
+        occurredAt: document.createdAt,
+        title: `Generated document: ${document.title}`,
+        kind: "document" as const,
+        metadata: {
+          documentId: document.documentId,
+          intakeSessionId: document.intakeSessionId,
+          packageDocumentId: document.packageDocumentId,
+          packageId: document.packageId,
+          provider: document.provider,
+        },
+      })),
+    ...input.calendarEvents
+      .filter((event) => event.firmId === input.firmId && event.matterId === matterId)
+      .map((event) => ({
+        id: `calendar:${event.id}`,
+        firmId: event.firmId,
+        matterId: event.matterId,
+        occurredAt: event.startsAt,
+        title: `Calendar ${event.status}: ${event.title}`,
+        kind: "calendar" as const,
+        actorId: event.createdByUserId,
+        metadata: {
+          attendeeCount: event.attendees?.length ?? 0,
+          endsAt: event.endsAt,
+          invitationStatuses: event.attendees?.map((attendee) => attendee.invitationStatus) ?? [],
+          sequence: event.sequence,
+          status: event.status,
+        },
+      })),
+    ...input.timeEntries
+      .filter((entry) => entry.firmId === input.firmId && entry.matterId === matterId)
+      .map((entry) => ({
+        id: `time:${entry.id}`,
+        firmId: entry.firmId,
+        matterId: entry.matterId,
+        occurredAt: entry.performedAt,
+        title: `Task time ${entry.billingStatus}: ${entry.minutes} minutes`,
+        kind: "task" as const,
+        actorId: entry.userId,
+        metadata: {
+          billable: entry.billable,
+          billingStatus: entry.billingStatus,
+          minutes: entry.minutes,
+        },
+      })),
+    ...input.expenses
+      .filter((entry) => entry.firmId === input.firmId && entry.matterId === matterId)
+      .map((entry) => ({
+        id: `expense:${entry.id}`,
+        firmId: entry.firmId,
+        matterId: entry.matterId,
+        occurredAt: entry.incurredAt,
+        title: `Expense ${entry.billingStatus}: ${entry.category}`,
+        kind: "billing" as const,
+        metadata: {
+          amountCents: entry.amountCents,
+          billingStatus: entry.billingStatus,
+          category: entry.category,
+          reimbursable: entry.reimbursable,
+        },
+      })),
+    ...input.invoices
+      .filter((invoice) => invoice.firmId === input.firmId && invoice.matterId === matterId)
+      .map((invoice) => ({
+        id: `invoice:${invoice.id}`,
+        firmId: invoice.firmId,
+        matterId: invoice.matterId,
+        occurredAt: invoice.issuedAt ?? invoice.approvedAt ?? invoice.createdAt,
+        title: `Invoice ${invoice.status}: ${invoice.invoiceNumber}`,
+        kind: "billing" as const,
+        actorId: invoice.createdByUserId,
+        metadata: {
+          balanceDueCents: invoice.balanceDueCents,
+          clientContactId: invoice.clientContactId,
+          lineCount: invoice.lines.length,
+          paidCents: invoice.paidCents,
+          status: invoice.status,
+          totalCents: invoice.totalCents,
+        },
+      })),
+    ...input.payments
+      .filter((payment) => payment.firmId === input.firmId && payment.matterId === matterId)
+      .map((payment) => ({
+        id: `payment:${payment.id}`,
+        firmId: payment.firmId,
+        matterId: payment.matterId,
+        occurredAt: payment.receivedAt,
+        title: `Payment ${payment.status}`,
+        kind: "billing" as const,
+        actorId: payment.receivedByUserId,
+        metadata: {
+          allocationCount: payment.allocations.length,
+          amountCents: payment.amountCents,
+          clientContactId: payment.clientContactId,
+          invoiceId: payment.invoiceId,
+          method: payment.method,
+          status: payment.status,
+        },
+      })),
+    ...input.trustTransferRequests
+      .filter((request) => request.firmId === input.firmId && request.matterId === matterId)
+      .map((request) => ({
+        id: `trust-transfer:${request.id}`,
+        firmId: request.firmId,
+        matterId: request.matterId,
+        occurredAt: request.reviewedAt ?? request.requestedAt,
+        title: `Trust transfer ${request.status}`,
+        kind: "billing" as const,
+        actorId: request.reviewedByUserId ?? request.requestedByUserId,
+        metadata: {
+          amountCents: request.amountCents,
+          clientContactId: request.clientContactId,
+          invoiceId: request.invoiceId,
+          ledgerTransactionId: request.ledgerTransactionId,
+          status: request.status,
+        },
+      })),
+    ...Array.from(ledgerGroups.entries()).map(([key, group]) => {
+      const first = group[0]!;
+      return {
+        id: `ledger:${key}`,
+        firmId: first.firmId,
+        matterId: first.matterId,
+        occurredAt: first.postedAt,
+        title: "Ledger transaction posted",
+        kind: "ledger" as const,
+        metadata: {
+          accountTypes: Array.from(
+            new Set(group.map((entry) => accountTypesById.get(entry.accountId) ?? "unknown")),
+          ),
+          clientIds: Array.from(new Set(group.map((entry) => entry.clientId))),
+          creditCents: group.reduce((sum, entry) => sum + entry.creditCents, 0),
+          debitCents: group.reduce((sum, entry) => sum + entry.debitCents, 0),
+          entryCount: group.length,
+          transactionId: first.transactionId,
+        },
+      };
+    }),
   ];
 
   return entries
-    .filter((entry) => entry.occurredAt !== new Date(0).toISOString())
-    .sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
+    .filter((entry) => entry.occurredAt !== EPOCH_OCCURRED_AT)
+    .sort(
+      (a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt) || a.id.localeCompare(b.id),
+    );
 }
 
 function mapDraftRow(row: typeof schema.drafts.$inferSelect): DraftRecord {
@@ -2378,12 +2691,34 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           expenses: this.expenseEntries.filter((entry) => entry.matterId === matter.id),
           activity: buildActivityTimeline({
             firmId: user.firmId,
-            matterId: matter.id,
+            matter,
+            contacts: this.contacts,
+            matterParties: this.matterParties,
             documents: this.documents,
             portalGrants: this.portalGrants,
+            shareLinks: this.shareLinks,
+            externalUploadLinks: this.externalUploadLinks,
+            accessLogs: this.accessLogs,
             auditEvents: this.auditEvents,
             signatureRequests: this.signatureRequests,
             intakeSessions: this.intakeSessions,
+            generatedDocuments: this.generatedDocuments,
+            calendarEvents: this.calendarEvents,
+            timeEntries: this.timeEntries,
+            expenses: this.expenseEntries,
+            invoices: this.invoices.map((invoice) => ({
+              ...invoice,
+              lines: this.invoiceLines.filter((line) => line.invoiceId === invoice.id),
+            })),
+            payments: this.manualPayments.map((payment) => ({
+              ...payment,
+              allocations: this.paymentAllocations.filter(
+                (allocation) => allocation.paymentId === payment.id,
+              ),
+            })),
+            trustTransferRequests: this.trustTransferRequests,
+            ledgerAccounts: this.ledgerAccounts,
+            ledgerEntries: entries,
           }),
           trustBalanceCents: matterTrustBalance(
             entries,
@@ -4833,9 +5168,31 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     const timeEntries = await this.listTimeEntries(user.firmId);
     const expenses = await this.listExpenseEntries(user.firmId);
     const grants = await this.listPortalGrants(user.firmId);
+    const shareLinks = await this.listShareLinks(user.firmId);
+    const externalUploadLinks = await this.listExternalUploadLinks(user.firmId);
+    const accessLogs = await this.listAccessLogs(user.firmId);
     const audit = await this.listAuditEvents(user.firmId);
     const signatureRequests = await this.listSignatureRequests(user.firmId);
     const intakeSessions = await this.listIntakeSessions(user.firmId);
+    const calendarRows = await this.db
+      .select()
+      .from(schema.calendarEvents)
+      .where(
+        and(
+          eq(schema.calendarEvents.firmId, user.firmId),
+          inArray(schema.calendarEvents.matterId, user.assignedMatterIds),
+          isNull(schema.calendarEvents.deletedAt),
+        ),
+      );
+    const calendarEvents = calendarRows.map(mapCalendarEventRow);
+    const generatedDocumentRows = await this.db
+      .select()
+      .from(schema.generatedDocuments)
+      .where(eq(schema.generatedDocuments.firmId, user.firmId));
+    const generatedDocuments = generatedDocumentRows.map(mapGeneratedDocumentRow);
+    const invoices = await this.listInvoices(user.firmId);
+    const payments = await this.listPayments(user.firmId);
+    const trustTransferRequests = await this.listTrustTransferRequests(user.firmId);
 
     return matterRows.map((row) => {
       const matter = mapMatter(row);
@@ -4853,12 +5210,26 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         expenses: expenses.filter((entry) => entry.matterId === matter.id),
         activity: buildActivityTimeline({
           firmId: user.firmId,
-          matterId: matter.id,
+          matter,
+          contacts,
+          matterParties: allParties,
           documents,
           portalGrants: grants,
+          shareLinks,
+          externalUploadLinks,
+          accessLogs,
           auditEvents: audit.events,
           signatureRequests,
           intakeSessions,
+          generatedDocuments,
+          calendarEvents,
+          timeEntries,
+          expenses,
+          invoices,
+          payments,
+          trustTransferRequests,
+          ledgerAccounts: ledger.accounts,
+          ledgerEntries: ledger.entries,
         }),
         trustBalanceCents: matterTrustBalance(ledger.entries, ledger.accounts, matter, allParties),
       };

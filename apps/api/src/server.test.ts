@@ -554,8 +554,11 @@ describe("API auth and persistence boundaries", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    const matters = response.json<Array<{ id: string }>>();
+    const matters = response.json<Array<{ id: string; activity: Array<{ kind: string }> }>>();
     expect(matters.map((matter) => matter.id)).toEqual(["matter-001"]);
+    expect(matters[0]!.activity.map((entry) => entry.kind)).toEqual(
+      expect.arrayContaining(["billing", "calendar", "contact", "document", "ledger", "task"]),
+    );
   });
 
   it("returns server-derived dashboard capabilities", async () => {
