@@ -85,6 +85,20 @@ export interface LedgerPostingState {
   accounts: LedgerAccount[];
 }
 
+export interface LedgerControlsLedgerSnapshot {
+  accounts: LedgerAccount[];
+  entries: LedgerEntry[];
+  trustBalances: Record<string, number>;
+}
+
+export interface LedgerControlsDiagnostics {
+  pendingApprovalTransactionIds: string[];
+  rejectedApprovalTransactionIds: string[];
+  unreconciledAccountIds: string[];
+  exceptionReconciliationIds: string[];
+  overdrawnBalanceKeys: string[];
+}
+
 function netLiabilityBalance(
   entries: LedgerEntry[],
   matterId: string,
@@ -328,4 +342,61 @@ export function clientTrustBalanceDeltas(
   }
 
   return [...deltas.values()].filter((delta) => delta.deltaCents !== 0);
+}
+
+export function ledgerControlsDiagnostics(input: {
+  ledger: LedgerControlsLedgerSnapshot;
+  approvals: LedgerTransactionApprovalRecord[];
+  reconciliations: LedgerReconciliationRecord[];
+  includeReconciliationDiagnostics?: boolean;
+}): LedgerControlsDiagnostics {
+  const visibleTransactionIds = uniqueInOrder(
+    input.ledger.entries.map((entry) => entry.transactionId),
+  );
+  const approvedOrRejectedTransactionIds = new Set(
+    input.approvals.map((approval) => approval.transactionId),
+  );
+  const rejectedApprovalTransactionIds = uniqueInOrder(
+    input.approvals
+      .filter((approval) => approval.decision === "rejected")
+      .map((approval) => approval.transactionId),
+  );
+
+  const includeReconciliationDiagnostics = input.includeReconciliationDiagnostics ?? true;
+  const reconciledAccountIds = new Set(
+    input.reconciliations
+      .filter((reconciliation) => ["matched", "reviewed"].includes(reconciliation.status))
+      .map((reconciliation) => reconciliation.accountId),
+  );
+  const ledgerAccountIdsWithEntries = new Set(input.ledger.entries.map((entry) => entry.accountId));
+
+  return {
+    pendingApprovalTransactionIds: visibleTransactionIds.filter(
+      (transactionId) => !approvedOrRejectedTransactionIds.has(transactionId),
+    ),
+    rejectedApprovalTransactionIds,
+    unreconciledAccountIds: includeReconciliationDiagnostics
+      ? input.ledger.accounts
+          .filter(
+            (account) =>
+              account.type === "trust_asset" &&
+              ledgerAccountIdsWithEntries.has(account.id) &&
+              !reconciledAccountIds.has(account.id),
+          )
+          .map((account) => account.id)
+      : [],
+    exceptionReconciliationIds: includeReconciliationDiagnostics
+      ? input.reconciliations
+          .filter((reconciliation) => reconciliation.status === "exception")
+          .map((reconciliation) => reconciliation.id)
+      : [],
+    overdrawnBalanceKeys: Object.entries(input.ledger.trustBalances)
+      .filter(([, balanceCents]) => balanceCents < 0)
+      .map(([key]) => key)
+      .sort(),
+  };
+}
+
+function uniqueInOrder(values: string[]): string[] {
+  return [...new Set(values)];
 }

@@ -58,6 +58,14 @@ import {
   summarizeContactDossier,
 } from "./contact-dossiers-dashboard";
 import {
+  buildTrustControlsPath,
+  loadTrustControlsDashboardData,
+  matterTrustBalanceCents,
+  recentTrustPostings,
+  summarizeTrustControls,
+  trustControlsForMatter,
+} from "./trust-controls-dashboard";
+import {
   buildIntakeFormLinkCreatePayload,
   buildIntakeFormLinkListPath,
   buildIntakePortalPath,
@@ -95,6 +103,7 @@ import type {
   IntakeFormLinkSummary,
   MatterSummary,
   ShareLinkRecord,
+  TrustControlsDashboardResponse,
 } from "./types";
 
 const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapability["resource"]> = {
@@ -247,6 +256,99 @@ function calendarEvent(overrides: Partial<CalendarEventRecord> = {}): CalendarEv
     createdByUserId: "user-admin",
     updatedByUserId: "user-admin",
     ...overrides,
+  };
+}
+
+function trustControls(
+  overrides: Partial<Omit<TrustControlsDashboardResponse, "ledger" | "diagnostics">> & {
+    ledger?: Partial<TrustControlsDashboardResponse["ledger"]>;
+    diagnostics?: Partial<TrustControlsDashboardResponse["diagnostics"]>;
+  } = {},
+): TrustControlsDashboardResponse {
+  const base: TrustControlsDashboardResponse = {
+    ledger: {
+      accounts: [
+        {
+          id: "acct-trust-bank",
+          firmId: "firm-west-legal",
+          name: "Pooled trust bank",
+          type: "trust_asset",
+        },
+        {
+          id: "acct-client-liability",
+          firmId: "firm-west-legal",
+          name: "Client trust liability",
+          type: "client_liability",
+        },
+      ],
+      entries: [
+        {
+          id: "trust-retainer-1",
+          transactionId: "trust-retainer",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-trust-bank",
+          debitCents: 150000,
+          creditCents: 0,
+          memo: "Retainer received into pooled trust",
+          postedAt: "2026-04-02T17:00:00.000Z",
+        },
+        {
+          id: "trust-retainer-2",
+          transactionId: "trust-retainer",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          clientId: "contact-ada",
+          accountId: "acct-client-liability",
+          debitCents: 0,
+          creditCents: 150000,
+          memo: "Client trust liability",
+          postedAt: "2026-04-02T17:00:00.000Z",
+        },
+      ],
+      balances: { "contact-ada:matter-001": 150000 },
+      trustBalances: { "contact-ada:matter-001": 150000 },
+    },
+    approvals: [
+      {
+        id: "approval-001",
+        firmId: "firm-west-legal",
+        transactionId: "trust-retainer",
+        decidedByUserId: "user-admin",
+        decision: "approved",
+        decidedAt: "2026-04-02T18:00:00.000Z",
+      },
+    ],
+    reconciliations: [
+      {
+        id: "reconciliation-001",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        statementPeriodStart: "2026-04-01T00:00:00.000Z",
+        statementPeriodEnd: "2026-04-30T00:00:00.000Z",
+        expectedBalanceCents: 150000,
+        actualBalanceCents: 149000,
+        status: "exception",
+        reviewedByUserId: "user-admin",
+        evidence: {},
+        createdAt: "2026-05-01T12:00:00.000Z",
+      },
+    ],
+    diagnostics: {
+      pendingApprovalTransactionIds: ["trust-transfer-pending"],
+      rejectedApprovalTransactionIds: [],
+      unreconciledAccountIds: ["acct-client-liability"],
+      exceptionReconciliationIds: ["reconciliation-001"],
+      overdrawnBalanceKeys: [],
+    },
+  };
+
+  return {
+    ...base,
+    ...overrides,
+    ledger: { ...base.ledger, ...overrides.ledger },
+    diagnostics: { ...base.diagnostics, ...overrides.diagnostics },
   };
 }
 
@@ -461,6 +563,55 @@ describe("dashboard client behavior", () => {
       key: "queues",
       label: "Queues",
       enabled: true,
+    });
+  });
+
+  it("summarizes read-only trust controls for the Funds workbench", async () => {
+    const controls = trustControls({
+      approvals: [
+        {
+          id: "approval-rejected",
+          firmId: "firm-west-legal",
+          transactionId: "trust-transfer-rejected",
+          decidedByUserId: "user-admin",
+          decision: "rejected",
+          decidedAt: "2026-04-03T18:00:00.000Z",
+        },
+      ],
+      diagnostics: {
+        pendingApprovalTransactionIds: ["trust-transfer-pending"],
+        rejectedApprovalTransactionIds: ["trust-transfer-rejected"],
+        overdrawnBalanceKeys: ["contact-ada:matter-001"],
+      },
+    });
+    const loaded = await loadTrustControlsDashboardData({
+      matter: matter({ id: "matter-001" }),
+      getControls: async () => controls,
+    });
+
+    expect(buildTrustControlsPath("matter 001")).toBe("/api/ledger/controls?matterId=matter%20001");
+    expect(loaded).toBe(controls);
+    expect(matterTrustBalanceCents(controls, "matter-001", 0)).toBe(150000);
+    expect(recentTrustPostings(controls, "matter-001")).toEqual([
+      {
+        transactionId: "trust-retainer",
+        postedAt: "2026-04-02T17:00:00.000Z",
+        memo: "Retainer received into pooled trust",
+        entryCount: 2,
+        matterDeltaCents: 150000,
+      },
+    ]);
+    expect(summarizeTrustControls(controls)).toEqual({
+      pendingApprovalCount: 1,
+      approvedApprovalCount: 0,
+      rejectedApprovalCount: 1,
+      totalApprovalCount: 1,
+      exceptionReconciliationCount: 1,
+      unreconciledAccountCount: 1,
+      overdrawnBalanceCount: 1,
+    });
+    expect(trustControlsForMatter({}, "matter-001", controls)).toEqual({
+      "matter-001": controls,
     });
   });
 

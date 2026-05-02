@@ -6,6 +6,7 @@ import type {
   LedgerTransaction,
   LedgerTransactionApprovalRecord,
 } from "@open-practice/domain";
+import { ledgerControlsDiagnostics } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
@@ -103,6 +104,38 @@ export function registerLedgerRoutes(
       matterId: query.matterId,
     });
     return repository.getLedger(request.auth.firmId, query);
+  });
+
+  server.get("/api/ledger/controls", async (request) => {
+    const query = parseRequestPart(ledgerQuerySchema, request.query, "query");
+    const hasFirmWideAccess = hasFirmWideLedgerAccess(request.auth.user);
+    if (!query.matterId && !hasFirmWideAccess) {
+      throw Object.assign(new Error("matterId is required for matter-scoped ledger access"), {
+        statusCode: 400,
+      });
+    }
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "read",
+      matterId: query.matterId,
+    });
+
+    const ledger = await repository.getLedger(request.auth.firmId, query);
+    const visibleTransactionIds = new Set(ledger.entries.map((entry) => entry.transactionId));
+    const approvals = (await repository.listLedgerTransactionApprovals(request.auth.firmId)).filter(
+      (approval) => visibleTransactionIds.has(approval.transactionId),
+    );
+    const reconciliations = hasFirmWideAccess
+      ? await repository.listLedgerReconciliations(request.auth.firmId)
+      : [];
+    const diagnostics = ledgerControlsDiagnostics({
+      ledger,
+      approvals,
+      reconciliations,
+      includeReconciliationDiagnostics: hasFirmWideAccess,
+    });
+
+    return { ledger, approvals, reconciliations, diagnostics };
   });
 
   server.post("/api/ledger/transactions", async (request) => {

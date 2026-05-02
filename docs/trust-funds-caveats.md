@@ -14,6 +14,9 @@ trust accounting software, accounting software, or tax-advice tooling.
 - Append-only posted entries; corrections require reversing transactions.
 - Reconciliation records, maker-checker approvals, and persistent concurrency guarantees are
   operational controls; they are not jurisdiction-certified controls.
+- The trust controls workbench is a read-only operator review surface for existing balances,
+  approvals, reconciliations, recent postings, and diagnostics. It does not post, approve, reconcile,
+  certify, or move funds.
 - Billing, invoice, manual-payment, and trust-transfer-request workflows should be treated as
   operational controls around review, evidence, authorization, and reconciliation.
 - No live payment processor is currently part of the product contract.

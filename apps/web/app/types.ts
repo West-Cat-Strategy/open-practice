@@ -15,6 +15,10 @@ import type {
   IntakeSessionRecord,
   IntakeTemplateRecord,
   IntakeVariableProposal,
+  LedgerAccount,
+  LedgerEntry,
+  LedgerReconciliationRecord,
+  LedgerTransactionApprovalRecord,
   EmbeddedIntakeTemplateDefinition,
   IntakeFormLinkRecord,
   IntakeFormItemActionRecord,
@@ -361,6 +365,24 @@ export interface BillingDashboardResponse {
     issuedBalanceDueCents: number;
   };
   matters: MatterBillingSummary[];
+}
+
+export interface TrustControlsDashboardResponse {
+  ledger: {
+    accounts: LedgerAccount[];
+    entries: LedgerEntry[];
+    balances: Record<string, number>;
+    trustBalances: Record<string, number>;
+  };
+  approvals: LedgerTransactionApprovalRecord[];
+  reconciliations: LedgerReconciliationRecord[];
+  diagnostics: {
+    pendingApprovalTransactionIds: string[];
+    rejectedApprovalTransactionIds: string[];
+    unreconciledAccountIds: string[];
+    exceptionReconciliationIds: string[];
+    overdrawnBalanceKeys: string[];
+  };
 }
 
 export interface QueueItem {

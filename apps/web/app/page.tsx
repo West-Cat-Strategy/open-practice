@@ -26,6 +26,11 @@ import {
 import LoginClient from "./login-client";
 import SetupWizard from "./setup-wizard";
 import { selectStartupView } from "./setup-wizard-utils";
+import {
+  buildTrustControlsPath,
+  emptyTrustControlsDashboard,
+  loadTrustControlsDashboardData,
+} from "./trust-controls-dashboard";
 import type {
   BillingDashboardResponse,
   CalendarCredentialsResponse,
@@ -52,6 +57,7 @@ import type {
   ShareLinksStatusResponse,
   SetupStatusResponse,
   SignatureRequestsResponse,
+  TrustControlsDashboardResponse,
 } from "./types";
 
 export const dynamic = "force-dynamic";
@@ -239,6 +245,16 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       canView: false,
     },
   );
+  const trustControls = await loadTrustControlsDashboardData({
+    matter: matters[0],
+    getControls: (matterId) =>
+      apiGetOptional<TrustControlsDashboardResponse>(
+        buildTrustControlsPath(matterId),
+        emptyTrustControlsDashboard(),
+        headers,
+        emptyTrustControlsDashboard(),
+      ),
+  });
   const canViewDrafting = capabilities.sections.some(
     (section) => section.key === "drafting" && section.enabled,
   );
@@ -366,6 +382,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       session={session}
       shareLinksStatus={shareLinksStatus}
       signatures={signatures}
+      trustControls={trustControls}
     />
   );
 }
