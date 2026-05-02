@@ -147,6 +147,7 @@ import type {
   ShareLinksResponse,
   ShareLinksStatusResponse,
   SignatureRequestsResponse,
+  TaskDeadlineWorkbenchResponse,
   TrustControlsDashboardResponse,
   IntakeVariableProposalsResponse,
 } from "./types";
@@ -170,6 +171,7 @@ interface DashboardClientProps {
   session: SessionResponse;
   shareLinksStatus: ShareLinksStatusResponse;
   signatures: SignatureRequestsResponse;
+  taskWorkbench: TaskDeadlineWorkbenchResponse;
   trustControls: TrustControlsDashboardResponse;
   queues: QueuesResponse;
 }
@@ -238,6 +240,7 @@ export default function DashboardClient({
   matters,
   session,
   signatures,
+  taskWorkbench,
   trustControls,
   queues,
   shareLinksStatus,
@@ -500,6 +503,10 @@ export default function DashboardClient({
     [navigationSections],
   );
   const queueSummary = useMemo(() => summarizeQueues(queues), [queues]);
+  const taskDeadlineSummary = useMemo(() => {
+    const my = taskWorkbench.counters.my;
+    return `${my.overdue} overdue, ${my.today} due today, ${my.upcoming} upcoming`;
+  }, [taskWorkbench.counters.my]);
 
   useEffect(() => {
     if (!activeMatter) return;
@@ -659,6 +666,11 @@ export default function DashboardClient({
         icon: Gavel,
       },
       {
+        label: "My overdue tasks",
+        value: taskWorkbench.counters.my.overdue.toString(),
+        icon: AlertTriangle,
+      },
+      {
         label: "Portal grants",
         value: overview.metrics.portalGrants.toString(),
         icon: LockKeyhole,
@@ -679,7 +691,7 @@ export default function DashboardClient({
         icon: CreditCard,
       },
     ],
-    [billing.summary.issuedBalanceDueCents, overview.metrics],
+    [billing.summary.issuedBalanceDueCents, overview.metrics, taskWorkbench.counters.my.overdue],
   );
 
   async function runConflictCheck() {
@@ -3423,6 +3435,12 @@ export default function DashboardClient({
                     </strong>
                   </div>
                   <div>
+                    <span className="field-label">My deadlines</span>
+                    <strong>
+                      {taskWorkbench.counters.my.overdue + taskWorkbench.counters.my.today}
+                    </strong>
+                  </div>
+                  <div>
                     <span className="field-label">Hydration</span>
                     <strong>Route-backed</strong>
                   </div>
@@ -3430,6 +3448,7 @@ export default function DashboardClient({
                 <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
                   {queueSummary}
                 </p>
+                <p className="inline-empty">{taskDeadlineSummary}</p>
                 <div className="party-list queue-section-list">
                   {queues.sections.map((section) => (
                     <section className="queue-section" key={section.key}>
@@ -3522,6 +3541,7 @@ export default function DashboardClient({
                 <Clock3 size={20} />
               </div>
               <p className="inline-empty">{queueSummary}</p>
+              <p className="inline-empty">{taskDeadlineSummary}</p>
               <div className="party-list">
                 {queues.sections.flatMap((section) =>
                   section.items.slice(0, 3).map((item) => (

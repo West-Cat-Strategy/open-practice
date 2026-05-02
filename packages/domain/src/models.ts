@@ -212,6 +212,26 @@ export interface ExpenseEntry {
   billingStatus: BillingStatus;
 }
 
+export type TaskDeadlineCompletionStatus = "open" | "completed";
+export type TaskDeadlineAssignmentStatus = "assigned" | "unassigned";
+export type TaskDeadlineBucket = "overdue" | "today" | "upcoming" | "unscheduled" | "completed";
+
+export interface TaskDeadlineRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  assignedToUserId?: string;
+  title: string;
+  dueAt?: string;
+  completedAt?: string;
+}
+
+export interface TaskDeadlineProjection extends TaskDeadlineRecord {
+  assignmentStatus: TaskDeadlineAssignmentStatus;
+  completionStatus: TaskDeadlineCompletionStatus;
+  bucket: TaskDeadlineBucket;
+}
+
 export type CalendarEventStatus = "confirmed" | "tentative" | "cancelled";
 export type CalendarAttendeeRole = "required" | "optional";
 export type CalendarAttendeeResponseStatus = "needs_action" | "accepted" | "tentative" | "declined";

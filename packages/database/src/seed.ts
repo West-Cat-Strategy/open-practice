@@ -25,6 +25,7 @@ import {
   sampleSignatureRequestSigners,
   sampleSignatureRequests,
   sampleSignatureWebhookAttempts,
+  sampleTaskDeadlines,
   sampleTimeEntries,
   sampleTrustTransferRequests,
   sampleUsers,
@@ -139,6 +140,17 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
       )
       .onConflictDoNothing();
   }
+  await db
+    .insert(schema.tasks)
+    .values(
+      sampleTaskDeadlines.map((task) => ({
+        ...task,
+        assignedToUserId: task.assignedToUserId ?? null,
+        dueAt: task.dueAt ? new Date(task.dueAt) : null,
+        completedAt: task.completedAt ? new Date(task.completedAt) : null,
+      })),
+    )
+    .onConflictDoNothing();
   await db
     .insert(schema.portalGrants)
     .values(

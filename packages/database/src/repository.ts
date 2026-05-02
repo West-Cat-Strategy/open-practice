@@ -52,6 +52,7 @@ import {
   type PostedLedgerTransaction,
   type JobLifecycleRecord,
   type ProviderSettingRecord,
+  type TaskDeadlineRecord,
   type TimeEntry,
   type TrustTransferRequestRecord,
   type User,
@@ -91,6 +92,7 @@ import {
   sampleSignatureRequestSigners,
   sampleSignatureRequests,
   sampleSignatureWebhookAttempts,
+  sampleTaskDeadlines,
   sampleTimeEntries,
   sampleTrustTransferRequests,
   sampleUsers,
@@ -192,6 +194,12 @@ export interface AuthSessionRecord {
 
 export type CalendarEventUpsertInput = CalendarEventRecord;
 export type CalendarEventAttendeeUpsertInput = CalendarEventAttendeeRecord;
+
+export interface TaskDeadlineCompletionInput {
+  firmId: string;
+  taskId: string;
+  completedAt: string;
+}
 
 export class CalendarEventScopeConflictError extends Error {
   constructor(eventId: string) {
@@ -380,6 +388,13 @@ export interface OpenPracticeRepository {
   getContact(firmId: string, contactId: string): Promise<Contact | undefined>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
   listMatterDocuments(firmId: string, matterId: string): Promise<DocumentRecord[]>;
+  listTaskDeadlines(
+    firmId: string,
+    options?: { matterIds?: string[]; matterId?: string; includeCompleted?: boolean },
+  ): Promise<TaskDeadlineRecord[]>;
+  getTaskDeadline(firmId: string, taskId: string): Promise<TaskDeadlineRecord | undefined>;
+  createTaskDeadline(task: TaskDeadlineRecord): Promise<TaskDeadlineRecord>;
+  completeTaskDeadline(input: TaskDeadlineCompletionInput): Promise<TaskDeadlineRecord | undefined>;
   listLegalClinicPrograms(
     firmId: string,
     options?: { status?: LegalClinicProgram["status"] },
@@ -913,6 +928,18 @@ function mapCalendarEventAttendeeRow(
     deletedAt: dateToIso(row.deletedAt),
     createdByUserId: row.createdByUserId,
     updatedByUserId: row.updatedByUserId,
+  };
+}
+
+function mapTaskDeadlineRow(row: typeof schema.tasks.$inferSelect): TaskDeadlineRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    assignedToUserId: row.assignedToUserId ?? undefined,
+    title: row.title,
+    dueAt: dateToIso(row.dueAt),
+    completedAt: dateToIso(row.completedAt),
   };
 }
 
@@ -1628,6 +1655,7 @@ function buildActivityTimeline(input: {
   intakeSessions: IntakeSessionRecord[];
   generatedDocuments: GeneratedDocumentRecord[];
   calendarEvents: CalendarEventRecord[];
+  taskDeadlines: TaskDeadlineRecord[];
   timeEntries: TimeEntry[];
   expenses: ExpenseEntry[];
   invoices: InvoiceWithLines[];
@@ -1838,6 +1866,22 @@ function buildActivityTimeline(input: {
           invitationStatuses: event.attendees?.map((attendee) => attendee.invitationStatus) ?? [],
           sequence: event.sequence,
           status: event.status,
+        },
+      })),
+    ...input.taskDeadlines
+      .filter((task) => task.firmId === input.firmId && task.matterId === matterId)
+      .map((task) => ({
+        id: `task:${task.id}`,
+        firmId: task.firmId,
+        matterId: task.matterId,
+        occurredAt: task.completedAt ?? task.dueAt ?? matterOpenedAt,
+        title: `${task.completedAt ? "Task completed" : "Task due"}: ${task.title}`,
+        kind: "task" as const,
+        actorId: task.assignedToUserId,
+        metadata: {
+          assignedToUserId: task.assignedToUserId,
+          dueAt: task.dueAt,
+          completed: Boolean(task.completedAt),
         },
       })),
     ...input.timeEntries
@@ -2095,6 +2139,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private legalClinicPrograms: LegalClinicProgram[];
   private legalClinicMatterProfiles: LegalClinicMatterProfile[];
   private calendarEvents: CalendarEventRecord[];
+  private taskDeadlines: TaskDeadlineRecord[];
   private portalGrants: PortalGrant[];
   private externalUploadLinks: ExternalUploadLinkRecord[] = [];
   private timeEntries: TimeEntry[];
@@ -2153,6 +2198,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.legalClinicPrograms = seeded ? clone(sampleLegalClinicPrograms) : [];
     this.legalClinicMatterProfiles = seeded ? clone(sampleLegalClinicMatterProfiles) : [];
     this.calendarEvents = seeded ? clone(sampleCalendarEvents) : [];
+    this.taskDeadlines = seeded ? clone(sampleTaskDeadlines) : [];
     this.portalGrants = seeded ? clone(samplePortalGrants) : [];
     this.timeEntries = seeded ? clone(sampleTimeEntries) : [];
     this.expenseEntries = seeded ? clone(sampleExpenseEntries) : [];
@@ -2704,6 +2750,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
             intakeSessions: this.intakeSessions,
             generatedDocuments: this.generatedDocuments,
             calendarEvents: this.calendarEvents,
+            taskDeadlines: this.taskDeadlines,
             timeEntries: this.timeEntries,
             expenses: this.expenseEntries,
             invoices: this.invoices.map((invoice) => ({
@@ -2779,6 +2826,55 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         (document) => document.firmId === firmId && document.matterId === matterId,
       ),
     );
+  }
+
+  async listTaskDeadlines(
+    firmId: string,
+    options: { matterIds?: string[]; matterId?: string; includeCompleted?: boolean } = {},
+  ): Promise<TaskDeadlineRecord[]> {
+    const matterIds = options.matterId ? [options.matterId] : options.matterIds;
+    return clone(
+      this.taskDeadlines
+        .filter((task) => {
+          if (task.firmId !== firmId) return false;
+          if (matterIds && !matterIds.includes(task.matterId)) return false;
+          if (!options.includeCompleted && task.completedAt) return false;
+          return true;
+        })
+        .sort((left, right) => {
+          const leftDue = left.dueAt ? Date.parse(left.dueAt) : Number.POSITIVE_INFINITY;
+          const rightDue = right.dueAt ? Date.parse(right.dueAt) : Number.POSITIVE_INFINITY;
+          if (leftDue !== rightDue) return leftDue - rightDue;
+          return left.id.localeCompare(right.id);
+        }),
+    );
+  }
+
+  async getTaskDeadline(firmId: string, taskId: string): Promise<TaskDeadlineRecord | undefined> {
+    return clone(this.taskDeadlines.find((task) => task.firmId === firmId && task.id === taskId));
+  }
+
+  async createTaskDeadline(task: TaskDeadlineRecord): Promise<TaskDeadlineRecord> {
+    if (this.taskDeadlines.some((candidate) => candidate.id === task.id)) {
+      throw new Error("Task deadline already exists");
+    }
+    this.taskDeadlines.push(clone(task));
+    return clone(task);
+  }
+
+  async completeTaskDeadline(
+    input: TaskDeadlineCompletionInput,
+  ): Promise<TaskDeadlineRecord | undefined> {
+    const index = this.taskDeadlines.findIndex(
+      (task) => task.firmId === input.firmId && task.id === input.taskId,
+    );
+    if (index < 0) return undefined;
+    const completed = {
+      ...this.taskDeadlines[index]!,
+      completedAt: this.taskDeadlines[index]!.completedAt ?? input.completedAt,
+    };
+    this.taskDeadlines[index] = clone(completed);
+    return clone(completed);
   }
 
   async listLegalClinicPrograms(
@@ -5193,6 +5289,10 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         ),
       );
     const calendarEvents = calendarRows.map(mapCalendarEventRow);
+    const taskDeadlines = await this.listTaskDeadlines(user.firmId, {
+      matterIds: user.assignedMatterIds,
+      includeCompleted: true,
+    });
     const generatedDocumentRows = await this.db
       .select()
       .from(schema.generatedDocuments)
@@ -5231,6 +5331,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           intakeSessions,
           generatedDocuments,
           calendarEvents,
+          taskDeadlines,
           timeEntries,
           expenses,
           invoices,
@@ -5299,6 +5400,68 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .from(schema.documents)
       .where(and(eq(schema.documents.firmId, firmId), eq(schema.documents.matterId, matterId)));
     return rows.map(mapDocumentRow);
+  }
+
+  async listTaskDeadlines(
+    firmId: string,
+    options: { matterIds?: string[]; matterId?: string; includeCompleted?: boolean } = {},
+  ): Promise<TaskDeadlineRecord[]> {
+    const filters = [eq(schema.tasks.firmId, firmId)];
+    if (options.matterId) {
+      filters.push(eq(schema.tasks.matterId, options.matterId));
+    } else if (options.matterIds) {
+      if (options.matterIds.length === 0) return [];
+      filters.push(inArray(schema.tasks.matterId, options.matterIds));
+    }
+    if (!options.includeCompleted) {
+      filters.push(isNull(schema.tasks.completedAt));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.tasks)
+      .where(and(...filters))
+      .orderBy(asc(schema.tasks.dueAt), asc(schema.tasks.id));
+    return rows.map(mapTaskDeadlineRow);
+  }
+
+  async getTaskDeadline(firmId: string, taskId: string): Promise<TaskDeadlineRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.tasks)
+      .where(and(eq(schema.tasks.firmId, firmId), eq(schema.tasks.id, taskId)));
+    return row ? mapTaskDeadlineRow(row) : undefined;
+  }
+
+  async createTaskDeadline(task: TaskDeadlineRecord): Promise<TaskDeadlineRecord> {
+    const [row] = await this.db
+      .insert(schema.tasks)
+      .values({
+        id: task.id,
+        firmId: task.firmId,
+        matterId: task.matterId,
+        assignedToUserId: task.assignedToUserId ?? null,
+        title: task.title,
+        dueAt: task.dueAt ? new Date(task.dueAt) : null,
+        completedAt: task.completedAt ? new Date(task.completedAt) : null,
+      })
+      .returning();
+    return mapTaskDeadlineRow(row!);
+  }
+
+  async completeTaskDeadline(
+    input: TaskDeadlineCompletionInput,
+  ): Promise<TaskDeadlineRecord | undefined> {
+    const [existing] = await this.db
+      .select()
+      .from(schema.tasks)
+      .where(and(eq(schema.tasks.firmId, input.firmId), eq(schema.tasks.id, input.taskId)));
+    if (!existing) return undefined;
+    const [row] = await this.db
+      .update(schema.tasks)
+      .set({ completedAt: existing.completedAt ?? new Date(input.completedAt) })
+      .where(and(eq(schema.tasks.firmId, input.firmId), eq(schema.tasks.id, input.taskId)))
+      .returning();
+    return row ? mapTaskDeadlineRow(row) : undefined;
   }
 
   async listLegalClinicPrograms(

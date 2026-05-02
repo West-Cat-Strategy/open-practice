@@ -936,6 +936,47 @@ describe("repository operations foundation", () => {
     ).resolves.toMatchObject([{ id: "calendar-event-003", matterId: "matter-002" }]);
   });
 
+  it("lists and completes matter-scoped task deadlines in memory", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await expect(
+      repository.listTaskDeadlines("firm-west-legal", { matterIds: ["matter-001"] }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "task-deadline-001",
+        matterId: "matter-001",
+      }),
+      expect.objectContaining({
+        id: "task-deadline-002",
+        matterId: "matter-001",
+      }),
+    ]);
+
+    const created = await repository.createTaskDeadline({
+      id: "task-deadline-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      assignedToUserId: "user-licensee",
+      title: "Synthetic task deadline",
+      dueAt: "2026-05-03T17:00:00.000Z",
+    });
+    expect(created).toMatchObject({ id: "task-deadline-test" });
+
+    await expect(
+      repository.completeTaskDeadline({
+        firmId: "firm-west-legal",
+        taskId: "task-deadline-test",
+        completedAt: "2026-05-02T17:30:00.000Z",
+      }),
+    ).resolves.toMatchObject({
+      id: "task-deadline-test",
+      completedAt: "2026-05-02T17:30:00.000Z",
+    });
+    await expect(
+      repository.getTaskDeadline("firm-west-legal", "task-deadline-test"),
+    ).resolves.toMatchObject({ completedAt: "2026-05-02T17:30:00.000Z" });
+  });
+
   it("creates, updates, soft-deletes, and replaces calendar event attendees", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const attendee = await repository.upsertCalendarEventAttendee({
