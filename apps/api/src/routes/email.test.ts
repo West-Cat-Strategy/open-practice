@@ -128,6 +128,7 @@ describe("email routes", () => {
     ]);
     const [job] = await repository.listJobLifecycleRecords("firm-west-legal");
     expect(job.bullJobId).toBe(payload.job.id);
+    expect(job.maxAttempts).toBe(5);
     expect(job.metadata).not.toHaveProperty("to");
     expect(job.metadata).not.toHaveProperty("subject");
     expect(job.metadata).not.toHaveProperty("html");
@@ -145,6 +146,154 @@ describe("email routes", () => {
             provider: "mailpit",
             recipientCount: 2,
             jobId: payload.job.id,
+          }),
+        }),
+      ]),
+    });
+  });
+
+  it("lists delivery history without exposing message bodies", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-mailpit",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "mailpit",
+      enabled: true,
+      encryptedConfig: "local-mailpit-profile",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const server = testServer({ repository, authUser: user("licensee") });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "intake.generated",
+        to: ["staff@example.test"],
+        subject: "Generated intake document",
+        htmlBody: "<p>Document generated.</p>",
+        textBody: "Document generated.",
+      },
+    });
+
+    const listed = await server.inject({
+      method: "GET",
+      url: "/api/mail/outbox?matterId=matter-001",
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toMatchObject({
+      emails: [
+        {
+          id: created.json().email.id,
+          templateKey: "intake.generated",
+          status: "queued",
+          subject: "Generated intake document",
+          provider: "mailpit",
+          source: "api.mail_outbox",
+          events: [expect.objectContaining({ eventType: "queued" })],
+        },
+      ],
+    });
+    expect(JSON.stringify(listed.json())).not.toContain("Document generated.");
+    expect(JSON.stringify(listed.json())).not.toContain("<p>Document generated.</p>");
+  });
+
+  it("manually retries failed email with redacted job and audit metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-mailpit",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "mailpit",
+      enabled: true,
+      encryptedConfig: "local-mailpit-profile",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const server = testServer({ repository, authUser: user("licensee") });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "signature.requested",
+        to: ["client@example.test"],
+        subject: "Signature requested",
+        textBody: "Please review the signature request.",
+      },
+    });
+    const emailId = created.json().email.id;
+    await repository.recordEmailDeliveryResult({
+      firmId: "firm-west-legal",
+      emailId,
+      status: "failed",
+      occurredAt: "2026-05-01T01:00:00.000Z",
+      errorMessage: "SMTP refused message",
+      metadata: {
+        attemptNumber: 5,
+        maxAttempts: 5,
+        terminal: true,
+        provider: "mailpit",
+        templateKey: "signature.requested",
+      },
+    });
+
+    const retried = await server.inject({
+      method: "POST",
+      url: `/api/mail/outbox/${emailId}/retry`,
+      payload: { matterId: "matter-001" },
+    });
+
+    expect(retried.statusCode).toBe(202);
+    expect(retried.json()).toMatchObject({
+      email: {
+        id: emailId,
+        status: "queued",
+        deliveryState: expect.objectContaining({
+          terminal: false,
+          nextRetryAt: expect.any(String),
+        }),
+        events: expect.arrayContaining([
+          expect.objectContaining({ eventType: "failed" }),
+          expect.objectContaining({
+            eventType: "queued",
+            metadata: expect.objectContaining({ manualRetry: true }),
+          }),
+        ]),
+      },
+      event: { eventType: "queued", metadata: expect.objectContaining({ manualRetry: true }) },
+      job: {
+        queueName: "email",
+        jobName: "send_email",
+        status: "queued",
+        targetResourceId: emailId,
+      },
+    });
+    const jobs = await repository.listJobLifecycleRecords("firm-west-legal");
+    expect(jobs).toHaveLength(2);
+    expect(jobs[1]).toMatchObject({
+      maxAttempts: 5,
+      metadata: expect.objectContaining({
+        emailId,
+        matterId: "matter-001",
+        provider: "mailpit",
+        recipientCount: 1,
+      }),
+    });
+    expect(jobs[1]?.metadata).not.toHaveProperty("textBody");
+    expect(jobs[1]?.metadata).not.toHaveProperty("htmlBody");
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "email_outbox.manual_retry",
+          resourceId: emailId,
+          metadata: expect.not.objectContaining({
+            textBody: expect.anything(),
+            htmlBody: expect.anything(),
           }),
         }),
       ]),

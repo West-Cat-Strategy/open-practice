@@ -342,6 +342,125 @@ describe("repository operations foundation", () => {
     ).resolves.toMatchObject([{ id: "job-email-1", errorMessage: "SMTP unavailable" }]);
   });
 
+  it("lists email delivery history and queues manual retry in memory", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createQueuedEmailOutbox({
+      email: {
+        id: "email-history-1",
+        firmId: "firm-west-legal",
+        templateKey: "signature.requested",
+        status: "queued",
+        to: ["client@example.test"],
+        cc: [],
+        bcc: [],
+        from: "Open Practice <no-reply@open-practice.local>",
+        subject: "Signature requested",
+        htmlBody: "",
+        textBody: "Please review the signature request.",
+        relatedResourceType: "signature_request",
+        relatedResourceId: "sig-001",
+        queuedAt: now,
+        metadata: { matterId: "matter-001", provider: "mailpit" },
+      },
+      event: {
+        id: "email-history-event-queued",
+        firmId: "firm-west-legal",
+        emailId: "email-history-1",
+        eventType: "queued",
+        occurredAt: now,
+        metadata: { provider: "mailpit" },
+      },
+      job: {
+        id: "email-history-job",
+        firmId: "firm-west-legal",
+        queueName: "email",
+        jobName: "send_email",
+        status: "queued",
+        targetResourceType: "email_outbox",
+        targetResourceId: "email-history-1",
+        attemptsMade: 0,
+        maxAttempts: 5,
+        queuedAt: now,
+        metadata: { emailId: "email-history-1", matterId: "matter-001" },
+      },
+    });
+
+    await repository.recordEmailDeliveryResult({
+      firmId: "firm-west-legal",
+      emailId: "email-history-1",
+      status: "failed",
+      occurredAt: "2026-04-25T12:01:00.000Z",
+      errorMessage: "SMTP temporary failure",
+      metadata: {
+        attemptNumber: 1,
+        maxAttempts: 5,
+        nextRetryAt: "2026-04-25T12:01:30.000Z",
+        terminal: false,
+      },
+    });
+
+    await expect(
+      repository.listEmailOutbox("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toMatchObject([
+      {
+        id: "email-history-1",
+        status: "failed",
+        metadata: {
+          deliveryState: expect.objectContaining({
+            nextRetryAt: "2026-04-25T12:01:30.000Z",
+            terminal: false,
+          }),
+        },
+      },
+    ]);
+
+    await repository.retryEmailOutbox({
+      firmId: "firm-west-legal",
+      emailId: "email-history-1",
+      occurredAt: "2026-04-25T12:02:00.000Z",
+      requestedByUserId: "user-admin",
+      metadata: { matterId: "matter-001", provider: "mailpit" },
+      job: {
+        id: "email-history-job-retry",
+        firmId: "firm-west-legal",
+        queueName: "email",
+        jobName: "send_email",
+        status: "queued",
+        targetResourceType: "email_outbox",
+        targetResourceId: "email-history-1",
+        attemptsMade: 0,
+        maxAttempts: 5,
+        queuedAt: "2026-04-25T12:02:00.000Z",
+        metadata: { emailId: "email-history-1", matterId: "matter-001" },
+      },
+    });
+
+    await expect(
+      repository.getEmailOutbox("firm-west-legal", "email-history-1"),
+    ).resolves.toMatchObject({
+      status: "queued",
+      failedAt: undefined,
+      errorMessage: undefined,
+      metadata: {
+        deliveryState: expect.objectContaining({
+          manualRetryRequestedAt: "2026-04-25T12:02:00.000Z",
+          terminal: false,
+        }),
+      },
+    });
+    await expect(
+      repository.listEmailEvents("firm-west-legal", { emailId: "email-history-1" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ eventType: "failed" }),
+        expect.objectContaining({
+          eventType: "queued",
+          metadata: expect.objectContaining({ manualRetry: true }),
+        }),
+      ]),
+    );
+  });
+
   it("persists share links and access logs in memory", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const share = await repository.createShareLink({

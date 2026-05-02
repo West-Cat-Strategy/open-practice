@@ -85,6 +85,7 @@ export function createOpenPracticeQueue(queueName: OpenPracticeQueueName, redisU
 const allowedJobMetadataKeys = new Set([
   "attachmentCount",
   "attachmentId",
+  "attemptNumber",
   "bullJobId",
   "checksumStatus",
   "confidence",
@@ -95,6 +96,8 @@ const allowedJobMetadataKeys = new Set([
   "jobId",
   "language",
   "matterId",
+  "maxAttempts",
+  "nextRetryAt",
   "provider",
   "providerConfigured",
   "providerMessageId",
@@ -102,8 +105,10 @@ const allowedJobMetadataKeys = new Set([
   "resourceId",
   "resourceType",
   "scanStatus",
+  "source",
   "task",
   "templateKey",
+  "terminal",
   "textLength",
 ]);
 

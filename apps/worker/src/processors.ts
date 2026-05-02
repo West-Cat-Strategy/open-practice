@@ -83,6 +83,8 @@ async function processOpenPracticeJobBody(input: {
   queueName: OpenPracticeQueueName;
   jobName: string;
   data: WorkerJobEnvelope;
+  attemptsMade?: number;
+  maxAttempts?: number;
   repository: OpenPracticeRepository;
   s3: { client: S3Client; bucket: string };
   ocrProvider: OcrProvider;
@@ -119,8 +121,15 @@ async function updateJobLifecycle(
   await input.repository.updateJobLifecycleRecord(input.data.firmId, input.jobLifecycleId, updates);
 }
 
+function calculateNextEmailRetryAt(occurredAt: string, attemptsMade: number): string {
+  const delayMs = Math.min(30_000 * 2 ** Math.max(attemptsMade - 1, 0), 30 * 60_000);
+  return new Date(Date.parse(occurredAt) + delayMs).toISOString();
+}
+
 async function processEmailJob(input: {
   data: WorkerJobEnvelope;
+  attemptsMade?: number;
+  maxAttempts?: number;
   repository: OpenPracticeRepository;
   mailSender: MailSender;
 }): Promise<WorkerJobResult> {
@@ -150,6 +159,14 @@ async function processEmailJob(input: {
     };
   }
 
+  if (email.status === "sent" || email.status === "cancelled") {
+    return {
+      status: "skipped",
+      reason: `Email outbox is already ${email.status}`,
+      metadata: { firmId: data.firmId, emailId },
+    };
+  }
+
   if (!email.subject || (!email.htmlBody && !email.textBody)) {
     return {
       status: "skipped",
@@ -158,6 +175,8 @@ async function processEmailJob(input: {
     };
   }
 
+  const attemptNumber = (input.attemptsMade ?? 0) + 1;
+  const maxAttempts = input.maxAttempts ?? 1;
   let result: Awaited<ReturnType<MailSender["send"]>>;
   try {
     result = await mailSender.send({
@@ -172,13 +191,21 @@ async function processEmailJob(input: {
       metadata: email.metadata.providerMetadata as Record<string, unknown>,
     });
   } catch (error) {
+    const occurredAt = new Date().toISOString();
+    const terminal = attemptNumber >= maxAttempts;
+    const nextRetryAt = terminal ? undefined : calculateNextEmailRetryAt(occurredAt, attemptNumber);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     await repository.recordEmailDeliveryResult({
       firmId: data.firmId,
       emailId,
       status: "failed",
-      occurredAt: new Date().toISOString(),
-      errorMessage: error instanceof Error ? error.message : String(error),
+      occurredAt,
+      errorMessage,
       metadata: {
+        attemptNumber,
+        maxAttempts,
+        nextRetryAt,
+        terminal,
         provider: email.metadata.provider,
         templateKey: email.templateKey,
       },
@@ -193,6 +220,9 @@ async function processEmailJob(input: {
     occurredAt: new Date().toISOString(),
     providerMessageId: result.providerMessageId,
     metadata: {
+      attemptNumber,
+      maxAttempts,
+      terminal: true,
       provider: email.metadata.provider,
       templateKey: email.templateKey,
     },
@@ -203,6 +233,8 @@ async function processEmailJob(input: {
     metadata: {
       firmId: data.firmId,
       emailId,
+      attemptNumber,
+      maxAttempts,
       providerMessageId: result.providerMessageId,
     },
   };

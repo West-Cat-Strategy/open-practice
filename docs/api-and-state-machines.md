@@ -103,6 +103,8 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/email/status`                                                           | SMTP provider status from firm provider settings.                                                                                          |
 | `POST /api/email/previews`                                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                                                        |
 | `POST /api/mail/outbox`                                                           | Create a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.                              |
+| `GET /api/mail/outbox?matterId=`                                                  | Matter-scoped outbound email delivery history without message bodies.                                                                      |
+| `POST /api/mail/outbox/:emailId/retry`                                            | Manually requeues a failed matter-scoped outbound email with redacted job and audit metadata.                                              |
 | `GET /api/inbound-email/status`                                                   | Inbound email provider status plus configured firm inbound addresses.                                                                      |
 | `GET /api/inbound-email/messages?matterId=`                                       | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                                                      |
 | `GET /api/inbound-email/messages/:id`                                             | Matter-scoped parsed inbound email detail with inbound-email attachment records and promoted `documentId` links when present.              |
@@ -309,6 +311,12 @@ references only; email bodies stay in the outbox record rather than job or audit
 worker reads message bodies from the outbox record, marks delivery `sent` or `failed`, appends
 provider result events, and advances the matching job lifecycle row to `active`, terminal success,
 retry failure, dead letter, or skipped status.
+Delivery history is exposed through the matter-scoped outbox history route without returning HTML or
+plain-text bodies. Worker attempt, next-retry, terminal-failure, and provider provenance are recorded
+in email event metadata and mirrored into the outbox metadata under a redacted delivery-state summary.
+Manual retry is allowed only for failed outbox records; it appends a queued event with retry
+provenance, creates a fresh email job lifecycle row, and records an audit event containing only IDs,
+counts, provider/template fields, and job references.
 Signature, intake, share-link, external-upload, and calendar-invitation flows reuse the same outbox
 helper; share and external-upload notification emails are create-time only because raw tokens are not
 recoverable after the response. Calendar attendees are stored as matter-scoped event children with
