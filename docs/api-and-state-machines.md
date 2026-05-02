@@ -109,6 +109,8 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/email/status`                                                           | SMTP provider status from firm provider settings.                                                                                              |
 | `POST /api/email/previews`                                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                                                            |
 | `POST /api/mail/outbox`                                                           | Create a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.                                  |
+| `GET /api/mail/outbox?matterId=`                                                  | Matter-scoped outbound email delivery history without message bodies.                                                                          |
+| `POST /api/mail/outbox/:emailId/retry`                                            | Manually requeues a failed matter-scoped outbound email with redacted job and audit metadata.                                                  |
 | `GET /api/inbound-email/status`                                                   | Inbound email provider status plus configured firm inbound addresses.                                                                          |
 | `GET /api/inbound-email/messages?matterId=`                                       | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                                                          |
 | `GET /api/inbound-email/messages/:id`                                             | Matter-scoped parsed inbound email detail with inbound-email attachment records and promoted `documentId` links when present.                  |
@@ -246,6 +248,16 @@ status, set completion or decline timestamps for terminal statuses, and preserve
 against out-of-order non-terminal events. Embedded signature events capture signer consent text,
 actor ID, IP, user-agent, timestamps, and caller-provided evidence. Legacy `docuseal` requests
 remain historical records and are rejected by embedded event routes.
+
+Outbound email queueing is SMTP-provider gated. `POST /api/mail/outbox` requires matter-scoped
+email create access, an enabled SMTP provider setting, configured Redis/BullMQ queue access, and at
+least one non-empty text or HTML body. The route creates the outbox record, queued email event,
+durable email job lifecycle record, and BullMQ email job together before returning `queued`. The
+job payload carries only the outbox ID, firm ID, optional matter ID, provider, and recipient
+references only; email bodies stay in the outbox record rather than job or audit metadata. The
+worker reads message bodies from the outbox record, marks delivery `sent` or `failed`, appends
+provider metadata, and closes the associated job lifecycle record with success, retry failure, dead
+letter, or skipped status.
 
 V2 intake form `signature` items remain attestation-only when no `documentId` is configured. When
 staff configure a `documentId`, the public token-scoped signature item creates an embedded

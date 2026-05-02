@@ -218,7 +218,12 @@ describe("worker processors", () => {
         expect.objectContaining({
           eventType: "failed",
           emailId: "email-outbox-failed-worker-test",
-          metadata: expect.objectContaining({ provider: "mailpit" }),
+          metadata: expect.objectContaining({
+            attemptNumber: 1,
+            maxAttempts: 1,
+            provider: "mailpit",
+            terminal: true,
+          }),
         }),
       ]),
     );
@@ -230,6 +235,106 @@ describe("worker processors", () => {
           attemptsMade: 1,
           errorMessage: "SMTP refused message",
           failedAt: expect.any(String),
+        }),
+      ]),
+    );
+  });
+
+  it("records nonterminal retry provenance when email delivery can retry", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createQueuedEmailOutbox({
+      email: {
+        id: "email-outbox-retry-worker-test",
+        firmId: "firm-west-legal",
+        templateKey: "calendar.invitation",
+        status: "queued",
+        to: ["guest@example.test"],
+        cc: [],
+        bcc: [],
+        from: "Open Practice <no-reply@open-practice.local>",
+        subject: "Meeting invitation",
+        htmlBody: "",
+        textBody: "Please review the meeting invitation.",
+        relatedResourceType: "calendar_event",
+        relatedResourceId: "calendar-event-001",
+        queuedAt: "2026-05-01T00:00:00.000Z",
+        metadata: { matterId: "matter-001", provider: "mailpit" },
+      },
+      event: {
+        id: "email-event-retry-worker-test",
+        firmId: "firm-west-legal",
+        emailId: "email-outbox-retry-worker-test",
+        eventType: "queued",
+        occurredAt: "2026-05-01T00:00:00.000Z",
+        metadata: { provider: "mailpit" },
+      },
+      job: {
+        id: "job-worker-retry-test",
+        firmId: "firm-west-legal",
+        queueName: "email",
+        jobName: "send_email",
+        status: "queued",
+        targetResourceType: "email_outbox",
+        targetResourceId: "email-outbox-retry-worker-test",
+        attemptsMade: 0,
+        maxAttempts: 3,
+        queuedAt: "2026-05-01T00:00:00.000Z",
+        metadata: {
+          emailId: "email-outbox-retry-worker-test",
+          matterId: "matter-001",
+          templateKey: "calendar.invitation",
+          recipientCount: 1,
+        },
+      },
+    });
+
+    await expect(
+      processOpenPracticeJob({
+        queueName: "email",
+        jobName: "send_email",
+        data: {
+          firmId: "firm-west-legal",
+          resourceType: "email_outbox",
+          resourceId: "email-outbox-retry-worker-test",
+          metadata: { emailId: "email-outbox-retry-worker-test" },
+        },
+        jobLifecycleId: "job-worker-retry-test",
+        attemptsMade: 0,
+        maxAttempts: 3,
+        repository,
+        s3: {} as never,
+        ocrProvider: {} as never,
+        mailSender: {
+          async send() {
+            throw new Error("SMTP temporary failure");
+          },
+        },
+        inboundEmailParser: {} as never,
+      }),
+    ).rejects.toThrow("SMTP temporary failure");
+
+    await expect(
+      repository.getEmailOutbox("firm-west-legal", "email-outbox-retry-worker-test"),
+    ).resolves.toMatchObject({
+      status: "failed",
+      failedAt: expect.any(String),
+      errorMessage: "SMTP temporary failure",
+      metadata: {
+        deliveryState: expect.objectContaining({
+          attemptNumber: 1,
+          maxAttempts: 3,
+          nextRetryAt: expect.any(String),
+          terminal: false,
+        }),
+      },
+    });
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "job-worker-retry-test",
+          status: "failed",
+          attemptsMade: 1,
+          errorMessage: "SMTP temporary failure",
         }),
       ]),
     );

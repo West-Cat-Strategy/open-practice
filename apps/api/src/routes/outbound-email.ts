@@ -11,6 +11,7 @@ import { appendRouteAuditEvent } from "./audit-events.js";
 import type { ApiJobQueue } from "./types.js";
 
 const DEFAULT_FROM = "Open Practice <no-reply@open-practice.local>";
+export const EMAIL_JOB_MAX_ATTEMPTS = 5;
 
 export interface QueueRouteEmailInput {
   matterId: string;
@@ -25,6 +26,7 @@ export interface QueueRouteEmailInput {
   relatedResourceType?: string;
   relatedResourceId?: string;
   metadata?: Record<string, unknown>;
+  source?: string;
   required?: boolean;
 }
 
@@ -102,6 +104,8 @@ export async function queueRouteEmailOutbox(
     ...(input.metadata ?? {}),
     matterId: input.matterId,
     provider: enabledProvider.key,
+    source: input.source,
+    createdByUserId: auth.user.id,
   };
   const queued = await repository.createQueuedEmailOutbox({
     email: {
@@ -138,12 +142,13 @@ export async function queueRouteEmailOutbox(
       targetResourceType: "email_outbox",
       targetResourceId: emailId,
       attemptsMade: 0,
-      maxAttempts: 3,
+      maxAttempts: EMAIL_JOB_MAX_ATTEMPTS,
       queuedAt: now,
       metadata: {
         emailId,
         matterId: input.matterId,
         provider: enabledProvider.key,
+        source: input.source,
         templateKey: input.templateKey,
         recipientCount: to.length + cc.length + bcc.length,
         relatedResourceType: input.relatedResourceType,
@@ -161,6 +166,7 @@ export async function queueRouteEmailOutbox(
         emailId,
         matterId: input.matterId,
         provider: enabledProvider.key,
+        source: input.source,
         templateKey: input.templateKey,
         recipientCount: to.length + cc.length + bcc.length,
         relatedResourceType: input.relatedResourceType,
@@ -183,6 +189,7 @@ export async function queueRouteEmailOutbox(
       matterId: input.matterId,
       templateKey: queued.email.templateKey,
       provider: enabledProvider.key,
+      source: input.source,
       recipientCount: to.length + cc.length + bcc.length,
       relatedResourceType: queued.email.relatedResourceType,
       relatedResourceId: queued.email.relatedResourceId,

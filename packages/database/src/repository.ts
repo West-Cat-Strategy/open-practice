@@ -284,6 +284,7 @@ export interface OpenPracticeRepository {
     job: JobLifecycleRecord;
   }>;
   getEmailOutbox(firmId: string, emailId: string): Promise<EmailOutboxRecord | undefined>;
+  listEmailOutbox(firmId: string, options?: { matterId?: string }): Promise<EmailOutboxRecord[]>;
   recordEmailDeliveryResult(input: {
     firmId: string;
     emailId: string;
@@ -293,6 +294,14 @@ export interface OpenPracticeRepository {
     errorMessage?: string;
     metadata?: Record<string, unknown>;
   }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord }>;
+  retryEmailOutbox(input: {
+    firmId: string;
+    emailId: string;
+    occurredAt: string;
+    requestedByUserId: string;
+    job: JobLifecycleRecord;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord; job: JobLifecycleRecord }>;
   listEmailEvents(firmId: string, options?: { emailId?: string }): Promise<EmailEventRecord[]>;
   updateJobLifecycleRecord(
     firmId: string,
@@ -1930,6 +1939,21 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(this.emailOutbox.find((email) => email.firmId === firmId && email.id === emailId));
   }
 
+  async listEmailOutbox(
+    firmId: string,
+    options: { matterId?: string } = {},
+  ): Promise<EmailOutboxRecord[]> {
+    return clone(
+      this.emailOutbox
+        .filter((email) => {
+          if (email.firmId !== firmId) return false;
+          if (options.matterId && email.metadata.matterId !== options.matterId) return false;
+          return true;
+        })
+        .sort((left, right) => right.queuedAt.localeCompare(left.queuedAt)),
+    );
+  }
+
   async recordEmailDeliveryResult(input: {
     firmId: string;
     emailId: string;
@@ -1951,6 +1975,10 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       sentAt: input.status === "sent" ? input.occurredAt : existing.sentAt,
       failedAt: input.status === "failed" ? input.occurredAt : undefined,
       errorMessage: input.status === "failed" ? input.errorMessage : undefined,
+      metadata: {
+        ...existing.metadata,
+        deliveryState: input.metadata ?? {},
+      },
     };
     const event: EmailEventRecord = {
       id: crypto.randomUUID(),
@@ -1964,6 +1992,55 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.emailOutbox[index] = clone(email);
     this.emailEvents.push(clone(event));
     return { email: clone(email), event: clone(event) };
+  }
+
+  async retryEmailOutbox(input: {
+    firmId: string;
+    emailId: string;
+    occurredAt: string;
+    requestedByUserId: string;
+    job: JobLifecycleRecord;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord; job: JobLifecycleRecord }> {
+    const index = this.emailOutbox.findIndex(
+      (email) => email.firmId === input.firmId && email.id === input.emailId,
+    );
+    if (index === -1) throw new Error(`Email outbox record ${input.emailId} was not found`);
+
+    const existing = this.emailOutbox[index]!;
+    const email: EmailOutboxRecord = {
+      ...existing,
+      status: "queued",
+      failedAt: undefined,
+      errorMessage: undefined,
+      metadata: {
+        ...existing.metadata,
+        deliveryState: {
+          ...(input.metadata ?? {}),
+          manualRetryRequestedAt: input.occurredAt,
+          manualRetryRequestedByUserId: input.requestedByUserId,
+          nextRetryAt: input.occurredAt,
+          terminal: false,
+        },
+      },
+    };
+    const event: EmailEventRecord = {
+      id: crypto.randomUUID(),
+      firmId: input.firmId,
+      emailId: input.emailId,
+      eventType: "queued",
+      occurredAt: input.occurredAt,
+      metadata: {
+        ...(input.metadata ?? {}),
+        manualRetry: true,
+        requestedByUserId: input.requestedByUserId,
+        jobId: input.job.id,
+      },
+    };
+    this.emailOutbox[index] = clone(email);
+    this.emailEvents.push(clone(event));
+    this.jobLifecycleRecords.push(clone(input.job));
+    return { email: clone(email), event: clone(event), job: clone(input.job) };
   }
 
   async listEmailEvents(
@@ -4116,6 +4193,22 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return row ? mapEmailOutboxRow(row) : undefined;
   }
 
+  async listEmailOutbox(
+    firmId: string,
+    options: { matterId?: string } = {},
+  ): Promise<EmailOutboxRecord[]> {
+    const conditions = [eq(schema.emailOutbox.firmId, firmId)];
+    if (options.matterId) {
+      conditions.push(sql`${schema.emailOutbox.metadata}->>'matterId' = ${options.matterId}`);
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.emailOutbox)
+      .where(and(...conditions))
+      .orderBy(desc(schema.emailOutbox.queuedAt));
+    return rows.map(mapEmailOutboxRow);
+  }
+
   async recordEmailDeliveryResult(input: {
     firmId: string;
     emailId: string;
@@ -4127,6 +4220,17 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord }> {
     return this.db.transaction(async (tx) => {
       const occurredAt = new Date(input.occurredAt);
+      const [existingRow] = await tx
+        .select()
+        .from(schema.emailOutbox)
+        .where(
+          and(
+            eq(schema.emailOutbox.firmId, input.firmId),
+            eq(schema.emailOutbox.id, input.emailId),
+          ),
+        );
+      if (!existingRow) throw new Error(`Email outbox record ${input.emailId} was not found`);
+      const metadata = { ...existingRow.metadata, deliveryState: input.metadata ?? {} };
       const [emailRow] = await tx
         .update(schema.emailOutbox)
         .set({
@@ -4134,6 +4238,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           sentAt: input.status === "sent" ? occurredAt : null,
           failedAt: input.status === "failed" ? occurredAt : null,
           errorMessage: input.status === "failed" ? input.errorMessage : null,
+          metadata,
         })
         .where(
           and(
@@ -4142,7 +4247,6 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           ),
         )
         .returning();
-      if (!emailRow) throw new Error(`Email outbox record ${input.emailId} was not found`);
 
       const event: EmailEventRecord = {
         id: crypto.randomUUID(),
@@ -4158,6 +4262,80 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         .values(emailEventInsert(event))
         .returning();
       return { email: mapEmailOutboxRow(emailRow), event: mapEmailEventRow(eventRow) };
+    });
+  }
+
+  async retryEmailOutbox(input: {
+    firmId: string;
+    emailId: string;
+    occurredAt: string;
+    requestedByUserId: string;
+    job: JobLifecycleRecord;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord; job: JobLifecycleRecord }> {
+    return this.db.transaction(async (tx) => {
+      const [existingRow] = await tx
+        .select()
+        .from(schema.emailOutbox)
+        .where(
+          and(
+            eq(schema.emailOutbox.firmId, input.firmId),
+            eq(schema.emailOutbox.id, input.emailId),
+          ),
+        );
+      if (!existingRow) throw new Error(`Email outbox record ${input.emailId} was not found`);
+      const metadata = {
+        ...existingRow.metadata,
+        deliveryState: {
+          ...(input.metadata ?? {}),
+          manualRetryRequestedAt: input.occurredAt,
+          manualRetryRequestedByUserId: input.requestedByUserId,
+          nextRetryAt: input.occurredAt,
+          terminal: false,
+        },
+      };
+      const [emailRow] = await tx
+        .update(schema.emailOutbox)
+        .set({
+          status: "queued",
+          failedAt: null,
+          errorMessage: null,
+          metadata,
+        })
+        .where(
+          and(
+            eq(schema.emailOutbox.firmId, input.firmId),
+            eq(schema.emailOutbox.id, input.emailId),
+          ),
+        )
+        .returning();
+
+      const event: EmailEventRecord = {
+        id: crypto.randomUUID(),
+        firmId: input.firmId,
+        emailId: input.emailId,
+        eventType: "queued",
+        occurredAt: input.occurredAt,
+        metadata: {
+          ...(input.metadata ?? {}),
+          manualRetry: true,
+          requestedByUserId: input.requestedByUserId,
+          jobId: input.job.id,
+        },
+      };
+      const [eventRow] = await tx
+        .insert(schema.emailEvents)
+        .values(emailEventInsert(event))
+        .returning();
+      const [jobRow] = await tx
+        .insert(schema.jobLifecycleRecords)
+        .values(jobLifecycleInsert(input.job))
+        .returning();
+      return {
+        email: mapEmailOutboxRow(emailRow),
+        event: mapEmailEventRow(eventRow),
+        job: mapJobLifecycleRow(jobRow),
+      };
     });
   }
 
