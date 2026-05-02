@@ -71,7 +71,7 @@ function safeMetadataValue(value: unknown): string | number | boolean | undefine
   return undefined;
 }
 
-function redactedMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+export function redactedMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
   const redacted: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(metadata)) {
     if (!redactedMetadataKeys.has(key)) continue;

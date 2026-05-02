@@ -342,6 +342,123 @@ export interface EmailDeliveryDashboardResponse {
   emailsByMatterId: Record<string, EmailDeliveryHistoryItem[]>;
 }
 
+export type DocumentProcessingGroup =
+  | "ready_to_process"
+  | "queued_or_active"
+  | "needs_review"
+  | "blocked";
+
+export type DocumentProcessingDocumentSummary = Pick<
+  DocumentRecord,
+  | "id"
+  | "matterId"
+  | "title"
+  | "version"
+  | "classification"
+  | "legalHold"
+  | "uploadStatus"
+  | "checksumStatus"
+  | "scanStatus"
+  | "reviewStatus"
+  | "reviewDecision"
+  | "reviewReason"
+  | "reviewedAt"
+  | "duplicateOfDocumentId"
+  | "uploadedAt"
+  | "verifiedAt"
+>;
+
+export interface DocumentProcessingProviderStatus {
+  kind: string;
+  status: "configured" | "disabled" | string;
+  reason?: string;
+  providers?: Array<{
+    key: string;
+    enabled: boolean;
+    updatedAt?: string;
+  }>;
+}
+
+export interface DocumentProcessingWorkerQueueStatus {
+  queueName: string;
+  status: "configured" | "not_configured" | string;
+  reason?: string;
+}
+
+export interface DocumentProcessingQueueSummary {
+  queueName: string;
+  total: number;
+  queued: number;
+  active: number;
+  failed: number;
+  terminal: number;
+  latestQueuedAt?: string;
+}
+
+export interface DocumentProcessingSummary {
+  total: number;
+  queued: number;
+  active: number;
+  failed: number;
+  terminal: number;
+  byQueue?: DocumentProcessingQueueSummary[];
+}
+
+export interface DocumentProcessingLatestJob {
+  id: string;
+  queueName: string;
+  jobName?: string;
+  status: string;
+  terminal?: boolean;
+  failed?: boolean;
+  retryable?: boolean;
+  attemptsMade?: number;
+  maxAttempts?: number;
+  queuedAt?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  failedAt?: string;
+  errorSummary?: string;
+}
+
+export interface DocumentProcessingLatestExtraction {
+  id?: string;
+  status?: string;
+  provider?: string;
+  createdAt?: string;
+  completedAt?: string;
+  confidence?: number;
+  pageCount?: number;
+  language?: string;
+  summary?: string;
+  errorSummary?: string;
+}
+
+export interface DocumentProcessingWorkbenchItem {
+  document: DocumentProcessingDocumentSummary;
+  group: DocumentProcessingGroup;
+  queueEligibility: {
+    eligible: boolean;
+    reason?: string;
+  };
+  latestJob?: DocumentProcessingLatestJob;
+  latestExtraction?: DocumentProcessingLatestExtraction;
+}
+
+export interface DocumentProcessingWorkbenchResponse {
+  matterId: string;
+  status: "configured" | "disabled" | "available" | "unavailable" | string;
+  reason?: string;
+  providerStatus: DocumentProcessingProviderStatus[];
+  workerQueues: DocumentProcessingWorkerQueueStatus[];
+  summary: DocumentProcessingSummary;
+  documents: DocumentProcessingWorkbenchItem[];
+}
+
+export interface DocumentProcessingDashboardResponse {
+  workbenchesByMatterId: Record<string, DocumentProcessingWorkbenchResponse>;
+}
+
 export type BillingEntryStatus = "draft" | "submitted" | "approved" | "billed" | "written_off";
 
 export interface BillingTimeItem {

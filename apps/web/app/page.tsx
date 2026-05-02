@@ -11,6 +11,11 @@ import {
   loadEmailDeliveryDashboardData,
 } from "./email-delivery-dashboard";
 import {
+  buildDocumentProcessingWorkbenchPath,
+  emptyDocumentProcessingWorkbench,
+  loadDocumentProcessingDashboardData,
+} from "./document-processing-dashboard";
+import {
   buildExternalUploadListPath,
   canCreateExternalUpload,
   externalUploadsStatusFallback,
@@ -42,6 +47,8 @@ import type {
   CalendarEventsResponse,
   CapabilitiesResponse,
   ContactDossiersResponse,
+  DocumentProcessingDashboardResponse,
+  DocumentProcessingWorkbenchResponse,
   DraftingDashboardResponse,
   EmailDeliveryDashboardResponse,
   EmailDeliveryHistoryResponse,
@@ -267,6 +274,9 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   const canViewCalendar = capabilities.sections.some(
     (section) => section.key === "calendar" && section.enabled,
   );
+  const canViewDocuments = capabilities.sections.some(
+    (section) => section.key === "documents" && section.enabled,
+  );
   const drafting: DraftingDashboardResponse = canViewDrafting
     ? await loadDraftingDashboardData({
         matters,
@@ -307,6 +317,18 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
         ),
     },
   );
+  const documentProcessing: DocumentProcessingDashboardResponse = canViewDocuments
+    ? await loadDocumentProcessingDashboardData({
+        matters,
+        getWorkbench: (matterId) =>
+          apiGetOptional<DocumentProcessingWorkbenchResponse>(
+            buildDocumentProcessingWorkbenchPath(matterId),
+            emptyDocumentProcessingWorkbench(matterId),
+            headers,
+            emptyDocumentProcessingWorkbench(matterId, "access_denied"),
+          ),
+      })
+    : { workbenchesByMatterId: {} };
   const shareLinksStatus = await apiGetOptional<ShareLinksStatusResponse>(
     "/api/shares/status",
     { createStatus: "disabled", reason: "share_routes_unavailable" },
@@ -388,6 +410,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       capabilities={capabilities}
       contactDossiers={contactDossiers}
       devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}
+      documentProcessing={documentProcessing}
       drafting={drafting}
       emailDeliveryHistory={emailDeliveryHistory}
       externalUploads={externalUploads}

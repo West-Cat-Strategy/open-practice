@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import { requireAccess } from "../http/auth-guards.js";
+import { parseRequestPart } from "../http/validation.js";
 import {
   openPracticeQueueNames,
   queueStatus,
@@ -7,6 +9,8 @@ import {
   summarizeJobRuns,
 } from "./job-status.js";
 import type { ApiRouteDependencies } from "./types.js";
+
+const jobParamsSchema = z.object({ jobId: z.string().min(1) });
 
 export function registerJobsRoutes(
   server: FastifyInstance,
@@ -31,5 +35,20 @@ export function registerJobsRoutes(
       summary: summarizeJobRuns(jobs),
       jobs: jobs.map(serializeJobRun),
     };
+  });
+
+  server.get("/api/jobs/:jobId", async (request) => {
+    const access = requireAccess(request.auth, { resource: "job", action: "read" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(jobParamsSchema, request.params, "params");
+
+    const job = (await repository.listJobLifecycleRecords(request.auth.firmId)).find(
+      (record) => record.id === params.jobId,
+    );
+    if (!job) {
+      throw Object.assign(new Error("Job was not found"), { statusCode: 404 });
+    }
+
+    return { job: serializeJobRun(job) };
   });
 }
