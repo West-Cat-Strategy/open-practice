@@ -636,7 +636,11 @@ describe("API auth and persistence boundaries", () => {
   it("persists conflict audit events through the repository boundary", async () => {
     const server = testServer();
     const before = await server.inject({ method: "GET", url: "/api/audit" });
-    const beforeCount = before.json<{ events: unknown[] }>().events.length;
+    const beforePayload = before.json<{
+      events: unknown[];
+      taxonomySummary: { total: number; known: number; byCategory: Record<string, number> };
+    }>();
+    const beforeCount = beforePayload.events.length;
 
     const conflict = await server.inject({
       method: "POST",
@@ -646,7 +650,18 @@ describe("API auth and persistence boundaries", () => {
 
     expect(conflict.statusCode).toBe(200);
     const after = await server.inject({ method: "GET", url: "/api/audit" });
-    expect(after.json<{ events: unknown[] }>().events).toHaveLength(beforeCount + 1);
+    const afterPayload = after.json<{
+      events: unknown[];
+      taxonomySummary: { total: number; known: number; byCategory: Record<string, number> };
+    }>();
+    expect(afterPayload.events).toHaveLength(beforeCount + 1);
+    expect(afterPayload.taxonomySummary).toMatchObject({
+      total: beforePayload.taxonomySummary.total + 1,
+      known: beforePayload.taxonomySummary.known + 1,
+      byCategory: {
+        conflicts: (beforePayload.taxonomySummary.byCategory.conflicts ?? 0) + 1,
+      },
+    });
   });
 
   it("posts ledger transactions through validated request bodies", async () => {
