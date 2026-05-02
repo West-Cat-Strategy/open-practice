@@ -67,7 +67,10 @@ const emailOutboxBodySchema = z
   });
 
 function emailMatterId(email: EmailOutboxRecord): string | undefined {
-  return email.matterId || (typeof email.metadata.matterId === "string" ? email.metadata.matterId : undefined);
+  return (
+    email.matterId ||
+    (typeof email.metadata.matterId === "string" ? email.metadata.matterId : undefined)
+  );
 }
 
 type RelatedResourceType = z.infer<typeof relatedResourceTypeSchema>;
@@ -231,7 +234,9 @@ export function registerEmailRoutes(
     );
 
     return {
-      emails: emails.map((email) => serializeDeliveryHistory(email, eventsByEmailId.get(email.id) ?? [])),
+      emails: emails.map((email) =>
+        serializeDeliveryHistory(email, eventsByEmailId.get(email.id) ?? []),
+      ),
     };
   });
 

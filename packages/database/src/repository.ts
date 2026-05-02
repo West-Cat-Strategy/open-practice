@@ -2081,6 +2081,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       emailId: input.emailId,
       eventType: "queued",
       occurredAt: input.occurredAt,
+      jobId: input.job.id,
+      source: "api",
       metadata: {
         ...(input.metadata ?? {}),
         manualRetry: true,
@@ -4386,6 +4388,8 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         emailId: input.emailId,
         eventType: "queued",
         occurredAt: input.occurredAt,
+        jobId: input.job.id,
+        source: "api",
         metadata: {
           ...(input.metadata ?? {}),
           manualRetry: true,
