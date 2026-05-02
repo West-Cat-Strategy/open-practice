@@ -237,6 +237,141 @@ describe("repository first-run setup", () => {
 });
 
 describe("repository operations foundation", () => {
+  it("builds audit-safe matter activity across existing matter records", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await repository.appendAuditEvent({
+      id: "audit-timeline-sensitive",
+      firmId: "firm-west-legal",
+      actorId: "user-licensee",
+      action: "matter.timeline_sensitive",
+      resourceType: "matter",
+      resourceId: "matter-001",
+      occurredAt: "2026-04-08T17:00:00.000Z",
+      metadata: {
+        matterId: "matter-001",
+        safeSummary: "kept",
+        tokenHash: "timeline-token-hash",
+        textBody: "Synthetic body that must not be surfaced.",
+        evidence: { storageKey: "timeline/evidence.json" },
+      },
+    });
+    await repository.createGeneratedDocument({
+      id: "generated-timeline",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      intakeSessionId: "intake-session-001",
+      provider: "embedded",
+      externalId: "embedded:generated-timeline",
+      title: "Synthetic generated chronology",
+      documentId: "doc-001",
+      packageId: "package-alpha",
+      packageDocumentId: "chronology",
+      storageKey: "generated/private/chronology.pdf",
+      checksumSha256: "generated-checksum",
+      evidence: { body: "private generated document evidence" },
+      createdAt: "2026-04-08T18:00:00.000Z",
+    });
+    await repository.createShareLink({
+      id: "share-timeline",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      tokenHash: "share-token-hash",
+      grantedByUserId: "user-licensee",
+      permissions: ["view_documents"],
+      requireEmailVerification: true,
+      createdAt: "2026-04-09T17:00:00.000Z",
+    });
+    await repository.createExternalUploadLink({
+      id: "upload-timeline",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      tokenHash: "upload-token-hash",
+      requestedByUserId: "user-licensee",
+      expiresAt: "2026-04-16T17:00:00.000Z",
+      maxUploads: 2,
+      usedUploads: 1,
+      createdAt: "2026-04-09T18:00:00.000Z",
+    });
+    await repository.createAccessLog({
+      id: "access-share-timeline",
+      firmId: "firm-west-legal",
+      shareLinkId: "share-timeline",
+      resourceType: "document",
+      resourceId: "doc-001",
+      action: "download",
+      occurredAt: "2026-04-10T17:00:00.000Z",
+      ipAddress: "127.0.0.1",
+      userAgent: "Synthetic private browser",
+      metadata: { tokenHash: "share-token-hash" },
+    });
+    await repository.createAccessLog({
+      id: "access-upload-timeline",
+      firmId: "firm-west-legal",
+      externalUploadLinkId: "upload-timeline",
+      resourceType: "document",
+      resourceId: "doc-uploaded",
+      action: "upload",
+      occurredAt: "2026-04-10T18:00:00.000Z",
+      metadata: { body: "private upload metadata" },
+    });
+    await repository.createPayment({
+      payment: {
+        id: "payment-timeline",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        clientContactId: "contact-ada",
+        receivedAt: "2026-04-11T17:00:00.000Z",
+        amountCents: 1000,
+        method: "eft",
+        reference: "private-reference",
+        status: "received",
+        receivedByUserId: "user-licensee",
+        notes: "Private payment note",
+        evidence: { receiptStorageKey: "payments/private-receipt.pdf" },
+      },
+      allocations: [],
+    });
+
+    const user = (await repository.getUser("firm-west-legal", "user-admin"))!;
+    const matters = await repository.listMattersForUser(user);
+    const matter = matters.find((candidate) => candidate.id === "matter-001")!;
+    const otherMatter = matters.find((candidate) => candidate.id === "matter-002")!;
+    const entriesById = new Map(matter.activity.map((entry) => [entry.id, entry]));
+
+    expect(matter.activity.map((entry) => entry.kind)).toEqual(
+      expect.arrayContaining([
+        "billing",
+        "calendar",
+        "contact",
+        "document",
+        "intake",
+        "ledger",
+        "portal",
+        "share",
+        "signature",
+        "task",
+        "upload",
+      ]),
+    );
+    expect(entriesById.get("audit-timeline-sensitive")?.metadata).toEqual({
+      matterId: "matter-001",
+      safeSummary: "kept",
+    });
+    expect(entriesById.get("share:share-timeline")?.metadata).not.toHaveProperty("tokenHash");
+    expect(entriesById.get("upload-link:upload-timeline")?.metadata).not.toHaveProperty(
+      "tokenHash",
+    );
+    expect(entriesById.get("payment:payment-timeline")?.metadata).not.toHaveProperty("evidence");
+    expect(JSON.stringify(matter.activity)).not.toContain("share-token-hash");
+    expect(JSON.stringify(matter.activity)).not.toContain("Private payment note");
+    expect(JSON.stringify(matter.activity)).not.toContain("generated/private/chronology.pdf");
+    expect(otherMatter.activity.map((entry) => entry.id)).not.toEqual(
+      expect.arrayContaining(["share:share-timeline", "upload-link:upload-timeline"]),
+    );
+  });
+
   it("seeds basic draft templates and versions draft updates", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await expect(repository.listDraftTemplates("firm-west-legal")).resolves.toMatchObject([

@@ -276,7 +276,20 @@ export interface ActivityTimelineEntry {
   matterId?: string;
   occurredAt: string;
   title: string;
-  kind: "audit" | "conflict" | "document" | "portal" | "signature" | "intake" | "task" | "calendar";
+  kind:
+    | "audit"
+    | "billing"
+    | "calendar"
+    | "conflict"
+    | "contact"
+    | "document"
+    | "intake"
+    | "ledger"
+    | "portal"
+    | "share"
+    | "signature"
+    | "task"
+    | "upload";
   actorId?: string;
   metadata: Record<string, unknown>;
 }
