@@ -52,10 +52,14 @@ import {
   isSameDraftDocument,
 } from "./drafting-dashboard";
 import {
+  buildExternalUploadReviewPayload,
+  buildExternalUploadReviewPath,
   buildExternalUploadCreatePayload,
   buildExternalUploadRevokePath,
   canCreateExternalUpload,
+  describeExternalUploadReviewState,
   getExternalUploadLinkState,
+  upsertExternalUploadDocument,
   upsertExternalUploadLink,
 } from "./external-uploads-dashboard";
 import {
@@ -93,6 +97,7 @@ import type {
   DraftingDashboardResponse,
   DraftAssistRecordsResponse,
   DraftAssistStatusResponse,
+  ExternalUploadReviewItem,
   ExternalUploadCreateResponse,
   ExternalUploadRevokeResponse,
   ExternalUploadsDashboardResponse,
@@ -237,12 +242,16 @@ export default function DashboardClient({
   const [externalUploadsByMatterId, setExternalUploadsByMatterId] = useState(
     externalUploads.uploadsByMatterId,
   );
+  const [externalUploadDocumentsByMatterId, setExternalUploadDocumentsByMatterId] = useState(
+    externalUploads.reviewItemsByMatterId,
+  );
   const [externalUploadMaxUploads, setExternalUploadMaxUploads] = useState("1");
   const [externalUploadExpiresAt, setExternalUploadExpiresAt] = useState("");
   const [externalUploadToken, setExternalUploadToken] = useState("");
   const [externalUploadStatus, setExternalUploadStatus] = useState("No link created.");
   const [creatingExternalUpload, setCreatingExternalUpload] = useState(false);
   const [revokingExternalUploadId, setRevokingExternalUploadId] = useState("");
+  const [reviewingExternalUploadDocumentId, setReviewingExternalUploadDocumentId] = useState("");
   const [calendarEventsByMatterId, setCalendarEventsByMatterId] = useState(
     calendar.eventsByMatterId,
   );
@@ -319,6 +328,9 @@ export default function DashboardClient({
   const activeDrafts = activeMatter ? (draftsByMatterId[activeMatter.id] ?? []) : [];
   const activeExternalUploads = activeMatter
     ? (externalUploadsByMatterId[activeMatter.id] ?? [])
+    : [];
+  const activeExternalUploadDocuments = activeMatter
+    ? (externalUploadDocumentsByMatterId[activeMatter.id] ?? [])
     : [];
   const activeCalendarEvents = activeMatter
     ? (calendarEventsByMatterId[activeMatter.id] ?? [])
@@ -841,6 +853,41 @@ export default function DashboardClient({
     setExternalUploadsByMatterId((current) => upsertExternalUploadLink(current, payload.upload));
     setExternalUploadStatus("Link revoked.");
     setRevokingExternalUploadId("");
+  }
+
+  async function reviewExternalUploadDocument(
+    document: ExternalUploadReviewItem,
+    decision: "accept" | "request_metadata" | "request_retry" | "discard",
+  ): Promise<void> {
+    setReviewingExternalUploadDocumentId(`${document.id}:${decision}`);
+    setExternalUploadStatus("Updating upload review...");
+    const response = await fetch(`${apiBaseUrl}${buildExternalUploadReviewPath(document.id)}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        buildExternalUploadReviewPayload({
+          decision,
+          duplicateOfDocumentId: document.duplicateOfDocumentId,
+        }),
+      ),
+    });
+
+    if (!response.ok) {
+      setExternalUploadStatus(`Review update failed: ${response.status}`);
+      setReviewingExternalUploadDocumentId("");
+      return;
+    }
+
+    const payload = (await response.json()) as { reviewItem: ExternalUploadReviewItem };
+    setExternalUploadDocumentsByMatterId((current) =>
+      upsertExternalUploadDocument(current, payload.reviewItem),
+    );
+    setExternalUploadStatus("Upload review updated.");
+    setReviewingExternalUploadDocumentId("");
   }
 
   async function createCalendarCredential(): Promise<void> {
@@ -1675,7 +1722,7 @@ export default function DashboardClient({
                       <strong>{document.title}</strong>
                       <small>
                         {document.uploadStatus} · checksum {document.checksumStatus} · scan{" "}
-                        {document.scanStatus}
+                        {document.scanStatus} · review {document.reviewStatus}
                       </small>
                     </span>
                     <em>{document.classification.replace("_", " ")}</em>
@@ -1901,6 +1948,76 @@ export default function DashboardClient({
                   })}
                   {activeExternalUploads.length === 0 ? (
                     <p className="inline-empty">No external upload links for this matter.</p>
+                  ) : null}
+                </div>
+
+                <div className="section-title">
+                  <h3>Uploaded document review</h3>
+                  <span>{activeExternalUploadDocuments.length} records</span>
+                </div>
+                <div className="party-list">
+                  {activeExternalUploadDocuments.map((document) => {
+                    const reviewState = describeExternalUploadReviewState(document);
+                    const reviewKey = `${document.id}:`;
+                    return (
+                      <div className="party-row upload-review-row" key={document.id}>
+                        <span>
+                          <strong>{document.title}</strong>
+                          <small>
+                            {compactStatus(document.uploadStatus)} ·{" "}
+                            {compactStatus(document.checksumStatus)} checksum ·{" "}
+                            {compactStatus(document.scanStatus)} scan
+                            {document.duplicateOfDocumentId
+                              ? ` · duplicate of ${document.duplicateOfDocumentId}`
+                              : ""}
+                          </small>
+                        </span>
+                        <div className="row-actions upload-review-actions">
+                          <em className={reviewState.tone === "risk" ? "risk" : undefined}>
+                            {reviewState.label}
+                          </em>
+                          <button
+                            className="secondary-button compact-button row-button"
+                            disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
+                            onClick={() => void reviewExternalUploadDocument(document, "accept")}
+                            type="button"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            className="secondary-button compact-button row-button"
+                            disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
+                            onClick={() =>
+                              void reviewExternalUploadDocument(document, "request_metadata")
+                            }
+                            type="button"
+                          >
+                            Metadata
+                          </button>
+                          <button
+                            className="secondary-button compact-button row-button"
+                            disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
+                            onClick={() =>
+                              void reviewExternalUploadDocument(document, "request_retry")
+                            }
+                            type="button"
+                          >
+                            Retry
+                          </button>
+                          <button
+                            className="secondary-button compact-button row-button"
+                            disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
+                            onClick={() => void reviewExternalUploadDocument(document, "discard")}
+                            type="button"
+                          >
+                            Discard
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {activeExternalUploadDocuments.length === 0 ? (
+                    <p className="inline-empty">No uploaded external documents need review.</p>
                   ) : null}
                 </div>
               </>

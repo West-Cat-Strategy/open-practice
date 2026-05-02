@@ -45,6 +45,8 @@ const createExternalUploadBodySchema = z.object({
 
 const externalUploadIdParamsSchema = z.object({ id: z.string().min(1) });
 
+const externalUploadDocumentParamsSchema = z.object({ documentId: z.string().min(1) });
+
 const publicTokenParamsSchema = z.object({ token: z.string().min(1) });
 
 const publicCompleteParamsSchema = z.object({
@@ -63,6 +65,25 @@ const publicIntentBodySchema = z.object({
 
 const publicCompleteBodySchema = z.object({
   checksumSha256: z.string().min(16),
+});
+
+const reviewDecisionSchema = z.enum(["accept", "request_metadata", "request_retry", "discard"]);
+
+const reviewReasonSchema = z.enum([
+  "duplicate",
+  "missing_metadata",
+  "checksum_mismatch",
+  "scan_failed",
+  "wrong_matter",
+  "unreadable",
+  "other",
+]);
+
+const reviewBodySchema = z.object({
+  decision: reviewDecisionSchema,
+  reason: reviewReasonSchema.optional(),
+  duplicateOfDocumentId: z.string().min(1).optional(),
+  note: z.string().max(500).optional(),
 });
 
 function assertExternalUploadAccess(
@@ -146,7 +167,88 @@ function serializePublicDocument(document: DocumentRecord): Record<string, unkno
     uploadStatus: document.uploadStatus,
     checksumStatus: document.checksumStatus,
     scanStatus: document.scanStatus,
+    reviewStatus: document.reviewStatus,
+    reviewReason: document.reviewReason,
   };
+}
+
+function externalUploadLinkIdForDocument(document: DocumentRecord): string | undefined {
+  if (document.externalUploadLinkId) return document.externalUploadLinkId;
+  const [, linkId] = document.storageKey.match(/^external-uploads\/([^/]+)\//) ?? [];
+  return linkId;
+}
+
+async function serializeReviewItem(
+  repository: ExternalUploadRepository,
+  document: DocumentRecord,
+): Promise<Record<string, unknown>> {
+  const accessLogs = await repository.listAccessLogs(document.firmId, {
+    resourceType: "document",
+    resourceId: document.id,
+  });
+  const outcomes = [
+    ...new Set(
+      accessLogs
+        .map((log) => log.metadata.outcome)
+        .filter((outcome): outcome is string => typeof outcome === "string"),
+    ),
+  ];
+  return {
+    id: document.id,
+    matterId: document.matterId,
+    externalUploadLinkId: externalUploadLinkIdForDocument(document),
+    title: document.title,
+    version: document.version,
+    classification: document.classification,
+    legalHold: document.legalHold,
+    uploadStatus: document.uploadStatus,
+    checksumStatus: document.checksumStatus,
+    scanStatus: document.scanStatus,
+    reviewStatus: document.reviewStatus,
+    reviewDecision: document.reviewDecision,
+    reviewReason: document.reviewReason,
+    reviewMetadata: document.reviewMetadata,
+    reviewedByUserId: document.reviewedByUserId,
+    reviewedAt: document.reviewedAt,
+    duplicateOfDocumentId: document.duplicateOfDocumentId,
+    uploadedAt: document.uploadedAt,
+    verifiedAt: document.verifiedAt,
+    accessLogProof: {
+      total: accessLogs.length,
+      latestAt: accessLogs[0]?.occurredAt,
+      outcomes,
+    },
+  };
+}
+
+function sanitizeReviewNote(note?: string): string | undefined {
+  const sanitized = note
+    ?.replaceAll(/./gs, (character) =>
+      character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127 ? " " : character,
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  return sanitized ? sanitized.slice(0, 240) : undefined;
+}
+
+function reviewStatusForDecision(
+  decision: z.infer<typeof reviewDecisionSchema>,
+): DocumentRecord["reviewStatus"] {
+  if (decision === "accept") return "accepted";
+  if (decision === "request_metadata") return "needs_metadata";
+  if (decision === "request_retry") return "retry_requested";
+  return "discarded";
+}
+
+function reviewReasonForDecision(input: {
+  decision: z.infer<typeof reviewDecisionSchema>;
+  reason?: z.infer<typeof reviewReasonSchema>;
+}): DocumentRecord["reviewReason"] | undefined {
+  if (input.reason) return input.reason;
+  if (input.decision === "request_metadata") return "missing_metadata";
+  if (input.decision === "request_retry") return "other";
+  if (input.decision === "discard") return "other";
+  return undefined;
 }
 
 function unavailableLinkReason(
@@ -275,7 +377,16 @@ export function registerExternalUploadRoutes(
     const links = await externalUploadRepository.listExternalUploadLinks(request.auth.firmId, {
       matterId: query.matterId,
     });
-    return { uploads: links.map(serializeLink) };
+    const linkIds = new Set(links.map((link) => link.id));
+    const reviewItems = await Promise.all(
+      (await repository.listMatterDocuments(request.auth.firmId, query.matterId))
+        .filter((document) => {
+          const linkId = externalUploadLinkIdForDocument(document);
+          return linkId ? linkIds.has(linkId) : false;
+        })
+        .map((document) => serializeReviewItem(externalUploadRepository, document)),
+    );
+    return { uploads: links.map(serializeLink), reviewItems };
   });
 
   server.post("/api/external-uploads", async (request) => {
@@ -385,6 +496,105 @@ export function registerExternalUploadRoutes(
     return { upload: serializeLink(revoked) };
   });
 
+  server.patch("/api/external-uploads/documents/:documentId/review", async (request) => {
+    const params = parseRequestPart(externalUploadDocumentParamsSchema, request.params, "params");
+    const body = parseRequestPart(reviewBodySchema, request.body, "body");
+    const externalUploadRepository = requireExternalUploadRepository(repository);
+    const document = await repository.getDocument(request.auth.firmId, params.documentId);
+    const externalUploadLinkId = document ? externalUploadLinkIdForDocument(document) : undefined;
+    if (!document || !externalUploadLinkId) {
+      throw Object.assign(new Error("External upload document was not found"), {
+        statusCode: 404,
+      });
+    }
+
+    const links = await externalUploadRepository.listExternalUploadLinks(request.auth.firmId, {
+      matterId: document.matterId,
+    });
+    const link = links.find((candidate) => candidate.id === externalUploadLinkId);
+    if (!link) {
+      throw Object.assign(new Error("External upload document was not found"), {
+        statusCode: 404,
+      });
+    }
+
+    assertExternalUploadAccess(request.auth, {
+      resource: "external_upload",
+      action: "update",
+      matterId: document.matterId,
+    });
+
+    const duplicateOfDocumentId = body.duplicateOfDocumentId ?? document.duplicateOfDocumentId;
+    if (duplicateOfDocumentId) {
+      const duplicate = await repository.getDocument(request.auth.firmId, duplicateOfDocumentId);
+      if (!duplicate || duplicate.matterId !== document.matterId || duplicate.id === document.id) {
+        throw new ApiHttpError(
+          400,
+          "INVALID_EXTERNAL_UPLOAD_REVIEW_DUPLICATE",
+          "Duplicate document must belong to the same matter",
+        );
+      }
+    }
+
+    const reviewedAt = new Date().toISOString();
+    const status = reviewStatusForDecision(body.decision);
+    const reason =
+      reviewReasonForDecision({ decision: body.decision, reason: body.reason }) ??
+      document.reviewReason;
+    const sanitizedNote = sanitizeReviewNote(body.note);
+    const metadata = {
+      decision: body.decision,
+      status,
+      ...(reason ? { reason } : {}),
+      ...(duplicateOfDocumentId ? { duplicateOfDocumentId } : {}),
+      ...(sanitizedNote ? { note: sanitizedNote } : {}),
+    };
+    const reviewed = await repository.reviewUploadedDocument({
+      firmId: request.auth.firmId,
+      documentId: document.id,
+      status,
+      decision: body.decision,
+      reason,
+      metadata,
+      reviewedByUserId: request.auth.user.id,
+      reviewedAt,
+    });
+
+    await recordAccessLog(externalUploadRepository, {
+      link,
+      request,
+      actorId: request.auth.user.id,
+      resourceType: "document",
+      resourceId: reviewed.id,
+      metadata: {
+        outcome: "document_reviewed",
+        decision: body.decision,
+        status,
+        ...(reason ? { reason } : {}),
+      },
+    });
+    await repository.appendAuditEvent({
+      id: crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      action: "external_upload.document_reviewed",
+      resourceType: "document",
+      resourceId: reviewed.id,
+      occurredAt: reviewedAt,
+      metadata: {
+        matterId: reviewed.matterId,
+        externalUploadLinkId: link.id,
+        decision: body.decision,
+        status,
+        ...(reason ? { reason } : {}),
+        ...(duplicateOfDocumentId ? { duplicateOfDocumentId } : {}),
+        ...(sanitizedNote ? { noteLength: sanitizedNote.length } : {}),
+      },
+    });
+
+    return { reviewItem: await serializeReviewItem(externalUploadRepository, reviewed) };
+  });
+
   server.post("/api/portal/external-uploads/:token/intents", async (request) => {
     const params = parseRequestPart(publicTokenParamsSchema, request.params, "params");
     const body = parseRequestPart(publicIntentBodySchema, request.body, "body");
@@ -423,6 +633,8 @@ export function registerExternalUploadRoutes(
       checksumSha256: body.checksumSha256,
       classification: body.classification,
       legalHold: body.legalHold,
+      reviewStatus: "pending_review",
+      externalUploadLinkId: link.id,
     });
     const claimed = await claimExternalUploadUse(externalUploadRepository, {
       firmId: link.firmId,

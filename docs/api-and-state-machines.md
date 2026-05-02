@@ -116,9 +116,10 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/shares/:id/revoke`                                                     | Revokes an existing matter-scoped share link and records audit evidence.                                                                   |
 | `GET /api/portal/shares/:token`                                                   | Public token-scoped read of eligible shared document metadata with access logging.                                                         |
 | `GET /api/external-uploads/status`                                                | External upload capability status, token-signing signal, and S3 configuration signal.                                                      |
-| `GET /api/external-uploads?matterId=`                                             | Persisted external-upload link listing with matter-scoped authorization and no token hashes in the response.                               |
+| `GET /api/external-uploads?matterId=`                                             | Persisted external-upload link listing plus external-upload document review state with matter-scoped authorization and no token hashes.    |
 | `POST /api/external-uploads`                                                      | Creates an expiring token-hashed upload link, returns the raw token once, and can queue one token email.                                   |
 | `POST /api/external-uploads/:id/revoke`                                           | Revokes an existing matter-scoped external-upload link and records audit evidence.                                                         |
+| `PATCH /api/external-uploads/documents/:documentId/review`                        | Records an authenticated matter-scoped review decision for an external-upload document without deleting the original record.               |
 | `POST /api/portal/external-uploads/:token/intents`                                | Public token-scoped S3 PUT upload intent for one external-upload link.                                                                     |
 | `POST /api/portal/external-uploads/:token/documents/:id/complete`                 | Public token-scoped checksum and scan-state completion for a document upload intent.                                                       |
 | `GET /api/drafts?matterId=&userId=`                                               | Matter-scoped structured drafts with TipTap/ProseMirror JSON and sanitized rendered snapshots.                                             |
@@ -205,6 +206,16 @@ fully used links, atomically claim one upload use, create a document upload inte
 the signed PUT URL plus minimal document status fields. Public completion reuses the existing
 checksum and scan-state completion rules after verifying the token and document scope. Granted and
 denied public reads/writes are recorded in access logs when the link can be resolved.
+
+External-upload documents keep original document rows and storage keys intact through review.
+Ordinary internal upload intents have `reviewStatus=not_required`; public external-upload intents
+start with `reviewStatus=pending_review`; checksum duplicates keep `pending_review` with a
+duplicate pointer; and checksum mismatches move to `retry_requested`. Authenticated reviewers with
+matter-scoped `external_upload:update` access can record `accept`, `request_metadata`,
+`request_retry`, or `discard` decisions. Those decisions update only review status,
+decision/reason fields, reviewer IDs, timestamps, and sanitized operational metadata; `discard` is
+a preserved state rather than a destructive delete. Review transitions append audit events and
+access-log entries with IDs, status, decision, reason, and duplicate pointers only.
 
 Signature requests use provider statuses `draft`, `pending_provider_submission`, `sent`, `viewed`,
 `completed`, `declined`, and `provider_error`. Creating a request records the provider submission,

@@ -367,6 +367,14 @@ export function canShareDocumentThroughPortal(input: {
   if (input.document.supersededAt) return false;
   if (!allowedClassifications.has(input.document.classification)) return false;
   if (input.document.uploadStatus !== "verified") return false;
-  if (input.document.checksumStatus !== "verified") return false;
+  if (input.document.externalUploadLinkId && input.document.reviewStatus !== "accepted") {
+    return false;
+  }
+  if (
+    input.document.checksumStatus !== "verified" &&
+    !(input.document.externalUploadLinkId && input.document.checksumStatus === "duplicate")
+  ) {
+    return false;
+  }
   return input.document.scanStatus === "passed" || input.document.scanStatus === "not_required";
 }

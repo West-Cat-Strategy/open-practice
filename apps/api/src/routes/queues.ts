@@ -55,11 +55,12 @@ export function registerQueuesRoutes(
               id: document.id,
               matterId: document.matterId,
               title: document.title,
-              status: `${document.uploadStatus}/${document.checksumStatus}/${document.scanStatus}`,
+              status: `${document.uploadStatus}/${document.checksumStatus}/${document.scanStatus}/${document.reviewStatus}`,
               priority:
                 document.legalHold ||
                 document.checksumStatus === "mismatch" ||
-                document.scanStatus === "failed"
+                document.scanStatus === "failed" ||
+                ["needs_metadata", "retry_requested", "discarded"].includes(document.reviewStatus)
                   ? "high"
                   : "medium",
             })),

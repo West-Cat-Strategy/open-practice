@@ -181,7 +181,7 @@ describe("queue routes", () => {
         expect.objectContaining({
           id: "doc-001",
           matterId: "matter-001",
-          status: "verified/verified/passed",
+          status: "verified/verified/passed/not_required",
           priority: "high",
         }),
       ]),
