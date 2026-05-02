@@ -1802,8 +1802,12 @@ export default function DashboardClient({
                     <span className="field-label">Risk cues</span>
                     <strong>
                       {
-                        contactDossiers.filter((dossier) =>
-                          dossier.conflictCues.some((cue) => cue.severity !== "info"),
+                        contactDossiers.filter(
+                          (dossier) =>
+                            dossier.conflictCues.some((cue) => cue.severity !== "info") ||
+                            dossier.qualityReview.signals.some(
+                              (signal) => signal.severity !== "info",
+                            ),
                         ).length
                       }
                     </strong>
@@ -1948,6 +1952,34 @@ export default function DashboardClient({
                               </em>
                             </div>
                           ))}
+                        </div>
+
+                        <div className="section-title">
+                          <h3>Quality review</h3>
+                          <span>{activeContactDossier.qualityReview.signals.length}</span>
+                        </div>
+                        <div className="party-list">
+                          {activeContactDossier.qualityReview.signals.map((signal, index) => (
+                            <div
+                              className="party-row"
+                              key={`${activeContactDossier.contact.id}-quality-${index}`}
+                            >
+                              <span>
+                                <strong>{signal.reason}</strong>
+                                <small>
+                                  {[signal.matchedValue, signal.matterId, signal.changedAt]
+                                    .filter(Boolean)
+                                    .join(" · ") || "contact-level"}
+                                </small>
+                              </span>
+                              <em className={signal.severity === "blocker" ? "risk" : undefined}>
+                                {signal.kind.replaceAll("_", " ")}
+                              </em>
+                            </div>
+                          ))}
+                          {activeContactDossier.qualityReview.signals.length === 0 ? (
+                            <p className="inline-empty">No quality review signals.</p>
+                          ) : null}
                         </div>
                       </>
                     ) : (

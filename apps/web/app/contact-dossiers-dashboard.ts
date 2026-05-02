@@ -19,6 +19,13 @@ export function filterContactDossiers(
         matter.role,
         matter.practiceArea,
       ]),
+      ...dossier.qualityReview.signals.flatMap((signal) => [
+        signal.kind,
+        signal.reason,
+        signal.matchedValue ?? "",
+        signal.sourceRecordId ?? "",
+        signal.changedAt ?? "",
+      ]),
     ];
     return tokens.some((token) => token.toLowerCase().includes(query));
   });
@@ -26,6 +33,8 @@ export function filterContactDossiers(
 
 export function summarizeContactDossier(dossier: ContactDossier): string {
   const flags = [
+    dossier.qualityReview.summary.duplicateCandidateCount > 0 ? "duplicate review" : null,
+    dossier.qualityReview.summary.revalidationPromptCount > 0 ? "conflict recheck" : null,
     dossier.matters.some((matter) => matter.adverse) ? "adverse" : null,
     dossier.matters.some((matter) => matter.confidential) ? "confidential" : null,
     dossier.portal.activeGrantCount > 0 ? "portal active" : null,
@@ -34,5 +43,8 @@ export function summarizeContactDossier(dossier: ContactDossier): string {
 }
 
 export function contactDossierRiskClass(dossier: ContactDossier): "risk" | undefined {
-  return dossier.conflictCues.some((cue) => cue.severity === "blocker") ? "risk" : undefined;
+  return dossier.conflictCues.some((cue) => cue.severity === "blocker") ||
+    dossier.qualityReview.signals.some((signal) => signal.severity === "blocker")
+    ? "risk"
+    : undefined;
 }
