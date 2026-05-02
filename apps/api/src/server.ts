@@ -39,6 +39,7 @@ import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
 import { registerLegalClinicRoutes } from "./routes/legal-clinics.js";
 import { registerMatterRoutes } from "./routes/matters.js";
+import { registerOperationalViewRoutes } from "./routes/operational-views.js";
 import { registerQueuesRoutes } from "./routes/queues.js";
 import { registerRecoveryRoutes } from "./routes/recovery.js";
 import { registerSessionRoutes } from "./routes/session.js";
@@ -400,6 +401,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     emailJobQueue: options.emailJobQueue,
     publicWebBaseUrl: options.publicWebBaseUrl,
   });
+  registerOperationalViewRoutes(server, { repository: options.repository });
   registerQueuesRoutes(server, { repository: options.repository });
 
   server.setErrorHandler((error, _request, reply) => {
