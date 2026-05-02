@@ -81,6 +81,15 @@ import {
   upsertCalendarEventAttendee,
   upsertCalendarCredential,
 } from "./calendar-dashboard";
+import {
+  accountLabel,
+  buildTrustControlsPath,
+  emptyTrustControlsDashboard,
+  matterTrustBalanceCents,
+  recentTrustPostings,
+  summarizeTrustControls,
+  trustControlsForMatter,
+} from "./trust-controls-dashboard";
 import type {
   CalendarAttendeeMutationResponse,
   BillingDashboardResponse,
@@ -112,6 +121,7 @@ import type {
   ShareLinksResponse,
   ShareLinksStatusResponse,
   SignatureRequestsResponse,
+  TrustControlsDashboardResponse,
   IntakeVariableProposalsResponse,
 } from "./types";
 
@@ -131,6 +141,7 @@ interface DashboardClientProps {
   session: SessionResponse;
   shareLinksStatus: ShareLinksStatusResponse;
   signatures: SignatureRequestsResponse;
+  trustControls: TrustControlsDashboardResponse;
   queues: QueuesResponse;
 }
 
@@ -194,6 +205,7 @@ export default function DashboardClient({
   matters,
   session,
   signatures,
+  trustControls,
   queues,
   shareLinksStatus,
 }: DashboardClientProps) {
@@ -236,6 +248,12 @@ export default function DashboardClient({
   const [revokingShareId, setRevokingShareId] = useState("");
   const [externalUploadsByMatterId, setExternalUploadsByMatterId] = useState(
     externalUploads.uploadsByMatterId,
+  );
+  const [trustControlsByMatterId, setTrustControlsByMatterId] = useState<
+    Record<string, TrustControlsDashboardResponse>
+  >(() => (matters[0] ? { [matters[0].id]: trustControls } : {}));
+  const [trustControlsStatus, setTrustControlsStatus] = useState(
+    matters[0] ? "Trust controls loaded." : "No matter selected.",
   );
   const [externalUploadMaxUploads, setExternalUploadMaxUploads] = useState("1");
   const [externalUploadExpiresAt, setExternalUploadExpiresAt] = useState("");
@@ -360,6 +378,27 @@ export default function DashboardClient({
     draftEditorJson !== null &&
     !isSameDraftDocument(selectedDraft.editorJson, draftEditorJson);
   const activeBilling = billing.matters.find((matter) => matter.matterId === activeMatter?.id);
+  const activeTrustControls = activeMatter
+    ? (trustControlsByMatterId[activeMatter.id] ?? emptyTrustControlsDashboard())
+    : emptyTrustControlsDashboard();
+  const activeTrustBalanceCents = activeMatter
+    ? matterTrustBalanceCents(activeTrustControls, activeMatter.id, activeMatter.trustBalanceCents)
+    : 0;
+  const trustReviewSummary = summarizeTrustControls(activeTrustControls);
+  const activeTrustPostings = activeMatter
+    ? recentTrustPostings(activeTrustControls, activeMatter.id)
+    : [];
+  const exceptionReconciliations = activeTrustControls.reconciliations.filter(
+    (reconciliation) =>
+      reconciliation.status === "exception" ||
+      activeTrustControls.diagnostics.exceptionReconciliationIds.includes(reconciliation.id),
+  );
+  const unreconciledAccounts = activeTrustControls.diagnostics.unreconciledAccountIds.map(
+    (accountId) => ({
+      id: accountId,
+      label: accountLabel(activeTrustControls, accountId),
+    }),
+  );
   const activeUnbilledTime = activeBilling?.unbilledTime ?? [];
   const activeUnbilledExpenses = activeBilling?.unbilledExpenses ?? [];
   const activeInvoices = activeBilling?.invoices ?? [];
@@ -401,6 +440,43 @@ export default function DashboardClient({
     [navigationSections],
   );
   const queueSummary = useMemo(() => summarizeQueues(queues), [queues]);
+
+  useEffect(() => {
+    if (!activeMatter) return;
+    let cancelled = false;
+
+    if (trustControlsByMatterId[activeMatter.id]) {
+      setTrustControlsStatus("Trust controls loaded.");
+      return;
+    }
+
+    async function loadMatterTrustControls(): Promise<void> {
+      setTrustControlsStatus("Loading trust controls...");
+      const response = await fetch(`${apiBaseUrl}${buildTrustControlsPath(activeMatter.id)}`, {
+        credentials: "include",
+        headers: devHeaders,
+      });
+      if (cancelled) return;
+      if (!response.ok) {
+        setTrustControlsStatus(
+          response.status === 404
+            ? "Trust controls route is not available yet."
+            : `Trust controls failed to load: ${response.status}`,
+        );
+        return;
+      }
+      const payload = (await response.json()) as TrustControlsDashboardResponse;
+      setTrustControlsByMatterId((current) =>
+        trustControlsForMatter(current, activeMatter.id, payload),
+      );
+      setTrustControlsStatus("Trust controls loaded.");
+    }
+
+    void loadMatterTrustControls();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMatter, apiBaseUrl, devHeaders, trustControlsByMatterId]);
 
   useEffect(() => {
     if (!activeMatter) return;
@@ -1532,22 +1608,167 @@ export default function DashboardClient({
             ) : null}
 
             {activeSection === "funds" ? (
-              <div className="activity-grid two-column">
-                <div className="activity-card">
-                  <Banknote size={18} />
-                  <strong>{cents(activeMatter.trustBalanceCents)}</strong>
-                  <span>matter trust balance</span>
+              <>
+                <div className="detail-grid billing-summary-grid">
+                  <div>
+                    <span className="field-label">Matter trust balance</span>
+                    <strong>{cents(activeTrustBalanceCents)}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Pending maker-checker</span>
+                    <strong>{trustReviewSummary.pendingApprovalCount}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Rejected decisions</span>
+                    <strong>{trustReviewSummary.rejectedApprovalCount}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Exceptions</span>
+                    <strong>{trustReviewSummary.exceptionReconciliationCount}</strong>
+                  </div>
                 </div>
-                <div className="activity-card">
-                  <Clock3 size={18} />
-                  <strong>
-                    {minutes(
-                      activeMatter.timeEntries.reduce((sum, entry) => sum + entry.minutes, 0),
-                    )}
-                  </strong>
-                  <span>unbilled time on file</span>
+
+                <div className="section-title">
+                  <h3>Trust controls workbench</h3>
+                  <span>{trustControlsStatus}</span>
                 </div>
-              </div>
+                <div className="activity-grid two-column">
+                  <div className="activity-card">
+                    <Banknote size={18} />
+                    <strong>{activeTrustControls.ledger.accounts.length} accounts</strong>
+                    <span>{activeTrustControls.ledger.entries.length} matter-scoped entries</span>
+                  </div>
+                  <div className="activity-card">
+                    <ShieldCheck size={18} />
+                    <strong>{trustReviewSummary.totalApprovalCount} decisions</strong>
+                    <span>{trustReviewSummary.approvedApprovalCount} approved review records</span>
+                  </div>
+                  <div className="activity-card">
+                    <AlertTriangle size={18} />
+                    <strong>{trustReviewSummary.unreconciledAccountCount} unreconciled</strong>
+                    <span>{trustReviewSummary.overdrawnBalanceCount} overdrawn diagnostics</span>
+                  </div>
+                  <div className="activity-card">
+                    <Clock3 size={18} />
+                    <strong>{activeTrustPostings.length} recent postings</strong>
+                    <span>read-only ledger review</span>
+                  </div>
+                </div>
+
+                <div className="section-title">
+                  <h3>Recent postings</h3>
+                  <span>{activeTrustPostings.length} shown</span>
+                </div>
+                <div className="party-list">
+                  {activeTrustPostings.map((posting) => (
+                    <div className="party-row" key={posting.transactionId}>
+                      <span>
+                        <strong>{posting.memo}</strong>
+                        <small>
+                          {posting.transactionId} · {posting.entryCount} entries ·{" "}
+                          {compactDate(posting.postedAt)}
+                        </small>
+                      </span>
+                      <em className={posting.matterDeltaCents < 0 ? "risk" : undefined}>
+                        {cents(posting.matterDeltaCents)}
+                      </em>
+                    </div>
+                  ))}
+                  {activeTrustPostings.length === 0 ? (
+                    <p className="inline-empty">
+                      No trust ledger postings are linked to this matter yet.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="section-title">
+                  <h3>Reconciliation exceptions</h3>
+                  <span>
+                    {exceptionReconciliations.length} exceptions · {unreconciledAccounts.length}{" "}
+                    unreconciled accounts
+                  </span>
+                </div>
+                <div className="party-list">
+                  {exceptionReconciliations.slice(0, 4).map((reconciliation) => (
+                    <div className="party-row" key={reconciliation.id}>
+                      <span>
+                        <strong>
+                          {accountLabel(activeTrustControls, reconciliation.accountId)}
+                        </strong>
+                        <small>
+                          {compactStatus(reconciliation.status)} ·{" "}
+                          {compactDate(reconciliation.statementPeriodEnd)}
+                        </small>
+                      </span>
+                      <em className="risk">
+                        {cents(
+                          reconciliation.actualBalanceCents - reconciliation.expectedBalanceCents,
+                        )}
+                      </em>
+                    </div>
+                  ))}
+                  {unreconciledAccounts.slice(0, 4).map((account) => (
+                    <div className="party-row" key={account.id}>
+                      <span>
+                        <strong>{account.label}</strong>
+                        <small>{account.id}</small>
+                      </span>
+                      <em className="risk">unreconciled</em>
+                    </div>
+                  ))}
+                  {exceptionReconciliations.length === 0 && unreconciledAccounts.length === 0 ? (
+                    <p className="inline-empty">
+                      No reconciliation exceptions or unreconciled trust accounts are present in the
+                      current controls payload.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="section-title">
+                  <h3>Diagnostics</h3>
+                  <span>operator review only</span>
+                </div>
+                <div className="party-list">
+                  <div className="party-row">
+                    <span>
+                      <strong>Pending approval transaction IDs</strong>
+                      <small>
+                        {activeTrustControls.diagnostics.pendingApprovalTransactionIds.join(", ") ||
+                          "none"}
+                      </small>
+                    </span>
+                    <em>{trustReviewSummary.pendingApprovalCount}</em>
+                  </div>
+                  <div className="party-row">
+                    <span>
+                      <strong>Rejected approval transaction IDs</strong>
+                      <small>
+                        {activeTrustControls.diagnostics.rejectedApprovalTransactionIds.join(
+                          ", ",
+                        ) || "none"}
+                      </small>
+                    </span>
+                    <em
+                      className={trustReviewSummary.rejectedApprovalCount > 0 ? "risk" : undefined}
+                    >
+                      {trustReviewSummary.rejectedApprovalCount}
+                    </em>
+                  </div>
+                  <div className="party-row">
+                    <span>
+                      <strong>Overdrawn balance keys</strong>
+                      <small>
+                        {activeTrustControls.diagnostics.overdrawnBalanceKeys.join(", ") || "none"}
+                      </small>
+                    </span>
+                    <em
+                      className={trustReviewSummary.overdrawnBalanceCount > 0 ? "risk" : undefined}
+                    >
+                      {trustReviewSummary.overdrawnBalanceCount}
+                    </em>
+                  </div>
+                </div>
+              </>
             ) : null}
 
             {activeSection === "billing" ? (

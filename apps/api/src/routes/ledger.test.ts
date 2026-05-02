@@ -75,11 +75,195 @@ function ledgerTransactionPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+async function seedMatterTwoLedgerControls(repository: OpenPracticeRepository) {
+  await repository.postLedgerTransaction({
+    id: "matter-002-retainer",
+    firmId: "firm-west-legal",
+    idempotencyKey: "matter-002-retainer-key",
+    postedByUserId: "user-admin",
+    postedAt: "2026-04-24T12:00:00.000Z",
+    entries: [
+      {
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        clientId: "contact-northstar",
+        accountId: "acct-trust-bank",
+        debitCents: 2500,
+        creditCents: 0,
+        memo: "Matter 002 trust receipt",
+      },
+      {
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        clientId: "contact-northstar",
+        accountId: "acct-client-liability",
+        debitCents: 0,
+        creditCents: 2500,
+        memo: "Matter 002 client liability",
+      },
+    ],
+  });
+  await repository.createLedgerTransactionApproval({
+    id: "approval-matter-002",
+    firmId: "firm-west-legal",
+    transactionId: "matter-002-retainer",
+    decidedByUserId: "user-admin",
+    decision: "rejected",
+    decidedAt: "2026-04-24T13:00:00.000Z",
+  });
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
 describe("ledger routes", () => {
+  it("returns all firm ledger controls for firm-wide ledger users", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedMatterTwoLedgerControls(repository);
+    await repository.createLedgerReconciliation({
+      id: "reconciliation-exception",
+      firmId: "firm-west-legal",
+      accountId: "acct-trust-bank",
+      statementPeriodStart: "2026-04-01T00:00:00.000Z",
+      statementPeriodEnd: "2026-04-30T23:59:59.000Z",
+      expectedBalanceCents: 152500,
+      actualBalanceCents: 150000,
+      status: "exception",
+      reviewedByUserId: "user-admin",
+      evidence: { statement: "synthetic-april-trust.pdf" },
+      createdAt: "2026-04-24T14:00:00.000Z",
+    });
+
+    const response = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/ledger/controls",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      approvals: [
+        {
+          id: "approval-matter-002",
+          transactionId: "matter-002-retainer",
+          decision: "rejected",
+        },
+      ],
+      reconciliations: [
+        {
+          id: "reconciliation-exception",
+          accountId: "acct-trust-bank",
+          status: "exception",
+        },
+      ],
+      diagnostics: {
+        pendingApprovalTransactionIds: ["trust-retainer"],
+        rejectedApprovalTransactionIds: ["matter-002-retainer"],
+        unreconciledAccountIds: ["acct-trust-bank"],
+        exceptionReconciliationIds: ["reconciliation-exception"],
+        overdrawnBalanceKeys: [],
+      },
+    });
+    expect(
+      response
+        .json<{ ledger: { entries: Array<{ matterId: string }> } }>()
+        .ledger.entries.map((entry) => entry.matterId),
+    ).toEqual(["matter-001", "matter-001", "matter-002", "matter-002"]);
+  });
+
+  it("requires matterId for matter-scoped ledger control reads", async () => {
+    const response = await testServer().inject({
+      method: "GET",
+      url: "/api/ledger/controls",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: "Error",
+      message: "matterId is required for matter-scoped ledger access",
+    });
+  });
+
+  it("filters matter-scoped ledger controls and hides reconciliation data", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedMatterTwoLedgerControls(repository);
+    await repository.createLedgerTransactionApproval({
+      id: "approval-matter-001",
+      firmId: "firm-west-legal",
+      transactionId: "trust-retainer",
+      decidedByUserId: "user-admin",
+      decision: "approved",
+      decidedAt: "2026-04-24T13:10:00.000Z",
+    });
+    await repository.createLedgerReconciliation({
+      id: "reconciliation-hidden",
+      firmId: "firm-west-legal",
+      accountId: "acct-trust-bank",
+      statementPeriodStart: "2026-04-01T00:00:00.000Z",
+      statementPeriodEnd: "2026-04-30T23:59:59.000Z",
+      expectedBalanceCents: 150000,
+      actualBalanceCents: 150000,
+      status: "matched",
+      reviewedByUserId: "user-admin",
+      evidence: { statement: "synthetic-april-trust.pdf" },
+      createdAt: "2026-04-24T14:00:00.000Z",
+    });
+
+    const response = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/ledger/controls?matterId=matter-001",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      response
+        .json<{ ledger: { entries: Array<{ matterId: string }> } }>()
+        .ledger.entries.map((entry) => entry.matterId),
+    ).toEqual(["matter-001", "matter-001"]);
+    expect(response.json()).toMatchObject({
+      approvals: [
+        {
+          id: "approval-matter-001",
+          transactionId: "trust-retainer",
+          decision: "approved",
+        },
+      ],
+      reconciliations: [],
+      diagnostics: {
+        pendingApprovalTransactionIds: [],
+        rejectedApprovalTransactionIds: [],
+        unreconciledAccountIds: [],
+        exceptionReconciliationIds: [],
+        overdrawnBalanceKeys: [],
+      },
+    });
+  });
+
+  it("denies unauthorized ledger control reads", async () => {
+    const response = await testServer().inject({
+      method: "GET",
+      url: "/api/ledger/controls?matterId=matter-001",
+      headers: {
+        "x-open-practice-user-id": "user-staff",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Trust ledger access required",
+    });
+  });
+
   it("requires matterId for matter-scoped ledger reads", async () => {
     const server = testServer();
     const noMatterId = await server.inject({
