@@ -6,6 +6,14 @@ import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
+import {
+  documentProcessingProviderKinds,
+  documentProcessingQueueNames,
+  providerStatus,
+  queueStatus,
+  serializeJobRun,
+  summarizeJobRuns,
+} from "./job-status.js";
 import type { ApiJobQueue, ApiRouteDependencies } from "./types.js";
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
@@ -161,13 +169,31 @@ export function registerDocumentProcessingRoutes(
       repository.listProviderSettings(request.auth.firmId, { kind: "media" }),
       repository.listProviderSettings(request.auth.firmId, { kind: "ai" }),
     ]);
+    const providerStates = documentProcessingProviderKinds.map((kind, index) =>
+      providerStatus(kind, providers[index] ?? []),
+    );
     const configured = providers.flat().filter((provider) => provider.enabled);
+    const jobs = (await repository.listJobLifecycleRecords(request.auth.firmId)).filter((job) =>
+      documentProcessingQueueNames.some((queueName) => queueName === job.queueName),
+    );
+    const workerQueues = documentProcessingQueueNames.map((queueName) =>
+      queueStatus(queueName, queueName === "ocr" ? ocrJobQueue : undefined),
+    );
     return {
       status: configured.length > 0 ? "configured" : "disabled",
-      reason: configured.length > 0 ? undefined : "not_configured",
-      workers: ocrJobQueue ? [{ queueName: "ocr", status: "configured" }] : [],
+      reason:
+        configured.length > 0
+          ? undefined
+          : providerStates.some((provider) => provider.reason === "provider_disabled")
+            ? "provider_disabled"
+            : "not_configured",
+      workers: workerQueues.filter((queue) => queue.status === "configured"),
+      workerQueues,
       supportedTasks: ["malware_scan", "ocr", "classification", "transcription", "media"],
       providers: configured.map((provider) => ({ kind: provider.kind, key: provider.key })),
+      providerStatus: providerStates,
+      summary: summarizeJobRuns(jobs),
+      jobs: jobs.map(serializeJobRun),
     };
   });
 
