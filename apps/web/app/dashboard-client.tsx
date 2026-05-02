@@ -81,6 +81,7 @@ import {
 import StructuredIntakeBuilder from "./intake-forms/StructuredIntakeBuilder";
 import {
   buildCalendarRadarBuckets,
+  describeMeetingInvitationBoundary,
   describeCalendarEventTiming,
   removeCalendarEventAttendee,
   upsertCalendarEventAttendee,
@@ -2643,6 +2644,9 @@ export default function DashboardClient({
                               {compactDate(event.startsAt)} to {compactDate(event.endsAt)}
                               {event.location ? ` · ${event.location}` : ""}
                             </small>
+                            <small>
+                              {describeMeetingInvitationBoundary(event.meetingInvitationBoundary)}
+                            </small>
                           </span>
                           <div className="row-actions">
                             <em
@@ -2654,6 +2658,26 @@ export default function DashboardClient({
                             >
                               {event.status === "cancelled" ? "cancelled" : timing}
                             </em>
+                            <button
+                              className="secondary-button compact-button row-button"
+                              disabled={
+                                event.meetingInvitationBoundary?.meetingLinks.status !==
+                                "configured"
+                              }
+                              onClick={() =>
+                                setCalendarMeetingStatus("Meeting link issuance is not wired yet.")
+                              }
+                              title={
+                                event.meetingInvitationBoundary?.meetingLinks.status ===
+                                "configured"
+                                  ? "Meeting link boundary is configured"
+                                  : "Meeting links are disabled until a provider is configured"
+                              }
+                              type="button"
+                            >
+                              <Link2 size={14} />
+                              Meeting link
+                            </button>
                             <button
                               className="secondary-button compact-button row-button"
                               disabled={

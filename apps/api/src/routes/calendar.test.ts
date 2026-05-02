@@ -79,6 +79,11 @@ describe("calendar routes", () => {
         {
           id: "calendar-event-002",
           matterId: "matter-001",
+          meetingInvitationBoundary: {
+            meetingLinks: { status: "disabled", reason: "not_configured" },
+            guestAccess: { status: "disabled", reason: "not_configured" },
+            invitationEmail: { status: "disabled", reason: "smtp_not_configured" },
+          },
           attendees: [{ email: "ada.morgan@example.test", invitationStatus: "not_sent" }],
         },
       ],
@@ -289,7 +294,35 @@ describe("calendar routes", () => {
       to: ["ada.morgan@example.test"],
       relatedResourceType: "calendar_event",
       relatedResourceId: "calendar-event-002",
+      metadata: expect.objectContaining({
+        attendeeId: "calendar-attendee-001",
+        meetingLinksStatus: "disabled",
+        guestAccessStatus: "disabled",
+        invitationEmailStatus: "configured",
+        requestedMeetingLink: false,
+        requestedGuestAccessToken: false,
+      }),
     });
+    const jobs = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "email",
+    });
+    expect(jobs).toEqual([
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          attendeeId: "calendar-attendee-001",
+          eventId: "calendar-event-002",
+          templateKey: "calendar.invitation",
+          recipientCount: 1,
+          meetingLinksStatus: "disabled",
+          guestAccessStatus: "disabled",
+          invitationEmailStatus: "configured",
+          requestedMeetingLink: false,
+          requestedGuestAccessToken: false,
+          relatedResourceType: "calendar_event",
+          relatedResourceId: "calendar-event-002",
+        }),
+      }),
+    ]);
     const queuedAudit = repository.recordedAuditEvents.find(
       (event) => event.action === "calendar.invitation.queued",
     );
@@ -297,8 +330,45 @@ describe("calendar routes", () => {
       matterId: "matter-001",
       attendeeId: "calendar-attendee-001",
       invitationStatus: "queued",
+      meetingLinksStatus: "disabled",
+      guestAccessStatus: "disabled",
+      invitationEmailStatus: "configured",
     });
     expect(JSON.stringify(queuedAudit?.metadata)).not.toContain("Client preparation call");
+  });
+
+  it("rejects meeting link and guest-token issuance when meeting access is not configured", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository);
+
+    const meetingLinkResponse = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-002/invitations",
+      payload: { matterId: "matter-001", includeMeetingLink: true },
+    });
+    expect(meetingLinkResponse.statusCode).toBe(503);
+    expect(meetingLinkResponse.json()).toMatchObject({
+      code: "MEETING_LINKS_NOT_CONFIGURED",
+      message: "Meeting links are not configured",
+    });
+
+    const guestTokenResponse = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-002/invitations",
+      payload: { matterId: "matter-001", issueGuestAccessToken: true },
+    });
+    expect(guestTokenResponse.statusCode).toBe(503);
+    expect(guestTokenResponse.json()).toMatchObject({
+      code: "MEETING_GUEST_ACCESS_NOT_CONFIGURED",
+      message: "Meeting guest access tokens are not configured",
+    });
+    expect(
+      await repository.listCalendarEventAttendees(
+        "firm-west-legal",
+        "matter-001",
+        "calendar-event-002",
+      ),
+    ).toMatchObject([{ id: "calendar-attendee-001", invitationStatus: "not_sent" }]);
   });
 
   it("marks invitations skipped when email delivery is not configured", async () => {

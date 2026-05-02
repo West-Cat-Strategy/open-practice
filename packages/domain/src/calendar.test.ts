@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   InvalidCalendarPayloadError,
   UnsupportedCalendarPayloadError,
+  buildCalendarMeetingInvitationBoundary,
   buildICalendarFeed,
+  calendarMeetingInvitationBoundaryMetadata,
   calendarEventEtag,
   parseICalendarEvent,
 } from "./calendar.js";
@@ -188,5 +190,31 @@ END:VCALENDAR`,
 
   it("builds stable etags from event version data", () => {
     expect(calendarEventEtag(events[0]!)).toBe('"calendar-event-002-2-1777551000000"');
+  });
+
+  it("keeps meeting invitation boundaries disabled unless providers are configured", () => {
+    const disabled = buildCalendarMeetingInvitationBoundary();
+    expect(disabled).toEqual({
+      meetingLinks: { status: "disabled", reason: "not_configured" },
+      guestAccess: { status: "disabled", reason: "not_configured", provider: undefined },
+      invitationEmail: { status: "disabled", reason: "smtp_not_configured", provider: undefined },
+    });
+
+    const configured = buildCalendarMeetingInvitationBoundary({
+      meetingProviderKey: "synthetic-meeting",
+      guestAccessTokenSigningConfigured: true,
+      invitationEmailProviderKey: "mailpit",
+      emailQueueConfigured: true,
+    });
+    expect(configured).toEqual({
+      meetingLinks: { status: "configured", provider: "synthetic-meeting" },
+      guestAccess: { status: "configured", provider: "synthetic-meeting" },
+      invitationEmail: { status: "configured", provider: "mailpit" },
+    });
+    expect(calendarMeetingInvitationBoundaryMetadata(configured)).toMatchObject({
+      meetingLinksStatus: "configured",
+      guestAccessStatus: "configured",
+      invitationEmailStatus: "configured",
+    });
   });
 });
