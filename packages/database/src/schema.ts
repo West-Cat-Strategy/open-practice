@@ -1053,6 +1053,9 @@ export const emailOutbox = pgTable(
     firmId: text("firm_id")
       .notNull()
       .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
     templateKey: text("template_key").notNull(),
     status: text("status").notNull().default("queued"),
     to: jsonb("to_addresses").$type<string[]>().notNull().default([]),
@@ -1067,11 +1070,20 @@ export const emailOutbox = pgTable(
     queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().defaultNow(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     failedAt: timestamp("failed_at", { withTimezone: true }),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    terminalFailureAt: timestamp("terminal_failure_at", { withTimezone: true }),
+    terminalFailureReason: text("terminal_failure_reason"),
     errorMessage: text("error_message"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   },
   (table) => ({
     firmStatus: index("email_outbox_firm_status_idx").on(table.firmId, table.status),
+    firmMatterQueued: index("email_outbox_firm_matter_queued_idx").on(
+      table.firmId,
+      table.matterId,
+      table.queuedAt,
+    ),
   }),
 );
 
@@ -1087,11 +1099,16 @@ export const emailEvents = pgTable(
       .references(() => emailOutbox.id),
     eventType: text("event_type").notNull(),
     providerMessageId: text("provider_message_id"),
+    attemptNumber: integer("attempt_number"),
+    jobId: text("job_id"),
+    source: text("source").notNull().default("api"),
+    errorMessage: text("error_message"),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   },
   (table) => ({
     emailEvent: index("email_events_email_event_idx").on(table.emailId, table.eventType),
+    emailOccurred: index("email_events_email_occurred_idx").on(table.emailId, table.occurredAt),
   }),
 );
 

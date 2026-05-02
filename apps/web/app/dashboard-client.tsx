@@ -105,6 +105,7 @@ import {
   summarizeTrustControls,
   trustControlsForMatter,
 } from "./trust-controls-dashboard";
+import { describeEmailDeliveryState } from "./email-delivery-dashboard";
 import type {
   CalendarAttendeeMutationResponse,
   BillingDashboardResponse,
@@ -118,6 +119,7 @@ import type {
   DraftingDashboardResponse,
   DraftAssistRecordsResponse,
   DraftAssistStatusResponse,
+  EmailDeliveryDashboardResponse,
   ExternalUploadReviewItem,
   ExternalUploadCreateResponse,
   ExternalUploadRevokeResponse,
@@ -151,6 +153,7 @@ interface DashboardClientProps {
   contactDossiers: ContactDossiersResponse;
   devHeaders: Record<string, string>;
   drafting: DraftingDashboardResponse;
+  emailDeliveryHistory: EmailDeliveryDashboardResponse;
   externalUploads: ExternalUploadsDashboardResponse;
   intake: IntakeSessionsResponse;
   intakeForms: IntakeFormsDashboardResponse;
@@ -219,6 +222,7 @@ export default function DashboardClient({
   contactDossiers,
   devHeaders,
   drafting,
+  emailDeliveryHistory,
   externalUploads,
   intake,
   intakeForms,
@@ -412,6 +416,9 @@ export default function DashboardClient({
     legalClinic.programs,
     activeLegalClinicProfile,
   );
+  const activeEmailDeliveries = activeMatter
+    ? (emailDeliveryHistory.emailsByMatterId[activeMatter.id] ?? [])
+    : [];
   const activePendingIntakeVariableProposals = activeIntakeVariableProposals.filter(
     (proposal) => proposal.status === "pending",
   );
@@ -1734,6 +1741,38 @@ export default function DashboardClient({
                     </div>
                   </>
                 ) : null}
+
+                <div className="section-title">
+                  <h3>Email delivery history</h3>
+                  <span>{activeEmailDeliveries.length} recent records</span>
+                </div>
+                <div className="party-list">
+                  {activeEmailDeliveries.map((email) => {
+                    const state = describeEmailDeliveryState(email);
+                    const latestEvent = email.events.at(-1);
+                    return (
+                      <div className="party-row" key={email.id}>
+                        <span>
+                          <strong>{email.templateKey}</strong>
+                          <small>
+                            {email.recipientCount} recipients · {email.attemptCount} attempts ·{" "}
+                            {compactDate(email.lastAttemptAt ?? email.queuedAt)}
+                            {latestEvent ? ` · ${latestEvent.eventType}` : ""}
+                          </small>
+                          {email.failureSummary ? <small>{email.failureSummary}</small> : null}
+                        </span>
+                        <em className={state.tone === "risk" ? "risk" : undefined}>
+                          {state.label}
+                        </em>
+                      </div>
+                    );
+                  })}
+                  {activeEmailDeliveries.length === 0 ? (
+                    <p className="inline-empty">
+                      No outbound email history is linked to this matter.
+                    </p>
+                  ) : null}
+                </div>
               </>
             ) : null}
 

@@ -56,6 +56,7 @@ export interface JobLifecycleRecord {
 export interface EmailOutboxRecord {
   id: string;
   firmId: string;
+  matterId: string;
   templateKey: string;
   status: "queued" | "sending" | "sent" | "failed" | "cancelled";
   to: string[];
@@ -70,6 +71,10 @@ export interface EmailOutboxRecord {
   queuedAt: string;
   sentAt?: string;
   failedAt?: string;
+  attemptCount: number;
+  lastAttemptAt?: string;
+  terminalFailureAt?: string;
+  terminalFailureReason?: string;
   errorMessage?: string;
   metadata: Record<string, unknown>;
 }
@@ -78,9 +83,21 @@ export interface EmailEventRecord {
   id: string;
   firmId: string;
   emailId: string;
-  eventType: "queued" | "sent" | "failed" | "bounced" | "complained" | "opened" | "clicked";
+  eventType:
+    | "queued"
+    | "sending"
+    | "sent"
+    | "failed"
+    | "bounced"
+    | "complained"
+    | "opened"
+    | "clicked";
   occurredAt: string;
   providerMessageId?: string;
+  attemptNumber?: number;
+  jobId?: string;
+  source: "api" | "worker" | "provider";
+  errorMessage?: string;
   metadata: Record<string, unknown>;
 }
 

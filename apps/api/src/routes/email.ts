@@ -31,6 +31,7 @@ const emailPreviewBodySchema = z.object({
 
 const emailHistoryQuerySchema = z.object({
   matterId: z.string().min(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 const emailRetryParamsSchema = z.object({
@@ -65,72 +66,54 @@ const emailOutboxBodySchema = z
     message: "Either htmlBody or textBody is required",
   });
 
+function emailMatterId(email: EmailOutboxRecord): string | undefined {
+  return email.matterId || (typeof email.metadata.matterId === "string" ? email.metadata.matterId : undefined);
+}
+
 type RelatedResourceType = z.infer<typeof relatedResourceTypeSchema>;
 
-function emailMatterId(email: EmailOutboxRecord): string | undefined {
-  return typeof email.metadata.matterId === "string" ? email.metadata.matterId : undefined;
+function sanitizeDeliveryFailureSummary(message: string | undefined): string | undefined {
+  if (!message) return undefined;
+  return message.replace(/\s+/g, " ").trim().slice(0, 240) || undefined;
 }
 
-function summarizeEmailEventMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
-  const allowedKeys = [
-    "attemptNumber",
-    "maxAttempts",
-    "nextRetryAt",
-    "terminal",
-    "manualRetry",
-    "provider",
-    "templateKey",
-    "requestedByUserId",
-    "jobId",
-  ];
-  return Object.fromEntries(
-    allowedKeys.flatMap((key) => (key in metadata ? [[key, metadata[key]]] : [])),
-  );
+function recipientCount(email: EmailOutboxRecord): number {
+  return email.to.length + email.cc.length + email.bcc.length;
 }
 
-function serializeEmailEvent(event: EmailEventRecord): Record<string, unknown> {
+function serializeDeliveryEvent(event: EmailEventRecord): Record<string, unknown> {
   return {
     id: event.id,
     eventType: event.eventType,
     occurredAt: event.occurredAt,
     providerMessageId: event.providerMessageId,
-    metadata: summarizeEmailEventMetadata(event.metadata),
+    attemptNumber: event.attemptNumber,
+    jobId: event.jobId,
+    source: event.source,
+    errorSummary: sanitizeDeliveryFailureSummary(event.errorMessage),
   };
 }
 
-function serializeEmailOutbox(
-  email: EmailOutboxRecord,
-  events: EmailEventRecord[],
-): Record<string, unknown> {
-  const deliveryState =
-    email.metadata.deliveryState &&
-    typeof email.metadata.deliveryState === "object" &&
-    !Array.isArray(email.metadata.deliveryState)
-      ? summarizeEmailEventMetadata(email.metadata.deliveryState as Record<string, unknown>)
-      : {};
+function serializeDeliveryHistory(email: EmailOutboxRecord, events: EmailEventRecord[]) {
+  const latestFailure = [...events].reverse().find((event) => event.eventType === "failed");
   return {
     id: email.id,
+    matterId: email.matterId,
     templateKey: email.templateKey,
     status: email.status,
-    to: email.to,
-    cc: email.cc,
-    bcc: email.bcc,
-    from: email.from,
-    subject: email.subject,
     relatedResourceType: email.relatedResourceType,
     relatedResourceId: email.relatedResourceId,
+    recipientCount: recipientCount(email),
+    attemptCount: email.attemptCount,
     queuedAt: email.queuedAt,
+    lastAttemptAt: email.lastAttemptAt,
     sentAt: email.sentAt,
     failedAt: email.failedAt,
-    errorMessage: email.errorMessage,
-    provider: typeof email.metadata.provider === "string" ? email.metadata.provider : undefined,
-    source: typeof email.metadata.source === "string" ? email.metadata.source : undefined,
-    createdByUserId:
-      typeof email.metadata.createdByUserId === "string"
-        ? email.metadata.createdByUserId
-        : undefined,
-    deliveryState,
-    events: events.map(serializeEmailEvent),
+    terminalFailureAt: email.terminalFailureAt,
+    failureSummary:
+      sanitizeDeliveryFailureSummary(email.terminalFailureReason) ??
+      sanitizeDeliveryFailureSummary(latestFailure?.errorMessage),
+    events: events.map(serializeDeliveryEvent),
   };
 }
 
@@ -235,6 +218,7 @@ export function registerEmailRoutes(
 
     const emails = await repository.listEmailOutbox(request.auth.firmId, {
       matterId: query.matterId,
+      limit: query.limit,
     });
     const eventsByEmailId = new Map<string, EmailEventRecord[]>();
     await Promise.all(
@@ -247,9 +231,7 @@ export function registerEmailRoutes(
     );
 
     return {
-      emails: emails.map((email) =>
-        serializeEmailOutbox(email, eventsByEmailId.get(email.id) ?? []),
-      ),
+      emails: emails.map((email) => serializeDeliveryHistory(email, eventsByEmailId.get(email.id) ?? [])),
     };
   });
 
@@ -300,10 +282,12 @@ export function registerEmailRoutes(
       queuedEmail: summarizeQueuedRouteEmail(queued),
       email: {
         id: queued.email.id,
+        matterId: queued.email.matterId,
         templateKey: queued.email.templateKey,
         status: queued.email.status,
         relatedResourceType: queued.email.relatedResourceType,
         relatedResourceId: queued.email.relatedResourceId,
+        attemptCount: queued.email.attemptCount,
         queuedAt: queued.email.queuedAt,
       },
       event: {
@@ -429,11 +413,11 @@ export function registerEmailRoutes(
 
     reply.code(202);
     return {
-      email: serializeEmailOutbox(
+      email: serializeDeliveryHistory(
         retried.email,
         await repository.listEmailEvents(request.auth.firmId, { emailId: email.id }),
       ),
-      event: serializeEmailEvent(retried.event),
+      event: serializeDeliveryEvent(retried.event),
       job: {
         id: updatedJob.id,
         queueName: updatedJob.queueName,

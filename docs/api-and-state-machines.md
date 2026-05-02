@@ -259,6 +259,13 @@ worker reads message bodies from the outbox record, marks delivery `sent` or `fa
 provider metadata, and closes the associated job lifecycle record with success, retry failure, dead
 letter, or skipped status.
 
+Delivery history is exposed through the matter-scoped outbox history route without returning HTML or
+plain-text bodies. Worker attempt, next-retry, terminal-failure, and provider provenance are recorded
+in email event metadata and mirrored into outbox delivery-state fields. Manual retry is allowed only
+for failed outbox records; it appends a queued event with retry provenance, creates a fresh email job
+lifecycle row, and records an audit event containing only IDs, counts, status, provider, and job
+references.
+
 V2 intake form `signature` items remain attestation-only when no `documentId` is configured. When
 staff configure a `documentId`, the public token-scoped signature item creates an embedded
 signature request for that existing matter document, derives the signer from the intake session's

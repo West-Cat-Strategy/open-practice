@@ -134,6 +134,13 @@
       "when": 1777718673838,
       "tag": "0018_polite_thunderbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1777719110962,
+      "tag": "0019_flaky_caretaker",
+      "breakpoints": true
     }
   ]
 }

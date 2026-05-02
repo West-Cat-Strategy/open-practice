@@ -83,6 +83,7 @@ async function processOpenPracticeJobBody(input: {
   queueName: OpenPracticeQueueName;
   jobName: string;
   data: WorkerJobEnvelope;
+  jobLifecycleId?: string;
   attemptsMade?: number;
   maxAttempts?: number;
   repository: OpenPracticeRepository;
@@ -121,13 +122,9 @@ async function updateJobLifecycle(
   await input.repository.updateJobLifecycleRecord(input.data.firmId, input.jobLifecycleId, updates);
 }
 
-function calculateNextEmailRetryAt(occurredAt: string, attemptsMade: number): string {
-  const delayMs = Math.min(30_000 * 2 ** Math.max(attemptsMade - 1, 0), 30 * 60_000);
-  return new Date(Date.parse(occurredAt) + delayMs).toISOString();
-}
-
 async function processEmailJob(input: {
   data: WorkerJobEnvelope;
+  jobLifecycleId?: string;
   attemptsMade?: number;
   maxAttempts?: number;
   repository: OpenPracticeRepository;
@@ -177,6 +174,22 @@ async function processEmailJob(input: {
 
   const attemptNumber = (input.attemptsMade ?? 0) + 1;
   const maxAttempts = input.maxAttempts ?? 1;
+  const attemptMetadata = {
+    provider: email.metadata.provider,
+    templateKey: email.templateKey,
+    maxAttempts,
+  };
+  await repository.recordEmailDeliveryResult({
+    firmId: data.firmId,
+    emailId,
+    status: "sending",
+    occurredAt: new Date().toISOString(),
+    attemptNumber,
+    jobId: input.jobLifecycleId,
+    source: "worker",
+    metadata: attemptMetadata,
+  });
+
   let result: Awaited<ReturnType<MailSender["send"]>>;
   try {
     result = await mailSender.send({
@@ -191,23 +204,20 @@ async function processEmailJob(input: {
       metadata: email.metadata.providerMetadata as Record<string, unknown>,
     });
   } catch (error) {
-    const occurredAt = new Date().toISOString();
     const terminal = attemptNumber >= maxAttempts;
-    const nextRetryAt = terminal ? undefined : calculateNextEmailRetryAt(occurredAt, attemptNumber);
-    const errorMessage = error instanceof Error ? error.message : String(error);
     await repository.recordEmailDeliveryResult({
       firmId: data.firmId,
       emailId,
       status: "failed",
-      occurredAt,
-      errorMessage,
+      occurredAt: new Date().toISOString(),
+      attemptNumber,
+      jobId: input.jobLifecycleId,
+      source: "worker",
+      terminal,
+      errorMessage: error instanceof Error ? error.message : String(error),
       metadata: {
-        attemptNumber,
-        maxAttempts,
-        nextRetryAt,
+        ...attemptMetadata,
         terminal,
-        provider: email.metadata.provider,
-        templateKey: email.templateKey,
       },
     });
     throw error;
@@ -219,12 +229,13 @@ async function processEmailJob(input: {
     status: "sent",
     occurredAt: new Date().toISOString(),
     providerMessageId: result.providerMessageId,
+    attemptNumber,
+    jobId: input.jobLifecycleId,
+    source: "worker",
+    terminal: true,
     metadata: {
-      attemptNumber,
-      maxAttempts,
+      ...attemptMetadata,
       terminal: true,
-      provider: email.metadata.provider,
-      templateKey: email.templateKey,
     },
   });
 

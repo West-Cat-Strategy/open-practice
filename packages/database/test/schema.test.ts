@@ -345,10 +345,30 @@ describe("database schema hardening", () => {
 
   it("persists email, inbound, and AI triage workflow tables", () => {
     expect(getTableConfig(emailOutbox).columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["template_key", "status", "to_addresses", "html_body", "text_body"]),
+      expect.arrayContaining([
+        "matter_id",
+        "template_key",
+        "status",
+        "to_addresses",
+        "html_body",
+        "text_body",
+        "attempt_count",
+        "last_attempt_at",
+        "terminal_failure_at",
+        "terminal_failure_reason",
+      ]),
     );
     expect(getTableConfig(emailEvents).columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["email_id", "event_type", "provider_message_id", "metadata"]),
+      expect.arrayContaining([
+        "email_id",
+        "event_type",
+        "provider_message_id",
+        "attempt_number",
+        "job_id",
+        "source",
+        "error_message",
+        "metadata",
+      ]),
     );
     expect(getTableConfig(inboundEmailAddresses).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["firm_id", "address", "matter_id", "enabled"]),

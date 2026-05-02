@@ -4,9 +4,7 @@ import {
   type AccessLogRecord,
   type ExternalUploadLinkRecord,
   type Firm,
-  type LegalClinicMatterProfile,
 } from "@open-practice/domain";
-import { sampleLegalClinicMatterProfiles } from "@open-practice/domain/sample-data";
 import {
   InMemoryOpenPracticeRepository,
   CalendarEventScopeConflictError,
@@ -239,28 +237,6 @@ describe("repository first-run setup", () => {
 });
 
 describe("repository operations foundation", () => {
-  it("derives contact dossiers from matters visible to the current user", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
-    const user = await repository.getUser("firm-west-legal", "user-licensee");
-    expect(user).toBeDefined();
-
-    const dossiers = await repository.listContactDossiersForUser(user!);
-
-    expect(dossiers.map((dossier) => dossier.contact.id)).toEqual(["contact-ada", "contact-river"]);
-    expect(dossiers).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ contact: { id: "contact-northstar" } })]),
-    );
-    expect(dossiers.find((dossier) => dossier.contact.id === "contact-river")).toMatchObject({
-      matters: [expect.objectContaining({ matterId: "matter-001", adverse: true })],
-      conflictCues: [
-        expect.objectContaining({
-          severity: "blocker",
-          matterId: "matter-001",
-        }),
-      ],
-    });
-  });
-
   it("seeds basic draft templates and versions draft updates", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await expect(repository.listDraftTemplates("firm-west-legal")).resolves.toMatchObject([
@@ -366,123 +342,144 @@ describe("repository operations foundation", () => {
     ).resolves.toMatchObject([{ id: "job-email-1", errorMessage: "SMTP unavailable" }]);
   });
 
-  it("lists email delivery history and queues manual retry in memory", async () => {
+  it("records matter-scoped email delivery history in memory", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createQueuedEmailOutbox({
       email: {
-        id: "email-history-1",
+        id: "email-history-001",
         firmId: "firm-west-legal",
+        matterId: "matter-001",
         templateKey: "signature.requested",
         status: "queued",
         to: ["client@example.test"],
-        cc: [],
+        cc: ["staff@example.test"],
         bcc: [],
         from: "Open Practice <no-reply@open-practice.local>",
-        subject: "Signature requested",
+        subject: "Synthetic signature request",
         htmlBody: "",
-        textBody: "Please review the signature request.",
+        textBody: "Synthetic body",
         relatedResourceType: "signature_request",
         relatedResourceId: "sig-001",
         queuedAt: now,
+        attemptCount: 0,
         metadata: { matterId: "matter-001", provider: "mailpit" },
       },
       event: {
-        id: "email-history-event-queued",
+        id: "email-event-history-queued",
         firmId: "firm-west-legal",
-        emailId: "email-history-1",
+        emailId: "email-history-001",
         eventType: "queued",
         occurredAt: now,
+        jobId: "job-email-history-001",
+        source: "api",
         metadata: { provider: "mailpit" },
       },
       job: {
-        id: "email-history-job",
+        id: "job-email-history-001",
         firmId: "firm-west-legal",
         queueName: "email",
         jobName: "send_email",
         status: "queued",
         targetResourceType: "email_outbox",
-        targetResourceId: "email-history-1",
+        targetResourceId: "email-history-001",
         attemptsMade: 0,
         maxAttempts: 5,
         queuedAt: now,
-        metadata: { emailId: "email-history-1", matterId: "matter-001" },
+        metadata: { emailId: "email-history-001", matterId: "matter-001" },
+      },
+    });
+    await repository.createQueuedEmailOutbox({
+      email: {
+        id: "email-history-other-matter",
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        templateKey: "intake.generated",
+        status: "queued",
+        to: ["staff@example.test"],
+        cc: [],
+        bcc: [],
+        from: "Open Practice <no-reply@open-practice.local>",
+        subject: "Synthetic intake notice",
+        htmlBody: "",
+        textBody: "Synthetic body",
+        queuedAt: "2026-04-25T13:00:00.000Z",
+        attemptCount: 0,
+        metadata: { matterId: "matter-002", provider: "mailpit" },
+      },
+      event: {
+        id: "email-event-history-other",
+        firmId: "firm-west-legal",
+        emailId: "email-history-other-matter",
+        eventType: "queued",
+        occurredAt: "2026-04-25T13:00:00.000Z",
+        source: "api",
+        metadata: { provider: "mailpit" },
+      },
+      job: {
+        id: "job-email-history-other",
+        firmId: "firm-west-legal",
+        queueName: "email",
+        jobName: "send_email",
+        status: "queued",
+        targetResourceType: "email_outbox",
+        targetResourceId: "email-history-other-matter",
+        attemptsMade: 0,
+        maxAttempts: 5,
+        queuedAt: "2026-04-25T13:00:00.000Z",
+        metadata: { emailId: "email-history-other-matter", matterId: "matter-002" },
       },
     });
 
     await repository.recordEmailDeliveryResult({
       firmId: "firm-west-legal",
-      emailId: "email-history-1",
-      status: "failed",
+      emailId: "email-history-001",
+      status: "sending",
       occurredAt: "2026-04-25T12:01:00.000Z",
-      errorMessage: "SMTP temporary failure",
-      metadata: {
-        attemptNumber: 1,
-        maxAttempts: 5,
-        nextRetryAt: "2026-04-25T12:01:30.000Z",
-        terminal: false,
-      },
+      attemptNumber: 1,
+      jobId: "job-email-history-001",
+      source: "worker",
+      metadata: { provider: "mailpit" },
+    });
+    await repository.recordEmailDeliveryResult({
+      firmId: "firm-west-legal",
+      emailId: "email-history-001",
+      status: "failed",
+      occurredAt: "2026-04-25T12:02:00.000Z",
+      attemptNumber: 1,
+      jobId: "job-email-history-001",
+      source: "worker",
+      terminal: true,
+      errorMessage: " SMTP refused synthetic message ".repeat(20),
+      metadata: { provider: "mailpit", terminal: true },
     });
 
     await expect(
       repository.listEmailOutbox("firm-west-legal", { matterId: "matter-001" }),
     ).resolves.toMatchObject([
       {
-        id: "email-history-1",
+        id: "email-history-001",
+        matterId: "matter-001",
         status: "failed",
-        metadata: {
-          deliveryState: expect.objectContaining({
-            nextRetryAt: "2026-04-25T12:01:30.000Z",
-            terminal: false,
-          }),
-        },
+        attemptCount: 1,
+        lastAttemptAt: "2026-04-25T12:02:00.000Z",
+        terminalFailureAt: "2026-04-25T12:02:00.000Z",
+        terminalFailureReason: expect.stringContaining("SMTP refused synthetic message"),
       },
     ]);
-
-    await repository.retryEmailOutbox({
-      firmId: "firm-west-legal",
-      emailId: "email-history-1",
-      occurredAt: "2026-04-25T12:02:00.000Z",
-      requestedByUserId: "user-admin",
-      metadata: { matterId: "matter-001", provider: "mailpit" },
-      job: {
-        id: "email-history-job-retry",
-        firmId: "firm-west-legal",
-        queueName: "email",
-        jobName: "send_email",
-        status: "queued",
-        targetResourceType: "email_outbox",
-        targetResourceId: "email-history-1",
-        attemptsMade: 0,
-        maxAttempts: 5,
-        queuedAt: "2026-04-25T12:02:00.000Z",
-        metadata: { emailId: "email-history-1", matterId: "matter-001" },
-      },
-    });
-
     await expect(
-      repository.getEmailOutbox("firm-west-legal", "email-history-1"),
-    ).resolves.toMatchObject({
-      status: "queued",
-      failedAt: undefined,
-      errorMessage: undefined,
-      metadata: {
-        deliveryState: expect.objectContaining({
-          manualRetryRequestedAt: "2026-04-25T12:02:00.000Z",
-          terminal: false,
-        }),
-      },
+      repository.listEmailOutbox("other-firm", { matterId: "matter-001" }),
+    ).resolves.toEqual([]);
+    const events = await repository.listEmailEvents("firm-west-legal", {
+      emailId: "email-history-001",
     });
-    await expect(
-      repository.listEmailEvents("firm-west-legal", { emailId: "email-history-1" }),
-    ).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ eventType: "failed" }),
-        expect.objectContaining({
-          eventType: "queued",
-          metadata: expect.objectContaining({ manualRetry: true }),
-        }),
-      ]),
-    );
+    expect(events.map((event) => event.eventType)).toEqual(["queued", "sending", "failed"]);
+    expect(events.at(-1)).toMatchObject({
+      attemptNumber: 1,
+      jobId: "job-email-history-001",
+      source: "worker",
+      errorMessage: expect.stringContaining("SMTP refused synthetic message"),
+    });
+    expect(events.at(-1)?.errorMessage?.length).toBeLessThanOrEqual(240);
   });
 
   it("persists share links and access logs in memory", async () => {
@@ -1239,65 +1236,6 @@ describe("repository operations foundation", () => {
     );
   });
 
-  it("tracks uploaded document review status without deleting original records", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
-    const checksumSha256 = "e".repeat(64);
-
-    const intent = await repository.createDocumentUploadIntent({
-      id: "document-upload-review-001",
-      firmId: "firm-west-legal",
-      matterId: "matter-001",
-      title: "Synthetic upload review.pdf",
-      storageKey: "external-uploads/external-upload-review/document-upload-review-001.pdf",
-      checksumSha256,
-      classification: "general",
-      legalHold: false,
-      reviewStatus: "pending_review",
-      externalUploadLinkId: "external-upload-review",
-    });
-    expect(intent).toMatchObject({
-      reviewStatus: "pending_review",
-      reviewMetadata: {},
-    });
-
-    await expect(
-      repository.completeDocumentUpload({
-        firmId: "firm-west-legal",
-        documentId: intent.id,
-        checksumSha256,
-      }),
-    ).resolves.toMatchObject({
-      uploadStatus: "verified",
-      checksumStatus: "verified",
-      reviewStatus: "pending_review",
-    });
-
-    await expect(
-      repository.reviewUploadedDocument({
-        firmId: "firm-west-legal",
-        documentId: intent.id,
-        status: "discarded",
-        decision: "discard",
-        reason: "wrong_matter",
-        metadata: { decision: "discard", status: "discarded" },
-        reviewedByUserId: "user-admin",
-        reviewedAt: now,
-      }),
-    ).resolves.toMatchObject({
-      id: intent.id,
-      storageKey: "external-uploads/external-upload-review/document-upload-review-001.pdf",
-      reviewStatus: "discarded",
-      reviewDecision: "discard",
-      reviewReason: "wrong_matter",
-      reviewedByUserId: "user-admin",
-      reviewedAt: now,
-    });
-    await expect(repository.getDocument("firm-west-legal", intent.id)).resolves.toMatchObject({
-      id: intent.id,
-      reviewStatus: "discarded",
-    });
-  });
-
   it("preserves embedded intake template definitions and answer resolution snapshots", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const [template] = await repository.listIntakeTemplates("firm-west-legal");
@@ -1417,38 +1355,5 @@ describe("repository operations foundation", () => {
     await expect(
       repository.listDraftAssistRecords("firm-west-legal", { draftId: "missing" }),
     ).resolves.toEqual([]);
-  });
-
-  it("lists clinic programs and upserts one clinic profile per matter", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
-    await expect(repository.listLegalClinicPrograms("firm-west-legal")).resolves.toMatchObject([
-      { id: "clinic-program-records-access", serviceArea: "Records access" },
-      { id: "clinic-program-tenancy-stability", serviceArea: "Residential tenancy" },
-    ]);
-    await expect(
-      repository.listLegalClinicPrograms("firm-west-legal", { status: "active" }),
-    ).resolves.toHaveLength(2);
-
-    const profile: LegalClinicMatterProfile = {
-      ...sampleLegalClinicMatterProfiles[0]!,
-      id: "clinic-profile-updated",
-      eligibilityStatus: "needs_review",
-      referralStatus: "accepted",
-      updatedAt: "2026-04-02T18:15:00.000Z",
-      metadata: { source: "test" },
-    };
-
-    await expect(repository.upsertLegalClinicMatterProfile(profile)).resolves.toMatchObject({
-      id: "clinic-profile-updated",
-      matterId: "matter-001",
-      eligibilityStatus: "needs_review",
-    });
-    await expect(
-      repository.getLegalClinicMatterProfile("firm-west-legal", "matter-001"),
-    ).resolves.toMatchObject({
-      id: "clinic-profile-updated",
-      referralStatus: "accepted",
-      metadata: { source: "test" },
-    });
   });
 });

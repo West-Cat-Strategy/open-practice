@@ -111,6 +111,7 @@ export async function queueRouteEmailOutbox(
     email: {
       id: emailId,
       firmId: auth.firmId,
+      matterId: input.matterId,
       templateKey: input.templateKey,
       status: "queued",
       to,
@@ -123,6 +124,7 @@ export async function queueRouteEmailOutbox(
       relatedResourceType: input.relatedResourceType,
       relatedResourceId: input.relatedResourceId,
       queuedAt: now,
+      attemptCount: 0,
       metadata,
     },
     event: {
@@ -131,7 +133,13 @@ export async function queueRouteEmailOutbox(
       emailId,
       eventType: "queued",
       occurredAt: now,
-      metadata: { matterId: input.matterId, provider: enabledProvider.key },
+      jobId,
+      source: "api",
+      metadata: {
+        matterId: input.matterId,
+        provider: enabledProvider.key,
+        source: input.source ?? "api.route",
+      },
     },
     job: {
       id: jobId,
@@ -148,7 +156,7 @@ export async function queueRouteEmailOutbox(
         emailId,
         matterId: input.matterId,
         provider: enabledProvider.key,
-        source: input.source,
+        source: input.source ?? "api.route",
         templateKey: input.templateKey,
         recipientCount: to.length + cc.length + bcc.length,
         relatedResourceType: input.relatedResourceType,
@@ -166,7 +174,7 @@ export async function queueRouteEmailOutbox(
         emailId,
         matterId: input.matterId,
         provider: enabledProvider.key,
-        source: input.source,
+        source: input.source ?? "api.route",
         templateKey: input.templateKey,
         recipientCount: to.length + cc.length + bcc.length,
         relatedResourceType: input.relatedResourceType,
