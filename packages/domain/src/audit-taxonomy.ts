@@ -12,6 +12,7 @@ export type AuditEventCategory =
   | "intake"
   | "legal_clinic"
   | "matter_lifecycle"
+  | "operations"
   | "portal"
   | "setup"
   | "signatures"
@@ -517,6 +518,35 @@ export const auditEventTaxonomyDefinitions = [
     matterScope: "optional_matter",
     actorHint: "authenticated_user",
     resourceMetadataKeys: ["emailId", "jobId", "retryOfJobId", "provider"],
+  }),
+  define({
+    action: "connector.created",
+    category: "operations",
+    resourceType: "connector",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "connectorId",
+      "connectorType",
+      "connectorKey",
+      "status",
+      "secretReferencePresent",
+    ],
+  }),
+  define({
+    action: "connector_outbox.queued",
+    category: "operations",
+    resourceType: "connector_outbox",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "connectorId",
+      "connectorType",
+      "eventType",
+      "idempotencyKey",
+      "resourceType",
+      "resourceId",
+    ],
   }),
   define({
     action: "inbound_email.attachment.promoted_to_document",

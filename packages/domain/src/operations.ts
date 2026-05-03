@@ -18,6 +18,35 @@ export interface ProviderSettingRecord {
   updatedAt: string;
 }
 
+export type ConnectorType =
+  | "calendar"
+  | "document_processing"
+  | "email"
+  | "generic"
+  | "inbound_email";
+
+export type ConnectorStatus = "disabled" | "enabled" | "paused" | "error";
+
+export interface ConnectorSecretReference {
+  id: string;
+  label?: string;
+  version?: string;
+  lastRotatedAt?: string;
+}
+
+export interface ConnectorRecord {
+  id: string;
+  firmId: string;
+  type: ConnectorType;
+  key: string;
+  displayName: string;
+  status: ConnectorStatus;
+  secretReference?: ConnectorSecretReference;
+  configSummary: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type OpenPracticeQueueName =
   | "email"
   | "inbound_email"
@@ -50,6 +79,53 @@ export interface JobLifecycleRecord {
   finishedAt?: string;
   failedAt?: string;
   errorMessage?: string;
+  metadata: Record<string, unknown>;
+}
+
+export type ConnectorOutboxStatus =
+  | "pending"
+  | "leased"
+  | "delivered"
+  | "failed"
+  | "dead_letter"
+  | "cancelled";
+
+export interface ConnectorOutboxRecord {
+  id: string;
+  firmId: string;
+  connectorId: string;
+  eventType: string;
+  resourceType?: string;
+  resourceId?: string;
+  idempotencyKey: string;
+  status: ConnectorOutboxStatus;
+  payloadSummary: Record<string, unknown>;
+  attemptCount: number;
+  maxAttempts: number;
+  nextAttemptAt?: string;
+  leaseId?: string;
+  leasedUntil?: string;
+  deliveredAt?: string;
+  deadLetteredAt?: string;
+  lastErrorSummary?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ConnectorDeliveryAttemptStatus = "leased" | "delivered" | "failed";
+
+export interface ConnectorDeliveryAttemptRecord {
+  id: string;
+  firmId: string;
+  connectorId: string;
+  outboxId: string;
+  attemptNumber: number;
+  status: ConnectorDeliveryAttemptStatus;
+  idempotencyKey: string;
+  leaseId?: string;
+  startedAt: string;
+  finishedAt?: string;
+  errorSummary?: string;
   metadata: Record<string, unknown>;
 }
 

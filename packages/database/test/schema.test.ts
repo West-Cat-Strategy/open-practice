@@ -14,6 +14,9 @@ import {
   calendarCredentials,
   calendarEventAttendees,
   calendarEvents,
+  connectorDeliveryAttempts,
+  connectorOutbox,
+  connectors,
   documentTextExtractions,
   documentVersions,
   documents,
@@ -179,6 +182,55 @@ describe("database schema hardening", () => {
       ]),
     );
     expect(usernameIndex?.config.unique).toBe(true);
+  });
+
+  it("persists provider-neutral connectors and idempotent outbox rows", () => {
+    const connectorConfig = getTableConfig(connectors);
+    const outboxConfig = getTableConfig(connectorOutbox);
+    const attemptConfig = getTableConfig(connectorDeliveryAttempts);
+
+    expect(connectorConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "type",
+        "key",
+        "display_name",
+        "status",
+        "secret_reference",
+        "config_summary",
+      ]),
+    );
+    expect(
+      connectorConfig.indexes.find((index) => index.config.name === "connectors_firm_key_idx")
+        ?.config.unique,
+    ).toBe(true);
+    expect(outboxConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "connector_id",
+        "event_type",
+        "idempotency_key",
+        "status",
+        "payload_summary",
+        "attempt_count",
+        "max_attempts",
+        "next_attempt_at",
+      ]),
+    );
+    expect(
+      outboxConfig.indexes.find(
+        (index) => index.config.name === "connector_outbox_firm_idempotency_idx",
+      )?.config.unique,
+    ).toBe(true);
+    expect(attemptConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "connector_id",
+        "outbox_id",
+        "attempt_number",
+        "status",
+        "idempotency_key",
+        "error_summary",
+      ]),
+    );
   });
 
   it("documents the calendar migration cleanup before matter-scoped constraints", () => {

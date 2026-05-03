@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type {
+  ConnectorSecretReference,
   DraftAssistRecord,
   EmbeddedIntakeTemplateDefinition,
   IntakeFormItemActionRecord,
@@ -194,6 +195,127 @@ export const providerSettings = pgTable(
       table.firmId,
       table.kind,
       table.key,
+    ),
+  }),
+);
+
+export const connectors = pgTable(
+  "connectors",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    type: text("type").notNull(),
+    key: text("key").notNull(),
+    displayName: text("display_name").notNull(),
+    status: text("status").notNull().default("disabled"),
+    secretReference: jsonb("secret_reference").$type<ConnectorSecretReference>(),
+    configSummary: jsonb("config_summary").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmKey: uniqueIndex("connectors_firm_key_idx").on(table.firmId, table.key),
+    firmTypeStatus: index("connectors_firm_type_status_idx").on(
+      table.firmId,
+      table.type,
+      table.status,
+    ),
+    statusValue: check(
+      "connectors_status_value",
+      sql`${table.status} in ('disabled', 'enabled', 'paused', 'error')`,
+    ),
+    typeValue: check(
+      "connectors_type_value",
+      sql`${table.type} in ('calendar', 'document_processing', 'email', 'generic', 'inbound_email')`,
+    ),
+  }),
+);
+
+export const connectorOutbox = pgTable(
+  "connector_outbox",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    connectorId: text("connector_id")
+      .notNull()
+      .references(() => connectors.id),
+    eventType: text("event_type").notNull(),
+    resourceType: text("resource_type"),
+    resourceId: text("resource_id"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    status: text("status").notNull().default("pending"),
+    payloadSummary: jsonb("payload_summary").$type<Record<string, unknown>>().notNull().default({}),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    leaseId: text("lease_id"),
+    leasedUntil: timestamp("leased_until", { withTimezone: true }),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    deadLetteredAt: timestamp("dead_lettered_at", { withTimezone: true }),
+    lastErrorSummary: text("last_error_summary"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmIdempotency: uniqueIndex("connector_outbox_firm_idempotency_idx").on(
+      table.firmId,
+      table.idempotencyKey,
+    ),
+    firmStatusNextAttempt: index("connector_outbox_firm_status_next_attempt_idx").on(
+      table.firmId,
+      table.status,
+      table.nextAttemptAt,
+    ),
+    connectorStatus: index("connector_outbox_connector_status_idx").on(
+      table.connectorId,
+      table.status,
+    ),
+    statusValue: check(
+      "connector_outbox_status_value",
+      sql`${table.status} in ('pending', 'leased', 'delivered', 'failed', 'dead_letter', 'cancelled')`,
+    ),
+  }),
+);
+
+export const connectorDeliveryAttempts = pgTable(
+  "connector_delivery_attempts",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    connectorId: text("connector_id")
+      .notNull()
+      .references(() => connectors.id),
+    outboxId: text("outbox_id")
+      .notNull()
+      .references(() => connectorOutbox.id),
+    attemptNumber: integer("attempt_number").notNull(),
+    status: text("status").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    leaseId: text("lease_id"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    errorSummary: text("error_summary"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    outboxAttempt: uniqueIndex("connector_delivery_attempts_outbox_attempt_idx").on(
+      table.outboxId,
+      table.attemptNumber,
+    ),
+    firmConnectorStarted: index("connector_delivery_attempts_firm_connector_started_idx").on(
+      table.firmId,
+      table.connectorId,
+      table.startedAt,
+    ),
+    statusValue: check(
+      "connector_delivery_attempts_status_value",
+      sql`${table.status} in ('leased', 'delivered', 'failed')`,
     ),
   }),
 );

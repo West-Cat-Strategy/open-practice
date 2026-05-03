@@ -27,6 +27,7 @@ export type ResourceKind =
   | "document_processing"
   | "share_link"
   | "external_upload"
+  | "connector"
   | "auth_credential"
   | "provider_setting"
   | "draft"
@@ -67,6 +68,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     document_processing: ["create", "read", "update", "export"],
     share_link: ["create", "read", "update", "delete", "export"],
     external_upload: ["create", "read", "update", "delete", "export"],
+    connector: ["create", "read", "update", "delete", "export"],
     auth_credential: ["create", "read", "update", "delete", "approve"],
     provider_setting: ["create", "read", "update", "delete", "approve", "export"],
     draft: ["create", "read", "update", "delete", "export"],
@@ -92,6 +94,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     document_processing: ["create", "read", "update"],
     share_link: ["create", "read", "update", "delete"],
     external_upload: ["create", "read", "update", "delete"],
+    connector: ["read"],
     auth_credential: ["create", "read", "update", "delete"],
     draft: ["create", "read", "update", "delete", "export"],
     draft_template: ["create", "read", "update", "export"],
@@ -156,6 +159,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     document_processing: ["read", "export"],
     share_link: ["read", "export"],
     external_upload: ["read", "export"],
+    connector: ["read", "export"],
     auth_credential: ["read"],
     provider_setting: ["read"],
   },

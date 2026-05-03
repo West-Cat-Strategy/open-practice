@@ -110,6 +110,10 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/calendar/credentials/:id/revoke`                                       | Revokes a current-user CalDAV app password and records audit evidence.                                                                                                 |
 | `GET /api/jobs`                                                                   | Firm-scoped PostgreSQL job lifecycle projection, redacted run summaries, queue status, and queue names; Redis internals are not exposed.                               |
 | `GET /api/jobs/:jobId`                                                            | Firm-scoped redacted job-run detail with terminal/retryable state, retry timing, error summary, target resource IDs, and safe metadata only.                           |
+| `GET /api/connectors?type=&status=`                                               | Owner/auditor-visible connector registry records with type, key, status, redacted secret-reference metadata, and operational config summaries only.                    |
+| `POST /api/connectors`                                                            | Creates a firm-scoped provider-neutral connector registry record without accepting raw credential fields.                                                              |
+| `GET /api/connectors/outbox?connectorId=&status=`                                 | Firm-scoped connector outbox summaries with idempotency keys, retry counters, next-attempt timestamps, lease summaries, and redacted payload summaries.                |
+| `POST /api/connectors/outbox`                                                     | Creates or returns an idempotent provider-neutral connector outbox row for a registered connector without emitting provider-specific webhooks.                         |
 | `GET /api/email/status`                                                           | SMTP provider status from firm provider settings.                                                                                                                      |
 | `POST /api/email/previews`                                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                                                                                    |
 | `POST /api/mail/outbox`                                                           | Create a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.                                                          |
@@ -388,6 +392,15 @@ and queue-unconfigured cases. Job metadata must not carry email bodies, portal t
 content, storage keys, raw evidence, or private secrets. Failed or skipped OCR, transcription, email,
 AI-assist, or media jobs must not change portal-share, billing, signature, trust, or audit state
 without an explicit reviewed transition.
+
+Connectors are firm-scoped, provider-neutral registry records. The first slice stores connector
+type, key, display name, status, optional secret-reference metadata, and redacted operational config
+summaries; it never stores or returns raw credentials. Connector outbox rows are durable records with
+an idempotency key, payload summary, status, max attempts, attempt count, next-attempt timestamp,
+and optional lease/error summary fields. Creating an outbox row is idempotent by firm and
+idempotency key. This slice does not emit outbound webhooks, validate destination URLs, sign
+payloads, or implement provider-specific worker delivery; those guardrails remain separate from the
+registry/outbox foundation.
 
 Outbound email queueing is SMTP-provider gated. `POST /api/mail/outbox` requires matter-scoped
 email create access, an enabled SMTP provider setting, configured Redis/BullMQ queue access, and at

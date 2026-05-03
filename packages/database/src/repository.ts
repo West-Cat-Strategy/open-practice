@@ -22,6 +22,9 @@ import {
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
+  type ConnectorDeliveryAttemptRecord,
+  type ConnectorOutboxRecord,
+  type ConnectorRecord,
   type Contact,
   type ContactDossier,
   type DocumentRecord,
@@ -281,6 +284,31 @@ export interface OpenPracticeRepository {
     options?: { kind?: ProviderSettingRecord["kind"] },
   ): Promise<ProviderSettingRecord[]>;
   upsertProviderSetting(setting: ProviderSettingRecord): Promise<ProviderSettingRecord>;
+  createConnector(connector: ConnectorRecord): Promise<ConnectorRecord>;
+  listConnectors(
+    firmId: string,
+    options?: { type?: ConnectorRecord["type"]; status?: ConnectorRecord["status"] },
+  ): Promise<ConnectorRecord[]>;
+  getConnector(firmId: string, connectorId: string): Promise<ConnectorRecord | undefined>;
+  createConnectorOutbox(input: ConnectorOutboxRecord): Promise<{
+    outbox: ConnectorOutboxRecord;
+    created: boolean;
+  }>;
+  listConnectorOutbox(
+    firmId: string,
+    options?: {
+      connectorId?: string;
+      status?: ConnectorOutboxRecord["status"];
+      limit?: number;
+    },
+  ): Promise<ConnectorOutboxRecord[]>;
+  createConnectorDeliveryAttempt(
+    attempt: ConnectorDeliveryAttemptRecord,
+  ): Promise<ConnectorDeliveryAttemptRecord>;
+  listConnectorDeliveryAttempts(
+    firmId: string,
+    options?: { outboxId?: string; connectorId?: string },
+  ): Promise<ConnectorDeliveryAttemptRecord[]>;
   createJobLifecycleRecord(record: JobLifecycleRecord): Promise<JobLifecycleRecord>;
   createQueuedEmailOutbox(input: {
     email: EmailOutboxRecord;
@@ -1007,6 +1035,30 @@ function mapProviderSettingRow(
   };
 }
 
+function mapConnectorRow(row: typeof schema.connectors.$inferSelect): ConnectorRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    type: row.type as ConnectorRecord["type"],
+    key: row.key,
+    displayName: row.displayName,
+    status: row.status as ConnectorRecord["status"],
+    secretReference: row.secretReference ?? undefined,
+    configSummary: row.configSummary,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function connectorInsert(record: ConnectorRecord): typeof schema.connectors.$inferInsert {
+  return {
+    ...record,
+    secretReference: record.secretReference ?? null,
+    createdAt: new Date(record.createdAt),
+    updatedAt: new Date(record.updatedAt),
+  };
+}
+
 function mapJobLifecycleRow(
   row: typeof schema.jobLifecycleRecords.$inferSelect,
 ): JobLifecycleRecord {
@@ -1027,6 +1079,81 @@ function mapJobLifecycleRow(
     failedAt: dateToIso(row.failedAt),
     errorMessage: row.errorMessage ?? undefined,
     metadata: row.metadata,
+  };
+}
+
+function mapConnectorOutboxRow(
+  row: typeof schema.connectorOutbox.$inferSelect,
+): ConnectorOutboxRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    connectorId: row.connectorId,
+    eventType: row.eventType,
+    resourceType: row.resourceType ?? undefined,
+    resourceId: row.resourceId ?? undefined,
+    idempotencyKey: row.idempotencyKey,
+    status: row.status as ConnectorOutboxRecord["status"],
+    payloadSummary: row.payloadSummary,
+    attemptCount: row.attemptCount,
+    maxAttempts: row.maxAttempts,
+    nextAttemptAt: dateToIso(row.nextAttemptAt),
+    leaseId: row.leaseId ?? undefined,
+    leasedUntil: dateToIso(row.leasedUntil),
+    deliveredAt: dateToIso(row.deliveredAt),
+    deadLetteredAt: dateToIso(row.deadLetteredAt),
+    lastErrorSummary: row.lastErrorSummary ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function connectorOutboxInsert(
+  record: ConnectorOutboxRecord,
+): typeof schema.connectorOutbox.$inferInsert {
+  return {
+    ...record,
+    resourceType: record.resourceType ?? null,
+    resourceId: record.resourceId ?? null,
+    nextAttemptAt: record.nextAttemptAt ? new Date(record.nextAttemptAt) : null,
+    leaseId: record.leaseId ?? null,
+    leasedUntil: record.leasedUntil ? new Date(record.leasedUntil) : null,
+    deliveredAt: record.deliveredAt ? new Date(record.deliveredAt) : null,
+    deadLetteredAt: record.deadLetteredAt ? new Date(record.deadLetteredAt) : null,
+    lastErrorSummary: record.lastErrorSummary ?? null,
+    createdAt: new Date(record.createdAt),
+    updatedAt: new Date(record.updatedAt),
+  };
+}
+
+function mapConnectorDeliveryAttemptRow(
+  row: typeof schema.connectorDeliveryAttempts.$inferSelect,
+): ConnectorDeliveryAttemptRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    connectorId: row.connectorId,
+    outboxId: row.outboxId,
+    attemptNumber: row.attemptNumber,
+    status: row.status as ConnectorDeliveryAttemptRecord["status"],
+    idempotencyKey: row.idempotencyKey,
+    leaseId: row.leaseId ?? undefined,
+    startedAt: row.startedAt.toISOString(),
+    finishedAt: dateToIso(row.finishedAt),
+    errorSummary: row.errorSummary ?? undefined,
+    metadata: row.metadata,
+  };
+}
+
+function connectorDeliveryAttemptInsert(
+  record: ConnectorDeliveryAttemptRecord,
+): typeof schema.connectorDeliveryAttempts.$inferInsert {
+  return {
+    ...record,
+    leaseId: record.leaseId ?? null,
+    startedAt: new Date(record.startedAt),
+    finishedAt: record.finishedAt ? new Date(record.finishedAt) : null,
+    errorSummary: record.errorSummary ?? null,
   };
 }
 
@@ -2165,6 +2292,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private generatedDocuments: GeneratedDocumentRecord[];
   private firmSettings: FirmSettings[] = [];
   private providerSettings: ProviderSettingRecord[] = [];
+  private connectors: ConnectorRecord[] = [];
+  private connectorOutbox: ConnectorOutboxRecord[] = [];
+  private connectorDeliveryAttempts: ConnectorDeliveryAttemptRecord[] = [];
   private jobLifecycleRecords: JobLifecycleRecord[] = [];
   private emailOutbox: EmailOutboxRecord[] = [];
   private emailEvents: EmailEventRecord[] = [];
@@ -2303,6 +2433,99 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       this.providerSettings.push(clone(setting));
     }
     return clone(setting);
+  }
+
+  async createConnector(connector: ConnectorRecord): Promise<ConnectorRecord> {
+    const duplicate = this.connectors.find(
+      (candidate) => candidate.firmId === connector.firmId && candidate.key === connector.key,
+    );
+    if (duplicate) throw new Error(`Connector key ${connector.key} already exists`);
+    this.connectors.push(clone(connector));
+    return clone(connector);
+  }
+
+  async listConnectors(
+    firmId: string,
+    options: { type?: ConnectorRecord["type"]; status?: ConnectorRecord["status"] } = {},
+  ): Promise<ConnectorRecord[]> {
+    return clone(
+      this.connectors
+        .filter((connector) => {
+          if (connector.firmId !== firmId) return false;
+          if (options.type && connector.type !== options.type) return false;
+          if (options.status && connector.status !== options.status) return false;
+          return true;
+        })
+        .sort((left, right) => left.key.localeCompare(right.key)),
+    );
+  }
+
+  async getConnector(firmId: string, connectorId: string): Promise<ConnectorRecord | undefined> {
+    return clone(
+      this.connectors.find(
+        (connector) => connector.firmId === firmId && connector.id === connectorId,
+      ),
+    );
+  }
+
+  async createConnectorOutbox(
+    input: ConnectorOutboxRecord,
+  ): Promise<{ outbox: ConnectorOutboxRecord; created: boolean }> {
+    const existing = this.connectorOutbox.find(
+      (outbox) => outbox.firmId === input.firmId && outbox.idempotencyKey === input.idempotencyKey,
+    );
+    if (existing) return { outbox: clone(existing), created: false };
+    const connector = this.connectors.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.connectorId,
+    );
+    if (!connector) throw new Error(`Connector ${input.connectorId} was not found`);
+    this.connectorOutbox.push(clone(input));
+    return { outbox: clone(input), created: true };
+  }
+
+  async listConnectorOutbox(
+    firmId: string,
+    options: {
+      connectorId?: string;
+      status?: ConnectorOutboxRecord["status"];
+      limit?: number;
+    } = {},
+  ): Promise<ConnectorOutboxRecord[]> {
+    const limit = options.limit ?? 50;
+    return clone(
+      this.connectorOutbox
+        .filter((outbox) => {
+          if (outbox.firmId !== firmId) return false;
+          if (options.connectorId && outbox.connectorId !== options.connectorId) return false;
+          if (options.status && outbox.status !== options.status) return false;
+          return true;
+        })
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(0, limit),
+    );
+  }
+
+  async createConnectorDeliveryAttempt(
+    attempt: ConnectorDeliveryAttemptRecord,
+  ): Promise<ConnectorDeliveryAttemptRecord> {
+    this.connectorDeliveryAttempts.push(clone(attempt));
+    return clone(attempt);
+  }
+
+  async listConnectorDeliveryAttempts(
+    firmId: string,
+    options: { outboxId?: string; connectorId?: string } = {},
+  ): Promise<ConnectorDeliveryAttemptRecord[]> {
+    return clone(
+      this.connectorDeliveryAttempts
+        .filter((attempt) => {
+          if (attempt.firmId !== firmId) return false;
+          if (options.outboxId && attempt.outboxId !== options.outboxId) return false;
+          if (options.connectorId && attempt.connectorId !== options.connectorId) return false;
+          return true;
+        })
+        .sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
+    );
   }
 
   async createJobLifecycleRecord(record: JobLifecycleRecord): Promise<JobLifecycleRecord> {
@@ -4637,6 +4860,113 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       })
       .returning();
     return mapProviderSettingRow(row);
+  }
+
+  async createConnector(connector: ConnectorRecord): Promise<ConnectorRecord> {
+    const [row] = await this.db
+      .insert(schema.connectors)
+      .values(connectorInsert(connector))
+      .returning();
+    return mapConnectorRow(row);
+  }
+
+  async listConnectors(
+    firmId: string,
+    options: { type?: ConnectorRecord["type"]; status?: ConnectorRecord["status"] } = {},
+  ): Promise<ConnectorRecord[]> {
+    const conditions = [eq(schema.connectors.firmId, firmId)];
+    if (options.type) conditions.push(eq(schema.connectors.type, options.type));
+    if (options.status) conditions.push(eq(schema.connectors.status, options.status));
+    const rows = await this.db
+      .select()
+      .from(schema.connectors)
+      .where(and(...conditions))
+      .orderBy(asc(schema.connectors.key));
+    return rows.map(mapConnectorRow);
+  }
+
+  async getConnector(firmId: string, connectorId: string): Promise<ConnectorRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.connectors)
+      .where(and(eq(schema.connectors.firmId, firmId), eq(schema.connectors.id, connectorId)));
+    return row ? mapConnectorRow(row) : undefined;
+  }
+
+  async createConnectorOutbox(
+    input: ConnectorOutboxRecord,
+  ): Promise<{ outbox: ConnectorOutboxRecord; created: boolean }> {
+    try {
+      const [row] = await this.db
+        .insert(schema.connectorOutbox)
+        .values(connectorOutboxInsert(input))
+        .returning();
+      return { outbox: mapConnectorOutboxRow(row), created: true };
+    } catch (error) {
+      if (!isPostgresUniqueViolation(error, "connector_outbox_firm_idempotency_idx")) {
+        throw error;
+      }
+      const [existingRow] = await this.db
+        .select()
+        .from(schema.connectorOutbox)
+        .where(
+          and(
+            eq(schema.connectorOutbox.firmId, input.firmId),
+            eq(schema.connectorOutbox.idempotencyKey, input.idempotencyKey),
+          ),
+        );
+      if (!existingRow) throw error;
+      return { outbox: mapConnectorOutboxRow(existingRow), created: false };
+    }
+  }
+
+  async listConnectorOutbox(
+    firmId: string,
+    options: {
+      connectorId?: string;
+      status?: ConnectorOutboxRecord["status"];
+      limit?: number;
+    } = {},
+  ): Promise<ConnectorOutboxRecord[]> {
+    const conditions = [eq(schema.connectorOutbox.firmId, firmId)];
+    if (options.connectorId)
+      conditions.push(eq(schema.connectorOutbox.connectorId, options.connectorId));
+    if (options.status) conditions.push(eq(schema.connectorOutbox.status, options.status));
+    const rows = await this.db
+      .select()
+      .from(schema.connectorOutbox)
+      .where(and(...conditions))
+      .orderBy(desc(schema.connectorOutbox.createdAt))
+      .limit(options.limit ?? 50);
+    return rows.map(mapConnectorOutboxRow);
+  }
+
+  async createConnectorDeliveryAttempt(
+    attempt: ConnectorDeliveryAttemptRecord,
+  ): Promise<ConnectorDeliveryAttemptRecord> {
+    const [row] = await this.db
+      .insert(schema.connectorDeliveryAttempts)
+      .values(connectorDeliveryAttemptInsert(attempt))
+      .returning();
+    return mapConnectorDeliveryAttemptRow(row);
+  }
+
+  async listConnectorDeliveryAttempts(
+    firmId: string,
+    options: { outboxId?: string; connectorId?: string } = {},
+  ): Promise<ConnectorDeliveryAttemptRecord[]> {
+    const conditions = [eq(schema.connectorDeliveryAttempts.firmId, firmId)];
+    if (options.outboxId)
+      conditions.push(eq(schema.connectorDeliveryAttempts.outboxId, options.outboxId));
+    if (options.connectorId) {
+      conditions.push(eq(schema.connectorDeliveryAttempts.connectorId, options.connectorId));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.connectorDeliveryAttempts)
+      .where(and(...conditions))
+      .orderBy(desc(schema.connectorDeliveryAttempts.startedAt));
+    return rows.map(mapConnectorDeliveryAttemptRow);
   }
 
   async createJobLifecycleRecord(record: JobLifecycleRecord): Promise<JobLifecycleRecord> {
