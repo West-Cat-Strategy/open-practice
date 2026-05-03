@@ -99,7 +99,8 @@ describe("jobs routes", () => {
           terminal: false,
           retryable: true,
           nextAttemptAt: "2026-05-02T10:05:00.000Z",
-          errorSummary: expect.stringContaining("OCR failed"),
+          errorSummary:
+            "Job failed. Error details are redacted; review server logs for privileged diagnostics.",
           metadata: {
             matterId: "matter-001",
             documentId: "doc-001",
@@ -112,6 +113,7 @@ describe("jobs routes", () => {
     });
     expect(response.json().jobs[0].metadata).not.toHaveProperty("rawBody");
     expect(response.json().jobs[0].metadata).not.toHaveProperty("secret");
+    expect(response.json().jobs[0].errorSummary).not.toContain("synthetic fixture body");
   });
 
   it("returns one firm-scoped redacted job detail", async () => {
@@ -167,7 +169,8 @@ describe("jobs routes", () => {
         failed: true,
         retryable: true,
         nextAttemptAt: "2026-05-02T11:05:00.000Z",
-        errorSummary: expect.stringContaining("Synthetic provider timeout"),
+        errorSummary:
+          "Job failed. Error details are redacted; review server logs for privileged diagnostics.",
         metadata: {
           matterId: "matter-001",
           documentId: "doc-001",
@@ -178,6 +181,7 @@ describe("jobs routes", () => {
     });
     expect(response.json().job.metadata).not.toHaveProperty("storageKey");
     expect(response.json().job.metadata).not.toHaveProperty("body");
+    expect(response.json().job.errorSummary).not.toContain("private payload details");
 
     const otherFirm = await testServer({ repository }).inject({
       method: "GET",

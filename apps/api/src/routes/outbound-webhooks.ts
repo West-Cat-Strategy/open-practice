@@ -74,6 +74,19 @@ export function registerOutboundWebhookRoutes(
     });
 
     reply.code(202);
-    return { simulation };
+    return {
+      simulation: {
+        ...simulation,
+        signing: {
+          algorithm: simulation.signing.algorithm,
+          signatureHeader: simulation.signing.signatureHeader,
+          timestampHeader: simulation.signing.timestampHeader,
+          deliveryIdHeader: simulation.signing.deliveryIdHeader,
+          eventHeader: simulation.signing.eventHeader,
+          secretReferencePresent: Boolean(body.signingKeyReference),
+          redacted: true,
+        },
+      },
+    };
   });
 }

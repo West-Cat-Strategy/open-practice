@@ -66,7 +66,8 @@ describe("outbound webhook routes", () => {
           timestampHeader: "x-open-practice-timestamp",
           deliveryIdHeader: "x-open-practice-delivery-id",
           eventHeader: "x-open-practice-event",
-          secretReference: "secret://outbound-webhooks/synthetic",
+          secretReferencePresent: true,
+          redacted: true,
         },
         bodyShape: {
           deliveryId: "string",
@@ -76,6 +77,7 @@ describe("outbound webhook routes", () => {
         },
       },
     });
+    expect(JSON.stringify(response.json())).not.toContain("secret://");
 
     const audit = await repository.listAuditEvents(firmId);
     const event = audit.events.find(

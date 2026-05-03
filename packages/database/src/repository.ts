@@ -2540,6 +2540,13 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   async createConnectorDeliveryAttempt(
     attempt: ConnectorDeliveryAttemptRecord,
   ): Promise<ConnectorDeliveryAttemptRecord> {
+    const outbox = this.connectorOutbox.find(
+      (candidate) =>
+        candidate.firmId === attempt.firmId &&
+        candidate.id === attempt.outboxId &&
+        candidate.connectorId === attempt.connectorId,
+    );
+    if (!outbox) throw new Error(`Connector outbox ${attempt.outboxId} was not found`);
     this.connectorDeliveryAttempts.push(clone(attempt));
     return clone(attempt);
   }
@@ -4973,6 +4980,8 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   async createConnectorOutbox(
     input: ConnectorOutboxRecord,
   ): Promise<{ outbox: ConnectorOutboxRecord; created: boolean }> {
+    const connector = await this.getConnector(input.firmId, input.connectorId);
+    if (!connector) throw new Error(`Connector ${input.connectorId} was not found`);
     try {
       const [row] = await this.db
         .insert(schema.connectorOutbox)
@@ -5021,6 +5030,17 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   async createConnectorDeliveryAttempt(
     attempt: ConnectorDeliveryAttemptRecord,
   ): Promise<ConnectorDeliveryAttemptRecord> {
+    const [outbox] = await this.db
+      .select()
+      .from(schema.connectorOutbox)
+      .where(
+        and(
+          eq(schema.connectorOutbox.firmId, attempt.firmId),
+          eq(schema.connectorOutbox.id, attempt.outboxId),
+          eq(schema.connectorOutbox.connectorId, attempt.connectorId),
+        ),
+      );
+    if (!outbox) throw new Error(`Connector outbox ${attempt.outboxId} was not found`);
     const [row] = await this.db
       .insert(schema.connectorDeliveryAttempts)
       .values(connectorDeliveryAttemptInsert(attempt))

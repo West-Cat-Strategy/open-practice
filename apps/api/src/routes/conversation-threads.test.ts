@@ -86,10 +86,15 @@ describe("conversation thread routes", () => {
         createdByUserId: "user-staff",
       },
     });
+    expect(created.json().thread).not.toHaveProperty("metadata");
     expect(listed.statusCode).toBe(200);
     expect(listed.json()).toMatchObject({
       threads: [expect.objectContaining({ topic: "Synthetic intake follow-up" })],
     });
+    expect(listed.json().threads[0]).not.toHaveProperty("metadata");
+    await expect(
+      repository.getConversationThread("firm-west-legal", created.json().thread.id),
+    ).resolves.toMatchObject({ metadata: {} });
 
     const audit = await repository.listAuditEvents("firm-west-legal");
     const event = audit.events.find(

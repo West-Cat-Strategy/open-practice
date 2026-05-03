@@ -153,7 +153,7 @@ function visibleMatterMap(matters: OperationalMatterInput[]): Map<string, Operat
 }
 
 function matterLabel(matter: OperationalMatterInput): string {
-  return `${matter.number} ${matter.title}`;
+  return `Matter ${matter.number}`;
 }
 
 function hasClientParty(matter: OperationalMatterInput): boolean {
@@ -257,7 +257,7 @@ function buildAwaitingSignatureResults(
         id: `signature:${signature.id}`,
         viewKey: "awaiting_signature",
         matterId: signature.matterId,
-        title: signature.title,
+        title: `Signature request ${signature.id}`,
         status: signature.status,
         priority: signature.status === "provider_error" || ageDays >= 7 ? "high" : "medium",
         reason: `Signature request is ${signature.status}`,
@@ -366,7 +366,7 @@ function buildOverdueTaskDeadlineResults(
         id: `calendar:${event.id}`,
         viewKey: "overdue_tasks_deadlines",
         matterId: event.matterId,
-        title: event.title,
+        title: `Calendar deadline ${event.id}`,
         status: event.status,
         priority: overdueDays >= 3 ? "high" : "medium",
         reason: `Calendar task or deadline is ${overdueDays} days overdue`,

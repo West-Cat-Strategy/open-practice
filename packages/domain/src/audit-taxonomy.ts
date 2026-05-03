@@ -551,6 +551,14 @@ export const auditEventTaxonomyDefinitions = [
     ],
   }),
   define({
+    action: "task.completed",
+    category: "operations",
+    resourceType: "task",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["taskId", "assignedToUserId", "completedByUserId"],
+  }),
+  define({
     action: "outbound_webhook.test_delivery_simulated",
     category: "outbound_webhooks",
     resourceType: "outbound_webhook",

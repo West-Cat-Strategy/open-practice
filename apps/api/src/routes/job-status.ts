@@ -87,7 +87,9 @@ function metadataString(metadata: Record<string, unknown>, key: string): string 
 }
 
 function errorSummary(errorMessage: string | undefined): string | undefined {
-  return errorMessage?.replace(/\s+/g, " ").trim().slice(0, 240) || undefined;
+  return errorMessage
+    ? "Job failed. Error details are redacted; review server logs for privileged diagnostics."
+    : undefined;
 }
 
 export function serializeJobRun(record: JobLifecycleRecord) {

@@ -154,5 +154,8 @@ describe("built-in operational views", () => {
     ]);
     expect(JSON.stringify(payload)).not.toContain("token-hash-not-returned");
     expect(JSON.stringify(payload)).not.toContain("Ada Morgan");
+    expect(JSON.stringify(payload)).not.toContain(sampleMatters[0]!.title);
+    expect(JSON.stringify(payload)).not.toContain(sampleSignatureRequests[0]!.title);
+    expect(JSON.stringify(payload)).not.toContain(sampleCalendarEvents[0]!.title);
   });
 });

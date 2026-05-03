@@ -88,6 +88,29 @@ describe("audit event taxonomy", () => {
     });
   });
 
+  it("classifies completed task events as matter-scoped operations", () => {
+    expect(
+      classifyAuditEvent(
+        auditEvent({
+          action: "task.completed",
+          resourceType: "task",
+          resourceId: "task-001",
+          metadata: {
+            matterId: "matter-001",
+            taskId: "task-001",
+            assignedToUserId: "user-licensee",
+            completedByUserId: "user-admin",
+          },
+        }),
+      ),
+    ).toMatchObject({
+      category: "operations",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+  });
+
   it("summarizes taxonomy coverage without exposing metadata values", () => {
     const summary = summarizeAuditEventTaxonomy([
       auditEvent(),

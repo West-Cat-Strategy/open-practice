@@ -77,7 +77,6 @@ describe("connector routes", () => {
         key: "synthetic.case-status",
         status: "enabled",
         secretReference: {
-          id: "secret-ref/synthetic-case-status",
           label: "Synthetic API credential",
           version: "v1",
           redacted: true,
@@ -118,6 +117,26 @@ describe("connector routes", () => {
         displayName: "Synthetic Mail",
         configSummary: {
           apiKey: "credential-value",
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "CONNECTOR_SECRET_SUMMARY_REJECTED",
+    });
+  });
+
+  it("rejects secret-looking connector summary values", async () => {
+    const response = await testServer({ repository: new InMemoryOpenPracticeRepository() }).inject({
+      method: "POST",
+      url: "/api/connectors",
+      payload: {
+        type: "generic",
+        key: "synthetic.webhook",
+        displayName: "Synthetic Webhook",
+        configSummary: {
+          note: "Bearer synthetic-token-value",
         },
       },
     });
@@ -172,7 +191,7 @@ describe("connector routes", () => {
       outbox: {
         connectorId,
         eventType: "matter.summary.ready",
-        idempotencyKey: "matter-001:summary-ready:v1",
+        idempotencyKeyPresent: true,
         status: "pending",
         attemptCount: 0,
         maxAttempts: 4,
@@ -182,9 +201,11 @@ describe("connector routes", () => {
       created: false,
       outbox: {
         id: first.json().outbox.id,
-        idempotencyKey: "matter-001:summary-ready:v1",
+        idempotencyKeyPresent: true,
       },
     });
+    expect(first.json().outbox).not.toHaveProperty("idempotencyKey");
+    expect(first.json().outbox).not.toHaveProperty("leaseId");
 
     const listed = await server.inject({
       method: "GET",

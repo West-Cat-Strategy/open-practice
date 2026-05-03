@@ -131,6 +131,27 @@ function buildPackageRuntimeSummary(input: {
   };
 }
 
+function serializeGeneratedDocument(document: GeneratedDocumentRecord) {
+  return {
+    id: document.id,
+    matterId: document.matterId,
+    intakeSessionId: document.intakeSessionId,
+    provider: document.provider,
+    externalId: document.externalId,
+    title: document.title,
+    documentId: document.documentId,
+    packageId: document.packageId,
+    packageDocumentId: document.packageDocumentId,
+    createdAt: document.createdAt,
+    evidenceSummary: {
+      present: Object.keys(document.evidence).length > 0,
+      keyCount: Object.keys(document.evidence).length,
+    },
+    storageKeyPresent: Boolean(document.storageKey),
+    checksumPresent: Boolean(document.checksumSha256),
+  };
+}
+
 export function registerIntakeRoutes(
   server: FastifyInstance,
   { repository, automationProvider, emailJobQueue }: ApiRouteDependencies,
@@ -362,7 +383,10 @@ export function registerIntakeRoutes(
         provider: created.provider,
       },
     });
-    return { ...created, queuedEmail: summarizeQueuedRouteEmail(queuedEmail) };
+    return {
+      ...serializeGeneratedDocument(created),
+      queuedEmail: summarizeQueuedRouteEmail(queuedEmail),
+    };
   });
 
   server.post("/api/intake-sessions/:id/generated-packages", async (request) => {
@@ -466,7 +490,7 @@ export function registerIntakeRoutes(
         packageId: body.packageId,
         documents,
       }),
-      documents,
+      documents: documents.map(serializeGeneratedDocument),
       queuedEmail: await getQueuedEmailSummary(repository, request.auth.firmId),
     };
   });

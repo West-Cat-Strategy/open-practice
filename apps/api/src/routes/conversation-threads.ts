@@ -25,7 +25,6 @@ const createConversationThreadBodySchema = z.object({
   retentionUntil: z.string().datetime().optional(),
   exportState: z.enum(["not_requested", "requested", "exported"]).default("not_requested"),
   notificationBoundary: z.enum(["disabled", "internal_only"]).default("disabled"),
-  metadata: z.record(z.string(), z.unknown()).default({}),
 });
 
 function assertConversationThreadAccess(
@@ -55,6 +54,23 @@ async function getAuthorizedThread(
   return thread;
 }
 
+function serializeThread(thread: ConversationThreadRecord) {
+  return {
+    id: thread.id,
+    matterId: thread.matterId,
+    topic: thread.topic,
+    status: thread.status,
+    retentionUntil: thread.retentionUntil,
+    exportState: thread.exportState,
+    accessRevokedAt: thread.accessRevokedAt,
+    notificationBoundary: thread.notificationBoundary,
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+    createdByUserId: thread.createdByUserId,
+    updatedByUserId: thread.updatedByUserId,
+  };
+}
+
 export function registerConversationThreadRoutes(
   server: FastifyInstance,
   { repository }: ApiRouteDependencies,
@@ -65,12 +81,14 @@ export function registerConversationThreadRoutes(
     const threads = await repository.listConversationThreads(request.auth.firmId, {
       matterId: query.matterId,
     });
-    return { threads };
+    return { threads: threads.map(serializeThread) };
   });
 
   server.get("/api/conversation-threads/:id", async (request) => {
     const params = parseRequestPart(conversationThreadParamsSchema, request.params, "params");
-    return { thread: await getAuthorizedThread(repository, request.auth, params.id) };
+    return {
+      thread: serializeThread(await getAuthorizedThread(repository, request.auth, params.id)),
+    };
   });
 
   server.post("/api/conversation-threads", async (request, reply) => {
@@ -100,7 +118,7 @@ export function registerConversationThreadRoutes(
       updatedAt: now,
       createdByUserId: request.auth.user.id,
       updatedByUserId: request.auth.user.id,
-      metadata: body.metadata,
+      metadata: {},
     };
     const created = await repository.createConversationThread(thread);
     await appendRouteAuditEvent(repository, request.auth, {
@@ -111,6 +129,6 @@ export function registerConversationThreadRoutes(
     });
 
     reply.code(201);
-    return { thread: created };
+    return { thread: serializeThread(created) };
   });
 }

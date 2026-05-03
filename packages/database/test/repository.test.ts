@@ -291,6 +291,27 @@ describe("repository connectors", () => {
       created: false,
       outbox: { id: "connector-outbox-1" },
     });
+    await expect(
+      repository.createConnectorOutbox({
+        ...outboxInput,
+        id: "connector-outbox-cross-firm",
+        firmId: "firm-other",
+        idempotencyKey: "matter-001:summary-ready:v2",
+      }),
+    ).rejects.toThrow("Connector connector-synthetic was not found");
+    await expect(
+      repository.createConnectorDeliveryAttempt({
+        id: "connector-attempt-cross-firm",
+        firmId: "firm-other",
+        connectorId: connector.id,
+        outboxId: "connector-outbox-1",
+        attemptNumber: 1,
+        status: "leased",
+        idempotencyKey: "matter-001:summary-ready:v1",
+        startedAt: createdAt,
+        metadata: {},
+      }),
+    ).rejects.toThrow("Connector outbox connector-outbox-1 was not found");
   });
 });
 

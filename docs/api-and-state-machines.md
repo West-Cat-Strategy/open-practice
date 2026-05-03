@@ -109,10 +109,10 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/calendar/credentials`                                                  | Creates a current-user CalDAV app password and returns the generated password only once.                                                                               |
 | `POST /api/calendar/credentials/:id/revoke`                                       | Revokes a current-user CalDAV app password and records audit evidence.                                                                                                 |
 | `GET /api/jobs`                                                                   | Firm-scoped PostgreSQL job lifecycle projection, redacted run summaries, queue status, and queue names; Redis internals are not exposed.                               |
-| `GET /api/jobs/:jobId`                                                            | Firm-scoped redacted job-run detail with terminal/retryable state, retry timing, error summary, target resource IDs, and safe metadata only.                           |
+| `GET /api/jobs/:jobId`                                                            | Firm-scoped redacted job-run detail with terminal/retryable state, retry timing, generic error summary, target resource IDs, and safe metadata only.                   |
 | `GET /api/connectors?type=&status=`                                               | Owner/auditor-visible connector registry records with type, key, status, redacted secret-reference metadata, and operational config summaries only.                    |
 | `POST /api/connectors`                                                            | Creates a firm-scoped provider-neutral connector registry record without accepting raw credential fields.                                                              |
-| `GET /api/connectors/outbox?connectorId=&status=`                                 | Firm-scoped connector outbox summaries with idempotency keys, retry counters, next-attempt timestamps, lease summaries, and redacted payload summaries.                |
+| `GET /api/connectors/outbox?connectorId=&status=`                                 | Firm-scoped connector outbox summaries with idempotency-key presence, retry counters, next-attempt timestamps, lease presence, and redacted payload summaries.         |
 | `POST /api/connectors/outbox`                                                     | Creates or returns an idempotent provider-neutral connector outbox row for a registered connector without emitting provider-specific webhooks.                         |
 | `GET /api/email/status`                                                           | SMTP provider status from firm provider settings.                                                                                                                      |
 | `POST /api/email/previews`                                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                                                                                    |
@@ -266,7 +266,7 @@ remain historical records and are rejected by embedded event routes.
 
 Conversation threads are non-real-time matter-scoped topic records. The first slice stores topic,
 status, retention boundary, export state, access-revocation timestamp, notification boundary,
-creator/updater IDs, timestamps, and provider-neutral metadata behind `conversation_thread`
+creator/updater IDs, timestamps, and server-owned operational metadata behind `conversation_thread`
 authorization. Create/list/read routes never accept or return message bodies, connector delivery
 attempts, webhook payloads, raw notification content, or public tokens. Create audit events include
 only thread ID, matter ID, status, retention/export/notification boundary state, and access-revoked
@@ -407,6 +407,7 @@ retry counts, error summary, timestamps, and routing metadata. Redis/BullMQ deli
 attempts, but the API exposes only the PostgreSQL projection. `GET /api/jobs` adds queue summaries,
 and `GET /api/jobs/:jobId` returns redacted run details for terminal state, failed-step/error
 context, retry/next-attempt hints, and metadata keys that are safe for operators.
+Error summaries are generic; privileged worker/provider diagnostics stay in server-side logs.
 `GET /api/document-processing/status` and `GET /api/document-processing/workbench?matterId=` reuse
 the same redacted summaries for OCR/document-processing workbench state, including provider-disabled
 and queue-unconfigured cases. Job metadata must not carry email bodies, portal tokens, generated
@@ -418,8 +419,9 @@ Connectors are firm-scoped, provider-neutral registry records. The first slice s
 type, key, display name, status, optional secret-reference metadata, and redacted operational config
 summaries; it never stores or returns raw credentials. Connector outbox rows are durable records with
 an idempotency key, payload summary, status, max attempts, attempt count, next-attempt timestamp,
-and optional lease/error summary fields. Creating an outbox row is idempotent by firm and
-idempotency key. This slice does not emit outbound webhooks, validate destination URLs, sign
+and optional lease/error summary fields, but route responses expose idempotency-key and lease
+presence rather than raw values. Creating an outbox row is idempotent by firm and idempotency key.
+This slice does not emit outbound webhooks, validate destination URLs, sign
 payloads, or implement provider-specific worker delivery; those guardrails remain separate from the
 registry/outbox foundation.
 

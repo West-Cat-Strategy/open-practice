@@ -80,6 +80,8 @@ const connectorOutboxCreateBodySchema = z
 
 const sensitiveKeyPattern =
   /(api[_-]?key|authorization|bearer|credential|password|private[_-]?key|secret|token)/i;
+const sensitiveValuePattern =
+  /(bearer\s+[a-z0-9._~+/=-]+|secret:\/\/|token=|api[_-]?key|credential|password|private[_-]?key|storage[_-]?key|matters\/|generated\/)/i;
 
 function assertConnectorAccess(
   context: ApiAuthContext,
@@ -97,8 +99,15 @@ function containsSensitiveConfigKey(value: unknown): boolean {
   );
 }
 
+function containsSensitiveSummaryValue(value: unknown): boolean {
+  if (typeof value === "string") return sensitiveValuePattern.test(value);
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some(containsSensitiveSummaryValue);
+  return Object.values(value as Record<string, unknown>).some(containsSensitiveSummaryValue);
+}
+
 function assertRedactedSummary(summary: Record<string, unknown>, field: string): void {
-  if (!containsSensitiveConfigKey(summary)) return;
+  if (!containsSensitiveConfigKey(summary) && !containsSensitiveSummaryValue(summary)) return;
   throw new ApiHttpError(
     400,
     "CONNECTOR_SECRET_SUMMARY_REJECTED",
@@ -109,7 +118,6 @@ function assertRedactedSummary(summary: Record<string, unknown>, field: string):
 function serializeSecretReference(reference: ConnectorSecretReference | undefined) {
   if (!reference) return undefined;
   return {
-    id: reference.id,
     label: reference.label,
     version: reference.version,
     lastRotatedAt: reference.lastRotatedAt,
@@ -138,13 +146,13 @@ function serializeOutbox(outbox: ConnectorOutboxRecord) {
     eventType: outbox.eventType,
     resourceType: outbox.resourceType,
     resourceId: outbox.resourceId,
-    idempotencyKey: outbox.idempotencyKey,
+    idempotencyKeyPresent: Boolean(outbox.idempotencyKey),
     status: outbox.status,
     payloadSummary: outbox.payloadSummary,
     attemptCount: outbox.attemptCount,
     maxAttempts: outbox.maxAttempts,
     nextAttemptAt: outbox.nextAttemptAt,
-    leaseId: outbox.leaseId,
+    leasePresent: Boolean(outbox.leaseId),
     leasedUntil: outbox.leasedUntil,
     deliveredAt: outbox.deliveredAt,
     deadLetteredAt: outbox.deadLetteredAt,

@@ -298,7 +298,6 @@ describe("intake routes", () => {
       },
       documents: [
         expect.objectContaining({
-          firmId: "firm-west-legal",
           matterId: "matter-001",
           intakeSessionId: "intake-session-001",
           provider: "embedded",
@@ -307,12 +306,9 @@ describe("intake routes", () => {
           packageDocumentId: "repair_notice_letter",
           externalId:
             "embedded:embedded:intake-session-001:repair_notice_package:repair_notice_letter",
-          evidence: expect.objectContaining({
-            mode: "embedded",
-            requestedBy: "route-test",
-            packageId: "repair_notice_package",
-            packageDocumentId: "repair_notice_letter",
-          }),
+          evidenceSummary: expect.objectContaining({ present: true }),
+          storageKeyPresent: false,
+          checksumPresent: false,
         }),
         expect.objectContaining({
           title: "Client instruction summary",
@@ -324,6 +320,10 @@ describe("intake routes", () => {
         reason: "not_configured",
       },
     });
+    expect(JSON.stringify(response.json().documents)).not.toContain("route-test");
+    expect(response.json().documents[0]).not.toHaveProperty("storageKey");
+    expect(response.json().documents[0]).not.toHaveProperty("checksumSha256");
+    expect(response.json().documents[0]).not.toHaveProperty("evidence");
     const audit = await repository.listAuditEvents("firm-west-legal");
     const packageAudit = audit.events.find((event) => event.action === "intake.package.generated");
     expect(packageAudit?.metadata).toMatchObject({
@@ -409,16 +409,18 @@ describe("intake routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      firmId: "firm-west-legal",
       matterId: "matter-001",
       intakeSessionId: "intake-session-001",
       provider: "embedded",
       title: "Embedded notice package",
       documentId: "doc-generated-001",
-      storageKey: "generated/embedded-notice-package.pdf",
-      checksumSha256: "a".repeat(64),
-      evidence: expect.objectContaining({ mode: "embedded", requestedBy: "route-test" }),
+      evidenceSummary: expect.objectContaining({ present: true }),
+      storageKeyPresent: true,
+      checksumPresent: true,
     });
+    expect(response.json()).not.toHaveProperty("storageKey");
+    expect(response.json()).not.toHaveProperty("checksumSha256");
+    expect(response.json()).not.toHaveProperty("evidence");
     await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
       events: expect.arrayContaining([
         expect.objectContaining({

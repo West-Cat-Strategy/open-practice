@@ -830,8 +830,11 @@ describe("API auth and persistence boundaries", () => {
     expect(generated.statusCode).toBe(200);
     expect(generated.json()).toMatchObject({
       provider: "embedded",
-      storageKey: "generated/embedded-notice-package.pdf",
+      storageKeyPresent: true,
+      checksumPresent: true,
     });
+    expect(generated.json()).not.toHaveProperty("storageKey");
+    expect(generated.json()).not.toHaveProperty("checksumSha256");
   });
 
   it("enforces matter access on answer snapshots", async () => {
