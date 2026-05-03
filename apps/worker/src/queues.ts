@@ -93,6 +93,7 @@ const allowedJobMetadataKeys = new Set([
   "emailId",
   "firmId",
   "inboundMessageId",
+  "idempotencyKeyPresent",
   "jobId",
   "language",
   "matterId",
@@ -137,6 +138,7 @@ export function createQueuedJobLifecycleRecord(input: {
   queueName: OpenPracticeQueueName;
   jobName: string;
   bullJobId?: string;
+  idempotencyKey?: string;
   targetResourceType?: string;
   targetResourceId?: string;
   maxAttempts?: number;
@@ -149,6 +151,7 @@ export function createQueuedJobLifecycleRecord(input: {
     queueName: input.queueName,
     jobName: input.jobName,
     bullJobId: input.bullJobId,
+    idempotencyKey: input.idempotencyKey,
     status: "queued",
     targetResourceType: input.targetResourceType,
     targetResourceId: input.targetResourceId,

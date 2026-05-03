@@ -7,6 +7,11 @@ import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
 import {
+  buildIdempotencyKey,
+  idempotencyMetadata,
+  rethrowIdempotencyConflict,
+} from "./idempotency.js";
+import {
   EMAIL_JOB_MAX_ATTEMPTS,
   queueRouteEmailOutbox,
   summarizeQueuedRouteEmail,
@@ -40,6 +45,7 @@ const emailRetryParamsSchema = z.object({
 
 const emailRetryBodySchema = z.object({
   matterId: z.string().min(1).optional(),
+  idempotencyKey: z.string().min(8).max(180).optional(),
 });
 
 const emailOutboxBodySchema = z
@@ -55,6 +61,7 @@ const emailOutboxBodySchema = z
     textBody: z.string().default(""),
     relatedResourceType: relatedResourceTypeSchema.optional(),
     relatedResourceId: z.string().min(1).optional(),
+    idempotencyKey: z.string().min(8).max(180).optional(),
     metadata: z
       .object({
         correlationId: z.string().min(1).max(128).optional(),
@@ -276,6 +283,7 @@ export function registerEmailRoutes(
       textBody: body.textBody,
       relatedResourceType: body.relatedResourceType,
       relatedResourceId: body.relatedResourceId,
+      idempotencyKey: body.idempotencyKey,
       metadata: body.metadata,
       source: "api.mail_outbox",
       required: true,
@@ -294,6 +302,7 @@ export function registerEmailRoutes(
         relatedResourceId: queued.email.relatedResourceId,
         attemptCount: queued.email.attemptCount,
         queuedAt: queued.email.queuedAt,
+        idempotencyKeyPresent: Boolean(queued.email.idempotencyKey),
       },
       event: {
         id: queued.event.id,
@@ -307,6 +316,7 @@ export function registerEmailRoutes(
         status: queued.job.status,
         targetResourceType: queued.job.targetResourceType,
         targetResourceId: queued.job.targetResourceId,
+        idempotencyKeyPresent: Boolean(queued.job.idempotencyKey),
       },
     };
   });
@@ -347,7 +357,26 @@ export function registerEmailRoutes(
     const now = new Date().toISOString();
     const jobId = crypto.randomUUID();
     const recipientCount = email.to.length + email.cc.length + email.bcc.length;
+    const idempotencyKey = buildIdempotencyKey({
+      scope: "email_retry",
+      firmId: request.auth.firmId,
+      matterId,
+      resourceType: "email_outbox",
+      resourceId: email.id,
+      action: "api.mail_outbox.retry",
+      providerOrTemplate: email.templateKey,
+      clientKey: body.idempotencyKey,
+    });
+    const fingerprint = idempotencyMetadata({
+      emailId: email.id,
+      matterId,
+      provider: enabledProvider.key,
+      templateKey: email.templateKey,
+      previousStatus: email.status,
+      recipientCount,
+    });
     const jobMetadata = {
+      ...fingerprint,
       emailId: email.id,
       matterId,
       provider: enabledProvider.key,
@@ -357,64 +386,73 @@ export function registerEmailRoutes(
       relatedResourceType: email.relatedResourceType,
       relatedResourceId: email.relatedResourceId,
     };
-    const retried = await repository.retryEmailOutbox({
-      firmId: request.auth.firmId,
-      emailId: email.id,
-      occurredAt: now,
-      requestedByUserId: request.auth.user.id,
-      metadata: {
-        matterId,
-        provider: enabledProvider.key,
-        templateKey: email.templateKey,
-        previousStatus: email.status,
-      },
-      job: {
-        id: jobId,
+    let retried: Awaited<ReturnType<typeof repository.retryEmailOutbox>>;
+    try {
+      retried = await repository.retryEmailOutbox({
         firmId: request.auth.firmId,
-        queueName: "email",
-        jobName: "send_email",
-        status: "queued",
-        targetResourceType: "email_outbox",
-        targetResourceId: email.id,
-        attemptsMade: 0,
-        maxAttempts: EMAIL_JOB_MAX_ATTEMPTS,
-        queuedAt: now,
-        metadata: jobMetadata,
-      },
-    });
-    const bullJob = await emailJobQueue.add(
-      "send_email",
-      {
-        firmId: request.auth.firmId,
+        emailId: email.id,
+        occurredAt: now,
+        requestedByUserId: request.auth.user.id,
+        metadata: {
+          ...fingerprint,
+          matterId,
+          provider: enabledProvider.key,
+          templateKey: email.templateKey,
+          previousStatus: email.status,
+        },
+        job: {
+          id: jobId,
+          firmId: request.auth.firmId,
+          queueName: "email",
+          jobName: "send_email",
+          status: "queued",
+          targetResourceType: "email_outbox",
+          targetResourceId: email.id,
+          idempotencyKey,
+          attemptsMade: 0,
+          maxAttempts: EMAIL_JOB_MAX_ATTEMPTS,
+          queuedAt: now,
+          metadata: jobMetadata,
+        },
+      });
+    } catch (error) {
+      rethrowIdempotencyConflict(error);
+    }
+    const created = retried.job.id === jobId;
+    const updatedJob = created
+      ? await repository.updateJobLifecycleRecord(request.auth.firmId, retried.job.id, {
+          bullJobId: (
+            await emailJobQueue.add(
+              "send_email",
+              {
+                firmId: request.auth.firmId,
+                resourceType: "email_outbox",
+                resourceId: email.id,
+                metadata: { ...jobMetadata, idempotencyKeyPresent: true },
+              },
+              { jobId },
+            )
+          ).id?.toString(),
+        })
+      : retried.job;
+
+    if (created)
+      await appendRouteAuditEvent(repository, request.auth, {
+        action: "email_outbox.manual_retry",
         resourceType: "email_outbox",
         resourceId: email.id,
-        metadata: jobMetadata,
-      },
-      { jobId },
-    );
-    const updatedJob = await repository.updateJobLifecycleRecord(
-      request.auth.firmId,
-      retried.job.id,
-      {
-        bullJobId: bullJob.id === undefined ? undefined : String(bullJob.id),
-      },
-    );
-
-    await appendRouteAuditEvent(repository, request.auth, {
-      action: "email_outbox.manual_retry",
-      resourceType: "email_outbox",
-      resourceId: email.id,
-      occurredAt: now,
-      metadata: {
-        matterId,
-        provider: enabledProvider.key,
-        templateKey: email.templateKey,
-        recipientCount,
-        previousStatus: email.status,
-        jobId: updatedJob.id,
-        bullJobId: updatedJob.bullJobId,
-      },
-    });
+        occurredAt: now,
+        metadata: {
+          matterId,
+          provider: enabledProvider.key,
+          templateKey: email.templateKey,
+          recipientCount,
+          previousStatus: email.status,
+          jobId: updatedJob.id,
+          bullJobId: updatedJob.bullJobId,
+          idempotencyKeyPresent: true,
+        },
+      });
 
     reply.code(202);
     return {
@@ -430,6 +468,7 @@ export function registerEmailRoutes(
         status: updatedJob.status,
         targetResourceType: updatedJob.targetResourceType,
         targetResourceId: updatedJob.targetResourceId,
+        idempotencyKeyPresent: Boolean(updatedJob.idempotencyKey),
       },
     };
   });

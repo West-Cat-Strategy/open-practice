@@ -213,6 +213,17 @@ describe("connector routes", () => {
     });
     expect(listed.statusCode).toBe(200);
     expect(listed.json().outbox).toHaveLength(1);
+
+    const conflict = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox",
+      payload: {
+        ...payload,
+        payloadSummary: { matterId: "matter-001", fieldCount: 4 },
+      },
+    });
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({ code: "IDEMPOTENCY_KEY_CONFLICT" });
   });
 
   it("limits connector writes to owner admins", async () => {

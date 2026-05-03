@@ -13,6 +13,11 @@ import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import {
+  buildIdempotencyKey,
+  idempotencyMetadata,
+  rethrowIdempotencyConflict,
+} from "./idempotency.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
@@ -41,6 +46,7 @@ const createExternalUploadBodySchema = z.object({
   expiresAt: z.string().datetime({ offset: true }).optional(),
   maxUploads: z.coerce.number().int().positive().default(1),
   notificationEmail: z.string().email().optional(),
+  idempotencyKey: z.string().min(8).max(180).optional(),
 });
 
 const externalUploadIdParamsSchema = z.object({ id: z.string().min(1) });
@@ -147,6 +153,7 @@ function serializeLink(link: ExternalUploadLinkRecord): Record<string, unknown> 
     expiresAt: link.expiresAt,
     maxUploads: link.maxUploads,
     usedUploads: link.usedUploads,
+    idempotencyKeyPresent: Boolean(link.idempotencyKey),
     createdAt: link.createdAt,
     revokedAt: link.revokedAt,
     status: linkStatus(link),
@@ -413,50 +420,78 @@ export function registerExternalUploadRoutes(
 
     const linkId = crypto.randomUUID();
     const token = createSessionToken();
-    const link = await externalUploadRepository.createExternalUploadLink({
-      id: linkId,
-      firmId: request.auth.firmId,
-      matterId: body.matterId,
-      tokenHash: hashToken(token, signingSecret),
-      requestedByUserId: request.auth.user.id,
-      expiresAt,
-      maxUploads: body.maxUploads,
-      usedUploads: 0,
-      createdAt: now.toISOString(),
-    });
-    await repository.appendAuditEvent({
-      id: crypto.randomUUID(),
-      firmId: request.auth.firmId,
-      actorId: request.auth.user.id,
-      action: "external_upload.created",
-      resourceType: "external_upload",
-      resourceId: link.id,
-      occurredAt: now.toISOString(),
-      metadata: {
-        matterId: link.matterId,
-        expiresAt: link.expiresAt,
-        maxUploads: link.maxUploads,
-      },
-    });
-    const queuedEmail = body.notificationEmail
-      ? await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
+    const idempotencyKey = body.idempotencyKey?.trim();
+    let link: ExternalUploadLinkRecord;
+    try {
+      link = await externalUploadRepository.createExternalUploadLink({
+        id: linkId,
+        firmId: request.auth.firmId,
+        matterId: body.matterId,
+        tokenHash: hashToken(token, signingSecret),
+        idempotencyKey,
+        requestedByUserId: request.auth.user.id,
+        expiresAt,
+        maxUploads: body.maxUploads,
+        usedUploads: 0,
+        createdAt: now.toISOString(),
+      });
+    } catch (error) {
+      rethrowIdempotencyConflict(error);
+    }
+    const created = link.id === linkId;
+    if (created)
+      await repository.appendAuditEvent({
+        id: crypto.randomUUID(),
+        firmId: request.auth.firmId,
+        actorId: request.auth.user.id,
+        action: "external_upload.created",
+        resourceType: "external_upload",
+        resourceId: link.id,
+        occurredAt: now.toISOString(),
+        metadata: {
           matterId: link.matterId,
-          templateKey: "external_upload.created",
-          to: [body.notificationEmail],
-          subject: "Document upload link",
-          textBody: `A document upload link is available. Upload token: ${token}`,
-          relatedResourceType: "external_upload",
-          relatedResourceId: link.id,
-          metadata: {
-            expiresAt: link.expiresAt,
-            maxUploads: link.maxUploads,
-          },
-        })
-      : undefined;
+          expiresAt: link.expiresAt,
+          maxUploads: link.maxUploads,
+          idempotencyKeyPresent: true,
+        },
+      });
+    const queuedEmail =
+      created && body.notificationEmail
+        ? await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
+            matterId: link.matterId,
+            templateKey: "external_upload.created",
+            to: [body.notificationEmail],
+            subject: "Document upload link",
+            textBody: `A document upload link is available. Upload token: ${token}`,
+            relatedResourceType: "external_upload",
+            relatedResourceId: link.id,
+            idempotencyKey: buildIdempotencyKey({
+              scope: "email",
+              firmId: request.auth.firmId,
+              matterId: link.matterId,
+              resourceType: "external_upload",
+              resourceId: link.id,
+              action: "external_upload.created",
+              providerOrTemplate: "external_upload.created",
+            }),
+            metadata: {
+              ...idempotencyMetadata({
+                externalUploadLinkId: link.id,
+                matterId: link.matterId,
+                expiresAt: link.expiresAt,
+                maxUploads: link.maxUploads,
+                notificationEmailPresent: true,
+              }),
+              expiresAt: link.expiresAt,
+              maxUploads: link.maxUploads,
+            },
+          })
+        : undefined;
 
     return {
       upload: serializeLink(link),
-      token,
+      token: created ? token : undefined,
+      created,
       queuedEmail: summarizeQueuedRouteEmail(queuedEmail),
     };
   });

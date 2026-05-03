@@ -197,14 +197,14 @@ describe("document processing routes", () => {
           id: payload.job.id,
           status: "queued",
           bullJobId: payload.job.id,
-          metadata: {
+          metadata: expect.objectContaining({
             matterId: "matter-001",
             documentId: "doc-001",
             task: "ocr",
             language: "eng",
             checksumStatus: "verified",
             scanStatus: "passed",
-          },
+          }),
         }),
       ]),
     );
@@ -482,6 +482,32 @@ describe("document processing routes", () => {
         metadata: expect.objectContaining({ checksumStatus: "duplicate" }),
       }),
     );
+  });
+
+  it("replays OCR queue requests for the same document without adding duplicate jobs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { queue, jobs } = fakeOcrQueue();
+    const server = testServer({ repository, ocrJobQueue: queue });
+
+    const first = await server.inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/queue",
+      payload: { language: "eng" },
+    });
+    const replay = await server.inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/queue",
+      payload: { language: "eng" },
+    });
+
+    expect(first.statusCode).toBe(202);
+    expect(replay.statusCode).toBe(202);
+    expect(replay.json().job.id).toBe(first.json().job.id);
+    expect(replay.json().job.idempotencyKeyPresent).toBe(true);
+    expect(jobs).toHaveLength(1);
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "ocr" }),
+    ).resolves.toHaveLength(1);
   });
 
   it("rejects cross-matter and unverified document processing", async () => {

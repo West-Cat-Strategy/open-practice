@@ -239,6 +239,65 @@ describe("external upload routes", () => {
     });
   });
 
+  it("replays external upload creation without returning another raw token or notification job", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableSmtp(repository);
+    const queuedJobs: string[] = [];
+    const replayEmailQueue = {
+      async add(_name: string, _data: unknown, options?: { jobId?: string }) {
+        queuedJobs.push(options?.jobId ?? "email-job-test");
+        return { id: options?.jobId ?? "email-job-test" };
+      },
+    };
+    const { server } = testServer({
+      repository,
+      s3: s3Config(),
+      emailJobQueue: replayEmailQueue,
+    });
+    const payload = {
+      matterId: "matter-001",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      maxUploads: 2,
+      notificationEmail: "client@example.test",
+      idempotencyKey: "external-upload-replay-key",
+    };
+
+    const first = await server.inject({ method: "POST", url: "/api/external-uploads", payload });
+    const replay = await server.inject({ method: "POST", url: "/api/external-uploads", payload });
+
+    expect(first.statusCode).toBe(200);
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().upload.id).toBe(first.json().upload.id);
+    expect(first.json().token).toEqual(expect.any(String));
+    expect(replay.json()).not.toHaveProperty("token");
+    expect(replay.json()).toMatchObject({ created: false });
+    expect(replay.json()).not.toHaveProperty("queuedEmail");
+    expect(queuedJobs).toHaveLength(1);
+    await expect(
+      repository.listExternalUploadLinks("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("rejects external upload idempotency key reuse with changed payload", async () => {
+    const { server } = testServer({ s3: s3Config() });
+    const payload = {
+      matterId: "matter-001",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      maxUploads: 2,
+      idempotencyKey: "external-upload-conflict-key",
+    };
+
+    await server.inject({ method: "POST", url: "/api/external-uploads", payload });
+    const conflict = await server.inject({
+      method: "POST",
+      url: "/api/external-uploads",
+      payload: { ...payload, maxUploads: 3 },
+    });
+
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({ code: "IDEMPOTENCY_KEY_CONFLICT" });
+  });
+
   it("enforces matter scope before creating links", async () => {
     const { server } = testServer({ s3: s3Config() });
 

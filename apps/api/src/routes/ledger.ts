@@ -8,6 +8,7 @@ import type {
 } from "@open-practice/domain";
 import { ledgerControlsDiagnostics } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
+import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
@@ -162,7 +163,22 @@ export function registerLedgerRoutes(
       user: request.auth.user,
       transaction,
     });
-    const posted = await repository.postLedgerTransaction(transaction);
+    let posted: Awaited<ReturnType<typeof repository.postLedgerTransaction>>;
+    try {
+      posted = await repository.postLedgerTransaction(transaction);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "Idempotency key was reused with a different ledger payload"
+      ) {
+        throw new ApiHttpError(
+          409,
+          "IDEMPOTENCY_KEY_CONFLICT",
+          "Idempotency key was reused with a different payload",
+        );
+      }
+      throw error;
+    }
     await appendRouteAuditEvent(repository, request.auth, {
       action: "ledger.transaction.posted",
       resourceType: "ledger_transaction",

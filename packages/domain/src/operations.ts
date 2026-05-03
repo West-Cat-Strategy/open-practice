@@ -69,6 +69,7 @@ export interface JobLifecycleRecord {
   queueName: OpenPracticeQueueName;
   jobName: string;
   bullJobId?: string;
+  idempotencyKey?: string;
   status: OpenPracticeJobStatus;
   targetResourceType?: string;
   targetResourceId?: string;
@@ -133,6 +134,7 @@ export interface EmailOutboxRecord {
   id: string;
   firmId: string;
   matterId: string;
+  idempotencyKey?: string;
   templateKey: string;
   status: "queued" | "sending" | "sent" | "failed" | "cancelled";
   to: string[];
@@ -305,6 +307,7 @@ export interface ExternalUploadLinkRecord {
   firmId: string;
   matterId: string;
   tokenHash: string;
+  idempotencyKey?: string;
   requestedByUserId: string;
   expiresAt: string;
   maxUploads: number;

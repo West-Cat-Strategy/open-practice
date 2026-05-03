@@ -367,6 +367,45 @@ describe("ledger routes", () => {
     });
   });
 
+  it("returns existing ledger transactions on replay and rejects conflicting key reuse", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const payload = ledgerTransactionPayload({
+      id: "ledger-route-replay",
+      idempotencyKey: "ledger-route-replay-key",
+    });
+
+    const first = await testServer({ repository }).inject({
+      method: "POST",
+      url: "/api/ledger/transactions",
+      payload,
+    });
+    const replay = await testServer({ repository }).inject({
+      method: "POST",
+      url: "/api/ledger/transactions",
+      payload: { ...payload, id: "ledger-route-replay-duplicate" },
+    });
+    const conflict = await testServer({ repository }).inject({
+      method: "POST",
+      url: "/api/ledger/transactions",
+      payload: {
+        ...payload,
+        id: "ledger-route-replay-conflict",
+        entries: payload.entries.map((entry, index) =>
+          index === 0 ? { ...entry, memo: "Changed memo" } : entry,
+        ),
+      },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().id).toBe("ledger-route-replay");
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Idempotency key was reused with a different payload",
+    });
+  });
+
   it("rejects ledger client and matter scope mismatches", async () => {
     const response = await testServer().inject({
       method: "POST",

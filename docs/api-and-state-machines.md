@@ -116,7 +116,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/connectors/outbox`                                                     | Creates or returns an idempotent provider-neutral connector outbox row for a registered connector without emitting provider-specific webhooks.                         |
 | `GET /api/email/status`                                                           | SMTP provider status from firm provider settings.                                                                                                                      |
 | `POST /api/email/previews`                                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                                                                                    |
-| `POST /api/mail/outbox`                                                           | Create a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.                                                          |
+| `POST /api/mail/outbox`                                                           | Create or replay a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.                                                |
 | `GET /api/mail/outbox?matterId=`                                                  | Matter-scoped outbound email delivery history without message bodies.                                                                                                  |
 | `POST /api/mail/outbox/:emailId/retry`                                            | Manually requeues a failed matter-scoped outbound email with redacted job and audit metadata.                                                                          |
 | `POST /api/outbound-webhooks/test-deliveries`                                     | Provider-neutral outbound-webhook guardrail preview and test-delivery simulation with HTTPS destination validation, event allowlist, signing metadata, and audit.      |
@@ -254,6 +254,15 @@ decisions update only review status, decision/reason fields, reviewer IDs, times
 operational metadata; `discard` is a preserved state rather than a destructive delete. Review
 transitions append audit events and access-log entries with IDs, status, decision, reason, and
 duplicate pointers only.
+
+Idempotent workflow actions use firm-scoped replay keys. Client-provided keys are accepted where a
+route exposes `idempotencyKey`; otherwise internal job/outbox helpers derive stable keys from firm,
+matter, resource, action, and provider/template scope. Replaying the same key with the same safe
+fingerprint returns the existing durable record and does not enqueue another BullMQ job or append a
+duplicate audit event. Reusing a key with a different safe fingerprint returns
+`409 IDEMPOTENCY_KEY_CONFLICT`. Generated idempotency keys are stored for replay, but route
+responses expose only `idempotencyKeyPresent` unless the route already returns a caller-provided
+business key such as trust ledger `idempotencyKey`.
 
 Signature requests use provider statuses `draft`, `pending_provider_submission`, `sent`, `viewed`,
 `completed`, `declined`, and `provider_error`. Creating a request records the provider submission,
@@ -403,10 +412,11 @@ review queues, summaries, or future enforcement.
 
 Worker jobs use `queued`, `active`, `completed`, `failed`, `dead_letter`, and `skipped`.
 PostgreSQL stores the durable job lifecycle record, queue name, BullMQ job ID, target resource,
-retry counts, error summary, timestamps, and routing metadata. Redis/BullMQ delivers work and retry
-attempts, but the API exposes only the PostgreSQL projection. `GET /api/jobs` adds queue summaries,
-and `GET /api/jobs/:jobId` returns redacted run details for terminal state, failed-step/error
-context, retry/next-attempt hints, and metadata keys that are safe for operators.
+firm-scoped idempotency key, retry counts, error summary, timestamps, and routing metadata.
+Redis/BullMQ delivers work and retry attempts, but the API exposes only the PostgreSQL projection.
+`GET /api/jobs` adds queue summaries, and `GET /api/jobs/:jobId` returns redacted run details for
+terminal state, failed-step/error context, retry/next-attempt hints, idempotency-key presence, and
+metadata keys that are safe for operators.
 Error summaries are generic; privileged worker/provider diagnostics stay in server-side logs.
 `GET /api/document-processing/status` and `GET /api/document-processing/workbench?matterId=` reuse
 the same redacted summaries for OCR/document-processing workbench state, including provider-disabled
@@ -421,6 +431,8 @@ summaries; it never stores or returns raw credentials. Connector outbox rows are
 an idempotency key, payload summary, status, max attempts, attempt count, next-attempt timestamp,
 and optional lease/error summary fields, but route responses expose idempotency-key and lease
 presence rather than raw values. Creating an outbox row is idempotent by firm and idempotency key.
+Matching replays return the existing outbox row; conflicting replays return
+`IDEMPOTENCY_KEY_CONFLICT`.
 This slice does not emit outbound webhooks, validate destination URLs, sign
 payloads, or implement provider-specific worker delivery; those guardrails remain separate from the
 registry/outbox foundation.
@@ -434,6 +446,10 @@ references only; email bodies stay in the outbox record rather than job or audit
 worker reads message bodies from the outbox record, marks delivery `sent` or `failed`, appends
 provider result events, and advances the matching job lifecycle row to `active`, terminal success,
 retry failure, dead letter, or skipped status.
+Email outbox records and retry jobs store firm-scoped idempotency keys. Replaying a matching
+outbox or retry request returns the existing email/job projection without requeueing; changed safe
+payload fields such as recipients, subject, template, related resource, provider, or retry target
+conflict. Message bodies are not copied into idempotency metadata.
 Signature, intake, share-link, external-upload, and calendar-invitation flows reuse the same outbox
 helper; share and external-upload notification emails are create-time only because raw tokens are not
 recoverable after the response. Calendar attendees are stored as matter-scoped event children with

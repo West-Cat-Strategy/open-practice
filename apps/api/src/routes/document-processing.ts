@@ -12,6 +12,11 @@ import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
 import {
+  buildIdempotencyKey,
+  idempotencyMetadata,
+  rethrowIdempotencyConflict,
+} from "./idempotency.js";
+import {
   documentProcessingProviderKinds,
   documentProcessingQueueNames,
   providerStatus,
@@ -69,6 +74,7 @@ export interface QueueDocumentOcrResult {
     targetResourceId: string;
     queuedAt: string;
     language: string;
+    idempotencyKeyPresent: boolean;
   };
 }
 
@@ -233,52 +239,75 @@ export async function queueDocumentOcr(
     checksumStatus: document.checksumStatus,
     scanStatus: document.scanStatus,
   };
-  const job = await repository.createJobLifecycleRecord({
-    id: jobId,
+  const idempotencyKey = buildIdempotencyKey({
+    scope: "job",
     firmId: auth.firmId,
-    queueName: "ocr",
-    jobName: "extract_document_text",
-    status: "queued",
-    targetResourceType: "document",
-    targetResourceId: document.id,
-    attemptsMade: 0,
-    maxAttempts: 3,
-    queuedAt: now,
-    metadata,
-  });
-  const bullJob = await ocrJobQueue.add(
-    "extract_document_text",
-    {
-      firmId: auth.firmId,
-      resourceType: "document",
-      resourceId: document.id,
-      metadata: {
-        ...metadata,
-        jobId,
-      },
-    },
-    { jobId },
-  );
-  const updatedJob = await repository.updateJobLifecycleRecord(auth.firmId, job.id, {
-    bullJobId: bullJob.id === undefined ? undefined : String(bullJob.id),
-  });
-
-  await appendRouteAuditEvent(repository, auth, {
-    action: "document_processing.ocr.queued",
+    matterId: document.matterId,
     resourceType: "document",
     resourceId: document.id,
-    occurredAt: now,
-    metadata: {
-      matterId: document.matterId,
-      documentId: document.id,
-      jobId: updatedJob.id,
-      bullJobId: updatedJob.bullJobId,
-      task: "ocr",
-      language,
-      checksumStatus: document.checksumStatus,
-      scanStatus: document.scanStatus,
-    },
+    action: "document_processing.ocr.queue",
+    providerOrTemplate: language,
   });
+  const fingerprint = idempotencyMetadata(metadata);
+  let job: JobLifecycleRecord;
+  try {
+    job = await repository.createJobLifecycleRecord({
+      id: jobId,
+      firmId: auth.firmId,
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "queued",
+      targetResourceType: "document",
+      targetResourceId: document.id,
+      idempotencyKey,
+      attemptsMade: 0,
+      maxAttempts: 3,
+      queuedAt: now,
+      metadata: { ...metadata, ...fingerprint },
+    });
+  } catch (error) {
+    rethrowIdempotencyConflict(error);
+  }
+  const created = job.id === jobId;
+  const updatedJob = created
+    ? await repository.updateJobLifecycleRecord(auth.firmId, job.id, {
+        bullJobId: (
+          await ocrJobQueue.add(
+            "extract_document_text",
+            {
+              firmId: auth.firmId,
+              resourceType: "document",
+              resourceId: document.id,
+              metadata: {
+                ...metadata,
+                jobId,
+                idempotencyKeyPresent: true,
+              },
+            },
+            { jobId },
+          )
+        ).id?.toString(),
+      })
+    : job;
+
+  if (created)
+    await appendRouteAuditEvent(repository, auth, {
+      action: "document_processing.ocr.queued",
+      resourceType: "document",
+      resourceId: document.id,
+      occurredAt: now,
+      metadata: {
+        matterId: document.matterId,
+        documentId: document.id,
+        jobId: updatedJob.id,
+        bullJobId: updatedJob.bullJobId,
+        idempotencyKeyPresent: true,
+        task: "ocr",
+        language,
+        checksumStatus: document.checksumStatus,
+        scanStatus: document.scanStatus,
+      },
+    });
 
   return {
     status: "queued",
@@ -295,6 +324,7 @@ export async function queueDocumentOcr(
       targetResourceId: document.id,
       queuedAt: updatedJob.queuedAt,
       language,
+      idempotencyKeyPresent: Boolean(updatedJob.idempotencyKey),
     },
   };
 }

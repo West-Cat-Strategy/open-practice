@@ -11,6 +11,7 @@ import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
+import { rethrowIdempotencyConflict } from "./idempotency.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const connectorTypeSchema = z.enum([
@@ -224,22 +225,27 @@ export function registerConnectorRoutes(
       throw new ApiHttpError(404, "CONNECTOR_NOT_FOUND", "Connector was not found");
     }
     const now = new Date().toISOString();
-    const queued = await repository.createConnectorOutbox({
-      id: crypto.randomUUID(),
-      firmId: request.auth.firmId,
-      connectorId: connector.id,
-      eventType: body.eventType,
-      resourceType: body.resourceType,
-      resourceId: body.resourceId,
-      idempotencyKey: body.idempotencyKey,
-      status: "pending",
-      payloadSummary: body.payloadSummary,
-      attemptCount: 0,
-      maxAttempts: body.maxAttempts,
-      nextAttemptAt: body.nextAttemptAt ?? now,
-      createdAt: now,
-      updatedAt: now,
-    });
+    let queued: Awaited<ReturnType<typeof repository.createConnectorOutbox>>;
+    try {
+      queued = await repository.createConnectorOutbox({
+        id: crypto.randomUUID(),
+        firmId: request.auth.firmId,
+        connectorId: connector.id,
+        eventType: body.eventType,
+        resourceType: body.resourceType,
+        resourceId: body.resourceId,
+        idempotencyKey: body.idempotencyKey,
+        status: "pending",
+        payloadSummary: body.payloadSummary,
+        attemptCount: 0,
+        maxAttempts: body.maxAttempts,
+        nextAttemptAt: body.nextAttemptAt ?? now,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } catch (error) {
+      rethrowIdempotencyConflict(error);
+    }
     if (queued.created) {
       await appendRouteAuditEvent(repository, request.auth, {
         action: "connector_outbox.queued",

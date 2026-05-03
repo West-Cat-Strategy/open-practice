@@ -977,6 +977,7 @@ export const externalUploadLinks = pgTable(
       .notNull()
       .references(() => matters.id),
     tokenHash: text("token_hash").notNull(),
+    idempotencyKey: text("idempotency_key"),
     requestedByUserId: text("requested_by_user_id")
       .notNull()
       .references(() => users.id),
@@ -987,6 +988,10 @@ export const externalUploadLinks = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    firmIdempotency: uniqueIndex("external_upload_links_firm_idempotency_idx").on(
+      table.firmId,
+      table.idempotencyKey,
+    ),
     tokenHash: uniqueIndex("external_upload_links_token_hash_idx").on(table.tokenHash),
     matterExpiry: index("external_upload_links_matter_expiry_idx").on(
       table.matterId,
@@ -1207,6 +1212,7 @@ export const jobLifecycleRecords = pgTable(
     queueName: jobQueueName("queue_name").notNull(),
     jobName: text("job_name").notNull(),
     bullJobId: text("bull_job_id"),
+    idempotencyKey: text("idempotency_key"),
     status: jobLifecycleStatus("status").notNull().default("queued"),
     targetResourceType: text("target_resource_type"),
     targetResourceId: text("target_resource_id"),
@@ -1222,6 +1228,10 @@ export const jobLifecycleRecords = pgTable(
   (table) => ({
     firmStatus: index("job_lifecycle_records_firm_status_idx").on(table.firmId, table.status),
     bullJobId: index("job_lifecycle_records_bull_job_id_idx").on(table.bullJobId),
+    firmIdempotency: uniqueIndex("job_lifecycle_records_firm_idempotency_idx").on(
+      table.firmId,
+      table.idempotencyKey,
+    ),
   }),
 );
 
@@ -1235,6 +1245,7 @@ export const emailOutbox = pgTable(
     matterId: text("matter_id")
       .notNull()
       .references(() => matters.id),
+    idempotencyKey: text("idempotency_key"),
     templateKey: text("template_key").notNull(),
     status: text("status").notNull().default("queued"),
     to: jsonb("to_addresses").$type<string[]>().notNull().default([]),
@@ -1257,6 +1268,10 @@ export const emailOutbox = pgTable(
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   },
   (table) => ({
+    firmIdempotency: uniqueIndex("email_outbox_firm_idempotency_idx").on(
+      table.firmId,
+      table.idempotencyKey,
+    ),
     firmStatus: index("email_outbox_firm_status_idx").on(table.firmId, table.status),
     firmMatterQueued: index("email_outbox_firm_matter_queued_idx").on(
       table.firmId,

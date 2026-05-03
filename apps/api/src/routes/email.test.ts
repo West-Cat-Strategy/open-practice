@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
 import { registerEmailRoutes } from "./email.js";
+import type { ApiJobQueue } from "./types.js";
 
 const servers: FastifyInstance[] = [];
 const emailJobQueue = {
@@ -26,13 +27,17 @@ function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001
 function testServer(input: {
   repository: InMemoryOpenPracticeRepository;
   authUser?: User;
+  emailJobQueue?: ApiJobQueue;
 }): FastifyInstance {
   const server = Fastify({ logger: false });
   const authUser = input.authUser ?? user("owner_admin", ["matter-001", "matter-002"]);
   server.addHook("preHandler", async (request) => {
     request.auth = { firmId: authUser.firmId, user: authUser };
   });
-  registerEmailRoutes(server, { repository: input.repository, emailJobQueue });
+  registerEmailRoutes(server, {
+    repository: input.repository,
+    emailJobQueue: input.emailJobQueue ?? emailJobQueue,
+  });
   servers.push(server);
   return server;
 }
@@ -151,6 +156,84 @@ describe("email routes", () => {
         }),
       ]),
     });
+  });
+
+  it("replays matching idempotent outbox requests without queueing duplicate jobs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-mailpit",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "mailpit",
+      enabled: true,
+      encryptedConfig: "local-mailpit-profile",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const jobs: string[] = [];
+    const queue: ApiJobQueue = {
+      async add(_name, _data, options) {
+        jobs.push(options?.jobId ?? "email-job-test");
+        return { id: options?.jobId ?? "email-job-test" };
+      },
+    };
+    const server = testServer({ repository, emailJobQueue: queue });
+    const payload = {
+      matterId: "matter-001",
+      templateKey: "signature.requested",
+      to: ["client@example.test"],
+      subject: "Signature requested",
+      textBody: "Please review the signature request.",
+      relatedResourceType: "signature_request" as const,
+      relatedResourceId: "sig-001",
+      idempotencyKey: "email-route-replay-key",
+    };
+
+    const first = await server.inject({ method: "POST", url: "/api/mail/outbox", payload });
+    const replay = await server.inject({ method: "POST", url: "/api/mail/outbox", payload });
+
+    expect(first.statusCode).toBe(201);
+    expect(replay.statusCode).toBe(201);
+    expect(replay.json().email.id).toBe(first.json().email.id);
+    expect(replay.json().job.id).toBe(first.json().job.id);
+    expect(jobs).toHaveLength(1);
+    await expect(repository.listEmailOutbox("firm-west-legal")).resolves.toHaveLength(1);
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toHaveLength(1);
+  });
+
+  it("rejects idempotent outbox key reuse with changed safe payload", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-mailpit",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "mailpit",
+      enabled: true,
+      encryptedConfig: "local-mailpit-profile",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const server = testServer({ repository });
+    const payload = {
+      matterId: "matter-001",
+      templateKey: "signature.requested",
+      to: ["client@example.test"],
+      subject: "Signature requested",
+      textBody: "Please review the signature request.",
+      relatedResourceType: "signature_request" as const,
+      relatedResourceId: "sig-001",
+      idempotencyKey: "email-route-conflict-key",
+    };
+
+    await server.inject({ method: "POST", url: "/api/mail/outbox", payload });
+    const conflict = await server.inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: { ...payload, subject: "Changed safe subject" },
+    });
+
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({ code: "IDEMPOTENCY_KEY_CONFLICT" });
   });
 
   it("lists redacted matter-scoped delivery history", async () => {

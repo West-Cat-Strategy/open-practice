@@ -219,6 +219,41 @@ export class CalendarEventUidConflictError extends Error {
   }
 }
 
+export class IdempotencyKeyConflictError extends Error {
+  constructor(message = "Idempotency key was reused with a different payload") {
+    super(message);
+    this.name = "IdempotencyKeyConflictError";
+  }
+}
+
+function canonicalizeForIdempotency(value: unknown): string {
+  if (value === null || value === undefined) return "null";
+  if (typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalizeForIdempotency).join(",")}]`;
+  const objectValue = value as Record<string, unknown>;
+  return `{${Object.keys(objectValue)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalizeForIdempotency(objectValue[key])}`)
+    .join(",")}}`;
+}
+
+function idempotencyFingerprint(metadata: Record<string, unknown> | undefined): string | undefined {
+  return typeof metadata?.idempotencyFingerprint === "string"
+    ? metadata.idempotencyFingerprint
+    : undefined;
+}
+
+function assertSameIdempotencyFingerprint(
+  existing: Record<string, unknown> | undefined,
+  incoming: Record<string, unknown> | undefined,
+): void {
+  const existingFingerprint = idempotencyFingerprint(existing);
+  const incomingFingerprint = idempotencyFingerprint(incoming);
+  if (existingFingerprint && incomingFingerprint && existingFingerprint !== incomingFingerprint) {
+    throw new IdempotencyKeyConflictError();
+  }
+}
+
 function isPostgresUniqueViolation(error: unknown, constraintName: string): boolean {
   let current: unknown = error;
   while (current && typeof current === "object") {
@@ -1078,6 +1113,7 @@ function mapJobLifecycleRow(
     queueName: row.queueName,
     jobName: row.jobName,
     bullJobId: row.bullJobId ?? undefined,
+    idempotencyKey: row.idempotencyKey ?? undefined,
     status: row.status,
     targetResourceType: row.targetResourceType ?? undefined,
     targetResourceId: row.targetResourceId ?? undefined,
@@ -1172,6 +1208,7 @@ function mapEmailOutboxRow(row: typeof schema.emailOutbox.$inferSelect): EmailOu
     id: row.id,
     firmId: row.firmId,
     matterId: row.matterId,
+    idempotencyKey: row.idempotencyKey ?? undefined,
     templateKey: row.templateKey,
     status: row.status as EmailOutboxRecord["status"],
     to: row.to,
@@ -1198,6 +1235,7 @@ function mapEmailOutboxRow(row: typeof schema.emailOutbox.$inferSelect): EmailOu
 function emailOutboxInsert(record: EmailOutboxRecord): typeof schema.emailOutbox.$inferInsert {
   return {
     ...record,
+    idempotencyKey: record.idempotencyKey ?? null,
     queuedAt: new Date(record.queuedAt),
     sentAt: record.sentAt ? new Date(record.sentAt) : null,
     failedAt: record.failedAt ? new Date(record.failedAt) : null,
@@ -1247,6 +1285,7 @@ function jobLifecycleInsert(
 ): typeof schema.jobLifecycleRecords.$inferInsert {
   return {
     ...record,
+    idempotencyKey: record.idempotencyKey ?? null,
     queuedAt: new Date(record.queuedAt),
     startedAt: record.startedAt ? new Date(record.startedAt) : null,
     finishedAt: record.finishedAt ? new Date(record.finishedAt) : null,
@@ -1420,6 +1459,7 @@ function mapExternalUploadLinkRow(
     firmId: row.firmId,
     matterId: row.matterId,
     tokenHash: row.tokenHash,
+    idempotencyKey: row.idempotencyKey ?? undefined,
     requestedByUserId: row.requestedByUserId,
     expiresAt: row.expiresAt.toISOString(),
     maxUploads: row.maxUploads,
@@ -1606,6 +1646,7 @@ function externalUploadLinkInsert(
 ): typeof schema.externalUploadLinks.$inferInsert {
   return {
     ...link,
+    idempotencyKey: link.idempotencyKey ?? null,
     expiresAt: new Date(link.expiresAt),
     revokedAt: link.revokedAt ? new Date(link.revokedAt) : null,
     createdAt: new Date(link.createdAt),
@@ -2506,7 +2547,26 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     const existing = this.connectorOutbox.find(
       (outbox) => outbox.firmId === input.firmId && outbox.idempotencyKey === input.idempotencyKey,
     );
-    if (existing) return { outbox: clone(existing), created: false };
+    if (existing) {
+      const existingFingerprint = canonicalizeForIdempotency({
+        connectorId: existing.connectorId,
+        eventType: existing.eventType,
+        resourceType: existing.resourceType,
+        resourceId: existing.resourceId,
+        payloadSummary: existing.payloadSummary,
+        maxAttempts: existing.maxAttempts,
+      });
+      const inputFingerprint = canonicalizeForIdempotency({
+        connectorId: input.connectorId,
+        eventType: input.eventType,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        payloadSummary: input.payloadSummary,
+        maxAttempts: input.maxAttempts,
+      });
+      if (existingFingerprint !== inputFingerprint) throw new IdempotencyKeyConflictError();
+      return { outbox: clone(existing), created: false };
+    }
     const connector = this.connectors.find(
       (candidate) => candidate.firmId === input.firmId && candidate.id === input.connectorId,
     );
@@ -2568,6 +2628,15 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   }
 
   async createJobLifecycleRecord(record: JobLifecycleRecord): Promise<JobLifecycleRecord> {
+    const existing = record.idempotencyKey
+      ? this.jobLifecycleRecords.find(
+          (job) => job.firmId === record.firmId && job.idempotencyKey === record.idempotencyKey,
+        )
+      : undefined;
+    if (existing) {
+      assertSameIdempotencyFingerprint(existing.metadata, record.metadata);
+      return clone(existing);
+    }
     this.jobLifecycleRecords.push(clone(record));
     return clone(record);
   }
@@ -2581,6 +2650,32 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     event: EmailEventRecord;
     job: JobLifecycleRecord;
   }> {
+    const existingEmail = input.email.idempotencyKey
+      ? this.emailOutbox.find(
+          (email) =>
+            email.firmId === input.email.firmId &&
+            email.idempotencyKey === input.email.idempotencyKey,
+        )
+      : undefined;
+    if (existingEmail) {
+      assertSameIdempotencyFingerprint(existingEmail.metadata, input.email.metadata);
+      const existingEvent =
+        this.emailEvents.find(
+          (event) => event.firmId === existingEmail.firmId && event.emailId === existingEmail.id,
+        ) ?? input.event;
+      const existingJob =
+        this.jobLifecycleRecords.find(
+          (job) =>
+            job.firmId === existingEmail.firmId &&
+            job.targetResourceType === "email_outbox" &&
+            job.targetResourceId === existingEmail.id,
+        ) ?? input.job;
+      return {
+        email: clone(existingEmail),
+        event: clone(existingEvent),
+        job: clone(existingJob),
+      };
+    }
     this.emailOutbox.push(clone(input.email));
     this.emailEvents.push(clone(input.event));
     this.jobLifecycleRecords.push(clone(input.job));
@@ -2674,6 +2769,38 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     job: JobLifecycleRecord;
     metadata?: Record<string, unknown>;
   }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord; job: JobLifecycleRecord }> {
+    const existingJob = input.job.idempotencyKey
+      ? this.jobLifecycleRecords.find(
+          (job) =>
+            job.firmId === input.firmId &&
+            job.idempotencyKey === input.job.idempotencyKey &&
+            job.targetResourceType === "email_outbox" &&
+            job.targetResourceId === input.emailId,
+        )
+      : undefined;
+    if (existingJob) {
+      assertSameIdempotencyFingerprint(existingJob.metadata, input.job.metadata);
+      const email = this.emailOutbox.find(
+        (candidate) => candidate.firmId === input.firmId && candidate.id === input.emailId,
+      );
+      if (!email) throw new Error(`Email outbox record ${input.emailId} was not found`);
+      const event = this.emailEvents.find(
+        (candidate) =>
+          candidate.firmId === input.firmId &&
+          candidate.emailId === input.emailId &&
+          candidate.jobId === existingJob.id,
+      ) ?? {
+        id: crypto.randomUUID(),
+        firmId: input.firmId,
+        emailId: input.emailId,
+        eventType: "queued" as const,
+        occurredAt: existingJob.queuedAt,
+        jobId: existingJob.id,
+        source: "api" as const,
+        metadata: input.metadata ?? {},
+      };
+      return { email: clone(email), event: clone(event), job: clone(existingJob) };
+    }
     const index = this.emailOutbox.findIndex(
       (email) => email.firmId === input.firmId && email.id === input.emailId,
     );
@@ -3666,6 +3793,28 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   async createExternalUploadLink(
     link: ExternalUploadLinkRecord,
   ): Promise<ExternalUploadLinkRecord> {
+    const existing = link.idempotencyKey
+      ? this.externalUploadLinks.find(
+          (candidate) =>
+            candidate.firmId === link.firmId && candidate.idempotencyKey === link.idempotencyKey,
+        )
+      : undefined;
+    if (existing) {
+      const existingFingerprint = canonicalizeForIdempotency({
+        matterId: existing.matterId,
+        requestedByUserId: existing.requestedByUserId,
+        maxUploads: existing.maxUploads,
+        expiresAt: existing.expiresAt,
+      });
+      const inputFingerprint = canonicalizeForIdempotency({
+        matterId: link.matterId,
+        requestedByUserId: link.requestedByUserId,
+        maxUploads: link.maxUploads,
+        expiresAt: link.expiresAt,
+      });
+      if (existingFingerprint !== inputFingerprint) throw new IdempotencyKeyConflictError();
+      return clone(existing);
+    }
     if (this.externalUploadLinks.some((existing) => existing.tokenHash === link.tokenHash)) {
       throw new Error("External upload link token hash already exists");
     }
@@ -5002,7 +5151,25 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           ),
         );
       if (!existingRow) throw error;
-      return { outbox: mapConnectorOutboxRow(existingRow), created: false };
+      const existing = mapConnectorOutboxRow(existingRow);
+      const existingFingerprint = canonicalizeForIdempotency({
+        connectorId: existing.connectorId,
+        eventType: existing.eventType,
+        resourceType: existing.resourceType,
+        resourceId: existing.resourceId,
+        payloadSummary: existing.payloadSummary,
+        maxAttempts: existing.maxAttempts,
+      });
+      const inputFingerprint = canonicalizeForIdempotency({
+        connectorId: input.connectorId,
+        eventType: input.eventType,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        payloadSummary: input.payloadSummary,
+        maxAttempts: input.maxAttempts,
+      });
+      if (existingFingerprint !== inputFingerprint) throw new IdempotencyKeyConflictError();
+      return { outbox: existing, created: false };
     }
   }
 
@@ -5067,11 +5234,30 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   }
 
   async createJobLifecycleRecord(record: JobLifecycleRecord): Promise<JobLifecycleRecord> {
-    const [row] = await this.db
-      .insert(schema.jobLifecycleRecords)
-      .values(jobLifecycleInsert(record))
-      .returning();
-    return mapJobLifecycleRow(row);
+    try {
+      const [row] = await this.db
+        .insert(schema.jobLifecycleRecords)
+        .values(jobLifecycleInsert(record))
+        .returning();
+      return mapJobLifecycleRow(row);
+    } catch (error) {
+      if (!isPostgresUniqueViolation(error, "job_lifecycle_records_firm_idempotency_idx")) {
+        throw error;
+      }
+      const [existingRow] = await this.db
+        .select()
+        .from(schema.jobLifecycleRecords)
+        .where(
+          and(
+            eq(schema.jobLifecycleRecords.firmId, record.firmId),
+            eq(schema.jobLifecycleRecords.idempotencyKey, record.idempotencyKey ?? ""),
+          ),
+        );
+      if (!existingRow) throw error;
+      const existing = mapJobLifecycleRow(existingRow);
+      assertSameIdempotencyFingerprint(existing.metadata, record.metadata);
+      return existing;
+    }
   }
 
   async createQueuedEmailOutbox(input: {
@@ -5084,10 +5270,57 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     job: JobLifecycleRecord;
   }> {
     return this.db.transaction(async (tx) => {
-      const [emailRow] = await tx
-        .insert(schema.emailOutbox)
-        .values(emailOutboxInsert(input.email))
-        .returning();
+      let emailRow: typeof schema.emailOutbox.$inferSelect;
+      try {
+        [emailRow] = await tx
+          .insert(schema.emailOutbox)
+          .values(emailOutboxInsert(input.email))
+          .returning();
+      } catch (error) {
+        if (!isPostgresUniqueViolation(error, "email_outbox_firm_idempotency_idx")) {
+          throw error;
+        }
+        const [existingEmailRow] = await tx
+          .select()
+          .from(schema.emailOutbox)
+          .where(
+            and(
+              eq(schema.emailOutbox.firmId, input.email.firmId),
+              eq(schema.emailOutbox.idempotencyKey, input.email.idempotencyKey ?? ""),
+            ),
+          );
+        if (!existingEmailRow) throw error;
+        const existingEmail = mapEmailOutboxRow(existingEmailRow);
+        assertSameIdempotencyFingerprint(existingEmail.metadata, input.email.metadata);
+        const [existingEventRow] = await tx
+          .select()
+          .from(schema.emailEvents)
+          .where(
+            and(
+              eq(schema.emailEvents.firmId, existingEmail.firmId),
+              eq(schema.emailEvents.emailId, existingEmail.id),
+            ),
+          )
+          .orderBy(asc(schema.emailEvents.occurredAt))
+          .limit(1);
+        const [existingJobRow] = await tx
+          .select()
+          .from(schema.jobLifecycleRecords)
+          .where(
+            and(
+              eq(schema.jobLifecycleRecords.firmId, existingEmail.firmId),
+              eq(schema.jobLifecycleRecords.targetResourceType, "email_outbox"),
+              eq(schema.jobLifecycleRecords.targetResourceId, existingEmail.id),
+            ),
+          )
+          .orderBy(asc(schema.jobLifecycleRecords.queuedAt))
+          .limit(1);
+        return {
+          email: existingEmail,
+          event: existingEventRow ? mapEmailEventRow(existingEventRow) : input.event,
+          job: existingJobRow ? mapJobLifecycleRow(existingJobRow) : input.job,
+        };
+      }
       const [eventRow] = await tx
         .insert(schema.emailEvents)
         .values(emailEventInsert(input.event))
@@ -5212,6 +5445,59 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     metadata?: Record<string, unknown>;
   }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord; job: JobLifecycleRecord }> {
     return this.db.transaction(async (tx) => {
+      if (input.job.idempotencyKey) {
+        const [existingJobRow] = await tx
+          .select()
+          .from(schema.jobLifecycleRecords)
+          .where(
+            and(
+              eq(schema.jobLifecycleRecords.firmId, input.firmId),
+              eq(schema.jobLifecycleRecords.idempotencyKey, input.job.idempotencyKey),
+              eq(schema.jobLifecycleRecords.targetResourceType, "email_outbox"),
+              eq(schema.jobLifecycleRecords.targetResourceId, input.emailId),
+            ),
+          );
+        if (existingJobRow) {
+          const existingJob = mapJobLifecycleRow(existingJobRow);
+          assertSameIdempotencyFingerprint(existingJob.metadata, input.job.metadata);
+          const [emailRow] = await tx
+            .select()
+            .from(schema.emailOutbox)
+            .where(
+              and(
+                eq(schema.emailOutbox.firmId, input.firmId),
+                eq(schema.emailOutbox.id, input.emailId),
+              ),
+            );
+          if (!emailRow) throw new Error(`Email outbox record ${input.emailId} was not found`);
+          const [eventRow] = await tx
+            .select()
+            .from(schema.emailEvents)
+            .where(
+              and(
+                eq(schema.emailEvents.firmId, input.firmId),
+                eq(schema.emailEvents.emailId, input.emailId),
+                eq(schema.emailEvents.jobId, existingJob.id),
+              ),
+            );
+          return {
+            email: mapEmailOutboxRow(emailRow),
+            event: eventRow
+              ? mapEmailEventRow(eventRow)
+              : {
+                  id: crypto.randomUUID(),
+                  firmId: input.firmId,
+                  emailId: input.emailId,
+                  eventType: "queued",
+                  occurredAt: existingJob.queuedAt,
+                  jobId: existingJob.id,
+                  source: "api",
+                  metadata: input.metadata ?? {},
+                },
+            job: existingJob,
+          };
+        }
+      }
       const [existingRow] = await tx
         .select()
         .from(schema.emailOutbox)
@@ -6867,11 +7153,42 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   async createExternalUploadLink(
     link: ExternalUploadLinkRecord,
   ): Promise<ExternalUploadLinkRecord> {
-    const [row] = await this.db
-      .insert(schema.externalUploadLinks)
-      .values(externalUploadLinkInsert(link))
-      .returning();
-    return mapExternalUploadLinkRow(row);
+    try {
+      const [row] = await this.db
+        .insert(schema.externalUploadLinks)
+        .values(externalUploadLinkInsert(link))
+        .returning();
+      return mapExternalUploadLinkRow(row);
+    } catch (error) {
+      if (!isPostgresUniqueViolation(error, "external_upload_links_firm_idempotency_idx")) {
+        throw error;
+      }
+      const [existingRow] = await this.db
+        .select()
+        .from(schema.externalUploadLinks)
+        .where(
+          and(
+            eq(schema.externalUploadLinks.firmId, link.firmId),
+            eq(schema.externalUploadLinks.idempotencyKey, link.idempotencyKey ?? ""),
+          ),
+        );
+      if (!existingRow) throw error;
+      const existing = mapExternalUploadLinkRow(existingRow);
+      const existingFingerprint = canonicalizeForIdempotency({
+        matterId: existing.matterId,
+        requestedByUserId: existing.requestedByUserId,
+        maxUploads: existing.maxUploads,
+        expiresAt: existing.expiresAt,
+      });
+      const inputFingerprint = canonicalizeForIdempotency({
+        matterId: link.matterId,
+        requestedByUserId: link.requestedByUserId,
+        maxUploads: link.maxUploads,
+        expiresAt: link.expiresAt,
+      });
+      if (existingFingerprint !== inputFingerprint) throw new IdempotencyKeyConflictError();
+      return existing;
+    }
   }
 
   async getExternalUploadLinkByTokenHash(

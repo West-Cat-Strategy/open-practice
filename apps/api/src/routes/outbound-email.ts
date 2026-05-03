@@ -8,6 +8,11 @@ import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
+import {
+  buildIdempotencyKey,
+  idempotencyMetadata,
+  rethrowIdempotencyConflict,
+} from "./idempotency.js";
 import type { ApiJobQueue } from "./types.js";
 
 const DEFAULT_FROM = "Open Practice <no-reply@open-practice.local>";
@@ -25,6 +30,7 @@ export interface QueueRouteEmailInput {
   textBody?: string;
   relatedResourceType?: string;
   relatedResourceId?: string;
+  idempotencyKey?: string;
   metadata?: Record<string, unknown>;
   source?: string;
   required?: boolean;
@@ -42,6 +48,7 @@ export interface QueuedRouteEmailSummary {
   status: EmailOutboxRecord["status"];
   queuedAt: string;
   jobId: string;
+  idempotencyKeyPresent: boolean;
 }
 
 export function summarizeQueuedRouteEmail(
@@ -54,6 +61,7 @@ export function summarizeQueuedRouteEmail(
     status: queued.email.status,
     queuedAt: queued.email.queuedAt,
     jobId: queued.job.id,
+    idempotencyKeyPresent: Boolean(queued.email.idempotencyKey ?? queued.job.idempotencyKey),
   };
 }
 
@@ -107,63 +115,98 @@ export async function queueRouteEmailOutbox(
     source: input.source,
     createdByUserId: auth.user.id,
   };
-  const queued = await repository.createQueuedEmailOutbox({
-    email: {
-      id: emailId,
-      firmId: auth.firmId,
-      matterId: input.matterId,
-      templateKey: input.templateKey,
-      status: "queued",
-      to,
-      cc,
-      bcc,
-      from: input.from ?? DEFAULT_FROM,
-      subject: input.subject,
-      htmlBody,
-      textBody,
-      relatedResourceType: input.relatedResourceType,
-      relatedResourceId: input.relatedResourceId,
-      queuedAt: now,
-      attemptCount: 0,
-      metadata,
-    },
-    event: {
-      id: crypto.randomUUID(),
-      firmId: auth.firmId,
-      emailId,
-      eventType: "queued",
-      occurredAt: now,
-      jobId,
-      source: "api",
-      metadata: {
+  const idempotencyKey = buildIdempotencyKey({
+    scope: "email",
+    firmId: auth.firmId,
+    matterId: input.matterId,
+    resourceType: input.relatedResourceType ?? "email_outbox",
+    resourceId: input.relatedResourceId,
+    action: input.source ?? "api.route",
+    providerOrTemplate: input.templateKey,
+    clientKey: input.idempotencyKey,
+  });
+  const fingerprint = idempotencyMetadata({
+    matterId: input.matterId,
+    provider: enabledProvider.key,
+    templateKey: input.templateKey,
+    to,
+    cc,
+    bcc,
+    from: input.from ?? DEFAULT_FROM,
+    subject: input.subject,
+    relatedResourceType: input.relatedResourceType,
+    relatedResourceId: input.relatedResourceId,
+    source: input.source ?? "api.route",
+  });
+  const safeJobMetadata = {
+    ...fingerprint,
+    emailId,
+    matterId: input.matterId,
+    provider: enabledProvider.key,
+    source: input.source ?? "api.route",
+    templateKey: input.templateKey,
+    recipientCount: to.length + cc.length + bcc.length,
+    relatedResourceType: input.relatedResourceType,
+    relatedResourceId: input.relatedResourceId,
+  };
+  let queued: QueuedRouteEmail;
+  try {
+    queued = await repository.createQueuedEmailOutbox({
+      email: {
+        id: emailId,
+        firmId: auth.firmId,
         matterId: input.matterId,
-        provider: enabledProvider.key,
-        source: input.source ?? "api.route",
-      },
-    },
-    job: {
-      id: jobId,
-      firmId: auth.firmId,
-      queueName: "email",
-      jobName: "send_email",
-      status: "queued",
-      targetResourceType: "email_outbox",
-      targetResourceId: emailId,
-      attemptsMade: 0,
-      maxAttempts: EMAIL_JOB_MAX_ATTEMPTS,
-      queuedAt: now,
-      metadata: {
-        emailId,
-        matterId: input.matterId,
-        provider: enabledProvider.key,
-        source: input.source ?? "api.route",
+        idempotencyKey,
         templateKey: input.templateKey,
-        recipientCount: to.length + cc.length + bcc.length,
+        status: "queued",
+        to,
+        cc,
+        bcc,
+        from: input.from ?? DEFAULT_FROM,
+        subject: input.subject,
+        htmlBody,
+        textBody,
         relatedResourceType: input.relatedResourceType,
         relatedResourceId: input.relatedResourceId,
+        queuedAt: now,
+        attemptCount: 0,
+        metadata: { ...metadata, ...fingerprint },
       },
-    },
-  });
+      event: {
+        id: crypto.randomUUID(),
+        firmId: auth.firmId,
+        emailId,
+        eventType: "queued",
+        occurredAt: now,
+        jobId,
+        source: "api",
+        metadata: {
+          matterId: input.matterId,
+          provider: enabledProvider.key,
+          source: input.source ?? "api.route",
+          idempotencyKeyPresent: true,
+        },
+      },
+      job: {
+        id: jobId,
+        firmId: auth.firmId,
+        queueName: "email",
+        jobName: "send_email",
+        status: "queued",
+        targetResourceType: "email_outbox",
+        targetResourceId: emailId,
+        idempotencyKey,
+        attemptsMade: 0,
+        maxAttempts: EMAIL_JOB_MAX_ATTEMPTS,
+        queuedAt: now,
+        metadata: safeJobMetadata,
+      },
+    });
+  } catch (error) {
+    rethrowIdempotencyConflict(error);
+  }
+  const created = queued.email.id === emailId && queued.job.id === jobId;
+  if (!created) return queued;
   const bullJob = await emailJobQueue.add(
     "send_email",
     {
@@ -171,7 +214,7 @@ export async function queueRouteEmailOutbox(
       resourceType: "email_outbox",
       resourceId: emailId,
       metadata: {
-        emailId,
+        emailId: queued.email.id,
         matterId: input.matterId,
         provider: enabledProvider.key,
         source: input.source ?? "api.route",
@@ -179,6 +222,7 @@ export async function queueRouteEmailOutbox(
         recipientCount: to.length + cc.length + bcc.length,
         relatedResourceType: input.relatedResourceType,
         relatedResourceId: input.relatedResourceId,
+        idempotencyKeyPresent: true,
       },
     },
     { jobId },

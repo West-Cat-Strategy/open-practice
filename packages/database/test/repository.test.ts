@@ -294,6 +294,13 @@ describe("repository connectors", () => {
     await expect(
       repository.createConnectorOutbox({
         ...outboxInput,
+        id: "connector-outbox-conflict",
+        payloadSummary: { matterId: "matter-001", fieldCount: 4 },
+      }),
+    ).rejects.toThrow("Idempotency key was reused with a different payload");
+    await expect(
+      repository.createConnectorOutbox({
+        ...outboxInput,
         id: "connector-outbox-cross-firm",
         firmId: "firm-other",
         idempotencyKey: "matter-001:summary-ready:v2",
@@ -666,6 +673,117 @@ describe("repository operations foundation", () => {
     await expect(
       repository.listJobLifecycleRecords("firm-west-legal", { status: "failed" }),
     ).resolves.toMatchObject([{ id: "job-email-1", errorMessage: "SMTP unavailable" }]);
+  });
+
+  it("returns existing job and email records for matching idempotency keys", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await repository.createJobLifecycleRecord({
+      id: "job-idempotent-1",
+      firmId: "firm-west-legal",
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      idempotencyKey: "job:doc-001:ocr",
+      status: "queued",
+      targetResourceType: "document",
+      targetResourceId: "doc-001",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      queuedAt: now,
+      metadata: { idempotencyFingerprint: "same", documentId: "doc-001" },
+    });
+    await expect(
+      repository.createJobLifecycleRecord({
+        id: "job-idempotent-2",
+        firmId: "firm-west-legal",
+        queueName: "ocr",
+        jobName: "extract_document_text",
+        idempotencyKey: "job:doc-001:ocr",
+        status: "queued",
+        targetResourceType: "document",
+        targetResourceId: "doc-001",
+        attemptsMade: 0,
+        maxAttempts: 3,
+        queuedAt: now,
+        metadata: { idempotencyFingerprint: "same", documentId: "doc-001" },
+      }),
+    ).resolves.toMatchObject({ id: "job-idempotent-1" });
+    await expect(
+      repository.createJobLifecycleRecord({
+        id: "job-idempotent-conflict",
+        firmId: "firm-west-legal",
+        queueName: "ocr",
+        jobName: "extract_document_text",
+        idempotencyKey: "job:doc-001:ocr",
+        status: "queued",
+        targetResourceType: "document",
+        targetResourceId: "doc-001",
+        attemptsMade: 0,
+        maxAttempts: 3,
+        queuedAt: now,
+        metadata: { idempotencyFingerprint: "changed", documentId: "doc-001" },
+      }),
+    ).rejects.toThrow("Idempotency key was reused with a different payload");
+
+    const queued = await repository.createQueuedEmailOutbox({
+      email: {
+        id: "email-idempotent-1",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        idempotencyKey: "email:matter-001:sig",
+        templateKey: "signature.requested",
+        status: "queued",
+        to: ["client@example.test"],
+        cc: [],
+        bcc: [],
+        from: "Open Practice <no-reply@open-practice.local>",
+        subject: "Synthetic signature request",
+        htmlBody: "",
+        textBody: "Synthetic body",
+        queuedAt: now,
+        attemptCount: 0,
+        metadata: { idempotencyFingerprint: "email-same", matterId: "matter-001" },
+      },
+      event: {
+        id: "email-event-idempotent-queued",
+        firmId: "firm-west-legal",
+        emailId: "email-idempotent-1",
+        eventType: "queued",
+        occurredAt: now,
+        jobId: "job-email-idempotent-1",
+        source: "api",
+        metadata: { provider: "mailpit" },
+      },
+      job: {
+        id: "job-email-idempotent-1",
+        firmId: "firm-west-legal",
+        queueName: "email",
+        jobName: "send_email",
+        idempotencyKey: "email:matter-001:sig",
+        status: "queued",
+        targetResourceType: "email_outbox",
+        targetResourceId: "email-idempotent-1",
+        attemptsMade: 0,
+        maxAttempts: 5,
+        queuedAt: now,
+        metadata: { idempotencyFingerprint: "email-same", emailId: "email-idempotent-1" },
+      },
+    });
+    expect(queued.email.id).toBe("email-idempotent-1");
+    await expect(
+      repository.createQueuedEmailOutbox({
+        email: { ...queued.email, id: "email-idempotent-2" },
+        event: { ...queued.event, id: "email-event-idempotent-2", emailId: "email-idempotent-2" },
+        job: {
+          ...queued.job,
+          id: "job-email-idempotent-2",
+          targetResourceId: "email-idempotent-2",
+        },
+      }),
+    ).resolves.toMatchObject({
+      email: { id: "email-idempotent-1" },
+      job: { id: "job-email-idempotent-1" },
+    });
   });
 
   it("records matter-scoped email delivery history in memory", async () => {
