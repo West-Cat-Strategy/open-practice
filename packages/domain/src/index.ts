@@ -10,6 +10,7 @@ export * from "./legal-clinics.js";
 export * from "./models.js";
 export * from "./operational-views.js";
 export * from "./operations.js";
+export * from "./outbound-webhooks.js";
 export * from "./permissions.js";
 export * from "./participant-roles.js";
 export * from "./practice-presets.js";

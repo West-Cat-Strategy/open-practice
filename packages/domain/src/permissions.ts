@@ -29,6 +29,7 @@ export type ResourceKind =
   | "external_upload"
   | "auth_credential"
   | "provider_setting"
+  | "outbound_webhook"
   | "draft"
   | "draft_template";
 
@@ -69,6 +70,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     external_upload: ["create", "read", "update", "delete", "export"],
     auth_credential: ["create", "read", "update", "delete", "approve"],
     provider_setting: ["create", "read", "update", "delete", "approve", "export"],
+    outbound_webhook: ["create", "read", "update", "delete", "approve", "export"],
     draft: ["create", "read", "update", "delete", "export"],
     draft_template: ["create", "read", "update", "delete", "export"],
   },
@@ -158,6 +160,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     external_upload: ["read", "export"],
     auth_credential: ["read"],
     provider_setting: ["read"],
+    outbound_webhook: ["read"],
   },
 };
 

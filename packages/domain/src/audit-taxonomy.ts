@@ -12,6 +12,7 @@ export type AuditEventCategory =
   | "intake"
   | "legal_clinic"
   | "matter_lifecycle"
+  | "outbound_webhooks"
   | "portal"
   | "setup"
   | "signatures"
@@ -88,6 +89,7 @@ const RESOURCE_ID_KEYS = [
   "providerRequestId",
   "signatureRequestId",
   "templateId",
+  "deliveryId",
   "transactionId",
   "uploadId",
 ] as const;
@@ -517,6 +519,25 @@ export const auditEventTaxonomyDefinitions = [
     matterScope: "optional_matter",
     actorHint: "authenticated_user",
     resourceMetadataKeys: ["emailId", "jobId", "retryOfJobId", "provider"],
+  }),
+  define({
+    action: "outbound_webhook.test_delivery_simulated",
+    category: "outbound_webhooks",
+    resourceType: "outbound_webhook",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    matterMetadataKeys: [],
+    resourceMetadataKeys: [
+      "deliveryId",
+      "eventCount",
+      "events",
+      "destinationScheme",
+      "destinationHost",
+      "destinationPort",
+      "signingAlgorithm",
+      "signatureHeader",
+      "simulationOnly",
+    ],
   }),
   define({
     action: "inbound_email.attachment.promoted_to_document",
