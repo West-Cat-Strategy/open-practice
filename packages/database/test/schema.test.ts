@@ -14,6 +14,7 @@ import {
   calendarCredentials,
   calendarEventAttendees,
   calendarEvents,
+  conversationThreads,
   documentTextExtractions,
   documentVersions,
   documents,
@@ -157,6 +158,37 @@ describe("database schema hardening", () => {
         "calendar_event_attendees_invitation_status_value",
       ]),
     );
+  });
+
+  it("persists matter-scoped conversation thread boundary fields", () => {
+    const config = getTableConfig(conversationThreads);
+    const columns = config.columns.map((column) => column.name);
+
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "topic",
+        "status",
+        "retention_until",
+        "export_state",
+        "access_revoked_at",
+        "notification_boundary",
+        "created_by_user_id",
+        "updated_by_user_id",
+        "metadata",
+      ]),
+    );
+    expect(
+      config.indexes.some(
+        (index) => index.config.name === "conversation_threads_firm_matter_updated_idx",
+      ),
+    ).toBe(true);
+    expect(
+      config.indexes.find(
+        (index) => index.config.name === "conversation_threads_firm_matter_topic_idx",
+      )?.config.unique,
+    ).toBe(true);
   });
 
   it("persists revocable calendar app-password credentials", () => {

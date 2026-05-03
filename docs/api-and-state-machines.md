@@ -120,6 +120,9 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/inbound-email/messages?matterId=`                                       | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                                                                                  |
 | `GET /api/inbound-email/messages/:id`                                             | Matter-scoped parsed inbound email detail with inbound-email attachment records and promoted `documentId` links when present.                                          |
 | `POST /api/inbound-email/messages/:id/attachments/:attachmentId/promote-document` | Explicitly promotes one matter-scoped inbound attachment to a verified document record and optionally queues OCR.                                                      |
+| `GET /api/conversation-threads?matterId=`                                         | Lists matter-scoped provider-neutral conversation topic records with retention/export/revocation boundary fields and no message bodies.                                |
+| `GET /api/conversation-threads/:id`                                               | Reads one authorized conversation topic record after resolving its matter scope.                                                                                       |
+| `POST /api/conversation-threads`                                                  | Creates one authorized matter-scoped conversation topic record and records redacted boundary metadata; realtime chat, messages, and notifications remain deferred.     |
 | `GET /api/document-processing/status`                                             | OCR, transcription, media, and AI provider status, worker queue availability, and redacted processing job summaries from firm settings and job records.                |
 | `GET /api/document-processing/workbench?matterId=`                                | Matter-scoped document processing workbench with sanitized document states, queue eligibility, provider/worker status, and redacted latest job/extraction summaries.   |
 | `POST /api/document-processing/documents/:id/queue`                               | Queues OCR for an authorized verified document when the OCR worker queue is configured.                                                                                |
@@ -256,6 +259,14 @@ status, set completion or decline timestamps for terminal statuses, and preserve
 against out-of-order non-terminal events. Embedded signature events capture signer consent text,
 actor ID, IP, user-agent, timestamps, and caller-provided evidence. Legacy `docuseal` requests
 remain historical records and are rejected by embedded event routes.
+
+Conversation threads are non-real-time matter-scoped topic records. The first slice stores topic,
+status, retention boundary, export state, access-revocation timestamp, notification boundary,
+creator/updater IDs, timestamps, and provider-neutral metadata behind `conversation_thread`
+authorization. Create/list/read routes never accept or return message bodies, connector delivery
+attempts, webhook payloads, raw notification content, or public tokens. Create audit events include
+only thread ID, matter ID, status, retention/export/notification boundary state, and access-revoked
+state.
 
 Outbound email queueing is SMTP-provider gated. `POST /api/mail/outbox` requires matter-scoped
 email create access, an enabled SMTP provider setting, configured Redis/BullMQ queue access, and at

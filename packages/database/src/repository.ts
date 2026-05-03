@@ -22,6 +22,7 @@ import {
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
+  type ConversationThreadRecord,
   type Contact,
   type ContactDossier,
   type DocumentRecord,
@@ -395,6 +396,15 @@ export interface OpenPracticeRepository {
   getTaskDeadline(firmId: string, taskId: string): Promise<TaskDeadlineRecord | undefined>;
   createTaskDeadline(task: TaskDeadlineRecord): Promise<TaskDeadlineRecord>;
   completeTaskDeadline(input: TaskDeadlineCompletionInput): Promise<TaskDeadlineRecord | undefined>;
+  listConversationThreads(
+    firmId: string,
+    options?: { matterIds?: string[]; matterId?: string },
+  ): Promise<ConversationThreadRecord[]>;
+  getConversationThread(
+    firmId: string,
+    threadId: string,
+  ): Promise<ConversationThreadRecord | undefined>;
+  createConversationThread(thread: ConversationThreadRecord): Promise<ConversationThreadRecord>;
   listLegalClinicPrograms(
     firmId: string,
     options?: { status?: LegalClinicProgram["status"] },
@@ -1209,6 +1219,27 @@ function mapLegalClinicMatterProfileRow(
     notes: row.notes ?? undefined,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    updatedByUserId: row.updatedByUserId,
+    metadata: row.metadata,
+  };
+}
+
+function mapConversationThreadRow(
+  row: typeof schema.conversationThreads.$inferSelect,
+): ConversationThreadRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    topic: row.topic,
+    status: row.status,
+    retentionUntil: dateToIso(row.retentionUntil),
+    exportState: row.exportState,
+    accessRevokedAt: dateToIso(row.accessRevokedAt),
+    notificationBoundary: row.notificationBoundary,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    createdByUserId: row.createdByUserId,
     updatedByUserId: row.updatedByUserId,
     metadata: row.metadata,
   };
@@ -2138,6 +2169,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private documents: DocumentRecord[];
   private legalClinicPrograms: LegalClinicProgram[];
   private legalClinicMatterProfiles: LegalClinicMatterProfile[];
+  private conversationThreads: ConversationThreadRecord[] = [];
   private calendarEvents: CalendarEventRecord[];
   private taskDeadlines: TaskDeadlineRecord[];
   private portalGrants: PortalGrant[];
@@ -2875,6 +2907,51 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     };
     this.taskDeadlines[index] = clone(completed);
     return clone(completed);
+  }
+
+  async listConversationThreads(
+    firmId: string,
+    options: { matterIds?: string[]; matterId?: string } = {},
+  ): Promise<ConversationThreadRecord[]> {
+    const matterIds = options.matterId ? [options.matterId] : options.matterIds;
+    return clone(
+      this.conversationThreads
+        .filter((thread) => {
+          if (thread.firmId !== firmId) return false;
+          if (matterIds && !matterIds.includes(thread.matterId)) return false;
+          return true;
+        })
+        .sort(
+          (left, right) =>
+            right.updatedAt.localeCompare(left.updatedAt) || left.topic.localeCompare(right.topic),
+        ),
+    );
+  }
+
+  async getConversationThread(
+    firmId: string,
+    threadId: string,
+  ): Promise<ConversationThreadRecord | undefined> {
+    return clone(
+      this.conversationThreads.find((thread) => thread.firmId === firmId && thread.id === threadId),
+    );
+  }
+
+  async createConversationThread(
+    thread: ConversationThreadRecord,
+  ): Promise<ConversationThreadRecord> {
+    if (
+      this.conversationThreads.some(
+        (candidate) =>
+          candidate.firmId === thread.firmId &&
+          candidate.matterId === thread.matterId &&
+          candidate.topic.trim().toLowerCase() === thread.topic.trim().toLowerCase(),
+      )
+    ) {
+      throw new Error("Conversation thread already exists");
+    }
+    this.conversationThreads = [...this.conversationThreads, clone(thread)];
+    return clone(thread);
   }
 
   async listLegalClinicPrograms(
@@ -5462,6 +5539,55 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .where(and(eq(schema.tasks.firmId, input.firmId), eq(schema.tasks.id, input.taskId)))
       .returning();
     return row ? mapTaskDeadlineRow(row) : undefined;
+  }
+
+  async listConversationThreads(
+    firmId: string,
+    options: { matterIds?: string[]; matterId?: string } = {},
+  ): Promise<ConversationThreadRecord[]> {
+    const matterIds = options.matterId ? [options.matterId] : options.matterIds;
+    const filters = [eq(schema.conversationThreads.firmId, firmId)];
+    if (matterIds && matterIds.length > 0) {
+      filters.push(inArray(schema.conversationThreads.matterId, matterIds));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.conversationThreads)
+      .where(and(...filters))
+      .orderBy(desc(schema.conversationThreads.updatedAt), asc(schema.conversationThreads.topic));
+    return rows.map(mapConversationThreadRow);
+  }
+
+  async getConversationThread(
+    firmId: string,
+    threadId: string,
+  ): Promise<ConversationThreadRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.conversationThreads)
+      .where(
+        and(
+          eq(schema.conversationThreads.firmId, firmId),
+          eq(schema.conversationThreads.id, threadId),
+        ),
+      );
+    return row ? mapConversationThreadRow(row) : undefined;
+  }
+
+  async createConversationThread(
+    thread: ConversationThreadRecord,
+  ): Promise<ConversationThreadRecord> {
+    const [row] = await this.db
+      .insert(schema.conversationThreads)
+      .values({
+        ...thread,
+        retentionUntil: thread.retentionUntil ? new Date(thread.retentionUntil) : null,
+        accessRevokedAt: thread.accessRevokedAt ? new Date(thread.accessRevokedAt) : null,
+        createdAt: new Date(thread.createdAt),
+        updatedAt: new Date(thread.updatedAt),
+      })
+      .returning();
+    return mapConversationThreadRow(row!);
   }
 
   async listLegalClinicPrograms(
