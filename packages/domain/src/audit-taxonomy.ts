@@ -609,6 +609,21 @@ export const auditEventTaxonomyDefinitions = [
     resourceMetadataKeys: ["credentialId", "revokedAt"],
   }),
   define({
+    action: "conversation_thread.created",
+    category: "communications",
+    resourceType: "conversation_thread",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "threadId",
+      "status",
+      "exportState",
+      "retentionBoundary",
+      "notificationBoundary",
+      "accessRevoked",
+    ],
+  }),
+  define({
     action: "legal_clinic.program.created",
     category: "legal_clinic",
     resourceType: "legal_clinic_program",

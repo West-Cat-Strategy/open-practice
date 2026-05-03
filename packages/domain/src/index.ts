@@ -3,6 +3,7 @@ export * from "./audit-taxonomy.js";
 export * from "./billing.js";
 export * from "./calendar.js";
 export * from "./contacts.js";
+export * from "./conversations.js";
 export * from "./conflicts.js";
 export * from "./intake.js";
 export * from "./ledger.js";

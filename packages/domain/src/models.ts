@@ -232,6 +232,27 @@ export interface TaskDeadlineProjection extends TaskDeadlineRecord {
   bucket: TaskDeadlineBucket;
 }
 
+export type ConversationThreadStatus = "open" | "closed" | "revoked";
+export type ConversationThreadExportState = "not_requested" | "requested" | "exported";
+export type ConversationThreadNotificationBoundary = "disabled" | "internal_only";
+
+export interface ConversationThreadRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  topic: string;
+  status: ConversationThreadStatus;
+  retentionUntil?: string;
+  exportState: ConversationThreadExportState;
+  accessRevokedAt?: string;
+  notificationBoundary: ConversationThreadNotificationBoundary;
+  createdAt: string;
+  updatedAt: string;
+  createdByUserId: string;
+  updatedByUserId: string;
+  metadata: Record<string, unknown>;
+}
+
 export type CalendarEventStatus = "confirmed" | "tentative" | "cancelled";
 export type CalendarAttendeeRole = "required" | "optional";
 export type CalendarAttendeeResponseStatus = "needs_action" | "accepted" | "tentative" | "declined";

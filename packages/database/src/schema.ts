@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type {
+  ConversationThreadRecord,
   DraftAssistRecord,
   EmbeddedIntakeTemplateDefinition,
   IntakeFormItemActionRecord,
@@ -111,6 +112,20 @@ export const authActionTokenPurpose = pgEnum("auth_action_token_purpose", [
   "account_recovery",
   "email_verification",
 ]);
+export const conversationThreadStatus = pgEnum("conversation_thread_status", [
+  "open",
+  "closed",
+  "revoked",
+]);
+export const conversationThreadExportState = pgEnum("conversation_thread_export_state", [
+  "not_requested",
+  "requested",
+  "exported",
+]);
+export const conversationThreadNotificationBoundary = pgEnum(
+  "conversation_thread_notification_boundary",
+  ["disabled", "internal_only"],
+);
 
 export const firms = pgTable("firms", {
   id: text("id").primaryKey(),
@@ -584,6 +599,48 @@ export const legalClinicMatterProfiles = pgTable(
     matterReview: index("legal_clinic_matter_profiles_review_idx").on(
       table.firmId,
       table.nextReviewDate,
+    ),
+  }),
+);
+
+export const conversationThreads = pgTable(
+  "conversation_threads",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    topic: text("topic").notNull(),
+    status: conversationThreadStatus("status").notNull().default("open"),
+    retentionUntil: timestamp("retention_until", { withTimezone: true }),
+    exportState: conversationThreadExportState("export_state").notNull().default("not_requested"),
+    accessRevokedAt: timestamp("access_revoked_at", { withTimezone: true }),
+    notificationBoundary: conversationThreadNotificationBoundary("notification_boundary")
+      .notNull()
+      .default("disabled"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    updatedByUserId: text("updated_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    metadata: jsonb("metadata").$type<ConversationThreadRecord["metadata"]>().notNull().default({}),
+  },
+  (table) => ({
+    firmMatterUpdated: index("conversation_threads_firm_matter_updated_idx").on(
+      table.firmId,
+      table.matterId,
+      table.updatedAt,
+    ),
+    firmMatterTopic: uniqueIndex("conversation_threads_firm_matter_topic_idx").on(
+      table.firmId,
+      table.matterId,
+      table.topic,
     ),
   }),
 );

@@ -16,6 +16,7 @@ export type ResourceKind =
   | "trust_ledger"
   | "time_entry"
   | "expense_entry"
+  | "conversation_thread"
   | "task"
   | "calendar_event"
   | "audit_log"
@@ -56,6 +57,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     trust_ledger: ["create", "read", "approve", "export"],
     time_entry: ["create", "read", "update", "delete", "approve", "export"],
     expense_entry: ["create", "read", "update", "delete", "approve", "export"],
+    conversation_thread: ["create", "read", "update", "delete", "export"],
     task: ["create", "read", "update", "delete"],
     calendar_event: ["create", "read", "update", "delete"],
     audit_log: ["read", "export"],
@@ -81,6 +83,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     trust_ledger: ["read", "approve", "export"],
     time_entry: ["create", "read", "update", "delete", "approve", "export"],
     expense_entry: ["create", "read", "update", "delete", "approve", "export"],
+    conversation_thread: ["create", "read", "update", "delete", "export"],
     task: ["create", "read", "update", "delete"],
     calendar_event: ["create", "read", "update", "delete"],
     audit_log: ["read"],
@@ -104,6 +107,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     signature_request: ["create", "read", "update"],
     time_entry: ["create", "read", "update"],
     expense_entry: ["create", "read", "update"],
+    conversation_thread: ["create", "read", "update"],
     task: ["create", "read", "update", "delete"],
     calendar_event: ["create", "read", "update", "delete"],
     intake_session: ["create", "read", "update"],
@@ -149,6 +153,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     expense_entry: ["read", "export"],
     audit_log: ["read", "export"],
     intake_session: ["read", "export"],
+    conversation_thread: ["read", "export"],
     legal_clinic: ["read", "export"],
     job: ["read", "export"],
     email: ["read", "export"],
@@ -169,6 +174,7 @@ const matterScopedResources = new Set<ResourceKind>([
   "trust_ledger",
   "time_entry",
   "expense_entry",
+  "conversation_thread",
   "task",
   "calendar_event",
   "intake_session",
