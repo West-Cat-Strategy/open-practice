@@ -40,6 +40,7 @@ import { registerLedgerRoutes } from "./routes/ledger.js";
 import { registerLegalClinicRoutes } from "./routes/legal-clinics.js";
 import { registerMatterRoutes } from "./routes/matters.js";
 import { registerOperationalViewRoutes } from "./routes/operational-views.js";
+import { registerOutboundWebhookRoutes } from "./routes/outbound-webhooks.js";
 import { registerQueuesRoutes } from "./routes/queues.js";
 import { registerRecoveryRoutes } from "./routes/recovery.js";
 import { registerSessionRoutes } from "./routes/session.js";
@@ -403,6 +404,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     publicWebBaseUrl: options.publicWebBaseUrl,
   });
   registerOperationalViewRoutes(server, { repository: options.repository });
+  registerOutboundWebhookRoutes(server, { repository: options.repository });
   registerTaskRoutes(server, { repository: options.repository });
   registerQueuesRoutes(server, { repository: options.repository });
 

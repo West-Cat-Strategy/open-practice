@@ -115,6 +115,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/mail/outbox`                                                           | Create a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.                                                          |
 | `GET /api/mail/outbox?matterId=`                                                  | Matter-scoped outbound email delivery history without message bodies.                                                                                                  |
 | `POST /api/mail/outbox/:emailId/retry`                                            | Manually requeues a failed matter-scoped outbound email with redacted job and audit metadata.                                                                          |
+| `POST /api/outbound-webhooks/test-deliveries`                                     | Provider-neutral outbound-webhook guardrail preview and test-delivery simulation with HTTPS destination validation, event allowlist, signing metadata, and audit.      |
 | `GET /api/inbound-email/status`                                                   | Inbound email provider status plus configured firm inbound addresses.                                                                                                  |
 | `GET /api/inbound-email/messages?matterId=`                                       | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                                                                                  |
 | `GET /api/inbound-email/messages/:id`                                             | Matter-scoped parsed inbound email detail with inbound-email attachment records and promoted `documentId` links when present.                                          |
@@ -272,6 +273,15 @@ in email event metadata and mirrored into outbox delivery-state fields. Manual r
 for failed outbox records; it appends a queued event with retry provenance, creates a fresh email job
 lifecycle row, and records an audit event containing only IDs, counts, status, provider, and job
 references.
+
+Outbound webhook delivery is preview-only in the first guardrails slice. `POST
+/api/outbound-webhooks/test-deliveries` requires firm-level outbound-webhook create access, accepts
+only allowlisted event keys, validates an HTTPS destination, rejects localhost and loopback hosts,
+and returns a simulated delivery shape with HMAC-SHA256 header metadata. It does not persist a
+connector, store a secret value, enqueue a worker job, or make a network request. The audit event
+records only the simulated delivery ID, destination scheme/host/port, allowlisted event keys, event
+count, signing algorithm/header, and `simulationOnly=true`; raw destination paths, credentials,
+payload bodies, and secret values stay out of audit metadata.
 
 V2 intake form `signature` items remain attestation-only when no `documentId` is configured. When
 staff configure a `documentId`, the public token-scoped signature item creates an embedded
