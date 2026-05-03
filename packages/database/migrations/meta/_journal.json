@@ -148,6 +148,13 @@
       "when": 1777767281669,
       "tag": "0020_warm_cassandra_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1777768119733,
+      "tag": "0021_slim_nico_minoru",
+      "breakpoints": true
     }
   ]
 }

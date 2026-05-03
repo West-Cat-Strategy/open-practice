@@ -55,6 +55,39 @@ describe("audit event taxonomy", () => {
     });
   });
 
+  it("classifies connector registry and outbox events as firm-scoped", () => {
+    expect(
+      classifyAuditEvent(
+        auditEvent({
+          action: "connector.created",
+          resourceType: "connector",
+          resourceId: "connector-001",
+          metadata: { connectorType: "generic", secretReferencePresent: true },
+        }),
+      ),
+    ).toMatchObject({
+      category: "operations",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(
+      classifyAuditEvent(
+        auditEvent({
+          action: "connector_outbox.queued",
+          resourceType: "connector_outbox",
+          resourceId: "connector-outbox-001",
+          metadata: { eventType: "matter.summary.ready", idempotencyKey: "synthetic-key" },
+        }),
+      ),
+    ).toMatchObject({
+      category: "operations",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+  });
+
   it("summarizes taxonomy coverage without exposing metadata values", () => {
     const summary = summarizeAuditEventTaxonomy([
       auditEvent(),

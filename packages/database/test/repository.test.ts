@@ -237,6 +237,63 @@ describe("repository first-run setup", () => {
   });
 });
 
+describe("repository connectors", () => {
+  it("stores connector registry rows and returns idempotent outbox records", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const createdAt = "2026-05-02T12:00:00.000Z";
+    const connector = await repository.createConnector({
+      id: "connector-synthetic",
+      firmId: "firm-west-legal",
+      type: "generic",
+      key: "synthetic.registry",
+      displayName: "Synthetic Registry",
+      status: "enabled",
+      secretReference: {
+        id: "secret-ref/synthetic-registry",
+        label: "Synthetic secret reference",
+      },
+      configSummary: { mode: "summary_only" },
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    await expect(repository.listConnectors("firm-west-legal")).resolves.toMatchObject([
+      {
+        id: connector.id,
+        key: "synthetic.registry",
+        secretReference: { id: "secret-ref/synthetic-registry" },
+      },
+    ]);
+
+    const outboxInput = {
+      id: "connector-outbox-1",
+      firmId: "firm-west-legal",
+      connectorId: connector.id,
+      eventType: "matter.summary.ready",
+      resourceType: "matter",
+      resourceId: "matter-001",
+      idempotencyKey: "matter-001:summary-ready:v1",
+      status: "pending" as const,
+      payloadSummary: { matterId: "matter-001", fieldCount: 3 },
+      attemptCount: 0,
+      maxAttempts: 3,
+      nextAttemptAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+    };
+    await expect(repository.createConnectorOutbox(outboxInput)).resolves.toMatchObject({
+      created: true,
+      outbox: { id: "connector-outbox-1" },
+    });
+    await expect(
+      repository.createConnectorOutbox({ ...outboxInput, id: "connector-outbox-duplicate" }),
+    ).resolves.toMatchObject({
+      created: false,
+      outbox: { id: "connector-outbox-1" },
+    });
+  });
+});
+
 describe("repository contact dossier quality review", () => {
   it("surfaces conflict-check revalidation prompts only from accessible applied contact changes", async () => {
     const repository = new InMemoryOpenPracticeRepository();
