@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   InMemoryOpenPracticeRepository,
   type OpenPracticeRepository,
@@ -8,6 +8,7 @@ import type { ProfessionalRole, User } from "@open-practice/domain";
 import { registerTaskRoutes } from "./tasks.js";
 
 const servers: FastifyInstance[] = [];
+const fixedNow = new Date("2026-05-02T16:00:00.000Z");
 
 function user(
   role: ProfessionalRole,
@@ -41,7 +42,13 @@ function testServer(
   return server;
 }
 
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(fixedNow);
+});
+
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
