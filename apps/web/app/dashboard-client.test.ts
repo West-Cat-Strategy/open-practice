@@ -120,6 +120,7 @@ import {
   visibleSections,
   type PublicIntakeFormPayload,
 } from "./intake-forms/runner-utils";
+import { buildIntakeSessionCreatePayload, upsertIntakeSession } from "./types";
 import type {
   ExternalUploadLinkRecord,
   ExternalUploadReviewItem,
@@ -1400,6 +1401,23 @@ describe("dashboard client behavior", () => {
       submittedAt: "2026-04-30T12:00:00.000Z",
       status: "submitted",
     });
+    const session = {
+      id: "intake-session-dashboard",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      templateId: "intake-template-001",
+      provider: "embedded" as const,
+      externalId: "embedded:intake-session-dashboard",
+      status: "created" as const,
+      evidence: { source: "dashboard" },
+      createdAt: "2026-04-30T12:00:00.000Z",
+      updatedAt: "2026-04-30T12:00:00.000Z",
+    };
+    const updatedSession = {
+      ...session,
+      status: "in_progress" as const,
+      updatedAt: "2026-04-30T12:30:00.000Z",
+    };
     const proposal = {
       id: "proposal-001",
       firmId: "firm-west-legal",
@@ -1423,6 +1441,16 @@ describe("dashboard client behavior", () => {
       "/api/intake-variable-proposals?matterId=matter%20001",
     );
     expect(
+      buildIntakeSessionCreatePayload({
+        matter: matter({ id: "matter-001" }),
+        template: { id: "intake-template-001" },
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      templateId: "intake-template-001",
+      evidence: { source: "dashboard" },
+    });
+    expect(
       buildIntakeFormLinkCreatePayload({
         intakeSessionId: "intake-session-001",
         expiresAtLocal,
@@ -1437,6 +1465,8 @@ describe("dashboard client behavior", () => {
         expiresAtLocal: "",
       }),
     ).toEqual({ intakeSessionId: "intake-session-001" });
+    expect(upsertIntakeSession([], session)).toEqual([session]);
+    expect(upsertIntakeSession([session], updatedSession)).toEqual([updatedSession]);
     expect(upsertIntakeFormLink({}, link)).toEqual({ "matter-001": [link] });
     expect(upsertIntakeFormLink({ "matter-001": [link] }, submittedLink)).toEqual({
       "matter-001": [submittedLink],

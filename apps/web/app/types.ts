@@ -74,6 +74,34 @@ export interface IntakeSessionsResponse {
   sessions: IntakeSessionRecord[];
 }
 
+export type IntakeSessionCreateResponse = IntakeSessionRecord & {
+  queuedEmail?: unknown;
+};
+
+export function buildIntakeSessionCreatePayload(input: {
+  matter: Pick<MatterSummary, "id">;
+  template: Pick<IntakeTemplateRecord, "id">;
+}): {
+  matterId: string;
+  templateId: string;
+  evidence: { source: "dashboard" };
+} {
+  return {
+    matterId: input.matter.id,
+    templateId: input.template.id,
+    evidence: { source: "dashboard" },
+  };
+}
+
+export function upsertIntakeSession(
+  sessions: IntakeSessionsResponse["sessions"],
+  session: IntakeSessionCreateResponse,
+): IntakeSessionsResponse["sessions"] {
+  return sessions.some((candidate) => candidate.id === session.id)
+    ? sessions.map((candidate) => (candidate.id === session.id ? session : candidate))
+    : [session, ...sessions];
+}
+
 export type IntakeFormLinkSummary = Omit<IntakeFormLinkRecord, "tokenHash"> & {
   status: string;
 };

@@ -136,6 +136,7 @@ import {
   workerRunSafeContext,
 } from "./worker-runs-dashboard";
 import { dashboardApiStatus, requestDashboardJson } from "./api-client";
+import { buildIntakeSessionCreatePayload, upsertIntakeSession } from "./types";
 import type {
   CalendarAttendeeMutationResponse,
   BillingDashboardResponse,
@@ -157,6 +158,7 @@ import type {
   ExternalUploadRevokeResponse,
   ExternalUploadsDashboardResponse,
   IntakeSessionsResponse,
+  IntakeSessionCreateResponse,
   IntakeFormsDashboardResponse,
   IntakeFormLinkCreateResponse,
   IntakeFormLinkRevokeResponse,
@@ -409,6 +411,7 @@ export default function DashboardClient({
     {},
   );
   const [intakeTemplates, setIntakeTemplates] = useState(intake.templates);
+  const [intakeSessions, setIntakeSessions] = useState(intake.sessions);
   const [selectedIntakeTemplateId, setSelectedIntakeTemplateId] = useState(
     intake.templates[0]?.id ?? "",
   );
@@ -422,6 +425,7 @@ export default function DashboardClient({
     useState<EmbeddedIntakeTemplateDefinitionV2>(coerceIntakeDefinitionV2(selectedIntakeTemplate));
   const [intakeTemplateStatus, setIntakeTemplateStatus] = useState("Template editor ready.");
   const [savingIntakeTemplate, setSavingIntakeTemplate] = useState(false);
+  const [startingIntakeSession, setStartingIntakeSession] = useState(false);
 
   const filteredMatters = useMemo(
     () => filterMatters(matters, matterSearch),
@@ -439,7 +443,7 @@ export default function DashboardClient({
   const activeSignatures = signatures.filter(
     (signature) => signature.matterId === activeMatter?.id,
   );
-  const activeIntakeSessions = intake.sessions.filter(
+  const activeIntakeSessions = intakeSessions.filter(
     (sessionRecord) => sessionRecord.matterId === activeMatter?.id,
   );
   const activeDocuments = activeMatter?.documents ?? [];
@@ -1421,6 +1425,47 @@ export default function DashboardClient({
       payload.portalUrl ? "Form link created." : "Form link created; URL unavailable.",
     );
     setCreatingIntakeFormLink(false);
+  }
+
+  async function startIntakeSession(): Promise<void> {
+    if (!activeMatter || !selectedIntakeTemplate) return;
+
+    setStartingIntakeSession(true);
+    setIntakeFormToken("");
+    setIntakeFormPortalUrl("");
+    setIntakeFormStatus("Starting intake session...");
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/intake-sessions`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(
+          buildIntakeSessionCreatePayload({
+            matter: activeMatter,
+            template: selectedIntakeTemplate,
+          }),
+        ),
+      });
+
+      if (!response.ok) {
+        setIntakeFormStatus(`Start failed: ${response.status}`);
+        return;
+      }
+
+      const payload = (await response.json()) as IntakeSessionCreateResponse;
+      setIntakeSessions((current) => upsertIntakeSession(current, payload));
+      setIntakeFormStatus(
+        `Intake session started with ${selectedIntakeTemplate.name}. Create a form link when ready.`,
+      );
+    } catch {
+      setIntakeFormStatus("Start failed: network");
+    } finally {
+      setStartingIntakeSession(false);
+    }
   }
 
   async function revokeIntakeFormLink(linkId: string): Promise<void> {
@@ -3504,6 +3549,15 @@ export default function DashboardClient({
                       value={intakeFormExpiresAt}
                     />
                   </label>
+                  <button
+                    className="secondary-button compact-button"
+                    disabled={startingIntakeSession || !selectedIntakeTemplate}
+                    onClick={() => void startIntakeSession()}
+                    type="button"
+                  >
+                    <Plus size={16} />
+                    {startingIntakeSession ? "Starting..." : "Start session"}
+                  </button>
                   <button
                     className="primary-button"
                     disabled={creatingIntakeFormLink || activeIntakeSessions.length === 0}
