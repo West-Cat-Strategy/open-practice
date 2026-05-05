@@ -343,6 +343,7 @@ export interface ActivityTimelineEntry {
     | "conflict"
     | "contact"
     | "document"
+    | "email"
     | "intake"
     | "ledger"
     | "portal"

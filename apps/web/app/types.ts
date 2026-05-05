@@ -74,6 +74,34 @@ export interface IntakeSessionsResponse {
   sessions: IntakeSessionRecord[];
 }
 
+export type IntakeSessionCreateResponse = IntakeSessionRecord & {
+  queuedEmail?: unknown;
+};
+
+export function buildIntakeSessionCreatePayload(input: {
+  matter: Pick<MatterSummary, "id">;
+  template: Pick<IntakeTemplateRecord, "id">;
+}): {
+  matterId: string;
+  templateId: string;
+  evidence: { source: "dashboard" };
+} {
+  return {
+    matterId: input.matter.id,
+    templateId: input.template.id,
+    evidence: { source: "dashboard" },
+  };
+}
+
+export function upsertIntakeSession(
+  sessions: IntakeSessionsResponse["sessions"],
+  session: IntakeSessionCreateResponse,
+): IntakeSessionsResponse["sessions"] {
+  return sessions.some((candidate) => candidate.id === session.id)
+    ? sessions.map((candidate) => (candidate.id === session.id ? session : candidate))
+    : [session, ...sessions];
+}
+
 export type IntakeFormLinkSummary = Omit<IntakeFormLinkRecord, "tokenHash"> & {
   status: string;
 };
@@ -558,6 +586,71 @@ export interface QueueSection {
 
 export interface QueuesResponse {
   sections: QueueSection[];
+}
+
+export type WorkerRunQueueFilter = "all" | "email" | "ocr";
+
+export interface WorkerQueueStatus {
+  queueName: string;
+  status: "configured" | "not_configured" | string;
+  reason?: string;
+}
+
+export interface WorkerRunQueueSummary {
+  queueName: string;
+  total: number;
+  queued: number;
+  active: number;
+  failed: number;
+  terminal: number;
+  latestQueuedAt?: string;
+}
+
+export interface WorkerRunSummary {
+  total: number;
+  queued: number;
+  active: number;
+  failed: number;
+  terminal: number;
+  byQueue?: WorkerRunQueueSummary[];
+}
+
+export interface WorkerRunSummaryItem {
+  id: string;
+  queueName: string;
+  jobName?: string;
+  bullJobId?: string;
+  status: string;
+  terminal?: boolean;
+  failed?: boolean;
+  retryable?: boolean;
+  nextAttemptAt?: string;
+  targetResourceType?: string;
+  targetResourceId?: string;
+  idempotencyKeyPresent?: boolean;
+  attemptsMade?: number;
+  maxAttempts?: number;
+  queuedAt?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  failedAt?: string;
+  errorSummary?: string;
+  metadata?: Record<string, string | number | boolean | undefined>;
+}
+
+export interface WorkerRunsResponse {
+  status: string;
+  queues: string[];
+  workers: WorkerQueueStatus[];
+  workerQueues: WorkerQueueStatus[];
+  summary: WorkerRunSummary;
+  jobs: WorkerRunSummaryItem[];
+}
+
+export interface WorkerRunsDashboardResponse {
+  all: WorkerRunsResponse;
+  email: WorkerRunsResponse;
+  ocr: WorkerRunsResponse;
 }
 
 export type TaskDeadlineWorkbenchResponse = TaskDeadlineWorkbench;

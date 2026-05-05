@@ -15,9 +15,15 @@ const COMMANDS = {
   domainTypecheck: "pnpm --filter @open-practice/domain typecheck",
   formatCheck: "pnpm format:check",
   policyCheck: "pnpm policy:check",
+  providersBuild: "pnpm --filter @open-practice/providers build",
+  providersTest: "pnpm --filter @open-practice/providers test",
+  providersTypecheck: "pnpm --filter @open-practice/providers typecheck",
   test: "pnpm test",
   webTest: "pnpm --filter @open-practice/web test",
   webTypecheck: "pnpm --filter @open-practice/web typecheck",
+  workerBuild: "pnpm --filter @open-practice/worker build",
+  workerTest: "pnpm --filter @open-practice/worker test",
+  workerTypecheck: "pnpm --filter @open-practice/worker typecheck",
 };
 
 const COMMAND_ORDER = [
@@ -33,6 +39,12 @@ const COMMAND_ORDER = [
   COMMANDS.databaseTypecheck,
   COMMANDS.apiTest,
   COMMANDS.apiTypecheck,
+  COMMANDS.providersTest,
+  COMMANDS.providersTypecheck,
+  COMMANDS.providersBuild,
+  COMMANDS.workerTest,
+  COMMANDS.workerTypecheck,
+  COMMANDS.workerBuild,
   COMMANDS.webTest,
   COMMANDS.webTypecheck,
   COMMANDS.build,
@@ -148,12 +160,21 @@ function selectCommands(paths) {
       selected.add(COMMANDS.policyCheck);
     }
 
+    if (path.startsWith("apps/worker/")) {
+      selected.add(COMMANDS.workerTest);
+      selected.add(COMMANDS.workerTypecheck);
+      selected.add(COMMANDS.workerBuild);
+      selected.add(COMMANDS.policyCheck);
+    }
+
     if (path.startsWith("packages/domain/")) {
       selected.add(COMMANDS.domainTest);
       selected.add(COMMANDS.domainTypecheck);
 
       if (isDomainSource(path)) {
         selected.add(COMMANDS.apiTest);
+        selected.add(COMMANDS.providersTest);
+        selected.add(COMMANDS.workerTest);
       }
     }
 
@@ -162,6 +183,15 @@ function selectCommands(paths) {
       selected.add(COMMANDS.databaseCheck);
       selected.add(COMMANDS.databaseTypecheck);
       selected.add(COMMANDS.apiTest);
+    }
+
+    if (path.startsWith("packages/providers/")) {
+      selected.add(COMMANDS.providersTest);
+      selected.add(COMMANDS.providersTypecheck);
+      selected.add(COMMANDS.providersBuild);
+      selected.add(COMMANDS.apiTest);
+      selected.add(COMMANDS.workerTest);
+      selected.add(COMMANDS.workerTypecheck);
     }
 
     if (path.startsWith("apps/web/")) {

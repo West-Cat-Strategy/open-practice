@@ -6,6 +6,7 @@ import type {
   DocumentTextExtractionRecord,
   JobLifecycleRecord,
 } from "@open-practice/domain";
+import { redactJobMetadata } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -21,10 +22,10 @@ import {
   documentProcessingQueueNames,
   providerStatus,
   queueStatus,
-  redactedMetadata,
   serializeJobRun,
   summarizeJobRuns,
 } from "./job-status.js";
+import { enqueueFailureError, markJobEnqueueFailed } from "./outbound-email.js";
 import type { ApiJobQueue, ApiRouteDependencies } from "./types.js";
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
@@ -157,7 +158,7 @@ function sanitizeTextExtraction(extraction: DocumentTextExtractionRecord | undef
     confidence: extraction.confidence,
     createdAt: extraction.createdAt,
     completedAt: extraction.completedAt,
-    metadata: redactedMetadata(extraction.metadata),
+    metadata: redactJobMetadata(extraction.metadata),
   };
 }
 
@@ -269,26 +270,32 @@ export async function queueDocumentOcr(
     rethrowIdempotencyConflict(error);
   }
   const created = job.id === jobId;
-  const updatedJob = created
-    ? await repository.updateJobLifecycleRecord(auth.firmId, job.id, {
-        bullJobId: (
-          await ocrJobQueue.add(
-            "extract_document_text",
-            {
-              firmId: auth.firmId,
-              resourceType: "document",
-              resourceId: document.id,
-              metadata: {
-                ...metadata,
-                jobId,
-                idempotencyKeyPresent: true,
-              },
+  let updatedJob = job;
+  if (created) {
+    let bullJobId: string | undefined;
+    try {
+      bullJobId = (
+        await ocrJobQueue.add(
+          "extract_document_text",
+          {
+            firmId: auth.firmId,
+            resourceType: "document",
+            resourceId: document.id,
+            metadata: {
+              ...metadata,
+              jobId,
+              idempotencyKeyPresent: true,
             },
-            { jobId },
-          )
-        ).id?.toString(),
-      })
-    : job;
+          },
+          { jobId },
+        )
+      ).id?.toString();
+    } catch {
+      await markJobEnqueueFailed(repository, auth.firmId, job, now);
+      throw enqueueFailureError();
+    }
+    updatedJob = await repository.updateJobLifecycleRecord(auth.firmId, job.id, { bullJobId });
+  }
 
   if (created)
     await appendRouteAuditEvent(repository, auth, {

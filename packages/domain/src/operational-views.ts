@@ -116,6 +116,7 @@ const clientPartyRoles = new Set<MatterParty["role"]>([
   "paralegal_client",
 ]);
 const contactActivityKinds = new Set<ActivityTimelineEntry["kind"]>([
+  "email",
   "intake",
   "portal",
   "share",

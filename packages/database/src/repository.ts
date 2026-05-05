@@ -1273,7 +1273,13 @@ function emailEventInsert(record: EmailEventRecord): typeof schema.emailEvents.$
 
 function sanitizeEmailFailureSummary(message: string | undefined): string | undefined {
   if (!message) return undefined;
-  return message.replace(/\s+/g, " ").trim().slice(0, 240) || undefined;
+  return (
+    message
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 240) || undefined
+  );
 }
 
 function nextEmailAttemptCount(existing: EmailOutboxRecord, attemptNumber: number | undefined) {
@@ -1850,6 +1856,7 @@ function buildActivityTimeline(input: {
   externalUploadLinks: ExternalUploadLinkRecord[];
   accessLogs: AccessLogRecord[];
   auditEvents: AuditEvent[];
+  emailOutbox: EmailOutboxRecord[];
   signatureRequests: SignatureRequestRecord[];
   intakeSessions: IntakeSessionRecord[];
   generatedDocuments: GeneratedDocumentRecord[];
@@ -1937,6 +1944,34 @@ function buildActivityTimeline(input: {
           ),
         },
       })),
+    ...input.documents
+      .filter(
+        (document) =>
+          document.firmId === input.firmId &&
+          document.matterId === matterId &&
+          Boolean(document.externalUploadLinkId) &&
+          Boolean(document.reviewedAt),
+      )
+      .map((document) => ({
+        id: `upload-review:${document.id}`,
+        firmId: document.firmId,
+        matterId: document.matterId,
+        occurredAt: document.reviewedAt ?? EPOCH_OCCURRED_AT,
+        title: `External upload ${document.reviewStatus}`,
+        kind: "upload" as const,
+        actorId: document.reviewedByUserId,
+        metadata: {
+          documentId: document.id,
+          externalUploadLinkId: document.externalUploadLinkId,
+          reviewStatus: document.reviewStatus,
+          reviewDecision: document.reviewDecision,
+          reviewReason: document.reviewReason,
+          reviewedByUserId: document.reviewedByUserId,
+          duplicateOfDocumentId: document.duplicateOfDocumentId,
+          supersedesDocumentId: document.supersedesDocumentId,
+          supersededAt: document.supersededAt,
+        },
+      })),
     ...input.portalGrants
       .filter((grant) => grant.firmId === input.firmId && grant.matterId === matterId)
       .map((grant) => ({
@@ -2009,6 +2044,32 @@ function buildActivityTimeline(input: {
           },
         ];
       }),
+    ...input.emailOutbox
+      .filter((email) => email.firmId === input.firmId && email.matterId === matterId)
+      .map((email) => ({
+        id: `email:${email.id}`,
+        firmId: email.firmId,
+        matterId: email.matterId,
+        occurredAt: email.sentAt ?? email.failedAt ?? email.lastAttemptAt ?? email.queuedAt,
+        title: `Outbound email ${email.status}: ${email.templateKey}`,
+        kind: "email" as const,
+        metadata: {
+          templateKey: email.templateKey,
+          status: email.status,
+          recipientCount: email.to.length + email.cc.length + email.bcc.length,
+          relatedResourceType: email.relatedResourceType,
+          relatedResourceId: email.relatedResourceId,
+          attemptCount: email.attemptCount,
+          queuedAt: email.queuedAt,
+          lastAttemptAt: email.lastAttemptAt,
+          sentAt: email.sentAt,
+          failedAt: email.failedAt,
+          terminalFailureAt: email.terminalFailureAt,
+          failureSummary: sanitizeEmailFailureSummary(
+            email.terminalFailureReason ?? email.errorMessage,
+          ),
+        },
+      })),
     ...input.signatureRequests
       .filter((request) => request.firmId === input.firmId && request.matterId === matterId)
       .map((request) => ({
@@ -3135,6 +3196,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
             externalUploadLinks: this.externalUploadLinks,
             accessLogs: this.accessLogs,
             auditEvents: this.auditEvents,
+            emailOutbox: this.emailOutbox,
             signatureRequests: this.signatureRequests,
             intakeSessions: this.intakeSessions,
             generatedDocuments: this.generatedDocuments,
@@ -5989,6 +6051,16 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     const externalUploadLinks = await this.listExternalUploadLinks(user.firmId);
     const accessLogs = await this.listAccessLogs(user.firmId);
     const audit = await this.listAuditEvents(user.firmId);
+    const emailRows = await this.db
+      .select()
+      .from(schema.emailOutbox)
+      .where(
+        and(
+          eq(schema.emailOutbox.firmId, user.firmId),
+          inArray(schema.emailOutbox.matterId, user.assignedMatterIds),
+        ),
+      );
+    const emailOutbox = emailRows.map(mapEmailOutboxRow);
     const signatureRequests = await this.listSignatureRequests(user.firmId);
     const intakeSessions = await this.listIntakeSessions(user.firmId);
     const calendarRows = await this.db
@@ -6040,6 +6112,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           externalUploadLinks,
           accessLogs,
           auditEvents: audit.events,
+          emailOutbox,
           signatureRequests,
           intakeSessions,
           generatedDocuments,

@@ -14,12 +14,13 @@
     "build": "turbo build",
     "ci:local": "pnpm verify && git diff --check",
     "deps:audit": "pnpm audit --prod && pnpm audit --dev",
+    "deps:licenses": "node scripts/report-dependency-licenses.mjs",
     "docs:check": "node scripts/validate-doc-links.mjs",
     "dev": "turbo dev --parallel",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo lint",
-    "policy:check": "pnpm security:scan && node scripts/validate-oss-reuse.mjs && node scripts/validate-doc-links.mjs && node scripts/validate-open-practice-boundaries.mjs",
+    "policy:check": "pnpm security:scan && node scripts/validate-package-manifests.mjs && node scripts/validate-oss-reuse.mjs && node scripts/validate-doc-links.mjs && node scripts/validate-open-practice-boundaries.mjs",
     "release:local": "pnpm deps:audit && pnpm ci:local",
     "refs:clone": "node scripts/clone-oss-references.mjs",
     "security:scan": "node scripts/scan-tracked-secrets.mjs",
@@ -29,12 +30,12 @@
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm --filter @open-practice/database db:check && pnpm policy:check && pnpm build"
   },
   "devDependencies": {
-    "@playwright/test": "latest",
-    "@types/node": "latest",
-    "eslint": "latest",
-    "prettier": "latest",
-    "turbo": "latest",
-    "typescript": "latest",
+    "@playwright/test": "1.59.1",
+    "@types/node": "25.6.0",
+    "eslint": "10.2.1",
+    "prettier": "3.8.3",
+    "turbo": "2.9.7",
+    "typescript": "6.0.3",
     "vitest": "4.1.5"
   }
 }

@@ -5,6 +5,7 @@ import type {
   ProviderSettingKind,
   ProviderSettingRecord,
 } from "@open-practice/domain";
+import { redactJobMetadata } from "@open-practice/domain";
 import type { ApiJobQueue } from "./types.js";
 
 export const openPracticeQueueNames = [
@@ -30,56 +31,8 @@ export const documentProcessingQueueNames = [
   "media",
 ] as const satisfies readonly OpenPracticeQueueName[];
 
-const redactedMetadataKeys = new Set([
-  "attachmentCount",
-  "attachmentId",
-  "attemptNumber",
-  "bullJobId",
-  "checksumStatus",
-  "confidence",
-  "documentId",
-  "emailId",
-  "firmId",
-  "inboundMessageId",
-  "idempotencyKeyPresent",
-  "jobId",
-  "language",
-  "matterId",
-  "maxAttempts",
-  "nextRetryAt",
-  "provider",
-  "providerConfigured",
-  "providerMessageId",
-  "recipientCount",
-  "resourceId",
-  "resourceType",
-  "scanStatus",
-  "source",
-  "task",
-  "templateKey",
-  "terminal",
-  "textLength",
-]);
-
 function isTerminalStatus(status: OpenPracticeJobStatus): boolean {
   return status === "completed" || status === "dead_letter" || status === "skipped";
-}
-
-function safeMetadataValue(value: unknown): string | number | boolean | undefined {
-  if (typeof value === "string") return value.slice(0, 256);
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "boolean") return value;
-  return undefined;
-}
-
-export function redactedMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
-  const redacted: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(metadata)) {
-    if (!redactedMetadataKeys.has(key)) continue;
-    const safeValue = safeMetadataValue(value);
-    if (safeValue !== undefined) redacted[key] = safeValue;
-  }
-  return redacted;
 }
 
 function metadataString(metadata: Record<string, unknown>, key: string): string | undefined {
@@ -117,7 +70,7 @@ export function serializeJobRun(record: JobLifecycleRecord) {
     finishedAt: record.finishedAt,
     failedAt: record.failedAt,
     errorSummary: errorSummary(record.errorMessage),
-    metadata: redactedMetadata(record.metadata),
+    metadata: redactJobMetadata(record.metadata),
   };
 }
 

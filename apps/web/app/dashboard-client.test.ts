@@ -79,6 +79,16 @@ import {
   trustControlsForMatter,
 } from "./trust-controls-dashboard";
 import {
+  buildWorkerRunsPath,
+  describeWorkerRunStatus,
+  emptyWorkerRunsResponse,
+  formatWorkerRunAttempts,
+  formatWorkerRunTiming,
+  summarizeWorkerRuns,
+  workerRunsForFilter,
+  workerRunSafeContext,
+} from "./worker-runs-dashboard";
+import {
   buildIntakeFormLinkCreatePayload,
   buildIntakeFormLinkListPath,
   buildIntakePortalPath,
@@ -110,6 +120,7 @@ import {
   visibleSections,
   type PublicIntakeFormPayload,
 } from "./intake-forms/runner-utils";
+import { buildIntakeSessionCreatePayload, upsertIntakeSession } from "./types";
 import type {
   ExternalUploadLinkRecord,
   ExternalUploadReviewItem,
@@ -118,6 +129,7 @@ import type {
   MatterSummary,
   ShareLinkRecord,
   TrustControlsDashboardResponse,
+  WorkerRunsDashboardResponse,
 } from "./types";
 
 const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapability["resource"]> = {
@@ -938,6 +950,109 @@ describe("dashboard client behavior", () => {
     ).toHaveProperty("matter-002");
   });
 
+  it("describes worker run filters and redacted run context", () => {
+    const dashboard: WorkerRunsDashboardResponse = {
+      all: {
+        ...emptyWorkerRunsResponse("available"),
+        summary: { total: 2, queued: 0, active: 1, failed: 1, terminal: 1, byQueue: [] },
+        jobs: [
+          {
+            id: "job-email-sent",
+            queueName: "email",
+            jobName: "send",
+            status: "completed",
+            terminal: true,
+            attemptsMade: 1,
+            maxAttempts: 3,
+            targetResourceType: "email_outbox",
+            targetResourceId: "email-001",
+            finishedAt: "2026-05-02T09:01:00.000Z",
+            metadata: {
+              emailId: "email-001",
+              templateKey: "signature.requested",
+              body: "raw email body must not render",
+            },
+          },
+          {
+            id: "job-ocr-retry",
+            queueName: "ocr",
+            jobName: "extract_document_text",
+            status: "failed",
+            failed: true,
+            retryable: true,
+            attemptsMade: 2,
+            maxAttempts: 4,
+            nextAttemptAt: "2026-05-02T10:10:00.000Z",
+            targetResourceType: "document",
+            targetResourceId: "doc-001",
+            errorSummary:
+              "Job failed. Error details are redacted; review server logs for privileged diagnostics.",
+            metadata: {
+              matterId: "matter-001",
+              documentId: "doc-001",
+              task: "ocr",
+              storageKey: "private/storage/key.pdf",
+              rawBody: "raw document text must not render",
+            },
+          },
+        ],
+      },
+      email: {
+        ...emptyWorkerRunsResponse("available"),
+        summary: { total: 1, queued: 0, active: 0, failed: 0, terminal: 1, byQueue: [] },
+        jobs: [
+          {
+            id: "job-email-sent",
+            queueName: "email",
+            status: "completed",
+            terminal: true,
+            attemptsMade: 1,
+            maxAttempts: 3,
+          },
+        ],
+      },
+      ocr: {
+        ...emptyWorkerRunsResponse("available"),
+        summary: { total: 1, queued: 0, active: 0, failed: 1, terminal: 0, byQueue: [] },
+        jobs: [
+          {
+            id: "job-ocr-retry",
+            queueName: "ocr",
+            status: "failed",
+            failed: true,
+            retryable: true,
+            attemptsMade: 2,
+            maxAttempts: 4,
+          },
+        ],
+      },
+    };
+
+    expect(buildWorkerRunsPath()).toBe("/api/jobs");
+    expect(buildWorkerRunsPath("email")).toBe("/api/jobs?queueName=email");
+    expect(workerRunsForFilter(dashboard, "email").jobs).toHaveLength(1);
+    expect(workerRunsForFilter(dashboard, "email").jobs[0]!.queueName).toBe("email");
+    expect(workerRunsForFilter(dashboard, "ocr").jobs[0]!.queueName).toBe("ocr");
+    expect(summarizeWorkerRuns(dashboard.all)).toBe(
+      "2 worker runs. 1 active or queued. 1 failed. 1 terminal.",
+    );
+    expect(describeWorkerRunStatus(dashboard.all.jobs[0]!)).toEqual({
+      label: "completed",
+      tone: "ready",
+    });
+    expect(describeWorkerRunStatus(dashboard.all.jobs[1]!)).toEqual({
+      label: "retry pending",
+      tone: "risk",
+    });
+    expect(formatWorkerRunAttempts(dashboard.all.jobs[1]!)).toBe("2/4 attempts");
+    expect(formatWorkerRunTiming(dashboard.all.jobs[1]!)).toContain("next");
+    expect(workerRunSafeContext(dashboard.all.jobs[1]!)).toBe(
+      "target document:doc-001 · matter matter-001 · document doc-001 · task ocr",
+    );
+    expect(workerRunSafeContext(dashboard.all.jobs[1]!)).not.toContain("storage");
+    expect(workerRunSafeContext(dashboard.all.jobs[1]!)).not.toContain("raw document text");
+  });
+
   it("builds share-link payloads and replaces revoked links without leaking token hashes", () => {
     const activeShare = shareLink();
     const revokedShare = shareLink({
@@ -1286,6 +1401,23 @@ describe("dashboard client behavior", () => {
       submittedAt: "2026-04-30T12:00:00.000Z",
       status: "submitted",
     });
+    const session = {
+      id: "intake-session-dashboard",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      templateId: "intake-template-001",
+      provider: "embedded" as const,
+      externalId: "embedded:intake-session-dashboard",
+      status: "created" as const,
+      evidence: { source: "dashboard" },
+      createdAt: "2026-04-30T12:00:00.000Z",
+      updatedAt: "2026-04-30T12:00:00.000Z",
+    };
+    const updatedSession = {
+      ...session,
+      status: "in_progress" as const,
+      updatedAt: "2026-04-30T12:30:00.000Z",
+    };
     const proposal = {
       id: "proposal-001",
       firmId: "firm-west-legal",
@@ -1309,6 +1441,16 @@ describe("dashboard client behavior", () => {
       "/api/intake-variable-proposals?matterId=matter%20001",
     );
     expect(
+      buildIntakeSessionCreatePayload({
+        matter: matter({ id: "matter-001" }),
+        template: { id: "intake-template-001" },
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      templateId: "intake-template-001",
+      evidence: { source: "dashboard" },
+    });
+    expect(
       buildIntakeFormLinkCreatePayload({
         intakeSessionId: "intake-session-001",
         expiresAtLocal,
@@ -1323,6 +1465,8 @@ describe("dashboard client behavior", () => {
         expiresAtLocal: "",
       }),
     ).toEqual({ intakeSessionId: "intake-session-001" });
+    expect(upsertIntakeSession([], session)).toEqual([session]);
+    expect(upsertIntakeSession([session], updatedSession)).toEqual([updatedSession]);
     expect(upsertIntakeFormLink({}, link)).toEqual({ "matter-001": [link] });
     expect(upsertIntakeFormLink({ "matter-001": [link] }, submittedLink)).toEqual({
       "matter-001": [submittedLink],

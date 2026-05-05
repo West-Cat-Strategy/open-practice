@@ -126,6 +126,17 @@ import {
   trustControlsForMatter,
 } from "./trust-controls-dashboard";
 import { describeEmailDeliveryState } from "./email-delivery-dashboard";
+import {
+  describeWorkerRunStatus,
+  formatWorkerRunAttempts,
+  formatWorkerRunTiming,
+  summarizeWorkerRuns,
+  workerRunFilters,
+  workerRunsForFilter,
+  workerRunSafeContext,
+} from "./worker-runs-dashboard";
+import { dashboardApiStatus, requestDashboardJson } from "./api-client";
+import { buildIntakeSessionCreatePayload, upsertIntakeSession } from "./types";
 import type {
   CalendarAttendeeMutationResponse,
   BillingDashboardResponse,
@@ -147,6 +158,7 @@ import type {
   ExternalUploadRevokeResponse,
   ExternalUploadsDashboardResponse,
   IntakeSessionsResponse,
+  IntakeSessionCreateResponse,
   IntakeFormsDashboardResponse,
   IntakeFormLinkCreateResponse,
   IntakeFormLinkRevokeResponse,
@@ -166,6 +178,8 @@ import type {
   TaskDeadlineWorkbenchResponse,
   TrustControlsDashboardResponse,
   IntakeVariableProposalsResponse,
+  WorkerRunQueueFilter,
+  WorkerRunsDashboardResponse,
 } from "./types";
 
 interface DashboardClientProps {
@@ -191,6 +205,7 @@ interface DashboardClientProps {
   taskWorkbench: TaskDeadlineWorkbenchResponse;
   trustControls: TrustControlsDashboardResponse;
   queues: QueuesResponse;
+  workerRuns: WorkerRunsDashboardResponse;
 }
 
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
@@ -239,6 +254,25 @@ function compactDate(value?: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("en-CA");
 }
 
+function OneTimeSecretPanel({
+  items,
+  className = "",
+}: {
+  items: Array<{ label: string; value: string }>;
+  className?: string;
+}) {
+  return (
+    <div className={["upload-token", className].filter(Boolean).join(" ")}>
+      {items.map((item) => (
+        <span key={item.label}>
+          {item.label}
+          <code>{item.value}</code>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function DashboardClient({
   apiBaseUrl,
   billing,
@@ -261,6 +295,7 @@ export default function DashboardClient({
   taskWorkbench,
   trustControls,
   queues,
+  workerRuns,
   shareLinksStatus,
 }: DashboardClientProps) {
   const detailPanelRef = useRef<HTMLElement>(null);
@@ -268,6 +303,7 @@ export default function DashboardClient({
   const hasAppliedUrlSectionRef = useRef(false);
   const [activeMatterId, setActiveMatterId] = useState(matters[0]?.id ?? "");
   const [activeSection, setActiveSection] = useState<LocalDashboardSectionKey>(initialSection);
+  const [workerRunFilter, setWorkerRunFilter] = useState<WorkerRunQueueFilter>("all");
   const [matterSearch, setMatterSearch] = useState("");
   const [contactSearch, setContactSearch] = useState("");
   const [activeContactId, setActiveContactId] = useState(contactDossiers[0]?.contact.id ?? "");
@@ -302,6 +338,7 @@ export default function DashboardClient({
   const requireEmailVerification = false;
   const [creatingShare, setCreatingShare] = useState(false);
   const [revokingShareId, setRevokingShareId] = useState("");
+  const [shareOneTimeToken, setShareOneTimeToken] = useState("");
   const [externalUploadsByMatterId, setExternalUploadsByMatterId] = useState(
     externalUploads.uploadsByMatterId,
   );
@@ -374,6 +411,7 @@ export default function DashboardClient({
     {},
   );
   const [intakeTemplates, setIntakeTemplates] = useState(intake.templates);
+  const [intakeSessions, setIntakeSessions] = useState(intake.sessions);
   const [selectedIntakeTemplateId, setSelectedIntakeTemplateId] = useState(
     intake.templates[0]?.id ?? "",
   );
@@ -387,6 +425,7 @@ export default function DashboardClient({
     useState<EmbeddedIntakeTemplateDefinitionV2>(coerceIntakeDefinitionV2(selectedIntakeTemplate));
   const [intakeTemplateStatus, setIntakeTemplateStatus] = useState("Template editor ready.");
   const [savingIntakeTemplate, setSavingIntakeTemplate] = useState(false);
+  const [startingIntakeSession, setStartingIntakeSession] = useState(false);
 
   const filteredMatters = useMemo(
     () => filterMatters(matters, matterSearch),
@@ -404,7 +443,7 @@ export default function DashboardClient({
   const activeSignatures = signatures.filter(
     (signature) => signature.matterId === activeMatter?.id,
   );
-  const activeIntakeSessions = intake.sessions.filter(
+  const activeIntakeSessions = intakeSessions.filter(
     (sessionRecord) => sessionRecord.matterId === activeMatter?.id,
   );
   const activeDocuments = activeMatter?.documents ?? [];
@@ -540,6 +579,11 @@ export default function DashboardClient({
     [navigationSections],
   );
   const queueSummary = useMemo(() => summarizeQueues(queues), [queues]);
+  const activeWorkerRuns = useMemo(
+    () => workerRunsForFilter(workerRuns, workerRunFilter),
+    [workerRuns, workerRunFilter],
+  );
+  const workerRunSummary = useMemo(() => summarizeWorkerRuns(activeWorkerRuns), [activeWorkerRuns]);
   const taskDeadlineSummary = useMemo(() => {
     const my = taskWorkbench.counters.my;
     return `${my.overdue} overdue, ${my.today} due today, ${my.upcoming} upcoming`;
@@ -969,29 +1013,27 @@ export default function DashboardClient({
     setCreatingExternalUpload(true);
     setExternalUploadToken("");
     setExternalUploadStatus("Creating link...");
-    const response = await fetch(`${apiBaseUrl}/api/external-uploads`, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        ...devHeaders,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(
-        buildExternalUploadCreatePayload({
-          matterId: activeMatter.id,
-          maxUploads: externalUploadMaxUploads,
-          expiresAtLocal: externalUploadExpiresAt,
-        }),
-      ),
-    });
-
-    if (!response.ok) {
-      setExternalUploadStatus(`Create failed: ${response.status}`);
+    let payload: ExternalUploadCreateResponse;
+    try {
+      payload = await requestDashboardJson<ExternalUploadCreateResponse>(
+        apiBaseUrl,
+        "/api/external-uploads",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: buildExternalUploadCreatePayload({
+            matterId: activeMatter.id,
+            maxUploads: externalUploadMaxUploads,
+            expiresAtLocal: externalUploadExpiresAt,
+          }),
+        },
+      );
+    } catch (error) {
+      setExternalUploadStatus(`Create failed: ${dashboardApiStatus(error)}`);
       setCreatingExternalUpload(false);
       return;
     }
 
-    const payload = (await response.json()) as ExternalUploadCreateResponse;
     if (!payload.upload) {
       setExternalUploadStatus(`Not created: ${compactStatus(payload.reason)}`);
       setCreatingExternalUpload(false);
@@ -1120,23 +1162,25 @@ export default function DashboardClient({
     setCreatingCalendarCredential(true);
     setCalendarOneTimeSecret(null);
     setCalendarCredentialStatus("Creating calendar app password...");
-    const response = await fetch(`${apiBaseUrl}/api/calendar/credentials`, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        ...devHeaders,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ label: calendarCredentialLabel.trim() || "iOS Calendar" }),
-    });
-
-    if (!response.ok) {
-      setCalendarCredentialStatus(`Calendar credential create failed: ${response.status}`);
+    let payload: CalendarCredentialCreateResponse;
+    try {
+      payload = await requestDashboardJson<CalendarCredentialCreateResponse>(
+        apiBaseUrl,
+        "/api/calendar/credentials",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: { label: calendarCredentialLabel.trim() || "iOS Calendar" },
+        },
+      );
+    } catch (error) {
+      setCalendarCredentialStatus(
+        `Calendar credential create failed: ${dashboardApiStatus(error)}`,
+      );
       setCreatingCalendarCredential(false);
       return;
     }
 
-    const payload = (await response.json()) as CalendarCredentialCreateResponse;
     setCalendarCredentials((current) => upsertCalendarCredential(current, payload.credential));
     setCalendarOneTimeSecret(payload);
     setCalendarCredentialStatus("Calendar app password created.");
@@ -1383,6 +1427,47 @@ export default function DashboardClient({
     setCreatingIntakeFormLink(false);
   }
 
+  async function startIntakeSession(): Promise<void> {
+    if (!activeMatter || !selectedIntakeTemplate) return;
+
+    setStartingIntakeSession(true);
+    setIntakeFormToken("");
+    setIntakeFormPortalUrl("");
+    setIntakeFormStatus("Starting intake session...");
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/intake-sessions`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(
+          buildIntakeSessionCreatePayload({
+            matter: activeMatter,
+            template: selectedIntakeTemplate,
+          }),
+        ),
+      });
+
+      if (!response.ok) {
+        setIntakeFormStatus(`Start failed: ${response.status}`);
+        return;
+      }
+
+      const payload = (await response.json()) as IntakeSessionCreateResponse;
+      setIntakeSessions((current) => upsertIntakeSession(current, payload));
+      setIntakeFormStatus(
+        `Intake session started with ${selectedIntakeTemplate.name}. Create a form link when ready.`,
+      );
+    } catch {
+      setIntakeFormStatus("Start failed: network");
+    } finally {
+      setStartingIntakeSession(false);
+    }
+  }
+
   async function revokeIntakeFormLink(linkId: string): Promise<void> {
     setRevokingIntakeFormLinkId(linkId);
     setIntakeFormStatus("Revoking form link...");
@@ -1450,6 +1535,7 @@ export default function DashboardClient({
 
   function selectMatter(matterId: string): void {
     setActiveMatterId(matterId);
+    setShareOneTimeToken("");
     setExternalUploadToken("");
     setExternalUploadStatus("No link created.");
     setCalendarOneTimeSecret(null);
@@ -1475,30 +1561,24 @@ export default function DashboardClient({
 
     setCreatingShare(true);
     setShareStatus("Creating share link...");
-    const response = await fetch(`${apiBaseUrl}/api/shares`, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        ...devHeaders,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(
-        buildCreateShareLinkPayload({
+    let payload: CreateShareLinkResponse;
+    try {
+      payload = await requestDashboardJson<CreateShareLinkResponse>(apiBaseUrl, "/api/shares", {
+        method: "POST",
+        headers: devHeaders,
+        payload: buildCreateShareLinkPayload({
           matterId: activeMatter.id,
           permissions: sharePermissions,
           expiresAt: shareExpiresAt,
           requireEmailVerification,
         }),
-      ),
-    });
-
-    if (!response.ok) {
-      setShareStatus(`Share link creation failed: ${response.status}`);
+      });
+    } catch (error) {
+      setShareStatus(`Share link creation failed: ${dashboardApiStatus(error)}`);
       setCreatingShare(false);
       return;
     }
 
-    const payload = (await response.json()) as CreateShareLinkResponse;
     if (!payload.share) {
       setShareStatus(
         payload.reason
@@ -1514,10 +1594,9 @@ export default function DashboardClient({
       ...current,
       [activeMatter.id]: [createdShare, ...(current[activeMatter.id] ?? [])],
     }));
+    setShareOneTimeToken(payload.token ?? "");
     setShareStatus(
-      payload.token
-        ? `Created share link. One-time token: ${payload.token}`
-        : "Created share link.",
+      payload.token ? "Created share link." : "Created share link; token unavailable.",
     );
     setCreatingShare(false);
   }
@@ -2600,6 +2679,11 @@ export default function DashboardClient({
                       {creatingShare ? "Creating..." : "Create link"}
                     </button>
                   </div>
+                  {shareOneTimeToken ? (
+                    <OneTimeSecretPanel
+                      items={[{ label: "One-time token", value: shareOneTimeToken }]}
+                    />
+                  ) : null}
                   <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
                     {shareStatus}
                   </p>
@@ -2707,10 +2791,9 @@ export default function DashboardClient({
                   </button>
                 </div>
                 {externalUploadToken ? (
-                  <div className="upload-token">
-                    <span>One-time token</span>
-                    <code>{externalUploadToken}</code>
-                  </div>
+                  <OneTimeSecretPanel
+                    items={[{ label: "One-time token", value: externalUploadToken }]}
+                  />
                 ) : null}
                 <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
                   {externalUploadStatus}
@@ -3086,14 +3169,14 @@ export default function DashboardClient({
                     </button>
                   </div>
                   {calendarOneTimeSecret ? (
-                    <div className="upload-token calendar-secret">
-                      <span>Username</span>
-                      <code>{calendarOneTimeSecret.username}</code>
-                      <span>One-time password</span>
-                      <code>{calendarOneTimeSecret.password}</code>
-                      <span>Principal URL</span>
-                      <code>{calendarOneTimeSecret.principalUrl}</code>
-                    </div>
+                    <OneTimeSecretPanel
+                      className="calendar-secret"
+                      items={[
+                        { label: "Username", value: calendarOneTimeSecret.username },
+                        { label: "One-time password", value: calendarOneTimeSecret.password },
+                        { label: "Principal URL", value: calendarOneTimeSecret.principalUrl },
+                      ]}
+                    />
                   ) : null}
                   <p className="inline-empty">{calendarCredentialStatus}</p>
                 </div>
@@ -3467,6 +3550,15 @@ export default function DashboardClient({
                     />
                   </label>
                   <button
+                    className="secondary-button compact-button"
+                    disabled={startingIntakeSession || !selectedIntakeTemplate}
+                    onClick={() => void startIntakeSession()}
+                    type="button"
+                  >
+                    <Plus size={16} />
+                    {startingIntakeSession ? "Starting..." : "Start session"}
+                  </button>
+                  <button
                     className="primary-button"
                     disabled={creatingIntakeFormLink || activeIntakeSessions.length === 0}
                     onClick={() => void createIntakeFormLink()}
@@ -3476,16 +3568,14 @@ export default function DashboardClient({
                   </button>
                 </div>
                 {intakeFormToken ? (
-                  <div className="upload-token">
-                    <span>One-time token</span>
-                    <code>{intakeFormToken}</code>
-                  </div>
+                  <OneTimeSecretPanel
+                    items={[{ label: "One-time token", value: intakeFormToken }]}
+                  />
                 ) : null}
                 {intakeFormPortalUrl ? (
-                  <div className="upload-token">
-                    <span>Client form URL</span>
-                    <code>{intakeFormPortalUrl}</code>
-                  </div>
+                  <OneTimeSecretPanel
+                    items={[{ label: "Client form URL", value: intakeFormPortalUrl }]}
+                  />
                 ) : null}
                 <p className="inline-empty">{intakeFormStatus}</p>
                 <div className="party-list">
@@ -3678,6 +3768,49 @@ export default function DashboardClient({
                   {queueSummary}
                 </p>
                 <p className="inline-empty">{taskDeadlineSummary}</p>
+                <div className="section-title">
+                  <h3>Worker runs</h3>
+                  <span>{activeWorkerRuns.jobs.length} runs</span>
+                </div>
+                <div className="row-actions" aria-label="Worker run filters">
+                  {workerRunFilters.map((filter) => (
+                    <button
+                      aria-pressed={workerRunFilter === filter.key}
+                      className="secondary-button compact-button row-button"
+                      key={filter.key}
+                      onClick={() => setWorkerRunFilter(filter.key)}
+                      type="button"
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="inline-empty">{workerRunSummary}</p>
+                <div className="party-list queue-section-list">
+                  {activeWorkerRuns.jobs.map((job) => {
+                    const state = describeWorkerRunStatus(job);
+                    return (
+                      <div className="party-row" key={job.id}>
+                        <span>
+                          <strong>
+                            {job.queueName} · {job.jobName ?? job.id}
+                          </strong>
+                          <small>
+                            {formatWorkerRunAttempts(job)} · {formatWorkerRunTiming(job)} ·{" "}
+                            {workerRunSafeContext(job)}
+                          </small>
+                          {job.errorSummary ? <small>{job.errorSummary}</small> : null}
+                        </span>
+                        <em className={state.tone === "risk" ? "risk" : undefined}>
+                          {state.label}
+                        </em>
+                      </div>
+                    );
+                  })}
+                  {activeWorkerRuns.jobs.length === 0 ? (
+                    <p className="inline-empty">No worker runs match this filter.</p>
+                  ) : null}
+                </div>
                 <div className="party-list queue-section-list">
                   {queues.sections.map((section) => (
                     <section className="queue-section" key={section.key}>

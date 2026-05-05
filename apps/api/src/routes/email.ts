@@ -13,6 +13,8 @@ import {
 } from "./idempotency.js";
 import {
   EMAIL_JOB_MAX_ATTEMPTS,
+  enqueueFailureError,
+  markJobEnqueueFailed,
   queueRouteEmailOutbox,
   summarizeQueuedRouteEmail,
 } from "./outbound-email.js";
@@ -419,22 +421,30 @@ export function registerEmailRoutes(
       rethrowIdempotencyConflict(error);
     }
     const created = retried.job.id === jobId;
-    const updatedJob = created
-      ? await repository.updateJobLifecycleRecord(request.auth.firmId, retried.job.id, {
-          bullJobId: (
-            await emailJobQueue.add(
-              "send_email",
-              {
-                firmId: request.auth.firmId,
-                resourceType: "email_outbox",
-                resourceId: email.id,
-                metadata: { ...jobMetadata, idempotencyKeyPresent: true },
-              },
-              { jobId },
-            )
-          ).id?.toString(),
-        })
-      : retried.job;
+    let updatedJob = retried.job;
+    if (created) {
+      let bullJobId: string | undefined;
+      try {
+        bullJobId = (
+          await emailJobQueue.add(
+            "send_email",
+            {
+              firmId: request.auth.firmId,
+              resourceType: "email_outbox",
+              resourceId: email.id,
+              metadata: { ...jobMetadata, idempotencyKeyPresent: true },
+            },
+            { jobId },
+          )
+        ).id?.toString();
+      } catch {
+        await markJobEnqueueFailed(repository, request.auth.firmId, retried.job, now);
+        throw enqueueFailureError();
+      }
+      updatedJob = await repository.updateJobLifecycleRecord(request.auth.firmId, retried.job.id, {
+        bullJobId,
+      });
+    }
 
     if (created)
       await appendRouteAuditEvent(repository, request.auth, {

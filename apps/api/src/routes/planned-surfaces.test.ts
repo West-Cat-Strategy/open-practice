@@ -46,7 +46,11 @@ function testServer(
     request.auth = { firmId: authUser.firmId, user: authUser };
   });
   const dependencies = { repository };
-  registerAuthExtensionRoutes(server);
+  registerAuthExtensionRoutes(server, {
+    repository,
+    jwtSecret: input.jwtSecret,
+    webAuthn: { rpID: "localhost", origin: "http://localhost:3000" },
+  });
   registerDocumentProcessingRoutes(server, dependencies);
   registerEmailRoutes(server, dependencies);
   registerExternalUploadRoutes(server, dependencies);
@@ -102,8 +106,9 @@ describe("planned surface route scaffolds", () => {
     expect(
       (await server.inject({ method: "GET", url: "/api/auth/extensions" })).json(),
     ).toMatchObject({
-      oidc: { status: "disabled", reason: "not_configured" },
-      saml: { status: "disabled", reason: "not_configured" },
+      passkeys: { status: "available", reason: "no_registered_passkeys" },
+      oidc: { status: "deprecated", reason: "embedded_auth_is_current_runtime" },
+      saml: { status: "deprecated", reason: "embedded_auth_is_current_runtime" },
     });
   });
 

@@ -18,6 +18,7 @@ import {
   idempotencyMetadata,
   rethrowIdempotencyConflict,
 } from "./idempotency.js";
+import { appendWorkflowAuditEvent } from "./audit-events.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
@@ -608,10 +609,7 @@ export function registerExternalUploadRoutes(
         ...(reason ? { reason } : {}),
       },
     });
-    await repository.appendAuditEvent({
-      id: crypto.randomUUID(),
-      firmId: request.auth.firmId,
-      actorId: request.auth.user.id,
+    await appendWorkflowAuditEvent(repository, request.auth, {
       action: "external_upload.document_reviewed",
       resourceType: "document",
       resourceId: reviewed.id,
@@ -624,6 +622,11 @@ export function registerExternalUploadRoutes(
         ...(reason ? { reason } : {}),
         ...(duplicateOfDocumentId ? { duplicateOfDocumentId } : {}),
         ...(sanitizedNote ? { noteLength: sanitizedNote.length } : {}),
+      },
+      workflow: {
+        requestId: request.id,
+        matterIds: [reviewed.matterId],
+        status: "succeeded",
       },
     });
 

@@ -40,6 +40,7 @@ import {
   emptyTrustControlsDashboard,
   loadTrustControlsDashboardData,
 } from "./trust-controls-dashboard";
+import { buildWorkerRunsPath, emptyWorkerRunsResponse } from "./worker-runs-dashboard";
 import type {
   BillingDashboardResponse,
   CalendarCredentialsResponse,
@@ -72,6 +73,8 @@ import type {
   SignatureRequestsResponse,
   TaskDeadlineWorkbenchResponse,
   TrustControlsDashboardResponse,
+  WorkerRunsDashboardResponse,
+  WorkerRunsResponse,
 } from "./types";
 
 export const dynamic = "force-dynamic";
@@ -263,6 +266,26 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     },
     headers,
   );
+  const workerRuns: WorkerRunsDashboardResponse = {
+    all: await apiGetOptional<WorkerRunsResponse>(
+      buildWorkerRunsPath("all"),
+      emptyWorkerRunsResponse(),
+      headers,
+      emptyWorkerRunsResponse("access_denied"),
+    ),
+    email: await apiGetOptional<WorkerRunsResponse>(
+      buildWorkerRunsPath("email"),
+      emptyWorkerRunsResponse(),
+      headers,
+      emptyWorkerRunsResponse("access_denied"),
+    ),
+    ocr: await apiGetOptional<WorkerRunsResponse>(
+      buildWorkerRunsPath("ocr"),
+      emptyWorkerRunsResponse(),
+      headers,
+      emptyWorkerRunsResponse("access_denied"),
+    ),
+  };
   const billing = await apiGetOptional<BillingDashboardResponse>(
     "/api/billing/dashboard",
     billingFallback,
@@ -440,6 +463,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       signatures={signatures}
       taskWorkbench={taskWorkbench}
       trustControls={trustControls}
+      workerRuns={workerRuns}
     />
   );
 }

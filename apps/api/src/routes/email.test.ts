@@ -158,6 +158,51 @@ describe("email routes", () => {
     });
   });
 
+  it("marks a durable email job failed when BullMQ enqueue fails", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-mailpit",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "mailpit",
+      enabled: true,
+      encryptedConfig: "local-mailpit-profile",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const failingQueue: ApiJobQueue = {
+      async add() {
+        throw new Error("Redis unavailable with private connection details");
+      },
+    };
+
+    const response = await testServer({ repository, emailJobQueue: failingQueue }).inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "signature.requested",
+        to: ["client@example.test"],
+        subject: "Signature requested",
+        textBody: "Please review the signature request.",
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      code: "QUEUE_ENQUEUE_FAILED",
+    });
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal");
+    expect(job).toMatchObject({
+      queueName: "email",
+      status: "failed",
+      attemptsMade: 1,
+      errorMessage: "Job enqueue failed; retry after the worker queue is available.",
+      metadata: expect.objectContaining({ enqueueStatus: "failed", matterId: "matter-001" }),
+    });
+    expect(job.errorMessage).not.toContain("private connection details");
+  });
+
   it("replays matching idempotent outbox requests without queueing duplicate jobs", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.upsertProviderSetting({
