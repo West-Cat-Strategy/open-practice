@@ -387,7 +387,14 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     jwtSecret: options.jwtSecret,
     emailJobQueue: options.emailJobQueue,
   });
-  registerAuthExtensionRoutes(server);
+  registerAuthExtensionRoutes(server, {
+    repository: options.repository,
+    jwtSecret: options.jwtSecret,
+    webAuthn: {
+      rpID: options.webAuthn.rpID,
+      origin: options.webAuthn.origin,
+    },
+  });
   registerAuditRoutes(server, { repository: options.repository });
   registerSignatureRoutes(server, {
     repository: options.repository,
