@@ -28,6 +28,27 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
 - Major updates, runtime dependency updates, vulnerable packages, and license-sensitive updates stay
   manual. Follow [License Policy](../license-policy.md) before adding dependencies or copied
   excerpts.
+- Include Docker surfaces in dependency refreshes. Run `docker compose config`, scan base and service
+  images with Docker Scout when available, prefer deterministic service tags over `latest`, and
+  document residual upstream CVEs that have no safer same-scope image recommendation.
+
+### Docker Dependency Snapshot
+
+2026-05-05 dependency refresh evidence:
+
+- `node:24-alpine` stayed as the app base to avoid a Node major or Debian image-family swap. The
+  Dockerfile updates bundled npm to `11.13.0`, deploys runtime images with production dependencies,
+  and uses Node's built-in `fetch` for API health checks instead of installing `curl`. Final local app
+  images had no critical/high Scout findings; the upstream `node:24-alpine` base still reported the
+  unfixed npm `picomatch` high finding.
+- `postgres:17-alpine` stayed pinned to the current major to avoid a database-major migration inside
+  this dependency slice. Scout still reported upstream Go standard-library critical/high findings on
+  the image.
+- `redis:8-alpine` replaced `redis:7-alpine` in the local Docker stack because the Scout result
+  dropped from critical/high Go runtime findings to no critical/high findings in the current scan.
+- `minio/minio:RELEASE.2025-09-07T16-13-09Z` and `axllent/mailpit:v1.29.7` replaced floating
+  `latest` tags. Scout still reported upstream MinIO/Go module critical/high findings and a Mailpit
+  Markdown high finding without a safer deterministic same-scope replacement selected in this pass.
 
 ## GitHub Settings Cutover
 

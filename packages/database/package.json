@@ -17,13 +17,13 @@
   },
   "dependencies": {
     "@open-practice/domain": "workspace:^",
-    "drizzle-kit": "^0.31.10",
     "drizzle-orm": "0.45.2",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "drizzle-kit": "^0.31.10",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.59.1"
+    "typescript-eslint": "8.59.2"
   }
 }
