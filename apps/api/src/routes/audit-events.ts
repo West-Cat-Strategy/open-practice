@@ -26,3 +26,34 @@ export async function appendRouteAuditEvent(
     metadata: compactMetadata(event.metadata),
   });
 }
+
+export type WorkflowAuditEnvelopeInput = {
+  requestId: string;
+  matterIds?: string[];
+  status: "succeeded" | "failed" | "queued" | "skipped";
+  idempotencyKeyPresent?: boolean;
+  errorSummary?: string;
+};
+
+export async function appendWorkflowAuditEvent(
+  repository: OpenPracticeRepository,
+  auth: ApiAuthContext,
+  event: Omit<NewAuditEvent, "id" | "firmId" | "actorId" | "occurredAt"> & {
+    occurredAt?: string;
+    metadata?: RouteAuditMetadata;
+    workflow: WorkflowAuditEnvelopeInput;
+  },
+): Promise<void> {
+  await appendRouteAuditEvent(repository, auth, {
+    ...event,
+    metadata: {
+      ...event.metadata,
+      requestId: event.workflow.requestId,
+      actorId: auth.user.id,
+      matterIds: event.workflow.matterIds,
+      workflowStatus: event.workflow.status,
+      idempotencyKeyPresent: event.workflow.idempotencyKeyPresent,
+      errorSummary: event.workflow.errorSummary,
+    },
+  });
+}

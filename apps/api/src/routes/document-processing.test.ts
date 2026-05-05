@@ -446,6 +446,37 @@ describe("document processing routes", () => {
     expect(response.json()).toMatchObject({ message: "OCR queue is not configured" });
   });
 
+  it("marks a durable OCR job failed when BullMQ enqueue fails", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const failingQueue: ApiJobQueue = {
+      async add() {
+        throw new Error("Redis unavailable with private connection details");
+      },
+    };
+
+    const response = await testServer({ repository, ocrJobQueue: failingQueue }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/queue",
+      payload: { language: "eng" },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ code: "QUEUE_ENQUEUE_FAILED" });
+    const [job] = await repository.listJobLifecycleRecords(firmId, { queueName: "ocr" });
+    expect(job).toMatchObject({
+      jobName: "extract_document_text",
+      status: "failed",
+      attemptsMade: 1,
+      errorMessage: "Job enqueue failed; retry after the worker queue is available.",
+      metadata: expect.objectContaining({
+        documentId: "doc-001",
+        matterId: "matter-001",
+        enqueueStatus: "failed",
+      }),
+    });
+    expect(job.errorMessage).not.toContain("private connection details");
+  });
+
   it("allows duplicate-checksum verified documents to queue OCR", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const { queue, jobs } = fakeOcrQueue();

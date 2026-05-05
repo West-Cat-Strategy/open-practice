@@ -51,6 +51,31 @@ export interface QueuedRouteEmailSummary {
   idempotencyKeyPresent: boolean;
 }
 
+const enqueueFailureMessage = "Job enqueue failed; retry after the worker queue is available.";
+
+export async function markJobEnqueueFailed(
+  repository: OpenPracticeRepository,
+  firmId: string,
+  job: JobLifecycleRecord,
+  occurredAt: string,
+): Promise<JobLifecycleRecord> {
+  return repository.updateJobLifecycleRecord(firmId, job.id, {
+    status: "failed",
+    attemptsMade: Math.max(job.attemptsMade, 1),
+    failedAt: occurredAt,
+    errorMessage: enqueueFailureMessage,
+    metadata: { ...job.metadata, enqueueStatus: "failed" },
+  });
+}
+
+export function enqueueFailureError(): ApiHttpError {
+  return new ApiHttpError(
+    503,
+    "QUEUE_ENQUEUE_FAILED",
+    "The worker queue did not accept the job. The durable job record was marked failed for operator review.",
+  );
+}
+
 export function summarizeQueuedRouteEmail(
   queued: QueuedRouteEmail | undefined,
 ): QueuedRouteEmailSummary | undefined {
@@ -207,28 +232,35 @@ export async function queueRouteEmailOutbox(
   }
   const created = queued.email.id === emailId && queued.job.id === jobId;
   if (!created) return queued;
-  const bullJob = await emailJobQueue.add(
-    "send_email",
-    {
-      firmId: auth.firmId,
-      resourceType: "email_outbox",
-      resourceId: emailId,
-      metadata: {
-        emailId: queued.email.id,
-        matterId: input.matterId,
-        provider: enabledProvider.key,
-        source: input.source ?? "api.route",
-        templateKey: input.templateKey,
-        recipientCount: to.length + cc.length + bcc.length,
-        relatedResourceType: input.relatedResourceType,
-        relatedResourceId: input.relatedResourceId,
-        idempotencyKeyPresent: true,
+  let bullJobId: string | undefined;
+  try {
+    const bullJob = await emailJobQueue.add(
+      "send_email",
+      {
+        firmId: auth.firmId,
+        resourceType: "email_outbox",
+        resourceId: emailId,
+        metadata: {
+          emailId: queued.email.id,
+          matterId: input.matterId,
+          provider: enabledProvider.key,
+          source: input.source ?? "api.route",
+          templateKey: input.templateKey,
+          recipientCount: to.length + cc.length + bcc.length,
+          relatedResourceType: input.relatedResourceType,
+          relatedResourceId: input.relatedResourceId,
+          idempotencyKeyPresent: true,
+        },
       },
-    },
-    { jobId },
-  );
+      { jobId },
+    );
+    bullJobId = bullJob.id === undefined ? undefined : String(bullJob.id);
+  } catch {
+    await markJobEnqueueFailed(repository, auth.firmId, queued.job, now);
+    throw enqueueFailureError();
+  }
   const updatedJob = await repository.updateJobLifecycleRecord(auth.firmId, queued.job.id, {
-    bullJobId: bullJob.id === undefined ? undefined : String(bullJob.id),
+    bullJobId,
   });
   const queuedWithJob = { ...queued, job: updatedJob };
 

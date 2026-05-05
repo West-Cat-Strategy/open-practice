@@ -11,7 +11,7 @@ import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
-import { appendRouteAuditEvent } from "./audit-events.js";
+import { appendRouteAuditEvent, appendWorkflowAuditEvent } from "./audit-events.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const ledgerPostBodySchema = z.object({
@@ -179,16 +179,23 @@ export function registerLedgerRoutes(
       }
       throw error;
     }
-    await appendRouteAuditEvent(repository, request.auth, {
+    const matterIds = [...new Set(posted.entries.map((entry) => entry.matterId))];
+    await appendWorkflowAuditEvent(repository, request.auth, {
       action: "ledger.transaction.posted",
       resourceType: "ledger_transaction",
       resourceId: posted.id,
       metadata: {
         transactionId: posted.id,
-        matterIds: [...new Set(posted.entries.map((entry) => entry.matterId))],
+        matterIds,
         accountIds: [...new Set(posted.entries.map((entry) => entry.accountId))],
         status: "posted",
         entryCount: posted.entries.length,
+      },
+      workflow: {
+        requestId: request.id,
+        matterIds,
+        status: "succeeded",
+        idempotencyKeyPresent: true,
       },
     });
     return posted;

@@ -5,6 +5,7 @@ import type {
   ProfessionalRole,
   User,
 } from "./models.js";
+import type { JobLifecycleRecord } from "./operations.js";
 
 export type ResourceKind =
   | "firm"
@@ -193,6 +194,40 @@ const matterScopedResources = new Set<ResourceKind>([
   "draft",
 ]);
 
+const firmWideJobRoles = new Set<ProfessionalRole>(["owner_admin", "auditor"]);
+
+const safeJobMetadataKeys = new Set([
+  "attachmentCount",
+  "attachmentId",
+  "attemptNumber",
+  "bullJobId",
+  "checksumStatus",
+  "confidence",
+  "documentId",
+  "emailId",
+  "enqueueStatus",
+  "firmId",
+  "inboundMessageId",
+  "idempotencyKeyPresent",
+  "jobId",
+  "language",
+  "matterId",
+  "maxAttempts",
+  "nextRetryAt",
+  "provider",
+  "providerConfigured",
+  "providerMessageId",
+  "recipientCount",
+  "resourceId",
+  "resourceType",
+  "scanStatus",
+  "source",
+  "task",
+  "templateKey",
+  "terminal",
+  "textLength",
+]);
+
 const portalPermissionByResourceAction: Partial<
   Record<ResourceKind, Partial<Record<Action, PortalGrant["permissions"][number]>>>
 > = {
@@ -258,6 +293,50 @@ export function canAccess(request: AccessRequest): boolean {
   }
 
   return true;
+}
+
+function safeJobMetadataValue(value: unknown): string | number | boolean | undefined {
+  if (typeof value === "string") return value.slice(0, 256);
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "boolean") return value;
+  return undefined;
+}
+
+export function redactJobMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  const redacted: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (!safeJobMetadataKeys.has(key)) continue;
+    const safeValue = safeJobMetadataValue(value);
+    if (safeValue !== undefined) redacted[key] = safeValue;
+  }
+  return redacted;
+}
+
+export function jobLifecycleMatterId(record: JobLifecycleRecord): string | undefined {
+  const value = record.metadata.matterId;
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+export function canReadJobLifecycleRecord(input: {
+  user: User;
+  firmId: string;
+  record: JobLifecycleRecord;
+}): boolean {
+  if (input.record.firmId !== input.firmId) return false;
+  if (!canAccess({ user: input.user, firmId: input.firmId, resource: "job", action: "read" })) {
+    return false;
+  }
+  if (firmWideJobRoles.has(input.user.role)) return true;
+
+  const matterId = jobLifecycleMatterId(input.record);
+  if (!matterId) return false;
+  return canAccess({
+    user: input.user,
+    firmId: input.firmId,
+    resource: "job",
+    action: "read",
+    matterId,
+  });
 }
 
 export function assertAccess(request: AccessRequest): void {

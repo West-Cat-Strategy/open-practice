@@ -560,6 +560,71 @@ export interface QueuesResponse {
   sections: QueueSection[];
 }
 
+export type WorkerRunQueueFilter = "all" | "email" | "ocr";
+
+export interface WorkerQueueStatus {
+  queueName: string;
+  status: "configured" | "not_configured" | string;
+  reason?: string;
+}
+
+export interface WorkerRunQueueSummary {
+  queueName: string;
+  total: number;
+  queued: number;
+  active: number;
+  failed: number;
+  terminal: number;
+  latestQueuedAt?: string;
+}
+
+export interface WorkerRunSummary {
+  total: number;
+  queued: number;
+  active: number;
+  failed: number;
+  terminal: number;
+  byQueue?: WorkerRunQueueSummary[];
+}
+
+export interface WorkerRunSummaryItem {
+  id: string;
+  queueName: string;
+  jobName?: string;
+  bullJobId?: string;
+  status: string;
+  terminal?: boolean;
+  failed?: boolean;
+  retryable?: boolean;
+  nextAttemptAt?: string;
+  targetResourceType?: string;
+  targetResourceId?: string;
+  idempotencyKeyPresent?: boolean;
+  attemptsMade?: number;
+  maxAttempts?: number;
+  queuedAt?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  failedAt?: string;
+  errorSummary?: string;
+  metadata?: Record<string, string | number | boolean | undefined>;
+}
+
+export interface WorkerRunsResponse {
+  status: string;
+  queues: string[];
+  workers: WorkerQueueStatus[];
+  workerQueues: WorkerQueueStatus[];
+  summary: WorkerRunSummary;
+  jobs: WorkerRunSummaryItem[];
+}
+
+export interface WorkerRunsDashboardResponse {
+  all: WorkerRunsResponse;
+  email: WorkerRunsResponse;
+  ocr: WorkerRunsResponse;
+}
+
 export type TaskDeadlineWorkbenchResponse = TaskDeadlineWorkbench;
 
 export type ShareLinkPermission = "view_documents";
