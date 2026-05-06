@@ -162,6 +162,13 @@
       "when": 1777773600000,
       "tag": "0022_idempotent_job_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1778019553000,
+      "tag": "0023_trust_reconciliation_snapshots",
+      "breakpoints": true
     }
   ]
 }

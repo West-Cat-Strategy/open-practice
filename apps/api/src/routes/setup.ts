@@ -332,23 +332,24 @@ export function registerSetupRoutes(
           expectedOrigin: options.origin,
           expectedRPID: options.rpID,
         });
-        if (verification.verified && verification.registrationInfo) {
-          const { credential, credentialDeviceType, credentialBackedUp } =
-            verification.registrationInfo;
-          const { id: credentialID, publicKey, counter } = credential;
-          webAuthnCredential = {
-            id: id("cred"),
-            firmId: newFirmId,
-            userId: ownerId,
-            credentialId: Buffer.from(credentialID).toString("base64url"),
-            publicKey: Buffer.from(publicKey).toString("base64url"),
-            counter,
-            transports: body.owner.webAuthn.response.transports || [],
-            deviceType: credentialDeviceType,
-            backedUp: credentialBackedUp,
-            createdAt: nowIso,
-          };
+        if (!verification.verified || !verification.registrationInfo) {
+          throw Object.assign(new Error("Passkey verification failed"), { statusCode: 400 });
         }
+        const { credential, credentialDeviceType, credentialBackedUp } =
+          verification.registrationInfo;
+        const { id: credentialID, publicKey, counter } = credential;
+        webAuthnCredential = {
+          id: id("cred"),
+          firmId: newFirmId,
+          userId: ownerId,
+          credentialId: Buffer.from(credentialID).toString("base64url"),
+          publicKey: Buffer.from(publicKey).toString("base64url"),
+          counter,
+          transports: body.owner.webAuthn.response.transports || [],
+          deviceType: credentialDeviceType,
+          backedUp: credentialBackedUp,
+          createdAt: nowIso,
+        };
       }
 
       const result = await options.repository

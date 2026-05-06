@@ -13,6 +13,7 @@ export default function LoginClient({ apiBaseUrl }: LoginClientProps) {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("Session required.");
   const [submitting, setSubmitting] = useState(false);
+  const canSubmit = firmId.trim() && email.trim() && password;
 
   async function login() {
     setSubmitting(true);
@@ -21,7 +22,7 @@ export default function LoginClient({ apiBaseUrl }: LoginClientProps) {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ firmId, email, password }),
+      body: JSON.stringify({ firmId: firmId.trim(), email: email.trim(), password }),
     });
     if (!response.ok) {
       const error = (await response.json().catch(() => null)) as { message?: string } | null;
@@ -43,8 +44,16 @@ export default function LoginClient({ apiBaseUrl }: LoginClientProps) {
           <div>
             <p className="eyebrow">Open Practice</p>
             <h1 id="login-title">Sign In</h1>
+            <p className="setup-step-summary">
+              Use the firm workspace ID and owner-issued credentials.
+            </p>
           </div>
         </header>
+        <div className="auth-readiness-strip" aria-label="Session requirements">
+          <span>{firmId.trim() ? "Firm ID ready" : "Firm ID required"}</span>
+          <span>{email.trim() ? "Email ready" : "Email required"}</span>
+          <span>{password ? "Password ready" : "Password required"}</span>
+        </div>
         <div className="setup-grid one-column auth-form-grid" aria-label="Session credentials">
           <label className="form-field">
             <span>Firm ID</span>
@@ -85,7 +94,7 @@ export default function LoginClient({ apiBaseUrl }: LoginClientProps) {
           </span>
           <button
             className="primary-button auth-submit-button"
-            disabled={submitting || !firmId || !email || !password}
+            disabled={submitting || !canSubmit}
             onClick={login}
             type="button"
           >

@@ -1,6 +1,40 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
+import { verifyRegistrationResponse } from "@simplewebauthn/server";
 import { createApiServer, envSchema, validateProductionReadiness } from "./server.js";
+
+vi.mock("@simplewebauthn/server", () => ({
+  generateRegistrationOptions: vi.fn(async () => ({
+    challenge: "registration-challenge",
+    rp: { id: "localhost", name: "Test RP" },
+    user: { id: "user-setup", name: "avery@example.test", displayName: "" },
+    pubKeyCredParams: [],
+  })),
+  verifyRegistrationResponse: vi.fn(async () => ({
+    verified: true,
+    registrationInfo: {
+      credential: {
+        id: "credential-id",
+        publicKey: new Uint8Array([1, 2, 3]),
+        counter: 0,
+      },
+      credentialDeviceType: "singleDevice",
+      credentialBackedUp: false,
+    },
+  })),
+  generateAuthenticationOptions: vi.fn(async () => ({
+    challenge: "authentication-challenge",
+    rpId: "localhost",
+    allowCredentials: [],
+    userVerification: "preferred",
+  })),
+  verifyAuthenticationResponse: vi.fn(async () => ({
+    verified: true,
+    authenticationInfo: {
+      newCounter: 1,
+    },
+  })),
+}));
 
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
@@ -204,6 +238,58 @@ describe("API auth and persistence boundaries", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({ message: "Invalid or expired WebAuthn challenge" });
+  });
+
+  it("rejects failed first-run passkey verification without completing setup", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const server = testServer({
+      repository,
+      jwtSecret: "production-test-secret-at-least-32-characters",
+      setupKey: "setup-key",
+    });
+    await repository.createWebAuthnChallenge({
+      id: "challenge-failed",
+      challengeHash: "valid-challenge",
+      purpose: "passkey_registration",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+    vi.mocked(verifyRegistrationResponse).mockResolvedValueOnce({ verified: false });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      headers: { "x-open-practice-setup-key": "setup-key" },
+      payload: setupPayload({
+        owner: {
+          displayName: "Avery Owner",
+          email: "avery@example.test",
+          password: "correct horse battery staple",
+          webAuthn: {
+            id: "credential-id",
+            rawId: "credential-id",
+            type: "public-key",
+            response: {
+              clientDataJSON: "client-data",
+              attestationObject: "attestation",
+              transports: ["internal"],
+            },
+            clientExtensionResults: {},
+            challengeHash: "valid-challenge",
+          },
+        },
+      }),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ message: "Passkey verification failed" });
+    await expect(repository.getSetupStatus()).resolves.toEqual({ required: true, blocked: false });
+    await expect(repository.getWebAuthnChallenge("valid-challenge")).resolves.toEqual(
+      expect.objectContaining({ challengeHash: "valid-challenge" }),
+    );
+    await expect(
+      repository.getWebAuthnChallenge("valid-challenge").then((challenge) => challenge?.consumedAt),
+    ).resolves.toBeUndefined();
   });
 
   it("completes first-run setup with owner auth, firm settings, first matter, and session", async () => {
@@ -875,8 +961,21 @@ describe("API auth and persistence boundaries", () => {
         accountId: "acct-trust-bank",
         statementPeriodStart: "2026-04-01T00:00:00.000Z",
         statementPeriodEnd: "2026-04-30T23:59:59.000Z",
+        beginningBalanceCents: 0,
+        endingBalanceCents: 149500,
         expectedBalanceCents: 150000,
         actualBalanceCents: 149500,
+        statementRows: [
+          {
+            id: "statement-row-server-exception",
+            postedAt: "2026-04-29T17:00:00.000Z",
+            description: "Synthetic unresolved statement item",
+            amountCents: 149500,
+            matchedLedgerEntryIds: [],
+            reviewDecision: "unmatched",
+          },
+        ],
+        varianceExplanation: "Synthetic statement item needs ledger review.",
         evidence: { statement: "April" },
       },
     });
@@ -905,8 +1004,21 @@ describe("API auth and persistence boundaries", () => {
         accountId: "acct-trust-bank",
         statementPeriodStart: "2026-04-01T00:00:00.000Z",
         statementPeriodEnd: "2026-04-30T23:59:59.000Z",
+        beginningBalanceCents: 0,
+        endingBalanceCents: 149500,
         expectedBalanceCents: 150000,
         actualBalanceCents: 149500,
+        statementRows: [
+          {
+            id: "statement-row-forbidden-queue",
+            postedAt: "2026-04-29T17:00:00.000Z",
+            description: "Synthetic unresolved statement item",
+            amountCents: 149500,
+            matchedLedgerEntryIds: [],
+            reviewDecision: "unmatched",
+          },
+        ],
+        varianceExplanation: "Synthetic statement item needs ledger review.",
       },
     });
     const forbiddenApproval = await server.inject({

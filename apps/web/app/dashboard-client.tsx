@@ -2219,9 +2219,17 @@ export default function DashboardClient({
                     <span>{trustReviewSummary.overdrawnBalanceCount} overdrawn diagnostics</span>
                   </div>
                   <div className="activity-card">
+                    <FileText size={18} />
+                    <strong>{trustReviewSummary.importedStatementRowCount} statement rows</strong>
+                    <span>
+                      {trustReviewSummary.matchedStatementRowCount} matched ·{" "}
+                      {trustReviewSummary.unmatchedStatementRowCount} unmatched
+                    </span>
+                  </div>
+                  <div className="activity-card">
                     <Clock3 size={18} />
                     <strong>{activeTrustPostings.length} recent postings</strong>
-                    <span>read-only ledger review</span>
+                    <span>{cents(trustReviewSummary.totalVarianceCents)} total variance</span>
                   </div>
                 </div>
 
@@ -2267,8 +2275,16 @@ export default function DashboardClient({
                         </strong>
                         <small>
                           {compactStatus(reconciliation.status)} ·{" "}
-                          {compactDate(reconciliation.statementPeriodEnd)}
+                          {compactDate(reconciliation.statementPeriodEnd)} ·{" "}
+                          {reconciliation.statementRows.length} statement rows
                         </small>
+                        <small>
+                          opening {cents(reconciliation.beginningBalanceCents)} · closing{" "}
+                          {cents(reconciliation.endingBalanceCents)}
+                        </small>
+                        {reconciliation.varianceExplanation ? (
+                          <small>{reconciliation.varianceExplanation}</small>
+                        ) : null}
                       </span>
                       <em className="risk">
                         {cents(

@@ -75,10 +75,23 @@ async function addLedgerException(
     accountId: "acct-trust-bank",
     statementPeriodStart: "2026-04-01T00:00:00.000Z",
     statementPeriodEnd: "2026-04-30T23:59:59.000Z",
+    beginningBalanceCents: 0,
+    endingBalanceCents: 149500,
     expectedBalanceCents: 150000,
     actualBalanceCents: 149500,
     status: "exception",
     reviewedByUserId: "user-admin",
+    statementRows: [
+      {
+        id: `${id}:statement-row-001`,
+        postedAt: "2026-04-29T17:00:00.000Z",
+        description: "Synthetic unresolved statement item",
+        amountCents: 149500,
+        matchedLedgerEntryIds: [],
+        reviewDecision: "unmatched",
+      },
+    ],
+    varianceExplanation: "Synthetic statement item needs ledger review.",
     evidence: {},
     createdAt: "2026-04-30T23:59:59.000Z",
   });
