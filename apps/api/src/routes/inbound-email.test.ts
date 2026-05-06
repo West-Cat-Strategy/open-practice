@@ -7,6 +7,7 @@ import type {
   ProfessionalRole,
   User,
 } from "@open-practice/domain";
+import { sampleUsers } from "@open-practice/domain/sample-data";
 import { registerInboundEmailRoutes } from "./inbound-email.js";
 import type { ApiJobQueue } from "./types.js";
 
@@ -192,6 +193,181 @@ describe("inbound email routes", () => {
     });
     expect(response.json().attachments).toHaveLength(1);
     expect(response.json().attachments[0]).not.toHaveProperty("documentId");
+  });
+
+  it("requires inbound email read access for matter-scoped message lists", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message());
+
+    const response = await testServer(
+      repository,
+      user("billing_bookkeeper", ["matter-001"]),
+    ).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "available",
+      messages: [expect.objectContaining({ id: "inbound-message-001" })],
+    });
+  });
+
+  it("allows authorized staff to triage-route unscoped inbound email to an accessible matter", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(
+      message({
+        id: "inbound-message-unscoped",
+        matterId: undefined,
+        addressId: undefined,
+        status: "triage_pending",
+        metadata: { staffTriage: { note: "Private note must not persist" } },
+      }),
+    );
+
+    const response = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "PATCH",
+      url: "/api/communications/inbox/inbound-email/inbound-message-unscoped",
+      payload: {
+        matterId: "matter-001",
+        status: "triaged",
+        labels: ["client", "routed"],
+        staffTriage: {
+          status: "routed",
+          assignedToUserId: "user-staff",
+          contactIds: ["contact-ada"],
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "updated",
+      message: {
+        id: "inbound-message-unscoped",
+        matterId: "matter-001",
+        status: "triaged",
+        labels: ["client", "routed"],
+        staffTriage: {
+          status: "routed",
+          assignedToUserId: "user-staff",
+          contactIds: ["contact-ada"],
+          updatedByUserId: "user-licensee",
+        },
+      },
+    });
+    const updated = await repository.getInboundEmailMessage(firmId, "inbound-message-unscoped");
+    expect(updated?.metadata.staffTriage).not.toHaveProperty("note");
+    const audit = await repository.listAuditEvents(firmId);
+    const triageAudit = audit.events.find(
+      (event) => event.action === "inbound_email.triage_updated",
+    );
+    expect(triageAudit?.metadata).toMatchObject({
+      matterId: "matter-001",
+      status: "triaged",
+      labelCount: 2,
+      staffTriageStatus: "routed",
+      assignedToUserId: "user-staff",
+      contactIds: ["contact-ada"],
+    });
+    expect(JSON.stringify(triageAudit?.metadata)).not.toContain("Private note");
+  });
+
+  it("denies auditor triage mutation", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message());
+
+    const response = await testServer(repository, user("auditor", ["matter-001"])).inject({
+      method: "PATCH",
+      url: "/api/communications/inbox/inbound-email/inbound-message-001",
+      payload: { status: "triaged" },
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("rejects cross-matter triage routing for already scoped inbound email", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message({ matterId: "matter-001" }));
+
+    const response = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+    ).inject({
+      method: "PATCH",
+      url: "/api/communications/inbox/inbound-email/inbound-message-001",
+      payload: { matterId: "matter-002" },
+    });
+
+    expect(response.statusCode).toBe(403);
+    await expect(
+      repository.getInboundEmailMessage(firmId, "inbound-message-001"),
+    ).resolves.toMatchObject({ matterId: "matter-001" });
+  });
+
+  it("rejects unknown staff triage fields", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message({ status: "triage_pending" }));
+
+    const response = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "PATCH",
+      url: "/api/communications/inbox/inbound-email/inbound-message-001",
+      payload: {
+        status: "triaged",
+        staffTriage: { note: "Unsafe private note" },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    await expect(
+      repository.getInboundEmailMessage(firmId, "inbound-message-001"),
+    ).resolves.toMatchObject({ status: "triage_pending" });
+  });
+
+  it("rejects triage contacts and assignees that are outside the target matter", async () => {
+    const repository = new InMemoryOpenPracticeRepository({
+      users: [
+        ...sampleUsers,
+        {
+          id: "user-other-matter",
+          firmId,
+          displayName: "Other Matter Staff",
+          email: "other@example.test",
+          role: "firm_member",
+          assignedMatterIds: ["matter-002"],
+          mfaEnabled: true,
+        },
+      ],
+    });
+    await repository.createInboundEmailMessage(
+      message({
+        id: "inbound-message-unscoped",
+        matterId: undefined,
+        addressId: undefined,
+        status: "triage_pending",
+      }),
+    );
+
+    const badContact = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "PATCH",
+      url: "/api/communications/inbox/inbound-email/inbound-message-unscoped",
+      payload: {
+        matterId: "matter-001",
+        staffTriage: { contactIds: ["contact-northstar"] },
+      },
+    });
+    expect(badContact.statusCode).toBe(403);
+
+    const badAssignee = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "PATCH",
+      url: "/api/communications/inbox/inbound-email/inbound-message-unscoped",
+      payload: {
+        matterId: "matter-001",
+        staffTriage: { assignedToUserId: "user-other-matter" },
+      },
+    });
+    expect(badAssignee.statusCode).toBe(403);
   });
 
   it("promotes a matter-scoped attachment to a document", async () => {

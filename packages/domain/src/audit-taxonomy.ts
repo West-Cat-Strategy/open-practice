@@ -578,6 +578,21 @@ export const auditEventTaxonomyDefinitions = [
     ],
   }),
   define({
+    action: "inbound_email.triage_updated",
+    category: "communications",
+    resourceType: "inbound_email",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    matterMetadataKeys: ["matterId", "previousMatterId"],
+    resourceMetadataKeys: [
+      "status",
+      "labelCount",
+      "staffTriageStatus",
+      "assignedToUserId",
+      "contactIds",
+    ],
+  }),
+  define({
     action: "inbound_email.attachment.promoted_to_document",
     category: "communications",
     resourceType: "document",

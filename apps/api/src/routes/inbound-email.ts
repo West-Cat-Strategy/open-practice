@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { AccessRequest } from "@open-practice/domain";
+import type { AccessRequest, InboundEmailMessageRecord } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
@@ -13,6 +13,33 @@ const inboundEmailQuerySchema = z.object({
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
+const staffTriageSchema = z
+  .object({
+    status: z.enum(["needs_review", "routed", "rejected", "closed"]).optional(),
+    assignedToUserId: z.string().min(1).optional(),
+    contactIds: z.array(z.string().min(1)).max(20).optional(),
+  })
+  .strict();
+const inboundEmailTriageBodySchema = z
+  .object({
+    status: z.enum(["received", "parsed", "triage_pending", "triaged", "rejected"]).optional(),
+    labels: z.array(z.string().trim().min(1).max(64)).max(12).optional(),
+    matterId: z.string().min(1).optional(),
+    staffTriage: staffTriageSchema.optional(),
+  })
+  .strict()
+  .refine(
+    (body) =>
+      body.status !== undefined ||
+      body.labels !== undefined ||
+      body.matterId !== undefined ||
+      (body.staffTriage !== undefined &&
+        (body.staffTriage.status !== undefined ||
+          body.staffTriage.assignedToUserId !== undefined ||
+          body.staffTriage.contactIds !== undefined)),
+    { message: "At least one triage field is required" },
+  );
+type InboundEmailTriageBody = z.infer<typeof inboundEmailTriageBodySchema>;
 const promoteAttachmentParamsSchema = z.object({
   id: z.string().min(1),
   attachmentId: z.string().min(1),
@@ -33,6 +60,41 @@ function assertInboundEmailAccess(
 ): void {
   const access = requireAccess(context, request);
   if (!access.ok) throw access.error;
+}
+
+function redactedStaffTriage(input: InboundEmailTriageBody["staffTriage"]) {
+  if (!input) return undefined;
+  const triage = {
+    status: input.status,
+    assignedToUserId: input.assignedToUserId,
+    contactIds: input.contactIds,
+    updatedAt: new Date().toISOString(),
+  };
+  return Object.fromEntries(Object.entries(triage).filter(([, value]) => value !== undefined));
+}
+
+function buildInboundEmailTriageUpdates(
+  message: InboundEmailMessageRecord,
+  body: InboundEmailTriageBody,
+  actorUserId: string,
+): Partial<Pick<InboundEmailMessageRecord, "status" | "matterId" | "labels" | "metadata">> {
+  const updates: Partial<
+    Pick<InboundEmailMessageRecord, "status" | "matterId" | "labels" | "metadata">
+  > = {};
+  if (body.status !== undefined) updates.status = body.status;
+  if (body.labels !== undefined) updates.labels = body.labels;
+  if (body.matterId !== undefined) updates.matterId = body.matterId;
+  const staffTriage = redactedStaffTriage(body.staffTriage);
+  if (staffTriage) {
+    updates.metadata = {
+      ...message.metadata,
+      staffTriage: {
+        ...staffTriage,
+        updatedByUserId: actorUserId,
+      },
+    };
+  }
+  return updates;
 }
 
 export function registerInboundEmailRoutes(
@@ -65,7 +127,7 @@ export function registerInboundEmailRoutes(
     const query = parseRequestPart(inboundEmailQuerySchema, request.query, "query");
     if (query.matterId) {
       assertInboundEmailAccess(request.auth, {
-        resource: "portal_message",
+        resource: "inbound_email",
         action: "read",
         matterId: query.matterId,
       });
@@ -109,6 +171,122 @@ export function registerInboundEmailRoutes(
       status: "available",
       message,
       attachments,
+    };
+  });
+
+  server.patch("/api/communications/inbox/inbound-email/:id", async (request) => {
+    const params = parseRequestPart(idParamsSchema, request.params, "params");
+    const body = parseRequestPart(inboundEmailTriageBodySchema, request.body ?? {}, "body");
+    const message = await repository.getInboundEmailMessage(request.auth.firmId, params.id);
+    if (!message) {
+      throw Object.assign(new Error("Inbound email message was not found"), { statusCode: 404 });
+    }
+
+    const targetMatterId = body.matterId ?? message.matterId;
+    if (message.matterId && body.matterId && body.matterId !== message.matterId) {
+      throw Object.assign(new Error("Scoped inbound email cannot be moved to another matter"), {
+        statusCode: 403,
+      });
+    }
+    if (message.matterId) {
+      assertInboundEmailAccess(request.auth, {
+        resource: "inbound_email",
+        action: "update",
+        matterId: message.matterId,
+      });
+    } else if (!targetMatterId) {
+      assertInboundEmailAccess(request.auth, {
+        resource: "inbound_email",
+        action: "update",
+      });
+    }
+    if (targetMatterId) {
+      assertInboundEmailAccess(request.auth, {
+        resource: "inbound_email",
+        action: "update",
+        matterId: targetMatterId,
+      });
+    }
+
+    const accessibleMatters = await repository.listMattersForUser(request.auth.user);
+    const targetMatter = targetMatterId
+      ? accessibleMatters.find((matter) => matter.id === targetMatterId)
+      : undefined;
+    if (targetMatterId && !targetMatter) {
+      throw Object.assign(new Error("Target matter was not found"), { statusCode: 404 });
+    }
+
+    const contactIds = body.staffTriage?.contactIds ?? [];
+    if ((contactIds.length > 0 || body.staffTriage?.assignedToUserId) && !targetMatter) {
+      throw Object.assign(new Error("Staff triage assignments require a target matter"), {
+        statusCode: 400,
+      });
+    }
+    if (contactIds.length > 0) {
+      const linkedContactIds = new Set(targetMatter?.parties.map((party) => party.contactId) ?? []);
+      const unlinkedContactId = contactIds.find((contactId) => !linkedContactIds.has(contactId));
+      if (unlinkedContactId) {
+        throw Object.assign(new Error("Triage contact is not linked to the target matter"), {
+          statusCode: 403,
+        });
+      }
+    }
+
+    if (body.staffTriage?.assignedToUserId && targetMatter) {
+      const assignedUser = await repository.getUser(
+        request.auth.firmId,
+        body.staffTriage.assignedToUserId,
+      );
+      if (!assignedUser) {
+        throw Object.assign(new Error("Assigned user was not found"), { statusCode: 404 });
+      }
+      assertInboundEmailAccess(
+        { firmId: request.auth.firmId, user: assignedUser },
+        { resource: "inbound_email", action: "update", matterId: targetMatterId },
+      );
+    }
+
+    const updated = await repository.updateInboundEmailMessage(
+      request.auth.firmId,
+      message.id,
+      buildInboundEmailTriageUpdates(message, body, request.auth.user.id),
+    );
+
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "inbound_email.triage_updated",
+      resourceType: "inbound_email",
+      resourceId: updated.id,
+      metadata: {
+        matterId: updated.matterId,
+        previousMatterId: message.matterId,
+        status: updated.status,
+        labelCount: updated.labels.length,
+        staffTriageStatus:
+          typeof updated.metadata.staffTriage === "object" &&
+          updated.metadata.staffTriage !== null &&
+          !Array.isArray(updated.metadata.staffTriage)
+            ? (updated.metadata.staffTriage as Record<string, unknown>).status
+            : undefined,
+        assignedToUserId: body.staffTriage?.assignedToUserId,
+        contactIds: body.staffTriage?.contactIds,
+      },
+    });
+
+    return {
+      status: "updated",
+      message: {
+        id: updated.id,
+        matterId: updated.matterId,
+        status: updated.status,
+        labels: updated.labels,
+        receivedAt: updated.receivedAt,
+        staffTriage:
+          typeof updated.metadata.staffTriage === "object" &&
+          updated.metadata.staffTriage !== null &&
+          !Array.isArray(updated.metadata.staffTriage)
+            ? updated.metadata.staffTriage
+            : undefined,
+      },
     };
   });
 

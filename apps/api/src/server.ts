@@ -27,6 +27,7 @@ import { registerCalDavRoutes } from "./routes/caldav.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
 import { registerContactRoutes } from "./routes/contacts.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
+import { registerCommunicationsRoutes } from "./routes/communications.js";
 import { registerConversationThreadRoutes } from "./routes/conversation-threads.js";
 import { registerDocumentProcessingRoutes } from "./routes/document-processing.js";
 import { registerDocumentRoutes } from "./routes/documents.js";
@@ -343,6 +344,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerMatterRoutes(server, { repository: options.repository });
   registerContactRoutes(server, { repository: options.repository });
   registerConnectorRoutes(server, { repository: options.repository });
+  registerCommunicationsRoutes(server, { repository: options.repository });
   registerConversationThreadRoutes(server, { repository: options.repository });
   registerLegalClinicRoutes(server, { repository: options.repository });
   registerLedgerRoutes(server, { repository: options.repository });

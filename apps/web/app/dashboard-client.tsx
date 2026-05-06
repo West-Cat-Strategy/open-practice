@@ -126,6 +126,7 @@ import {
   trustControlsForMatter,
 } from "./trust-controls-dashboard";
 import { describeEmailDeliveryState } from "./email-delivery-dashboard";
+import { describeCommunicationsDeliveryState } from "./communications-inbox-dashboard";
 import {
   describeWorkerRunStatus,
   formatWorkerRunAttempts,
@@ -145,6 +146,7 @@ import type {
   CalendarDashboardResponse,
   CalendarInvitationResponse,
   CapabilitiesResponse,
+  CommunicationsInboxDashboardResponse,
   ConflictResponse,
   ContactDossiersResponse,
   DocumentProcessingDashboardResponse,
@@ -187,6 +189,7 @@ interface DashboardClientProps {
   billing: BillingDashboardResponse;
   calendar: CalendarDashboardResponse;
   capabilities: CapabilitiesResponse;
+  communicationsInbox: CommunicationsInboxDashboardResponse;
   contactDossiers: ContactDossiersResponse;
   devHeaders: Record<string, string>;
   documentProcessing: DocumentProcessingDashboardResponse;
@@ -278,6 +281,7 @@ export default function DashboardClient({
   billing,
   calendar,
   capabilities,
+  communicationsInbox,
   contactDossiers,
   devHeaders,
   documentProcessing,
@@ -504,6 +508,9 @@ export default function DashboardClient({
   const activeEmailDeliveries = activeMatter
     ? (emailDeliveryHistory.emailsByMatterId[activeMatter.id] ?? [])
     : [];
+  const activeCommunicationsInbox = activeMatter
+    ? communicationsInbox.inboxByMatterId[activeMatter.id]
+    : undefined;
   const activePendingIntakeVariableProposals = activeIntakeVariableProposals.filter(
     (proposal) => proposal.status === "pending",
   );
@@ -1928,6 +1935,113 @@ export default function DashboardClient({
                     </div>
                   </>
                 ) : null}
+
+                <div className="section-title">
+                  <h3>Client communications</h3>
+                  <span>
+                    {activeCommunicationsInbox?.status.replaceAll("_", " ") ?? "unavailable"}
+                  </span>
+                </div>
+                <div className="detail-grid compact-detail-grid">
+                  <div>
+                    <span className="field-label">Inbound messages</span>
+                    <strong>{activeCommunicationsInbox?.inboundEmail.length ?? 0}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Outbound records</span>
+                    <strong>
+                      {activeCommunicationsInbox?.outboundDeliveryHistory.length ?? 0}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Conversation topics</span>
+                    <strong>{activeCommunicationsInbox?.conversations.length ?? 0}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Channel status</span>
+                    <strong>
+                      {activeCommunicationsInbox
+                        ? `${compactStatus(activeCommunicationsInbox.channelState.inboundEmailStatus)} / ${compactStatus(activeCommunicationsInbox.channelState.outboundEmailStatus)}`
+                        : "unavailable"}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="party-list">
+                  {activeCommunicationsInbox?.inboundEmail.slice(0, 3).map((message) => (
+                    <div className="party-row" key={message.id}>
+                      <span>
+                        <strong>{compactStatus(message.triage?.status ?? message.status)}</strong>
+                        <small>
+                          received {compactDate(message.receivedAt)} · {message.attachmentCount}{" "}
+                          attachment{message.attachmentCount === 1 ? "" : "s"}
+                        </small>
+                        {message.labels.length > 0 ? (
+                          <small>{message.labels.map(compactStatus).join(", ")}</small>
+                        ) : null}
+                      </span>
+                      <em>{message.status.replaceAll("_", " ")}</em>
+                    </div>
+                  ))}
+                  {activeCommunicationsInbox?.outboundDeliveryHistory.slice(0, 3).map((email) => {
+                    const state = describeCommunicationsDeliveryState(email);
+                    return (
+                      <div className="party-row" key={email.id}>
+                        <span>
+                          <strong>{email.templateKey}</strong>
+                          <small>
+                            {email.recipientCount} recipients · {email.attemptCount} attempts ·{" "}
+                            {compactDate(email.lastAttemptAt ?? email.queuedAt)}
+                          </small>
+                          {email.failureSummary ? <small>{email.failureSummary}</small> : null}
+                        </span>
+                        <em className={state.tone === "risk" ? "risk" : undefined}>
+                          {state.label}
+                        </em>
+                      </div>
+                    );
+                  })}
+                  {activeCommunicationsInbox?.conversations.slice(0, 3).map((thread) => (
+                    <div className="party-row" key={thread.id}>
+                      <span>
+                        <strong>{thread.topic}</strong>
+                        <small>
+                          {compactStatus(thread.notificationBoundary)} ·{" "}
+                          {compactDate(thread.updatedAt)}
+                        </small>
+                      </span>
+                      <em>{compactStatus(thread.status)}</em>
+                    </div>
+                  ))}
+                  {activeCommunicationsInbox?.contactCues.slice(0, 3).map((cue) => {
+                    const linkedRole = cue.matterLinks[0]?.role;
+                    const reviewCount =
+                      cue.cueSummary.conflictCueCount + cue.cueSummary.qualitySignalCount;
+                    return (
+                      <div className="party-row" key={cue.contact.id}>
+                        <span>
+                          <strong>{cue.contact.displayName}</strong>
+                          <small>
+                            {cue.contact.kind} ·{" "}
+                            {linkedRole ? compactStatus(linkedRole) : "matter link"}
+                          </small>
+                        </span>
+                        <em className={reviewCount > 0 ? "risk" : undefined}>
+                          {reviewCount > 0 ? `${reviewCount} cues` : "clear"}
+                        </em>
+                      </div>
+                    );
+                  })}
+                  {activeCommunicationsInbox &&
+                  activeCommunicationsInbox.inboundEmail.length === 0 &&
+                  activeCommunicationsInbox.outboundDeliveryHistory.length === 0 &&
+                  activeCommunicationsInbox.conversations.length === 0 &&
+                  activeCommunicationsInbox.contactCues.length === 0 ? (
+                    <p className="inline-empty">
+                      No client communications are linked to this matter.
+                    </p>
+                  ) : null}
+                </div>
 
                 <div className="section-title">
                   <h3>Email delivery history</h3>

@@ -112,6 +112,11 @@ import {
   loadLegalClinicDashboardData,
 } from "./legal-clinic-dashboard";
 import {
+  buildCommunicationsInboxPath,
+  describeCommunicationsDeliveryState,
+  loadCommunicationsInboxDashboardData,
+} from "./communications-inbox-dashboard";
+import {
   actionComplete,
   coerceAnswer,
   errorMessage,
@@ -125,6 +130,7 @@ import type {
   ExternalUploadLinkRecord,
   ExternalUploadReviewItem,
   DocumentProcessingWorkbenchResponse,
+  CommunicationsInboxMatterResponse,
   IntakeFormLinkSummary,
   MatterSummary,
   ShareLinkRecord,
@@ -507,6 +513,62 @@ function publicRunnerPayload(
 }
 
 describe("dashboard client behavior", () => {
+  it("loads matter-scoped communications inbox payloads", async () => {
+    const inbox: CommunicationsInboxMatterResponse = {
+      status: "available",
+      matterId: "matter-001",
+      channelState: {
+        inboundEmailStatus: "configured",
+        outboundEmailStatus: "disabled",
+        inboundEmailAddressCount: 1,
+        enabledInboundEmailAddressCount: 1,
+      },
+      inboundEmail: [
+        {
+          id: "inbound-message-001",
+          matterId: "matter-001",
+          status: "triage_pending",
+          labels: ["client"],
+          receivedAt: "2026-05-05T12:00:00.000Z",
+          attachmentCount: 1,
+          triage: { status: "needs_review" },
+        },
+      ],
+      outboundDeliveryHistory: [],
+      conversations: [],
+      contactCues: [],
+    };
+
+    const dashboard = await loadCommunicationsInboxDashboardData({
+      matters: [matter({ id: "matter-001" })],
+      getInboxForMatter: async (matterId) => ({ ...inbox, matterId }),
+    });
+
+    expect(buildCommunicationsInboxPath("matter 001")).toBe(
+      "/api/communications/inbox?matterId=matter%20001",
+    );
+    expect(dashboard.inboxByMatterId["matter-001"]).toMatchObject({
+      matterId: "matter-001",
+      inboundEmail: [expect.objectContaining({ id: "inbound-message-001" })],
+    });
+  });
+
+  it("describes communications delivery state without provider details", () => {
+    expect(
+      describeCommunicationsDeliveryState({
+        id: "email-outbox-001",
+        matterId: "matter-001",
+        templateKey: "client.update",
+        status: "failed",
+        recipientCount: 1,
+        attemptCount: 1,
+        queuedAt: "2026-05-05T12:00:00.000Z",
+        failureSummary: "Mailbox unavailable",
+        events: [],
+      }),
+    ).toEqual({ label: "failed", tone: "risk" });
+  });
+
   it("filters and summarizes contact dossiers without requiring contact edits", () => {
     const dossiers = [
       {
