@@ -123,6 +123,8 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/inbound-email/status`                                                   | Inbound email provider status plus configured firm inbound addresses.                                                                                                                   |
 | `GET /api/inbound-email/messages?matterId=`                                       | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                                                                                                   |
 | `GET /api/inbound-email/messages/:id`                                             | Matter-scoped parsed inbound email detail with inbound-email attachment records and promoted `documentId` links when present.                                                           |
+| `GET /api/communications/inbox?matterId=`                                         | Matter-view redacted communications aggregate over inbound email summaries, outbound delivery history, conversation topics, contact cues, and channel status.                           |
+| `PATCH /api/communications/inbox/inbound-email/:id`                               | Triage-only update for one inbound email using existing status, labels, matter scope, and constrained `metadata.staffTriage` fields.                                                    |
 | `POST /api/inbound-email/messages/:id/attachments/:attachmentId/promote-document` | Explicitly promotes one matter-scoped inbound attachment to a verified document record and optionally queues OCR.                                                                       |
 | `GET /api/conversation-threads?matterId=`                                         | Lists matter-scoped provider-neutral conversation topic records with retention/export/revocation boundary fields and no message bodies.                                                 |
 | `GET /api/conversation-threads/:id`                                               | Reads one authorized conversation topic record after resolving its matter scope.                                                                                                        |
@@ -411,10 +413,11 @@ and chain validity. `GET /api/audit` includes a derived taxonomy summary for exi
 category, resource, matter-scope, actor-hint, and unknown-event counts; the summary is additive and
 must not expose raw metadata values.
 
-Workflow audit events may include a redacted envelope for high-value mutating flows: request ID,
-actor ID, matter IDs, workflow status, idempotency-key presence, and safe error summaries. Ledger
-posting and external-upload review use the first envelope slice; future workflow routes should adopt
-the same helper before adding route-specific metadata.
+Workflow audit events use the exported `@open-practice/domain` workflow metadata builder for
+high-value mutating flows. The envelope is limited to request ID, actor type/ID, matter scope,
+workflow status, before/expected/after status, retry attempt fields, idempotency-key presence, and
+safe error summaries. Ledger posting, external-upload review, failed-email retry, and document OCR
+queue events use this builder while route-specific repository/auth wiring stays in API code.
 
 Task/deadline records are matter-scoped operational records for assignment, due-date, completion,
 and contact/matter queue review. The workbench API returns projected task state, bucketed counters,
@@ -425,6 +428,14 @@ Operational views are built-in computed views, not user-persisted saved filters 
 derived from matter-scoped data already visible to the authenticated user, and they should expose
 redacted IDs/counts/status labels rather than raw tokens, message bodies, contact names, private
 notes, or privileged document content.
+
+The communications inbox is a matter-view aggregate, not a new navigation route. It combines
+matter-scoped inbound email summaries, redacted outbound delivery history, conversation topic
+summaries, contact dossier cues without notes, and channel state. It does not expose email bodies,
+parsed text, raw storage keys, checksums, provider IDs/tokens, contact notes, conversation messages,
+composers, realtime chat, retry controls, or new provider setup. Triage updates stay on existing
+inbound email rows and accept only status, labels, matter scope, and constrained
+`metadata.staffTriage` fields for staff routing.
 
 `@open-practice/domain` exports the audit event taxonomy used to classify known action names,
 expected resource types, matter-scope hints, actor-source hints, and safe metadata keys for operator
