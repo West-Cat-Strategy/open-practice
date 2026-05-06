@@ -373,6 +373,99 @@ export interface EmailDeliveryDashboardResponse {
   emailsByMatterId: Record<string, EmailDeliveryHistoryItem[]>;
 }
 
+export interface CommunicationsInboxInboundEmail {
+  id: string;
+  matterId?: string;
+  status: string;
+  labels: string[];
+  receivedAt: string;
+  attachmentCount: number;
+  triage?: {
+    status?: string;
+    assignedToUserId?: string;
+    contactIds?: string[];
+    updatedAt?: string;
+    updatedByUserId?: string;
+  };
+}
+
+export interface CommunicationsInboxOutboundDelivery {
+  id: string;
+  matterId: string;
+  templateKey: string;
+  status: string;
+  relatedResourceType?: string;
+  relatedResourceId?: string;
+  recipientCount: number;
+  attemptCount: number;
+  queuedAt: string;
+  lastAttemptAt?: string;
+  sentAt?: string;
+  failedAt?: string;
+  terminalFailureAt?: string;
+  failureSummary?: string;
+  events: Array<{
+    id: string;
+    eventType: string;
+    occurredAt: string;
+    attemptNumber?: number;
+    source: string;
+    errorSummary?: string;
+  }>;
+}
+
+export interface CommunicationsInboxConversation {
+  id: string;
+  matterId: string;
+  topic: string;
+  status: string;
+  exportState: string;
+  notificationBoundary: string;
+  retentionUntil?: string;
+  accessRevokedAt?: string;
+  updatedAt: string;
+}
+
+export interface CommunicationsInboxContactCue {
+  contact: {
+    id: string;
+    kind: string;
+    displayName: string;
+  };
+  matterLinks: Array<{
+    matterId: string;
+    role: string;
+    adverse: boolean;
+    confidential: boolean;
+    portalActive: boolean;
+    portalPermissionCount: number;
+  }>;
+  cueSummary: {
+    conflictCueCount: number;
+    qualitySignalCount: number;
+    portalActiveGrantCount: number;
+  };
+}
+
+export interface CommunicationsInboxMatterResponse {
+  status: string;
+  matterId: string;
+  channelState: {
+    inboundEmailStatus: "configured" | "disabled";
+    outboundEmailStatus: "configured" | "disabled";
+    inboundEmailAddressCount: number;
+    enabledInboundEmailAddressCount: number;
+  };
+  inboundEmail: CommunicationsInboxInboundEmail[];
+  outboundDeliveryHistory: CommunicationsInboxOutboundDelivery[];
+  conversations: CommunicationsInboxConversation[];
+  contactCues: CommunicationsInboxContactCue[];
+}
+
+export interface CommunicationsInboxDashboardResponse {
+  inboxByMatterId: Record<string, CommunicationsInboxMatterResponse>;
+}
+
 export type DocumentProcessingGroup =
   | "ready_to_process"
   | "queued_or_active"

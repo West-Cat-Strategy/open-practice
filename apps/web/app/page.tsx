@@ -11,6 +11,10 @@ import {
   loadEmailDeliveryDashboardData,
 } from "./email-delivery-dashboard";
 import {
+  buildCommunicationsInboxPath,
+  loadCommunicationsInboxDashboardData,
+} from "./communications-inbox-dashboard";
+import {
   buildDocumentProcessingWorkbenchPath,
   emptyDocumentProcessingWorkbench,
   loadDocumentProcessingDashboardData,
@@ -47,6 +51,8 @@ import type {
   CalendarDashboardResponse,
   CalendarEventsResponse,
   CapabilitiesResponse,
+  CommunicationsInboxDashboardResponse,
+  CommunicationsInboxMatterResponse,
   ContactDossiersResponse,
   DocumentProcessingDashboardResponse,
   DocumentProcessingWorkbenchResponse,
@@ -354,6 +360,43 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
         ),
     },
   );
+  const communicationsInbox: CommunicationsInboxDashboardResponse =
+    await loadCommunicationsInboxDashboardData({
+      matters,
+      getInboxForMatter: (matterId) =>
+        apiGetOptional<CommunicationsInboxMatterResponse>(
+          buildCommunicationsInboxPath(matterId),
+          {
+            status: "unavailable",
+            matterId,
+            channelState: {
+              inboundEmailStatus: "disabled",
+              outboundEmailStatus: "disabled",
+              inboundEmailAddressCount: 0,
+              enabledInboundEmailAddressCount: 0,
+            },
+            inboundEmail: [],
+            outboundDeliveryHistory: [],
+            conversations: [],
+            contactCues: [],
+          },
+          headers,
+          {
+            status: "access_denied",
+            matterId,
+            channelState: {
+              inboundEmailStatus: "disabled",
+              outboundEmailStatus: "disabled",
+              inboundEmailAddressCount: 0,
+              enabledInboundEmailAddressCount: 0,
+            },
+            inboundEmail: [],
+            outboundDeliveryHistory: [],
+            conversations: [],
+            contactCues: [],
+          },
+        ),
+    });
   const documentProcessing: DocumentProcessingDashboardResponse = canViewDocuments
     ? await loadDocumentProcessingDashboardData({
         matters,
@@ -445,6 +488,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       billing={billing}
       calendar={calendar}
       capabilities={capabilities}
+      communicationsInbox={communicationsInbox}
       contactDossiers={contactDossiers}
       devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}
       documentProcessing={documentProcessing}
