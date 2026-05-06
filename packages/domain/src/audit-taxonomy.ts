@@ -88,6 +88,7 @@ const RESOURCE_ID_KEYS = [
   "packageId",
   "providerEventId",
   "providerRequestId",
+  "retryOfJobId",
   "signatureRequestId",
   "templateId",
   "deliveryId",
@@ -96,7 +97,26 @@ const RESOURCE_ID_KEYS = [
 ] as const;
 
 const MATTER_KEYS = ["matterId"] as const;
-const ACTOR_KEYS = ["createdByUserId", "reviewedByUserId", "requestedByUserId"] as const;
+const ACTOR_KEYS = [
+  "actorId",
+  "actorType",
+  "createdByUserId",
+  "reviewedByUserId",
+  "requestedByUserId",
+] as const;
+const WORKFLOW_RESOURCE_KEYS = [
+  "requestId",
+  "workflowStatus",
+  "beforeStatus",
+  "expectedStatus",
+  "afterStatus",
+  "attemptNumber",
+  "maxAttempts",
+  "retryOfJobId",
+  "nextAttemptAt",
+  "idempotencyKeyPresent",
+  "errorSummary",
+] as const;
 
 function define(
   definition: Omit<
@@ -194,7 +214,8 @@ export const auditEventTaxonomyDefinitions = [
     resourceType: "document",
     matterScope: "matter",
     actorHint: "authenticated_user",
-    resourceMetadataKeys: ["uploadId", "documentId", "decision", "status"],
+    resourceMetadataKeys: WORKFLOW_RESOURCE_KEYS,
+    actorMetadataKeys: ["actorId", "actorType"],
   }),
   define({
     action: "document.upload_intent.created",
@@ -226,7 +247,8 @@ export const auditEventTaxonomyDefinitions = [
     resourceType: "document",
     matterScope: "matter",
     actorHint: "authenticated_user",
-    resourceMetadataKeys: ["documentId", "jobId", "provider", "status"],
+    resourceMetadataKeys: WORKFLOW_RESOURCE_KEYS,
+    actorMetadataKeys: ["actorId", "actorType"],
   }),
   define({
     action: "intake_session.created",
@@ -486,7 +508,8 @@ export const auditEventTaxonomyDefinitions = [
     resourceType: "ledger_transaction",
     matterScope: "optional_matter",
     actorHint: "authenticated_user",
-    resourceMetadataKeys: ["transactionId", "entryCount", "idempotencyKey"],
+    resourceMetadataKeys: WORKFLOW_RESOURCE_KEYS,
+    actorMetadataKeys: ["actorId", "actorType"],
   }),
   define({
     action: "ledger.transaction_approval.decided",
@@ -519,7 +542,8 @@ export const auditEventTaxonomyDefinitions = [
     resourceType: "email_outbox",
     matterScope: "optional_matter",
     actorHint: "authenticated_user",
-    resourceMetadataKeys: ["emailId", "jobId", "retryOfJobId", "provider"],
+    resourceMetadataKeys: WORKFLOW_RESOURCE_KEYS,
+    actorMetadataKeys: ["actorId", "actorType"],
   }),
   define({
     action: "connector.created",

@@ -5,7 +5,7 @@ import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
-import { appendRouteAuditEvent } from "./audit-events.js";
+import { appendRouteAuditEvent, appendWorkflowAuditEvent } from "./audit-events.js";
 import {
   buildIdempotencyKey,
   idempotencyMetadata,
@@ -356,6 +356,12 @@ export function registerEmailRoutes(
       throw new ApiHttpError(503, "EMAIL_QUEUE_NOT_CONFIGURED", "Email queue is not configured");
     }
 
+    const previousEvents = await repository.listEmailEvents(request.auth.firmId, {
+      emailId: email.id,
+    });
+    const retryOfJobId = [...previousEvents]
+      .reverse()
+      .find((event) => event.eventType === "failed")?.jobId;
     const now = new Date().toISOString();
     const jobId = crypto.randomUUID();
     const recipientCount = email.to.length + email.cc.length + email.bcc.length;
@@ -447,19 +453,26 @@ export function registerEmailRoutes(
     }
 
     if (created)
-      await appendRouteAuditEvent(repository, request.auth, {
+      await appendWorkflowAuditEvent(repository, request.auth, {
         action: "email_outbox.manual_retry",
         resourceType: "email_outbox",
         resourceId: email.id,
         occurredAt: now,
         metadata: {
           matterId,
-          provider: enabledProvider.key,
-          templateKey: email.templateKey,
-          recipientCount,
-          previousStatus: email.status,
-          jobId: updatedJob.id,
-          bullJobId: updatedJob.bullJobId,
+          beforeStatus: email.status,
+          expectedStatus: "queued",
+          afterStatus: retried.email.status,
+          attemptNumber: updatedJob.attemptsMade,
+          maxAttempts: updatedJob.maxAttempts,
+          retryOfJobId,
+          idempotencyKeyPresent: true,
+        },
+        workflow: {
+          requestId: request.id,
+          matterId,
+          matterIds: [matterId],
+          status: "queued",
           idempotencyKeyPresent: true,
         },
       });
