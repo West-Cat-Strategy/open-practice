@@ -11,7 +11,7 @@ import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
-import { appendRouteAuditEvent } from "./audit-events.js";
+import { appendWorkflowAuditEvent } from "./audit-events.js";
 import {
   buildIdempotencyKey,
   idempotencyMetadata,
@@ -56,6 +56,7 @@ export interface QueueDocumentOcrInput {
   repository: OpenPracticeRepository;
   ocrJobQueue?: ApiJobQueue;
   auth: ApiAuthContext;
+  requestId?: string;
   document: DocumentRecord;
   language?: string;
 }
@@ -298,21 +299,26 @@ export async function queueDocumentOcr(
   }
 
   if (created)
-    await appendRouteAuditEvent(repository, auth, {
+    await appendWorkflowAuditEvent(repository, auth, {
       action: "document_processing.ocr.queued",
       resourceType: "document",
       resourceId: document.id,
       occurredAt: now,
       metadata: {
         matterId: document.matterId,
-        documentId: document.id,
-        jobId: updatedJob.id,
-        bullJobId: updatedJob.bullJobId,
+        beforeStatus: document.scanStatus,
+        expectedStatus: "queued",
+        afterStatus: updatedJob.status,
+        attemptNumber: updatedJob.attemptsMade,
+        maxAttempts: updatedJob.maxAttempts,
         idempotencyKeyPresent: true,
-        task: "ocr",
-        language,
-        checksumStatus: document.checksumStatus,
-        scanStatus: document.scanStatus,
+      },
+      workflow: {
+        requestId: input.requestId,
+        matterId: document.matterId,
+        matterIds: [document.matterId],
+        status: "queued",
+        idempotencyKeyPresent: true,
       },
     });
 
@@ -468,6 +474,7 @@ export function registerDocumentProcessingRoutes(
       repository,
       ocrJobQueue,
       auth: request.auth,
+      requestId: request.id,
       document,
       language: body.language,
     }).then((result) => reply.code(202).send(result));

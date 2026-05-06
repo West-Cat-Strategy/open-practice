@@ -215,14 +215,18 @@ describe("document processing routes", () => {
           action: "document_processing.ocr.queued",
           resourceId: "doc-001",
           metadata: expect.objectContaining({
+            requestId: expect.any(String),
+            actorType: "owner_admin",
+            actorId: "user-owner_admin",
             matterId: "matter-001",
-            documentId: "doc-001",
-            jobId: payload.job.id,
-            bullJobId: payload.job.id,
-            task: "ocr",
-            language: "eng",
-            checksumStatus: "verified",
-            scanStatus: "passed",
+            matterIds: ["matter-001"],
+            workflowStatus: "queued",
+            beforeStatus: "passed",
+            expectedStatus: "queued",
+            afterStatus: "queued",
+            attemptNumber: 0,
+            maxAttempts: 3,
+            idempotencyKeyPresent: true,
           }),
         }),
       ]),
@@ -237,6 +241,13 @@ describe("document processing routes", () => {
       expect(metadata).not.toHaveProperty("checksumSha256");
       expect(metadata).not.toHaveProperty("content");
     }
+    expect(auditMetadata).not.toHaveProperty("documentId");
+    expect(auditMetadata).not.toHaveProperty("jobId");
+    expect(auditMetadata).not.toHaveProperty("bullJobId");
+    expect(auditMetadata).not.toHaveProperty("task");
+    expect(auditMetadata).not.toHaveProperty("language");
+    expect(auditMetadata).not.toHaveProperty("checksumStatus");
+    expect(auditMetadata).not.toHaveProperty("scanStatus");
   });
 
   it("returns a matter-scoped sanitized document processing workbench", async () => {

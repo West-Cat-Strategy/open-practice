@@ -1,5 +1,10 @@
 import type { OpenPracticeRepository } from "@open-practice/database";
-import type { NewAuditEvent } from "@open-practice/domain";
+import { buildWorkflowAuditMetadata } from "@open-practice/domain";
+import type {
+  NewAuditEvent,
+  WorkflowAuditMetadataInput,
+  WorkflowAuditStatus,
+} from "@open-practice/domain";
 import type { ApiAuthContext } from "../server.js";
 
 export type RouteAuditMetadata = Record<string, unknown>;
@@ -28,9 +33,10 @@ export async function appendRouteAuditEvent(
 }
 
 export type WorkflowAuditEnvelopeInput = {
-  requestId: string;
+  requestId?: string;
   matterIds?: string[];
-  status: "succeeded" | "failed" | "queued" | "skipped";
+  matterId?: string;
+  status: WorkflowAuditStatus;
   idempotencyKeyPresent?: boolean;
   errorSummary?: string;
 };
@@ -40,20 +46,26 @@ export async function appendWorkflowAuditEvent(
   auth: ApiAuthContext,
   event: Omit<NewAuditEvent, "id" | "firmId" | "actorId" | "occurredAt"> & {
     occurredAt?: string;
-    metadata?: RouteAuditMetadata;
+    metadata?: WorkflowAuditMetadataInput;
     workflow: WorkflowAuditEnvelopeInput;
   },
 ): Promise<void> {
+  const workflowMetadata = buildWorkflowAuditMetadata({
+    requestId: event.workflow.requestId,
+    actorType: auth.user.role,
+    actorId: auth.user.id,
+    matterId: event.workflow.matterId,
+    matterIds: event.workflow.matterIds,
+    workflowStatus: event.workflow.status,
+    idempotencyKeyPresent: event.workflow.idempotencyKeyPresent,
+    errorSummary: event.workflow.errorSummary,
+  });
+
   await appendRouteAuditEvent(repository, auth, {
     ...event,
-    metadata: {
+    metadata: compactMetadata({
       ...event.metadata,
-      requestId: event.workflow.requestId,
-      actorId: auth.user.id,
-      matterIds: event.workflow.matterIds,
-      workflowStatus: event.workflow.status,
-      idempotencyKeyPresent: event.workflow.idempotencyKeyPresent,
-      errorSummary: event.workflow.errorSummary,
-    },
+      ...workflowMetadata,
+    }),
   });
 }

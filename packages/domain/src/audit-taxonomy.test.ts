@@ -111,6 +111,54 @@ describe("audit event taxonomy", () => {
     });
   });
 
+  it("classifies workflow audit events with envelope metadata hints", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "email_outbox.manual_retry",
+        resourceType: "email_outbox",
+        resourceId: "email-001",
+        metadata: {
+          requestId: "req-001",
+          actorType: "licensee",
+          actorId: "user-licensee",
+          matterId: "matter-001",
+          workflowStatus: "queued",
+          beforeStatus: "failed",
+          expectedStatus: "queued",
+          afterStatus: "queued",
+          attemptNumber: 0,
+          maxAttempts: 5,
+          retryOfJobId: "job-failed-001",
+          idempotencyKeyPresent: true,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "communications",
+      known: true,
+      matterScope: "optional_matter",
+      actorHint: "authenticated_user",
+      hasMatterId: true,
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "requestId",
+        "workflowStatus",
+        "beforeStatus",
+        "expectedStatus",
+        "afterStatus",
+        "attemptNumber",
+        "maxAttempts",
+        "retryOfJobId",
+        "idempotencyKeyPresent",
+        "errorSummary",
+      ]),
+    );
+    expect(classification.metadataHints.actor).toEqual(["actorId", "actorType"]);
+  });
+
   it("summarizes taxonomy coverage without exposing metadata values", () => {
     const summary = summarizeAuditEventTaxonomy([
       auditEvent(),
