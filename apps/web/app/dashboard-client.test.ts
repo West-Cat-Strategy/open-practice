@@ -15,6 +15,7 @@ import {
 } from "./dashboard-utils";
 import {
   buildCreateShareLinkPayload,
+  describeCreateShareLinkResult,
   describeShareLinkState,
   formatSharePermission,
   replaceShareLink,
@@ -1159,15 +1160,49 @@ describe("dashboard client behavior", () => {
         matterId: "matter-001",
         permissions: ["view_documents"],
         expiresAt: "2026-05-01",
+        notificationEmail: " client@example.test ",
         requireEmailVerification: false,
       }),
     ).toEqual({
       matterId: "matter-001",
       permissions: ["view_documents"],
       expiresAt: "2026-05-01T00:00:00.000Z",
+      notificationEmail: "client@example.test",
       requireEmailVerification: false,
     });
+    expect(
+      buildCreateShareLinkPayload({
+        matterId: "matter-001",
+        permissions: ["view_documents"],
+        expiresAt: "",
+        notificationEmail: " ",
+        requireEmailVerification: true,
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      permissions: ["view_documents"],
+      expiresAt: undefined,
+      notificationEmail: undefined,
+      requireEmailVerification: true,
+    });
     expect(formatSharePermission("view_documents")).toBe("View documents");
+    expect(
+      describeCreateShareLinkResult({
+        token: "one-time-token",
+        queuedEmail: {
+          id: "email-001",
+          templateKey: "share_link.created",
+          status: "queued",
+          queuedAt: "2026-05-01T00:00:00.000Z",
+          jobId: "job-001",
+        },
+      }),
+    ).toBe(
+      "Created share link; notification email queued. One-time token remains available below.",
+    );
+    expect(describeCreateShareLinkResult({ token: "one-time-token" })).toBe(
+      "Created share link; use the one-time token below.",
+    );
     expect(describeShareLinkState(activeShare)).toEqual({ label: "active", tone: "active" });
     expect(replaceShareLink([activeShare], revokedShare)).toEqual([revokedShare]);
   });

@@ -36,6 +36,7 @@ import {
 } from "../routes/routeCatalog";
 import {
   buildCreateShareLinkPayload,
+  describeCreateShareLinkResult,
   describeShareLinkState,
   formatSharePermission,
   replaceShareLink,
@@ -339,7 +340,8 @@ export default function DashboardClient({
     "view_documents",
   ]);
   const [shareExpiresAt, setShareExpiresAt] = useState("");
-  const requireEmailVerification = false;
+  const [shareNotificationEmail, setShareNotificationEmail] = useState("");
+  const [requireEmailVerification, setRequireEmailVerification] = useState(false);
   const [creatingShare, setCreatingShare] = useState(false);
   const [revokingShareId, setRevokingShareId] = useState("");
   const [shareOneTimeToken, setShareOneTimeToken] = useState("");
@@ -1577,6 +1579,7 @@ export default function DashboardClient({
           matterId: activeMatter.id,
           permissions: sharePermissions,
           expiresAt: shareExpiresAt,
+          notificationEmail: shareNotificationEmail,
           requireEmailVerification,
         }),
       });
@@ -1602,9 +1605,7 @@ export default function DashboardClient({
       [activeMatter.id]: [createdShare, ...(current[activeMatter.id] ?? [])],
     }));
     setShareOneTimeToken(payload.token ?? "");
-    setShareStatus(
-      payload.token ? "Created share link." : "Created share link; token unavailable.",
-    );
+    setShareStatus(describeCreateShareLinkResult(payload));
     setCreatingShare(false);
   }
 
@@ -2788,6 +2789,15 @@ export default function DashboardClient({
                         <span>{formatSharePermission(permission)}</span>
                       </label>
                     ))}
+                    <label className="check-row share-check-row">
+                      <input
+                        checked={requireEmailVerification}
+                        disabled={shareLinksStatus.createStatus !== "enabled"}
+                        onChange={(event) => setRequireEmailVerification(event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>Require email verification</span>
+                    </label>
                   </div>
                   <div className="share-form-row">
                     <label className="search-field">
@@ -2797,6 +2807,16 @@ export default function DashboardClient({
                         onChange={(event) => setShareExpiresAt(event.target.value)}
                         type="date"
                         value={shareExpiresAt}
+                      />
+                    </label>
+                    <label className="search-field">
+                      <span>Notification email</span>
+                      <input
+                        disabled={shareLinksStatus.createStatus !== "enabled"}
+                        onChange={(event) => setShareNotificationEmail(event.target.value)}
+                        placeholder="client@example.test"
+                        type="email"
+                        value={shareNotificationEmail}
                       />
                     </label>
                     <button
@@ -2837,6 +2857,9 @@ export default function DashboardClient({
                                   "en-CA",
                                 )}`
                               : " · no expiry"}
+                            {share.requireEmailVerification
+                              ? " · email verification required"
+                              : " · token access"}
                           </small>
                         </span>
                         <span className="share-row-actions">
