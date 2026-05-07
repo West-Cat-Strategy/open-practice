@@ -22,6 +22,7 @@ import type {
   IntakeVariableProposal,
   LegalClinicMatterProfile,
   LegalClinicProgram,
+  LedgerReconciliationStatementRow,
 } from "@open-practice/domain";
 
 export const province = pgEnum("province", ["BC", "ON", "CANADA", "OTHER"]);
@@ -1168,10 +1169,17 @@ export const trustReconciliations = pgTable(
       .references(() => ledgerAccounts.id),
     statementPeriodStart: timestamp("statement_period_start", { withTimezone: true }).notNull(),
     statementPeriodEnd: timestamp("statement_period_end", { withTimezone: true }).notNull(),
+    beginningBalanceCents: integer("beginning_balance_cents").notNull(),
+    endingBalanceCents: integer("ending_balance_cents").notNull(),
     expectedBalanceCents: integer("expected_balance_cents").notNull(),
     actualBalanceCents: integer("actual_balance_cents").notNull(),
     status: text("status").notNull(),
     reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+    statementRows: jsonb("statement_rows")
+      .$type<LedgerReconciliationStatementRow[]>()
+      .notNull()
+      .default([]),
+    varianceExplanation: text("variance_explanation"),
     evidence: jsonb("evidence").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },

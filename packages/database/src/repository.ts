@@ -14,6 +14,7 @@ import {
   postLedgerTransaction,
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
+  validateLedgerReconciliationRecord,
   verifyAuditChain,
   type ActivityTimelineEntry,
   type AccessLogRecord,
@@ -43,6 +44,7 @@ import {
   type LedgerAccount,
   type LedgerEntry,
   type LedgerReconciliationRecord,
+  type LedgerReconciliationStatementRow,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
   type EmailEventRecord,
@@ -1801,10 +1803,14 @@ function mapLedgerReconciliationRow(
     accountId: row.accountId,
     statementPeriodStart: row.statementPeriodStart.toISOString(),
     statementPeriodEnd: row.statementPeriodEnd.toISOString(),
+    beginningBalanceCents: row.beginningBalanceCents,
+    endingBalanceCents: row.endingBalanceCents,
     expectedBalanceCents: row.expectedBalanceCents,
     actualBalanceCents: row.actualBalanceCents,
     status: row.status as LedgerReconciliationRecord["status"],
     reviewedByUserId: row.reviewedByUserId ?? undefined,
+    statementRows: row.statementRows as LedgerReconciliationStatementRow[],
+    varianceExplanation: row.varianceExplanation ?? undefined,
     evidence: row.evidence as Record<string, unknown>,
     createdAt: row.createdAt.toISOString(),
   };
@@ -4476,12 +4482,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     if (!account) {
       throw new Error(`Unknown ledger account ${reconciliation.accountId}`);
     }
-    if (
-      new Date(reconciliation.statementPeriodEnd).getTime() <=
-      new Date(reconciliation.statementPeriodStart).getTime()
-    ) {
-      throw new Error("Ledger reconciliation period end must be after period start");
-    }
+    validateLedgerReconciliationRecord(reconciliation);
     this.ledgerReconciliations = [...this.ledgerReconciliations, clone(reconciliation)];
     return clone(reconciliation);
   }
@@ -8003,12 +8004,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     if (!account) {
       throw new Error(`Unknown ledger account ${reconciliation.accountId}`);
     }
-    if (
-      new Date(reconciliation.statementPeriodEnd).getTime() <=
-      new Date(reconciliation.statementPeriodStart).getTime()
-    ) {
-      throw new Error("Ledger reconciliation period end must be after period start");
-    }
+    validateLedgerReconciliationRecord(reconciliation);
     await this.db.insert(schema.trustReconciliations).values({
       ...reconciliation,
       statementPeriodStart: new Date(reconciliation.statementPeriodStart),

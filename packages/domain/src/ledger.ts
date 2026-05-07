@@ -59,18 +59,44 @@ export interface LedgerTransactionApprovalRecord {
 
 export type LedgerReconciliationStatus = "draft" | "matched" | "exception" | "reviewed";
 
+export type LedgerStatementRowReviewDecision = "matched" | "unmatched";
+
+export interface LedgerReconciliationStatementRow {
+  id: string;
+  postedAt: string;
+  description: string;
+  amountCents: number;
+  reference?: string;
+  matchedLedgerEntryIds: string[];
+  reviewDecision: LedgerStatementRowReviewDecision;
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  notes?: string;
+}
+
 export interface LedgerReconciliationRecord {
   id: string;
   firmId: string;
   accountId: string;
   statementPeriodStart: string;
   statementPeriodEnd: string;
+  beginningBalanceCents: number;
+  endingBalanceCents: number;
   expectedBalanceCents: number;
   actualBalanceCents: number;
   status: LedgerReconciliationStatus;
   reviewedByUserId?: string;
+  statementRows: LedgerReconciliationStatementRow[];
+  varianceExplanation?: string;
   evidence: Record<string, unknown>;
   createdAt: string;
+}
+
+export interface LedgerReconciliationReviewSummary {
+  importedStatementRowCount: number;
+  matchedStatementRowCount: number;
+  unmatchedStatementRowCount: number;
+  varianceCents: number;
 }
 
 export interface ClientTrustBalanceDelta {
@@ -395,6 +421,70 @@ export function ledgerControlsDiagnostics(input: {
       .map(([key]) => key)
       .sort(),
   };
+}
+
+export function ledgerReconciliationReviewSummary(
+  reconciliation: Pick<
+    LedgerReconciliationRecord,
+    "actualBalanceCents" | "expectedBalanceCents" | "statementRows"
+  >,
+): LedgerReconciliationReviewSummary {
+  return {
+    importedStatementRowCount: reconciliation.statementRows.length,
+    matchedStatementRowCount: reconciliation.statementRows.filter(
+      (row) => row.reviewDecision === "matched",
+    ).length,
+    unmatchedStatementRowCount: reconciliation.statementRows.filter(
+      (row) => row.reviewDecision === "unmatched",
+    ).length,
+    varianceCents: reconciliation.actualBalanceCents - reconciliation.expectedBalanceCents,
+  };
+}
+
+export function validateLedgerReconciliationRecord(
+  reconciliation: LedgerReconciliationRecord,
+): void {
+  if (
+    new Date(reconciliation.statementPeriodEnd).getTime() <=
+    new Date(reconciliation.statementPeriodStart).getTime()
+  ) {
+    throw new Error("Ledger reconciliation period end must be after period start");
+  }
+
+  if (reconciliation.endingBalanceCents !== reconciliation.actualBalanceCents) {
+    throw new Error("Ledger reconciliation ending balance must match actual statement balance");
+  }
+
+  const statementRowDeltaCents = reconciliation.statementRows.reduce(
+    (sum, row) => sum + row.amountCents,
+    0,
+  );
+  if (
+    reconciliation.beginningBalanceCents + statementRowDeltaCents !==
+    reconciliation.endingBalanceCents
+  ) {
+    throw new Error(
+      "Ledger reconciliation statement rows must bridge beginning and ending balances",
+    );
+  }
+
+  for (const row of reconciliation.statementRows) {
+    if (row.reviewDecision === "matched" && row.matchedLedgerEntryIds.length === 0) {
+      throw new Error("Matched statement rows must reference at least one ledger entry");
+    }
+    if (row.reviewDecision === "unmatched" && row.matchedLedgerEntryIds.length > 0) {
+      throw new Error("Unmatched statement rows cannot reference ledger entries");
+    }
+  }
+
+  const summary = ledgerReconciliationReviewSummary(reconciliation);
+  const hasVariance = summary.varianceCents !== 0 || summary.unmatchedStatementRowCount > 0;
+  if (hasVariance && !reconciliation.varianceExplanation?.trim()) {
+    throw new Error("Variance explanation is required for unmatched reconciliation differences");
+  }
+  if (reconciliation.status === "matched" && hasVariance) {
+    throw new Error("Matched reconciliations cannot contain balance variance or unmatched rows");
+  }
 }
 
 function uniqueInOrder(values: string[]): string[] {

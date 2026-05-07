@@ -5,6 +5,7 @@ import {
   InMemoryOpenPracticeRepository,
   type OpenPracticeRepository,
 } from "@open-practice/database";
+import type { LedgerReconciliationRecord } from "@open-practice/domain";
 import { registerLedgerRoutes } from "./ledger.js";
 
 const servers: FastifyInstance[] = [];
@@ -75,6 +76,59 @@ function ledgerTransactionPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function reconciliationRecord(
+  overrides: Partial<LedgerReconciliationRecord> = {},
+): LedgerReconciliationRecord {
+  return {
+    id: "reconciliation-route-test",
+    firmId: "firm-west-legal",
+    accountId: "acct-trust-bank",
+    statementPeriodStart: "2026-04-01T00:00:00.000Z",
+    statementPeriodEnd: "2026-04-30T23:59:59.000Z",
+    beginningBalanceCents: 0,
+    endingBalanceCents: 150000,
+    expectedBalanceCents: 150000,
+    actualBalanceCents: 150000,
+    statementRows: [
+      {
+        id: "statement-row-001",
+        postedAt: "2026-04-02T17:00:00.000Z",
+        description: "Synthetic retainer deposit",
+        amountCents: 150000,
+        reference: "synthetic-april-001",
+        matchedLedgerEntryIds: ["trust-retainer-1"],
+        reviewDecision: "matched",
+      },
+    ],
+    status: "matched",
+    reviewedByUserId: "user-admin",
+    evidence: { statement: "synthetic-april-trust.pdf" },
+    createdAt: "2026-04-24T14:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function reconciliationPayload(
+  overrides: Partial<
+    Omit<LedgerReconciliationRecord, "id" | "firmId" | "createdAt" | "reviewedByUserId">
+  > = {},
+) {
+  const record = reconciliationRecord(overrides);
+  return {
+    accountId: record.accountId,
+    statementPeriodStart: record.statementPeriodStart,
+    statementPeriodEnd: record.statementPeriodEnd,
+    beginningBalanceCents: record.beginningBalanceCents,
+    endingBalanceCents: record.endingBalanceCents,
+    expectedBalanceCents: record.expectedBalanceCents,
+    actualBalanceCents: record.actualBalanceCents,
+    status: overrides.status,
+    statementRows: record.statementRows,
+    varianceExplanation: record.varianceExplanation,
+    evidence: record.evidence,
+  };
+}
+
 async function seedMatterTwoLedgerControls(repository: OpenPracticeRepository) {
   await repository.postLedgerTransaction({
     id: "matter-002-retainer",
@@ -122,17 +176,12 @@ describe("ledger routes", () => {
     const repository = new InMemoryOpenPracticeRepository();
     await seedMatterTwoLedgerControls(repository);
     await repository.createLedgerReconciliation({
-      id: "reconciliation-exception",
-      firmId: "firm-west-legal",
-      accountId: "acct-trust-bank",
-      statementPeriodStart: "2026-04-01T00:00:00.000Z",
-      statementPeriodEnd: "2026-04-30T23:59:59.000Z",
-      expectedBalanceCents: 152500,
-      actualBalanceCents: 150000,
-      status: "exception",
-      reviewedByUserId: "user-admin",
-      evidence: { statement: "synthetic-april-trust.pdf" },
-      createdAt: "2026-04-24T14:00:00.000Z",
+      ...reconciliationRecord({
+        id: "reconciliation-exception",
+        expectedBalanceCents: 152500,
+        status: "exception",
+        varianceExplanation: "Synthetic statement is short one manual review item.",
+      }),
     });
 
     const response = await testServer({ repository }).inject({
@@ -200,17 +249,7 @@ describe("ledger routes", () => {
       decidedAt: "2026-04-24T13:10:00.000Z",
     });
     await repository.createLedgerReconciliation({
-      id: "reconciliation-hidden",
-      firmId: "firm-west-legal",
-      accountId: "acct-trust-bank",
-      statementPeriodStart: "2026-04-01T00:00:00.000Z",
-      statementPeriodEnd: "2026-04-30T23:59:59.000Z",
-      expectedBalanceCents: 150000,
-      actualBalanceCents: 150000,
-      status: "matched",
-      reviewedByUserId: "user-admin",
-      evidence: { statement: "synthetic-april-trust.pdf" },
-      createdAt: "2026-04-24T14:00:00.000Z",
+      ...reconciliationRecord({ id: "reconciliation-hidden" }),
     });
 
     const response = await testServer({ repository }).inject({
@@ -354,17 +393,18 @@ describe("ledger routes", () => {
           action: "ledger.transaction.posted",
           resourceType: "ledger_transaction",
           resourceId: "ledger-route-transaction",
-          metadata: {
+          metadata: expect.objectContaining({
             transactionId: "ledger-route-transaction",
             matterIds: ["matter-001"],
             accountIds: ["acct-trust-bank", "acct-client-liability"],
             status: "posted",
             entryCount: 2,
             requestId: expect.any(String),
+            actorType: "owner_admin",
             actorId: "user-admin",
             workflowStatus: "succeeded",
             idempotencyKeyPresent: true,
-          },
+          }),
         }),
       ]),
       valid: true,
@@ -460,14 +500,7 @@ describe("ledger routes", () => {
     const reconciliation = await server.inject({
       method: "POST",
       url: "/api/ledger/reconciliations",
-      payload: {
-        accountId: "acct-trust-bank",
-        statementPeriodStart: "2026-04-01T00:00:00.000Z",
-        statementPeriodEnd: "2026-04-30T23:59:59.000Z",
-        expectedBalanceCents: 150000,
-        actualBalanceCents: 150000,
-        evidence: { statement: "april-trust.pdf" },
-      },
+      payload: reconciliationPayload({ evidence: { statement: "april-trust.pdf" } }),
     });
 
     expect(approval.statusCode).toBe(200);
@@ -506,6 +539,21 @@ describe("ledger routes", () => {
       accountId: "acct-trust-bank",
       expectedBalanceCents: 150000,
       actualBalanceCents: 150000,
+      beginningBalanceCents: 0,
+      endingBalanceCents: 150000,
+      statementRows: [
+        {
+          id: "statement-row-001",
+          postedAt: "2026-04-02T17:00:00.000Z",
+          description: "Synthetic retainer deposit",
+          amountCents: 150000,
+          reference: "synthetic-april-001",
+          matchedLedgerEntryIds: ["trust-retainer-1"],
+          reviewDecision: "matched",
+          reviewedByUserId: "user-admin",
+          reviewedAt: expect.any(String),
+        },
+      ],
       status: "matched",
       reviewedByUserId: "user-admin",
       evidence: { statement: "april-trust.pdf" },
@@ -520,6 +568,11 @@ describe("ledger routes", () => {
           metadata: {
             accountId: "acct-trust-bank",
             status: "matched",
+            statementRowCount: 1,
+            matchedStatementRowCount: 1,
+            unmatchedStatementRowCount: 0,
+            varianceCents: 0,
+            varianceExplanationPresent: false,
           },
         }),
       ]),
@@ -553,13 +606,28 @@ describe("ledger routes", () => {
     const invalidPeriod = await server.inject({
       method: "POST",
       url: "/api/ledger/reconciliations",
-      payload: {
-        accountId: "acct-trust-bank",
+      payload: reconciliationPayload({
         statementPeriodStart: "2026-04-30T00:00:00.000Z",
         statementPeriodEnd: "2026-04-01T00:00:00.000Z",
-        expectedBalanceCents: 150000,
-        actualBalanceCents: 150000,
-      },
+      }),
+    });
+    const missingVarianceExplanation = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations",
+      payload: reconciliationPayload({
+        actualBalanceCents: 149000,
+        endingBalanceCents: 149000,
+        statementRows: [
+          {
+            id: "statement-row-unmatched",
+            postedAt: "2026-04-29T17:00:00.000Z",
+            description: "Synthetic unresolved bank fee",
+            amountCents: 149000,
+            matchedLedgerEntryIds: [],
+            reviewDecision: "unmatched",
+          },
+        ],
+      }),
     });
 
     expect(firstApproval.statusCode).toBe(200);
@@ -577,6 +645,11 @@ describe("ledger routes", () => {
     expect(invalidPeriod.json()).toMatchObject({
       error: "Error",
       message: "Ledger reconciliation period end must be after period start",
+    });
+    expect(missingVarianceExplanation.statusCode).toBe(400);
+    expect(missingVarianceExplanation.json()).toMatchObject({
+      error: "Error",
+      message: "Variance explanation is required for unmatched reconciliation differences",
     });
   });
 
@@ -596,13 +669,7 @@ describe("ledger routes", () => {
       method: "POST",
       url: "/api/ledger/reconciliations",
       headers,
-      payload: {
-        accountId: "acct-trust-bank",
-        statementPeriodStart: "2026-04-01T00:00:00.000Z",
-        statementPeriodEnd: "2026-04-30T23:59:59.000Z",
-        expectedBalanceCents: 150000,
-        actualBalanceCents: 150000,
-      },
+      payload: reconciliationPayload(),
     });
 
     expect(approval.statusCode).toBe(403);
@@ -676,13 +743,7 @@ describe("ledger routes", () => {
         "x-open-practice-user-id": "user-licensee",
         "x-open-practice-firm-id": "firm-west-legal",
       },
-      payload: {
-        accountId: "acct-trust-bank",
-        statementPeriodStart: "2026-04-01T00:00:00.000Z",
-        statementPeriodEnd: "2026-04-30T23:59:59.000Z",
-        expectedBalanceCents: 150000,
-        actualBalanceCents: 150000,
-      },
+      payload: reconciliationPayload(),
     });
 
     expect(response.statusCode).toBe(403);

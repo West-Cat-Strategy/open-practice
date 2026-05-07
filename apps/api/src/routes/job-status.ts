@@ -31,6 +31,58 @@ export const documentProcessingQueueNames = [
   "media",
 ] as const satisfies readonly OpenPracticeQueueName[];
 
+export const actionableDocumentProcessingTasks = ["ocr"] as const;
+
+export const reservedDocumentProcessingTasks = [
+  {
+    task: "classification",
+    queueName: "ai_triage",
+    status: "reserved",
+    reason: "deferred_worker",
+    actionable: false,
+  },
+  {
+    task: "transcription",
+    queueName: "transcription",
+    status: "reserved",
+    reason: "deferred_worker",
+    actionable: false,
+  },
+  {
+    task: "media",
+    queueName: "media",
+    status: "reserved",
+    reason: "deferred_worker",
+    actionable: false,
+  },
+] as const satisfies readonly {
+  task: "classification" | "transcription" | "media";
+  queueName: OpenPracticeQueueName;
+  status: "reserved";
+  reason: "deferred_worker";
+  actionable: false;
+}[];
+
+const reservedWorkerQueueNames = new Set<OpenPracticeQueueName>(
+  reservedDocumentProcessingTasks.map((task) => task.queueName),
+);
+
+export interface ConfigurableWorkerQueueStatus {
+  queueName: OpenPracticeQueueName;
+  status: "configured" | "not_configured";
+  reason?: "queue_not_configured";
+}
+
+export interface ReservedWorkerQueueStatus {
+  queueName: OpenPracticeQueueName;
+  status: "reserved";
+  reason: "deferred_worker";
+  task: (typeof reservedDocumentProcessingTasks)[number]["task"];
+  actionable: false;
+}
+
+export type WorkerQueueStatus = ConfigurableWorkerQueueStatus | ReservedWorkerQueueStatus;
+
 function isTerminalStatus(status: OpenPracticeJobStatus): boolean {
   return status === "completed" || status === "dead_letter" || status === "skipped";
 }
@@ -108,11 +160,17 @@ export function summarizeJobRuns(records: JobLifecycleRecord[]) {
 export function queueStatus(
   queueName: OpenPracticeQueueName,
   queue: ApiJobQueue | undefined,
-): {
-  queueName: OpenPracticeQueueName;
-  status: "configured" | "not_configured";
-  reason?: "queue_not_configured";
-} {
+): WorkerQueueStatus {
+  const reserved = reservedDocumentProcessingTasks.find((task) => task.queueName === queueName);
+  if (reservedWorkerQueueNames.has(queueName) && reserved) {
+    return {
+      queueName,
+      status: "reserved",
+      reason: "deferred_worker",
+      task: reserved.task,
+      actionable: false,
+    };
+  }
   return queue
     ? { queueName, status: "configured" }
     : { queueName, status: "not_configured", reason: "queue_not_configured" };

@@ -112,6 +112,11 @@ import {
   loadLegalClinicDashboardData,
 } from "./legal-clinic-dashboard";
 import {
+  buildCommunicationsInboxPath,
+  describeCommunicationsDeliveryState,
+  loadCommunicationsInboxDashboardData,
+} from "./communications-inbox-dashboard";
+import {
   actionComplete,
   coerceAnswer,
   errorMessage,
@@ -125,6 +130,7 @@ import type {
   ExternalUploadLinkRecord,
   ExternalUploadReviewItem,
   DocumentProcessingWorkbenchResponse,
+  CommunicationsInboxMatterResponse,
   IntakeFormLinkSummary,
   MatterSummary,
   ShareLinkRecord,
@@ -297,7 +303,23 @@ function documentProcessingWorkbench(
     matterId: "matter-001",
     status: "configured",
     providerStatus: [{ kind: "ocr", status: "configured", providers: [] }],
-    workerQueues: [{ queueName: "ocr", status: "configured" }],
+    workerQueues: [
+      { queueName: "ai_triage", status: "reserved", reason: "deferred_worker" },
+      { queueName: "ocr", status: "configured" },
+      { queueName: "transcription", status: "reserved", reason: "deferred_worker" },
+      { queueName: "media", status: "reserved", reason: "deferred_worker" },
+    ],
+    reservedQueues: [
+      { queueName: "ai_triage", status: "reserved", reason: "deferred_worker" },
+      { queueName: "transcription", status: "reserved", reason: "deferred_worker" },
+      { queueName: "media", status: "reserved", reason: "deferred_worker" },
+    ],
+    actionableTasks: ["ocr"],
+    reservedTasks: [
+      { task: "classification", queueName: "ai_triage", status: "reserved" },
+      { task: "transcription", queueName: "transcription", status: "reserved" },
+      { task: "media", queueName: "media", status: "reserved" },
+    ],
     summary: { total: 1, queued: 0, active: 0, failed: 0, terminal: 1, byQueue: [] },
     documents: [
       {
@@ -421,10 +443,23 @@ function trustControls(
         accountId: "acct-trust-bank",
         statementPeriodStart: "2026-04-01T00:00:00.000Z",
         statementPeriodEnd: "2026-04-30T00:00:00.000Z",
+        beginningBalanceCents: 0,
+        endingBalanceCents: 149000,
         expectedBalanceCents: 150000,
         actualBalanceCents: 149000,
         status: "exception",
         reviewedByUserId: "user-admin",
+        statementRows: [
+          {
+            id: "statement-row-001",
+            postedAt: "2026-04-02T17:00:00.000Z",
+            description: "Synthetic retainer deposit",
+            amountCents: 149000,
+            matchedLedgerEntryIds: [],
+            reviewDecision: "unmatched",
+          },
+        ],
+        varianceExplanation: "Synthetic statement row needs review.",
         evidence: {},
         createdAt: "2026-05-01T12:00:00.000Z",
       },
@@ -494,6 +529,62 @@ function publicRunnerPayload(
 }
 
 describe("dashboard client behavior", () => {
+  it("loads matter-scoped communications inbox payloads", async () => {
+    const inbox: CommunicationsInboxMatterResponse = {
+      status: "available",
+      matterId: "matter-001",
+      channelState: {
+        inboundEmailStatus: "configured",
+        outboundEmailStatus: "disabled",
+        inboundEmailAddressCount: 1,
+        enabledInboundEmailAddressCount: 1,
+      },
+      inboundEmail: [
+        {
+          id: "inbound-message-001",
+          matterId: "matter-001",
+          status: "triage_pending",
+          labels: ["client"],
+          receivedAt: "2026-05-05T12:00:00.000Z",
+          attachmentCount: 1,
+          triage: { status: "needs_review" },
+        },
+      ],
+      outboundDeliveryHistory: [],
+      conversations: [],
+      contactCues: [],
+    };
+
+    const dashboard = await loadCommunicationsInboxDashboardData({
+      matters: [matter({ id: "matter-001" })],
+      getInboxForMatter: async (matterId) => ({ ...inbox, matterId }),
+    });
+
+    expect(buildCommunicationsInboxPath("matter 001")).toBe(
+      "/api/communications/inbox?matterId=matter%20001",
+    );
+    expect(dashboard.inboxByMatterId["matter-001"]).toMatchObject({
+      matterId: "matter-001",
+      inboundEmail: [expect.objectContaining({ id: "inbound-message-001" })],
+    });
+  });
+
+  it("describes communications delivery state without provider details", () => {
+    expect(
+      describeCommunicationsDeliveryState({
+        id: "email-outbox-001",
+        matterId: "matter-001",
+        templateKey: "client.update",
+        status: "failed",
+        recipientCount: 1,
+        attemptCount: 1,
+        queuedAt: "2026-05-05T12:00:00.000Z",
+        failureSummary: "Mailbox unavailable",
+        events: [],
+      }),
+    ).toEqual({ label: "failed", tone: "risk" });
+  });
+
   it("filters and summarizes contact dossiers without requiring contact edits", () => {
     const dossiers = [
       {
@@ -760,6 +851,10 @@ describe("dashboard client behavior", () => {
       rejectedApprovalCount: 1,
       totalApprovalCount: 1,
       exceptionReconciliationCount: 1,
+      importedStatementRowCount: 1,
+      matchedStatementRowCount: 0,
+      unmatchedStatementRowCount: 1,
+      totalVarianceCents: -1000,
       unreconciledAccountCount: 1,
       overdrawnBalanceCount: 1,
     });
@@ -863,7 +958,7 @@ describe("dashboard client behavior", () => {
       } as unknown as Parameters<typeof describeLatestExtraction>[0]),
     ).toBe("completed · language eng · 3 pages · 88% confidence");
     expect(summarizeDocumentProcessingWorkbench(workbench)).toBe(
-      "1 providers configured. 1/1 worker queues configured. 0 active or queued jobs. 0 failed jobs.",
+      "1 providers configured. 1/1 actionable worker queues configured. 3 reserved queues. 0 active or queued jobs. 0 failed jobs.",
     );
 
     const disabled = documentProcessingWorkbench({

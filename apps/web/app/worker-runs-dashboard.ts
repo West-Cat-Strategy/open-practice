@@ -11,6 +11,30 @@ export const workerRunFilters: Array<{ key: WorkerRunQueueFilter; label: string 
   { key: "ocr", label: "OCR" },
 ];
 
+const reservedWorkerQueues = [
+  {
+    queueName: "ai_triage",
+    status: "reserved",
+    reason: "deferred_worker",
+    task: "classification",
+    actionable: false,
+  },
+  {
+    queueName: "transcription",
+    status: "reserved",
+    reason: "deferred_worker",
+    task: "transcription",
+    actionable: false,
+  },
+  {
+    queueName: "media",
+    status: "reserved",
+    reason: "deferred_worker",
+    task: "media",
+    actionable: false,
+  },
+] satisfies NonNullable<WorkerRunsResponse["reservedQueues"]>;
+
 export function buildWorkerRunsPath(filter: WorkerRunQueueFilter = "all"): string {
   return filter === "all" ? "/api/jobs" : `/api/jobs?queueName=${encodeURIComponent(filter)}`;
 }
@@ -21,6 +45,7 @@ export function emptyWorkerRunsResponse(status = "default"): WorkerRunsResponse 
     queues: ["email", "inbound_email", "ai_triage", "ocr", "transcription", "media"],
     workers: [],
     workerQueues: [],
+    reservedQueues: reservedWorkerQueues,
     summary: { total: 0, queued: 0, active: 0, failed: 0, terminal: 0, byQueue: [] },
     jobs: [],
   };

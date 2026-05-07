@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ledgerControlsDiagnostics } from "./ledger.js";
+import {
+  ledgerControlsDiagnostics,
+  ledgerReconciliationReviewSummary,
+  validateLedgerReconciliationRecord,
+} from "./ledger.js";
 import type {
   LedgerAccount,
   LedgerEntry,
@@ -80,9 +84,22 @@ const reconciliations: LedgerReconciliationRecord[] = [
     accountId: "acct-trust-bank",
     statementPeriodStart: "2026-05-01T00:00:00.000Z",
     statementPeriodEnd: "2026-05-31T23:59:59.000Z",
+    beginningBalanceCents: 0,
+    endingBalanceCents: 4000,
     expectedBalanceCents: 5000,
     actualBalanceCents: 4000,
     status: "exception",
+    statementRows: [
+      {
+        id: "statement-row-001",
+        postedAt: "2026-05-01T12:00:00.000Z",
+        description: "Synthetic trust deposit",
+        amountCents: 4000,
+        matchedLedgerEntryIds: [],
+        reviewDecision: "unmatched",
+      },
+    ],
+    varianceExplanation: "Synthetic statement row is not matched to a ledger entry.",
     evidence: {},
     createdAt: "2026-05-01T15:00:00.000Z",
   },
@@ -128,5 +145,27 @@ describe("ledger controls diagnostics", () => {
     expect(diagnostics.exceptionReconciliationIds).toEqual([]);
     expect(diagnostics.pendingApprovalTransactionIds).toEqual(["tx-pending"]);
     expect(diagnostics.rejectedApprovalTransactionIds).toEqual(["tx-rejected"]);
+  });
+
+  it("validates statement-row review decisions and variance explanations", () => {
+    expect(ledgerReconciliationReviewSummary(reconciliations[0])).toEqual({
+      importedStatementRowCount: 1,
+      matchedStatementRowCount: 0,
+      unmatchedStatementRowCount: 1,
+      varianceCents: -1000,
+    });
+    expect(() => validateLedgerReconciliationRecord(reconciliations[0])).not.toThrow();
+    expect(() =>
+      validateLedgerReconciliationRecord({
+        ...reconciliations[0],
+        varianceExplanation: undefined,
+      }),
+    ).toThrow(/Variance explanation/);
+    expect(() =>
+      validateLedgerReconciliationRecord({
+        ...reconciliations[0],
+        status: "matched",
+      }),
+    ).toThrow(/Matched reconciliations/);
   });
 });

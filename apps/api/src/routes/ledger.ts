@@ -6,7 +6,10 @@ import type {
   LedgerTransaction,
   LedgerTransactionApprovalRecord,
 } from "@open-practice/domain";
-import { ledgerControlsDiagnostics } from "@open-practice/domain";
+import {
+  ledgerControlsDiagnostics,
+  ledgerReconciliationReviewSummary,
+} from "@open-practice/domain";
 import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -48,9 +51,27 @@ const ledgerReconciliationBodySchema = z.object({
   accountId: z.string().min(1),
   statementPeriodStart: z.string().datetime(),
   statementPeriodEnd: z.string().datetime(),
+  beginningBalanceCents: z.number().int(),
+  endingBalanceCents: z.number().int(),
   expectedBalanceCents: z.number().int(),
   actualBalanceCents: z.number().int(),
   status: z.enum(["draft", "matched", "exception", "reviewed"]).optional(),
+  statementRows: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        postedAt: z.string().datetime(),
+        description: z.string().min(1),
+        amountCents: z.number().int(),
+        reference: z.string().min(1).optional(),
+        matchedLedgerEntryIds: z.array(z.string().min(1)).default([]),
+        reviewDecision: z.enum(["matched", "unmatched"]),
+        reviewedAt: z.string().datetime().optional(),
+        notes: z.string().min(1).optional(),
+      }),
+    )
+    .min(1),
+  varianceExplanation: z.string().min(1).optional(),
   evidence: z.record(z.string(), z.unknown()).default({}),
 });
 
@@ -238,22 +259,50 @@ export function registerLedgerRoutes(
       action: "approve",
     });
     const body = parseRequestPart(ledgerReconciliationBodySchema, request.body, "body");
+    const createdAt = new Date().toISOString();
+    const statementRows = body.statementRows.map((row) => ({
+      ...row,
+      reviewedByUserId: request.auth.user.id,
+      reviewedAt: row.reviewedAt ?? createdAt,
+    }));
+    const ledger = await repository.getLedger(request.auth.firmId);
+    const accountLedgerEntryIds = new Set(
+      ledger.entries.filter((entry) => entry.accountId === body.accountId).map((entry) => entry.id),
+    );
+    for (const row of statementRows) {
+      if (
+        row.reviewDecision === "matched" &&
+        row.matchedLedgerEntryIds.some((entryId) => !accountLedgerEntryIds.has(entryId))
+      ) {
+        throw new Error(
+          "Matched statement rows must reference existing ledger entries for the reconciliation account",
+        );
+      }
+    }
+    const hasUnmatchedRows = statementRows.some((row) => row.reviewDecision === "unmatched");
     const reconciliation: LedgerReconciliationRecord = {
       id: crypto.randomUUID(),
       firmId: request.auth.firmId,
       accountId: body.accountId,
       statementPeriodStart: body.statementPeriodStart,
       statementPeriodEnd: body.statementPeriodEnd,
+      beginningBalanceCents: body.beginningBalanceCents,
+      endingBalanceCents: body.endingBalanceCents,
       expectedBalanceCents: body.expectedBalanceCents,
       actualBalanceCents: body.actualBalanceCents,
       status:
         body.status ??
-        (body.expectedBalanceCents === body.actualBalanceCents ? "matched" : "exception"),
+        (body.expectedBalanceCents === body.actualBalanceCents && !hasUnmatchedRows
+          ? "matched"
+          : "exception"),
       reviewedByUserId: request.auth.user.id,
+      statementRows,
+      varianceExplanation: body.varianceExplanation,
       evidence: body.evidence,
-      createdAt: new Date().toISOString(),
+      createdAt,
     };
     const created = await repository.createLedgerReconciliation(reconciliation);
+    const reviewSummary = ledgerReconciliationReviewSummary(created);
     await appendRouteAuditEvent(repository, request.auth, {
       action: "ledger.reconciliation.created",
       resourceType: "ledger_reconciliation",
@@ -261,6 +310,11 @@ export function registerLedgerRoutes(
       metadata: {
         accountId: created.accountId,
         status: created.status,
+        statementRowCount: reviewSummary.importedStatementRowCount,
+        matchedStatementRowCount: reviewSummary.matchedStatementRowCount,
+        unmatchedStatementRowCount: reviewSummary.unmatchedStatementRowCount,
+        varianceCents: reviewSummary.varianceCents,
+        varianceExplanationPresent: Boolean(created.varianceExplanation),
       },
     });
     return created;

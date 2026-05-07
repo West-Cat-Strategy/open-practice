@@ -14,6 +14,10 @@ export interface TrustReviewSummary {
   rejectedApprovalCount: number;
   totalApprovalCount: number;
   exceptionReconciliationCount: number;
+  importedStatementRowCount: number;
+  matchedStatementRowCount: number;
+  unmatchedStatementRowCount: number;
+  totalVarianceCents: number;
   unreconciledAccountCount: number;
   overdrawnBalanceCount: number;
 }
@@ -99,6 +103,26 @@ export function summarizeTrustControls(
   for (const reconciliation of controls.reconciliations) {
     if (reconciliation.status === "exception") exceptionReconciliationIds.add(reconciliation.id);
   }
+  const importedStatementRowCount = controls.reconciliations.reduce(
+    (total, reconciliation) => total + reconciliation.statementRows.length,
+    0,
+  );
+  const matchedStatementRowCount = controls.reconciliations.reduce(
+    (total, reconciliation) =>
+      total + reconciliation.statementRows.filter((row) => row.reviewDecision === "matched").length,
+    0,
+  );
+  const unmatchedStatementRowCount = controls.reconciliations.reduce(
+    (total, reconciliation) =>
+      total +
+      reconciliation.statementRows.filter((row) => row.reviewDecision === "unmatched").length,
+    0,
+  );
+  const totalVarianceCents = controls.reconciliations.reduce(
+    (total, reconciliation) =>
+      total + reconciliation.actualBalanceCents - reconciliation.expectedBalanceCents,
+    0,
+  );
 
   return {
     pendingApprovalCount: controls.diagnostics.pendingApprovalTransactionIds.length,
@@ -107,6 +131,10 @@ export function summarizeTrustControls(
     rejectedApprovalCount: rejectedTransactionIds.size,
     totalApprovalCount: controls.approvals.length,
     exceptionReconciliationCount: exceptionReconciliationIds.size,
+    importedStatementRowCount,
+    matchedStatementRowCount,
+    unmatchedStatementRowCount,
+    totalVarianceCents,
     unreconciledAccountCount: controls.diagnostics.unreconciledAccountIds.length,
     overdrawnBalanceCount: controls.diagnostics.overdrawnBalanceKeys.length,
   };

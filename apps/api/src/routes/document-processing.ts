@@ -11,17 +11,19 @@ import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
-import { appendRouteAuditEvent } from "./audit-events.js";
+import { appendWorkflowAuditEvent } from "./audit-events.js";
 import {
   buildIdempotencyKey,
   idempotencyMetadata,
   rethrowIdempotencyConflict,
 } from "./idempotency.js";
 import {
+  actionableDocumentProcessingTasks,
   documentProcessingProviderKinds,
   documentProcessingQueueNames,
   providerStatus,
   queueStatus,
+  reservedDocumentProcessingTasks,
   serializeJobRun,
   summarizeJobRuns,
 } from "./job-status.js";
@@ -56,6 +58,7 @@ export interface QueueDocumentOcrInput {
   repository: OpenPracticeRepository;
   ocrJobQueue?: ApiJobQueue;
   auth: ApiAuthContext;
+  requestId?: string;
   document: DocumentRecord;
   language?: string;
 }
@@ -298,21 +301,26 @@ export async function queueDocumentOcr(
   }
 
   if (created)
-    await appendRouteAuditEvent(repository, auth, {
+    await appendWorkflowAuditEvent(repository, auth, {
       action: "document_processing.ocr.queued",
       resourceType: "document",
       resourceId: document.id,
       occurredAt: now,
       metadata: {
         matterId: document.matterId,
-        documentId: document.id,
-        jobId: updatedJob.id,
-        bullJobId: updatedJob.bullJobId,
+        beforeStatus: document.scanStatus,
+        expectedStatus: "queued",
+        afterStatus: updatedJob.status,
+        attemptNumber: updatedJob.attemptsMade,
+        maxAttempts: updatedJob.maxAttempts,
         idempotencyKeyPresent: true,
-        task: "ocr",
-        language,
-        checksumStatus: document.checksumStatus,
-        scanStatus: document.scanStatus,
+      },
+      workflow: {
+        requestId: input.requestId,
+        matterId: document.matterId,
+        matterIds: [document.matterId],
+        status: "queued",
+        idempotencyKeyPresent: true,
       },
     });
 
@@ -350,25 +358,35 @@ export function registerDocumentProcessingRoutes(
     const providerStates = documentProcessingProviderKinds.map((kind, index) =>
       providerStatus(kind, providers[index] ?? []),
     );
-    const configured = providers.flat().filter((provider) => provider.enabled);
     const jobs = (await repository.listJobLifecycleRecords(request.auth.firmId)).filter((job) =>
       documentProcessingQueueNames.some((queueName) => queueName === job.queueName),
     );
     const workerQueues = documentProcessingQueueNames.map((queueName) =>
       queueStatus(queueName, queueName === "ocr" ? ocrJobQueue : undefined),
     );
+    const reservedQueues = workerQueues.filter((queue) => queue.status === "reserved");
+    const ocrProviderState =
+      providerStates.find((providerState) => providerState.kind === "ocr") ??
+      providerStatus("ocr", []);
+    const configuredOcrProviders = (providers[0] ?? []).filter((provider) => provider.enabled);
     return {
-      status: configured.length > 0 ? "configured" : "disabled",
+      status: configuredOcrProviders.length > 0 ? "configured" : "disabled",
       reason:
-        configured.length > 0
+        configuredOcrProviders.length > 0
           ? undefined
-          : providerStates.some((provider) => provider.reason === "provider_disabled")
+          : ocrProviderState.reason === "provider_disabled"
             ? "provider_disabled"
             : "not_configured",
       workers: workerQueues.filter((queue) => queue.status === "configured"),
       workerQueues,
+      reservedQueues,
       supportedTasks: ["malware_scan", "ocr", "classification", "transcription", "media"],
-      providers: configured.map((provider) => ({ kind: provider.kind, key: provider.key })),
+      actionableTasks: actionableDocumentProcessingTasks,
+      reservedTasks: reservedDocumentProcessingTasks,
+      providers: configuredOcrProviders.map((provider) => ({
+        kind: provider.kind,
+        key: provider.key,
+      })),
       providerStatus: providerStates,
       summary: summarizeJobRuns(jobs),
       jobs: jobs.map(serializeJobRun),
@@ -395,10 +413,10 @@ export function registerDocumentProcessingRoutes(
     const ocrProviderState =
       providerStates.find((providerState) => providerState.kind === "ocr") ??
       providerStatus("ocr", []);
-    const configured = providers.flat().filter((provider) => provider.enabled);
     const workerQueues = documentProcessingQueueNames.map((queueName) =>
       queueStatus(queueName, queueName === "ocr" ? ocrJobQueue : undefined),
     );
+    const reservedQueues = workerQueues.filter((queue) => queue.status === "reserved");
     const ocrQueueConfigured = workerQueues.some(
       (queue) => queue.queueName === "ocr" && queue.status === "configured",
     );
@@ -437,15 +455,18 @@ export function registerDocumentProcessingRoutes(
 
     return {
       matterId: query.matterId,
-      status: configured.length > 0 ? "configured" : "disabled",
+      status: ocrProviderState.status === "configured" ? "configured" : "disabled",
       reason:
-        configured.length > 0
+        ocrProviderState.status === "configured"
           ? undefined
-          : providerStates.some((provider) => provider.reason === "provider_disabled")
+          : ocrProviderState.reason === "provider_disabled"
             ? "provider_disabled"
             : "not_configured",
       providerStatus: providerStates,
       workerQueues,
+      reservedQueues,
+      actionableTasks: actionableDocumentProcessingTasks,
+      reservedTasks: reservedDocumentProcessingTasks,
       summary: summarizeJobRuns(jobs),
       documents: documentItems,
     };
@@ -468,6 +489,7 @@ export function registerDocumentProcessingRoutes(
       repository,
       ocrJobQueue,
       auth: request.auth,
+      requestId: request.id,
       document,
       language: body.language,
     }).then((result) => reply.code(202).send(result));

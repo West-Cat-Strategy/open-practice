@@ -84,7 +84,33 @@ describe("jobs routes", () => {
       status: "available",
       workerQueues: expect.arrayContaining([
         { queueName: "email", status: "configured" },
+        {
+          queueName: "ai_triage",
+          status: "reserved",
+          reason: "deferred_worker",
+          task: "classification",
+          actionable: false,
+        },
         { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
+        {
+          queueName: "transcription",
+          status: "reserved",
+          reason: "deferred_worker",
+          task: "transcription",
+          actionable: false,
+        },
+        {
+          queueName: "media",
+          status: "reserved",
+          reason: "deferred_worker",
+          task: "media",
+          actionable: false,
+        },
+      ]),
+      reservedQueues: expect.arrayContaining([
+        expect.objectContaining({ queueName: "ai_triage", status: "reserved" }),
+        expect.objectContaining({ queueName: "transcription", status: "reserved" }),
+        expect.objectContaining({ queueName: "media", status: "reserved" }),
       ]),
       summary: {
         total: 1,
@@ -284,6 +310,14 @@ describe("jobs routes", () => {
 
     expect(auditorResponse.statusCode).toBe(200);
     expect(auditorResponse.json().summary.total).toBe(3);
+    expect(auditorResponse.json().summary.byQueue).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ queueName: "media", total: 1, queued: 1 }),
+      ]),
+    );
+    expect(auditorResponse.json().reservedQueues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ queueName: "media", status: "reserved" })]),
+    );
   });
 
   it("hides unassigned job detail from non-admin users", async () => {

@@ -158,6 +158,25 @@ export function parsePracticeAreas(value: string): string[] {
     .filter(Boolean);
 }
 
+export function trimmedSetupKey(state: Pick<SetupWizardState, "setupKey">): string {
+  return state.setupKey.trim();
+}
+
+function validEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function validOptionalUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function validateSetupWizardState(
   state: SetupWizardState,
   setupKeyRequired = false,
@@ -165,20 +184,28 @@ export function validateSetupWizardState(
   const errors: string[] = [];
   const practiceAreas = parsePracticeAreas(state.practiceAreasText);
   const jurisdictions = parsePracticeAreas(state.practitionerJurisdictionsText);
+  const defaultPaymentTermsDays = Number(state.defaultPaymentTermsDays);
 
   if (!state.firmName.trim()) errors.push("Firm name is required.");
   if (!state.addressLine1.trim()) errors.push("Business address line 1 is required.");
   if (!state.city.trim()) errors.push("Business city is required.");
   if (!state.postalCode.trim()) errors.push("Business postal code is required.");
   if (!state.officeEmail.trim()) errors.push("Office email is required.");
+  if (state.officeEmail.trim() && !validEmail(state.officeEmail)) {
+    errors.push("Office email must be a valid email address.");
+  }
   if (!state.officePhone.trim()) errors.push("Office phone is required.");
+  if (!validOptionalUrl(state.website)) errors.push("Website must be a valid http(s) URL.");
   if (practiceAreas.length === 0) errors.push("At least one practice area is required.");
   if (!state.invoicePrefix.trim()) errors.push("Invoice prefix is required.");
-  if (!Number.isInteger(Number(state.defaultPaymentTermsDays))) {
+  if (state.invoicePrefix.trim().length > 16) {
+    errors.push("Invoice prefix must be 16 characters or fewer.");
+  }
+  if (!Number.isInteger(defaultPaymentTermsDays)) {
     errors.push("Default payment terms must be a whole number of days.");
   }
-  if (Number(state.defaultPaymentTermsDays) <= 0) {
-    errors.push("Default payment terms must be positive.");
+  if (defaultPaymentTermsDays <= 0 || defaultPaymentTermsDays > 365) {
+    errors.push("Default payment terms must be between 1 and 365 days.");
   }
   if (!state.trustAccountLabel.trim()) errors.push("Trust account label is required.");
   if (!state.trustFundsCaveatAccepted) {
@@ -186,6 +213,9 @@ export function validateSetupWizardState(
   }
   if (!state.ownerName.trim()) errors.push("Owner name is required.");
   if (!state.ownerEmail.trim()) errors.push("Owner email is required.");
+  if (state.ownerEmail.trim() && !validEmail(state.ownerEmail)) {
+    errors.push("Owner email must be a valid email address.");
+  }
   if (state.ownerPassword.length < 8) errors.push("Owner password must be at least 8 characters.");
   if (state.ownerPassword !== state.ownerPasswordConfirmation) {
     errors.push("Owner password confirmation must match.");
@@ -199,6 +229,9 @@ export function validateSetupWizardState(
 
   if (state.createFirstMatter) {
     if (!state.clientName.trim()) errors.push("First client name is required.");
+    if (state.clientEmail.trim() && !validEmail(state.clientEmail)) {
+      errors.push("First client email must be a valid email address.");
+    }
     if (!state.matterTitle.trim()) errors.push("First matter title is required.");
     if (!state.matterPracticeArea.trim()) errors.push("First matter practice area is required.");
   }

@@ -368,6 +368,85 @@ describe("email routes", () => {
     expect(payload.emails[0].failureSummary.length).toBeLessThanOrEqual(240);
   });
 
+  it("retries failed outbox email with a redacted workflow audit envelope", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-mailpit",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "mailpit",
+      enabled: true,
+      encryptedConfig: "local-mailpit-profile",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const server = testServer({ repository, authUser: user("licensee") });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "signature.requested",
+        to: ["client@example.test"],
+        subject: "Synthetic private subject",
+        textBody: "Synthetic private body.",
+      },
+    });
+    const emailId = created.json().email.id as string;
+    const failedJobId = created.json().job.id as string;
+    await repository.recordEmailDeliveryResult({
+      firmId: "firm-west-legal",
+      emailId,
+      status: "failed",
+      occurredAt: "2026-05-01T12:02:00.000Z",
+      attemptNumber: 1,
+      jobId: failedJobId,
+      source: "worker",
+      terminal: true,
+      errorMessage: "SMTP refused synthetic message with private routing details",
+      metadata: { provider: "mailpit", templateKey: "signature.requested", terminal: true },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/mail/outbox/${emailId}/retry`,
+      payload: { idempotencyKey: "manual-retry-key" },
+    });
+
+    expect(response.statusCode).toBe(202);
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const event = audit.events.find(
+      (candidate) => candidate.action === "email_outbox.manual_retry",
+    );
+    expect(event).toMatchObject({
+      resourceType: "email_outbox",
+      resourceId: emailId,
+      metadata: {
+        requestId: expect.any(String),
+        actorType: "licensee",
+        actorId: "user-licensee",
+        matterId: "matter-001",
+        matterIds: ["matter-001"],
+        workflowStatus: "queued",
+        beforeStatus: "failed",
+        expectedStatus: "queued",
+        afterStatus: "queued",
+        attemptNumber: 0,
+        maxAttempts: 5,
+        retryOfJobId: failedJobId,
+        idempotencyKeyPresent: true,
+      },
+    });
+    expect(JSON.stringify(event?.metadata)).not.toContain("Synthetic private subject");
+    expect(JSON.stringify(event?.metadata)).not.toContain("Synthetic private body");
+    expect(JSON.stringify(event?.metadata)).not.toContain("private routing details");
+    expect(event?.metadata).not.toHaveProperty("provider");
+    expect(event?.metadata).not.toHaveProperty("templateKey");
+    expect(event?.metadata).not.toHaveProperty("recipientCount");
+    expect(event?.metadata).not.toHaveProperty("jobId");
+    expect(event?.metadata).not.toHaveProperty("bullJobId");
+  });
+
   it("requires matter access for delivery history", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const response = await testServer({

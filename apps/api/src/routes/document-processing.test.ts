@@ -102,7 +102,47 @@ describe("document processing routes", () => {
       status: "disabled",
       reason: "provider_disabled",
       workerQueues: expect.arrayContaining([
+        {
+          queueName: "ai_triage",
+          status: "reserved",
+          reason: "deferred_worker",
+          task: "classification",
+          actionable: false,
+        },
         { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
+        {
+          queueName: "transcription",
+          status: "reserved",
+          reason: "deferred_worker",
+          task: "transcription",
+          actionable: false,
+        },
+        {
+          queueName: "media",
+          status: "reserved",
+          reason: "deferred_worker",
+          task: "media",
+          actionable: false,
+        },
+      ]),
+      reservedQueues: expect.arrayContaining([
+        expect.objectContaining({ queueName: "ai_triage", status: "reserved" }),
+        expect.objectContaining({ queueName: "transcription", status: "reserved" }),
+        expect.objectContaining({ queueName: "media", status: "reserved" }),
+      ]),
+      actionableTasks: ["ocr"],
+      reservedTasks: expect.arrayContaining([
+        expect.objectContaining({
+          task: "classification",
+          queueName: "ai_triage",
+          status: "reserved",
+        }),
+        expect.objectContaining({
+          task: "transcription",
+          queueName: "transcription",
+          status: "reserved",
+        }),
+        expect.objectContaining({ task: "media", queueName: "media", status: "reserved" }),
       ]),
       providerStatus: expect.arrayContaining([
         expect.objectContaining({
@@ -215,14 +255,18 @@ describe("document processing routes", () => {
           action: "document_processing.ocr.queued",
           resourceId: "doc-001",
           metadata: expect.objectContaining({
+            requestId: expect.any(String),
+            actorType: "owner_admin",
+            actorId: "user-owner_admin",
             matterId: "matter-001",
-            documentId: "doc-001",
-            jobId: payload.job.id,
-            bullJobId: payload.job.id,
-            task: "ocr",
-            language: "eng",
-            checksumStatus: "verified",
-            scanStatus: "passed",
+            matterIds: ["matter-001"],
+            workflowStatus: "queued",
+            beforeStatus: "passed",
+            expectedStatus: "queued",
+            afterStatus: "queued",
+            attemptNumber: 0,
+            maxAttempts: 3,
+            idempotencyKeyPresent: true,
           }),
         }),
       ]),
@@ -237,6 +281,13 @@ describe("document processing routes", () => {
       expect(metadata).not.toHaveProperty("checksumSha256");
       expect(metadata).not.toHaveProperty("content");
     }
+    expect(auditMetadata).not.toHaveProperty("documentId");
+    expect(auditMetadata).not.toHaveProperty("jobId");
+    expect(auditMetadata).not.toHaveProperty("bullJobId");
+    expect(auditMetadata).not.toHaveProperty("task");
+    expect(auditMetadata).not.toHaveProperty("language");
+    expect(auditMetadata).not.toHaveProperty("checksumStatus");
+    expect(auditMetadata).not.toHaveProperty("scanStatus");
   });
 
   it("returns a matter-scoped sanitized document processing workbench", async () => {
@@ -346,6 +397,17 @@ describe("document processing routes", () => {
         }),
       ]),
       workerQueues: expect.arrayContaining([{ queueName: "ocr", status: "configured" }]),
+      reservedQueues: expect.arrayContaining([
+        expect.objectContaining({ queueName: "ai_triage", status: "reserved" }),
+        expect.objectContaining({ queueName: "transcription", status: "reserved" }),
+        expect.objectContaining({ queueName: "media", status: "reserved" }),
+      ]),
+      actionableTasks: ["ocr"],
+      reservedTasks: expect.arrayContaining([
+        expect.objectContaining({ task: "classification", queueName: "ai_triage" }),
+        expect.objectContaining({ task: "transcription", queueName: "transcription" }),
+        expect.objectContaining({ task: "media", queueName: "media" }),
+      ]),
       summary: {
         total: 1,
         active: 1,

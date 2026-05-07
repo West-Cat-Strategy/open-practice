@@ -573,8 +573,12 @@ describe("database schema hardening", () => {
         "account_id",
         "statement_period_start",
         "statement_period_end",
+        "beginning_balance_cents",
+        "ending_balance_cents",
         "expected_balance_cents",
         "actual_balance_cents",
+        "statement_rows",
+        "variance_explanation",
         "status",
       ]),
     );

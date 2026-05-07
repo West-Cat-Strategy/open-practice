@@ -4,6 +4,7 @@ import {
   parsePracticeAreas,
   practiceSetupPresets,
   selectStartupView,
+  trimmedSetupKey,
   validateSetupWizardState,
   type SetupWizardState,
 } from "./setup-wizard-utils";
@@ -114,6 +115,33 @@ describe("setup wizard startup and validation", () => {
   it("requires a setup key when the server asks for one", () => {
     expect(validateSetupWizardState(state(), true).errors).toContain("Setup key is required.");
     expect(validateSetupWizardState(state({ setupKey: "key" }), true).valid).toBe(true);
+    expect(validateSetupWizardState(state({ setupKey: "   " }), true).errors).toContain(
+      "Setup key is required.",
+    );
+    expect(trimmedSetupKey(state({ setupKey: "  setup-key  " }))).toBe("setup-key");
+  });
+
+  it("matches API-shaped email, website, invoice, and terms validation", () => {
+    const validation = validateSetupWizardState(
+      state({
+        officeEmail: "office",
+        ownerEmail: "owner",
+        website: "example.test",
+        invoicePrefix: "NORTH-SHORE-LAW-2026",
+        defaultPaymentTermsDays: "366",
+      }),
+    );
+
+    expect(validation.valid).toBe(false);
+    expect(validation.errors).toEqual(
+      expect.arrayContaining([
+        "Office email must be a valid email address.",
+        "Owner email must be a valid email address.",
+        "Website must be a valid http(s) URL.",
+        "Invoice prefix must be 16 characters or fewer.",
+        "Default payment terms must be between 1 and 365 days.",
+      ]),
+    );
   });
 
   it("allows skipping first matter and validates it when enabled", () => {
@@ -130,6 +158,18 @@ describe("setup wizard startup and validation", () => {
         state({
           createFirstMatter: true,
           clientName: "First Client",
+          clientEmail: "not-an-email",
+          matterTitle: "First file",
+          matterPracticeArea: "Residential tenancy",
+        }),
+      ).errors,
+    ).toContain("First client email must be a valid email address.");
+    expect(
+      validateSetupWizardState(
+        state({
+          createFirstMatter: true,
+          clientName: "First Client",
+          clientEmail: "client@example.test",
           matterTitle: "First file",
           matterPracticeArea: "Residential tenancy",
         }),
