@@ -102,7 +102,47 @@ describe("document processing routes", () => {
       status: "disabled",
       reason: "provider_disabled",
       workerQueues: expect.arrayContaining([
+        {
+          queueName: "ai_triage",
+          status: "reserved",
+          reason: "deferred_worker",
+          task: "classification",
+          actionable: false,
+        },
         { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
+        {
+          queueName: "transcription",
+          status: "reserved",
+          reason: "deferred_worker",
+          task: "transcription",
+          actionable: false,
+        },
+        {
+          queueName: "media",
+          status: "reserved",
+          reason: "deferred_worker",
+          task: "media",
+          actionable: false,
+        },
+      ]),
+      reservedQueues: expect.arrayContaining([
+        expect.objectContaining({ queueName: "ai_triage", status: "reserved" }),
+        expect.objectContaining({ queueName: "transcription", status: "reserved" }),
+        expect.objectContaining({ queueName: "media", status: "reserved" }),
+      ]),
+      actionableTasks: ["ocr"],
+      reservedTasks: expect.arrayContaining([
+        expect.objectContaining({
+          task: "classification",
+          queueName: "ai_triage",
+          status: "reserved",
+        }),
+        expect.objectContaining({
+          task: "transcription",
+          queueName: "transcription",
+          status: "reserved",
+        }),
+        expect.objectContaining({ task: "media", queueName: "media", status: "reserved" }),
       ]),
       providerStatus: expect.arrayContaining([
         expect.objectContaining({
@@ -357,6 +397,17 @@ describe("document processing routes", () => {
         }),
       ]),
       workerQueues: expect.arrayContaining([{ queueName: "ocr", status: "configured" }]),
+      reservedQueues: expect.arrayContaining([
+        expect.objectContaining({ queueName: "ai_triage", status: "reserved" }),
+        expect.objectContaining({ queueName: "transcription", status: "reserved" }),
+        expect.objectContaining({ queueName: "media", status: "reserved" }),
+      ]),
+      actionableTasks: ["ocr"],
+      reservedTasks: expect.arrayContaining([
+        expect.objectContaining({ task: "classification", queueName: "ai_triage" }),
+        expect.objectContaining({ task: "transcription", queueName: "transcription" }),
+        expect.objectContaining({ task: "media", queueName: "media" }),
+      ]),
       summary: {
         total: 1,
         active: 1,

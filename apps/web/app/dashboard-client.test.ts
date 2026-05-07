@@ -303,7 +303,23 @@ function documentProcessingWorkbench(
     matterId: "matter-001",
     status: "configured",
     providerStatus: [{ kind: "ocr", status: "configured", providers: [] }],
-    workerQueues: [{ queueName: "ocr", status: "configured" }],
+    workerQueues: [
+      { queueName: "ai_triage", status: "reserved", reason: "deferred_worker" },
+      { queueName: "ocr", status: "configured" },
+      { queueName: "transcription", status: "reserved", reason: "deferred_worker" },
+      { queueName: "media", status: "reserved", reason: "deferred_worker" },
+    ],
+    reservedQueues: [
+      { queueName: "ai_triage", status: "reserved", reason: "deferred_worker" },
+      { queueName: "transcription", status: "reserved", reason: "deferred_worker" },
+      { queueName: "media", status: "reserved", reason: "deferred_worker" },
+    ],
+    actionableTasks: ["ocr"],
+    reservedTasks: [
+      { task: "classification", queueName: "ai_triage", status: "reserved" },
+      { task: "transcription", queueName: "transcription", status: "reserved" },
+      { task: "media", queueName: "media", status: "reserved" },
+    ],
     summary: { total: 1, queued: 0, active: 0, failed: 0, terminal: 1, byQueue: [] },
     documents: [
       {
@@ -942,7 +958,7 @@ describe("dashboard client behavior", () => {
       } as unknown as Parameters<typeof describeLatestExtraction>[0]),
     ).toBe("completed · language eng · 3 pages · 88% confidence");
     expect(summarizeDocumentProcessingWorkbench(workbench)).toBe(
-      "1 providers configured. 1/1 worker queues configured. 0 active or queued jobs. 0 failed jobs.",
+      "1 providers configured. 1/1 actionable worker queues configured. 3 reserved queues. 0 active or queued jobs. 0 failed jobs.",
     );
 
     const disabled = documentProcessingWorkbench({

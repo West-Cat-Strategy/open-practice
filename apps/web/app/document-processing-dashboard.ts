@@ -44,6 +44,9 @@ export function emptyDocumentProcessingWorkbench(
     reason,
     providerStatus: [],
     workerQueues: [],
+    reservedQueues: [],
+    actionableTasks: ["ocr"],
+    reservedTasks: [],
     summary: emptySummary,
     documents: [],
   };
@@ -168,6 +171,10 @@ export function compactDocumentProcessingReason(value?: string): string {
   return value ? value.replaceAll("_", " ") : "none";
 }
 
+function isReservedWorkerQueue(queue: { status?: string }): boolean {
+  return queue.status === "reserved";
+}
+
 export function describeLatestDocumentJob(job?: DocumentProcessingLatestJob): {
   label: string;
   tone: "neutral" | "ready" | "risk";
@@ -253,8 +260,14 @@ export function summarizeDocumentProcessingWorkbench(
     (provider) => provider.status === "configured",
   ).length;
   const configuredQueues = workbench.workerQueues.filter(
-    (queue) => queue.status === "configured",
+    (queue) => queue.status === "configured" && !isReservedWorkerQueue(queue),
   ).length;
+  const actionableQueues = workbench.workerQueues.filter(
+    (queue) => !isReservedWorkerQueue(queue),
+  ).length;
+  const reservedQueues = workbench.reservedQueues?.length
+    ? workbench.reservedQueues.length
+    : workbench.workerQueues.filter(isReservedWorkerQueue).length;
   const failed = workbench.summary.failed;
   const active = workbench.summary.active + workbench.summary.queued;
   if (workbench.status === "disabled") {
@@ -265,7 +278,8 @@ export function summarizeDocumentProcessingWorkbench(
       workbench.reason,
     )}. Document list is preserved.`;
   }
-  return `${configuredProviders} providers configured. ${configuredQueues}/${workbench.workerQueues.length} worker queues configured. ${active} active or queued jobs. ${failed} failed jobs.`;
+  const reservedSuffix = reservedQueues > 0 ? ` ${reservedQueues} reserved queues.` : "";
+  return `${configuredProviders} providers configured. ${configuredQueues}/${actionableQueues} actionable worker queues configured.${reservedSuffix} ${active} active or queued jobs. ${failed} failed jobs.`;
 }
 
 export async function loadDocumentProcessingDashboardData(input: {
