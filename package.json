@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "Apache-2.0",
-  "packageManager": "pnpm@10.0.0+sha512.b8fef5494bd3fe4cbd4edabd0745df2ee5be3e4b0b8b08fa643aa3e4c6702ccc0f00d68fa8a8c9858a735a0032485a44990ed2810526c875e416f001b17df12b",
+  "packageManager": "pnpm@10.33.3",
   "pnpm": {
     "overrides": {
       "next>postcss": "8.5.10",
@@ -32,9 +32,9 @@
   "devDependencies": {
     "@playwright/test": "1.59.1",
     "@types/node": "25.6.0",
-    "eslint": "10.2.1",
+    "eslint": "10.3.0",
     "prettier": "3.8.3",
-    "turbo": "2.9.7",
+    "turbo": "2.9.9",
     "typescript": "6.0.3",
     "vitest": "4.1.5"
   }
