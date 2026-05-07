@@ -8,17 +8,17 @@ backlog ideas, and `docs/planning-completed-archive.md` for historical validatio
 
 ## At a Glance
 
-| Snapshot              | Value                                                                                                                                                                                                                      |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Snapshot              | Value                                                                                                                                                                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Batch convergence     | OP-M4, OP-M6, OP-T45, OP-T47, OP-T48, OP-T49, OP-T50, OP-T51, OP-T52, OP-T53, OP-T54, OP-T55, OP-T56, OP-T58, OP-T58A, OP-T59, OP-T60, OP-T61, OP-T62, OP-T63, OP-T64, OP-T65, OP-T66, OP-T70, OP-T71, OP-T73, and OP-T74 complete |
-| Next recommended pick | Re-check Candidate rows; OP-T67 remains the next low-overlap API/status pick                                                                                                                                               |
-| Ready rows            | 0                                                                                                                                                                                                                          |
-| Candidate rows        | 7                                                                                                                                                                                                                          |
-| In progress rows      | 0                                                                                                                                                                                                                          |
-| Review rows           | 0                                                                                                                                                                                                                          |
-| Blocked rows          | 0                                                                                                                                                                                                                          |
-| Completed archive     | Historical proof moved to [Planning Completed Archive](planning-completed-archive.md).                                                                                                                                     |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                                                                                                                                                           |
+| Next recommended pick | Re-check Candidate rows; OP-T67 remains the next low-overlap API/status pick                                                                                                                                                       |
+| Ready rows            | 0                                                                                                                                                                                                                                  |
+| Candidate rows        | 7                                                                                                                                                                                                                                  |
+| In progress rows      | 0                                                                                                                                                                                                                                  |
+| Review rows           | 0                                                                                                                                                                                                                                  |
+| Blocked rows          | 0                                                                                                                                                                                                                                  |
+| Completed archive     | Historical proof moved to [Planning Completed Archive](planning-completed-archive.md).                                                                                                                                             |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                                                                                                                                                                   |
 
 ## Forward Development Plan
 

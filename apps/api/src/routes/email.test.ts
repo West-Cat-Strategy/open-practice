@@ -544,6 +544,7 @@ describe("email routes", () => {
         to: ["client@example.test"],
         subject: "Synthetic private subject",
         textBody: "Synthetic private body.",
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
     const emailId = created.json().email.id as string;
@@ -564,7 +565,10 @@ describe("email routes", () => {
     const response = await server.inject({
       method: "POST",
       url: `/api/mail/outbox/${emailId}/retry`,
-      payload: { idempotencyKey: "manual-retry-key" },
+      payload: {
+        idempotencyKey: "manual-retry-key",
+        deliveryConfirmation: deliveryConfirmation(),
+      },
     });
 
     expect(response.statusCode).toBe(202);
