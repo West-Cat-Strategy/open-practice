@@ -46,6 +46,7 @@ export function registerJobsRoutes(
       queues: openPracticeQueueNames,
       workers: workerQueues.filter((queue) => queue.status === "configured"),
       workerQueues,
+      reservedQueues: workerQueues.filter((queue) => queue.status === "reserved"),
       summary: summarizeJobRuns(visibleJobs),
       jobs: visibleJobs.map(serializeJobRun),
     };

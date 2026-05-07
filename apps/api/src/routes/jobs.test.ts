@@ -84,7 +84,26 @@ describe("jobs routes", () => {
       status: "available",
       workerQueues: expect.arrayContaining([
         { queueName: "email", status: "configured" },
+        {
+          queueName: "ai_triage",
+          status: "reserved",
+          reason: "deferred_worker",
+          task: "classification",
+          actionable: false,
+        },
         { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
+        {
+          queueName: "transcription",
+          status: "reserved",
+          reason: "deferred_worker",
+          task: "transcription",
+          actionable: false,
+        },
+      ]),
+      reservedQueues: expect.arrayContaining([
+        expect.objectContaining({ queueName: "ai_triage", status: "reserved" }),
+        expect.objectContaining({ queueName: "transcription", status: "reserved" }),
+        expect.objectContaining({ queueName: "media", status: "reserved" }),
       ]),
       summary: {
         total: 1,
@@ -181,7 +200,19 @@ describe("jobs routes", () => {
     expect(emailResponse.json().workerQueues).toEqual(
       expect.arrayContaining([
         { queueName: "email", status: "configured" },
+        {
+          queueName: "ai_triage",
+          status: "reserved",
+          reason: "deferred_worker",
+          task: "classification",
+          actionable: false,
+        },
         { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
+      ]),
+    );
+    expect(emailResponse.json().reservedQueues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ queueName: "ai_triage", status: "reserved" }),
       ]),
     );
 

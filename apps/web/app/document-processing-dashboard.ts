@@ -44,6 +44,9 @@ export function emptyDocumentProcessingWorkbench(
     reason,
     providerStatus: [],
     workerQueues: [],
+    reservedQueues: [],
+    actionableTasks: ["ocr"],
+    reservedTasks: [],
     summary: emptySummary,
     documents: [],
   };
@@ -255,6 +258,10 @@ export function summarizeDocumentProcessingWorkbench(
   const configuredQueues = workbench.workerQueues.filter(
     (queue) => queue.status === "configured",
   ).length;
+  const actionableQueues = workbench.workerQueues.filter((queue) => queue.status !== "reserved");
+  const reservedQueues = workbench.reservedQueues?.length
+    ? workbench.reservedQueues.length
+    : workbench.workerQueues.filter((queue) => queue.status === "reserved").length;
   const failed = workbench.summary.failed;
   const active = workbench.summary.active + workbench.summary.queued;
   if (workbench.status === "disabled") {
@@ -265,7 +272,11 @@ export function summarizeDocumentProcessingWorkbench(
       workbench.reason,
     )}. Document list is preserved.`;
   }
-  return `${configuredProviders} providers configured. ${configuredQueues}/${workbench.workerQueues.length} worker queues configured. ${active} active or queued jobs. ${failed} failed jobs.`;
+  const reservedSuffix =
+    reservedQueues > 0
+      ? ` ${reservedQueues} reserved queue${reservedQueues === 1 ? "" : "s"}.`
+      : "";
+  return `${configuredProviders} providers configured. ${configuredQueues}/${actionableQueues.length} actionable worker queues configured.${reservedSuffix} ${active} active or queued jobs. ${failed} failed jobs.`;
 }
 
 export async function loadDocumentProcessingDashboardData(input: {

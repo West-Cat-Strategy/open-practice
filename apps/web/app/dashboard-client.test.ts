@@ -14,7 +14,15 @@ import {
   summarizeQueues,
 } from "./dashboard-utils";
 import {
+  buildConflictCheckPayload,
+  describeConflictResult,
+  formatConflictProspectiveRole,
+  parseConflictAliases,
+  parseConflictIdentifiers,
+} from "./conflict-check-dashboard";
+import {
   buildCreateShareLinkPayload,
+  describeCreateShareLinkResult,
   describeShareLinkState,
   formatSharePermission,
   replaceShareLink,
@@ -303,7 +311,23 @@ function documentProcessingWorkbench(
     matterId: "matter-001",
     status: "configured",
     providerStatus: [{ kind: "ocr", status: "configured", providers: [] }],
-    workerQueues: [{ queueName: "ocr", status: "configured" }],
+    workerQueues: [
+      { queueName: "ai_triage", status: "reserved", reason: "deferred_worker" },
+      { queueName: "ocr", status: "configured" },
+      { queueName: "transcription", status: "reserved", reason: "deferred_worker" },
+      { queueName: "media", status: "reserved", reason: "deferred_worker" },
+    ],
+    reservedQueues: [
+      { queueName: "ai_triage", status: "reserved", reason: "deferred_worker" },
+      { queueName: "transcription", status: "reserved", reason: "deferred_worker" },
+      { queueName: "media", status: "reserved", reason: "deferred_worker" },
+    ],
+    actionableTasks: ["ocr"],
+    reservedTasks: [
+      { task: "classification", queueName: "ai_triage", status: "reserved" },
+      { task: "transcription", queueName: "transcription", status: "reserved" },
+      { task: "media", queueName: "media", status: "reserved" },
+    ],
     summary: { total: 1, queued: 0, active: 0, failed: 0, terminal: 1, byQueue: [] },
     documents: [
       {
@@ -513,6 +537,54 @@ function publicRunnerPayload(
 }
 
 describe("dashboard client behavior", () => {
+  it("builds expanded conflict-check payloads for the existing API contract", () => {
+    const result = buildConflictCheckPayload({
+      prospectiveName: " Morgan Tenant ",
+      aliasesText: "Morgan Holdings\nM. Tenant, Morgan Holdings",
+      identifiersText: "email: morgan@example.test\nbusiness_number=BN-123",
+      prospectiveRole: "opposing_party",
+    });
+
+    expect(parseConflictAliases("Alpha\nBeta, Alpha")).toEqual(["Alpha", "Beta"]);
+    expect(parseConflictIdentifiers("client_id: C-123")).toEqual({
+      identifiers: [{ type: "client_id", value: "C-123" }],
+    });
+    expect(formatConflictProspectiveRole("opposing_party")).toBe("Opposing party");
+    expect(result.payload).toEqual({
+      prospectiveName: "Morgan Tenant",
+      aliases: ["Morgan Holdings", "M. Tenant"],
+      identifiers: [
+        { type: "email", value: "morgan@example.test" },
+        { type: "business_number", value: "BN-123" },
+      ],
+      prospectiveRole: "opposing_party",
+      includeClosedMatters: true,
+    });
+  });
+
+  it("rejects malformed conflict identifiers before calling the API", () => {
+    expect(
+      buildConflictCheckPayload({
+        prospectiveName: "Morgan Tenant",
+        aliasesText: "",
+        identifiersText: "email only",
+        prospectiveRole: "client",
+      }),
+    ).toEqual({ error: "Use identifier lines as type: value." });
+  });
+
+  it("describes conflict result matches with matter context", () => {
+    expect(
+      describeConflictResult({
+        contactId: "contact-001",
+        matterId: "matter-001",
+        severity: "blocker",
+        reason: "Shared email identifier",
+        matchedValue: "morgan@example.test",
+      }),
+    ).toBe("Matter matter-001 · matched morgan@example.test");
+  });
+
   it("loads matter-scoped communications inbox payloads", async () => {
     const inbox: CommunicationsInboxMatterResponse = {
       status: "available",
@@ -942,7 +1014,27 @@ describe("dashboard client behavior", () => {
       } as unknown as Parameters<typeof describeLatestExtraction>[0]),
     ).toBe("completed · language eng · 3 pages · 88% confidence");
     expect(summarizeDocumentProcessingWorkbench(workbench)).toBe(
-      "1 providers configured. 1/1 worker queues configured. 0 active or queued jobs. 0 failed jobs.",
+      "1 providers configured. 1/1 actionable worker queues configured. 3 reserved queues. 0 active or queued jobs. 0 failed jobs.",
+    );
+
+    expect(
+      summarizeDocumentProcessingWorkbench(
+        documentProcessingWorkbench({
+          workerQueues: [
+            { queueName: "ocr", status: "configured" },
+            {
+              queueName: "transcription",
+              status: "reserved",
+              reason: "deferred_worker",
+              task: "transcription",
+              actionable: false,
+            },
+          ],
+          reservedQueues: [],
+        }),
+      ),
+    ).toBe(
+      "1 providers configured. 1/1 actionable worker queues configured. 1 reserved queue. 0 active or queued jobs. 0 failed jobs.",
     );
 
     const disabled = documentProcessingWorkbench({
@@ -1143,15 +1235,49 @@ describe("dashboard client behavior", () => {
         matterId: "matter-001",
         permissions: ["view_documents"],
         expiresAt: "2026-05-01",
+        notificationEmail: " client@example.test ",
         requireEmailVerification: false,
       }),
     ).toEqual({
       matterId: "matter-001",
       permissions: ["view_documents"],
       expiresAt: "2026-05-01T00:00:00.000Z",
+      notificationEmail: "client@example.test",
       requireEmailVerification: false,
     });
+    expect(
+      buildCreateShareLinkPayload({
+        matterId: "matter-001",
+        permissions: ["view_documents"],
+        expiresAt: "",
+        notificationEmail: " ",
+        requireEmailVerification: true,
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      permissions: ["view_documents"],
+      expiresAt: undefined,
+      notificationEmail: undefined,
+      requireEmailVerification: true,
+    });
     expect(formatSharePermission("view_documents")).toBe("View documents");
+    expect(
+      describeCreateShareLinkResult({
+        token: "one-time-token",
+        queuedEmail: {
+          id: "email-001",
+          templateKey: "share_link.created",
+          status: "queued",
+          queuedAt: "2026-05-01T00:00:00.000Z",
+          jobId: "job-001",
+        },
+      }),
+    ).toBe(
+      "Created share link; notification email queued. One-time token remains available below.",
+    );
+    expect(describeCreateShareLinkResult({ token: "one-time-token" })).toBe(
+      "Created share link; use the one-time token below.",
+    );
     expect(describeShareLinkState(activeShare)).toEqual({ label: "active", tone: "active" });
     expect(replaceShareLink([activeShare], revokedShare)).toEqual([revokedShare]);
   });

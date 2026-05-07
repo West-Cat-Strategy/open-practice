@@ -115,7 +115,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/connectors/outbox?connectorId=&status=`                                 | Firm-scoped connector outbox summaries with idempotency-key presence, retry counters, next-attempt timestamps, lease presence, and redacted payload summaries.                          |
 | `POST /api/connectors/outbox`                                                     | Creates or returns an idempotent provider-neutral connector outbox row for a registered connector without emitting provider-specific webhooks.                                          |
 | `GET /api/email/status`                                                           | SMTP provider status from firm provider settings.                                                                                                                                       |
-| `POST /api/email/previews`                                                        | Auth-gated disabled scaffold for future template previews and queued mail creation.                                                                                                     |
+| `POST /api/email/previews`                                                        | Matter-scoped render-only email template preview that normalizes recipients and body previews without SMTP, outbox, job, or audit side effects.                                         |
 | `POST /api/mail/outbox`                                                           | Create or replay a SMTP-gated outbound email record, queued email event, durable job lifecycle record, and audit event.                                                                 |
 | `GET /api/mail/outbox?matterId=`                                                  | Matter-scoped outbound email delivery history without message bodies.                                                                                                                   |
 | `POST /api/mail/outbox/:emailId/retry`                                            | Manually requeues a failed matter-scoped outbound email with redacted job and audit metadata.                                                                                           |
@@ -129,7 +129,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/conversation-threads?matterId=`                                         | Lists matter-scoped provider-neutral conversation topic records with retention/export/revocation boundary fields and no message bodies.                                                 |
 | `GET /api/conversation-threads/:id`                                               | Reads one authorized conversation topic record after resolving its matter scope.                                                                                                        |
 | `POST /api/conversation-threads`                                                  | Creates one authorized matter-scoped conversation topic record and records redacted boundary metadata; realtime chat, messages, and notifications remain deferred.                      |
-| `GET /api/document-processing/status`                                             | OCR, transcription, media, and AI provider status, worker queue availability, and redacted processing job summaries from firm settings and job records.                                 |
+| `GET /api/document-processing/status`                                             | OCR-only actionable document-processing status with reserved/deferred AI triage, transcription, and media queue metadata plus redacted job summaries.                                   |
 | `GET /api/document-processing/workbench?matterId=`                                | Matter-scoped document processing workbench with sanitized document states, queue eligibility, provider/worker status, and redacted latest job/extraction summaries.                    |
 | `POST /api/document-processing/documents/:id/queue`                               | Queues OCR for an authorized verified document when the OCR worker queue is configured.                                                                                                 |
 | `GET /api/auth/extensions`                                                        | Redacted embedded-auth status for local password, passkey, MFA, and recovery-code posture, with OIDC/SAML marked as deprecated legacy placeholders.                                     |
@@ -164,7 +164,9 @@ These routes remain deferred until their persistence, authorization, and worker 
 behind the scaffolded provider settings and job lifecycle records. Inbound email parsing now
 persists parsed messages and attachment records, inbound status exposes configured firm recipient
 addresses, staff can explicitly promote matter-scoped inbound attachments to documents, and verified
-documents can be handed to the OCR queue. Webhook ingestion, provider delivery setup, automatic
+documents can be handed to the OCR queue. OCR is the only actionable document-processing queue in
+the current API; AI triage, transcription, and media queues are reported as reserved/deferred
+metadata rather than configurable work. Webhook ingestion, provider delivery setup, automatic
 document promotion, transcription, media processing, and async AI drafting remain deferred.
 
 | Route                                             | Purpose                                                                                         |
@@ -293,6 +295,13 @@ authorization. Create/list/read routes never accept or return message bodies, co
 attempts, webhook payloads, raw notification content, or public tokens. Create audit events include
 only thread ID, matter ID, status, retention/export/notification boundary state, and access-revoked
 state.
+
+Email preview is render-only. `POST /api/email/previews` requires matter-scoped email create access
+and returns normalized template key, recipients, subject, sanitized/truncated body preview,
+warnings, optional related-resource summary, and explicit `persisted: false` / `queued: false`
+delivery flags. It accepts legacy `template` as an alias for `templateKey`, but does not require
+SMTP configuration, create outbox records, enqueue BullMQ jobs, store message bodies, or append
+audit metadata.
 
 Outbound email queueing is SMTP-provider gated. `POST /api/mail/outbox` requires matter-scoped
 email create access, an enabled SMTP provider setting, configured Redis/BullMQ queue access, and at
@@ -452,11 +461,14 @@ terminal state, failed-step/error context, retry/next-attempt hints, idempotency
 metadata keys that are safe for operators.
 Error summaries are generic; privileged worker/provider diagnostics stay in server-side logs.
 `GET /api/document-processing/status` and `GET /api/document-processing/workbench?matterId=` reuse
-the same redacted summaries for OCR/document-processing workbench state, including provider-disabled
-and queue-unconfigured cases. Job metadata must not carry email bodies, portal tokens, generated
-content, storage keys, raw evidence, or private secrets. Failed or skipped OCR, transcription, email,
-AI-assist, or media jobs must not change portal-share, billing, signature, trust, or audit state
-without an explicit reviewed transition.
+the same redacted summaries for OCR/document-processing workbench state, including provider-disabled,
+queue-unconfigured, and reserved/deferred cases. The document-processing projection keeps the broad
+`supportedTasks` list for compatibility, adds `actionableTasks: ["ocr"]`, and reports AI triage,
+transcription, and media through reserved/deferred queue and task metadata until their provider
+governance and enqueue surfaces are implemented. Job metadata must not carry email bodies, portal
+tokens, generated content, storage keys, raw evidence, or private secrets.
+Failed or skipped OCR, transcription, email, AI-assist, or media jobs must not change portal-share,
+billing, signature, trust, or audit state without an explicit reviewed transition.
 
 Connectors are firm-scoped, provider-neutral registry records. The first slice stores connector
 type, key, display name, status, optional secret-reference metadata, and redacted operational config
@@ -470,15 +482,6 @@ This slice does not emit outbound webhooks, validate destination URLs, sign
 payloads, or implement provider-specific worker delivery; those guardrails remain separate from the
 registry/outbox foundation.
 
-Outbound email queueing is SMTP-provider gated. `POST /api/mail/outbox` requires matter-scoped
-email create access, an enabled SMTP provider setting, configured Redis/BullMQ queue access, and at
-least one non-empty text or HTML body. The route creates the outbox record, queued email event,
-durable email job lifecycle record, and BullMQ email job together before returning `queued`. The
-audit event records IDs, template/provider, recipient count, matter scope, and related resource
-references only; email bodies stay in the outbox record rather than job or audit metadata. The
-worker reads message bodies from the outbox record, marks delivery `sent` or `failed`, appends
-provider result events, and advances the matching job lifecycle row to `active`, terminal success,
-retry failure, dead letter, or skipped status.
 Email outbox records and retry jobs store firm-scoped idempotency keys. Replaying a matching
 outbox or retry request returns the existing email/job projection without requeueing; changed safe
 payload fields such as recipients, subject, template, related resource, provider, or retry target
@@ -513,7 +516,10 @@ and the matching `x-open-practice-setup-key` header. Non-production setup withou
 is limited to local/private network access. Signature and intake providers default to embedded
 implementations. S3 upload signing is enabled only when endpoint and credentials are configured.
 Redis/BullMQ queues, firm provider settings, job lifecycle records, and disabled-by-default API
-scaffolds are implemented for email, AI triage, OCR, transcription, media, draft assist, and auth extensions.
+scaffolds are implemented for email, AI triage, OCR, transcription, media, draft assist, and auth
+extensions. Email, inbound email, and OCR are actionable queue families when configured; AI triage,
+transcription, and media remain reserved/deferred queue names until explicit provider governance and
+enqueue surfaces are added.
 Secure share-link create/list/revoke plus token-scoped public document metadata reads are
 implemented with token hashing, matter-scoped authorization, audit events, and access logs. External
 upload link create/list/revoke plus token-scoped S3 intent and completion flows are implemented with

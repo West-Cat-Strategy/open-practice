@@ -505,8 +505,18 @@ export interface DocumentProcessingProviderStatus {
 
 export interface DocumentProcessingWorkerQueueStatus {
   queueName: string;
-  status: "configured" | "not_configured" | string;
+  status: "configured" | "not_configured" | "reserved" | string;
   reason?: string;
+  task?: string;
+  actionable?: boolean;
+}
+
+export interface DocumentProcessingReservedTask {
+  task: string;
+  queueName: string;
+  status: "reserved" | string;
+  reason?: string;
+  actionable?: boolean;
 }
 
 export interface DocumentProcessingQueueSummary {
@@ -575,6 +585,9 @@ export interface DocumentProcessingWorkbenchResponse {
   reason?: string;
   providerStatus: DocumentProcessingProviderStatus[];
   workerQueues: DocumentProcessingWorkerQueueStatus[];
+  reservedQueues?: DocumentProcessingWorkerQueueStatus[];
+  actionableTasks?: string[];
+  reservedTasks?: DocumentProcessingReservedTask[];
   summary: DocumentProcessingSummary;
   documents: DocumentProcessingWorkbenchItem[];
 }
@@ -685,8 +698,10 @@ export type WorkerRunQueueFilter = "all" | "email" | "ocr";
 
 export interface WorkerQueueStatus {
   queueName: string;
-  status: "configured" | "not_configured" | string;
+  status: "configured" | "not_configured" | "reserved" | string;
   reason?: string;
+  task?: string;
+  actionable?: boolean;
 }
 
 export interface WorkerRunQueueSummary {
@@ -736,6 +751,7 @@ export interface WorkerRunsResponse {
   queues: string[];
   workers: WorkerQueueStatus[];
   workerQueues: WorkerQueueStatus[];
+  reservedQueues?: WorkerQueueStatus[];
   summary: WorkerRunSummary;
   jobs: WorkerRunSummaryItem[];
 }
@@ -778,6 +794,14 @@ export interface ShareLinksStatusResponse {
 export interface CreateShareLinkResponse {
   share: ShareLinkRecord | null;
   token?: string;
+  queuedEmail?: {
+    id: string;
+    templateKey: string;
+    status: string;
+    queuedAt: string;
+    jobId: string;
+    idempotencyKeyPresent?: boolean;
+  };
   status?: string;
   reason?: string;
 }
