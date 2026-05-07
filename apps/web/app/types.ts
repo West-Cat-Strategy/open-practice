@@ -778,6 +778,14 @@ export interface ShareLinksStatusResponse {
 export interface CreateShareLinkResponse {
   share: ShareLinkRecord | null;
   token?: string;
+  queuedEmail?: {
+    id: string;
+    templateKey: string;
+    status: string;
+    queuedAt: string;
+    jobId: string;
+    idempotencyKeyPresent?: boolean;
+  };
   status?: string;
   reason?: string;
 }
