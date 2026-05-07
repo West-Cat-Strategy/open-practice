@@ -12,6 +12,10 @@ const emailJobQueue = {
   },
 };
 
+function deliveryConfirmation(recipientCount = 1) {
+  return { confirmed: true, channel: "email", recipientCount };
+}
+
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
   return {
     id: `user-${role}`,
@@ -159,6 +163,7 @@ describe("email routes", () => {
         to: ["client@example.test"],
         subject: "Signature requested",
         textBody: "Please review the signature request.",
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
 
@@ -167,6 +172,49 @@ describe("email routes", () => {
       code: "SMTP_NOT_CONFIGURED",
       message: "SMTP email delivery is not configured",
     });
+  });
+
+  it("rejects outbox sends before provider checks when delivery is not confirmed", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const response = await testServer({ repository }).inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "signature.requested",
+        to: ["client@example.test"],
+        subject: "Signature requested",
+        textBody: "Please review the signature request.",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "SEND_CONFIRMATION_REQUIRED",
+    });
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
+  });
+
+  it("rejects outbox sends when confirmed recipient count does not match", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const response = await testServer({ repository }).inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "signature.requested",
+        to: ["client@example.test"],
+        subject: "Signature requested",
+        textBody: "Please review the signature request.",
+        deliveryConfirmation: deliveryConfirmation(2),
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "SEND_CONFIRMATION_MISMATCH",
+    });
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
   });
 
   it("creates an outbox record, queued job, email event, and audit event", async () => {
@@ -194,6 +242,7 @@ describe("email routes", () => {
         textBody: "Please review the signature request.",
         relatedResourceType: "signature_request",
         relatedResourceId: "sig-001",
+        deliveryConfirmation: deliveryConfirmation(2),
       },
     });
 
@@ -286,6 +335,7 @@ describe("email routes", () => {
         to: ["client@example.test"],
         subject: "Signature requested",
         textBody: "Please review the signature request.",
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
 
@@ -333,6 +383,7 @@ describe("email routes", () => {
       relatedResourceType: "signature_request" as const,
       relatedResourceId: "sig-001",
       idempotencyKey: "email-route-replay-key",
+      deliveryConfirmation: deliveryConfirmation(),
     };
 
     const first = await server.inject({ method: "POST", url: "/api/mail/outbox", payload });
@@ -369,6 +420,7 @@ describe("email routes", () => {
       relatedResourceType: "signature_request" as const,
       relatedResourceId: "sig-001",
       idempotencyKey: "email-route-conflict-key",
+      deliveryConfirmation: deliveryConfirmation(),
     };
 
     await server.inject({ method: "POST", url: "/api/mail/outbox", payload });
@@ -404,6 +456,7 @@ describe("email routes", () => {
         to: ["client@example.test"],
         subject: "Synthetic private subject",
         textBody: "Synthetic private body.",
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
     const emailId = created.json().email.id as string;

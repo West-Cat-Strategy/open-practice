@@ -65,6 +65,7 @@ import {
   summarizeDocumentProcessingWorkbench,
 } from "./document-processing-dashboard";
 import {
+  buildCalendarInvitationPayload,
   buildCalendarRadarBuckets,
   describeCalendarEventTiming,
   describeMeetingInvitationBoundary,
@@ -133,7 +134,11 @@ import {
   visibleSections,
   type PublicIntakeFormPayload,
 } from "./intake-forms/runner-utils";
-import { buildIntakeSessionCreatePayload, upsertIntakeSession } from "./types";
+import {
+  buildEmailDeliveryConfirmation,
+  buildIntakeSessionCreatePayload,
+  upsertIntakeSession,
+} from "./types";
 import type {
   ExternalUploadLinkRecord,
   ExternalUploadReviewItem,
@@ -1506,6 +1511,13 @@ describe("dashboard client behavior", () => {
     expect(describeCalendarEventTiming(near, now)).toBe("next 30 days");
   });
 
+  it("builds calendar invitation payloads only after recipient confirmation", () => {
+    expect(buildCalendarInvitationPayload({ matterId: "matter-001", recipientCount: 2 })).toEqual({
+      matterId: "matter-001",
+      deliveryConfirmation: { confirmed: true, channel: "email", recipientCount: 2 },
+    });
+  });
+
   it("loads calendar dashboard events, links, and credentials for first render", async () => {
     const event = calendarEvent({ matterId: "matter-002" });
     const data = await loadCalendarDashboardData({
@@ -1654,6 +1666,23 @@ describe("dashboard client behavior", () => {
       matterId: "matter-001",
       templateId: "intake-template-001",
       evidence: { source: "dashboard" },
+    });
+    expect(buildEmailDeliveryConfirmation(1)).toEqual({
+      confirmed: true,
+      channel: "email",
+      recipientCount: 1,
+    });
+    expect(
+      buildIntakeSessionCreatePayload({
+        matter: matter({ id: "matter-001" }),
+        template: { id: "intake-template-001" },
+        deliveryConfirmation: buildEmailDeliveryConfirmation(1),
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      templateId: "intake-template-001",
+      evidence: { source: "dashboard" },
+      deliveryConfirmation: { confirmed: true, channel: "email", recipientCount: 1 },
     });
     expect(
       buildIntakeFormLinkCreatePayload({

@@ -26,6 +26,10 @@ import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
+import {
+  deliveryConfirmationSchema,
+  requireEmailDeliveryConfirmation,
+} from "./delivery-confirmation.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
@@ -53,6 +57,7 @@ const intakeFormLinkBodySchema = z.object({
   intakeSessionId: z.string().min(1),
   expiresAt: z.string().datetime({ offset: true }).optional(),
   notificationEmail: z.string().email().optional(),
+  deliveryConfirmation: deliveryConfirmationSchema.optional(),
 });
 
 const proposalQuerySchema = z.object({
@@ -388,6 +393,9 @@ export function registerIntakeFormRoutes(
       throw Object.assign(new Error("Intake form token signing is not configured"), {
         statusCode: 503,
       });
+    }
+    if (body.notificationEmail) {
+      requireEmailDeliveryConfirmation(body.deliveryConfirmation, { recipientCount: 1 });
     }
     const token = createSessionToken();
     const portalUrl = buildPortalUrl(publicWebBaseUrl, token);

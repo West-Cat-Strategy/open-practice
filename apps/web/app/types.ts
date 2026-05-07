@@ -78,18 +78,37 @@ export type IntakeSessionCreateResponse = IntakeSessionRecord & {
   queuedEmail?: unknown;
 };
 
+export interface DeliveryConfirmationPayload {
+  confirmed: true;
+  channel: "email";
+  recipientCount: number;
+}
+
+export function buildEmailDeliveryConfirmation(
+  recipientCount: number,
+): DeliveryConfirmationPayload {
+  return {
+    confirmed: true,
+    channel: "email",
+    recipientCount,
+  };
+}
+
 export function buildIntakeSessionCreatePayload(input: {
   matter: Pick<MatterSummary, "id">;
   template: Pick<IntakeTemplateRecord, "id">;
+  deliveryConfirmation?: DeliveryConfirmationPayload;
 }): {
   matterId: string;
   templateId: string;
   evidence: { source: "dashboard" };
+  deliveryConfirmation?: DeliveryConfirmationPayload;
 } {
   return {
     matterId: input.matter.id,
     templateId: input.template.id,
     evidence: { source: "dashboard" },
+    ...(input.deliveryConfirmation ? { deliveryConfirmation: input.deliveryConfirmation } : {}),
   };
 }
 

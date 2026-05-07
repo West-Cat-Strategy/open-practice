@@ -13,6 +13,10 @@ const emailJobQueue = {
   },
 };
 
+function deliveryConfirmation(recipientCount = 1) {
+  return { confirmed: true, channel: "email", recipientCount };
+}
+
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
   const idByRole: Partial<Record<ProfessionalRole, string>> = {
     owner_admin: "user-admin",
@@ -167,6 +171,7 @@ describe("share routes", () => {
         matterId: "matter-001",
         permissions: ["view_documents"],
         notificationEmail: "client@example.test",
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
 
@@ -211,6 +216,29 @@ describe("share routes", () => {
     const queuedAudit = audit.events.find((event) => event.action === "email_outbox.queued");
     expect(queuedAudit?.metadata).not.toHaveProperty("token");
     expect(queuedAudit?.metadata).not.toHaveProperty("textBody");
+  });
+
+  it("rejects optional share notification emails without delivery confirmation", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await addShareableDocument(repository);
+    await enableSmtp(repository);
+    const server = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/shares",
+      payload: {
+        matterId: "matter-001",
+        permissions: ["view_documents"],
+        notificationEmail: "client@example.test",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "SEND_CONFIRMATION_REQUIRED" });
+    await expect(
+      repository.listShareLinks("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toEqual([]);
   });
 
   it("rejects share permissions without implemented public flows", async () => {
