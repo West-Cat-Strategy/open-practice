@@ -83,6 +83,10 @@ async function enableSmtp(repository: InMemoryOpenPracticeRepository) {
   });
 }
 
+function deliveryConfirmation(recipientCount = 1) {
+  return { confirmed: true, channel: "email", recipientCount };
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -103,6 +107,7 @@ describe("intake routes", () => {
         templateId: "intake-template-001",
         clientContactId: "contact-ada",
         evidence: { source: "route-test" },
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
     const after = await server.inject({
@@ -163,6 +168,26 @@ describe("intake routes", () => {
     const auditEvent = audit.events.find((event) => event.action === "intake_session.created");
     expect(auditEvent?.metadata).not.toHaveProperty("evidence");
     expect(auditEvent?.metadata).not.toHaveProperty("clientContactId");
+  });
+
+  it("rejects intake session creation before provider work when delivery is not confirmed", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const response = await testServer({ repository }).inject({
+      method: "POST",
+      url: "/api/intake-sessions",
+      payload: {
+        matterId: "matter-001",
+        templateId: "intake-template-001",
+        clientContactId: "contact-ada",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Confirm recipient delivery before sending email",
+    });
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
   });
 
   it("creates and lists answer snapshots", async () => {
@@ -404,6 +429,7 @@ describe("intake routes", () => {
         storageKey: "generated/embedded-notice-package.pdf",
         checksumSha256: "a".repeat(64),
         evidence: { requestedBy: "route-test" },
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
 
@@ -458,6 +484,7 @@ describe("intake routes", () => {
         documentId: "doc-generated-email-001",
         storageKey: "generated/embedded-notice-package-email.pdf",
         checksumSha256: "a".repeat(64),
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
 
@@ -508,6 +535,7 @@ describe("intake routes", () => {
         matterId: "matter-002",
         templateId: "intake-template-001",
         clientContactId: "contact-northstar",
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
     const response = await server.inject({

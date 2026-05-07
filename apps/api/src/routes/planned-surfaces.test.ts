@@ -183,6 +183,7 @@ describe("planned surface route scaffolds", () => {
         to: ["client@example.test"],
         subject: "Matter update",
         textBody: "Synthetic test email.",
+        deliveryConfirmation: { confirmed: true, channel: "email", recipientCount: 1 },
       },
     });
 

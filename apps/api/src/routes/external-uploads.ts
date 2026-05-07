@@ -19,6 +19,10 @@ import {
   rethrowIdempotencyConflict,
 } from "./idempotency.js";
 import { appendWorkflowAuditEvent } from "./audit-events.js";
+import {
+  deliveryConfirmationSchema,
+  requireEmailDeliveryConfirmation,
+} from "./delivery-confirmation.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
@@ -48,6 +52,7 @@ const createExternalUploadBodySchema = z.object({
   maxUploads: z.coerce.number().int().positive().default(1),
   notificationEmail: z.string().email().optional(),
   idempotencyKey: z.string().min(8).max(180).optional(),
+  deliveryConfirmation: deliveryConfirmationSchema.optional(),
 });
 
 const externalUploadIdParamsSchema = z.object({ id: z.string().min(1) });
@@ -417,6 +422,9 @@ export function registerExternalUploadRoutes(
         "INVALID_EXTERNAL_UPLOAD_EXPIRY",
         "expiresAt must be in the future",
       );
+    }
+    if (body.notificationEmail) {
+      requireEmailDeliveryConfirmation(body.deliveryConfirmation, { recipientCount: 1 });
     }
 
     const linkId = crypto.randomUUID();

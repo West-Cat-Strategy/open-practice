@@ -15,6 +15,10 @@ import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
+import {
+  deliveryConfirmationSchema,
+  requireEmailDeliveryConfirmation,
+} from "./delivery-confirmation.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
@@ -28,6 +32,7 @@ const intakeSessionBodySchema = z.object({
   clientContactId: z.string().min(1).optional(),
   interviewUrl: z.string().url().optional(),
   evidence: z.record(z.string(), z.unknown()).default({}),
+  deliveryConfirmation: deliveryConfirmationSchema.optional(),
 });
 
 const generatedDocumentBodySchema = z.object({
@@ -37,6 +42,7 @@ const generatedDocumentBodySchema = z.object({
   storageKey: z.string().min(1).optional(),
   checksumSha256: z.string().min(16).optional(),
   evidence: z.record(z.string(), z.unknown()).default({}),
+  deliveryConfirmation: deliveryConfirmationSchema.optional(),
 });
 
 const generatedPackageBodySchema = z.object({
@@ -201,6 +207,7 @@ export function registerIntakeRoutes(
       matterId: body.matterId,
     });
     const template = await getEmbeddedTemplate(repository, request.auth.firmId, body.templateId);
+    requireEmailDeliveryConfirmation(body.deliveryConfirmation, { recipientCount: 1 });
     const now = new Date().toISOString();
     const provider = automationProvider ?? new EmbeddedAutomationProvider();
     const providerRef = await provider.startInterview({
@@ -337,6 +344,7 @@ export function registerIntakeRoutes(
       });
     }
     const provider = automationProvider ?? new EmbeddedAutomationProvider();
+    requireEmailDeliveryConfirmation(body.deliveryConfirmation, { recipientCount: 1 });
     const generated = await provider.renderDocument({
       firmId: request.auth.firmId,
       matterId: session.matterId,

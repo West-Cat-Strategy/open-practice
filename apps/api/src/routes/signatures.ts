@@ -10,6 +10,10 @@ import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
+import {
+  deliveryConfirmationSchema,
+  requireEmailDeliveryConfirmation,
+} from "./delivery-confirmation.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
@@ -31,6 +35,7 @@ const signatureRequestBodySchema = z.object({
       }),
     )
     .min(1),
+  deliveryConfirmation: deliveryConfirmationSchema.optional(),
 });
 
 const signatureProviderEventBodySchema = z.object({
@@ -116,8 +121,17 @@ export function registerSignatureRoutes(
     if (!signatureProvider) {
       throw Object.assign(new Error("Signature provider is not configured"), { statusCode: 503 });
     }
+    requireEmailDeliveryConfirmation(body.deliveryConfirmation, {
+      recipientCount: body.signers.length,
+    });
 
-    const submission = await signatureProvider.createSubmission(body);
+    const submission = await signatureProvider.createSubmission({
+      matterId: body.matterId,
+      documentId: body.documentId,
+      title: body.title,
+      consentText: body.consentText,
+      signers: body.signers,
+    });
     const now = new Date().toISOString();
     const requestRecord: SignatureRequestRecord = {
       id: crypto.randomUUID(),

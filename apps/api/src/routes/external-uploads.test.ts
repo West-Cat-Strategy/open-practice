@@ -14,6 +14,10 @@ const emailJobQueue = {
   },
 };
 
+function deliveryConfirmation(recipientCount = 1) {
+  return { confirmed: true, channel: "email", recipientCount };
+}
+
 function s3Config(): NonNullable<CreateServerOptions["s3"]> {
   return {
     bucket: "open-practice-test-documents",
@@ -197,6 +201,7 @@ describe("external upload routes", () => {
         expiresAt: "2099-01-01T00:00:00.000Z",
         maxUploads: 2,
         notificationEmail: "client@example.test",
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
 
@@ -260,6 +265,7 @@ describe("external upload routes", () => {
       maxUploads: 2,
       notificationEmail: "client@example.test",
       idempotencyKey: "external-upload-replay-key",
+      deliveryConfirmation: deliveryConfirmation(),
     };
 
     const first = await server.inject({ method: "POST", url: "/api/external-uploads", payload });
@@ -276,6 +282,29 @@ describe("external upload routes", () => {
     await expect(
       repository.listExternalUploadLinks("firm-west-legal", { matterId: "matter-001" }),
     ).resolves.toHaveLength(1);
+  });
+
+  it("rejects optional upload notifications without delivery confirmation", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { server } = testServer({ repository, s3: s3Config() });
+    await enableSmtp(repository);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/external-uploads",
+      payload: {
+        matterId: "matter-001",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        maxUploads: 2,
+        notificationEmail: "client@example.test",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "SEND_CONFIRMATION_REQUIRED" });
+    await expect(
+      repository.listExternalUploadLinks("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toEqual([]);
   });
 
   it("rejects external upload idempotency key reuse with changed payload", async () => {

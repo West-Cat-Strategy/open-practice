@@ -36,6 +36,7 @@ function signaturePayload(overrides: Record<string, unknown> = {}) {
     title: "Retainer agreement",
     consentText: "I consent to electronic signature.",
     signers: [{ name: "Ada Morgan", email: "ada@example.test", role: "client" }],
+    deliveryConfirmation: { confirmed: true, channel: "email", recipientCount: 1 },
     ...overrides,
   };
 }
@@ -165,6 +166,36 @@ describe("signature routes", () => {
     expect(
       scopedList.json<Array<{ matterId: string }>>().map((request) => request.matterId),
     ).toEqual(["matter-001"]);
+  });
+
+  it("rejects signature request creation before provider submission when delivery is not confirmed", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const submissions: unknown[] = [];
+    const provider: SignatureProvider = {
+      async createSubmission(input) {
+        submissions.push(input);
+        return {
+          provider: "embedded",
+          externalId: "embedded:not-called",
+          status: "sent",
+        };
+      },
+    };
+    const existing = await repository.listSignatureRequests("firm-west-legal");
+    const server = testServer({ repository, signatureProvider: provider });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/signature-requests",
+      payload: signaturePayload({ deliveryConfirmation: undefined }),
+    });
+
+    expect(created.statusCode).toBe(400);
+    expect(created.json()).toMatchObject({ code: "SEND_CONFIRMATION_REQUIRED" });
+    expect(submissions).toEqual([]);
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listSignatureRequests("firm-west-legal")).resolves.toHaveLength(
+      existing.length,
+    );
   });
 
   it("queues signer email through the SMTP outbox when configured", async () => {

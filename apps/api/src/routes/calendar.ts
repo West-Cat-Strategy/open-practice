@@ -17,6 +17,10 @@ import { createSessionToken, hashPassword } from "../http/auth-helpers.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import {
+  deliveryConfirmationSchema,
+  requireEmailDeliveryConfirmation,
+} from "./delivery-confirmation.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
@@ -66,6 +70,7 @@ const calendarInvitationBodySchema = z.object({
   attendeeIds: z.array(z.string().min(1)).optional(),
   includeMeetingLink: z.boolean().default(false),
   issueGuestAccessToken: z.boolean().default(false),
+  deliveryConfirmation: deliveryConfirmationSchema.optional(),
 });
 
 const calendarAttendeeDeleteQuerySchema = z.object({
@@ -347,6 +352,9 @@ export function registerCalendarRoutes(
     const attendees = (
       await repository.listCalendarEventAttendees(request.auth.firmId, body.matterId, event.id)
     ).filter((attendee) => attendeeIds.size === 0 || attendeeIds.has(attendee.id));
+    requireEmailDeliveryConfirmation(body.deliveryConfirmation, {
+      recipientCount: attendees.length,
+    });
     const results = [];
     const boundaryMetadata = calendarMeetingInvitationBoundaryMetadata(meetingInvitationBoundary);
     for (const attendee of attendees) {

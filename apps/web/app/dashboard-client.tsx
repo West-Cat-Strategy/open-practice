@@ -81,6 +81,7 @@ import {
 import StructuredIntakeBuilder from "./intake-forms/StructuredIntakeBuilder";
 import {
   buildCalendarRadarBuckets,
+  buildCalendarInvitationPayload,
   describeMeetingInvitationBoundary,
   describeCalendarEventTiming,
   removeCalendarEventAttendee,
@@ -136,7 +137,11 @@ import {
   workerRunSafeContext,
 } from "./worker-runs-dashboard";
 import { dashboardApiStatus, requestDashboardJson } from "./api-client";
-import { buildIntakeSessionCreatePayload, upsertIntakeSession } from "./types";
+import {
+  buildEmailDeliveryConfirmation,
+  buildIntakeSessionCreatePayload,
+  upsertIntakeSession,
+} from "./types";
 import type {
   CalendarAttendeeMutationResponse,
   BillingDashboardResponse,
@@ -212,6 +217,28 @@ type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][number];
 type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
 type DashboardIntakeVariableProposal = IntakeVariableProposalsResponse["proposals"][number];
+type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
+
+type PendingDeliveryConfirmation =
+  | {
+      kind: "calendar-invitations";
+      key: string;
+      eventId: string;
+      actionLabel: string;
+      matterLabel: string;
+      summary: string;
+      providerState: string;
+      recipients: string[];
+    }
+  | {
+      kind: "intake-session-start";
+      key: string;
+      actionLabel: string;
+      matterLabel: string;
+      summary: string;
+      providerState: string;
+      recipients: string[];
+    };
 
 const currency = new Intl.NumberFormat("en-CA", {
   style: "currency",
@@ -269,6 +296,66 @@ function OneTimeSecretPanel({
           <code>{item.value}</code>
         </span>
       ))}
+    </div>
+  );
+}
+
+function DeliveryConfirmationPanel({
+  confirmation,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  confirmation: PendingDeliveryConfirmation;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="delivery-confirmation-panel" role="group" aria-label="Delivery confirmation">
+      <div>
+        <span className="field-label">Confirm email delivery</span>
+        <strong>{confirmation.actionLabel}</strong>
+        <small>{confirmation.summary}</small>
+      </div>
+      <div className="delivery-confirmation-grid">
+        <span>
+          <small>Matter</small>
+          <strong>{confirmation.matterLabel}</strong>
+        </span>
+        <span>
+          <small>Recipients</small>
+          <strong>{confirmation.recipients.length}</strong>
+        </span>
+        <span>
+          <small>Channel</small>
+          <strong>email</strong>
+        </span>
+      </div>
+      <div className="delivery-recipient-list">
+        {confirmation.recipients.map((recipient) => (
+          <code key={recipient}>{recipient}</code>
+        ))}
+      </div>
+      <p>{confirmation.providerState}</p>
+      <div className="row-actions">
+        <button
+          className="secondary-button compact-button"
+          disabled={busy}
+          onClick={onCancel}
+          type="button"
+        >
+          Cancel
+        </button>
+        <button
+          className="primary-button compact-button"
+          disabled={busy}
+          onClick={onConfirm}
+          type="button"
+        >
+          {busy ? "Sending..." : "Confirm and send"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -393,6 +480,8 @@ export default function DashboardClient({
   const [addingCalendarAttendee, setAddingCalendarAttendee] = useState(false);
   const [removingCalendarAttendeeId, setRemovingCalendarAttendeeId] = useState("");
   const [sendingCalendarInvitationsEventId, setSendingCalendarInvitationsEventId] = useState("");
+  const [pendingDeliveryConfirmation, setPendingDeliveryConfirmation] =
+    useState<PendingDeliveryConfirmation | null>(null);
   const [intakeFormLinksByMatterId, setIntakeFormLinksByMatterId] = useState(
     intakeForms.linksByMatterId,
   );
@@ -1286,9 +1375,33 @@ export default function DashboardClient({
     setRemovingCalendarAttendeeId("");
   }
 
-  async function sendCalendarInvitations(eventId: string): Promise<void> {
+  function calendarInvitationProviderState(event: DashboardCalendarEvent): string {
+    const emailBoundary = event.meetingInvitationBoundary?.invitationEmail;
+    if (emailBoundary?.status === "configured") {
+      return `SMTP provider ${emailBoundary.provider ?? "configured"} will queue eligible invitations.`;
+    }
+    return "SMTP is not configured; the API will mark invitation email skipped.";
+  }
+
+  function openCalendarInvitationConfirmation(event: DashboardCalendarEvent): void {
+    if (!activeMatter) return;
+    const recipients = (event.attendees ?? []).map((attendee) => attendee.email);
+    setPendingDeliveryConfirmation({
+      kind: "calendar-invitations",
+      key: event.id,
+      eventId: event.id,
+      actionLabel: "Send calendar invitations",
+      matterLabel: activeMatter.number,
+      summary: `Calendar invitation: ${event.title}`,
+      providerState: calendarInvitationProviderState(event),
+      recipients,
+    });
+  }
+
+  async function sendCalendarInvitations(eventId: string, recipientCount: number): Promise<void> {
     if (!activeMatter) return;
     setSendingCalendarInvitationsEventId(eventId);
+    setPendingDeliveryConfirmation(null);
     setCalendarMeetingStatus("Sending invitations...");
     const response = await fetch(
       `${apiBaseUrl}/api/calendar/events/${encodeURIComponent(eventId)}/invitations`,
@@ -1299,7 +1412,12 @@ export default function DashboardClient({
           ...devHeaders,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ matterId: activeMatter.id }),
+        body: JSON.stringify(
+          buildCalendarInvitationPayload({
+            matterId: activeMatter.id,
+            recipientCount,
+          }),
+        ),
       },
     );
 
@@ -1325,6 +1443,31 @@ export default function DashboardClient({
     ).length;
     setCalendarMeetingStatus(`${queued} invitation queued; ${skipped} skipped.`);
     setSendingCalendarInvitationsEventId("");
+  }
+
+  function openIntakeSessionConfirmation(): void {
+    if (!activeMatter || !selectedIntakeTemplate) return;
+    setPendingDeliveryConfirmation({
+      kind: "intake-session-start",
+      key: `${activeMatter.id}:${selectedIntakeTemplate.id}`,
+      actionLabel: "Start intake session",
+      matterLabel: activeMatter.number,
+      summary: `Staff notice for ${selectedIntakeTemplate.name}`,
+      providerState: "SMTP availability is checked by the API before queueing the staff notice.",
+      recipients: [session.user.email],
+    });
+  }
+
+  function confirmPendingDelivery(): void {
+    if (!pendingDeliveryConfirmation) return;
+    if (pendingDeliveryConfirmation.kind === "calendar-invitations") {
+      void sendCalendarInvitations(
+        pendingDeliveryConfirmation.eventId,
+        pendingDeliveryConfirmation.recipients.length,
+      );
+      return;
+    }
+    void startIntakeSession(pendingDeliveryConfirmation.recipients.length);
   }
 
   function selectIntakeTemplate(templateId: string): void {
@@ -1427,10 +1570,11 @@ export default function DashboardClient({
     setCreatingIntakeFormLink(false);
   }
 
-  async function startIntakeSession(): Promise<void> {
+  async function startIntakeSession(recipientCount: number): Promise<void> {
     if (!activeMatter || !selectedIntakeTemplate) return;
 
     setStartingIntakeSession(true);
+    setPendingDeliveryConfirmation(null);
     setIntakeFormToken("");
     setIntakeFormPortalUrl("");
     setIntakeFormStatus("Starting intake session...");
@@ -1447,6 +1591,7 @@ export default function DashboardClient({
           buildIntakeSessionCreatePayload({
             matter: activeMatter,
             template: selectedIntakeTemplate,
+            deliveryConfirmation: buildEmailDeliveryConfirmation(recipientCount),
           }),
         ),
       });
@@ -1542,6 +1687,7 @@ export default function DashboardClient({
     setIntakeFormToken("");
     setIntakeFormPortalUrl("");
     setIntakeFormStatus("No form link created.");
+    setPendingDeliveryConfirmation(null);
     closeDraftEditor();
   }
 
@@ -3014,7 +3160,7 @@ export default function DashboardClient({
                                 attendees.length === 0 ||
                                 sendingCalendarInvitationsEventId === event.id
                               }
-                              onClick={() => void sendCalendarInvitations(event.id)}
+                              onClick={() => openCalendarInvitationConfirmation(event)}
                               type="button"
                             >
                               {sendingCalendarInvitationsEventId === event.id
@@ -3023,6 +3169,15 @@ export default function DashboardClient({
                             </button>
                           </div>
                         </div>
+                        {pendingDeliveryConfirmation?.kind === "calendar-invitations" &&
+                        pendingDeliveryConfirmation.eventId === event.id ? (
+                          <DeliveryConfirmationPanel
+                            busy={sendingCalendarInvitationsEventId === event.id}
+                            confirmation={pendingDeliveryConfirmation}
+                            onCancel={() => setPendingDeliveryConfirmation(null)}
+                            onConfirm={confirmPendingDelivery}
+                          />
+                        ) : null}
                         <div className="calendar-attendee-list">
                           {attendees.map((attendee) => (
                             <div className="calendar-attendee-row" key={attendee.id}>
@@ -3552,7 +3707,7 @@ export default function DashboardClient({
                   <button
                     className="secondary-button compact-button"
                     disabled={startingIntakeSession || !selectedIntakeTemplate}
-                    onClick={() => void startIntakeSession()}
+                    onClick={() => openIntakeSessionConfirmation()}
                     type="button"
                   >
                     <Plus size={16} />
@@ -3567,6 +3722,14 @@ export default function DashboardClient({
                     {creatingIntakeFormLink ? "Creating..." : "Create link"}
                   </button>
                 </div>
+                {pendingDeliveryConfirmation?.kind === "intake-session-start" ? (
+                  <DeliveryConfirmationPanel
+                    busy={startingIntakeSession}
+                    confirmation={pendingDeliveryConfirmation}
+                    onCancel={() => setPendingDeliveryConfirmation(null)}
+                    onConfirm={confirmPendingDelivery}
+                  />
+                ) : null}
                 {intakeFormToken ? (
                   <OneTimeSecretPanel
                     items={[{ label: "One-time token", value: intakeFormToken }]}

@@ -7,6 +7,10 @@ import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
 import {
+  deliveryConfirmationSchema,
+  requireEmailDeliveryConfirmation,
+} from "./delivery-confirmation.js";
+import {
   buildIdempotencyKey,
   idempotencyMetadata,
   rethrowIdempotencyConflict,
@@ -48,6 +52,7 @@ const emailRetryParamsSchema = z.object({
 const emailRetryBodySchema = z.object({
   matterId: z.string().min(1).optional(),
   idempotencyKey: z.string().min(8).max(180).optional(),
+  deliveryConfirmation: deliveryConfirmationSchema.optional(),
 });
 
 const emailOutboxBodySchema = z
@@ -64,6 +69,7 @@ const emailOutboxBodySchema = z
     relatedResourceType: relatedResourceTypeSchema.optional(),
     relatedResourceId: z.string().min(1).optional(),
     idempotencyKey: z.string().min(8).max(180).optional(),
+    deliveryConfirmation: deliveryConfirmationSchema.optional(),
     metadata: z
       .object({
         correlationId: z.string().min(1).max(128).optional(),
@@ -89,7 +95,7 @@ function sanitizeDeliveryFailureSummary(message: string | undefined): string | u
   return message.replace(/\s+/g, " ").trim().slice(0, 240) || undefined;
 }
 
-function recipientCount(email: EmailOutboxRecord): number {
+function emailRecipientCount(email: EmailOutboxRecord): number {
   return email.to.length + email.cc.length + email.bcc.length;
 }
 
@@ -115,7 +121,7 @@ function serializeDeliveryHistory(email: EmailOutboxRecord, events: EmailEventRe
     status: email.status,
     relatedResourceType: email.relatedResourceType,
     relatedResourceId: email.relatedResourceId,
-    recipientCount: recipientCount(email),
+    recipientCount: emailRecipientCount(email),
     attemptCount: email.attemptCount,
     queuedAt: email.queuedAt,
     lastAttemptAt: email.lastAttemptAt,
@@ -272,6 +278,9 @@ export function registerEmailRoutes(
       matterId: body.matterId,
     });
     await assertRelatedResourceMatchesMatter(repository, request.auth, body);
+    requireEmailDeliveryConfirmation(body.deliveryConfirmation, {
+      recipientCount: body.to.length + body.cc.length + body.bcc.length,
+    });
 
     const queued = await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
       matterId: body.matterId,
@@ -346,6 +355,9 @@ export function registerEmailRoutes(
         "Only failed email can be manually retried",
       );
     }
+    requireEmailDeliveryConfirmation(body.deliveryConfirmation, {
+      recipientCount: emailRecipientCount(email),
+    });
 
     const providers = await repository.listProviderSettings(request.auth.firmId, { kind: "smtp" });
     const enabledProvider = providers.find((provider) => provider.enabled);

@@ -13,6 +13,10 @@ import { createSessionToken, hashToken } from "../http/auth-helpers.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import {
+  deliveryConfirmationSchema,
+  requireEmailDeliveryConfirmation,
+} from "./delivery-confirmation.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
@@ -28,6 +32,7 @@ const createShareBodySchema = z.object({
   expiresAt: z.string().datetime().optional(),
   requireEmailVerification: z.boolean().default(false),
   notificationEmail: z.string().email().optional(),
+  deliveryConfirmation: deliveryConfirmationSchema.optional(),
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
@@ -186,6 +191,9 @@ export function registerShareRoutes(
     const expiresAt = body.expiresAt ?? defaultExpiry(now);
     if (Date.parse(expiresAt) <= now.getTime()) {
       throw new ApiHttpError(400, "SHARE_LINK_EXPIRED", "Share link expiry must be in the future");
+    }
+    if (body.notificationEmail) {
+      requireEmailDeliveryConfirmation(body.deliveryConfirmation, { recipientCount: 1 });
     }
 
     const token = createSessionToken();

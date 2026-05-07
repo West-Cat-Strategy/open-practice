@@ -8,8 +8,10 @@ import type {
   CalendarDashboardResponse,
   CalendarEventsResponse,
   CalendarMatterLinks,
+  DeliveryConfirmationPayload,
   MatterSummary,
 } from "./types";
+import { buildEmailDeliveryConfirmation } from "./types";
 
 export interface CalendarRadarBuckets {
   overdue: CalendarEventRecord[];
@@ -76,6 +78,16 @@ export function describeMeetingInvitationBoundary(
       ? "Guest access tokens configured."
       : "Guest access tokens disabled.";
   return `${linkStatus} ${guestAccessStatus}`;
+}
+
+export function buildCalendarInvitationPayload(input: {
+  matterId: string;
+  recipientCount: number;
+}): { matterId: string; deliveryConfirmation: DeliveryConfirmationPayload } {
+  return {
+    matterId: input.matterId,
+    deliveryConfirmation: buildEmailDeliveryConfirmation(input.recipientCount),
+  };
 }
 
 export function upsertCalendarCredential(

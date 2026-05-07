@@ -5,6 +5,10 @@ import { createApiServer, envSchema, validateProductionReadiness } from "./serve
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
 
+function deliveryConfirmation(recipientCount = 1) {
+  return { confirmed: true, channel: "email", recipientCount };
+}
+
 function testServer(overrides: Partial<CreateServerOptions> = {}) {
   const repository = overrides.repository ?? new InMemoryOpenPracticeRepository();
   const server = createApiServer({
@@ -770,6 +774,7 @@ describe("API auth and persistence boundaries", () => {
         matterId: "matter-001",
         templateId: "intake-template-001",
         clientContactId: "contact-ada",
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
 
@@ -778,7 +783,7 @@ describe("API auth and persistence boundaries", () => {
     const generated = await server.inject({
       method: "POST",
       url: `/api/intake-sessions/${sessionId}/generated-documents`,
-      payload: { title: "Draft notice package" },
+      payload: { title: "Draft notice package", deliveryConfirmation: deliveryConfirmation() },
     });
 
     expect(generated.statusCode).toBe(200);
@@ -798,6 +803,7 @@ describe("API auth and persistence boundaries", () => {
         matterId: "matter-001",
         templateId: "intake-template-001",
         clientContactId: "contact-ada",
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
     const sessionId = created.json<{ id: string }>().id;
@@ -817,6 +823,7 @@ describe("API auth and persistence boundaries", () => {
         title: "Embedded notice package",
         storageKey: "generated/embedded-notice-package.pdf",
         checksumSha256: "a".repeat(64),
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
 
@@ -846,6 +853,7 @@ describe("API auth and persistence boundaries", () => {
         matterId: "matter-002",
         templateId: "intake-template-001",
         clientContactId: "contact-northstar",
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
     const sessionId = created.json<{ id: string }>().id;

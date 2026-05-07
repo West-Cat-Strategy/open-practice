@@ -59,6 +59,10 @@ async function enableSmtp(repository: AuditRecordingRepository): Promise<void> {
   });
 }
 
+function deliveryConfirmation(recipientCount = 1) {
+  return { confirmed: true, channel: "email", recipientCount };
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -265,7 +269,7 @@ describe("calendar routes", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/calendar/events/calendar-event-002/invitations",
-      payload: { matterId: "matter-001" },
+      payload: { matterId: "matter-001", deliveryConfirmation: deliveryConfirmation() },
     });
 
     expect(response.statusCode).toBe(200);
@@ -337,6 +341,30 @@ describe("calendar routes", () => {
     expect(JSON.stringify(queuedAudit?.metadata)).not.toContain("Client preparation call");
   });
 
+  it("requires confirmation before calendar invitations update attendee delivery state", async () => {
+    const repository = new AuditRecordingRepository();
+    await enableSmtp(repository);
+    const server = testServer(user("licensee", ["matter-001"]), repository, {
+      add: async () => ({ id: "bull-calendar-invitation-001" }),
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-002/invitations",
+      payload: { matterId: "matter-001" },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "SEND_CONFIRMATION_REQUIRED" });
+    expect(
+      await repository.listCalendarEventAttendees(
+        "firm-west-legal",
+        "matter-001",
+        "calendar-event-002",
+      ),
+    ).toMatchObject([{ id: "calendar-attendee-001", invitationStatus: "not_sent" }]);
+  });
+
   it("rejects meeting link and guest-token issuance when meeting access is not configured", async () => {
     const repository = new AuditRecordingRepository();
     const server = testServer(user("licensee", ["matter-001"]), repository);
@@ -378,7 +406,7 @@ describe("calendar routes", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/calendar/events/calendar-event-002/invitations",
-      payload: { matterId: "matter-001" },
+      payload: { matterId: "matter-001", deliveryConfirmation: deliveryConfirmation() },
     });
 
     expect(response.statusCode).toBe(200);
