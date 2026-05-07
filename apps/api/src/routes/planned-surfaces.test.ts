@@ -75,6 +75,11 @@ describe("planned surface route scaffolds", () => {
     expect((await server.inject({ method: "GET", url: "/api/jobs" })).json()).toMatchObject({
       status: "default",
       queues: ["email", "inbound_email", "ai_triage", "ocr", "transcription", "media"],
+      reservedQueues: expect.arrayContaining([
+        expect.objectContaining({ queueName: "ai_triage", status: "reserved" }),
+        expect.objectContaining({ queueName: "transcription", status: "reserved" }),
+        expect.objectContaining({ queueName: "media", status: "reserved" }),
+      ]),
       jobs: [],
     });
     expect((await server.inject({ method: "GET", url: "/api/email/status" })).json()).toMatchObject(
@@ -96,6 +101,23 @@ describe("planned surface route scaffolds", () => {
       status: "disabled",
       reason: "not_configured",
       supportedTasks: ["malware_scan", "ocr", "classification", "transcription", "media"],
+      actionableTasks: ["ocr"],
+      reservedTasks: expect.arrayContaining([
+        expect.objectContaining({ task: "classification", queueName: "ai_triage" }),
+        expect.objectContaining({ task: "transcription", queueName: "transcription" }),
+        expect.objectContaining({ task: "media", queueName: "media" }),
+      ]),
+      workerQueues: expect.arrayContaining([
+        expect.objectContaining({
+          queueName: "ai_triage",
+          status: "reserved",
+          reason: "deferred_worker",
+        }),
+        expect.objectContaining({
+          queueName: "ocr",
+          status: "not_configured",
+        }),
+      ]),
     });
     expect(
       (await server.inject({ method: "GET", url: "/api/external-uploads/status" })).json(),
@@ -138,7 +160,7 @@ describe("planned surface route scaffolds", () => {
     expect(response.json().shares[0]).not.toHaveProperty("tokenHash");
   });
 
-  it("keeps planned actions auth-gated before returning disabled scaffolding", async () => {
+  it("keeps planned actions auth-gated while graduated previews stay render-only", async () => {
     const server = testServer({ authUser: user("licensee", ["matter-001"]) });
 
     const allowedPreview = await server.inject({
@@ -148,13 +170,19 @@ describe("planned surface route scaffolds", () => {
         matterId: "matter-001",
         template: "matter-update",
         to: ["client@example.test"],
+        subject: "Synthetic matter update",
+        textBody: "Preview only.",
       },
     });
     expect(allowedPreview.statusCode).toBe(200);
     expect(allowedPreview.json()).toMatchObject({
-      status: "disabled",
-      reason: "not_configured",
-      preview: null,
+      status: "previewed",
+      mode: "render_only",
+      preview: {
+        templateKey: "matter-update",
+        recipientCount: 1,
+        delivery: { persisted: false, queued: false },
+      },
     });
 
     const deniedUpload = await server.inject({

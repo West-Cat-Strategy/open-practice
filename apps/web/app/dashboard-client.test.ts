@@ -14,6 +14,13 @@ import {
   summarizeQueues,
 } from "./dashboard-utils";
 import {
+  buildConflictCheckPayload,
+  describeConflictResult,
+  formatConflictProspectiveRole,
+  parseConflictAliases,
+  parseConflictIdentifiers,
+} from "./conflict-check-dashboard";
+import {
   buildCreateShareLinkPayload,
   describeCreateShareLinkResult,
   describeShareLinkState,
@@ -530,6 +537,54 @@ function publicRunnerPayload(
 }
 
 describe("dashboard client behavior", () => {
+  it("builds expanded conflict-check payloads for the existing API contract", () => {
+    const result = buildConflictCheckPayload({
+      prospectiveName: " Morgan Tenant ",
+      aliasesText: "Morgan Holdings\nM. Tenant, Morgan Holdings",
+      identifiersText: "email: morgan@example.test\nbusiness_number=BN-123",
+      prospectiveRole: "opposing_party",
+    });
+
+    expect(parseConflictAliases("Alpha\nBeta, Alpha")).toEqual(["Alpha", "Beta"]);
+    expect(parseConflictIdentifiers("client_id: C-123")).toEqual({
+      identifiers: [{ type: "client_id", value: "C-123" }],
+    });
+    expect(formatConflictProspectiveRole("opposing_party")).toBe("Opposing party");
+    expect(result.payload).toEqual({
+      prospectiveName: "Morgan Tenant",
+      aliases: ["Morgan Holdings", "M. Tenant"],
+      identifiers: [
+        { type: "email", value: "morgan@example.test" },
+        { type: "business_number", value: "BN-123" },
+      ],
+      prospectiveRole: "opposing_party",
+      includeClosedMatters: true,
+    });
+  });
+
+  it("rejects malformed conflict identifiers before calling the API", () => {
+    expect(
+      buildConflictCheckPayload({
+        prospectiveName: "Morgan Tenant",
+        aliasesText: "",
+        identifiersText: "email only",
+        prospectiveRole: "client",
+      }),
+    ).toEqual({ error: "Use identifier lines as type: value." });
+  });
+
+  it("describes conflict result matches with matter context", () => {
+    expect(
+      describeConflictResult({
+        contactId: "contact-001",
+        matterId: "matter-001",
+        severity: "blocker",
+        reason: "Shared email identifier",
+        matchedValue: "morgan@example.test",
+      }),
+    ).toBe("Matter matter-001 · matched morgan@example.test");
+  });
+
   it("loads matter-scoped communications inbox payloads", async () => {
     const inbox: CommunicationsInboxMatterResponse = {
       status: "available",
@@ -960,6 +1015,26 @@ describe("dashboard client behavior", () => {
     ).toBe("completed · language eng · 3 pages · 88% confidence");
     expect(summarizeDocumentProcessingWorkbench(workbench)).toBe(
       "1 providers configured. 1/1 actionable worker queues configured. 3 reserved queues. 0 active or queued jobs. 0 failed jobs.",
+    );
+
+    expect(
+      summarizeDocumentProcessingWorkbench(
+        documentProcessingWorkbench({
+          workerQueues: [
+            { queueName: "ocr", status: "configured" },
+            {
+              queueName: "transcription",
+              status: "reserved",
+              reason: "deferred_worker",
+              task: "transcription",
+              actionable: false,
+            },
+          ],
+          reservedQueues: [],
+        }),
+      ),
+    ).toBe(
+      "1 providers configured. 1/1 actionable worker queues configured. 1 reserved queue. 0 active or queued jobs. 0 failed jobs.",
     );
 
     const disabled = documentProcessingWorkbench({

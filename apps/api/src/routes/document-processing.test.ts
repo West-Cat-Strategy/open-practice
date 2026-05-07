@@ -109,7 +109,11 @@ describe("document processing routes", () => {
           task: "classification",
           actionable: false,
         },
-        { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
+        {
+          queueName: "ocr",
+          status: "not_configured",
+          reason: "queue_not_configured",
+        },
         {
           queueName: "transcription",
           status: "reserved",
@@ -130,6 +134,7 @@ describe("document processing routes", () => {
         expect.objectContaining({ queueName: "transcription", status: "reserved" }),
         expect.objectContaining({ queueName: "media", status: "reserved" }),
       ]),
+      supportedTasks: ["malware_scan", "ocr", "classification", "transcription", "media"],
       actionableTasks: ["ocr"],
       reservedTasks: expect.arrayContaining([
         expect.objectContaining({

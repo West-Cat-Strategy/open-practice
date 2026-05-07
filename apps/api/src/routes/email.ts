@@ -1,11 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { AccessRequest, EmailEventRecord, EmailOutboxRecord } from "@open-practice/domain";
+import {
+  sanitizeDraftHtml,
+  type AccessRequest,
+  type EmailEventRecord,
+  type EmailOutboxRecord,
+} from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
-import { appendRouteAuditEvent, appendWorkflowAuditEvent } from "./audit-events.js";
+import { appendWorkflowAuditEvent } from "./audit-events.js";
 import {
   buildIdempotencyKey,
   idempotencyMetadata,
@@ -30,11 +35,34 @@ const relatedResourceTypeSchema = z.enum([
   "signature_request",
 ]);
 
-const emailPreviewBodySchema = z.object({
-  matterId: z.string().min(1),
-  template: z.string().min(1),
-  to: z.array(z.string().email()).default([]),
-});
+const emailPreviewBodySchema = z
+  .object({
+    matterId: z.string().min(1),
+    templateKey: z.string().min(1).optional(),
+    template: z.string().min(1).optional(),
+    from: z.string().min(1).default("Open Practice <no-reply@open-practice.local>"),
+    to: z.array(z.string().email()).default([]),
+    cc: z.array(z.string().email()).default([]),
+    bcc: z.array(z.string().email()).default([]),
+    subject: z.string().min(1),
+    htmlBody: z.string().default(""),
+    textBody: z.string().default(""),
+    relatedResourceType: relatedResourceTypeSchema.optional(),
+    relatedResourceId: z.string().min(1).optional(),
+  })
+  .refine((body) => body.templateKey || body.template, {
+    path: ["templateKey"],
+    message: "templateKey is required",
+  })
+  .refine((body) => body.htmlBody.trim().length > 0 || body.textBody.trim().length > 0, {
+    path: ["textBody"],
+    message: "Either htmlBody or textBody is required",
+  })
+  .transform((body) => ({
+    ...body,
+    templateKey: body.templateKey ?? body.template!,
+    usedLegacyTemplateAlias: !body.templateKey && Boolean(body.template),
+  }));
 
 const emailHistoryQuerySchema = z.object({
   matterId: z.string().min(1),
@@ -87,6 +115,46 @@ type RelatedResourceType = z.infer<typeof relatedResourceTypeSchema>;
 function sanitizeDeliveryFailureSummary(message: string | undefined): string | undefined {
   if (!message) return undefined;
   return message.replace(/\s+/g, " ").trim().slice(0, 240) || undefined;
+}
+
+function previewText(value: string): { value: string; truncated: boolean } | undefined {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return undefined;
+  const maxLength = 1200;
+  return {
+    value: normalized.slice(0, maxLength),
+    truncated: normalized.length > maxLength,
+  };
+}
+
+function previewHtml(
+  value: string,
+): { value: string; sanitized: boolean; truncated: boolean } | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const sanitized = sanitizeDraftHtml(trimmed);
+  const maxLength = 1600;
+  return {
+    value: sanitized.slice(0, maxLength),
+    sanitized: sanitized !== trimmed,
+    truncated: sanitized.length > maxLength,
+  };
+}
+
+function emailPreviewWarnings(input: {
+  usedLegacyTemplateAlias: boolean;
+  recipientCount: number;
+  textTruncated: boolean;
+  htmlSanitized: boolean;
+  htmlTruncated: boolean;
+}): string[] {
+  return [
+    input.usedLegacyTemplateAlias ? "legacy_template_alias" : undefined,
+    input.recipientCount === 0 ? "no_recipients" : undefined,
+    input.textTruncated ? "text_body_truncated" : undefined,
+    input.htmlSanitized ? "html_body_sanitized" : undefined,
+    input.htmlTruncated ? "html_body_truncated" : undefined,
+  ].filter((warning): warning is string => Boolean(warning));
 }
 
 function recipientCount(email: EmailOutboxRecord): number {
@@ -252,15 +320,55 @@ export function registerEmailRoutes(
   server.post("/api/email/previews", async (request) => {
     const body = parseRequestPart(emailPreviewBodySchema, request.body, "body");
     assertEmailAccess(request.auth, {
-      resource: "portal_message",
+      resource: "email",
       action: "create",
       matterId: body.matterId,
     });
+    await assertRelatedResourceMatchesMatter(repository, request.auth, body);
+
+    const textPreview = previewText(body.textBody);
+    const htmlPreview = previewHtml(body.htmlBody);
+    const recipientCount = body.to.length + body.cc.length + body.bcc.length;
 
     return {
-      status: "disabled",
-      reason: "not_configured",
-      preview: null,
+      status: "previewed",
+      mode: "render_only",
+      preview: {
+        matterId: body.matterId,
+        templateKey: body.templateKey,
+        from: body.from,
+        to: body.to,
+        cc: body.cc,
+        bcc: body.bcc,
+        recipientCount,
+        subject: body.subject,
+        body: {
+          textPreview: textPreview?.value,
+          htmlPreview: htmlPreview?.value,
+          contentTypes: {
+            text: Boolean(textPreview),
+            html: Boolean(htmlPreview),
+          },
+        },
+        relatedResource:
+          body.relatedResourceType && body.relatedResourceId
+            ? {
+                type: body.relatedResourceType,
+                id: body.relatedResourceId,
+              }
+            : undefined,
+        warnings: emailPreviewWarnings({
+          usedLegacyTemplateAlias: body.usedLegacyTemplateAlias,
+          recipientCount,
+          textTruncated: Boolean(textPreview?.truncated),
+          htmlSanitized: Boolean(htmlPreview?.sanitized),
+          htmlTruncated: Boolean(htmlPreview?.truncated),
+        }),
+        delivery: {
+          persisted: false,
+          queued: false,
+        },
+      },
     };
   });
 

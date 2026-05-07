@@ -397,6 +397,40 @@ describe("worker processors", () => {
     });
   });
 
+  it("skips reserved document-processing queues with redacted deferred metadata", async () => {
+    for (const queueName of ["ai_triage", "transcription", "media"] as const) {
+      const result = await processOpenPracticeJob({
+        queueName,
+        jobName: "reserved_worker_task",
+        data: {
+          firmId: "firm-west-legal",
+          resourceType: "document",
+          resourceId: "doc-001",
+          metadata: { rawText: "Synthetic text should not survive skip metadata" },
+        },
+        repository: new InMemoryOpenPracticeRepository(),
+        s3: {} as never,
+        ocrProvider: {} as never,
+        mailSender: {} as never,
+        inboundEmailParser: {} as never,
+      });
+
+      expect(result).toMatchObject({
+        status: "skipped",
+        reason: expect.stringContaining("reserved/deferred"),
+        metadata: {
+          firmId: "firm-west-legal",
+          resourceType: "document",
+          resourceId: "doc-001",
+          queueStatus: "reserved",
+          reason: "deferred_worker",
+          providerConfigured: false,
+        },
+      });
+      expect(result.metadata).not.toHaveProperty("rawText");
+    }
+  });
+
   it("runs OCR jobs from document storage and completes lifecycle records", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const requestedObjects: string[] = [];

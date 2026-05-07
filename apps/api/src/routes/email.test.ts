@@ -47,6 +47,107 @@ afterEach(async () => {
 });
 
 describe("email routes", () => {
+  it("renders email previews without SMTP, outbox, job, or audit side effects", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const auditBefore = await repository.listAuditEvents("firm-west-legal");
+    const response = await testServer({ repository, authUser: user("licensee") }).inject({
+      method: "POST",
+      url: "/api/email/previews",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "matter.update",
+        from: "Open Practice <notice@example.test>",
+        to: ["client@example.test"],
+        cc: ["staff@example.test"],
+        bcc: ["archive@example.test"],
+        subject: "Synthetic matter update",
+        textBody: "A short synthetic update for preview only.",
+        htmlBody: '<p onclick="alert(1)">Preview</p><script>private()</script>',
+        relatedResourceType: "signature_request",
+        relatedResourceId: "sig-001",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "previewed",
+      mode: "render_only",
+      preview: {
+        matterId: "matter-001",
+        templateKey: "matter.update",
+        from: "Open Practice <notice@example.test>",
+        to: ["client@example.test"],
+        cc: ["staff@example.test"],
+        bcc: ["archive@example.test"],
+        recipientCount: 3,
+        subject: "Synthetic matter update",
+        body: {
+          textPreview: "A short synthetic update for preview only.",
+          contentTypes: { text: true, html: true },
+        },
+        relatedResource: { type: "signature_request", id: "sig-001" },
+        warnings: expect.arrayContaining(["html_body_sanitized"]),
+        delivery: { persisted: false, queued: false },
+      },
+    });
+    expect(response.json().preview.body.htmlPreview).not.toContain("<script>");
+    expect(response.json().preview.body.htmlPreview).not.toContain("onclick");
+    await expect(repository.listEmailOutbox("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
+    const auditAfter = await repository.listAuditEvents("firm-west-legal");
+    expect(auditAfter.events).toHaveLength(auditBefore.events.length);
+    expect(JSON.stringify(auditAfter.events)).not.toContain("Synthetic matter update");
+    expect(JSON.stringify(auditAfter.events)).not.toContain("A short synthetic update");
+  });
+
+  it("normalizes legacy preview template aliases and flags missing recipients", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const response = await testServer({ repository }).inject({
+      method: "POST",
+      url: "/api/email/previews",
+      payload: {
+        matterId: "matter-001",
+        template: "matter-update",
+        subject: "Matter update",
+        textBody: "Preview without delivery recipients.",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "previewed",
+      mode: "render_only",
+      preview: {
+        templateKey: "matter-update",
+        recipientCount: 0,
+        warnings: expect.arrayContaining(["legacy_template_alias", "no_recipients"]),
+        delivery: { persisted: false, queued: false },
+      },
+    });
+  });
+
+  it("requires matter-scoped email access for previews", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const response = await testServer({
+      repository,
+      authUser: user("firm_member", ["matter-002"]),
+    }).inject({
+      method: "POST",
+      url: "/api/email/previews",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "matter.update",
+        subject: "Matter update",
+        textBody: "Preview only.",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      code: "EMAIL_ACCESS_REQUIRED",
+    });
+  });
+
   it("keeps outbound queueing disabled until SMTP is configured", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const response = await testServer({ repository }).inject({

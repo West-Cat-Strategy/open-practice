@@ -278,7 +278,10 @@ export function summarizeDocumentProcessingWorkbench(
       workbench.reason,
     )}. Document list is preserved.`;
   }
-  const reservedSuffix = reservedQueues > 0 ? ` ${reservedQueues} reserved queues.` : "";
+  const reservedSuffix =
+    reservedQueues > 0
+      ? ` ${reservedQueues} reserved queue${reservedQueues === 1 ? "" : "s"}.`
+      : "";
   return `${configuredProviders} providers configured. ${configuredQueues}/${actionableQueues} actionable worker queues configured.${reservedSuffix} ${active} active or queued jobs. ${failed} failed jobs.`;
 }
 

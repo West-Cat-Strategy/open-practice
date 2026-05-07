@@ -79,6 +79,12 @@ import {
   filterMatters,
   summarizeQueues,
 } from "./dashboard-utils";
+import {
+  buildConflictCheckPayload,
+  describeConflictResult,
+  formatConflictProspectiveRole,
+  type ConflictProspectiveRole,
+} from "./conflict-check-dashboard";
 import StructuredIntakeBuilder from "./intake-forms/StructuredIntakeBuilder";
 import {
   buildCalendarRadarBuckets,
@@ -313,6 +319,11 @@ export default function DashboardClient({
   const [contactSearch, setContactSearch] = useState("");
   const [activeContactId, setActiveContactId] = useState(contactDossiers[0]?.contact.id ?? "");
   const [conflictName, setConflictName] = useState("");
+  const [conflictAliases, setConflictAliases] = useState("");
+  const [conflictIdentifiers, setConflictIdentifiers] = useState("");
+  const [conflictProspectiveRole, setConflictProspectiveRole] = useState<
+    ConflictProspectiveRole | ""
+  >("client");
   const [conflictResults, setConflictResults] = useState<ConflictCandidate[]>([]);
   const [conflictStatus, setConflictStatus] = useState("No check run yet.");
   const [draftsByMatterId, setDraftsByMatterId] = useState(drafting.draftsByMatterId);
@@ -785,6 +796,18 @@ export default function DashboardClient({
   );
 
   async function runConflictCheck() {
+    const payloadResult = buildConflictCheckPayload({
+      prospectiveName: conflictName,
+      aliasesText: conflictAliases,
+      identifiersText: conflictIdentifiers,
+      prospectiveRole: conflictProspectiveRole,
+    });
+    if (!payloadResult.payload) {
+      setConflictStatus(payloadResult.error ?? "Conflict check payload is incomplete.");
+      setConflictResults([]);
+      return;
+    }
+
     setConflictStatus("Running conflict check...");
     const response = await fetch(`${apiBaseUrl}/api/conflicts/check`, {
       method: "POST",
@@ -793,10 +816,7 @@ export default function DashboardClient({
         ...devHeaders,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        prospectiveName: conflictName,
-        includeClosedMatters: true,
-      }),
+      body: JSON.stringify(payloadResult.payload),
     });
     if (!response.ok) {
       setConflictStatus(`Conflict check failed: ${response.status}`);
@@ -2618,7 +2638,12 @@ export default function DashboardClient({
                           (queue) => queue.status === "configured",
                         ).length
                       }
-                      /{activeDocumentProcessing.workerQueues.length}
+                      /
+                      {
+                        activeDocumentProcessing.workerQueues.filter(
+                          (queue) => queue.status !== "reserved",
+                        ).length
+                      }
                     </strong>
                   </div>
                   <div>
@@ -2661,7 +2686,14 @@ export default function DashboardClient({
                         <div className="party-row" key={`queue:${queue.queueName}`}>
                           <span>
                             <strong>{compactDocumentProcessingReason(queue.queueName)}</strong>
-                            <small>{compactDocumentProcessingReason(queue.reason)}</small>
+                            <small>
+                              {queue.status === "reserved"
+                                ? `reserved ${compactDocumentProcessingReason(queue.task)}`
+                                : "actionable"}
+                              {queue.reason
+                                ? ` · ${compactDocumentProcessingReason(queue.reason)}`
+                                : ""}
+                            </small>
                           </span>
                           <em className={queue.status === "not_configured" ? "risk" : undefined}>
                             {compactDocumentProcessingReason(queue.status)}
@@ -4017,6 +4049,40 @@ export default function DashboardClient({
                   placeholder="Client, organization, alias, or adverse party"
                 />
               </label>
+              <label className="search-field">
+                <span>Aliases</span>
+                <textarea
+                  onChange={(event) => setConflictAliases(event.target.value)}
+                  placeholder="Comma-separated or one per line"
+                  rows={2}
+                  value={conflictAliases}
+                />
+              </label>
+              <label className="search-field">
+                <span>Prospective role</span>
+                <select
+                  onChange={(event) =>
+                    setConflictProspectiveRole(event.target.value as ConflictProspectiveRole | "")
+                  }
+                  value={conflictProspectiveRole}
+                >
+                  <option value="">Unspecified role</option>
+                  {(["client", "opposing_party", "third_party"] as const).map((role) => (
+                    <option key={role} value={role}>
+                      {formatConflictProspectiveRole(role)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="search-field">
+                <span>Identifiers</span>
+                <textarea
+                  onChange={(event) => setConflictIdentifiers(event.target.value)}
+                  placeholder="email: person@example.test"
+                  rows={2}
+                  value={conflictIdentifiers}
+                />
+              </label>
               <button
                 className="primary-button"
                 disabled={conflictName.trim().length === 0}
@@ -4040,6 +4106,7 @@ export default function DashboardClient({
                       <span>
                         <strong>{result.severity}</strong>
                         <small>{result.reason}</small>
+                        <small>{describeConflictResult(result)}</small>
                       </span>
                     </div>
                   ))

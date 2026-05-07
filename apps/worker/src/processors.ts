@@ -26,11 +26,13 @@ export interface WorkerJobResult {
 const disabledReasons: Record<OpenPracticeQueueName, string> = {
   email: "SMTP email delivery is not configured",
   inbound_email: "Inbound email parsing is not configured",
-  ai_triage: "AI triage is disabled by default",
+  ai_triage: "AI triage is reserved/deferred and has no worker processor",
   ocr: "OCR worker dependencies are not configured",
-  transcription: "Whisper transcription is not configured",
-  media: "FFmpeg media processing is not configured",
+  transcription: "Transcription is reserved/deferred and has no worker processor",
+  media: "Media processing is reserved/deferred and has no worker processor",
 };
+
+const reservedQueueNames = new Set<OpenPracticeQueueName>(["ai_triage", "transcription", "media"]);
 
 export async function processOpenPracticeJob(input: {
   queueName: OpenPracticeQueueName;
@@ -105,6 +107,8 @@ async function processOpenPracticeJobBody(input: {
       firmId: data.firmId,
       resourceType: data.resourceType,
       resourceId: data.resourceId,
+      queueStatus: reservedQueueNames.has(queueName) ? "reserved" : "disabled",
+      reason: reservedQueueNames.has(queueName) ? "deferred_worker" : "not_configured",
       providerConfigured: false,
     },
   };
