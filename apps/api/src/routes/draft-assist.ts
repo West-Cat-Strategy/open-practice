@@ -63,21 +63,33 @@ async function getEnabledAiProvider(
   )?.key;
 }
 
+export async function buildDraftAssistStatus(input: {
+  repository: ApiRouteDependencies["repository"];
+  firmId: string;
+  draftAssistProvider?: ApiRouteDependencies["draftAssistProvider"];
+}) {
+  const providerKey = await getEnabledAiProvider(input.repository, input.firmId);
+  if (!providerKey) return statusResponse;
+  if (!input.draftAssistProvider) {
+    return {
+      ...statusResponse,
+      reason: "provider_not_injected" as const,
+      provider: providerKey,
+    };
+  }
+  return { ...input.draftAssistProvider.getStatus(), provider: providerKey };
+}
+
 export function registerDraftAssistRoutes(
   server: FastifyInstance,
   { repository, draftAssistProvider }: ApiRouteDependencies,
 ): void {
   server.get("/api/draft-assist/status", async (request) => {
-    const providerKey = await getEnabledAiProvider(repository, request.auth.firmId);
-    if (!providerKey) return statusResponse;
-    if (!draftAssistProvider) {
-      return {
-        ...statusResponse,
-        reason: "provider_not_injected" as const,
-        provider: providerKey,
-      };
-    }
-    return { ...draftAssistProvider.getStatus(), provider: providerKey };
+    return buildDraftAssistStatus({
+      repository,
+      firmId: request.auth.firmId,
+      draftAssistProvider,
+    });
   });
 
   server.get("/api/draft-assist/records", async (request) => {

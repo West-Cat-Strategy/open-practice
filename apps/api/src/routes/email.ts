@@ -211,6 +211,24 @@ function assertEmailAccess(
   if (!access.ok) throw access.error;
 }
 
+export async function buildEmailStatus(input: {
+  repository: ApiRouteDependencies["repository"];
+  firmId: string;
+}) {
+  const providers = await input.repository.listProviderSettings(input.firmId, { kind: "smtp" });
+  const enabled = providers.find((provider) => provider.enabled);
+  return {
+    status: enabled ? "configured" : "disabled",
+    reason: enabled ? undefined : "not_configured",
+    provider: enabled?.key,
+    providers: providers.map((provider) => ({
+      key: provider.key,
+      enabled: provider.enabled,
+      updatedAt: provider.updatedAt,
+    })),
+  };
+}
+
 async function resolveRelatedResourceMatterId(
   repository: ApiRouteDependencies["repository"],
   firmId: string,
@@ -280,18 +298,7 @@ export function registerEmailRoutes(
   { repository, emailJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/email/status", async (request) => {
-    const providers = await repository.listProviderSettings(request.auth.firmId, { kind: "smtp" });
-    const enabled = providers.find((provider) => provider.enabled);
-    return {
-      status: enabled ? "configured" : "disabled",
-      reason: enabled ? undefined : "not_configured",
-      provider: enabled?.key,
-      providers: providers.map((provider) => ({
-        key: provider.key,
-        enabled: provider.enabled,
-        updatedAt: provider.updatedAt,
-      })),
-    };
+    return buildEmailStatus({ repository, firmId: request.auth.firmId });
   });
 
   server.get("/api/mail/outbox", async (request) => {

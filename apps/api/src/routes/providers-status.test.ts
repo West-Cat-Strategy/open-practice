@@ -52,6 +52,7 @@ function testServer(
     s3?: ApiRouteDependencies["s3"];
     jwtSecret?: string;
     webAuthn?: { rpID: string; origin: string };
+    draftAssistProvider?: ApiRouteDependencies["draftAssistProvider"];
   } = {},
 ): FastifyInstance {
   const server = Fastify({ logger: false });
@@ -66,6 +67,7 @@ function testServer(
     s3: input.s3,
     jwtSecret: input.jwtSecret,
     webAuthn: input.webAuthn,
+    draftAssistProvider: input.draftAssistProvider,
   });
   servers.push(server);
   return server;
@@ -111,6 +113,49 @@ describe("provider status route", () => {
       liveHealth: {
         status: "not_checked",
         reason: "read_only_configuration_posture",
+      },
+      email: {
+        status: "disabled",
+        reason: "not_configured",
+        providers: [],
+        queue: { queueName: "email", status: "not_configured", reason: "queue_not_configured" },
+      },
+      inboundEmail: {
+        status: "disabled",
+        reason: "not_configured",
+        addresses: [],
+        workerQueue: {
+          queueName: "inbound_email",
+          status: "not_configured",
+          reason: "queue_not_configured",
+        },
+      },
+      externalUploads: {
+        status: "not_configured",
+        reason: "s3_not_configured",
+        tokenSigning: "not_configured",
+        s3: "not_configured",
+      },
+      draftAssist: {
+        status: "disabled",
+        reason: "not_configured",
+        supportedTasks: ["summarize", "suggest_revision", "continue_draft"],
+      },
+      documentProcessing: {
+        status: "disabled",
+        reason: "not_configured",
+        workerQueues: expect.arrayContaining([
+          { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
+          {
+            queueName: "ai_triage",
+            status: "reserved",
+            reason: "deferred_worker",
+            task: "classification",
+            actionable: false,
+          },
+        ]),
+        actionableTasks: ["ocr"],
+        summary: { total: 0, queued: 0, active: 0, failed: 0, terminal: 0 },
       },
       objectStorage: { status: "not_configured", reason: "s3_not_configured" },
       bullmq: {
@@ -182,6 +227,7 @@ describe("provider status route", () => {
     await repository.createUser(authUser);
     await upsertProvider(repository, { kind: "smtp", key: "mailpit", enabled: true });
     await upsertProvider(repository, { kind: "inbound_email", key: "maildrop", enabled: false });
+    await upsertProvider(repository, { kind: "ai", key: "local-draft-assist", enabled: true });
     await upsertProvider(repository, { kind: "ocr", key: "local-tesseract", enabled: true });
     await upsertProvider(repository, { kind: "storage", key: "s3-compatible", enabled: true });
     await repository.setAuthPassword({
@@ -220,6 +266,17 @@ describe("provider status route", () => {
       s3: s3Config(),
       jwtSecret: "provider-status-secret-at-least-32-chars",
       webAuthn: { rpID: "localhost", origin: "http://localhost:3000" },
+      draftAssistProvider: {
+        getStatus: () => ({
+          status: "configured",
+          provider: "fake-local-ai",
+          model: "fake-model",
+          supportedTasks: ["summarize", "suggest_revision", "continue_draft"],
+        }),
+        async createSuggestion() {
+          throw new Error("not used by provider status");
+        },
+      },
     }).inject({
       method: "GET",
       url: "/api/providers/status",
@@ -227,6 +284,36 @@ describe("provider status route", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
+      email: {
+        status: "configured",
+        provider: "mailpit",
+        queue: { queueName: "email", status: "configured" },
+      },
+      inboundEmail: {
+        status: "disabled",
+        reason: "not_configured",
+        workerQueue: {
+          queueName: "inbound_email",
+          status: "not_configured",
+          reason: "queue_not_configured",
+        },
+      },
+      externalUploads: {
+        status: "available",
+        provider: "s3",
+        tokenSigning: "configured",
+        s3: "configured",
+      },
+      draftAssist: {
+        status: "configured",
+        provider: "local-draft-assist",
+        model: "fake-model",
+      },
+      documentProcessing: {
+        status: "configured",
+        workers: [{ queueName: "ocr", status: "configured" }],
+        providers: [{ kind: "ocr", key: "local-tesseract" }],
+      },
       objectStorage: { status: "configured", provider: "s3" },
       bullmq: {
         producerQueues: [

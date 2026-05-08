@@ -199,10 +199,10 @@ errors, storage keys, message bodies, generated text, or auth secrets.
 | `GET /api/providers/status`                       | Operator-visible configuration posture for Redis/BullMQ producers, object storage, provider settings, reserved workers, redacted jobs, and auth extensions. |
 | `POST /api/media/:id/transcription-jobs`          | Enqueue FFmpeg normalization and Whisper transcription for authorized media.                                                                                |
 | `POST /api/documents/:id/assistive-drafting-jobs` | Future async Ollama/LM Studio drafting worker job after provider and queue governance land.                                                                 |
-| `POST /api/auth/passkeys/registration-options`    | Create a SimpleWebAuthn registration challenge for the current user.                                                                                        |
-| `POST /api/auth/passkeys/registration`            | Verify and store a passkey credential for embedded auth.                                                                                                    |
-| `POST /api/auth/passkeys/authentication-options`  | Create a passkey login challenge for configured RP ID/origin.                                                                                               |
-| `POST /api/auth/passkeys/authentication`          | Verify passkey assertion and create an embedded session.                                                                                                    |
+| `POST /api/auth/register/options`                 | Create a SimpleWebAuthn registration challenge for the current user.                                                                                        |
+| `POST /api/auth/register/verify`                  | Verify and store a passkey credential for embedded auth.                                                                                                    |
+| `POST /api/auth/login/options`                    | Create a passkey login challenge for configured RP ID/origin.                                                                                               |
+| `POST /api/auth/login/verify`                     | Verify passkey assertion and create an embedded session.                                                                                                    |
 
 ## State Machines
 

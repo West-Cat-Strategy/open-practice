@@ -97,30 +97,37 @@ function buildInboundEmailTriageUpdates(
   return updates;
 }
 
+export async function buildInboundEmailStatus(input: {
+  repository: ApiRouteDependencies["repository"];
+  firmId: string;
+}) {
+  const [providers, addresses] = await Promise.all([
+    input.repository.listProviderSettings(input.firmId, {
+      kind: "inbound_email",
+    }),
+    input.repository.listInboundEmailAddresses(input.firmId),
+  ]);
+  const enabled = providers.find((provider) => provider.enabled);
+  return {
+    status: enabled ? "configured" : "disabled",
+    reason: enabled ? undefined : "not_configured",
+    provider: enabled?.key,
+    addresses: addresses.map(({ id, address, matterId, enabled, createdAt }) => ({
+      id,
+      address,
+      matterId,
+      enabled,
+      createdAt,
+    })),
+  };
+}
+
 export function registerInboundEmailRoutes(
   server: FastifyInstance,
   { repository, ocrJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/inbound-email/status", async (request) => {
-    const [providers, addresses] = await Promise.all([
-      repository.listProviderSettings(request.auth.firmId, {
-        kind: "inbound_email",
-      }),
-      repository.listInboundEmailAddresses(request.auth.firmId),
-    ]);
-    const enabled = providers.find((provider) => provider.enabled);
-    return {
-      status: enabled ? "configured" : "disabled",
-      reason: enabled ? undefined : "not_configured",
-      provider: enabled?.key,
-      addresses: addresses.map(({ id, address, matterId, enabled, createdAt }) => ({
-        id,
-        address,
-        matterId,
-        enabled,
-        createdAt,
-      })),
-    };
+    return buildInboundEmailStatus({ repository, firmId: request.auth.firmId });
   });
 
   server.get("/api/inbound-email/messages", async (request) => {

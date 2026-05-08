@@ -45,6 +45,10 @@ import {
   loadTrustControlsDashboardData,
 } from "./trust-controls-dashboard";
 import { buildWorkerRunsPath, emptyWorkerRunsResponse } from "./worker-runs-dashboard";
+import {
+  buildProvidersStatusPath,
+  emptyProvidersStatusResponse,
+} from "./provider-status-dashboard";
 import type {
   BillingDashboardResponse,
   CalendarCredentialsResponse,
@@ -72,6 +76,7 @@ import type {
   LegalClinicProgramsResponse,
   MatterSummary,
   PracticeOverview,
+  ProvidersStatusResponse,
   QueuesResponse,
   SessionResponse,
   ShareLinksStatusResponse,
@@ -292,6 +297,12 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       emptyWorkerRunsResponse("access_denied"),
     ),
   };
+  const providerStatus = await apiGetOptional<ProvidersStatusResponse>(
+    buildProvidersStatusPath(),
+    emptyProvidersStatusResponse(),
+    headers,
+    emptyProvidersStatusResponse("access_denied"),
+  );
   const billing = await apiGetOptional<BillingDashboardResponse>(
     "/api/billing/dashboard",
     billingFallback,
@@ -501,6 +512,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       legalClinic={legalClinic}
       matters={matters}
       overview={overview}
+      providerStatus={providerStatus}
       queues={queues}
       session={session}
       shareLinksStatus={shareLinksStatus}

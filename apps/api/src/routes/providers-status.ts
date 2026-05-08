@@ -6,6 +6,11 @@ import {
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { buildAuthExtensionStatus } from "./auth-extensions.js";
+import { buildDocumentProcessingStatus } from "./document-processing.js";
+import { buildDraftAssistStatus } from "./draft-assist.js";
+import { buildEmailStatus } from "./email.js";
+import { buildExternalUploadsStatus } from "./external-uploads.js";
+import { buildInboundEmailStatus } from "./inbound-email.js";
 import {
   openPracticeQueueNames,
   providerStatus,
@@ -75,7 +80,16 @@ export function registerProviderStatusRoutes(
     });
     if (!access.ok) throw access.error;
 
-    const [providerSettings, jobs, authExtensions] = await Promise.all([
+    const [
+      providerSettings,
+      jobs,
+      authExtensions,
+      documentProcessing,
+      email,
+      inboundEmail,
+      externalUploads,
+      draftAssist,
+    ] = await Promise.all([
       Promise.all(
         providerSettingKinds.map(async (kind) =>
           providerStatus(
@@ -91,6 +105,19 @@ export function registerProviderStatusRoutes(
         user: request.auth.user,
         jwtSecret: options.jwtSecret,
         webAuthn: options.webAuthn,
+      }),
+      buildDocumentProcessingStatus({
+        repository: options.repository,
+        firmId: request.auth.firmId,
+        ocrJobQueue: options.ocrJobQueue,
+      }),
+      buildEmailStatus({ repository: options.repository, firmId: request.auth.firmId }),
+      buildInboundEmailStatus({ repository: options.repository, firmId: request.auth.firmId }),
+      buildExternalUploadsStatus({ s3: options.s3, jwtSecret: options.jwtSecret }),
+      buildDraftAssistStatus({
+        repository: options.repository,
+        firmId: request.auth.firmId,
+        draftAssistProvider: options.draftAssistProvider,
       }),
     ]);
     const visibleJobs = jobs.filter((record) =>
@@ -127,6 +154,17 @@ export function registerProviderStatusRoutes(
         summary: summarizeJobRuns(visibleJobs),
         latestRuns: latestJobRuns(visibleJobs),
       },
+      documentProcessing,
+      email: {
+        ...email,
+        queue: producerQueueStatus("email", options.emailJobQueue),
+      },
+      inboundEmail: {
+        ...inboundEmail,
+        workerQueue: queueStatus("inbound_email", undefined),
+      },
+      externalUploads,
+      draftAssist,
       authExtensions,
     };
   });

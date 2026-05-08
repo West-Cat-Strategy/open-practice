@@ -373,6 +373,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   });
   registerProviderStatusRoutes(server, {
     repository: options.repository,
+    draftAssistProvider: options.draftAssistProvider,
     emailJobQueue: options.emailJobQueue,
     ocrJobQueue: options.ocrJobQueue,
     s3: options.s3,

@@ -366,17 +366,26 @@ async function resolvePublicLink(
   return link;
 }
 
-export function registerExternalUploadRoutes(
-  server: FastifyInstance,
-  { repository, s3, jwtSecret, emailJobQueue }: ApiRouteDependencies & { jwtSecret?: string },
-): void {
-  server.get("/api/external-uploads/status", async () => ({
+export function buildExternalUploadsStatus({
+  s3,
+  jwtSecret,
+}: Pick<ApiRouteDependencies, "s3"> & { jwtSecret?: string }) {
+  return {
     status: s3 && jwtSecret ? "available" : "not_configured",
     reason: !s3 ? "s3_not_configured" : jwtSecret ? undefined : "token_signing_not_configured",
     provider: s3 ? "s3" : undefined,
     tokenSigning: jwtSecret ? "configured" : "not_configured",
     s3: s3 ? "configured" : "not_configured",
-  }));
+  };
+}
+
+export function registerExternalUploadRoutes(
+  server: FastifyInstance,
+  { repository, s3, jwtSecret, emailJobQueue }: ApiRouteDependencies & { jwtSecret?: string },
+): void {
+  server.get("/api/external-uploads/status", async () =>
+    buildExternalUploadsStatus({ s3, jwtSecret }),
+  );
 
   server.get("/api/external-uploads", async (request) => {
     const query = parseRequestPart(externalUploadsQuerySchema, request.query, "query");
