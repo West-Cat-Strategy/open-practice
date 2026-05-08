@@ -51,6 +51,19 @@ afterEach(async () => {
 });
 
 describe("email routes", () => {
+  it("reports SMTP delivery disabled when no provider is configured", async () => {
+    const response = await testServer({ repository: new InMemoryOpenPracticeRepository() }).inject({
+      method: "GET",
+      url: "/api/email/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "disabled",
+      reason: "not_configured",
+    });
+  });
+
   it("renders email previews without SMTP, outbox, job, or audit side effects", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const auditBefore = await repository.listAuditEvents("firm-west-legal");

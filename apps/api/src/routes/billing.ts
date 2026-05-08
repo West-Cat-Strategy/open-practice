@@ -449,6 +449,26 @@ export function registerBillingRoutes(
         statusCode: 400,
       });
     }
+    const existingInvoices = await repository.listInvoices(request.auth.firmId, {
+      matterId: body.matterId,
+    });
+    const selectedTimeEntryIds = new Set(body.timeEntryIds);
+    const selectedExpenseEntryIds = new Set(body.expenseEntryIds);
+    const duplicateSource = existingInvoices
+      .filter((invoice) => invoice.status !== "void")
+      .some((invoice) =>
+        invoice.lines.some(
+          (line) =>
+            (line.timeEntryId ? selectedTimeEntryIds.has(line.timeEntryId) : false) ||
+            (line.expenseEntryId ? selectedExpenseEntryIds.has(line.expenseEntryId) : false),
+        ),
+      );
+    if (duplicateSource) {
+      throw Object.assign(
+        new Error("Selected source entries are already linked to a non-void invoice"),
+        { statusCode: 409 },
+      );
+    }
     if (![...timeEntries, ...expenseEntries].every(isBillableUnbilled)) {
       throw Object.assign(new Error("Only approved unbilled entries can be invoiced"), {
         statusCode: 409,

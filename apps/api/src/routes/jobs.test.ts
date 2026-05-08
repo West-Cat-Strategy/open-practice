@@ -46,6 +46,25 @@ afterEach(async () => {
 });
 
 describe("jobs routes", () => {
+  it("returns default queue status when no lifecycle jobs exist", async () => {
+    const response = await testServer({ repository: new InMemoryOpenPracticeRepository() }).inject({
+      method: "GET",
+      url: "/api/jobs",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "default",
+      queues: ["email", "inbound_email", "ai_triage", "ocr", "transcription", "media"],
+      reservedQueues: expect.arrayContaining([
+        expect.objectContaining({ queueName: "ai_triage", status: "reserved" }),
+        expect.objectContaining({ queueName: "transcription", status: "reserved" }),
+        expect.objectContaining({ queueName: "media", status: "reserved" }),
+      ]),
+      jobs: [],
+    });
+  });
+
   it("returns queue status and redacted lifecycle run summaries", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createJobLifecycleRecord({
