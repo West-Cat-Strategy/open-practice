@@ -103,7 +103,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/calendar/events/:eventId/attendees`                                    | Adds a matter-scoped event attendee with role, response status, and not-yet-sent invitation state.                                                                                      |
 | `PATCH /api/calendar/events/:eventId/attendees/:attendeeId`                       | Updates an attendee name, email, role, or response status for one authorized matter event.                                                                                              |
 | `DELETE /api/calendar/events/:eventId/attendees/:attendeeId?matterId=`            | Soft-deletes an attendee from one authorized matter event.                                                                                                                              |
-| `POST /api/calendar/events/:eventId/invitations`                                  | Optionally queues confirmed attendee invitation email through the SMTP outbox or marks invitations skipped/disabled when email or meeting-link capability is unavailable.               |
+| `POST /api/calendar/events/:eventId/invitations`                                  | Queues confirmed attendee invitation email through the SMTP outbox or marks invitations skipped/disabled when email is unavailable; meeting-link issuance/preview remains deferred.     |
 | `GET /api/calendar/matters/:matterId.ics`                                         | Authenticated read-only iCalendar export for one authorized matter calendar.                                                                                                            |
 | `GET /api/calendar/credentials`                                                   | Current-user CalDAV app-password credentials without password hashes or one-time secrets.                                                                                               |
 | `POST /api/calendar/credentials`                                                  | Creates a current-user CalDAV app password and returns the generated password only once.                                                                                                |
@@ -514,7 +514,9 @@ required/optional role, response status, and invitation state. Invitation attemp
 when SMTP or queue delivery is unavailable, the API records a skipped attendee invitation state
 without failing attendee management. Meeting links and guest-token access remain disabled until an
 explicit meeting provider/configuration is present; invitation requests that require unavailable
-meeting-link capability are rejected before tokenized guest access or provider links are issued.
+meeting-link capability are rejected before email delivery state changes. The dashboard presents
+meeting-link availability as passive status only; current calendar invitations are email delivery
+records, not link issuance or meeting-preview records.
 Calendar audit metadata records event, attendee, email, job, meeting-boundary status, and count
 identifiers only; invitation message bodies remain in the outbox record.
 

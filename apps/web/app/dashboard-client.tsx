@@ -90,6 +90,7 @@ import {
   buildCalendarRadarBuckets,
   buildCalendarInvitationPayload,
   describeMeetingInvitationBoundary,
+  describeMeetingLinkAvailability,
   describeCalendarEventTiming,
   removeCalendarEventAttendee,
   upsertCalendarEventAttendee,
@@ -3296,6 +3297,9 @@ export default function DashboardClient({
                   {activeCalendarEvents.map((event) => {
                     const timing = describeCalendarEventTiming(event);
                     const attendees = event.attendees ?? [];
+                    const meetingLinkAvailability = describeMeetingLinkAvailability(
+                      event.meetingInvitationBoundary,
+                    );
                     return (
                       <div className="party-row calendar-event-row" key={event.id}>
                         <div className="calendar-event-summary">
@@ -3319,26 +3323,14 @@ export default function DashboardClient({
                             >
                               {event.status === "cancelled" ? "cancelled" : timing}
                             </em>
-                            <button
-                              className="secondary-button compact-button row-button"
-                              disabled={
-                                event.meetingInvitationBoundary?.meetingLinks.status !==
-                                "configured"
-                              }
-                              onClick={() =>
-                                setCalendarMeetingStatus("Meeting link issuance is not wired yet.")
-                              }
-                              title={
-                                event.meetingInvitationBoundary?.meetingLinks.status ===
-                                "configured"
-                                  ? "Meeting link boundary is configured"
-                                  : "Meeting links are disabled until a provider is configured"
-                              }
-                              type="button"
+                            <span
+                              aria-label={meetingLinkAvailability.detail}
+                              className={`calendar-meeting-link-status ${meetingLinkAvailability.status}`}
+                              title={meetingLinkAvailability.detail}
                             >
                               <Link2 size={14} />
-                              Meeting link
-                            </button>
+                              {meetingLinkAvailability.label}
+                            </span>
                             <button
                               className="secondary-button compact-button row-button"
                               disabled={
