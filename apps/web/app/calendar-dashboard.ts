@@ -80,6 +80,33 @@ export function describeMeetingInvitationBoundary(
   return `${linkStatus} ${guestAccessStatus}`;
 }
 
+export interface MeetingLinkAvailability {
+  label: string;
+  detail: string;
+  status: "configured" | "disabled";
+}
+
+export function describeMeetingLinkAvailability(
+  boundary: CalendarMeetingInvitationBoundary | undefined,
+): MeetingLinkAvailability {
+  if (boundary?.meetingLinks.status === "configured") {
+    const providerDetail = boundary.meetingLinks.provider
+      ? `${boundary.meetingLinks.provider} is configured`
+      : "A meeting provider is configured";
+    return {
+      label: "Link action deferred",
+      detail: `${providerDetail}, but link issuance and preview remain deferred in this dashboard.`,
+      status: "configured",
+    };
+  }
+
+  return {
+    label: "Meeting links deferred",
+    detail: "No meeting provider is configured for link issuance or preview.",
+    status: "disabled",
+  };
+}
+
 export function buildCalendarInvitationPayload(input: {
   matterId: string;
   recipientCount: number;
