@@ -136,6 +136,32 @@ describe("share routes", () => {
     });
   });
 
+  it("lists sanitized persisted share links through matter-scoped access", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createShareLink({
+      id: "share-link-owner-suite",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      tokenHash: "owner-suite-token-hash",
+      grantedByUserId: "user-admin",
+      permissions: ["view_documents"],
+      requireEmailVerification: false,
+      expiresAt: "2026-05-01T00:00:00.000Z",
+      createdAt: "2026-04-28T00:00:00.000Z",
+    });
+
+    const response = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/shares?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      shares: [expect.objectContaining({ matterId: "matter-001" })],
+    });
+    expect(response.json().shares[0]).not.toHaveProperty("tokenHash");
+  });
+
   it("enforces matter scope and document eligibility before creating document shares", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository, authUser: user("licensee", ["matter-001"]) });

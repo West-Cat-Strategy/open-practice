@@ -40,6 +40,21 @@ afterEach(async () => {
 });
 
 describe("auth extension status", () => {
+  it("reports configured passkey support as available before registration", async () => {
+    const response = await testServer({
+      repository: new InMemoryOpenPracticeRepository(),
+      jwtSecret: "test-secret-at-least-32-chars",
+      webAuthn: { rpID: "localhost", origin: "http://localhost:3000" },
+    }).inject({ method: "GET", url: "/api/auth/extensions" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      passkeys: { status: "available", reason: "no_registered_passkeys" },
+      oidc: { status: "deprecated", reason: "embedded_auth_is_current_runtime" },
+      saml: { status: "deprecated", reason: "embedded_auth_is_current_runtime" },
+    });
+  });
+
   it("returns redacted embedded-auth, passkey, MFA, and recovery-code posture", async () => {
     const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
     await repository.createUser(authUser);

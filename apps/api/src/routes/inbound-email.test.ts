@@ -99,6 +99,20 @@ afterEach(async () => {
 });
 
 describe("inbound email routes", () => {
+  it("reports inbound email disabled when no provider is configured", async () => {
+    const response = await testServer(new InMemoryOpenPracticeRepository()).inject({
+      method: "GET",
+      url: "/api/inbound-email/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "disabled",
+      reason: "not_configured",
+      addresses: [],
+    });
+  });
+
   it("returns configured inbound addresses without provider secrets", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.upsertProviderSetting({
@@ -195,23 +209,28 @@ describe("inbound email routes", () => {
     expect(response.json().attachments[0]).not.toHaveProperty("documentId");
   });
 
-  it("requires inbound email read access for matter-scoped message lists", async () => {
+  it("applies matter-scoped access to inbound email message lists", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createInboundEmailMessage(message());
 
-    const response = await testServer(
-      repository,
-      user("billing_bookkeeper", ["matter-001"]),
-    ).inject({
-      method: "GET",
-      url: "/api/inbound-email/messages?matterId=matter-001",
-    });
+    const allowed = await testServer(repository, user("billing_bookkeeper", ["matter-001"])).inject(
+      {
+        method: "GET",
+        url: "/api/inbound-email/messages?matterId=matter-001",
+      },
+    );
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toMatchObject({
       status: "available",
       messages: [expect.objectContaining({ id: "inbound-message-001" })],
     });
+
+    const denied = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages?matterId=matter-002",
+    });
+    expect(denied.statusCode).toBe(403);
   });
 
   it("allows authorized staff to triage-route unscoped inbound email to an accessible matter", async () => {
