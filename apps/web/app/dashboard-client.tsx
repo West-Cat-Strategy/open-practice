@@ -81,7 +81,9 @@ import {
 } from "./dashboard-utils";
 import {
   buildConflictCheckPayload,
+  describeConflictCheckStatus,
   describeConflictResult,
+  summarizeConflictCheckPayload,
   formatConflictProspectiveRole,
   type ConflictProspectiveRole,
 } from "./conflict-check-dashboard";
@@ -152,6 +154,11 @@ import {
   workerRunsForFilter,
   workerRunSafeContext,
 } from "./worker-runs-dashboard";
+import {
+  compactProviderStatus,
+  providerPostureRows,
+  summarizeProvidersStatus,
+} from "./provider-status-dashboard";
 import { dashboardApiStatus, requestDashboardJson } from "./api-client";
 import {
   buildEmailDeliveryConfirmation,
@@ -188,6 +195,7 @@ import type {
   LegalClinicDashboardResponse,
   MatterSummary,
   PracticeOverview,
+  ProvidersStatusResponse,
   QueuesResponse,
   CreateShareLinkResponse,
   RevokeShareLinkResponse,
@@ -221,6 +229,7 @@ interface DashboardClientProps {
   legalClinic: LegalClinicDashboardResponse;
   initialSection: DashboardNavigationSectionKey;
   overview: PracticeOverview;
+  providerStatus: ProvidersStatusResponse;
   matters: MatterSummary[];
   session: SessionResponse;
   shareLinksStatus: ShareLinksStatusResponse;
@@ -395,6 +404,7 @@ export default function DashboardClient({
   legalClinic,
   initialSection,
   overview,
+  providerStatus,
   matters,
   session,
   signatures,
@@ -705,6 +715,11 @@ export default function DashboardClient({
     [navigationSections],
   );
   const queueSummary = useMemo(() => summarizeQueues(queues), [queues]);
+  const providerStatusSummary = useMemo(
+    () => summarizeProvidersStatus(providerStatus),
+    [providerStatus],
+  );
+  const providerRows = useMemo(() => providerPostureRows(providerStatus), [providerStatus]);
   const activeWorkerRuns = useMemo(
     () => workerRunsForFilter(workerRuns, workerRunFilter),
     [workerRuns, workerRunFilter],
@@ -967,7 +982,8 @@ export default function DashboardClient({
       return;
     }
 
-    setConflictStatus("Running conflict check...");
+    const conflictScope = summarizeConflictCheckPayload(payloadResult.payload);
+    setConflictStatus(`Running conflict check for ${conflictScope}...`);
     const response = await fetch(`${apiBaseUrl}/api/conflicts/check`, {
       method: "POST",
       credentials: "include",
@@ -984,11 +1000,7 @@ export default function DashboardClient({
     }
     const payload = (await response.json()) as ConflictResponse;
     setConflictResults(payload.results);
-    setConflictStatus(
-      payload.results.length === 0
-        ? "No conflicts found."
-        : `${payload.results.length} potential conflict${payload.results.length === 1 ? "" : "s"} found.`,
-    );
+    setConflictStatus(describeConflictCheckStatus(payloadResult.payload, payload.results.length));
   }
 
   async function createDraftFromTemplate(
@@ -4227,6 +4239,58 @@ export default function DashboardClient({
                 </p>
                 <p className="inline-empty">{taskDeadlineSummary}</p>
                 <div className="section-title">
+                  <h3>Provider posture</h3>
+                  <span>{compactProviderStatus(providerStatus.liveHealth.status)}</span>
+                </div>
+                <p className="inline-empty">{providerStatusSummary}</p>
+                <div className="detail-grid queue-summary-grid">
+                  <div>
+                    <span className="field-label">Object storage</span>
+                    <strong>{compactProviderStatus(providerStatus.objectStorage.status)}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Producer queues</span>
+                    <strong>
+                      {
+                        providerStatus.bullmq.producerQueues.filter(
+                          (queue) => queue.status === "configured",
+                        ).length
+                      }
+                      /{providerStatus.bullmq.producerQueues.length}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Worker queues</span>
+                    <strong>
+                      {
+                        providerStatus.bullmq.workerQueues.filter(
+                          (queue) => queue.status === "configured",
+                        ).length
+                      }
+                      /{providerStatus.bullmq.workerQueues.length}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Reserved workers</span>
+                    <strong>{providerStatus.bullmq.reservedWorkerQueues?.length ?? 0}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Latest runs</span>
+                    <strong>{providerStatus.jobs.latestRuns.length}</strong>
+                  </div>
+                </div>
+                <div className="party-list queue-section-list">
+                  {providerRows.map((row) => (
+                    <div className="party-row" key={row.key}>
+                      <span>
+                        <strong>{row.label}</strong>
+                        <small>{row.detail}</small>
+                      </span>
+                      <em className={row.tone === "risk" ? "risk" : undefined}>{row.status}</em>
+                    </div>
+                  ))}
+                </div>
+                <div className="section-title">
                   <h3>Worker runs</h3>
                   <span>{activeWorkerRuns.jobs.length} runs</span>
                 </div>
@@ -4366,24 +4430,23 @@ export default function DashboardClient({
                 Run conflict check
               </button>
               <div className="conflict-results">
-                {conflictResults.length === 0 ? (
-                  <p>{conflictStatus}</p>
-                ) : (
-                  conflictResults.map((result, index) => (
-                    <div className="conflict-row" key={`${result.contactId}-${index}`}>
-                      {result.severity === "blocker" ? (
-                        <AlertTriangle size={17} />
-                      ) : (
-                        <CheckCircle2 size={17} />
-                      )}
-                      <span>
-                        <strong>{result.severity}</strong>
-                        <small>{result.reason}</small>
-                        <small>{describeConflictResult(result)}</small>
-                      </span>
-                    </div>
-                  ))
-                )}
+                <p>{conflictStatus}</p>
+                {conflictResults.length > 0
+                  ? conflictResults.map((result, index) => (
+                      <div className="conflict-row" key={`${result.contactId}-${index}`}>
+                        {result.severity === "blocker" ? (
+                          <AlertTriangle size={17} />
+                        ) : (
+                          <CheckCircle2 size={17} />
+                        )}
+                        <span>
+                          <strong>{result.severity}</strong>
+                          <small>{result.reason}</small>
+                          <small>{describeConflictResult(result)}</small>
+                        </span>
+                      </div>
+                    ))
+                  : null}
               </div>
             </article>
 
