@@ -25,6 +25,36 @@ export function formatConflictProspectiveRole(role: ConflictProspectiveRole): st
   return roleLabels[role];
 }
 
+function countLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+export function summarizeConflictCheckPayload(payload: ConflictCheckPayload): string {
+  const details = [
+    payload.prospectiveRole
+      ? formatConflictProspectiveRole(payload.prospectiveRole)
+      : "Role not set",
+  ];
+  const aliasCount = payload.aliases?.length ?? 0;
+  const identifierCount = payload.identifiers?.length ?? 0;
+
+  if (aliasCount > 0) details.push(countLabel(aliasCount, "alias", "aliases"));
+  if (identifierCount > 0) details.push(countLabel(identifierCount, "identifier"));
+  details.push(payload.includeClosedMatters ? "closed matters included" : "open matters only");
+
+  return details.join(" · ");
+}
+
+export function describeConflictCheckStatus(
+  payload: ConflictCheckPayload,
+  resultCount: number,
+): string {
+  const scope = summarizeConflictCheckPayload(payload);
+  if (resultCount === 0) return `No conflicts found for ${scope}.`;
+
+  return `${resultCount} potential conflict${resultCount === 1 ? "" : "s"} found for ${scope}.`;
+}
+
 export function parseConflictAliases(value: string): string[] {
   return Array.from(
     new Set(

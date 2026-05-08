@@ -15,10 +15,12 @@ import {
 } from "./dashboard-utils";
 import {
   buildConflictCheckPayload,
+  describeConflictCheckStatus,
   describeConflictResult,
   formatConflictProspectiveRole,
   parseConflictAliases,
   parseConflictIdentifiers,
+  summarizeConflictCheckPayload,
 } from "./conflict-check-dashboard";
 import {
   buildCreateShareLinkPayload,
@@ -565,6 +567,15 @@ describe("dashboard client behavior", () => {
       prospectiveRole: "opposing_party",
       includeClosedMatters: true,
     });
+    expect(summarizeConflictCheckPayload(result.payload!)).toBe(
+      "Opposing party · 2 aliases · 2 identifiers · closed matters included",
+    );
+    expect(describeConflictCheckStatus(result.payload!, 0)).toBe(
+      "No conflicts found for Opposing party · 2 aliases · 2 identifiers · closed matters included.",
+    );
+    expect(describeConflictCheckStatus(result.payload!, 2)).toBe(
+      "2 potential conflicts found for Opposing party · 2 aliases · 2 identifiers · closed matters included.",
+    );
   });
 
   it("rejects malformed conflict identifiers before calling the API", () => {

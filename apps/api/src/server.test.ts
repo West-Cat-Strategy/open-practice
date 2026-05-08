@@ -754,6 +754,44 @@ describe("API auth and persistence boundaries", () => {
     });
   });
 
+  it("accepts expanded conflict input through the existing route contract", async () => {
+    const response = await testServer().inject({
+      method: "POST",
+      url: "/api/conflicts/check",
+      payload: {
+        prospectiveName: "Morgan Tenant",
+        aliases: ["Northstar Holdings"],
+        identifiers: [{ type: "registry_id", value: "BC1234567" }],
+        prospectiveRole: "opposing_party",
+        includeClosedMatters: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json<{
+      results: Array<{
+        contactId: string;
+        matchedValue: string;
+        severity: string;
+      }>;
+      auditChainValid: boolean;
+    }>();
+    expect(payload.auditChainValid).toBe(true);
+    expect(payload.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          contactId: "contact-northstar",
+          severity: "blocker",
+        }),
+      ]),
+    );
+    expect(
+      payload.results.some((result) =>
+        ["northstar holdings", "BC1234567"].includes(result.matchedValue),
+      ),
+    ).toBe(true);
+  });
+
   it("posts ledger transactions through validated request bodies", async () => {
     const response = await testServer().inject({
       method: "POST",

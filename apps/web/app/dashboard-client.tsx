@@ -81,7 +81,9 @@ import {
 } from "./dashboard-utils";
 import {
   buildConflictCheckPayload,
+  describeConflictCheckStatus,
   describeConflictResult,
+  summarizeConflictCheckPayload,
   formatConflictProspectiveRole,
   type ConflictProspectiveRole,
 } from "./conflict-check-dashboard";
@@ -897,7 +899,8 @@ export default function DashboardClient({
       return;
     }
 
-    setConflictStatus("Running conflict check...");
+    const conflictScope = summarizeConflictCheckPayload(payloadResult.payload);
+    setConflictStatus(`Running conflict check for ${conflictScope}...`);
     const response = await fetch(`${apiBaseUrl}/api/conflicts/check`, {
       method: "POST",
       credentials: "include",
@@ -914,11 +917,7 @@ export default function DashboardClient({
     }
     const payload = (await response.json()) as ConflictResponse;
     setConflictResults(payload.results);
-    setConflictStatus(
-      payload.results.length === 0
-        ? "No conflicts found."
-        : `${payload.results.length} potential conflict${payload.results.length === 1 ? "" : "s"} found.`,
-    );
+    setConflictStatus(describeConflictCheckStatus(payloadResult.payload, payload.results.length));
   }
 
   async function createDraftFromTemplate(
@@ -4256,24 +4255,23 @@ export default function DashboardClient({
                 Run conflict check
               </button>
               <div className="conflict-results">
-                {conflictResults.length === 0 ? (
-                  <p>{conflictStatus}</p>
-                ) : (
-                  conflictResults.map((result, index) => (
-                    <div className="conflict-row" key={`${result.contactId}-${index}`}>
-                      {result.severity === "blocker" ? (
-                        <AlertTriangle size={17} />
-                      ) : (
-                        <CheckCircle2 size={17} />
-                      )}
-                      <span>
-                        <strong>{result.severity}</strong>
-                        <small>{result.reason}</small>
-                        <small>{describeConflictResult(result)}</small>
-                      </span>
-                    </div>
-                  ))
-                )}
+                <p>{conflictStatus}</p>
+                {conflictResults.length > 0
+                  ? conflictResults.map((result, index) => (
+                      <div className="conflict-row" key={`${result.contactId}-${index}`}>
+                        {result.severity === "blocker" ? (
+                          <AlertTriangle size={17} />
+                        ) : (
+                          <CheckCircle2 size={17} />
+                        )}
+                        <span>
+                          <strong>{result.severity}</strong>
+                          <small>{result.reason}</small>
+                          <small>{describeConflictResult(result)}</small>
+                        </span>
+                      </div>
+                    ))
+                  : null}
               </div>
             </article>
 
