@@ -905,6 +905,20 @@ h3 {
   align-items: end;
 }
 
+.billing-action-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(120px, 0.7fr) minmax(110px, 0.6fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.billing-action-row .primary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+}
+
 .intake-builder-grid {
   display: grid;
   grid-template-columns: minmax(220px, 0.8fr) minmax(340px, 1.4fr);
@@ -1904,6 +1918,7 @@ h3 {
   .calendar-attendee-form,
   .delivery-confirmation-grid,
   .upload-create-grid,
+  .billing-action-row,
   .intake-builder-grid,
   .intake-item-add-row,
   .intake-question-grid,
@@ -2017,6 +2032,7 @@ h3 {
   .draft-assist-controls .compact-button,
   .share-form-row .compact-button,
   .upload-create-grid .primary-button,
+  .billing-action-row .primary-button,
   .calendar-credential-form .compact-button {
     width: 100%;
   }
