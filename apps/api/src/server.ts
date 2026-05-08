@@ -44,6 +44,7 @@ import { registerLegalClinicRoutes } from "./routes/legal-clinics.js";
 import { registerMatterRoutes } from "./routes/matters.js";
 import { registerOperationalViewRoutes } from "./routes/operational-views.js";
 import { registerOutboundWebhookRoutes } from "./routes/outbound-webhooks.js";
+import { registerProviderStatusRoutes } from "./routes/providers-status.js";
 import { registerQueuesRoutes } from "./routes/queues.js";
 import { registerRecoveryRoutes } from "./routes/recovery.js";
 import { registerSessionRoutes } from "./routes/session.js";
@@ -369,6 +370,17 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     repository: options.repository,
     emailJobQueue: options.emailJobQueue,
     ocrJobQueue: options.ocrJobQueue,
+  });
+  registerProviderStatusRoutes(server, {
+    repository: options.repository,
+    emailJobQueue: options.emailJobQueue,
+    ocrJobQueue: options.ocrJobQueue,
+    s3: options.s3,
+    jwtSecret: options.jwtSecret,
+    webAuthn: {
+      rpID: options.webAuthn.rpID,
+      origin: options.webAuthn.origin,
+    },
   });
   registerEmailRoutes(server, {
     repository: options.repository,

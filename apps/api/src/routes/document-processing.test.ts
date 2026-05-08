@@ -57,6 +57,37 @@ afterEach(async () => {
 });
 
 describe("document processing routes", () => {
+  it("reports OCR-only actionable defaults when no document provider is configured", async () => {
+    const response = await testServer().inject({
+      method: "GET",
+      url: "/api/document-processing/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "disabled",
+      reason: "not_configured",
+      supportedTasks: ["malware_scan", "ocr", "classification", "transcription", "media"],
+      actionableTasks: ["ocr"],
+      reservedTasks: expect.arrayContaining([
+        expect.objectContaining({ task: "classification", queueName: "ai_triage" }),
+        expect.objectContaining({ task: "transcription", queueName: "transcription" }),
+        expect.objectContaining({ task: "media", queueName: "media" }),
+      ]),
+      workerQueues: expect.arrayContaining([
+        expect.objectContaining({
+          queueName: "ai_triage",
+          status: "reserved",
+          reason: "deferred_worker",
+        }),
+        expect.objectContaining({
+          queueName: "ocr",
+          status: "not_configured",
+        }),
+      ]),
+    });
+  });
+
   it("reports disabled providers, worker queue availability, and redacted job summaries", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.upsertProviderSetting({

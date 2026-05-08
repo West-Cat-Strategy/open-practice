@@ -131,6 +131,158 @@ describe("billing routes", () => {
     });
   });
 
+  it("creates a draft invoice from approved billing dashboard sources without trust ledger postings", async () => {
+    const server = testServer();
+    const ledgerBefore = await server.inject({ method: "GET", url: "/api/ledger" });
+    const beforeEntryCount = ledgerBefore.json<{ entries: unknown[] }>().entries.length;
+
+    const time = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-dashboard-draft-invoice",
+        matterId: "matter-001",
+        minutes: 30,
+        rateCents: 18000,
+        narrative: "Synthetic dashboard invoice preparation.",
+        billingStatus: "approved",
+      },
+    });
+    const expense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-dashboard-draft-invoice",
+        matterId: "matter-001",
+        amountCents: 1200,
+        category: "Courier",
+        description: "Synthetic courier disbursement.",
+        billingStatus: "approved",
+      },
+    });
+    const dashboardBefore = await server.inject({
+      method: "GET",
+      url: "/api/billing/dashboard",
+    });
+
+    expect(time.statusCode).toBe(200);
+    expect(expense.statusCode).toBe(200);
+    expect(
+      dashboardBefore
+        .json<{
+          matters: Array<{
+            matterId: string;
+            unbilledTime: Array<{ id: string }>;
+            unbilledExpenses: Array<{ id: string }>;
+          }>;
+        }>()
+        .matters.find((matter) => matter.matterId === "matter-001"),
+    ).toMatchObject({
+      unbilledTime: expect.arrayContaining([
+        expect.objectContaining({ id: "time-dashboard-draft-invoice" }),
+      ]),
+      unbilledExpenses: expect.arrayContaining([
+        expect.objectContaining({ id: "expense-dashboard-draft-invoice" }),
+      ]),
+    });
+
+    const invoice = await server.inject({
+      method: "POST",
+      url: "/api/invoices",
+      payload: {
+        id: "invoice-dashboard-draft",
+        matterId: "matter-001",
+        clientContactId: "contact-ada",
+        timeEntryIds: ["time-dashboard-draft-invoice"],
+        expenseEntryIds: ["expense-dashboard-draft-invoice"],
+        taxRateBps: 0,
+      },
+    });
+    const ledgerAfter = await server.inject({ method: "GET", url: "/api/ledger" });
+
+    expect(invoice.statusCode).toBe(200);
+    expect(invoice.json()).toMatchObject({
+      id: "invoice-dashboard-draft",
+      status: "draft",
+      totalCents: 10200,
+      balanceDueCents: 10200,
+      lines: expect.arrayContaining([
+        expect.objectContaining({ timeEntryId: "time-dashboard-draft-invoice", taxRateBps: 0 }),
+        expect.objectContaining({
+          expenseEntryId: "expense-dashboard-draft-invoice",
+          taxRateBps: 0,
+        }),
+      ]),
+    });
+    expect(ledgerAfter.json<{ entries: unknown[] }>().entries).toHaveLength(beforeEntryCount);
+  });
+
+  it("rejects selected source entries already linked to a non-void invoice", async () => {
+    const server = testServer();
+    const time = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-duplicate-source",
+        matterId: "matter-001",
+        minutes: 30,
+        rateCents: 18000,
+        narrative: "Synthetic duplicate source time.",
+        billingStatus: "approved",
+      },
+    });
+    expect(time.statusCode).toBe(200);
+
+    const firstInvoice = await server.inject({
+      method: "POST",
+      url: "/api/invoices",
+      payload: {
+        id: "invoice-duplicate-source",
+        matterId: "matter-001",
+        timeEntryIds: ["time-duplicate-source"],
+        taxRateBps: 0,
+      },
+    });
+    expect(firstInvoice.statusCode).toBe(200);
+
+    const duplicate = await server.inject({
+      method: "POST",
+      url: "/api/invoices",
+      payload: {
+        id: "invoice-duplicate-source-blocked",
+        matterId: "matter-001",
+        timeEntryIds: ["time-duplicate-source"],
+        taxRateBps: 0,
+      },
+    });
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toMatchObject({
+      message: "Selected source entries are already linked to a non-void invoice",
+    });
+
+    const voided = await server.inject({
+      method: "POST",
+      url: "/api/invoices/invoice-duplicate-source/void",
+    });
+    expect(voided.statusCode).toBe(200);
+
+    const replacement = await server.inject({
+      method: "POST",
+      url: "/api/invoices",
+      payload: {
+        id: "invoice-duplicate-source-after-void",
+        matterId: "matter-001",
+        timeEntryIds: ["time-duplicate-source"],
+        taxRateBps: 0,
+      },
+    });
+    expect(replacement.statusCode).toBe(200);
+    expect(replacement.json()).toMatchObject({
+      id: "invoice-duplicate-source-after-void",
+      status: "draft",
+    });
+  });
+
   it("records concise audit events for billing mutation routes", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository });

@@ -95,6 +95,21 @@ afterEach(async () => {
 });
 
 describe("external upload routes", () => {
+  it("reports external upload creation disabled when S3 signing is unavailable", async () => {
+    const { server } = testServer();
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/external-uploads/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "not_configured",
+      reason: "s3_not_configured",
+    });
+  });
+
   it("creates, lists, and revokes sanitized matter-scoped upload links", async () => {
     const { repository, server } = testServer({ s3: s3Config() });
 

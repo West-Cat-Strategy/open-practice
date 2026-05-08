@@ -69,6 +69,7 @@ import {
   buildCalendarRadarBuckets,
   describeCalendarEventTiming,
   describeMeetingInvitationBoundary,
+  describeMeetingLinkAvailability,
   loadCalendarDashboardData,
   removeCalendarEventAttendee,
   upsertCalendarEventAttendee,
@@ -87,6 +88,11 @@ import {
   summarizeTrustControls,
   trustControlsForMatter,
 } from "./trust-controls-dashboard";
+import {
+  buildDraftInvoicePayload,
+  describeDraftInvoiceCreated,
+  updateBillingDashboardWithCreatedInvoice,
+} from "./billing-dashboard";
 import {
   buildWorkerRunsPath,
   describeWorkerRunStatus,
@@ -144,6 +150,7 @@ import type {
   ExternalUploadReviewItem,
   DocumentProcessingWorkbenchResponse,
   CommunicationsInboxMatterResponse,
+  BillingDashboardResponse,
   IntakeFormLinkSummary,
   MatterSummary,
   ShareLinkRecord,
@@ -871,6 +878,225 @@ describe("dashboard client behavior", () => {
     });
   });
 
+  it("builds draft invoice payloads from approved unbilled dashboard rows", () => {
+    const activeMatter = matter({
+      parties: [
+        {
+          id: "party-client",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          contactId: "contact-ada",
+          role: "client",
+          adverse: false,
+          confidential: true,
+          contact: {
+            id: "contact-ada",
+            firmId: "firm-west-legal",
+            kind: "person",
+            displayName: "Ada Morgan",
+            aliases: [],
+            identifiers: [],
+          },
+        },
+        {
+          id: "party-opposing",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          contactId: "contact-river",
+          role: "opposing_party",
+          adverse: true,
+          confidential: false,
+          contact: {
+            id: "contact-river",
+            firmId: "firm-west-legal",
+            kind: "organization",
+            displayName: "River City Rentals Inc.",
+            aliases: [],
+            identifiers: [],
+          },
+        },
+      ],
+    });
+
+    const result = buildDraftInvoicePayload({
+      matter: activeMatter,
+      unbilledTime: [
+        {
+          id: "time-001",
+          matterId: "matter-001",
+          userId: "user-licensee",
+          minutes: 60,
+          rateCents: 18000,
+          amountCents: 18000,
+          narrative: "Prepare tenancy hearing materials.",
+          status: "approved",
+        },
+      ],
+      unbilledExpenses: [
+        {
+          id: "expense-001",
+          matterId: "matter-001",
+          amountCents: 2500,
+          category: "Filing",
+          description: "Courier evidence package.",
+          status: "approved",
+        },
+      ],
+      dueAtDate: "2026-05-31",
+      taxName: " GST ",
+      taxRatePercent: "5",
+    });
+
+    expect(result.payload).toEqual({
+      matterId: "matter-001",
+      clientContactId: "contact-ada",
+      dueAt: new Date("2026-05-31").toISOString(),
+      timeEntryIds: ["time-001"],
+      expenseEntryIds: ["expense-001"],
+      taxName: "GST",
+      taxRateBps: 500,
+    });
+    expect(
+      buildDraftInvoicePayload({
+        matter: activeMatter,
+        unbilledTime: [
+          {
+            id: "time-001",
+            matterId: "matter-001",
+            userId: "user-licensee",
+            minutes: 60,
+            rateCents: 18000,
+            amountCents: 18000,
+            narrative: "Prepare tenancy hearing materials.",
+            status: "approved",
+          },
+        ],
+        unbilledExpenses: [],
+        dueAtDate: "",
+        taxName: "",
+        taxRatePercent: "",
+      }).payload,
+    ).toEqual({
+      matterId: "matter-001",
+      clientContactId: "contact-ada",
+      timeEntryIds: ["time-001"],
+      expenseEntryIds: [],
+      taxRateBps: 0,
+    });
+    expect(
+      buildDraftInvoicePayload({
+        matter: activeMatter,
+        unbilledTime: [],
+        unbilledExpenses: [],
+        dueAtDate: "",
+        taxName: "",
+        taxRatePercent: "",
+      }),
+    ).toEqual({ error: "No approved unbilled time or reimbursable expenses are available." });
+    expect(
+      buildDraftInvoicePayload({
+        matter: activeMatter,
+        unbilledTime: [
+          {
+            id: "time-001",
+            matterId: "matter-001",
+            userId: "user-licensee",
+            minutes: 60,
+            rateCents: 18000,
+            amountCents: 18000,
+            narrative: "Prepare tenancy hearing materials.",
+            status: "approved",
+          },
+        ],
+        unbilledExpenses: [],
+        dueAtDate: "",
+        taxName: "",
+        taxRatePercent: "-1",
+      }),
+    ).toEqual({ error: "Tax rate must be zero or greater." });
+  });
+
+  it("updates local billing dashboard state after creating a draft invoice", () => {
+    const dashboard: BillingDashboardResponse = {
+      canView: true,
+      summary: {
+        unbilledTimeCents: 18000,
+        unbilledExpenseCents: 2500,
+        draftInvoiceCents: 0,
+        issuedBalanceDueCents: 1000,
+      },
+      matters: [
+        {
+          matterId: "matter-001",
+          unbilledTime: [
+            {
+              id: "time-001",
+              matterId: "matter-001",
+              userId: "user-licensee",
+              minutes: 60,
+              rateCents: 18000,
+              amountCents: 18000,
+              narrative: "Prepare tenancy hearing materials.",
+              status: "approved",
+            },
+          ],
+          unbilledExpenses: [
+            {
+              id: "expense-001",
+              matterId: "matter-001",
+              amountCents: 2500,
+              category: "Filing",
+              description: "Courier evidence package.",
+              status: "approved",
+            },
+          ],
+          invoices: [],
+          payments: [],
+        },
+      ],
+    };
+
+    const updated = updateBillingDashboardWithCreatedInvoice(dashboard, {
+      invoice: {
+        id: "invoice-001",
+        matterId: "matter-001",
+        invoiceNumber: "INV-001",
+        status: "draft",
+        totalCents: 20500,
+        balanceDueCents: 20500,
+      },
+      timeEntryIds: ["time-001"],
+      expenseEntryIds: ["expense-001"],
+    });
+
+    expect(updated.summary).toEqual({
+      unbilledTimeCents: 0,
+      unbilledExpenseCents: 0,
+      draftInvoiceCents: 20500,
+      issuedBalanceDueCents: 1000,
+    });
+    expect(updated.matters[0]!.unbilledTime).toEqual([]);
+    expect(updated.matters[0]!.unbilledExpenses).toEqual([]);
+    expect(updated.matters[0]!.invoices[0]).toMatchObject({
+      id: "invoice-001",
+      number: "INV-001",
+      status: "draft",
+    });
+    expect(
+      describeDraftInvoiceCreated(
+        {
+          id: "invoice-001",
+          matterId: "matter-001",
+          invoiceNumber: "INV-001",
+          status: "draft",
+          totalCents: 20500,
+          balanceDueCents: 20500,
+        },
+        2,
+      ),
+    ).toBe("Created draft INV-001 from 2 source records.");
+  });
+
   it("summarizes read-only trust controls for the Funds workbench", async () => {
     const controls = trustControls({
       approvals: [
@@ -1595,6 +1821,11 @@ describe("dashboard client behavior", () => {
 
   it("describes meeting invitation boundaries without exposing links or tokens", () => {
     expect(describeMeetingInvitationBoundary(undefined)).toBe("Meeting links disabled.");
+    expect(describeMeetingLinkAvailability(undefined)).toEqual({
+      label: "Meeting links deferred",
+      detail: "No meeting provider is configured for link issuance or preview.",
+      status: "disabled",
+    });
     expect(
       describeMeetingInvitationBoundary({
         meetingLinks: { status: "disabled", reason: "not_configured" },
@@ -1603,12 +1834,35 @@ describe("dashboard client behavior", () => {
       }),
     ).toBe("Meeting links disabled. Guest access tokens disabled.");
     expect(
+      describeMeetingLinkAvailability({
+        meetingLinks: { status: "disabled", reason: "not_configured" },
+        guestAccess: { status: "disabled", reason: "not_configured" },
+        invitationEmail: { status: "disabled", reason: "smtp_not_configured" },
+      }),
+    ).toEqual({
+      label: "Meeting links deferred",
+      detail: "No meeting provider is configured for link issuance or preview.",
+      status: "disabled",
+    });
+    expect(
       describeMeetingInvitationBoundary({
         meetingLinks: { status: "configured", provider: "synthetic-meeting" },
         guestAccess: { status: "configured", provider: "synthetic-meeting" },
         invitationEmail: { status: "configured", provider: "mailpit" },
       }),
     ).toBe("Meeting links configured (synthetic-meeting). Guest access tokens configured.");
+    expect(
+      describeMeetingLinkAvailability({
+        meetingLinks: { status: "configured", provider: "synthetic-meeting" },
+        guestAccess: { status: "configured", provider: "synthetic-meeting" },
+        invitationEmail: { status: "configured", provider: "mailpit" },
+      }),
+    ).toEqual({
+      label: "Link action deferred",
+      detail:
+        "synthetic-meeting is configured, but link issuance and preview remain deferred in this dashboard.",
+      status: "configured",
+    });
   });
 
   it("builds intake form link paths, create payloads, and review state", async () => {

@@ -89,7 +89,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/expense-entries/:id/approve`                                           | Approve a submitted expense entry for invoicing.                                                                                                                                        |
 | `POST /api/expense-entries/:id/write-off`                                         | Mark an unbilled expense entry as written off.                                                                                                                                          |
 | `GET /api/invoices?matterId=&status=`                                             | Invoice summaries visible firm-wide or across assigned matters.                                                                                                                         |
-| `POST /api/invoices`                                                              | Create a draft invoice from approved unbilled time/expense entries and optional adjustment lines.                                                                                       |
+| `POST /api/invoices`                                                              | Create a draft invoice from approved unbilled time/expense entries and optional adjustment lines, rejecting source entries already linked to a non-void invoice.                        |
 | `GET /api/invoices/:id`                                                           | Invoice detail with immutable line, tax, total, payment, and balance snapshots.                                                                                                         |
 | `POST /api/invoices/:id/approve`                                                  | Approve a draft invoice and mark source time/expense entries as billed.                                                                                                                 |
 | `POST /api/invoices/:id/issue`                                                    | Issue an approved invoice without changing stored line snapshots.                                                                                                                       |
@@ -103,7 +103,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/calendar/events/:eventId/attendees`                                    | Adds a matter-scoped event attendee with role, response status, and not-yet-sent invitation state.                                                                                      |
 | `PATCH /api/calendar/events/:eventId/attendees/:attendeeId`                       | Updates an attendee name, email, role, or response status for one authorized matter event.                                                                                              |
 | `DELETE /api/calendar/events/:eventId/attendees/:attendeeId?matterId=`            | Soft-deletes an attendee from one authorized matter event.                                                                                                                              |
-| `POST /api/calendar/events/:eventId/invitations`                                  | Optionally queues confirmed attendee invitation email through the SMTP outbox or marks invitations skipped/disabled when email or meeting-link capability is unavailable.               |
+| `POST /api/calendar/events/:eventId/invitations`                                  | Queues confirmed attendee invitation email through the SMTP outbox or marks invitations skipped/disabled when email is unavailable; meeting-link issuance/preview remains deferred.     |
 | `GET /api/calendar/matters/:matterId.ics`                                         | Authenticated read-only iCalendar export for one authorized matter calendar.                                                                                                            |
 | `GET /api/calendar/credentials`                                                   | Current-user CalDAV app-password credentials without password hashes or one-time secrets.                                                                                               |
 | `POST /api/calendar/credentials`                                                  | Creates a current-user CalDAV app password and returns the generated password only once.                                                                                                |
@@ -180,7 +180,7 @@ recipient count before queueing provider delivery.
 
 ## Deferred Worker And Provider Surfaces
 
-These routes remain deferred until their persistence, authorization, and worker implementations land
+These routes remain limited until their persistence, authorization, and worker implementations land
 behind the scaffolded provider settings and job lifecycle records. Inbound email parsing now
 persists parsed messages and attachment records, inbound status exposes configured firm recipient
 addresses, staff can explicitly promote matter-scoped inbound attachments to documents, and verified
@@ -188,16 +188,21 @@ documents can be handed to the OCR queue. OCR is the only actionable document-pr
 the current API; AI triage, transcription, and media queues are reported as reserved/deferred
 metadata rather than configurable work. Webhook ingestion, provider delivery setup, automatic
 document promotion, transcription, media processing, and async AI drafting remain deferred.
+`GET /api/providers/status` is read-only configuration posture, not a live health probe: it reports
+safe provider-setting keys, object-storage configured/not-configured state, BullMQ producer and
+reserved worker queue posture, redacted job summaries, and current-user embedded-auth extension
+posture without returning provider config, Redis URLs, storage endpoints, credentials, raw worker
+errors, storage keys, message bodies, generated text, or auth secrets.
 
-| Route                                             | Purpose                                                                                         |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `GET /api/providers/status`                       | Operator-visible status for Redis/BullMQ, object storage, mail, OCR, transcription, and Ollama. |
-| `POST /api/media/:id/transcription-jobs`          | Enqueue FFmpeg normalization and Whisper transcription for authorized media.                    |
-| `POST /api/documents/:id/assistive-drafting-jobs` | Future async Ollama/LM Studio drafting worker job after provider and queue governance land.     |
-| `POST /api/auth/passkeys/registration-options`    | Create a SimpleWebAuthn registration challenge for the current user.                            |
-| `POST /api/auth/passkeys/registration`            | Verify and store a passkey credential for embedded auth.                                        |
-| `POST /api/auth/passkeys/authentication-options`  | Create a passkey login challenge for configured RP ID/origin.                                   |
-| `POST /api/auth/passkeys/authentication`          | Verify passkey assertion and create an embedded session.                                        |
+| Route                                             | Purpose                                                                                                                                                     |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/providers/status`                       | Operator-visible configuration posture for Redis/BullMQ producers, object storage, provider settings, reserved workers, redacted jobs, and auth extensions. |
+| `POST /api/media/:id/transcription-jobs`          | Enqueue FFmpeg normalization and Whisper transcription for authorized media.                                                                                |
+| `POST /api/documents/:id/assistive-drafting-jobs` | Future async Ollama/LM Studio drafting worker job after provider and queue governance land.                                                                 |
+| `POST /api/auth/passkeys/registration-options`    | Create a SimpleWebAuthn registration challenge for the current user.                                                                                        |
+| `POST /api/auth/passkeys/registration`            | Verify and store a passkey credential for embedded auth.                                                                                                    |
+| `POST /api/auth/passkeys/authentication-options`  | Create a passkey login challenge for configured RP ID/origin.                                                                                               |
+| `POST /api/auth/passkeys/authentication`          | Verify passkey assertion and create an embedded session.                                                                                                    |
 
 ## State Machines
 
@@ -417,11 +422,12 @@ snapshots; approval is not tax advice and does not certify rates, tax treatment,
 handling, or jurisdiction rules.
 
 Invoice records should move through `draft`, `approved`, `issued`, `partially_paid`, `paid`,
-and `void`. Invoice creation can reference only approved unbilled source entries and can include
-manual adjustment lines. Invoice lines store immutable subtotal, tax name, tax rate in basis points,
-tax cents, and total snapshots. Approving an invoice marks source entries `billed`. Payment status is
-derived from manual payment allocations against stored invoice totals, not from client-entered text.
-Voids and corrections should keep the original invoice visible in the audit trail.
+and `void`. Invoice creation can reference only approved unbilled source entries that are not
+already attached to a non-void invoice and can include manual adjustment lines. Invoice lines store
+immutable subtotal, tax name, tax rate in basis points, tax cents, and total snapshots. Approving an
+invoice marks source entries `billed`. Payment status is derived from manual payment allocations
+against stored invoice totals, not from client-entered text. Voids and corrections should keep the
+original invoice visible in the audit trail.
 
 Manual payment records use `received` or `void` status. A manual payment is operator-entered
 evidence of funds received or observed; it is not live settlement from a payment processor.
@@ -514,7 +520,9 @@ required/optional role, response status, and invitation state. Invitation attemp
 when SMTP or queue delivery is unavailable, the API records a skipped attendee invitation state
 without failing attendee management. Meeting links and guest-token access remain disabled until an
 explicit meeting provider/configuration is present; invitation requests that require unavailable
-meeting-link capability are rejected before tokenized guest access or provider links are issued.
+meeting-link capability are rejected before email delivery state changes. The dashboard presents
+meeting-link availability as passive status only; current calendar invitations are email delivery
+records, not link issuance or meeting-preview records.
 Calendar audit metadata records event, attendee, email, job, meeting-boundary status, and count
 identifiers only; invitation message bodies remain in the outbox record.
 
@@ -540,7 +548,9 @@ Redis/BullMQ queues, firm provider settings, job lifecycle records, and disabled
 scaffolds are implemented for email, AI triage, OCR, transcription, media, draft assist, and auth
 extensions. Email, inbound email, and OCR are actionable queue families when configured; AI triage,
 transcription, and media remain reserved/deferred queue names until explicit provider governance and
-enqueue surfaces are added.
+enqueue surfaces are added. Provider-status posture is an operator read surface over configuration
+and redacted job lifecycle records; it must not be treated as provider connectivity, credential, or
+worker liveness proof.
 Secure share-link create/list/revoke plus token-scoped public document metadata reads are
 implemented with token hashing, matter-scoped authorization, audit events, and access logs. External
 upload link create/list/revoke plus token-scoped S3 intent and completion flows are implemented with

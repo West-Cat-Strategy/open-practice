@@ -90,6 +90,7 @@ import {
   buildCalendarRadarBuckets,
   buildCalendarInvitationPayload,
   describeMeetingInvitationBoundary,
+  describeMeetingLinkAvailability,
   describeCalendarEventTiming,
   removeCalendarEventAttendee,
   upsertCalendarEventAttendee,
@@ -133,6 +134,13 @@ import {
   summarizeTrustControls,
   trustControlsForMatter,
 } from "./trust-controls-dashboard";
+import {
+  buildDraftInvoicePayload,
+  describeDraftInvoiceCreated,
+  formatDraftInvoiceApiFailure,
+  updateBillingDashboardWithCreatedInvoice,
+  type CreatedDraftInvoiceResponse,
+} from "./billing-dashboard";
 import { describeEmailDeliveryState } from "./email-delivery-dashboard";
 import { describeCommunicationsDeliveryState } from "./communications-inbox-dashboard";
 import {
@@ -413,6 +421,12 @@ export default function DashboardClient({
   >("client");
   const [conflictResults, setConflictResults] = useState<ConflictCandidate[]>([]);
   const [conflictStatus, setConflictStatus] = useState("No check run yet.");
+  const [billingDashboard, setBillingDashboard] = useState(billing);
+  const [draftInvoiceDueAt, setDraftInvoiceDueAt] = useState("");
+  const [draftInvoiceTaxName, setDraftInvoiceTaxName] = useState("");
+  const [draftInvoiceTaxRate, setDraftInvoiceTaxRate] = useState("0");
+  const [draftInvoiceStatus, setDraftInvoiceStatus] = useState("No draft invoice created.");
+  const [creatingDraftInvoice, setCreatingDraftInvoice] = useState(false);
   const [draftsByMatterId, setDraftsByMatterId] = useState(drafting.draftsByMatterId);
   const [creatingTemplateId, setCreatingTemplateId] = useState("");
   const [draftStatus, setDraftStatus] = useState("No draft created in this session.");
@@ -625,7 +639,9 @@ export default function DashboardClient({
     selectedDraft !== undefined &&
     draftEditorJson !== null &&
     !isSameDraftDocument(selectedDraft.editorJson, draftEditorJson);
-  const activeBilling = billing.matters.find((matter) => matter.matterId === activeMatter?.id);
+  const activeBilling = billingDashboard.matters.find(
+    (matter) => matter.matterId === activeMatter?.id,
+  );
   const activeTrustControls = activeMatter
     ? (trustControlsByMatterId[activeMatter.id] ?? emptyTrustControlsDashboard())
     : emptyTrustControlsDashboard();
@@ -663,15 +679,16 @@ export default function DashboardClient({
     (sum, entry) => sum + entry.amountCents,
     0,
   );
+  const canCreateDraftInvoice = activeUnbilledTime.length + activeUnbilledExpenses.length > 0;
   const navigationSections = useMemo<OpenPracticeSidebarNavigationSection[]>(() => {
     return buildSidebarNavigationSections({
-      billingCanView: billing.canView,
+      billingCanView: billingDashboard.canView,
       capabilitySections: capabilities.sections,
       shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
       externalUploadsEnabled: externalUploadCreateAvailable,
     });
   }, [
-    billing.canView,
+    billingDashboard.canView,
     capabilities.sections,
     externalUploadCreateAvailable,
     shareLinksStatus.createStatus,
@@ -877,12 +894,65 @@ export default function DashboardClient({
       },
       {
         label: "Balances due",
-        value: cents(billing.summary.issuedBalanceDueCents),
+        value: cents(billingDashboard.summary.issuedBalanceDueCents),
         icon: CreditCard,
       },
     ],
-    [billing.summary.issuedBalanceDueCents, overview.metrics, taskWorkbench.counters.my.overdue],
+    [
+      billingDashboard.summary.issuedBalanceDueCents,
+      overview.metrics,
+      taskWorkbench.counters.my.overdue,
+    ],
   );
+
+  async function createDraftInvoice(): Promise<void> {
+    if (!activeMatter) return;
+    const payloadResult = buildDraftInvoicePayload({
+      matter: activeMatter,
+      unbilledTime: activeUnbilledTime,
+      unbilledExpenses: activeUnbilledExpenses,
+      dueAtDate: draftInvoiceDueAt,
+      taxName: draftInvoiceTaxName,
+      taxRatePercent: draftInvoiceTaxRate,
+    });
+
+    if (!payloadResult.payload) {
+      setDraftInvoiceStatus(payloadResult.error ?? "Draft invoice payload is incomplete.");
+      return;
+    }
+
+    setCreatingDraftInvoice(true);
+    setDraftInvoiceStatus("Creating draft invoice...");
+    try {
+      const draftInvoicePayload = payloadResult.payload;
+      const invoice = await requestDashboardJson<CreatedDraftInvoiceResponse>(
+        apiBaseUrl,
+        "/api/invoices",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: draftInvoicePayload,
+        },
+      );
+      const sourceCount =
+        draftInvoicePayload.timeEntryIds.length + draftInvoicePayload.expenseEntryIds.length;
+      setBillingDashboard((current) =>
+        updateBillingDashboardWithCreatedInvoice(current, {
+          invoice,
+          timeEntryIds: draftInvoicePayload.timeEntryIds,
+          expenseEntryIds: draftInvoicePayload.expenseEntryIds,
+        }),
+      );
+      setDraftInvoiceDueAt("");
+      setDraftInvoiceTaxName("");
+      setDraftInvoiceTaxRate("0");
+      setDraftInvoiceStatus(describeDraftInvoiceCreated(invoice, sourceCount));
+    } catch (error) {
+      setDraftInvoiceStatus(formatDraftInvoiceApiFailure(dashboardApiStatus(error)));
+    } finally {
+      setCreatingDraftInvoice(false);
+    }
+  }
 
   async function runConflictCheck() {
     const payloadResult = buildConflictCheckPayload({
@@ -2639,7 +2709,7 @@ export default function DashboardClient({
             ) : null}
 
             {activeSection === "billing" ? (
-              billing.canView ? (
+              billingDashboard.canView ? (
                 <>
                   <div className="detail-grid billing-summary-grid">
                     <div>
@@ -2667,11 +2737,60 @@ export default function DashboardClient({
                   </div>
 
                   <div className="section-title">
+                    <h3>Create draft invoice</h3>
+                    <span>{activeMatter.number}</span>
+                  </div>
+                  <div className="billing-action-row">
+                    <label className="search-field compact">
+                      <span>Due date</span>
+                      <input
+                        disabled={creatingDraftInvoice}
+                        onChange={(event) => setDraftInvoiceDueAt(event.target.value)}
+                        type="date"
+                        value={draftInvoiceDueAt}
+                      />
+                    </label>
+                    <label className="search-field compact">
+                      <span>Tax label</span>
+                      <input
+                        disabled={creatingDraftInvoice}
+                        onChange={(event) => setDraftInvoiceTaxName(event.target.value)}
+                        placeholder="GST"
+                        value={draftInvoiceTaxName}
+                      />
+                    </label>
+                    <label className="search-field compact">
+                      <span>Tax rate %</span>
+                      <input
+                        disabled={creatingDraftInvoice}
+                        inputMode="decimal"
+                        min={0}
+                        onChange={(event) => setDraftInvoiceTaxRate(event.target.value)}
+                        step={0.01}
+                        type="number"
+                        value={draftInvoiceTaxRate}
+                      />
+                    </label>
+                    <button
+                      className="primary-button"
+                      disabled={creatingDraftInvoice || !canCreateDraftInvoice}
+                      onClick={() => void createDraftInvoice()}
+                      type="button"
+                    >
+                      <FileText size={16} />
+                      {creatingDraftInvoice ? "Creating..." : "Create draft"}
+                    </button>
+                  </div>
+                  <p aria-atomic="true" aria-live="polite" className="inline-empty" role="status">
+                    {draftInvoiceStatus}
+                  </p>
+
+                  <div className="section-title">
                     <h3>Unbilled approved time and expenses</h3>
                     <span>{cents(activeUnbilledTimeCents + activeUnbilledExpenseCents)}</span>
                   </div>
                   <div className="party-list">
-                    {activeUnbilledTime.slice(0, 4).map((entry) => (
+                    {activeUnbilledTime.map((entry) => (
                       <div className="party-row" key={entry.id}>
                         <span>
                           <strong>{entry.narrative}</strong>
@@ -2682,7 +2801,7 @@ export default function DashboardClient({
                         <em>{cents(entry.amountCents)}</em>
                       </div>
                     ))}
-                    {activeUnbilledExpenses.slice(0, 4).map((entry) => (
+                    {activeUnbilledExpenses.map((entry) => (
                       <div className="party-row" key={entry.id}>
                         <span>
                           <strong>{entry.description}</strong>
@@ -3296,6 +3415,9 @@ export default function DashboardClient({
                   {activeCalendarEvents.map((event) => {
                     const timing = describeCalendarEventTiming(event);
                     const attendees = event.attendees ?? [];
+                    const meetingLinkAvailability = describeMeetingLinkAvailability(
+                      event.meetingInvitationBoundary,
+                    );
                     return (
                       <div className="party-row calendar-event-row" key={event.id}>
                         <div className="calendar-event-summary">
@@ -3319,26 +3441,14 @@ export default function DashboardClient({
                             >
                               {event.status === "cancelled" ? "cancelled" : timing}
                             </em>
-                            <button
-                              className="secondary-button compact-button row-button"
-                              disabled={
-                                event.meetingInvitationBoundary?.meetingLinks.status !==
-                                "configured"
-                              }
-                              onClick={() =>
-                                setCalendarMeetingStatus("Meeting link issuance is not wired yet.")
-                              }
-                              title={
-                                event.meetingInvitationBoundary?.meetingLinks.status ===
-                                "configured"
-                                  ? "Meeting link boundary is configured"
-                                  : "Meeting links are disabled until a provider is configured"
-                              }
-                              type="button"
+                            <span
+                              aria-label={meetingLinkAvailability.detail}
+                              className={`calendar-meeting-link-status ${meetingLinkAvailability.status}`}
+                              title={meetingLinkAvailability.detail}
                             >
                               <Link2 size={14} />
-                              Meeting link
-                            </button>
+                              {meetingLinkAvailability.label}
+                            </span>
                             <button
                               className="secondary-button compact-button row-button"
                               disabled={
