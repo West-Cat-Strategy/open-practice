@@ -615,6 +615,21 @@ export interface DocumentProcessingDashboardResponse {
   workbenchesByMatterId: Record<string, DocumentProcessingWorkbenchResponse>;
 }
 
+export interface DocumentProcessingStatusResponse {
+  status: string;
+  reason?: string;
+  workers: WorkerQueueStatus[];
+  workerQueues: WorkerQueueStatus[];
+  reservedQueues?: WorkerQueueStatus[];
+  supportedTasks: string[];
+  actionableTasks?: string[];
+  reservedTasks?: DocumentProcessingReservedTask[];
+  providers: Array<{ kind: string; key: string }>;
+  providerStatus: DocumentProcessingProviderStatus[];
+  summary: WorkerRunSummary;
+  jobs: WorkerRunSummaryItem[];
+}
+
 export type BillingEntryStatus = "draft" | "submitted" | "approved" | "billed" | "written_off";
 
 export interface BillingTimeItem {
@@ -779,6 +794,71 @@ export interface WorkerRunsDashboardResponse {
   all: WorkerRunsResponse;
   email: WorkerRunsResponse;
   ocr: WorkerRunsResponse;
+}
+
+export interface ProviderStatusSetting {
+  kind: string;
+  status: string;
+  reason?: string;
+  providers: Array<{
+    key: string;
+    enabled: boolean;
+    updatedAt?: string;
+  }>;
+}
+
+export interface ProviderStatusService {
+  status: string;
+  reason?: string;
+  provider?: string;
+  model?: string;
+  providers?: Array<{
+    key: string;
+    enabled: boolean;
+    updatedAt?: string;
+  }>;
+  queue?: WorkerQueueStatus;
+  workerQueue?: WorkerQueueStatus;
+  addresses?: Array<{
+    id: string;
+    address: string;
+    matterId?: string;
+    enabled: boolean;
+    createdAt: string;
+  }>;
+  supportedTasks?: string[];
+  tokenSigning?: string;
+  s3?: string;
+}
+
+export interface ProvidersStatusResponse {
+  status: string;
+  mode: string;
+  liveHealth: {
+    status: string;
+    reason?: string;
+  };
+  providerSettings: ProviderStatusSetting[];
+  objectStorage: {
+    status: string;
+    provider?: string;
+    reason?: string;
+  };
+  bullmq: {
+    producerQueues: WorkerQueueStatus[];
+    workerQueues: WorkerQueueStatus[];
+    reservedWorkerQueues?: WorkerQueueStatus[];
+  };
+  jobs: {
+    summary: WorkerRunSummary;
+    latestRuns: WorkerRunSummaryItem[];
+  };
+  documentProcessing: DocumentProcessingStatusResponse;
+  email: ProviderStatusService;
+  inboundEmail: ProviderStatusService;
+  externalUploads: ProviderStatusService;
+  draftAssist: DraftAssistStatusResponse;
+  authExtensions: Record<string, unknown>;
 }
 
 export type TaskDeadlineWorkbenchResponse = TaskDeadlineWorkbench;

@@ -98,6 +98,12 @@ import {
   workerRunSafeContext,
 } from "./worker-runs-dashboard";
 import {
+  buildProvidersStatusPath,
+  emptyProvidersStatusResponse,
+  providerPostureRows,
+  summarizeProvidersStatus,
+} from "./provider-status-dashboard";
+import {
   buildIntakeFormLinkCreatePayload,
   buildIntakeFormLinkListPath,
   buildIntakePortalPath,
@@ -628,6 +634,82 @@ describe("dashboard client behavior", () => {
       matterId: "matter-001",
       inboundEmail: [expect.objectContaining({ id: "inbound-message-001" })],
     });
+  });
+
+  it("summarizes unified provider status posture for the queues surface", () => {
+    const status = emptyProvidersStatusResponse();
+    status.providerSettings = [
+      {
+        kind: "smtp",
+        status: "configured",
+        providers: [
+          {
+            key: "mailpit",
+            enabled: true,
+            updatedAt: "2026-05-07T10:00:00.000Z",
+          },
+        ],
+      },
+      {
+        kind: "ocr",
+        status: "disabled",
+        reason: "not_configured",
+        providers: [],
+      },
+    ];
+    status.email = {
+      status: "configured",
+      provider: "mailpit",
+      providers: [{ key: "mailpit", enabled: true }],
+      queue: { queueName: "email", status: "configured" },
+    };
+    status.bullmq.producerQueues = [{ queueName: "email", status: "configured" }];
+    status.bullmq.workerQueues = [
+      { queueName: "email", status: "configured" },
+      { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
+      { queueName: "ai_triage", status: "reserved", reason: "deferred_worker" },
+    ];
+    status.bullmq.reservedWorkerQueues = [
+      { queueName: "ai_triage", status: "reserved", reason: "deferred_worker" },
+    ];
+    status.documentProcessing = {
+      ...status.documentProcessing,
+      status: "disabled",
+      reason: "not_configured",
+      workerQueues: [
+        { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
+      ],
+      reservedQueues: [{ queueName: "ai_triage", status: "reserved", reason: "deferred_worker" }],
+    };
+    status.jobs.summary = {
+      total: 2,
+      queued: 1,
+      active: 0,
+      failed: 1,
+      terminal: 0,
+      byQueue: [],
+    };
+
+    expect(buildProvidersStatusPath()).toBe("/api/providers/status");
+    expect(summarizeProvidersStatus(status)).toBe(
+      "1 providers enabled. 1 producer queues and 1 worker queues configured. 1 active or queued jobs. 1 failed jobs.",
+    );
+    expect(providerPostureRows(status)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "email",
+          status: "configured",
+          detail: "Provider mailpit · queue configured",
+          tone: "ready",
+        }),
+        expect.objectContaining({
+          key: "document-processing",
+          status: "disabled",
+          detail: "not configured OCR queue · 1 reserved queues",
+          tone: "risk",
+        }),
+      ]),
+    );
   });
 
   it("describes communications delivery state without provider details", () => {

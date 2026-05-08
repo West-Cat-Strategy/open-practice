@@ -344,53 +344,65 @@ export async function queueDocumentOcr(
   };
 }
 
+export async function buildDocumentProcessingStatus(input: {
+  repository: ApiRouteDependencies["repository"];
+  firmId: string;
+  ocrJobQueue?: ApiJobQueue;
+}) {
+  const providers = await Promise.all([
+    input.repository.listProviderSettings(input.firmId, { kind: "ocr" }),
+    input.repository.listProviderSettings(input.firmId, { kind: "transcription" }),
+    input.repository.listProviderSettings(input.firmId, { kind: "media" }),
+    input.repository.listProviderSettings(input.firmId, { kind: "ai" }),
+  ]);
+  const providerStates = documentProcessingProviderKinds.map((kind, index) =>
+    providerStatus(kind, providers[index] ?? []),
+  );
+  const jobs = (await input.repository.listJobLifecycleRecords(input.firmId)).filter((job) =>
+    documentProcessingQueueNames.some((queueName) => queueName === job.queueName),
+  );
+  const workerQueues = documentProcessingQueueNames.map((queueName) =>
+    queueStatus(queueName, queueName === "ocr" ? input.ocrJobQueue : undefined),
+  );
+  const reservedQueues = workerQueues.filter((queue) => queue.status === "reserved");
+  const ocrProviderState =
+    providerStates.find((providerState) => providerState.kind === "ocr") ??
+    providerStatus("ocr", []);
+  const configuredOcrProviders = (providers[0] ?? []).filter((provider) => provider.enabled);
+  return {
+    status: configuredOcrProviders.length > 0 ? "configured" : "disabled",
+    reason:
+      configuredOcrProviders.length > 0
+        ? undefined
+        : ocrProviderState.reason === "provider_disabled"
+          ? "provider_disabled"
+          : "not_configured",
+    workers: workerQueues.filter((queue) => queue.status === "configured"),
+    workerQueues,
+    reservedQueues,
+    supportedTasks: ["malware_scan", "ocr", "classification", "transcription", "media"],
+    actionableTasks: actionableDocumentProcessingTasks,
+    reservedTasks: reservedDocumentProcessingTasks,
+    providers: configuredOcrProviders.map((provider) => ({
+      kind: provider.kind,
+      key: provider.key,
+    })),
+    providerStatus: providerStates,
+    summary: summarizeJobRuns(jobs),
+    jobs: jobs.map(serializeJobRun),
+  };
+}
+
 export function registerDocumentProcessingRoutes(
   server: FastifyInstance,
   { repository, ocrJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/document-processing/status", async (request) => {
-    const providers = await Promise.all([
-      repository.listProviderSettings(request.auth.firmId, { kind: "ocr" }),
-      repository.listProviderSettings(request.auth.firmId, { kind: "transcription" }),
-      repository.listProviderSettings(request.auth.firmId, { kind: "media" }),
-      repository.listProviderSettings(request.auth.firmId, { kind: "ai" }),
-    ]);
-    const providerStates = documentProcessingProviderKinds.map((kind, index) =>
-      providerStatus(kind, providers[index] ?? []),
-    );
-    const jobs = (await repository.listJobLifecycleRecords(request.auth.firmId)).filter((job) =>
-      documentProcessingQueueNames.some((queueName) => queueName === job.queueName),
-    );
-    const workerQueues = documentProcessingQueueNames.map((queueName) =>
-      queueStatus(queueName, queueName === "ocr" ? ocrJobQueue : undefined),
-    );
-    const reservedQueues = workerQueues.filter((queue) => queue.status === "reserved");
-    const ocrProviderState =
-      providerStates.find((providerState) => providerState.kind === "ocr") ??
-      providerStatus("ocr", []);
-    const configuredOcrProviders = (providers[0] ?? []).filter((provider) => provider.enabled);
-    return {
-      status: configuredOcrProviders.length > 0 ? "configured" : "disabled",
-      reason:
-        configuredOcrProviders.length > 0
-          ? undefined
-          : ocrProviderState.reason === "provider_disabled"
-            ? "provider_disabled"
-            : "not_configured",
-      workers: workerQueues.filter((queue) => queue.status === "configured"),
-      workerQueues,
-      reservedQueues,
-      supportedTasks: ["malware_scan", "ocr", "classification", "transcription", "media"],
-      actionableTasks: actionableDocumentProcessingTasks,
-      reservedTasks: reservedDocumentProcessingTasks,
-      providers: configuredOcrProviders.map((provider) => ({
-        kind: provider.kind,
-        key: provider.key,
-      })),
-      providerStatus: providerStates,
-      summary: summarizeJobRuns(jobs),
-      jobs: jobs.map(serializeJobRun),
-    };
+    return buildDocumentProcessingStatus({
+      repository,
+      firmId: request.auth.firmId,
+      ocrJobQueue,
+    });
   });
 
   server.get("/api/document-processing/workbench", async (request) => {
