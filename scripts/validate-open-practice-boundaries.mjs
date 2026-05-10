@@ -1,46 +1,35 @@
+#!/usr/bin/env node
+
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const failures = [];
+export const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
-function read(path) {
-  return readFileSync(join(root, path), "utf8");
-}
+export const SERVER_RATCHETS = [
+  {
+    count: (server) =>
+      [...server.matchAll(/\bserver\.(get|post|put|patch|delete|route)\s*\(/g)].length,
+    limit: 1,
+    message: (count) =>
+      `apps/api/src/server.ts defines ${count} direct routes; current ratchet allows 1. Move new routes into module-owned registrars.`,
+  },
+  {
+    count: (server) => [...server.matchAll(/\.parse\(request\.(body|query|params)\)/g)].length,
+    limit: 0,
+    message: (count) =>
+      `apps/api/src/server.ts contains ${count} inline request parses; current ratchet allows 0. Use shared validation helpers for new code.`,
+  },
+  {
+    count: (server) =>
+      [...server.matchAll(/reply\.status\([^)]*\)\.send\(\s*\{\s*error:/gs)].length,
+    limit: 1,
+    message: (count) =>
+      `apps/api/src/server.ts contains ${count} direct error envelopes; current ratchet allows 1. Use shared response helpers for new code.`,
+  },
+];
 
-function assert(condition, message) {
-  if (!condition) failures.push(message);
-}
-
-function serverContainsRouteLiteral(routeLiteral) {
-  return (
-    server.includes(`"${routeLiteral}`) ||
-    server.includes(`'${routeLiteral}`) ||
-    server.includes(`\`${routeLiteral}`)
-  );
-}
-
-const server = read("apps/api/src/server.ts");
-const routeCount = [...server.matchAll(/\bserver\.(get|post|put|patch|delete|route)\s*\(/g)].length;
-const inlineRequestParses = [...server.matchAll(/\.parse\(request\.(body|query|params)\)/g)].length;
-const directErrorEnvelopes = [...server.matchAll(/reply\.status\([^)]*\)\.send\(\s*\{\s*error:/gs)]
-  .length;
-
-assert(
-  routeCount <= 1,
-  `apps/api/src/server.ts defines ${routeCount} direct routes; current ratchet allows 1. Move new routes into module-owned registrars.`,
-);
-assert(
-  inlineRequestParses <= 0,
-  `apps/api/src/server.ts contains ${inlineRequestParses} inline request parses; current ratchet allows 0. Use shared validation helpers for new code.`,
-);
-assert(
-  directErrorEnvelopes <= 1,
-  `apps/api/src/server.ts contains ${directErrorEnvelopes} direct error envelopes; current ratchet allows 1. Use shared response helpers for new code.`,
-);
-
-for (const required of [
+export const REQUIRED_SCAFFOLD = [
   "apps/api/src/http/response.ts",
   "apps/api/src/http/validation.ts",
   "apps/api/src/http/auth-guards.ts",
@@ -61,257 +50,160 @@ for (const required of [
   "docs/testing/TESTING.md",
   "docs/development/getting-started.md",
   "scripts/select-validation.mjs",
-]) {
-  assert(existsSync(join(root, required)), `${required} must exist as the adoption scaffold.`);
-}
+];
 
-for (const routeRegistrar of [
-  {
-    family: "setup",
-    file: "apps/api/src/routes/setup.ts",
-    importPath: "./routes/setup.js",
-    registrar: "registerSetupRoutes",
-  },
-  {
-    family: "WebAuthn",
-    file: "apps/api/src/routes/webauthn.ts",
-    importPath: "./routes/webauthn.js",
-    registrar: "registerWebAuthnRoutes",
-  },
-  {
-    family: "recovery",
-    file: "apps/api/src/routes/recovery.ts",
-    importPath: "./routes/recovery.js",
-    registrar: "registerRecoveryRoutes",
-  },
-  {
-    family: "contacts",
-    file: "apps/api/src/routes/contacts.ts",
-    importPath: "./routes/contacts.js",
-    registrar: "registerContactRoutes",
-  },
-  {
-    family: "connectors",
-    file: "apps/api/src/routes/connectors.ts",
-    importPath: "./routes/connectors.js",
-    registrar: "registerConnectorRoutes",
-  },
-  {
-    family: "conversation threads",
-    file: "apps/api/src/routes/conversation-threads.ts",
-    importPath: "./routes/conversation-threads.js",
-    registrar: "registerConversationThreadRoutes",
-  },
-  {
-    family: "legal clinics",
-    file: "apps/api/src/routes/legal-clinics.ts",
-    importPath: "./routes/legal-clinics.js",
-    registrar: "registerLegalClinicRoutes",
-  },
-  {
-    family: "CalDAV",
-    file: "apps/api/src/routes/caldav.ts",
-    importPath: "./routes/caldav.js",
-    registrar: "registerCalDavRoutes",
-  },
-  {
-    family: "calendar",
-    file: "apps/api/src/routes/calendar.ts",
-    importPath: "./routes/calendar.js",
-    registrar: "registerCalendarRoutes",
-  },
-  {
-    family: "document processing",
-    file: "apps/api/src/routes/document-processing.ts",
-    importPath: "./routes/document-processing.js",
-    registrar: "registerDocumentProcessingRoutes",
-  },
-  {
-    family: "draft assist",
-    file: "apps/api/src/routes/draft-assist.ts",
-    importPath: "./routes/draft-assist.js",
-    registrar: "registerDraftAssistRoutes",
-  },
-  {
-    family: "jobs",
-    file: "apps/api/src/routes/jobs.ts",
-    importPath: "./routes/jobs.js",
-    registrar: "registerJobsRoutes",
-  },
-  {
-    family: "email",
-    file: "apps/api/src/routes/email.ts",
-    importPath: "./routes/email.js",
-    registrar: "registerEmailRoutes",
-  },
-  {
-    family: "inbound email",
-    file: "apps/api/src/routes/inbound-email.ts",
-    importPath: "./routes/inbound-email.js",
-    registrar: "registerInboundEmailRoutes",
-  },
-  {
-    family: "shares",
-    file: "apps/api/src/routes/shares.ts",
-    importPath: "./routes/shares.js",
-    registrar: "registerShareRoutes",
-  },
-  {
-    family: "external uploads",
-    file: "apps/api/src/routes/external-uploads.ts",
-    importPath: "./routes/external-uploads.js",
-    registrar: "registerExternalUploadRoutes",
-  },
-  {
-    family: "auth extensions",
-    file: "apps/api/src/routes/auth-extensions.ts",
-    importPath: "./routes/auth-extensions.js",
-    registrar: "registerAuthExtensionRoutes",
-  },
-  {
-    family: "intake forms",
-    file: "apps/api/src/routes/intake-forms.ts",
-    importPath: "./routes/intake-forms.js",
-    registrar: "registerIntakeFormRoutes",
-  },
-  {
-    family: "operational views",
-    file: "apps/api/src/routes/operational-views.ts",
-    importPath: "./routes/operational-views.js",
-    registrar: "registerOperationalViewRoutes",
-  },
-  {
-    family: "outbound webhooks",
-    file: "apps/api/src/routes/outbound-webhooks.ts",
-    importPath: "./routes/outbound-webhooks.js",
-    registrar: "registerOutboundWebhookRoutes",
-  },
-  {
-    family: "tasks",
-    file: "apps/api/src/routes/tasks.ts",
-    importPath: "./routes/tasks.js",
-    registrar: "registerTaskRoutes",
-  },
-]) {
-  assert(
-    existsSync(join(root, routeRegistrar.file)),
-    `${routeRegistrar.file} must exist for the ${routeRegistrar.family} route family.`,
-  );
-  assert(
-    server.includes(`import { ${routeRegistrar.registrar} } from "${routeRegistrar.importPath}";`),
-    `apps/api/src/server.ts must import ${routeRegistrar.registrar} from ${routeRegistrar.importPath}.`,
-  );
-  assert(
-    server.includes(`${routeRegistrar.registrar}(server`),
-    `apps/api/src/server.ts must wire ${routeRegistrar.registrar}.`,
-  );
-}
+export const ROUTE_REGISTRARS = [
+  ["setup", "apps/api/src/routes/setup.ts", "./routes/setup.js", "registerSetupRoutes"],
+  ["WebAuthn", "apps/api/src/routes/webauthn.ts", "./routes/webauthn.js", "registerWebAuthnRoutes"],
+  ["recovery", "apps/api/src/routes/recovery.ts", "./routes/recovery.js", "registerRecoveryRoutes"],
+  ["contacts", "apps/api/src/routes/contacts.ts", "./routes/contacts.js", "registerContactRoutes"],
+  [
+    "connectors",
+    "apps/api/src/routes/connectors.ts",
+    "./routes/connectors.js",
+    "registerConnectorRoutes",
+  ],
+  [
+    "conversation threads",
+    "apps/api/src/routes/conversation-threads.ts",
+    "./routes/conversation-threads.js",
+    "registerConversationThreadRoutes",
+  ],
+  [
+    "legal clinics",
+    "apps/api/src/routes/legal-clinics.ts",
+    "./routes/legal-clinics.js",
+    "registerLegalClinicRoutes",
+  ],
+  ["CalDAV", "apps/api/src/routes/caldav.ts", "./routes/caldav.js", "registerCalDavRoutes"],
+  ["calendar", "apps/api/src/routes/calendar.ts", "./routes/calendar.js", "registerCalendarRoutes"],
+  [
+    "document processing",
+    "apps/api/src/routes/document-processing.ts",
+    "./routes/document-processing.js",
+    "registerDocumentProcessingRoutes",
+  ],
+  [
+    "draft assist",
+    "apps/api/src/routes/draft-assist.ts",
+    "./routes/draft-assist.js",
+    "registerDraftAssistRoutes",
+  ],
+  ["jobs", "apps/api/src/routes/jobs.ts", "./routes/jobs.js", "registerJobsRoutes"],
+  ["email", "apps/api/src/routes/email.ts", "./routes/email.js", "registerEmailRoutes"],
+  [
+    "inbound email",
+    "apps/api/src/routes/inbound-email.ts",
+    "./routes/inbound-email.js",
+    "registerInboundEmailRoutes",
+  ],
+  ["shares", "apps/api/src/routes/shares.ts", "./routes/shares.js", "registerShareRoutes"],
+  [
+    "external uploads",
+    "apps/api/src/routes/external-uploads.ts",
+    "./routes/external-uploads.js",
+    "registerExternalUploadRoutes",
+  ],
+  [
+    "auth extensions",
+    "apps/api/src/routes/auth-extensions.ts",
+    "./routes/auth-extensions.js",
+    "registerAuthExtensionRoutes",
+  ],
+  [
+    "intake forms",
+    "apps/api/src/routes/intake-forms.ts",
+    "./routes/intake-forms.js",
+    "registerIntakeFormRoutes",
+  ],
+  [
+    "operational views",
+    "apps/api/src/routes/operational-views.ts",
+    "./routes/operational-views.js",
+    "registerOperationalViewRoutes",
+  ],
+  [
+    "outbound webhooks",
+    "apps/api/src/routes/outbound-webhooks.ts",
+    "./routes/outbound-webhooks.js",
+    "registerOutboundWebhookRoutes",
+  ],
+  ["tasks", "apps/api/src/routes/tasks.ts", "./routes/tasks.js", "registerTaskRoutes"],
+].map(([family, file, importPath, registrar]) => ({ family, file, importPath, registrar }));
 
-for (const billingRoute of [
-  "/api/time-entries",
-  "/api/expense-entries",
-  "/api/invoices",
-  "/api/payments",
-  "/api/billing/trust-transfer-requests",
-  "/api/billing/dashboard",
-]) {
-  assert(
-    !server.includes(billingRoute),
-    `apps/api/src/server.ts still contains billing route literal ${billingRoute}; keep billing endpoints in apps/api/src/routes/billing.ts.`,
-  );
-}
+export const FORBIDDEN_SERVER_ROUTE_GROUPS = [
+  {
+    owner: "billing endpoints in apps/api/src/routes/billing.ts",
+    routeLiterals: [
+      "/api/time-entries",
+      "/api/expense-entries",
+      "/api/invoices",
+      "/api/payments",
+      "/api/billing/trust-transfer-requests",
+      "/api/billing/dashboard",
+    ],
+  },
+  {
+    owner: "document endpoints in apps/api/src/routes/documents.ts",
+    routeLiterals: [
+      "/api/documents/presign-upload",
+      "/api/documents/:id/upload-complete",
+      "/api/documents/:id/scan-status",
+    ],
+  },
+  {
+    owner: "signature endpoints in apps/api/src/routes/signatures.ts",
+    routeLiterals: [
+      "/api/signature-requests",
+      "/api/signature-requests/provider-events",
+      "/api/signature-requests/:id/embedded-events",
+      "/api/signature-requests/:id/events",
+    ],
+  },
+  {
+    owner: "intake endpoints in apps/api/src/routes/intake.ts",
+    routeLiterals: [
+      "/api/intake-sessions",
+      "/api/intake-sessions/:id/answer-snapshots",
+      "/api/intake-sessions/:id/generated-documents",
+    ],
+  },
+  {
+    owner: "ledger endpoints in apps/api/src/routes/ledger.ts",
+    routeLiterals: [
+      "/api/ledger",
+      "/api/ledger/transactions",
+      "/api/ledger/transactions/:id/approvals",
+      "/api/ledger/reconciliations",
+    ],
+  },
+  { owner: "queue endpoints in apps/api/src/routes/queues.ts", routeLiterals: ["/api/queues"] },
+  {
+    owner: "auth endpoints in apps/api/src/routes/auth.ts",
+    routeLiterals: [
+      "/api/auth/login",
+      "/api/auth/logout",
+      "/api/auth/session",
+      "/api/auth/password-setup-tokens",
+      "/api/auth/password-setup",
+    ],
+  },
+  {
+    owner: "session endpoints in apps/api/src/routes/session.ts",
+    routeLiterals: ["/api/session", "/api/capabilities"],
+  },
+  {
+    owner: "matter endpoints in apps/api/src/routes/matters.ts",
+    routeLiterals: ["/api/overview", "/api/matters", "/api/conflicts/check"],
+  },
+  { owner: "audit endpoints in apps/api/src/routes/audit.ts", routeLiterals: ["/api/audit"] },
+  {
+    owner: "draft endpoints in apps/api/src/routes/drafts.ts",
+    routeLiterals: ["/api/drafts", "/api/drafts/:id", "/api/draft-templates"],
+  },
+];
 
-for (const documentRoute of [
-  "/api/documents/presign-upload",
-  "/api/documents/:id/upload-complete",
-  "/api/documents/:id/scan-status",
-]) {
-  assert(
-    !server.includes(documentRoute),
-    `apps/api/src/server.ts still contains document route literal ${documentRoute}; keep document endpoints in apps/api/src/routes/documents.ts.`,
-  );
-}
-
-for (const signatureRoute of [
-  "/api/signature-requests",
-  "/api/signature-requests/provider-events",
-  "/api/signature-requests/:id/embedded-events",
-  "/api/signature-requests/:id/events",
-]) {
-  assert(
-    !server.includes(signatureRoute),
-    `apps/api/src/server.ts still contains signature route literal ${signatureRoute}; keep signature endpoints in apps/api/src/routes/signatures.ts.`,
-  );
-}
-
-for (const intakeRoute of [
-  "/api/intake-sessions",
-  "/api/intake-sessions/:id/answer-snapshots",
-  "/api/intake-sessions/:id/generated-documents",
-]) {
-  assert(
-    !server.includes(intakeRoute),
-    `apps/api/src/server.ts still contains intake route literal ${intakeRoute}; keep intake endpoints in apps/api/src/routes/intake.ts.`,
-  );
-}
-
-for (const ledgerRoute of [
-  "/api/ledger",
-  "/api/ledger/transactions",
-  "/api/ledger/transactions/:id/approvals",
-  "/api/ledger/reconciliations",
-]) {
-  assert(
-    !server.includes(ledgerRoute),
-    `apps/api/src/server.ts still contains ledger route literal ${ledgerRoute}; keep ledger endpoints in apps/api/src/routes/ledger.ts.`,
-  );
-}
-
-assert(
-  !server.includes("/api/queues"),
-  "apps/api/src/server.ts still contains queue route literal /api/queues; keep queue endpoints in apps/api/src/routes/queues.ts.",
-);
-
-for (const authRoute of [
-  "/api/auth/login",
-  "/api/auth/logout",
-  "/api/auth/session",
-  "/api/auth/password-setup-tokens",
-  "/api/auth/password-setup",
-]) {
-  assert(
-    !server.includes(authRoute),
-    `apps/api/src/server.ts still contains auth route literal ${authRoute}; keep auth endpoints in apps/api/src/routes/auth.ts.`,
-  );
-}
-
-for (const sessionRoute of ["/api/session", "/api/capabilities"]) {
-  assert(
-    !server.includes(sessionRoute),
-    `apps/api/src/server.ts still contains session route literal ${sessionRoute}; keep session endpoints in apps/api/src/routes/session.ts.`,
-  );
-}
-
-for (const matterRoute of ["/api/overview", "/api/matters", "/api/conflicts/check"]) {
-  assert(
-    !server.includes(matterRoute),
-    `apps/api/src/server.ts still contains matter route literal ${matterRoute}; keep matter endpoints in apps/api/src/routes/matters.ts.`,
-  );
-}
-
-assert(
-  !server.includes("/api/audit"),
-  "apps/api/src/server.ts still contains audit route literal /api/audit; keep audit endpoints in apps/api/src/routes/audit.ts.",
-);
-
-for (const draftRoute of ["/api/drafts", "/api/drafts/:id", "/api/draft-templates"]) {
-  assert(
-    !server.includes(draftRoute),
-    `apps/api/src/server.ts still contains draft route literal ${draftRoute}; keep draft endpoints in apps/api/src/routes/drafts.ts.`,
-  );
-}
-
-for (const { family, routeLiterals } of [
+export const FORBIDDEN_PREFIX_ROUTE_GROUPS = [
   { family: "setup", routeLiterals: ["/api/setup/"] },
   {
     family: "WebAuthn",
@@ -355,17 +247,9 @@ for (const { family, routeLiterals } of [
   { family: "operational view", routeLiterals: ["/api/operational-views"] },
   { family: "outbound webhook", routeLiterals: ["/api/outbound-webhooks/"] },
   { family: "task", routeLiterals: ["/api/tasks/"] },
-]) {
-  for (const routeLiteral of routeLiterals) {
-    assert(
-      !serverContainsRouteLiteral(routeLiteral),
-      `apps/api/src/server.ts still contains ${family} route literal ${routeLiteral}; keep ${family} endpoints in their module-owned route registrar.`,
-    );
-  }
-}
+];
 
-const routeCatalog = read("apps/web/routes/routeCatalog.ts");
-for (const routeId of [
+export const REQUIRED_ROUTE_CATALOG_IDS = [
   "matters",
   "billing",
   "documents",
@@ -374,14 +258,126 @@ for (const routeId of [
   "funds",
   "audit",
   "queues",
-]) {
-  assert(routeCatalog.includes(`id: "${routeId}"`), `route catalog is missing ${routeId}.`);
+];
+
+function defaultRead(path, root = ROOT) {
+  return readFileSync(join(root, path), "utf8");
 }
 
-if (failures.length > 0) {
-  console.error("Open Practice boundary policy failed:");
-  for (const failure of failures) console.error(`- ${failure}`);
-  process.exit(1);
+function defaultExists(path, root = ROOT) {
+  return existsSync(join(root, path));
 }
 
-console.log("Open Practice boundary policy passed.");
+export function serverContainsRouteLiteral(server, routeLiteral) {
+  return (
+    server.includes(`"${routeLiteral}`) ||
+    server.includes(`'${routeLiteral}`) ||
+    server.includes(`\`${routeLiteral}`)
+  );
+}
+
+export function collectServerRatchetFailures(server) {
+  return SERVER_RATCHETS.flatMap((ratchet) => {
+    const count = ratchet.count(server);
+    return count <= ratchet.limit ? [] : [ratchet.message(count)];
+  });
+}
+
+export function collectScaffoldFailures(exists) {
+  return REQUIRED_SCAFFOLD.flatMap((required) =>
+    exists(required) ? [] : [`${required} must exist as the adoption scaffold.`],
+  );
+}
+
+export function collectRegistrarFailures(server, exists) {
+  return ROUTE_REGISTRARS.flatMap((routeRegistrar) => {
+    const failures = [];
+
+    if (!exists(routeRegistrar.file)) {
+      failures.push(
+        `${routeRegistrar.file} must exist for the ${routeRegistrar.family} route family.`,
+      );
+    }
+
+    if (
+      !server.includes(
+        `import { ${routeRegistrar.registrar} } from "${routeRegistrar.importPath}";`,
+      )
+    ) {
+      failures.push(
+        `apps/api/src/server.ts must import ${routeRegistrar.registrar} from ${routeRegistrar.importPath}.`,
+      );
+    }
+
+    if (!server.includes(`${routeRegistrar.registrar}(server`)) {
+      failures.push(`apps/api/src/server.ts must wire ${routeRegistrar.registrar}.`);
+    }
+
+    return failures;
+  });
+}
+
+export function collectForbiddenRouteFailures(server) {
+  const exactFailures = FORBIDDEN_SERVER_ROUTE_GROUPS.flatMap(({ owner, routeLiterals }) =>
+    routeLiterals.flatMap((routeLiteral) =>
+      server.includes(routeLiteral)
+        ? [`apps/api/src/server.ts still contains route literal ${routeLiteral}; keep ${owner}.`]
+        : [],
+    ),
+  );
+
+  const prefixFailures = FORBIDDEN_PREFIX_ROUTE_GROUPS.flatMap(({ family, routeLiterals }) =>
+    routeLiterals.flatMap((routeLiteral) =>
+      serverContainsRouteLiteral(server, routeLiteral)
+        ? [
+            `apps/api/src/server.ts still contains ${family} route literal ${routeLiteral}; keep ${family} endpoints in their module-owned route registrar.`,
+          ]
+        : [],
+    ),
+  );
+
+  return [...exactFailures, ...prefixFailures];
+}
+
+export function collectRouteCatalogFailures(routeCatalog) {
+  return REQUIRED_ROUTE_CATALOG_IDS.flatMap((routeId) =>
+    routeCatalog.includes(`id: "${routeId}"`) ? [] : [`route catalog is missing ${routeId}.`],
+  );
+}
+
+export function evaluateBoundaryPolicy({
+  root = ROOT,
+  readText = (path) => defaultRead(path, root),
+  pathExists = (path) => defaultExists(path, root),
+} = {}) {
+  const server = readText("apps/api/src/server.ts");
+  const routeCatalog = readText("apps/web/routes/routeCatalog.ts");
+
+  return [
+    ...collectServerRatchetFailures(server),
+    ...collectScaffoldFailures(pathExists),
+    ...collectRegistrarFailures(server, pathExists),
+    ...collectForbiddenRouteFailures(server),
+    ...collectRouteCatalogFailures(routeCatalog),
+  ];
+}
+
+export function runCli() {
+  const failures = evaluateBoundaryPolicy();
+
+  if (failures.length > 0) {
+    console.error("Open Practice boundary policy failed:");
+    for (const failure of failures) console.error(`- ${failure}`);
+    process.exit(1);
+  }
+
+  console.log("Open Practice boundary policy passed.");
+}
+
+function isCliEntrypoint() {
+  return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+}
+
+if (isCliEntrypoint()) {
+  runCli();
+}

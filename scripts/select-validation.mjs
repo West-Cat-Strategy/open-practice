@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
-const COMMANDS = {
+export const COMMANDS = {
   apiTest: "pnpm --filter @open-practice/api test",
   apiTypecheck: "pnpm --filter @open-practice/api typecheck",
   build: "pnpm build",
@@ -26,7 +28,7 @@ const COMMANDS = {
   workerTypecheck: "pnpm --filter @open-practice/worker typecheck",
 };
 
-const COMMAND_ORDER = [
+export const COMMAND_ORDER = [
   COMMANDS.ciLocal,
   COMMANDS.formatCheck,
   COMMANDS.docsCheck,
@@ -50,18 +52,21 @@ const COMMAND_ORDER = [
   COMMANDS.build,
 ];
 
-function usage() {
+export function usage() {
   return [
     "Usage:",
-    "  node scripts/select-validation.mjs --base <git-ref>",
-    "  node scripts/select-validation.mjs --files <paths...>",
+    "  node scripts/select-validation.mjs [--strict] --base <git-ref>",
+    "  node scripts/select-validation.mjs [--strict] --files <paths...>",
+    "  node scripts/select-validation.mjs [--strict] --dirty",
   ].join("\n");
 }
 
-function parseArgs(rawArgs) {
+export function parseArgs(rawArgs) {
   const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
   let base = null;
   let files = null;
+  let dirty = false;
+  let strict = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -71,9 +76,14 @@ function parseArgs(rawArgs) {
       process.exit(0);
     }
 
+    if (arg === "--strict") {
+      strict = true;
+      continue;
+    }
+
     if (arg === "--base") {
-      if (base !== null || files !== null) {
-        throw new Error("Use exactly one input mode: --base or --files.");
+      if (base !== null || files !== null || dirty) {
+        throw new Error("Use exactly one input mode: --base, --files, or --dirty.");
       }
 
       base = args[index + 1];
@@ -87,18 +97,27 @@ function parseArgs(rawArgs) {
     }
 
     if (arg === "--files") {
-      if (base !== null || files !== null) {
-        throw new Error("Use exactly one input mode: --base or --files.");
+      if (base !== null || files !== null || dirty) {
+        throw new Error("Use exactly one input mode: --base, --files, or --dirty.");
       }
 
       files = args.slice(index + 1);
       break;
     }
 
+    if (arg === "--dirty") {
+      if (base !== null || files !== null || dirty) {
+        throw new Error("Use exactly one input mode: --base, --files, or --dirty.");
+      }
+
+      dirty = true;
+      continue;
+    }
+
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  if (base === null && files === null) {
+  if (base === null && files === null && !dirty) {
     throw new Error("Missing input mode.");
   }
 
@@ -106,22 +125,46 @@ function parseArgs(rawArgs) {
     throw new Error("--files requires at least one path.");
   }
 
-  return { base, files };
+  return { mode: dirty ? "dirty" : base === null ? "files" : "base", base, files, strict };
 }
 
-function changedFilesFromBase(base) {
-  const output = execFileSync("git", ["diff", "--name-only", `${base}...HEAD`], {
+function lines(output) {
+  return output.split("\n").filter(Boolean);
+}
+
+export function changedFilesFromBase(base, exec = execFileSync) {
+  const output = exec("git", ["diff", "--name-only", `${base}...HEAD`], {
     encoding: "utf8",
   });
 
-  return output.split("\n");
+  return lines(output);
 }
 
-function normalizePath(path) {
-  return path
+export function changedFilesFromDirty(exec = execFileSync) {
+  return [
+    ...lines(exec("git", ["diff", "--name-only"], { encoding: "utf8" })),
+    ...lines(exec("git", ["diff", "--name-only", "--cached"], { encoding: "utf8" })),
+    ...lines(exec("git", ["ls-files", "--others", "--exclude-standard"], { encoding: "utf8" })),
+  ];
+}
+
+export function normalizePath(path, cwd = process.cwd()) {
+  const trimmed = path
     .trim()
     .replaceAll("\\", "/")
     .replace(/^\.\/+/, "");
+
+  if (!trimmed) return "";
+
+  const normalizedCwd = cwd.replaceAll("\\", "/");
+  const absolutePrefix = `${normalizedCwd}/`;
+
+  if (trimmed === normalizedCwd) return "";
+  if (trimmed.startsWith(absolutePrefix)) {
+    return relative(cwd, resolve(trimmed)).replaceAll("\\", "/");
+  }
+
+  return trimmed;
 }
 
 function isRootConfig(path) {
@@ -150,92 +193,134 @@ function isDomainSource(path) {
   return path.startsWith("packages/domain/src/");
 }
 
-function selectCommands(paths) {
+export function normalizePaths(paths, cwd = process.cwd()) {
+  return [...new Set(paths.map((path) => normalizePath(path, cwd)).filter(Boolean))].sort();
+}
+
+export function classifyPath(path) {
+  const commands = new Set();
+
+  if (path.startsWith("apps/api/")) {
+    commands.add(COMMANDS.apiTest);
+    commands.add(COMMANDS.apiTypecheck);
+    commands.add(COMMANDS.policyCheck);
+  }
+
+  if (path.startsWith("apps/worker/")) {
+    commands.add(COMMANDS.workerTest);
+    commands.add(COMMANDS.workerTypecheck);
+    commands.add(COMMANDS.workerBuild);
+    commands.add(COMMANDS.policyCheck);
+  }
+
+  if (path.startsWith("packages/domain/")) {
+    commands.add(COMMANDS.domainTest);
+    commands.add(COMMANDS.domainTypecheck);
+
+    if (isDomainSource(path)) {
+      commands.add(COMMANDS.apiTest);
+      commands.add(COMMANDS.providersTest);
+      commands.add(COMMANDS.workerTest);
+    }
+  }
+
+  if (path.startsWith("packages/database/") || isMigration(path)) {
+    commands.add(COMMANDS.databaseTest);
+    commands.add(COMMANDS.databaseCheck);
+    commands.add(COMMANDS.databaseTypecheck);
+    commands.add(COMMANDS.apiTest);
+  }
+
+  if (path.startsWith("packages/providers/")) {
+    commands.add(COMMANDS.providersTest);
+    commands.add(COMMANDS.providersTypecheck);
+    commands.add(COMMANDS.providersBuild);
+    commands.add(COMMANDS.apiTest);
+    commands.add(COMMANDS.workerTest);
+    commands.add(COMMANDS.workerTypecheck);
+  }
+
+  if (path.startsWith("apps/web/")) {
+    commands.add(COMMANDS.webTest);
+    commands.add(COMMANDS.webTypecheck);
+    commands.add(COMMANDS.build);
+  }
+
+  if (path.startsWith("docs/")) {
+    commands.add(COMMANDS.formatCheck);
+    commands.add(COMMANDS.docsCheck);
+    commands.add(COMMANDS.policyCheck);
+  }
+
+  if (path.startsWith("scripts/")) {
+    commands.add(COMMANDS.policyCheck);
+    commands.add(COMMANDS.test);
+  }
+
+  if (isRootConfig(path)) {
+    commands.add(COMMANDS.ciLocal);
+  }
+
+  return { commands: [...commands], known: commands.size > 0 };
+}
+
+export function selectCommands(paths, { strict = false } = {}) {
   const selected = new Set();
+  const unknownPaths = [];
 
   for (const path of paths) {
-    if (path.startsWith("apps/api/")) {
-      selected.add(COMMANDS.apiTest);
-      selected.add(COMMANDS.apiTypecheck);
-      selected.add(COMMANDS.policyCheck);
-    }
+    const classification = classifyPath(path);
+    for (const command of classification.commands) selected.add(command);
+    if (!classification.known) unknownPaths.push(path);
+  }
 
-    if (path.startsWith("apps/worker/")) {
-      selected.add(COMMANDS.workerTest);
-      selected.add(COMMANDS.workerTypecheck);
-      selected.add(COMMANDS.workerBuild);
-      selected.add(COMMANDS.policyCheck);
-    }
-
-    if (path.startsWith("packages/domain/")) {
-      selected.add(COMMANDS.domainTest);
-      selected.add(COMMANDS.domainTypecheck);
-
-      if (isDomainSource(path)) {
-        selected.add(COMMANDS.apiTest);
-        selected.add(COMMANDS.providersTest);
-        selected.add(COMMANDS.workerTest);
-      }
-    }
-
-    if (path.startsWith("packages/database/") || isMigration(path)) {
-      selected.add(COMMANDS.databaseTest);
-      selected.add(COMMANDS.databaseCheck);
-      selected.add(COMMANDS.databaseTypecheck);
-      selected.add(COMMANDS.apiTest);
-    }
-
-    if (path.startsWith("packages/providers/")) {
-      selected.add(COMMANDS.providersTest);
-      selected.add(COMMANDS.providersTypecheck);
-      selected.add(COMMANDS.providersBuild);
-      selected.add(COMMANDS.apiTest);
-      selected.add(COMMANDS.workerTest);
-      selected.add(COMMANDS.workerTypecheck);
-    }
-
-    if (path.startsWith("apps/web/")) {
-      selected.add(COMMANDS.webTest);
-      selected.add(COMMANDS.webTypecheck);
-      selected.add(COMMANDS.build);
-    }
-
-    if (path.startsWith("docs/")) {
-      selected.add(COMMANDS.formatCheck);
-      selected.add(COMMANDS.docsCheck);
-      selected.add(COMMANDS.policyCheck);
-    }
-
-    if (path.startsWith("scripts/")) {
-      selected.add(COMMANDS.policyCheck);
-      selected.add(COMMANDS.test);
-    }
-
-    if (isRootConfig(path)) {
-      selected.add(COMMANDS.ciLocal);
-    }
+  if (strict && unknownPaths.length > 0) {
+    throw new Error(`No validation mapping for path(s): ${unknownPaths.join(", ")}`);
   }
 
   return COMMAND_ORDER.filter((command) => selected.has(command));
 }
 
-try {
-  const { base, files } = parseArgs(process.argv.slice(2));
-  const inputFiles = base === null ? files : changedFilesFromBase(base);
-  const paths = [...new Set(inputFiles.map(normalizePath).filter(Boolean))].sort();
-  const commands = selectCommands(paths);
+export function resolveInputFiles(options, exec = execFileSync) {
+  if (options.mode === "base") return changedFilesFromBase(options.base, exec);
+  if (options.mode === "dirty") return changedFilesFromDirty(exec);
+  return options.files;
+}
 
-  console.log("Recommended validation commands:");
+export function formatRecommendedCommands(commands) {
+  const lines = ["Recommended validation commands:"];
 
   if (commands.length === 0) {
-    console.log("(none)");
+    lines.push("(none)");
   } else {
-    for (const command of commands) {
-      console.log(command);
-    }
+    lines.push(...commands);
   }
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  console.error(usage());
-  process.exit(1);
+
+  return lines.join("\n");
+}
+
+export function runSelector(rawArgs, { cwd = process.cwd(), exec = execFileSync } = {}) {
+  const options = parseArgs(rawArgs);
+  const inputFiles = resolveInputFiles(options, exec);
+  const paths = normalizePaths(inputFiles, cwd);
+  return selectCommands(paths, { strict: options.strict });
+}
+
+export function runCli(rawArgs = process.argv.slice(2)) {
+  const commands = runSelector(rawArgs);
+  console.log(formatRecommendedCommands(commands));
+}
+
+function isCliEntrypoint() {
+  return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+}
+
+if (isCliEntrypoint()) {
+  try {
+    runCli();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    console.error(usage());
+    process.exit(1);
+  }
 }
