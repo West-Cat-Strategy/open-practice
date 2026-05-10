@@ -24,6 +24,7 @@ import type {
   EmbeddedIntakeTemplateDefinition,
   IntakeFormLinkRecord,
   IntakeFormItemActionRecord,
+  IntakeTemplatePreviewResult,
   Matter,
   MatterParty,
   SignatureRequestRecord,
@@ -158,6 +159,8 @@ export interface IntakeTemplateSavePayload {
   definitionVersion: number;
   definition: EmbeddedIntakeTemplateDefinition;
 }
+
+export type IntakeTemplatePreviewResponse = IntakeTemplatePreviewResult;
 
 export type SignatureRequestsResponse = SignatureRequestRecord[];
 

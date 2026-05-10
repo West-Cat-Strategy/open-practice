@@ -128,12 +128,15 @@ import {
   buildIntakeFormLinkCreatePayload,
   buildIntakeFormLinkListPath,
   buildIntakePortalPath,
+  buildIntakeTemplatePreviewPayload,
   buildIntakeTemplateEditorValue,
   buildVariableMapping,
   currentProposalValue,
+  describeIntakeTemplatePreview,
   buildIntakeVariableProposalListPath,
   getIntakeFormLinkState,
   loadIntakeFormsDashboardData,
+  previewStatusClass,
   summarizeIntakeItemAction,
   upsertIntakeFormLink,
   upsertIntakeVariableProposal,
@@ -2257,6 +2260,9 @@ describe("dashboard client behavior", () => {
       status: "pending" as const,
       createdAt: "2026-04-29T12:00:00.000Z",
     };
+    if (sampleResidentialTenancyIntakeDefinition.schemaVersion !== 2) {
+      throw new Error("Expected V2 intake sample");
+    }
 
     expect(buildIntakeFormLinkListPath("matter 001")).toBe(
       "/api/intake-form-links?matterId=matter%20001",
@@ -2265,6 +2271,39 @@ describe("dashboard client behavior", () => {
     expect(buildIntakeVariableProposalListPath("matter 001")).toBe(
       "/api/intake-variable-proposals?matterId=matter%20001",
     );
+    expect(
+      buildIntakeTemplatePreviewPayload({
+        definition: sampleResidentialTenancyIntakeDefinition,
+        matterId: "matter-001",
+        answers: { urgent: true },
+      }),
+    ).toEqual({
+      definition: sampleResidentialTenancyIntakeDefinition,
+      matterId: "matter-001",
+      answers: { urgent: true },
+    });
+    expect(describeIntakeTemplatePreview(null)).toBe("Preview checks have not run.");
+    expect(
+      describeIntakeTemplatePreview({
+        status: "blocked",
+        checks: [
+          {
+            code: "invalid_definition",
+            severity: "blocking",
+            message: "Definition is invalid.",
+          },
+        ],
+        preview: null,
+      }),
+    ).toBe("Preview blocked by 1 check.");
+    expect(previewStatusClass(null)).toBe("muted");
+    expect(
+      previewStatusClass({
+        status: "warnings",
+        checks: [],
+        preview: null,
+      }),
+    ).toBe("warning");
     expect(
       buildIntakeSessionCreatePayload({
         matter: matter({ id: "matter-001" }),

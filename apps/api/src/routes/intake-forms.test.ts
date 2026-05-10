@@ -88,6 +88,107 @@ afterEach(async () => {
 });
 
 describe("intake form builder routes", () => {
+  it("previews intake template QA checks without persisting form records", async () => {
+    const { repository, server } = testServer();
+    await setClientSignatureDocument(repository, "doc-001");
+    const [template] = await repository.listIntakeTemplates("firm-west-legal");
+    if (!template || template.definition.schemaVersion !== 2) {
+      throw new Error("Seeded V2 intake template is required for this test");
+    }
+
+    const beforeLinks = await repository.listIntakeFormLinks("firm-west-legal");
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/intake-templates/preview",
+      payload: {
+        matterId: "matter-001",
+        definition: template.definition,
+        answers: { issue_type: "repair" },
+        selectedPackageIds: ["repair_notice_package"],
+      },
+    });
+    const afterLinks = await repository.listIntakeFormLinks("firm-west-legal");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "warnings",
+      preview: {
+        visibleQuestionIds: expect.arrayContaining(["issue_type", "repair_details"]),
+        requiredIncompleteItemIds: expect.arrayContaining([
+          "evidence-upload",
+          "client-attestation",
+        ]),
+        eligiblePackageIds: expect.arrayContaining(["repair_notice_package"]),
+      },
+    });
+    expect(JSON.stringify(response.json())).not.toContain("signature_document_unverified");
+    expect(afterLinks).toEqual(beforeLinks);
+  });
+
+  it("blocks preview when a document-backed signature points outside the selected matter", async () => {
+    const { repository, server } = testServer();
+    await setClientSignatureDocument(repository, "doc-001");
+    const [template] = await repository.listIntakeTemplates("firm-west-legal");
+    if (!template) throw new Error("Seeded intake template is required for this test");
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/intake-templates/preview",
+      payload: {
+        matterId: "matter-002",
+        definition: template.definition,
+        answers: {},
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "blocked",
+      checks: expect.arrayContaining([
+        expect.objectContaining({
+          code: "signature_document_unavailable",
+          severity: "blocking",
+          itemId: "client-attestation",
+        }),
+      ]),
+    });
+  });
+
+  it("returns blocked QA output for invalid preview definitions", async () => {
+    const { server } = testServer();
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/intake-templates/preview",
+      payload: {
+        definition: {
+          schemaVersion: 2,
+          questions: [{ id: "client_name", label: "Client name", type: "text" }],
+          branchRules: [],
+          packages: [{ id: "base", title: "Base", documents: [{ id: "doc", title: "Doc" }] }],
+          sections: [
+            {
+              id: "client-basics",
+              title: "Client basics",
+              items: [{ id: "client-name-item", kind: "question", questionId: "missing" }],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "blocked",
+      checks: [
+        expect.objectContaining({
+          code: "invalid_definition",
+          severity: "blocking",
+        }),
+      ],
+      preview: null,
+    });
+  });
+
   it("creates tokenized form links and hides token hashes on list responses", async () => {
     const { server } = testServer();
 

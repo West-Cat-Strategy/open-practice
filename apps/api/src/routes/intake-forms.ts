@@ -17,6 +17,8 @@ import type {
 } from "@open-practice/domain";
 import {
   createIntakeVariableProposals,
+  intakeTemplatePreviewStatus,
+  previewEmbeddedIntakeTemplate,
   resolveEmbeddedIntakeAnswers,
   validateEmbeddedIntakeTemplateDefinition,
 } from "@open-practice/domain";
@@ -47,6 +49,15 @@ const intakeTemplateBodySchema = z.object({
 });
 
 const intakeTemplateParamsSchema = z.object({ id: z.string().min(1) });
+
+const intakeTemplatePreviewBodySchema = z.object({
+  definition: z.custom<EmbeddedIntakeTemplateDefinition>(
+    (value) => typeof value === "object" && value !== null,
+  ),
+  matterId: z.string().min(1).optional(),
+  answers: z.record(z.string(), z.unknown()).default({}),
+  selectedPackageIds: z.array(z.string().min(1)).optional(),
+});
 
 const intakeFormLinksQuerySchema = z.object({
   matterId: z.string().min(1).optional(),
@@ -252,6 +263,21 @@ function findFormItem(
     .find((item) => item.id === itemId && item.kind === kind);
 }
 
+function signatureItems(definition: EmbeddedIntakeTemplateDefinition): Array<{
+  sectionId: string;
+  item: Extract<EmbeddedIntakeFormItem, { kind: "signature" }>;
+}> {
+  if (definition.schemaVersion !== 2) return [];
+  return definition.sections.flatMap((section) =>
+    section.items
+      .filter(
+        (item): item is Extract<EmbeddedIntakeFormItem, { kind: "signature" }> =>
+          item.kind === "signature",
+      )
+      .map((item) => ({ sectionId: section.id, item })),
+  );
+}
+
 async function resolvePublicLink(
   repository: ApiRouteDependencies["repository"],
   input: {
@@ -351,6 +377,44 @@ export function registerIntakeFormRoutes(
       },
     });
     return updated;
+  });
+
+  server.post("/api/intake-templates/preview", async (request) => {
+    const body = parseRequestPart(intakeTemplatePreviewBodySchema, request.body, "body");
+    assertIntakeAccess(request.auth, {
+      resource: "intake_session",
+      action: "update",
+      matterId: body.matterId,
+    });
+    const preview = previewEmbeddedIntakeTemplate({
+      templateId: "preview",
+      templateVersion: 1,
+      definition: body.definition,
+      answers: body.answers,
+      selectedPackageIds: body.selectedPackageIds,
+    });
+    if (preview.preview === null || !body.matterId) return preview;
+
+    const checks = preview.checks.filter((check) => check.code !== "signature_document_unverified");
+    for (const { sectionId, item } of signatureItems(body.definition)) {
+      if (!item.documentId) continue;
+      const document = await repository.getDocument(request.auth.firmId, item.documentId);
+      if (!document || document.matterId !== body.matterId) {
+        checks.push({
+          code: "signature_document_unavailable",
+          severity: "blocking",
+          message: "Signature document is not available for the selected matter.",
+          sectionId,
+          itemId: item.id,
+        });
+      }
+    }
+
+    return {
+      ...preview,
+      checks,
+      status: intakeTemplatePreviewStatus(checks),
+    };
   });
 
   server.get("/api/intake-form-links", async (request) => {

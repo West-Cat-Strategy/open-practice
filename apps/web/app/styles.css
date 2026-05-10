@@ -1063,6 +1063,35 @@ h3 {
   align-items: start;
 }
 
+.intake-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(340px, 1.4fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.intake-preview-inputs,
+.intake-preview-results {
+  display: grid;
+  gap: 10px;
+}
+
+.intake-preview-summary {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.success {
+  color: var(--accent-strong);
+}
+
+.warning {
+  color: var(--warning);
+}
+
+.muted {
+  color: var(--muted);
+}
+
 .intake-template-list .compact-button,
 .intake-template-editor .compact-button {
   display: inline-flex;
@@ -2096,6 +2125,8 @@ h3 {
   .upload-create-grid,
   .billing-action-row,
   .intake-builder-grid,
+  .intake-preview-grid,
+  .intake-preview-summary,
   .intake-item-add-row,
   .intake-question-grid,
   .nav-list,
