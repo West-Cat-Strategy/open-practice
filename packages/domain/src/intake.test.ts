@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildEmbeddedIntakeTemplateQaReport,
   createIntakeVariableProposals,
   previewEmbeddedIntakeTemplate,
   resolveEmbeddedIntakeAnswers,
@@ -139,6 +140,47 @@ describe("embedded intake templates", () => {
 
     expect(incomplete.requiredIncompleteItemIds).toEqual(["evidence-upload", "client-attestation"]);
     expect(complete.requiredIncompleteItemIds).toEqual([]);
+  });
+
+  it("builds staff QA previews with branch coverage and non-mutating issue cues", () => {
+    const report = buildEmbeddedIntakeTemplateQaReport({
+      templateId: "intake-template-001",
+      templateVersion: 2,
+      definition: sampleResidentialTenancyIntakeDefinition,
+    });
+
+    expect(report.summary).toMatchObject({
+      schemaVersion: 2,
+      branchRuleCount: 2,
+      previewCount: 3,
+      blockingIssueCount: 0,
+    });
+    expect(report.previews).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "base",
+          matchedBranchRuleIds: [],
+          visibleQuestionIds: expect.arrayContaining(["issue_type", "urgent"]),
+        }),
+        expect.objectContaining({
+          id: "branch:repair-package",
+          matchedBranchRuleIds: ["repair-package"],
+          visibleQuestionIds: expect.arrayContaining(["repair_details"]),
+          packageDocuments: expect.arrayContaining([
+            expect.objectContaining({ packageDocumentId: "repair_notice_letter" }),
+          ]),
+        }),
+      ]),
+    );
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "missing_required_item",
+          formItemId: "evidence-upload",
+          severity: "info",
+        }),
+      ]),
+    );
   });
 
   it("gates only visible required V2 items and preserves upload file type metadata", () => {

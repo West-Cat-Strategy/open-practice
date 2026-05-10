@@ -65,6 +65,10 @@ describe("task routes", () => {
         matterQueues: Array<{ matterId: string; overdue: number; today: number }>;
         contactQueues: Array<{ contactId: string; overdue: number; today: number }>;
       };
+      focusQueues: {
+        myOverdueTaskIds: string[];
+        teamTodayTaskIds: string[];
+      };
     }>();
 
     expect(response.statusCode).toBe(200);
@@ -90,6 +94,10 @@ describe("task routes", () => {
     expect(payload.counters.contactQueues).toEqual([
       expect.objectContaining({ contactId: "contact-ada", overdue: 1, today: 1 }),
     ]);
+    expect(payload.focusQueues).toMatchObject({
+      myOverdueTaskIds: ["task-deadline-001"],
+      teamTodayTaskIds: ["task-deadline-002"],
+    });
   });
 
   it("honors includeCompleted=false query parsing", async () => {

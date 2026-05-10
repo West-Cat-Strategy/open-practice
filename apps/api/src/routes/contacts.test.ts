@@ -4,7 +4,7 @@ import {
   InMemoryOpenPracticeRepository,
   type OpenPracticeRepository,
 } from "@open-practice/database";
-import type { ProfessionalRole, User } from "@open-practice/domain";
+import type { Contact, ProfessionalRole, User } from "@open-practice/domain";
 import { registerContactRoutes } from "./contacts.js";
 
 const servers: FastifyInstance[] = [];
@@ -143,13 +143,81 @@ describe("contact routes", () => {
     expect(JSON.stringify(payload)).not.toContain("matter-002");
   });
 
-  it("rejects users without contact read access", async () => {
+  it("returns an audit-safe contact review queue without widening matter visibility", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const visibleContacts = (repository as unknown as { contacts: Contact[] }).contacts;
+    const riverContact = visibleContacts.find((contact) => contact.id === "contact-river");
+    if (!riverContact) throw new Error("Expected sample contact-river fixture");
+    riverContact.identifiers = [{ type: "email", value: "ada@example.test" }];
+    await repository.createIntakeVariableProposals([
+      {
+        id: "proposal-contact-name",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        intakeSessionId: "intake-001",
+        answerSnapshotId: "snapshot-001",
+        sourceQuestionId: "client_display_name",
+        targetScope: "client",
+        targetField: "displayName",
+        targetRecordId: "contact-ada",
+        proposedValue: "Ada M. Nguyen",
+        status: "approved",
+        createdAt: "2026-05-01T10:00:00.000Z",
+        reviewedByUserId: "user-licensee",
+        reviewedAt: "2026-05-01T11:00:00.000Z",
+        appliedAt: "2026-05-01T11:00:00.000Z",
+      },
+    ]);
+
     const response = await testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    }).inject({ method: "GET", url: "/api/contacts/review-queue" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      summary: {
+        totalContacts: 2,
+        reviewItemCount: 2,
+        duplicateCandidateCount: 2,
+        sensitivePartyCueCount: 3,
+        revalidationPromptCount: 1,
+      },
+      items: expect.arrayContaining([
+        expect.objectContaining({
+          contact: expect.objectContaining({ id: "contact-ada" }),
+          auditSafe: true,
+          signals: expect.arrayContaining([
+            expect.objectContaining({
+              kind: "conflict_revalidation",
+              sourceRecordId: "proposal-contact-name",
+            }),
+          ]),
+        }),
+      ]),
+    });
+    const serialized = JSON.stringify(response.json());
+    expect(serialized).not.toContain("contact-northstar");
+    expect(serialized).not.toContain("identifiers");
+    expect(serialized).not.toContain("sin:");
+    expect(serialized).not.toContain("ada@example.test");
+    expect(serialized).not.toContain('"matchedValue":');
+  });
+
+  it("rejects users without contact read access", async () => {
+    const dossiers = await testServer({
       user: user("client_external", ["matter-001"]),
     }).inject({ method: "GET", url: "/api/contacts/dossiers" });
+    const reviewQueue = await testServer({
+      user: user("client_external", ["matter-001"]),
+    }).inject({ method: "GET", url: "/api/contacts/review-queue" });
 
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({
+    expect(dossiers.statusCode).toBe(403);
+    expect(dossiers.json()).toMatchObject({
+      message: "Contact access required",
+    });
+    expect(reviewQueue.statusCode).toBe(403);
+    expect(reviewQueue.json()).toMatchObject({
       message: "Contact access required",
     });
   });

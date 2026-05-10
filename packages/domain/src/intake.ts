@@ -209,6 +209,51 @@ export interface IntakeTemplatePreviewResult {
   preview: IntakeResolutionSnapshot | null;
 }
 
+export type IntakeTemplateQaIssueKind =
+  | "unmapped_question"
+  | "unreachable_branch_question"
+  | "broken_signature_document_reference"
+  | "missing_required_item"
+  | "empty_preview_path";
+
+export interface IntakeTemplateQaIssue {
+  kind: IntakeTemplateQaIssueKind;
+  severity: "blocker" | "review" | "info";
+  message: string;
+  questionId?: string;
+  branchRuleId?: string;
+  formItemId?: string;
+  documentId?: string;
+}
+
+export interface IntakeTemplateQaPreview {
+  id: string;
+  label: string;
+  answers: Record<string, unknown>;
+  selectedPackageIds: string[];
+  visibleQuestionIds: string[];
+  visibleFormItemIds?: string[];
+  requiredIncompleteItemIds?: string[];
+  matchedBranchRuleIds: string[];
+  eligiblePackageIds: string[];
+  packageDocuments: IntakePackageDocumentResolution[];
+}
+
+export interface IntakeTemplateQaReport {
+  summary: {
+    schemaVersion: EmbeddedIntakeTemplateDefinition["schemaVersion"];
+    questionCount: number;
+    branchRuleCount: number;
+    packageCount: number;
+    formItemCount: number;
+    previewCount: number;
+    issueCount: number;
+    blockingIssueCount: number;
+  };
+  issues: IntakeTemplateQaIssue[];
+  previews: IntakeTemplateQaPreview[];
+}
+
 export function validateEmbeddedIntakeTemplateDefinition(
   definition: EmbeddedIntakeTemplateDefinition,
 ): EmbeddedIntakeTemplateDefinition {
@@ -568,6 +613,127 @@ export function resolveEmbeddedIntakeAnswers(input: {
   };
 }
 
+export function buildEmbeddedIntakeTemplateQaReport(input: {
+  templateId: string;
+  templateVersion: number;
+  definition: EmbeddedIntakeTemplateDefinition;
+}): IntakeTemplateQaReport {
+  const definition = validateEmbeddedIntakeTemplateDefinition(input.definition);
+  const issues: IntakeTemplateQaIssue[] = [];
+  const formItems =
+    definition.schemaVersion === 2 ? definition.sections.flatMap((section) => section.items) : [];
+  const formQuestionIds = new Set(
+    formItems.filter((item) => item.kind === "question").map((item) => item.questionId),
+  );
+  const branchShownQuestionIds = new Set(
+    definition.branchRules.flatMap((rule) => rule.showQuestionIds ?? []),
+  );
+  const packageDocumentIds = new Set(
+    definition.packages.flatMap((intakePackage) =>
+      intakePackage.documents.map((document) => document.id),
+    ),
+  );
+
+  if (definition.schemaVersion === 2) {
+    for (const question of definition.questions) {
+      if (!formQuestionIds.has(question.id)) {
+        issues.push({
+          kind: "unmapped_question",
+          severity: "review",
+          message: `Question ${question.id} is not present in any staff-authored form section`,
+          questionId: question.id,
+        });
+      }
+    }
+
+    for (const questionId of branchShownQuestionIds) {
+      if (!formQuestionIds.has(questionId)) {
+        issues.push({
+          kind: "unreachable_branch_question",
+          severity: "blocker",
+          message: `Branch-visible question ${questionId} is not reachable from form sections`,
+          questionId,
+        });
+      }
+    }
+
+    for (const item of formItems) {
+      if (
+        item.kind === "signature" &&
+        item.documentId &&
+        !packageDocumentIds.has(item.documentId)
+      ) {
+        issues.push({
+          kind: "broken_signature_document_reference",
+          severity: "blocker",
+          message: `Signature item ${item.id} references unknown package document ${item.documentId}`,
+          formItemId: item.id,
+          documentId: item.documentId,
+        });
+      }
+      if ((item.kind === "upload" || item.kind === "signature") && item.required === true) {
+        issues.push({
+          kind: "missing_required_item",
+          severity: "info",
+          message: `Required ${item.kind} item ${item.id} is included in completion coverage`,
+          formItemId: item.id,
+        });
+      }
+    }
+  }
+
+  const previews: IntakeTemplateQaPreview[] = [
+    buildQaPreview({
+      id: "base",
+      label: "Base path",
+      templateId: input.templateId,
+      templateVersion: input.templateVersion,
+      definition,
+      answers: {},
+    }),
+    ...definition.branchRules.map((rule) =>
+      buildQaPreview({
+        id: `branch:${rule.id}`,
+        label: `Branch rule ${rule.id}`,
+        templateId: input.templateId,
+        templateVersion: input.templateVersion,
+        definition,
+        answers: { [rule.questionId]: sampleAnswerForBranchRule(rule) },
+        branchRuleId: rule.id,
+      }),
+    ),
+  ];
+
+  for (const preview of previews) {
+    if (
+      preview.visibleQuestionIds.length === 0 &&
+      (preview.visibleFormItemIds?.length ?? 0) === 0
+    ) {
+      issues.push({
+        kind: "empty_preview_path",
+        severity: "blocker",
+        message: `Synthetic preview ${preview.id} does not expose any questions or form items`,
+      });
+    }
+  }
+
+  const blockingIssueCount = issues.filter((issue) => issue.severity === "blocker").length;
+  return {
+    summary: {
+      schemaVersion: definition.schemaVersion,
+      questionCount: definition.questions.length,
+      branchRuleCount: definition.branchRules.length,
+      packageCount: definition.packages.length,
+      formItemCount: formItems.length,
+      previewCount: previews.length,
+      issueCount: issues.length,
+      blockingIssueCount,
+    },
+    issues,
+    previews,
+  };
+}
+
 export function createIntakeVariableProposals(input: {
   firmId: string;
   matterId: string;
@@ -605,6 +771,35 @@ export function createIntakeVariableProposals(input: {
   });
 }
 
+function buildQaPreview(input: {
+  id: string;
+  label: string;
+  templateId: string;
+  templateVersion: number;
+  definition: EmbeddedIntakeTemplateDefinition;
+  answers: Record<string, unknown>;
+  branchRuleId?: string;
+}): IntakeTemplateQaPreview {
+  const snapshot = resolveEmbeddedIntakeAnswers({
+    templateId: input.templateId,
+    templateVersion: input.templateVersion,
+    definition: input.definition,
+    answers: input.answers,
+  });
+  return {
+    id: input.id,
+    label: input.label,
+    answers: input.answers,
+    selectedPackageIds: snapshot.selectedPackageIds,
+    visibleQuestionIds: snapshot.visibleQuestionIds,
+    visibleFormItemIds: snapshot.visibleFormItemIds,
+    requiredIncompleteItemIds: snapshot.requiredIncompleteItemIds,
+    matchedBranchRuleIds: snapshot.matchedBranchRuleIds,
+    eligiblePackageIds: snapshot.eligiblePackageIds,
+    packageDocuments: snapshot.packageDocuments,
+  };
+}
+
 function assertUniqueIds(label: string, ids: string[]): Set<string> {
   const seen = new Set<string>();
   for (const id of ids) {
@@ -613,6 +808,13 @@ function assertUniqueIds(label: string, ids: string[]): Set<string> {
     seen.add(id);
   }
   return seen;
+}
+
+function sampleAnswerForBranchRule(rule: EmbeddedIntakeBranchRule): unknown {
+  if (rule.operator === "present") return "synthetic-preview-value";
+  if (rule.operator === "not_equals") return `not-${String(rule.value ?? "empty")}`;
+  if (rule.operator === "includes") return [rule.value ?? "synthetic-preview-value"];
+  return rule.value ?? "synthetic-preview-value";
 }
 
 function assertVariableMapping(mapping: IntakeVariableMapping): void {

@@ -630,6 +630,10 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { matterId?: string },
   ): Promise<SignatureRequestRecord[]>;
+  listSignatureRequestSigners(
+    firmId: string,
+    signatureRequestId: string,
+  ): Promise<SignatureRequestSignerRecord[]>;
   createSignatureRequest(input: {
     request: SignatureRequestRecord;
     signers: SignatureRequestSignerRecord[];
@@ -1731,6 +1735,22 @@ function mapSignatureRequestRow(
     createdAt: row.createdAt.toISOString(),
     completedAt: dateToIso(row.completedAt),
     declinedAt: dateToIso(row.declinedAt),
+  };
+}
+
+function mapSignatureRequestSignerRow(
+  row: typeof schema.signatureRequestSigners.$inferSelect,
+): SignatureRequestSignerRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    signatureRequestId: row.signatureRequestId,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    status: row.status as SignatureProviderStatus,
+    signingUrl: row.signingUrl ?? undefined,
+    completedAt: dateToIso(row.completedAt),
   };
 }
 
@@ -4167,6 +4187,17 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       this.signatureRequests.filter(
         (request) =>
           request.firmId === firmId && (!options.matterId || request.matterId === options.matterId),
+      ),
+    );
+  }
+
+  async listSignatureRequestSigners(
+    firmId: string,
+    signatureRequestId: string,
+  ): Promise<SignatureRequestSignerRecord[]> {
+    return clone(
+      this.signatureRequestSigners.filter(
+        (signer) => signer.firmId === firmId && signer.signatureRequestId === signatureRequestId,
       ),
     );
   }
@@ -7571,6 +7602,22 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           : eq(schema.signatureRequests.firmId, firmId),
       );
     return rows.map(mapSignatureRequestRow);
+  }
+
+  async listSignatureRequestSigners(
+    firmId: string,
+    signatureRequestId: string,
+  ): Promise<SignatureRequestSignerRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.signatureRequestSigners)
+      .where(
+        and(
+          eq(schema.signatureRequestSigners.firmId, firmId),
+          eq(schema.signatureRequestSigners.signatureRequestId, signatureRequestId),
+        ),
+      );
+    return rows.map(mapSignatureRequestSignerRow);
   }
 
   async createSignatureRequest(input: {

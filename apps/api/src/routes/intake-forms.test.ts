@@ -224,6 +224,44 @@ describe("intake form builder routes", () => {
     expect(JSON.stringify(listed.json())).not.toContain("tokenHash");
   });
 
+  it("returns staff-only intake template QA previews without public tokens or answers", async () => {
+    const { server } = testServer();
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/intake-templates/intake-template-001/qa-preview",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      template: {
+        id: "intake-template-001",
+        provider: "embedded",
+        definitionVersion: 2,
+      },
+      qa: {
+        summary: {
+          schemaVersion: 2,
+          branchRuleCount: 2,
+          previewCount: 3,
+          blockingIssueCount: 0,
+        },
+        previews: expect.arrayContaining([
+          expect.objectContaining({
+            id: "branch:repair-package",
+            matchedBranchRuleIds: ["repair-package"],
+            visibleQuestionIds: expect.arrayContaining(["repair_details"]),
+          }),
+        ]),
+      },
+    });
+    expect(JSON.stringify(response.json())).not.toContain("tokenHash");
+    for (const preview of response.json<{ qa: { previews: Array<Record<string, unknown>> } }>().qa
+      .previews) {
+      expect(preview).not.toHaveProperty("answers");
+    }
+  });
+
   it("runs public upload, signature, submission, and reviewed variable merge", async () => {
     const { repository, server } = testServer({ s3: s3Config() });
     await restrictEvidenceUpload(repository);

@@ -126,5 +126,11 @@ describe("task deadline workbench", () => {
     expect(workbench.counters.contactQueues).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ contactId: "contact-adverse" })]),
     );
+    expect(workbench.focusQueues).toEqual({
+      myOverdueTaskIds: ["task-overdue-mine"],
+      teamTodayTaskIds: ["task-today-team"],
+      upcomingTaskIds: ["task-upcoming-other-matter"],
+      unassignedTaskIds: [],
+    });
   });
 });

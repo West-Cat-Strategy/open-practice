@@ -32,6 +32,12 @@ export interface TaskDeadlineWorkbench {
     matterQueues: TaskDeadlineMatterQueue[];
     contactQueues: TaskDeadlineContactQueue[];
   };
+  focusQueues: {
+    myOverdueTaskIds: string[];
+    teamTodayTaskIds: string[];
+    upcomingTaskIds: string[];
+    unassignedTaskIds: string[];
+  };
 }
 
 const CLIENT_LIKE_ROLES = new Set<MatterParty["role"]>([
@@ -172,6 +178,27 @@ export function buildTaskDeadlineWorkbench(input: {
           matterIds: [...queue.matterIds].sort(),
         }))
         .sort((left, right) => left.contactId.localeCompare(right.contactId)),
+    },
+    focusQueues: {
+      myOverdueTaskIds: projections
+        .filter(
+          (task) =>
+            task.completionStatus === "open" &&
+            task.assignedToUserId === input.userId &&
+            task.bucket === "overdue",
+        )
+        .map((task) => task.id),
+      teamTodayTaskIds: projections
+        .filter((task) => task.completionStatus === "open" && task.bucket === "today")
+        .map((task) => task.id),
+      upcomingTaskIds: projections
+        .filter((task) => task.completionStatus === "open" && task.bucket === "upcoming")
+        .map((task) => task.id),
+      unassignedTaskIds: projections
+        .filter(
+          (task) => task.completionStatus === "open" && task.assignmentStatus === "unassigned",
+        )
+        .map((task) => task.id),
     },
   };
 }

@@ -448,6 +448,12 @@ describe("document processing routes", () => {
         total: 1,
         active: 1,
       },
+      reviewQueue: {
+        needsReviewCount: 0,
+        duplicateCandidateCount: 0,
+        supersessionCount: 0,
+        failedScanCount: 0,
+      },
       documents: [
         expect.objectContaining({
           group: "queued_or_active",
@@ -506,6 +512,128 @@ describe("document processing routes", () => {
     expect(documentItem.latestExtraction.metadata).not.toHaveProperty("storageKey");
     expect(documentItem.latestExtraction.metadata).not.toHaveProperty("token");
     expect(documentItem.latestExtraction.metadata).not.toHaveProperty("providerPayload");
+  });
+
+  it("summarizes visible document review queue states without cross-matter counts", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createDocumentUploadIntent({
+      id: "doc-review-pending",
+      firmId,
+      matterId: "matter-001",
+      title: "External evidence.pdf",
+      storageKey: "matters/matter-001/external-evidence.pdf",
+      checksumSha256: "1".repeat(64),
+      classification: "general",
+      legalHold: false,
+      externalUploadLinkId: "external-upload-link-001",
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-review-pending",
+      checksumSha256: "1".repeat(64),
+      scanStatus: "passed",
+    });
+    await repository.createDocumentUploadIntent({
+      id: "doc-duplicate-review",
+      firmId,
+      matterId: "matter-001",
+      title: "Duplicate retainer.pdf",
+      storageKey: "matters/matter-001/duplicate-retainer.pdf",
+      checksumSha256: "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c",
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-duplicate-review",
+      checksumSha256: "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c",
+      scanStatus: "passed",
+    });
+    await repository.createDocumentUploadIntent({
+      id: "doc-superseded-review",
+      firmId,
+      matterId: "matter-001",
+      title: "Old notice.pdf",
+      storageKey: "matters/matter-001/old-notice.pdf",
+      checksumSha256: "2".repeat(64),
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-superseded-review",
+      checksumSha256: "2".repeat(64),
+      scanStatus: "passed",
+    });
+    await repository.createDocumentUploadIntent({
+      id: "doc-superseding-review",
+      firmId,
+      matterId: "matter-001",
+      title: "Updated notice.pdf",
+      storageKey: "matters/matter-001/updated-notice.pdf",
+      checksumSha256: "3".repeat(64),
+      classification: "general",
+      legalHold: false,
+      supersedesDocumentId: "doc-superseded-review",
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-superseding-review",
+      checksumSha256: "3".repeat(64),
+      scanStatus: "passed",
+    });
+    await repository.createDocumentUploadIntent({
+      id: "doc-failed-scan-review",
+      firmId,
+      matterId: "matter-001",
+      title: "Failed scan.pdf",
+      storageKey: "matters/matter-001/failed-scan.pdf",
+      checksumSha256: "4".repeat(64),
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-failed-scan-review",
+      checksumSha256: "4".repeat(64),
+      scanStatus: "failed",
+    });
+    await repository.createDocumentUploadIntent({
+      id: "doc-other-matter-review",
+      firmId,
+      matterId: "matter-002",
+      title: "Other matter review.pdf",
+      storageKey: "matters/matter-002/review.pdf",
+      checksumSha256: "5".repeat(64),
+      classification: "general",
+      legalHold: false,
+      externalUploadLinkId: "external-upload-link-002",
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-other-matter-review",
+      checksumSha256: "5".repeat(64),
+      scanStatus: "failed",
+    });
+
+    const response = await testServer({
+      repository,
+      authUser: user("licensee", ["matter-001"]),
+    }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      reviewQueue: {
+        needsReviewCount: 1,
+        duplicateCandidateCount: 1,
+        supersessionCount: 2,
+        failedScanCount: 1,
+      },
+    });
+    expect(JSON.stringify(response.json())).not.toContain("doc-other-matter-review");
   });
 
   it("applies matter access to the document processing workbench", async () => {
