@@ -212,6 +212,16 @@ describe("ledger routes", () => {
         exceptionReconciliationIds: ["reconciliation-exception"],
         overdrawnBalanceKeys: [],
       },
+      trustControlPolicy: {
+        automaticTrustPosting: false,
+        transferRequestPosting: "requires_explicit_approval_and_manual_post",
+        makerChecker: {
+          ledgerTransactionApproval: "second_review_required",
+          trustTransferRequest: "request_and_posting_are_separate_records",
+          reconciliation: "firm_wide_review_required",
+        },
+        compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+      },
     });
     expect(
       response

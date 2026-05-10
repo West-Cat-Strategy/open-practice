@@ -139,6 +139,111 @@ describe("signature routes", () => {
     expect(auditEvent?.metadata).not.toHaveProperty("signers");
   });
 
+  it("returns an audit-safe evidence packet with signer roles and redacted evidence", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/signature-requests",
+      payload: signaturePayload(),
+    });
+    const createdPayload = created.json<{
+      request: { id: string; externalId: string };
+      signers: Array<{ id: string }>;
+    }>();
+    const signerId = createdPayload.signers[0].id;
+
+    const embeddedEvent = await server.inject({
+      method: "POST",
+      url: `/api/signature-requests/${createdPayload.request.id}/embedded-events`,
+      payload: {
+        signerId,
+        status: "completed",
+        consentText: "I consent to this synthetic signature.",
+        evidence: {
+          publicEventId: "embedded-event-001",
+          completedBy: "Ada Morgan",
+          clientEmail: "ada@example.test",
+          tokenHash: "synthetic-token-hash",
+          ip: "203.0.113.10",
+          userAgent: "Synthetic browser",
+        },
+      },
+    });
+    const packet = await server.inject({
+      method: "GET",
+      url: `/api/signature-requests/${createdPayload.request.id}/evidence-packet`,
+    });
+
+    expect(embeddedEvent.statusCode).toBe(200);
+    expect(packet.statusCode).toBe(200);
+    expect(packet.json()).toMatchObject({
+      signatureRequestId: createdPayload.request.id,
+      matterId: "matter-001",
+      documentId: "doc-001",
+      status: "completed",
+      auditSafe: true,
+      signers: [
+        expect.objectContaining({
+          id: signerId,
+          role: "client",
+          evidenceStatus: "event_recorded",
+        }),
+      ],
+      timeline: expect.arrayContaining([
+        expect.objectContaining({
+          status: "completed",
+          signerId,
+          evidence: {
+            present: true,
+            keys: expect.arrayContaining(["mode", "publicEventId", "signerId"]),
+          },
+        }),
+      ]),
+    });
+    const serialized = JSON.stringify(packet.json());
+    expect(serialized).not.toContain("ada@example.test");
+    expect(serialized).not.toContain("I consent to this synthetic signature.");
+    expect(serialized).not.toContain("203.0.113.10");
+    expect(serialized).not.toContain("Synthetic browser");
+    expect(serialized).not.toContain("clientEmail");
+    expect(serialized).not.toContain("tokenHash");
+    expect(serialized).not.toContain("completedBy");
+    expect(serialized).not.toContain(createdPayload.request.externalId);
+  });
+
+  it("keeps matter-scoped users out of other matters' evidence packets", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createMatterTwoDocument(repository);
+    const server = testServer({ repository });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/signature-requests",
+      payload: signaturePayload({
+        matterId: "matter-002",
+        documentId: "doc-matter-002",
+        title: "North Star authorization",
+      }),
+    });
+    const requestId = created.json<{ request: { id: string } }>().request.id;
+    const denied = await server.inject({
+      method: "GET",
+      url: `/api/signature-requests/${requestId}/evidence-packet`,
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+
+    expect(created.statusCode).toBe(200);
+    expect(denied.statusCode).toBe(404);
+    expect(denied.json()).toMatchObject({
+      error: "Error",
+      message: "Signature request was not found",
+    });
+    expect(JSON.stringify(denied.json())).not.toContain("matter-002");
+  });
+
   it("lists only assigned-matter signatures for matter-scoped users", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await createMatterTwoDocument(repository);

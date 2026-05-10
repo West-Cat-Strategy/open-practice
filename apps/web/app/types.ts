@@ -607,6 +607,12 @@ export interface DocumentProcessingWorkbenchResponse {
   reservedQueues?: DocumentProcessingWorkerQueueStatus[];
   actionableTasks?: string[];
   reservedTasks?: DocumentProcessingReservedTask[];
+  reviewQueue?: {
+    needsReviewCount: number;
+    duplicateCandidateCount: number;
+    supersessionCount: number;
+    failedScanCount: number;
+  };
   summary: DocumentProcessingSummary;
   documents: DocumentProcessingWorkbenchItem[];
 }
@@ -707,6 +713,16 @@ export interface TrustControlsDashboardResponse {
     unreconciledAccountIds: string[];
     exceptionReconciliationIds: string[];
     overdrawnBalanceKeys: string[];
+  };
+  trustControlPolicy?: {
+    automaticTrustPosting: false;
+    transferRequestPosting: string;
+    makerChecker: {
+      ledgerTransactionApproval: string;
+      trustTransferRequest: string;
+      reconciliation: string;
+    };
+    compliancePosture: string;
   };
 }
 

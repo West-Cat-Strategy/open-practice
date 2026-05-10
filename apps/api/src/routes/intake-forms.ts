@@ -16,6 +16,7 @@ import type {
   IntakeTemplateRecord,
 } from "@open-practice/domain";
 import {
+  buildEmbeddedIntakeTemplateQaReport,
   createIntakeVariableProposals,
   resolveEmbeddedIntakeAnswers,
   validateEmbeddedIntakeTemplateDefinition,
@@ -351,6 +352,30 @@ export function registerIntakeFormRoutes(
       },
     });
     return updated;
+  });
+
+  server.get("/api/intake-templates/:id/qa-preview", async (request) => {
+    const params = parseRequestPart(intakeTemplateParamsSchema, request.params, "params");
+    assertIntakeAccess(request.auth, { resource: "intake_session", action: "read" });
+    const template = await getTemplate(repository, request.auth.firmId, params.id);
+    const qaReport = buildEmbeddedIntakeTemplateQaReport({
+      templateId: template.id,
+      templateVersion: template.definitionVersion,
+      definition: template.definition,
+    });
+    return {
+      template: {
+        id: template.id,
+        name: template.name,
+        active: template.active,
+        provider: template.provider,
+        definitionVersion: template.definitionVersion,
+      },
+      qa: {
+        ...qaReport,
+        previews: qaReport.previews.map(({ answers: _answers, ...preview }) => preview),
+      },
+    };
   });
 
   server.get("/api/intake-form-links", async (request) => {

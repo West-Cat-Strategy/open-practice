@@ -47,6 +47,12 @@ export function emptyDocumentProcessingWorkbench(
     reservedQueues: [],
     actionableTasks: ["ocr"],
     reservedTasks: [],
+    reviewQueue: {
+      needsReviewCount: 0,
+      duplicateCandidateCount: 0,
+      supersessionCount: 0,
+      failedScanCount: 0,
+    },
     summary: emptySummary,
     documents: [],
   };

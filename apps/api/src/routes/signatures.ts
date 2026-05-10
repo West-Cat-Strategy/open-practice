@@ -73,6 +73,34 @@ function assertSignatureAccess(
   if (!access.ok) throw access.error;
 }
 
+function signatureRequestNotFound(): Error & { statusCode: number } {
+  return Object.assign(new Error("Signature request was not found"), { statusCode: 404 });
+}
+
+function redactedEvidenceSummary(evidence: Record<string, unknown>): {
+  present: boolean;
+  keys: string[];
+} {
+  const auditReferenceKeys = new Set([
+    "deliveryId",
+    "delivery_id",
+    "eventId",
+    "event_id",
+    "id",
+    "mode",
+    "publicEventId",
+    "signerId",
+    "webhookId",
+    "webhook_id",
+  ]);
+  return {
+    present: Object.keys(evidence).length > 0,
+    keys: Object.keys(evidence)
+      .filter((key) => auditReferenceKeys.has(key))
+      .sort(),
+  };
+}
+
 export function registerSignatureRoutes(
   server: FastifyInstance,
   { repository, signatureProvider, emailJobQueue }: ApiRouteDependencies,
@@ -318,6 +346,65 @@ export function registerSignatureRoutes(
       events: await repository.listSignatureProviderEvents(request.auth.firmId, {
         signatureRequestId: params.id,
       }),
+    };
+  });
+
+  server.get("/api/signature-requests/:id/evidence-packet", async (request) => {
+    const params = parseRequestPart(idParamsSchema, request.params, "params");
+    const signature = (await repository.listSignatureRequests(request.auth.firmId)).find(
+      (candidate) => candidate.id === params.id,
+    );
+    if (!signature) {
+      throw signatureRequestNotFound();
+    }
+    const access = requireAccess(request.auth, {
+      resource: "signature_request",
+      action: "read",
+      matterId: signature.matterId,
+    });
+    if (!access.ok) throw signatureRequestNotFound();
+    const [events, signers] = await Promise.all([
+      repository.listSignatureProviderEvents(request.auth.firmId, {
+        signatureRequestId: signature.id,
+      }),
+      repository.listSignatureRequestSigners(request.auth.firmId, signature.id),
+    ]);
+
+    return {
+      signatureRequestId: signature.id,
+      matterId: signature.matterId,
+      documentId: signature.documentId,
+      title: signature.title,
+      provider: signature.provider,
+      status: signature.status,
+      requestedByUserId: signature.requestedByUserId,
+      createdAt: signature.createdAt,
+      completedAt: signature.completedAt,
+      declinedAt: signature.declinedAt,
+      signers: signers.map((signer) => ({
+        id: signer.id,
+        role: signer.role,
+        status: signer.status,
+        completedAt: signer.completedAt,
+        evidenceStatus: events.some((event) => event.evidence.signerId === signer.id)
+          ? "event_recorded"
+          : "pending_event",
+      })),
+      timeline: events
+        .slice()
+        .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt))
+        .map((event) => ({
+          id: event.id,
+          provider: event.provider,
+          externalIdPresent: Boolean(event.externalId),
+          status: event.status,
+          occurredAt: event.occurredAt,
+          signerId:
+            typeof event.evidence.signerId === "string" ? event.evidence.signerId : undefined,
+          evidence: redactedEvidenceSummary(event.evidence),
+        })),
+      evidence: redactedEvidenceSummary(signature.evidence),
+      auditSafe: true,
     };
   });
 }

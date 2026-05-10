@@ -223,6 +223,26 @@ function documentWorkbenchGroup(input: {
   return input.eligibility.eligible ? "ready_to_process" : "blocked";
 }
 
+function documentReviewQueueSummary(documents: DocumentRecord[]): {
+  needsReviewCount: number;
+  duplicateCandidateCount: number;
+  supersessionCount: number;
+  failedScanCount: number;
+} {
+  return {
+    needsReviewCount: documents.filter(
+      (document) => document.externalUploadLinkId && document.reviewStatus !== "accepted",
+    ).length,
+    duplicateCandidateCount: documents.filter(
+      (document) => document.checksumStatus === "duplicate" || document.duplicateOfDocumentId,
+    ).length,
+    supersessionCount: documents.filter(
+      (document) => document.supersedesDocumentId || document.supersededAt,
+    ).length,
+    failedScanCount: documents.filter((document) => document.scanStatus === "failed").length,
+  };
+}
+
 export async function queueDocumentOcr(
   input: QueueDocumentOcrInput,
 ): Promise<QueueDocumentOcrResult> {
@@ -479,6 +499,7 @@ export function registerDocumentProcessingRoutes(
       reservedQueues,
       actionableTasks: actionableDocumentProcessingTasks,
       reservedTasks: reservedDocumentProcessingTasks,
+      reviewQueue: documentReviewQueueSummary(documents),
       summary: summarizeJobRuns(jobs),
       documents: documentItems,
     };

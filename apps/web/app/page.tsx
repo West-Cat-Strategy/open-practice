@@ -274,6 +274,12 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
         matterQueues: [],
         contactQueues: [],
       },
+      focusQueues: {
+        myOverdueTaskIds: [],
+        teamTodayTaskIds: [],
+        upcomingTaskIds: [],
+        unassignedTaskIds: [],
+      },
     },
     headers,
   );
