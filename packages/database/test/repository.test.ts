@@ -370,6 +370,18 @@ describe("repository contact dossier quality review", () => {
         appliedAt: "2026-05-01T11:00:00.000Z",
       },
     ]);
+    await repository.runConflictCheck({
+      firmId: "firm-west-legal",
+      actorId: "user-licensee",
+      prospectiveName: "River City Rentals",
+      includeClosedMatters: true,
+    });
+    await repository.runConflictCheck({
+      firmId: "firm-west-legal",
+      actorId: "user-licensee",
+      prospectiveName: "North Star Holdings",
+      includeClosedMatters: true,
+    });
 
     const dossiers = await repository.listContactDossiersForUser(user);
 
@@ -394,7 +406,18 @@ describe("repository contact dossier quality review", () => {
         ],
       },
     });
+    const river = dossiers.find((dossier) => dossier.contact.id === "contact-river")!;
+    expect(river.conflictHistory).toEqual([
+      expect.objectContaining({
+        matchedContactId: "contact-river",
+        visibleMatchedMatterIds: ["matter-001"],
+        matchCount: 1,
+        maxSeverity: "blocker",
+      }),
+    ]);
     expect(JSON.stringify(dossiers)).not.toContain("proposal-inaccessible-contact-name");
+    expect(JSON.stringify(dossiers)).not.toContain("North Star Holdings");
+    expect(JSON.stringify(dossiers)).not.toContain("matter-002");
   });
 });
 

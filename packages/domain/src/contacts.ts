@@ -1,6 +1,10 @@
 import type { Contact, Matter, MatterParty, PortalGrant } from "./models.js";
 import type { IntakeVariableProposal } from "./intake.js";
-import { normalizeConflictToken } from "./conflicts.js";
+import {
+  normalizeConflictToken,
+  type ConflictCheckRecord,
+  type ConflictSeverity,
+} from "./conflicts.js";
 
 export type ContactDossierContactSummary = Omit<Contact, "notes">;
 
@@ -49,6 +53,16 @@ export interface ContactDossierQualityReview {
   signals: ContactDossierQualitySignal[];
 }
 
+export interface ContactDossierConflictHistoryEntry {
+  id: string;
+  createdAt: string;
+  disposition: ConflictCheckRecord["disposition"];
+  matchedContactId: string;
+  visibleMatchedMatterIds: string[];
+  matchCount: number;
+  maxSeverity: ConflictSeverity;
+}
+
 export interface ContactDossier {
   contact: ContactDossierContactSummary;
   matters: ContactDossierMatterLink[];
@@ -58,6 +72,7 @@ export interface ContactDossier {
   };
   conflictCues: ContactDossierConflictCue[];
   qualityReview: ContactDossierQualityReview;
+  conflictHistory: ContactDossierConflictHistoryEntry[];
 }
 
 export interface BuildContactDossiersInput {
@@ -67,6 +82,7 @@ export interface BuildContactDossiersInput {
   matterParties: MatterParty[];
   portalGrants: PortalGrant[];
   intakeVariableProposals?: IntakeVariableProposal[];
+  conflictChecks?: ConflictCheckRecord[];
   now?: string;
 }
 
@@ -255,6 +271,52 @@ function buildRevalidationSignals(
     }));
 }
 
+const severityRank: Record<ConflictSeverity, number> = { info: 0, review: 1, blocker: 2 };
+
+function maxSeverity(severities: ConflictSeverity[]): ConflictSeverity {
+  return severities.reduce(
+    (current, candidate) => (severityRank[candidate] > severityRank[current] ? candidate : current),
+    "info",
+  );
+}
+
+function buildConflictHistory(input: {
+  contactId: string;
+  firmId: string;
+  visibleMatterIds: Set<string>;
+  conflictChecks: ConflictCheckRecord[];
+}): ContactDossierConflictHistoryEntry[] {
+  return input.conflictChecks
+    .filter((check) => check.firmId === input.firmId)
+    .flatMap((check): ContactDossierConflictHistoryEntry[] => {
+      const visibleMatches = check.resultSnapshot.filter(
+        (result) =>
+          result.contactId === input.contactId &&
+          (!result.matterId || input.visibleMatterIds.has(result.matterId)),
+      );
+      if (visibleMatches.length === 0) return [];
+
+      return [
+        {
+          id: check.id,
+          createdAt: check.createdAt,
+          disposition: check.disposition,
+          matchedContactId: input.contactId,
+          visibleMatchedMatterIds: Array.from(
+            new Set(
+              visibleMatches
+                .map((result) => result.matterId)
+                .filter((matterId): matterId is string => Boolean(matterId)),
+            ),
+          ).sort(),
+          matchCount: visibleMatches.length,
+          maxSeverity: maxSeverity(visibleMatches.map((match) => match.severity)),
+        },
+      ];
+    })
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
 function buildQualityReview(input: {
   contact: Contact;
   contacts: Contact[];
@@ -351,6 +413,12 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
           links: sortedMatters,
           intakeVariableProposals: input.intakeVariableProposals ?? [],
           visibleMatterIds,
+        }),
+        conflictHistory: buildConflictHistory({
+          contactId,
+          firmId: input.firmId,
+          visibleMatterIds,
+          conflictChecks: input.conflictChecks ?? [],
         }),
       };
     })

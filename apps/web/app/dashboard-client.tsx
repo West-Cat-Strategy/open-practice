@@ -113,6 +113,7 @@ import {
   summarizeDocumentProcessingWorkbench,
 } from "./document-processing-dashboard";
 import {
+  buildContactDossierConflictCheckPrefill,
   contactDossierRiskClass,
   filterContactDossiers,
   summarizeContactDossier,
@@ -1001,6 +1002,21 @@ export default function DashboardClient({
     const payload = (await response.json()) as ConflictResponse;
     setConflictResults(payload.results);
     setConflictStatus(describeConflictCheckStatus(payloadResult.payload, payload.results.length));
+  }
+
+  function prepareConflictCheckFromContact(): void {
+    if (!activeContactDossier) return;
+    const prefill = buildContactDossierConflictCheckPrefill(activeContactDossier, activeMatter?.id);
+    setConflictName(prefill.prospectiveName);
+    setConflictAliases(prefill.aliasesText);
+    setConflictIdentifiers(prefill.identifiersText);
+    setConflictProspectiveRole(prefill.prospectiveRole);
+    setConflictResults([]);
+    setConflictStatus(
+      `Prepared conflict check from ${activeContactDossier.contact.displayName}${
+        prefill.matterId ? ` on matter ${prefill.matterId}` : ""
+      }.`,
+    );
   }
 
   async function createDraftFromTemplate(
@@ -2413,8 +2429,20 @@ export default function DashboardClient({
                       <>
                         <div className="section-title">
                           <h3>{activeContactDossier.contact.displayName}</h3>
-                          <span>{activeContactDossier.contact.kind}</span>
+                          <button
+                            className="secondary-button compact-action-button"
+                            onClick={prepareConflictCheckFromContact}
+                            type="button"
+                          >
+                            <Search size={16} />
+                            Check this contact
+                          </button>
                         </div>
+                        <p className="detail-note">
+                          {activeContactDossier.contact.kind} ·{" "}
+                          {activeContactDossier.conflictHistory.length} conflict history{" "}
+                          {activeContactDossier.conflictHistory.length === 1 ? "entry" : "entries"}
+                        </p>
                         <div className="detail-grid compact-detail-grid">
                           <div>
                             <span className="field-label">Aliases</span>
@@ -2448,6 +2476,37 @@ export default function DashboardClient({
                                 : "none"}
                             </strong>
                           </div>
+                        </div>
+
+                        <div className="section-title">
+                          <h3>Conflict history</h3>
+                          <span>{activeContactDossier.conflictHistory.length}</span>
+                        </div>
+                        <div className="party-list">
+                          {activeContactDossier.conflictHistory.map((entry) => (
+                            <div
+                              className="party-row"
+                              key={`${entry.matchedContactId}-${entry.id}`}
+                            >
+                              <span>
+                                <strong>
+                                  {entry.matchCount} redacted match
+                                  {entry.matchCount === 1 ? "" : "es"}
+                                </strong>
+                                <small>
+                                  {[entry.createdAt, ...entry.visibleMatchedMatterIds]
+                                    .filter(Boolean)
+                                    .join(" · ") || "contact-level"}
+                                </small>
+                              </span>
+                              <em className={entry.maxSeverity === "blocker" ? "risk" : undefined}>
+                                {entry.disposition} / {entry.maxSeverity}
+                              </em>
+                            </div>
+                          ))}
+                          {activeContactDossier.conflictHistory.length === 0 ? (
+                            <p className="inline-empty">No redacted conflict history.</p>
+                          ) : null}
                         </div>
 
                         <div className="section-title">

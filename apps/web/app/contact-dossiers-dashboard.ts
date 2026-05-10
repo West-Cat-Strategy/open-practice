@@ -1,5 +1,45 @@
 import type { ContactDossier } from "./types";
 
+export interface ContactDossierConflictCheckPrefill {
+  prospectiveName: string;
+  aliasesText: string;
+  identifiersText: string;
+  prospectiveRole: "client" | "opposing_party" | "third_party";
+  matterId?: string;
+}
+
+function inferProspectiveRole(
+  role: ContactDossier["matters"][number]["role"] | undefined,
+): ContactDossierConflictCheckPrefill["prospectiveRole"] {
+  if (
+    role === "client" ||
+    role === "prospective_client" ||
+    role === "notary_client" ||
+    role === "paralegal_client"
+  ) {
+    return "client";
+  }
+  if (role === "opposing_party" || role === "opposing_counsel") return "opposing_party";
+  return "third_party";
+}
+
+export function buildContactDossierConflictCheckPrefill(
+  dossier: ContactDossier,
+  preferredMatterId?: string,
+): ContactDossierConflictCheckPrefill {
+  const matterLink =
+    dossier.matters.find((matter) => matter.matterId === preferredMatterId) ?? dossier.matters[0];
+  return {
+    prospectiveName: dossier.contact.displayName,
+    aliasesText: dossier.contact.aliases.join("\n"),
+    identifiersText: dossier.contact.identifiers
+      .map((identifier) => `${identifier.type}: ${identifier.value}`)
+      .join("\n"),
+    prospectiveRole: inferProspectiveRole(matterLink?.role),
+    matterId: matterLink?.matterId,
+  };
+}
+
 export function filterContactDossiers(
   dossiers: ContactDossier[],
   search: string,
@@ -25,6 +65,12 @@ export function filterContactDossiers(
         signal.matchedValue ?? "",
         signal.sourceRecordId ?? "",
         signal.changedAt ?? "",
+      ]),
+      ...dossier.conflictHistory.flatMap((entry) => [
+        entry.id,
+        entry.disposition,
+        entry.maxSeverity,
+        ...entry.visibleMatchedMatterIds,
       ]),
     ];
     return tokens.some((token) => token.toLowerCase().includes(query));

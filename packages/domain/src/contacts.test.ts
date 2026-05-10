@@ -63,6 +63,64 @@ describe("contact dossiers", () => {
     });
   });
 
+  it("adds redacted conflict-check history for visible matched matters", () => {
+    const dossiers = buildContactDossiers({
+      firmId: "firm-west-legal",
+      contacts: sampleContacts,
+      matters: sampleMatters.filter((matter) => matter.id === "matter-001"),
+      matterParties: sampleMatterParties,
+      portalGrants: [],
+      conflictChecks: [
+        {
+          id: "conflict-check-visible",
+          firmId: "firm-west-legal",
+          requestedByUserId: "user-licensee",
+          prospectiveName: "River City Rentals",
+          querySnapshot: {
+            prospectiveName: "River City Rentals",
+            aliases: [],
+            identifiers: [],
+            includeClosedMatters: true,
+          },
+          resultSnapshot: [
+            {
+              contactId: "contact-river",
+              matterId: "matter-001",
+              severity: "blocker",
+              reason: "Prospective party matches an adverse party",
+              matchedValue: "river city rentals",
+            },
+            {
+              contactId: "contact-northstar",
+              matterId: "matter-002",
+              severity: "review",
+              reason: "Name or alias match",
+              matchedValue: "north star holdings",
+            },
+          ],
+          disposition: "pending_review",
+          createdAt: "2026-05-10T12:00:00.000Z",
+        },
+      ],
+    });
+
+    const river = dossiers.find((dossier) => dossier.contact.id === "contact-river")!;
+    expect(river.conflictHistory).toEqual([
+      {
+        id: "conflict-check-visible",
+        createdAt: "2026-05-10T12:00:00.000Z",
+        disposition: "pending_review",
+        matchedContactId: "contact-river",
+        visibleMatchedMatterIds: ["matter-001"],
+        matchCount: 1,
+        maxSeverity: "blocker",
+      },
+    ]);
+    expect(JSON.stringify(river.conflictHistory)).not.toContain("River City Rentals");
+    expect(JSON.stringify(river.conflictHistory)).not.toContain("river city rentals");
+    expect(JSON.stringify(dossiers)).not.toContain("matter-002");
+  });
+
   it("adds duplicate, protected-party, and contact-change revalidation quality signals", () => {
     const dossiers = buildContactDossiers({
       firmId: "firm-west-legal",

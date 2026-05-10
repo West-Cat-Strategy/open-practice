@@ -78,6 +78,7 @@ import {
   upsertCalendarCredential,
 } from "./calendar-dashboard";
 import {
+  buildContactDossierConflictCheckPrefill,
   contactDossierRiskClass,
   filterContactDossiers,
   summarizeContactDossier,
@@ -800,6 +801,7 @@ describe("dashboard client behavior", () => {
             },
           ],
         },
+        conflictHistory: [],
       },
       {
         contact: {
@@ -864,6 +866,17 @@ describe("dashboard client behavior", () => {
             },
           ],
         },
+        conflictHistory: [
+          {
+            id: "conflict-check-river",
+            createdAt: "2026-05-10T12:00:00.000Z",
+            disposition: "pending_review" as const,
+            matchedContactId: "contact-river",
+            visibleMatchedMatterIds: ["matter-001"],
+            matchCount: 1,
+            maxSeverity: "blocker" as const,
+          },
+        ],
       },
     ];
 
@@ -878,6 +891,20 @@ describe("dashboard client behavior", () => {
       "duplicate review / conflict recheck / adverse",
     );
     expect(contactDossierRiskClass(dossiers[1]!)).toBe("risk");
+    expect(filterContactDossiers(dossiers, "conflict-check-river")).toEqual([dossiers[1]]);
+    expect(buildContactDossierConflictCheckPrefill(dossiers[1]!, "matter-001")).toEqual({
+      prospectiveName: "River City Rentals Inc.",
+      aliasesText: "",
+      identifiersText: "",
+      prospectiveRole: "opposing_party",
+      matterId: "matter-001",
+    });
+    expect(buildContactDossierConflictCheckPrefill(dossiers[0]!, "matter-001")).toMatchObject({
+      prospectiveName: "Ada Morgan",
+      aliasesText: "Ada M. Nguyen",
+      identifiersText: "email: ada@example.test",
+      prospectiveRole: "client",
+    });
   });
 
   it("filters matters by API-backed matter fields", () => {
