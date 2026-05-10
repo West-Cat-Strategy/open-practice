@@ -759,6 +759,19 @@ export interface QueuesResponse {
   sections: QueueSection[];
 }
 
+export interface OperationalViewsResponse {
+  generatedAt?: string;
+  views: Array<{
+    definition: {
+      key: string;
+      label: string;
+      defaultPriority?: "high" | "medium" | "low" | string;
+    };
+    resultCount: number;
+    results?: unknown[];
+  }>;
+}
+
 export type WorkerRunQueueFilter = "all" | "email" | "ocr";
 
 export interface WorkerQueueStatus {

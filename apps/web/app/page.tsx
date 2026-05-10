@@ -75,6 +75,7 @@ import type {
   LegalClinicProfilesResponse,
   LegalClinicProgramsResponse,
   MatterSummary,
+  OperationalViewsResponse,
   PracticeOverview,
   ProvidersStatusResponse,
   QueuesResponse,
@@ -309,6 +310,12 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     headers,
     emptyProvidersStatusResponse("access_denied"),
   );
+  const operationalViews = await apiGetOptional<OperationalViewsResponse>(
+    "/api/operational-views",
+    { views: [] },
+    headers,
+    { views: [] },
+  );
   const billing = await apiGetOptional<BillingDashboardResponse>(
     "/api/billing/dashboard",
     billingFallback,
@@ -518,6 +525,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       legalClinic={legalClinic}
       matters={matters}
       overview={overview}
+      operationalViews={operationalViews}
       providerStatus={providerStatus}
       queues={queues}
       session={session}
