@@ -137,7 +137,8 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/shares?matterId=`                                                       | Persisted share-link listing with matter-scoped authorization and no token hashes in the response.                                                                                      |
 | `POST /api/shares`                                                                | Creates an expiring token-hashed share link, returns the raw token once, and can queue one confirmed token email.                                                                       |
 | `POST /api/shares/:id/revoke`                                                     | Revokes an existing matter-scoped share link and records audit evidence.                                                                                                                |
-| `GET /api/portal/shares/:token`                                                   | Public token-scoped read of eligible shared document metadata with access logging.                                                                                                      |
+| `GET /api/portal/shares/:token`                                                   | Public token-scoped read of eligible shared document metadata with access logging; verification-required links return an email-verification challenge.                                  |
+| `POST /api/portal/shares/:token/email-verification`                               | Completes the first email-delivered share-link verification step, then returns eligible shared document metadata while preserving token-hash storage and access-log evidence.           |
 | `GET /api/external-uploads/status`                                                | External upload capability status, token-signing signal, and S3 configuration signal.                                                                                                   |
 | `GET /api/external-uploads?matterId=`                                             | Persisted external-upload link listing plus external-upload document review state with matter-scoped authorization and no token hashes.                                                 |
 | `POST /api/external-uploads`                                                      | Creates an expiring token-hashed upload link, returns the raw token once, and can queue one confirmed token email.                                                                      |
@@ -271,8 +272,12 @@ provided and SMTP is configured, the create flow queues one outbox email while t
 still available. List and revoke responses never expose token hashes. Public share reads resolve the
 supplied token to its hash, reject missing, revoked, expired, or email-verification-required links,
 filter documents through the same upload/checksum/scan/legal-hold/supersession gates as portal
-grants, and record access-log outcomes for granted and denied reads. Upload, message, signature,
-and email-verification share flows remain future scoped until those public flows are implemented.
+grants, and record access-log outcomes for granted and denied reads. Email-verification-required
+share links can complete the first email-delivered verification step through
+`POST /api/portal/shares/:token/email-verification`; that endpoint resolves the same token hash,
+reuses revoked/expired/document eligibility checks, returns only public share/document metadata, and
+records granted access with `emailVerification=completed`. Upload, message, and signature share
+flows remain future scoped until those public flows are implemented.
 
 External upload links store only HMAC token hashes. Authenticated creation requires matter-scoped
 `external_upload:create` access, configured token signing, configured S3 upload signing, a future

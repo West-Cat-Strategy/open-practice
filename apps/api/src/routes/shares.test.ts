@@ -432,6 +432,7 @@ describe("share routes", () => {
 
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({
+      code: "EMAIL_VERIFICATION_REQUIRED",
       message: "Email verification is required for this share link",
     });
     await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
@@ -442,6 +443,74 @@ describe("share routes", () => {
           resourceId: created.json().share.id,
           action: "view",
           metadata: { outcome: "email_verification_required" },
+        }),
+      ]),
+    );
+  });
+
+  it("completes email verification for a public share without exposing token hashes", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await addShareableDocument(repository);
+    const authedServer = testServer({ repository });
+    const created = await authedServer.inject({
+      method: "POST",
+      url: "/api/shares",
+      payload: {
+        matterId: "matter-001",
+        permissions: ["view_documents"],
+        requireEmailVerification: true,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+
+    const publicServer = testServer({ repository, withAuthHook: false });
+    await publicServer.inject({
+      method: "GET",
+      url: `/api/portal/shares/${created.json().token}`,
+    });
+    const verified = await publicServer.inject({
+      method: "POST",
+      url: `/api/portal/shares/${created.json().token}/email-verification`,
+      headers: { "user-agent": "share-verification-test" },
+    });
+
+    expect(verified.statusCode).toBe(200);
+    expect(verified.json()).toMatchObject({
+      share: {
+        id: created.json().share.id,
+        permissions: ["view_documents"],
+        requireEmailVerification: true,
+      },
+      documents: [
+        {
+          id: "doc-shareable-001",
+          title: "Client disclosure.pdf",
+        },
+      ],
+    });
+    expect(verified.json().share).not.toHaveProperty("tokenHash");
+    expect(verified.json().share).not.toHaveProperty("matterId");
+    expect(verified.json().documents[0]).not.toHaveProperty("storageKey");
+
+    await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          shareLinkId: created.json().share.id,
+          resourceType: "share_link",
+          resourceId: created.json().share.id,
+          action: "view",
+          metadata: { outcome: "email_verification_required" },
+        }),
+        expect.objectContaining({
+          shareLinkId: created.json().share.id,
+          resourceType: "share_link",
+          resourceId: created.json().share.id,
+          action: "view",
+          metadata: {
+            outcome: "granted",
+            emailVerification: "completed",
+            documentCount: 1,
+          },
         }),
       ]),
     );
