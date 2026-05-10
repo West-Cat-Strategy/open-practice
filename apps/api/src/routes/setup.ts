@@ -16,29 +16,35 @@ const setupBodySchema = z.object({
     .default([]),
   firm: z.object({
     name: z.string().trim().min(1),
-    defaultProvince: provinceSchema,
+    defaultProvince: provinceSchema.default("BC"),
   }),
-  businessAddress: z.object({
-    line1: z.string().trim().min(1),
-    line2: z.string().trim().optional(),
-    city: z.string().trim().min(1),
-    province: provinceSchema,
-    postalCode: z.string().trim().min(1),
-    country: z.string().trim().min(1).default("Canada"),
-  }),
-  office: z.object({
-    email: z.string().trim().email(),
-    phone: z.string().trim().min(1),
-  }),
-  settings: z.object({
-    practiceAreas: z.array(z.string().trim().min(1)).min(1),
-    invoicePrefix: z.string().trim().min(1).max(16),
-    defaultPaymentTermsDays: z.number().int().positive().max(365),
-    trustAccountLabel: z.string().trim().min(1),
-    website: z.string().trim().url().optional().or(z.literal("")),
-    description: z.string().trim().optional(),
-    businessNumber: z.string().trim().optional(),
-  }),
+  businessAddress: z
+    .object({
+      line1: z.string().trim().min(1),
+      line2: z.string().trim().optional(),
+      city: z.string().trim().min(1),
+      province: provinceSchema,
+      postalCode: z.string().trim().min(1),
+      country: z.string().trim().min(1).default("Canada"),
+    })
+    .optional(),
+  office: z
+    .object({
+      email: z.string().trim().email(),
+      phone: z.string().trim().min(1),
+    })
+    .optional(),
+  settings: z
+    .object({
+      practiceAreas: z.array(z.string().trim().min(1)).min(1).optional(),
+      invoicePrefix: z.string().trim().min(1).max(16).optional(),
+      defaultPaymentTermsDays: z.number().int().positive().max(365).optional(),
+      trustAccountLabel: z.string().trim().min(1).optional(),
+      website: z.string().trim().url().optional().or(z.literal("")),
+      description: z.string().trim().optional(),
+      businessNumber: z.string().trim().optional(),
+    })
+    .optional(),
   compliance: z.object({
     trustFundsCaveatAccepted: z.literal(true),
   }),
@@ -162,6 +168,15 @@ function firmId(name: string): string {
   return `firm-${slug}-${randomUUID().slice(0, 8)}`;
 }
 
+function invoicePrefixFromFirmName(name: string): string {
+  const prefix = name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "")
+    .slice(0, 16);
+  return prefix || "OP";
+}
+
 const SETUP_RATE_LIMIT = { max: 5, timeWindow: "15 minutes" };
 const SETUP_WEBAUTHN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
@@ -252,6 +267,23 @@ export function registerSetupRoutes(
       const nowIso = now.toISOString();
       const newFirmId = firmId(body.firm.name);
       const ownerId = id("user");
+      const businessAddress = body.businessAddress ?? {
+        line1: "",
+        city: "",
+        province: body.firm.defaultProvince,
+        postalCode: "",
+        country: "Canada",
+      };
+      const office = body.office ?? { email: body.owner.email, phone: "" };
+      const firmSettings = {
+        practiceAreas: body.settings?.practiceAreas ?? ["General practice"],
+        invoicePrefix: body.settings?.invoicePrefix ?? invoicePrefixFromFirmName(body.firm.name),
+        defaultPaymentTermsDays: body.settings?.defaultPaymentTermsDays ?? 30,
+        trustAccountLabel: body.settings?.trustAccountLabel ?? "Trust account",
+        website: body.settings?.website || undefined,
+        description: body.settings?.description || undefined,
+        businessNumber: body.settings?.businessNumber || undefined,
+      };
       const firstMatterId = body.firstMatter ? id("matter") : undefined;
       const firstContactId = body.firstMatter ? id("contact") : undefined;
       const firstMatterPartyId = body.firstMatter ? id("party") : undefined;
@@ -361,16 +393,16 @@ export function registerSetupRoutes(
           },
           settings: {
             firmId: newFirmId,
-            businessAddress: body.businessAddress,
-            officeEmail: body.office.email,
-            officePhone: body.office.phone,
-            practiceAreas: body.settings.practiceAreas,
-            invoicePrefix: body.settings.invoicePrefix,
-            defaultPaymentTermsDays: body.settings.defaultPaymentTermsDays,
-            trustAccountLabel: body.settings.trustAccountLabel,
-            website: body.settings.website || undefined,
-            description: body.settings.description || undefined,
-            businessNumber: body.settings.businessNumber || undefined,
+            businessAddress,
+            officeEmail: office.email,
+            officePhone: office.phone,
+            practiceAreas: firmSettings.practiceAreas,
+            invoicePrefix: firmSettings.invoicePrefix,
+            defaultPaymentTermsDays: firmSettings.defaultPaymentTermsDays,
+            trustAccountLabel: firmSettings.trustAccountLabel,
+            website: firmSettings.website,
+            description: firmSettings.description,
+            businessNumber: firmSettings.businessNumber,
             trustFundsCaveatAcceptedAt: nowIso,
             trustFundsCaveatAcceptedByUserId: ownerId,
             createdAt: nowIso,
@@ -393,7 +425,7 @@ export function registerSetupRoutes(
             resourceId: newFirmId,
             occurredAt: nowIso,
             metadata: {
-              practiceAreas: body.settings.practiceAreas,
+              practiceAreas: firmSettings.practiceAreas,
               firstMatterCreated: Boolean(firstMatter),
               selectedPresetIds: body.selectedPresetIds,
             },

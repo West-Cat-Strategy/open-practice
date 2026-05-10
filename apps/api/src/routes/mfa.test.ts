@@ -126,6 +126,9 @@ describe("MFA and Recovery Flows", () => {
     expect(genCodes.statusCode).toBe(200);
     const codes = genCodes.json().codes;
     expect(codes).toHaveLength(10);
+    const storedCodes = await repository.listRecoveryCodes(firmId, userId);
+    expect(storedCodes).toHaveLength(10);
+    expect(storedCodes.every((code) => !code.codeHash.startsWith("pbkdf2:"))).toBe(true);
 
     // 5. Login again (MFA now enabled)
     const login2 = await server.inject({

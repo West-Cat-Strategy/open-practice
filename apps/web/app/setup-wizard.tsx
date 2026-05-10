@@ -1,28 +1,25 @@
 "use client";
 
 import {
+  AlertCircle,
   Building2,
   CheckCircle2,
-  FileText,
-  Gavel,
-  ShieldCheck,
-  UserRound,
-  Fingerprint,
-  ChevronRight,
   ChevronLeft,
-  Loader2,
-  AlertCircle,
+  ChevronRight,
+  Fingerprint,
   KeyRound,
   ListChecks,
+  Loader2,
+  ShieldCheck,
+  UserRound,
 } from "lucide-react";
+import type { ComponentType } from "react";
 import { useMemo, useState } from "react";
 import { startRegistration } from "@simplewebauthn/browser";
 import {
-  applyPracticeSetupPreset,
-  practiceSetupPresets,
   trimmedSetupKey,
+  updateSetupWizardState,
   validateSetupWizardState,
-  type SetupPracticePreset,
   type SetupWizardState,
 } from "./setup-wizard-utils";
 
@@ -31,101 +28,43 @@ interface SetupWizardProps {
   setupKeyRequired: boolean;
 }
 
-const provinces = ["BC", "ON", "CANADA", "OTHER"] as const;
-
 const initialState: SetupWizardState = {
   firmName: "",
-  defaultProvince: "BC",
-  addressLine1: "",
-  addressLine2: "",
-  city: "",
-  addressProvince: "BC",
-  postalCode: "",
-  country: "Canada",
-  officeEmail: "",
-  officePhone: "",
-  practiceAreasText: "",
-  invoicePrefix: "",
-  defaultPaymentTermsDays: "30",
-  trustAccountLabel: "",
-  trustFundsCaveatAccepted: false,
   ownerName: "",
   ownerEmail: "",
   ownerPassword: "",
   ownerPasswordConfirmation: "",
-  website: "",
-  description: "",
-  businessNumber: "",
-  practitionerRegulator: "",
-  practitionerLicenseStatus: "",
-  practitionerJurisdictionsText: "",
   setupKey: "",
-  createFirstMatter: false,
-  clientKind: "person",
-  clientName: "",
-  clientEmail: "",
-  clientPhone: "",
-  matterTitle: "",
-  matterPracticeArea: "",
-  matterJurisdiction: "BC",
-  selectedPresetIds: [],
+  trustFundsCaveatAccepted: false,
 };
 
 const steps = [
   {
-    label: "Firm",
-    summary: "Practice identity, address, and public contact records.",
+    label: "Workspace",
+    summary: "Name the practice workspace that will be created.",
     icon: Building2,
   },
   {
-    label: "Compliance",
-    summary: "Practice areas, billing defaults, and trust/funds acknowledgement.",
-    icon: ShieldCheck,
-  },
-  {
     label: "Owner",
-    summary: "Owner-admin credentials, practitioner profile, and optional passkey.",
+    summary: "Create the first owner-admin account and backup password.",
     icon: UserRound,
   },
   {
-    label: "First Matter",
-    summary: "Optional starter client and matter shell for immediate workspace proof.",
-    icon: Gavel,
+    label: "Security",
+    summary: "Add a recommended passkey and confirm the operational funds boundary.",
+    icon: ShieldCheck,
   },
   {
     label: "Review",
-    summary: "Final initialization checks before creating records.",
-    icon: FileText,
+    summary: "Confirm the minimal bootstrap details before creating the workspace.",
+    icon: ListChecks,
   },
 ];
 
-const presetControlledFields = new Set<keyof SetupWizardState>([
-  "practiceAreasText",
-  "practitionerJurisdictionsText",
-  "matterTitle",
-  "matterPracticeArea",
-  "matterJurisdiction",
-]);
-
 const stepErrorMatchers = [
-  [
-    "Firm name",
-    "Business address",
-    "Business city",
-    "Business postal code",
-    "Office email",
-    "Office phone",
-    "Website",
-  ],
-  [
-    "At least one practice area",
-    "Invoice prefix",
-    "Default payment terms",
-    "Trust account",
-    "Trust/funds",
-  ],
-  ["Owner", "Practitioner", "Setup key"],
-  ["First client", "First matter"],
+  ["Workspace name"],
+  ["Owner", "Backup password", "Setup key"],
+  ["Trust/funds"],
   [],
 ];
 
@@ -143,7 +82,6 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
   const [state, setState] = useState<SetupWizardState>(initialState);
   const [step, setStep] = useState(0);
   const [status, setStatus] = useState("");
-  const [selectedPresetId, setSelectedPresetId] = useState("custom");
   const [submitting, setSubmitting] = useState(false);
   const validation = useMemo(
     () => validateSetupWizardState(state, setupKeyRequired),
@@ -158,58 +96,24 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
   const unresolvedStepCount = stepErrors.filter((errors) => errors.length > 0).length;
   const ownerEmailError = fieldError(validation.errors, ["Owner email"]);
   const fieldErrors = {
-    firmName: fieldError(validation.errors, ["Firm name"]),
-    addressLine1: fieldError(validation.errors, ["Business address"]),
-    city: fieldError(validation.errors, ["Business city"]),
-    postalCode: fieldError(validation.errors, ["Business postal code"]),
-    officeEmail: fieldError(validation.errors, ["Office email"]),
-    officePhone: fieldError(validation.errors, ["Office phone"]),
-    website: fieldError(validation.errors, ["Website"]),
-    practiceAreas: fieldError(validation.errors, ["At least one practice area"]),
-    invoicePrefix: fieldError(validation.errors, ["Invoice prefix"]),
-    paymentTerms: fieldError(validation.errors, ["Default payment terms"]),
-    trustAccountLabel: fieldError(validation.errors, ["Trust account"]),
-    trustFunds: fieldError(validation.errors, ["Trust/funds"]),
+    firmName: fieldError(validation.errors, ["Workspace name"]),
     ownerName: fieldError(validation.errors, ["Owner name"]),
     ownerEmail: ownerEmailError,
-    ownerPassword: fieldError(validation.errors, ["Owner password must"]),
-    ownerPasswordConfirmation: fieldError(validation.errors, ["Owner password confirmation"]),
-    practitionerRegulator: fieldError(validation.errors, ["Practitioner regulator"]),
-    practitionerLicenseStatus: fieldError(validation.errors, ["Practitioner license status"]),
-    practitionerJurisdictions: fieldError(validation.errors, ["practitioner jurisdiction"]),
+    ownerPassword: fieldError(validation.errors, ["Backup password must"]),
+    ownerPasswordConfirmation: fieldError(validation.errors, ["Backup password confirmation"]),
     setupKey: fieldError(validation.errors, ["Setup key"]),
-    clientName: fieldError(validation.errors, ["First client name"]),
-    clientEmail: fieldError(validation.errors, ["First client email"]),
-    matterTitle: fieldError(validation.errors, ["First matter title"]),
-    matterPracticeArea: fieldError(validation.errors, ["First matter practice area"]),
+    trustFunds: fieldError(validation.errors, ["Trust/funds"]),
   };
 
   function update<K extends keyof SetupWizardState>(key: K, value: SetupWizardState[K]) {
-    if (presetControlledFields.has(key)) {
-      setSelectedPresetId("custom");
-      setState((current) => ({ ...current, [key]: value, selectedPresetIds: [] }));
-      return;
-    }
-    setState((current) => ({ ...current, [key]: value }));
-  }
-
-  function selectPreset(preset: SetupPracticePreset) {
-    setSelectedPresetId(preset.id);
-    setState((current) => applyPracticeSetupPreset(current, preset));
-    setStatus(`${preset.label} preset applied. You can edit every field before setup.`);
-  }
-
-  function selectCustomPreset() {
-    setSelectedPresetId("custom");
-    setState((current) => ({ ...current, selectedPresetIds: [] }));
-    setStatus("Manual setup selected. Existing field values are unchanged.");
+    setState((current) => updateSetupWizardState(current, key, value));
   }
 
   async function registerPasskey() {
     const setupKey = trimmedSetupKey(state);
     const ownerEmail = state.ownerEmail.trim();
     if (!ownerEmail) {
-      setStatus("Please enter your email first.");
+      setStatus("Enter the owner email before registering a passkey.");
       return;
     }
     if (ownerEmailError) {
@@ -271,32 +175,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
           ...(setupKeyRequired ? { "x-open-practice-setup-key": setupKey } : {}),
         },
         body: JSON.stringify({
-          selectedPresetIds: state.selectedPresetIds,
-          firm: {
-            name: state.firmName.trim(),
-            defaultProvince: state.defaultProvince,
-          },
-          businessAddress: {
-            line1: state.addressLine1.trim(),
-            line2: state.addressLine2.trim() || undefined,
-            city: state.city.trim(),
-            province: state.addressProvince,
-            postalCode: state.postalCode.trim(),
-            country: state.country.trim() || "Canada",
-          },
-          office: {
-            email: state.officeEmail.trim(),
-            phone: state.officePhone.trim(),
-          },
-          settings: {
-            practiceAreas: nextValidation.practiceAreas,
-            invoicePrefix: state.invoicePrefix.trim(),
-            defaultPaymentTermsDays: Number(state.defaultPaymentTermsDays),
-            trustAccountLabel: state.trustAccountLabel.trim(),
-            website: state.website.trim() || undefined,
-            description: state.description.trim() || undefined,
-            businessNumber: state.businessNumber.trim() || undefined,
-          },
+          firm: { name: state.firmName.trim() },
           compliance: {
             trustFundsCaveatAccepted: state.trustFundsCaveatAccepted,
           },
@@ -305,25 +184,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
             email: state.ownerEmail.trim(),
             password: state.ownerPassword,
             webAuthn: state.webAuthnCredential,
-            practitionerProfile: {
-              regulator: state.practitionerRegulator.trim(),
-              licenseStatus: state.practitionerLicenseStatus.trim(),
-              jurisdictions: nextValidation.jurisdictions,
-            },
           },
-          firstMatter: state.createFirstMatter
-            ? {
-                client: {
-                  kind: state.clientKind,
-                  displayName: state.clientName.trim(),
-                  email: state.clientEmail.trim() || undefined,
-                  phone: state.clientPhone.trim() || undefined,
-                },
-                title: state.matterTitle.trim(),
-                practiceArea: state.matterPracticeArea.trim(),
-                jurisdiction: state.matterJurisdiction,
-              }
-            : undefined,
         }),
       });
 
@@ -415,7 +276,9 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
               <ActiveIcon size={28} />
             </div>
             <div>
-              <p className="eyebrow">Step {step + 1} of 5</p>
+              <p className="eyebrow">
+                Step {step + 1} of {steps.length}
+              </p>
               <h1 id="setup-title">{steps[step].label}</h1>
               <p id="setup-step-summary" className="setup-step-summary">
                 {steps[step].summary}
@@ -428,189 +291,39 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                         currentStepErrors.length === 1 ? "" : "s"
                       }`}
                 </span>
-                <span>{state.selectedPresetIds.length ? "Preset applied" : "Manual fields"}</span>
+                <span>{state.webAuthnCredential ? "Passkey ready" : "Password fallback"}</span>
               </div>
             </div>
           </header>
 
           <div className="setup-content-area">
             {step === 0 && (
-              <section className="setup-step-pane firm-step-pane" aria-label="Firm profile">
-                <PracticePresetChooser
-                  selectedPresetId={selectedPresetId}
-                  onSelectPreset={selectPreset}
-                  onSelectCustom={selectCustomPreset}
+              <section className="setup-grid setup-step-pane" aria-label="Workspace setup">
+                <TextField
+                  className="wide"
+                  label="Workspace name"
+                  placeholder="e.g. North Shore Law"
+                  value={state.firmName}
+                  onChange={(value) => update("firmName", value)}
+                  hint="Detailed practice settings can be completed after setup."
+                  error={fieldErrors.firmName}
                 />
-                <div className="setup-grid">
-                  <TextField
-                    label="Firm name"
-                    placeholder="e.g. West Coast Legal"
-                    value={state.firmName}
-                    onChange={(value) => update("firmName", value)}
-                    error={fieldErrors.firmName}
-                  />
-                  <SelectField
-                    label="Default province"
-                    value={state.defaultProvince}
-                    onChange={(value) => update("defaultProvince", value)}
-                  />
-                  <TextField
-                    className="wide"
-                    label="Business address"
-                    placeholder="123 Practice Lane"
-                    value={state.addressLine1}
-                    onChange={(value) => update("addressLine1", value)}
-                    error={fieldErrors.addressLine1}
-                  />
-                  <TextField
-                    label="Address line 2"
-                    placeholder="Suite 400"
-                    value={state.addressLine2}
-                    onChange={(value) => update("addressLine2", value)}
-                  />
-                  <TextField
-                    label="City"
-                    value={state.city}
-                    onChange={(value) => update("city", value)}
-                    error={fieldErrors.city}
-                  />
-                  <SelectField
-                    label="Address province"
-                    value={state.addressProvince}
-                    onChange={(value) => update("addressProvince", value)}
-                  />
-                  <TextField
-                    label="Postal code"
-                    value={state.postalCode}
-                    onChange={(value) => update("postalCode", value)}
-                    error={fieldErrors.postalCode}
-                  />
-                  <TextField
-                    label="Country"
-                    value={state.country}
-                    onChange={(value) => update("country", value)}
-                  />
-                  <TextField
-                    label="Office email"
-                    type="email"
-                    value={state.officeEmail}
-                    onChange={(value) => update("officeEmail", value)}
-                    error={fieldErrors.officeEmail}
-                  />
-                  <TextField
-                    label="Office phone"
-                    value={state.officePhone}
-                    onChange={(value) => update("officePhone", value)}
-                    error={fieldErrors.officePhone}
-                  />
-                  <TextField
-                    label="Website"
-                    placeholder="https://example.com"
-                    value={state.website}
-                    onChange={(value) => update("website", value)}
-                    hint="Optional http(s) URL."
-                    error={fieldErrors.website}
-                  />
-                  <TextField
-                    label="Business number"
-                    placeholder="BN-123456789"
-                    value={state.businessNumber}
-                    onChange={(value) => update("businessNumber", value)}
-                  />
-                  <label className="form-field wide">
-                    <span>Practice description</span>
-                    <textarea
-                      placeholder="Short summary of your practice..."
-                      onChange={(event) => update("description", event.target.value)}
-                      rows={3}
-                      value={state.description}
-                    />
-                  </label>
-                </div>
               </section>
             )}
 
             {step === 1 && (
-              <section
-                className="setup-grid setup-step-pane compliance-step-pane"
-                aria-label="Compliance settings"
-              >
-                <label
-                  className={`form-field wide ${fieldErrors.practiceAreas ? "has-error" : ""}`}
-                >
-                  <span>Practice areas</span>
-                  <textarea
-                    placeholder="Enter practice areas separated by commas or new lines..."
-                    onChange={(event) => update("practiceAreasText", event.target.value)}
-                    rows={5}
-                    value={state.practiceAreasText}
-                    aria-invalid={Boolean(fieldErrors.practiceAreas)}
-                  />
-                  <FieldMessage
-                    hint="Separate multiple areas with commas or new lines."
-                    error={fieldErrors.practiceAreas}
-                  />
-                </label>
+              <section className="setup-grid setup-step-pane" aria-label="Initial owner account">
                 <TextField
-                  label="Invoice prefix"
-                  placeholder="OP-"
-                  value={state.invoicePrefix}
-                  onChange={(value) => update("invoicePrefix", value)}
-                  hint="Maximum 16 characters."
-                  error={fieldErrors.invoicePrefix}
-                />
-                <TextField
-                  label="Payment terms days"
-                  type="number"
-                  value={state.defaultPaymentTermsDays}
-                  onChange={(value) => update("defaultPaymentTermsDays", value)}
-                  hint="Whole days from 1 to 365."
-                  error={fieldErrors.paymentTerms}
-                />
-                <TextField
-                  className="wide"
-                  label="Trust account label"
-                  placeholder="General Trust Account"
-                  value={state.trustAccountLabel}
-                  onChange={(value) => update("trustAccountLabel", value)}
-                  error={fieldErrors.trustAccountLabel}
-                />
-                <label
-                  className={`check-row wide glass-card ${fieldErrors.trustFunds ? "has-error" : ""}`}
-                >
-                  <input
-                    checked={state.trustFundsCaveatAccepted}
-                    onChange={(event) => update("trustFundsCaveatAccepted", event.target.checked)}
-                    type="checkbox"
-                    aria-invalid={Boolean(fieldErrors.trustFunds)}
-                  />
-                  <span>
-                    I acknowledge that trust/funds workflows are operational records and not
-                    jurisdiction-certified compliance advice.
-                  </span>
-                  {fieldErrors.trustFunds ? (
-                    <em className="field-error">{fieldErrors.trustFunds}</em>
-                  ) : null}
-                </label>
-              </section>
-            )}
-
-            {step === 2 && (
-              <section
-                className="setup-grid setup-step-pane owner-step-pane"
-                aria-label="Owner account"
-              >
-                <TextField
-                  label="Full name"
-                  placeholder="John Doe"
+                  label="Owner name"
+                  placeholder="Avery Owner"
                   value={state.ownerName}
                   onChange={(value) => update("ownerName", value)}
                   error={fieldErrors.ownerName}
                 />
                 <TextField
-                  label="Email address"
+                  label="Owner email"
                   type="email"
-                  placeholder="john@example.com"
+                  placeholder="avery@example.test"
                   value={state.ownerEmail}
                   onChange={(value) => update("ownerEmail", value)}
                   error={fieldErrors.ownerEmail}
@@ -626,7 +339,26 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     error={fieldErrors.setupKey}
                   />
                 )}
+                <TextField
+                  label="Backup password"
+                  type="password"
+                  value={state.ownerPassword}
+                  onChange={(value) => update("ownerPassword", value)}
+                  hint="Minimum 8 characters."
+                  error={fieldErrors.ownerPassword}
+                />
+                <TextField
+                  label="Confirm password"
+                  type="password"
+                  value={state.ownerPasswordConfirmation}
+                  onChange={(value) => update("ownerPasswordConfirmation", value)}
+                  error={fieldErrors.ownerPasswordConfirmation}
+                />
+              </section>
+            )}
 
+            {step === 2 && (
+              <section className="setup-grid setup-step-pane" aria-label="Security setup">
                 <div
                   className={`passkey-section passkey-card wide ${
                     state.webAuthnCredential ? "verified" : ""
@@ -637,7 +369,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     <div>
                       <strong>{state.webAuthnCredential ? "Passkey registered" : "Passkey"}</strong>
                       <p id="passkey-hint">
-                        Optional biometric sign-in. Password setup remains available.
+                        Recommended for the initial owner. The backup password remains available.
                       </p>
                     </div>
                   </div>
@@ -662,130 +394,27 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     </span>
                   </button>
                 </div>
-
-                <TextField
-                  label="Regulator"
-                  placeholder="e.g. Law Society of BC"
-                  value={state.practitionerRegulator}
-                  onChange={(value) => update("practitionerRegulator", value)}
-                  error={fieldErrors.practitionerRegulator}
-                />
-                <TextField
-                  label="License status"
-                  placeholder="e.g. Active Practicing"
-                  value={state.practitionerLicenseStatus}
-                  onChange={(value) => update("practitionerLicenseStatus", value)}
-                  error={fieldErrors.practitionerLicenseStatus}
-                />
                 <label
-                  className={`form-field wide ${
-                    fieldErrors.practitionerJurisdictions ? "has-error" : ""
-                  }`}
+                  className={`check-row wide glass-card ${fieldErrors.trustFunds ? "has-error" : ""}`}
                 >
-                  <span>Practitioner jurisdictions</span>
-                  <textarea
-                    placeholder="Enter jurisdictions separated by commas or new lines..."
-                    onChange={(event) =>
-                      update("practitionerJurisdictionsText", event.target.value)
-                    }
-                    rows={3}
-                    value={state.practitionerJurisdictionsText}
-                    aria-invalid={Boolean(fieldErrors.practitionerJurisdictions)}
+                  <input
+                    checked={state.trustFundsCaveatAccepted}
+                    onChange={(event) => update("trustFundsCaveatAccepted", event.target.checked)}
+                    type="checkbox"
+                    aria-invalid={Boolean(fieldErrors.trustFunds)}
                   />
-                  <FieldMessage
-                    hint="Separate multiple jurisdictions with commas or new lines."
-                    error={fieldErrors.practitionerJurisdictions}
-                  />
+                  <span>
+                    I acknowledge that trust/funds workflows are operational records and not
+                    jurisdiction-certified compliance advice.
+                  </span>
+                  {fieldErrors.trustFunds ? (
+                    <em className="field-error">{fieldErrors.trustFunds}</em>
+                  ) : null}
                 </label>
-
-                <TextField
-                  label="Backup password"
-                  type="password"
-                  value={state.ownerPassword}
-                  onChange={(value) => update("ownerPassword", value)}
-                  hint="Minimum 8 characters."
-                  error={fieldErrors.ownerPassword}
-                />
-                <TextField
-                  label="Confirm password"
-                  type="password"
-                  value={state.ownerPasswordConfirmation}
-                  onChange={(value) => update("ownerPasswordConfirmation", value)}
-                  error={fieldErrors.ownerPasswordConfirmation}
-                />
               </section>
             )}
 
             {step === 3 && (
-              <section
-                className="setup-grid setup-step-pane matter-step-pane"
-                aria-label="Initial matter"
-              >
-                <label className="check-row wide glass-card highlight">
-                  <input
-                    checked={state.createFirstMatter}
-                    onChange={(event) => update("createFirstMatter", event.target.checked)}
-                    type="checkbox"
-                  />
-                  <span>Create an initial client and matter shell</span>
-                </label>
-                {state.createFirstMatter && (
-                  <div className="setup-grid wide nested-grid">
-                    <label className="form-field">
-                      <span>Client type</span>
-                      <select
-                        onChange={(event) =>
-                          update("clientKind", event.target.value as SetupWizardState["clientKind"])
-                        }
-                        value={state.clientKind}
-                      >
-                        <option value="person">Person</option>
-                        <option value="organization">Organization</option>
-                      </select>
-                    </label>
-                    <TextField
-                      label="Client name"
-                      value={state.clientName}
-                      onChange={(value) => update("clientName", value)}
-                      error={fieldErrors.clientName}
-                    />
-                    <TextField
-                      label="Client email"
-                      type="email"
-                      value={state.clientEmail}
-                      onChange={(value) => update("clientEmail", value)}
-                      hint="Optional."
-                      error={fieldErrors.clientEmail}
-                    />
-                    <TextField
-                      label="Client phone"
-                      value={state.clientPhone}
-                      onChange={(value) => update("clientPhone", value)}
-                    />
-                    <TextField
-                      label="Matter title"
-                      placeholder="Property Purchase - Smith"
-                      value={state.matterTitle}
-                      onChange={(value) => update("matterTitle", value)}
-                      error={fieldErrors.matterTitle}
-                    />
-                    <TextField
-                      label="Practice area"
-                      value={state.matterPracticeArea}
-                      onChange={(value) => update("matterPracticeArea", value)}
-                      error={fieldErrors.matterPracticeArea}
-                    />
-                    <SelectField
-                      label="Jurisdiction"
-                      value={state.matterJurisdiction}
-                      onChange={(value) => update("matterJurisdiction", value)}
-                    />
-                  </div>
-                )}
-              </section>
-            )}
-
-            {step === 4 && (
               <section
                 className="review-container setup-step-pane review-step-pane"
                 aria-label="Setup review"
@@ -793,15 +422,9 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                 <div className="review-grid">
                   <ReviewCard
                     icon={Building2}
-                    label="Firm"
+                    label="Workspace"
                     title={state.firmName || "Not set"}
-                    description={state.officeEmail || "Office email missing"}
-                  />
-                  <ReviewCard
-                    icon={ShieldCheck}
-                    label="Practice"
-                    title={validation.practiceAreas.join(", ") || "No areas set"}
-                    description={`${state.invoicePrefix || "No prefix"} (Prefix)`}
+                    description="Operational defaults will be created now."
                   />
                   <ReviewCard
                     icon={UserRound}
@@ -811,10 +434,14 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     meta={state.webAuthnCredential ? "Passkey enabled" : "Password only"}
                   />
                   <ReviewCard
-                    icon={Gavel}
-                    label="First Matter"
-                    title={state.createFirstMatter ? state.matterTitle || "Not set" : "Skipped"}
-                    description={state.createFirstMatter ? state.clientName : ""}
+                    icon={KeyRound}
+                    label="Setup gate"
+                    title={setupKeyRequired ? "Setup key required" : "Local/private setup"}
+                    description={
+                      setupKeyRequired
+                        ? "The key will be sent with setup and passkey requests."
+                        : "No configured setup key is required for this local environment."
+                    }
                   />
                 </div>
                 <div className="setup-review-strip" aria-label="Initialization summary">
@@ -823,14 +450,12 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     {validation.valid ? "Ready" : `${validation.errors.length} checks open`}
                   </span>
                   <span>
-                    <KeyRound size={15} aria-hidden="true" />
-                    {setupKeyRequired ? "Setup key required" : "Local setup gate"}
+                    <Fingerprint size={15} aria-hidden="true" />
+                    {state.webAuthnCredential ? "Passkey ready" : "Passkey optional"}
                   </span>
                   <span>
-                    <FileText size={15} aria-hidden="true" />
-                    {state.selectedPresetIds.length
-                      ? `${state.selectedPresetIds.length} preset selected`
-                      : "Manual template set"}
+                    <ShieldCheck size={15} aria-hidden="true" />
+                    {state.trustFundsCaveatAccepted ? "Acknowledged" : "Acknowledgement needed"}
                   </span>
                 </div>
 
@@ -849,7 +474,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     <CheckCircle2 size={24} />
                     <div>
                       <strong>Ready to initialize</strong>
-                      <p>Your practice environment will be configured immediately.</p>
+                      <p>Your workspace will be created with editable operational defaults.</p>
                     </div>
                   </div>
                 )}
@@ -907,50 +532,6 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
   );
 }
 
-function PracticePresetChooser({
-  selectedPresetId,
-  onSelectCustom,
-  onSelectPreset,
-}: {
-  selectedPresetId: string;
-  onSelectCustom: () => void;
-  onSelectPreset: (preset: SetupPracticePreset) => void;
-}) {
-  return (
-    <section className="preset-section" aria-labelledby="practice-preset-heading">
-      <div className="section-title preset-title">
-        <div>
-          <p className="eyebrow">Practice presets</p>
-          <h2 id="practice-preset-heading">Start from a practice shape</h2>
-        </div>
-        <button
-          aria-pressed={selectedPresetId === "custom"}
-          className={selectedPresetId === "custom" ? "preset-card selected" : "preset-card"}
-          onClick={onSelectCustom}
-          type="button"
-        >
-          <strong>Manual</strong>
-          <span>Keep fields custom</span>
-        </button>
-      </div>
-      <div className="preset-grid">
-        {practiceSetupPresets.map((preset) => (
-          <button
-            aria-pressed={selectedPresetId === preset.id}
-            className={selectedPresetId === preset.id ? "preset-card selected" : "preset-card"}
-            key={preset.id}
-            onClick={() => onSelectPreset(preset)}
-            type="button"
-          >
-            <strong>{preset.label}</strong>
-            <span>{preset.description}</span>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function TextField({
   label,
   onChange,
@@ -991,29 +572,6 @@ function FieldMessage({ hint, error }: { hint?: string; error?: string }) {
   return null;
 }
 
-function SelectField({
-  label,
-  onChange,
-  value,
-}: {
-  label: string;
-  onChange: (value: string) => void;
-  value: string;
-}) {
-  return (
-    <label className="form-field">
-      <span>{label}</span>
-      <select onChange={(event) => onChange(event.target.value)} value={value}>
-        {provinces.map((province) => (
-          <option key={province} value={province}>
-            {province}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 function ReviewCard({
   icon: Icon,
   label,
@@ -1021,7 +579,7 @@ function ReviewCard({
   description,
   meta,
 }: {
-  icon: React.ComponentType<{ size?: number }>;
+  icon: ComponentType<{ size?: number }>;
   label: string;
   title: string;
   description?: string;
