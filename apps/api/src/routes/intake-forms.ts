@@ -437,7 +437,17 @@ export function registerIntakeFormRoutes(
       },
       qa: {
         ...qaReport,
-        previews: qaReport.previews.map(({ answers: _answers, ...preview }) => preview),
+        previews: qaReport.previews.map((preview) => ({
+          id: preview.id,
+          label: preview.label,
+          selectedPackageIds: preview.selectedPackageIds,
+          visibleQuestionIds: preview.visibleQuestionIds,
+          visibleFormItemIds: preview.visibleFormItemIds,
+          requiredIncompleteItemIds: preview.requiredIncompleteItemIds,
+          matchedBranchRuleIds: preview.matchedBranchRuleIds,
+          eligiblePackageIds: preview.eligiblePackageIds,
+          packageDocuments: preview.packageDocuments,
+        })),
       },
     };
   });
