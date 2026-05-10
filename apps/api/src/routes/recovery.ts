@@ -3,7 +3,6 @@ import { z } from "zod";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
 import {
-  hashPassword,
   verifyPassword,
   createSessionToken,
   hashToken,
@@ -21,6 +20,7 @@ export function registerRecoveryRoutes(
   },
 ): void {
   const RECOVERY_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
+  const recoveryCodeHash = (code: string) => hashToken(`recovery-code:${code}`, options.jwtSecret!);
 
   server.post(
     "/api/auth/recovery-codes/generate",
@@ -30,6 +30,11 @@ export function registerRecoveryRoutes(
     },
     // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(RECOVERY_RATE_LIMIT) above.
     async (request) => {
+      if (!options.jwtSecret) {
+        throw Object.assign(new Error("Session authentication is not configured"), {
+          statusCode: 503,
+        });
+      }
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
 
@@ -38,7 +43,7 @@ export function registerRecoveryRoutes(
         id: crypto.randomUUID(),
         firmId: request.auth.firmId,
         userId: request.auth.user.id,
-        codeHash: hashPassword(code),
+        codeHash: recoveryCodeHash(code),
         createdAt: new Date().toISOString(),
       }));
 
@@ -77,9 +82,12 @@ export function registerRecoveryRoutes(
       if (!user) throw Object.assign(new Error("User not found"), { statusCode: 404 });
 
       const recoveryCodes = await options.repository.listRecoveryCodes(user.firmId, user.id);
-      const validCode = recoveryCodes.find(
-        (c) => !c.usedAt && verifyPassword(body.code, c.codeHash),
-      );
+      const newCodeHash = recoveryCodeHash(body.code);
+      const validCode = recoveryCodes.find((code) => {
+        if (code.usedAt) return false;
+        if (code.codeHash === newCodeHash) return true;
+        return code.codeHash.startsWith("pbkdf2:") && verifyPassword(body.code, code.codeHash);
+      });
 
       if (validCode) {
         await options.repository.useRecoveryCode(

@@ -1,54 +1,38 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyPracticeSetupPreset,
-  parsePracticeAreas,
-  practiceSetupPresets,
   selectStartupView,
   trimmedSetupKey,
+  updateSetupWizardState,
   validateSetupWizardState,
+  type SetupWebAuthnCredential,
   type SetupWizardState,
 } from "./setup-wizard-utils";
 
 function state(overrides: Partial<SetupWizardState> = {}): SetupWizardState {
   return {
     firmName: "North Shore Law",
-    defaultProvince: "BC",
-    addressLine1: "100 Main Street",
-    addressLine2: "",
-    city: "Vancouver",
-    addressProvince: "BC",
-    postalCode: "V6B 1A1",
-    country: "Canada",
-    officeEmail: "office@example.test",
-    officePhone: "604-555-0100",
-    practiceAreasText: "Residential tenancy, Notarial services",
-    invoicePrefix: "NSL",
-    defaultPaymentTermsDays: "30",
-    trustAccountLabel: "Pooled trust",
-    trustFundsCaveatAccepted: true,
     ownerName: "Avery Owner",
     ownerEmail: "avery@example.test",
     ownerPassword: "correct horse battery staple",
     ownerPasswordConfirmation: "correct horse battery staple",
     setupKey: "",
-    website: "",
-    description: "",
-    businessNumber: "",
-    practitionerRegulator: "Law Society of BC",
-    practitionerLicenseStatus: "Active",
-    practitionerJurisdictionsText: "BC",
-    createFirstMatter: false,
-    clientKind: "person",
-    clientName: "",
-    clientEmail: "",
-    clientPhone: "",
-    matterTitle: "",
-    matterPracticeArea: "",
-    matterJurisdiction: "BC",
-    selectedPresetIds: [],
+    trustFundsCaveatAccepted: true,
     ...overrides,
   };
 }
+
+const stagedCredential: SetupWebAuthnCredential = {
+  id: "credential-id",
+  rawId: "credential-id",
+  response: {
+    clientDataJSON: "client-data",
+    attestationObject: "attestation",
+    transports: ["internal"],
+  },
+  type: "public-key",
+  clientExtensionResults: {},
+  challengeHash: "registration-challenge",
+};
 
 describe("setup wizard startup and validation", () => {
   it("chooses setup, blocked, login, or dashboard from setup and auth status", () => {
@@ -74,45 +58,45 @@ describe("setup wizard startup and validation", () => {
     ).toBe("dashboard");
   });
 
-  it("requires compliance-heavy setup fields", () => {
+  it("requires only minimal workspace bootstrap fields", () => {
     const validation = validateSetupWizardState(
       state({
         firmName: "",
+        ownerName: "",
+        ownerEmail: "",
+        ownerPassword: "",
+        ownerPasswordConfirmation: "",
         trustFundsCaveatAccepted: false,
-        practiceAreasText: "",
       }),
     );
 
     expect(validation.valid).toBe(false);
     expect(validation.errors).toEqual(
       expect.arrayContaining([
-        "Firm name is required.",
+        "Workspace name is required.",
+        "Owner name is required.",
+        "Owner email is required.",
+        "Backup password must be at least 8 characters.",
+        "Trust/funds acknowledgement is required.",
+      ]),
+    );
+    expect(validation.errors).not.toEqual(
+      expect.arrayContaining([
+        "Business address line 1 is required.",
         "At least one practice area is required.",
-        "Trust/funds caveat acknowledgement is required.",
-      ]),
-    );
-  });
-
-  it("requires practitioner licensing details", () => {
-    const validation = validateSetupWizardState(
-      state({
-        practitionerRegulator: "",
-        practitionerLicenseStatus: "",
-        practitionerJurisdictionsText: "",
-      }),
-    );
-
-    expect(validation.valid).toBe(false);
-    expect(validation.errors).toEqual(
-      expect.arrayContaining([
         "Practitioner regulator is required.",
-        "Practitioner license status is required.",
-        "At least one practitioner jurisdiction is required.",
       ]),
     );
   });
 
-  it("requires a setup key when the server asks for one", () => {
+  it("keeps passkey registration recommended but optional", () => {
+    const validation = validateSetupWizardState(state());
+
+    expect(validation.valid).toBe(true);
+    expect(validation.errors).not.toContain("Passkey is required.");
+  });
+
+  it("requires a setup key only when the server asks for one", () => {
     expect(validateSetupWizardState(state(), true).errors).toContain("Setup key is required.");
     expect(validateSetupWizardState(state({ setupKey: "key" }), true).valid).toBe(true);
     expect(validateSetupWizardState(state({ setupKey: "   " }), true).errors).toContain(
@@ -121,105 +105,33 @@ describe("setup wizard startup and validation", () => {
     expect(trimmedSetupKey(state({ setupKey: "  setup-key  " }))).toBe("setup-key");
   });
 
-  it("matches API-shaped email, website, invoice, and terms validation", () => {
+  it("matches API-shaped owner email and password validation", () => {
     const validation = validateSetupWizardState(
       state({
-        officeEmail: "office",
         ownerEmail: "owner",
-        website: "example.test",
-        invoicePrefix: "NORTH-SHORE-LAW-2026",
-        defaultPaymentTermsDays: "366",
+        ownerPassword: "short",
+        ownerPasswordConfirmation: "different",
       }),
     );
 
     expect(validation.valid).toBe(false);
     expect(validation.errors).toEqual(
       expect.arrayContaining([
-        "Office email must be a valid email address.",
         "Owner email must be a valid email address.",
-        "Website must be a valid http(s) URL.",
-        "Invoice prefix must be 16 characters or fewer.",
-        "Default payment terms must be between 1 and 365 days.",
+        "Backup password must be at least 8 characters.",
+        "Backup password confirmation must match.",
       ]),
     );
   });
 
-  it("allows skipping first matter and validates it when enabled", () => {
-    expect(validateSetupWizardState(state({ createFirstMatter: false })).valid).toBe(true);
-    expect(validateSetupWizardState(state({ createFirstMatter: true })).errors).toEqual(
-      expect.arrayContaining([
-        "First client name is required.",
-        "First matter title is required.",
-        "First matter practice area is required.",
-      ]),
-    );
+  it("clears a staged passkey when the owner email changes", () => {
+    const current = state({ webAuthnCredential: stagedCredential });
+
+    expect(updateSetupWizardState(current, "ownerEmail", "avery@example.test")).toMatchObject({
+      webAuthnCredential: stagedCredential,
+    });
     expect(
-      validateSetupWizardState(
-        state({
-          createFirstMatter: true,
-          clientName: "First Client",
-          clientEmail: "not-an-email",
-          matterTitle: "First file",
-          matterPracticeArea: "Residential tenancy",
-        }),
-      ).errors,
-    ).toContain("First client email must be a valid email address.");
-    expect(
-      validateSetupWizardState(
-        state({
-          createFirstMatter: true,
-          clientName: "First Client",
-          clientEmail: "client@example.test",
-          matterTitle: "First file",
-          matterPracticeArea: "Residential tenancy",
-        }),
-      ).valid,
-    ).toBe(true);
-  });
-
-  it("applies a practice preset while keeping overridden fields valid", () => {
-    const preset = practiceSetupPresets.find(
-      (candidate) => candidate.id === "bc-residential-tenancy",
-    );
-    expect(preset).toBeDefined();
-
-    const presetState = applyPracticeSetupPreset(state(), preset!);
-    expect(parsePracticeAreas(presetState.practiceAreasText)).toEqual(["Residential tenancy"]);
-    expect(parsePracticeAreas(presetState.practitionerJurisdictionsText)).toEqual(["BC"]);
-    expect(presetState.selectedPresetIds).toEqual(["bc-residential-tenancy"]);
-    expect(presetState.createFirstMatter).toBe(false);
-    expect(presetState.matterPracticeArea).toBe("Residential tenancy");
-    expect(presetState.matterJurisdiction).toBe("BC");
-
-    const manuallyOverridden = {
-      ...presetState,
-      practiceAreasText: `${presetState.practiceAreasText}\nIndigenous law`,
-      practitionerJurisdictionsText: "BC\nCANADA",
-      createFirstMatter: true,
-      clientName: "Synthetic Client",
-      matterTitle: "Custom first file",
-      matterPracticeArea: "Indigenous law",
-    };
-
-    const validation = validateSetupWizardState(manuallyOverridden);
-    expect(validation.valid).toBe(true);
-    expect(validation.practiceAreas).toContain("Indigenous law");
-    expect(validation.jurisdictions).toEqual(["BC", "CANADA"]);
-  });
-
-  it("surfaces multi-jurisdiction preset defaults without locking customization", () => {
-    const preset = practiceSetupPresets.find(
-      (candidate) => candidate.id === "canada-small-business-records",
-    );
-    expect(preset).toBeDefined();
-
-    const presetState = applyPracticeSetupPreset(state(), preset!);
-
-    expect(parsePracticeAreas(presetState.practitionerJurisdictionsText)).toEqual([
-      "BC",
-      "ON",
-      "CANADA",
-    ]);
-    expect(presetState.matterJurisdiction).toBe("BC");
+      updateSetupWizardState(current, "ownerEmail", "new-owner@example.test"),
+    ).not.toHaveProperty("webAuthnCredential");
   });
 });

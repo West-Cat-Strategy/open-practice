@@ -20,7 +20,7 @@ Open Practice is a TypeScript monorepo with a matter-centered legal domain core.
 - Trust/funds entries are balanced double-entry transactions with idempotency and no matter-level overdrafts.
 - E-signing and document automation are embedded local workflows. Open Practice owns signature events, consent evidence, intake answers, and generated-document metadata.
 - Concrete provider adapters live outside `packages/domain`; the domain package exports provider-neutral contracts and legal rules only.
-- OCR, transcription, AI assistance, rich-text editing, passkeys, and outbound email are optional provider surfaces. They must be disabled by default until their deployment profile, authorization checks, and review states are implemented.
+- OCR, transcription, AI assistance, and outbound email are optional provider surfaces. They must be disabled by default until their deployment profile, authorization checks, and review states are implemented. Passkeys and rich-text drafting/template editing are embedded app surfaces; they still require explicit RP/origin, session, setup, authorization, retention, and rendering controls before production exposure.
 - Production authentication uses embedded Postgres-backed sessions. Development may still use local header/JWT helpers.
 - Planning lives in `docs/planning.md`, and live tracked work lives in `docs/planning-and-progress.md`.
 - API route ownership is moving toward module-owned Fastify registrars under `apps/api/src/routes`; `apps/api/src/server.ts` remains responsible for bootstrap, authentication hooks, environment setup, and central error handling.
@@ -43,8 +43,8 @@ Planned worker groups:
 - Media workers: FFmpeg normalization and Whisper transcription.
 - Assistive workers: Ollama-backed summarization/classification/drafting aids with review state.
 - Mail workers: Mailpit in development and Postal only behind an approved production profile.
-- Auth/content workers: SimpleWebAuthn passkey challenges and TipTap draft/template processing as
-  embedded app features, not third-party SaaS.
+- Auth/content surfaces: SimpleWebAuthn passkey challenges and TipTap draft/template processing run
+  as embedded app features, not third-party SaaS or worker-only planned routes.
 
 ## Reference-Informed Boundaries
 

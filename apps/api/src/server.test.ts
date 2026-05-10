@@ -131,6 +131,19 @@ function setupPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function minimalSetupPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    firm: { name: "North Shore Law" },
+    compliance: { trustFundsCaveatAccepted: true },
+    owner: {
+      displayName: "Avery Owner",
+      email: "avery@example.test",
+      password: "correct horse battery staple",
+    },
+    ...overrides,
+  };
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -332,6 +345,50 @@ describe("API auth and persistence boundaries", () => {
 
     expect(overview.statusCode).toBe(200);
     expect(matters.json<Array<{ number: string }>>()).toMatchObject([{ number: "2026-0001" }]);
+  });
+
+  it("completes first-run setup from the minimal workspace payload with defaults", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const server = testServer({
+      repository,
+      jwtSecret: "production-test-secret-at-least-32-characters",
+      setupKey: "setup-key",
+    });
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      headers: { "x-open-practice-setup-key": "setup-key" },
+      payload: minimalSetupPayload(),
+    });
+    const body = response.json<{ token: string; user: { firmId: string; id: string } }>();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["set-cookie"]).toContain("open_practice_session");
+    await expect(repository.getFirmSettings(body.user.firmId)).resolves.toMatchObject({
+      businessAddress: {
+        line1: "",
+        city: "",
+        province: "BC",
+        postalCode: "",
+        country: "Canada",
+      },
+      officeEmail: "avery@example.test",
+      officePhone: "",
+      practiceAreas: ["General practice"],
+      invoicePrefix: "NORTHSHORELAW",
+      defaultPaymentTermsDays: 30,
+      trustAccountLabel: "Trust account",
+      trustFundsCaveatAcceptedByUserId: body.user.id,
+    });
+
+    const matters = await server.inject({
+      method: "GET",
+      url: "/api/matters",
+      headers: { "x-open-practice-session": body.token },
+    });
+
+    expect(matters.statusCode).toBe(200);
+    expect(matters.json()).toEqual([]);
   });
 
   it("accepts selected setup presets and persists firm-scoped templates", async () => {

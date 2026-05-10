@@ -44,7 +44,8 @@ Environment variables must be treated as deployment inputs, not application defa
   deployment.
 - `OPEN_PRACTICE_SETUP_KEY` is required to complete first-run setup in production. The setup route
   only proceeds while both firm and user tables are empty; any partial bootstrap state is blocked for
-  operator review.
+  operator review. The web setup flow is intentionally minimal and creates editable operational
+  defaults after the first owner admin is created.
 - `API_BASE_URL`, `WEB_PORT`, and `API_PORT` should be explicit per environment, with TLS termination
   and allowed origins configured at the edge.
 - `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY` must reference a
@@ -55,8 +56,9 @@ Environment variables must be treated as deployment inputs, not application defa
   production. Signature, intake, and auth are embedded local workflows.
 - Worker/provider configuration should be explicit and disabled by default. Reserved defaults are
   recorded in [Tech Stack](tech-stack.md); production must not enable Redis/BullMQ, Postal, OCR,
-  transcription, Ollama, passkeys, or rich-text publishing without the corresponding runbook,
-  authorization checks, and retention controls.
+  transcription, or Ollama without the corresponding runbook, authorization checks, and retention
+  controls. Embedded passkey and rich-text publishing surfaces require their own RP/origin, session,
+  authorization, rendering, and retention controls before production exposure.
 - Billing and invoice settings should ship as operational configuration only: invoice numbering,
   review roles, tax labels, payment terms, write-off reasons, and evidence requirements. They should
   not be represented as accounting or tax certification.
