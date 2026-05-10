@@ -32,7 +32,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/session`                                                                | Current authenticated user.                                                                                                                                                             |
 | `GET /api/capabilities`                                                           | Permission-aware dashboard sections for the current user and first assigned matter.                                                                                                     |
 | `GET /api/overview`                                                               | Firm overview metrics.                                                                                                                                                                  |
-| `GET /api/matters`                                                                | Matters visible to the current user.                                                                                                                                                    |
+| `GET /api/matters`                                                                | Matters visible to the current user, including redacted activity entries and document metadata used by the matter activity/file command center.                                         |
 | `GET /api/contacts/dossiers`                                                      | Read-only contact dossiers derived from visible matter-party links, active portal grants, aliases, identifiers, adverse/confidential cues, and quality-review signals.                  |
 | `GET /api/legal-clinic/programs`                                                  | Firm-scoped clinic programs with provider-neutral eligibility/referral defaults.                                                                                                        |
 | `POST /api/legal-clinic/programs`                                                 | Creates a firm-scoped clinic program and records redacted program audit metadata.                                                                                                       |
@@ -220,6 +220,14 @@ and embedded intake templates. Preset-backed templates store metadata such as
 and `editable=true`. Intake templates also expose `category`, optional `description`, timestamps, and
 metadata so the dashboard can explain and filter operational starter material without relying on
 external forms.
+
+The matter dashboard derives an activity and file command center from existing `/api/matters`,
+document-processing workbench, share-link, external-upload, communications, task, billing, calendar,
+intake, and signature payloads. The command center is a read-only projection: it filters redacted
+activity entries, counts file review/OCR/share/upload states, and links operators to existing
+sections. It does not add storage primitives, expose storage keys/checksums/message bodies/tokens,
+auto-classify documents, merge uploads, or bypass the existing OCR, share, upload-review, or direct
+upload APIs.
 
 Contact dossiers are a read-only `/?section=contacts` dashboard surface backed by
 `GET /api/contacts/dossiers`. Dossiers reuse existing contacts, visible matter-party links, active
