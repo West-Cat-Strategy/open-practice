@@ -109,12 +109,16 @@ import {
   updateBillingDashboardWithCreatedInvoice,
 } from "./billing-dashboard";
 import {
+  buildWorkerHealthPath,
   buildWorkerRunsPath,
+  emptyWorkerHealthResponse,
   describeWorkerRunStatus,
   emptyWorkerRunsResponse,
   formatWorkerRunAttempts,
   formatWorkerRunTiming,
+  summarizeWorkerHealth,
   summarizeWorkerRuns,
+  workerHealthTone,
   workerRunsForFilter,
   workerRunSafeContext,
 } from "./worker-runs-dashboard";
@@ -1736,6 +1740,62 @@ describe("dashboard client behavior", () => {
     );
     expect(workerRunSafeContext(dashboard.all.jobs[1]!)).not.toContain("storage");
     expect(workerRunSafeContext(dashboard.all.jobs[1]!)).not.toContain("raw document text");
+  });
+
+  it("describes compact worker health without raw job detail", () => {
+    const fallback = emptyWorkerHealthResponse();
+    const degraded = {
+      ...fallback,
+      status: "degraded" as const,
+      generatedAt: "2026-05-02T10:06:00.000Z",
+      configuredQueues: 2,
+      reservedQueues: 3,
+      notConfiguredQueues: 1,
+      totalRuns: 2,
+      activeOrQueued: 1,
+      failed: 1,
+      stalled: 1,
+      lastObservedAt: "2026-05-02T10:05:00.000Z",
+      queues: [
+        {
+          queueName: "email",
+          status: "configured",
+          health: "healthy" as const,
+          total: 1,
+          queued: 0,
+          active: 0,
+          failed: 0,
+          terminal: 1,
+          stalled: 0,
+          lastObservedAt: "2026-05-02T09:01:00.000Z",
+          degradedReasons: [],
+        },
+        {
+          queueName: "ocr",
+          status: "configured",
+          health: "degraded" as const,
+          total: 1,
+          queued: 1,
+          active: 0,
+          failed: 1,
+          terminal: 0,
+          stalled: 1,
+          lastObservedAt: "2026-05-02T10:05:00.000Z",
+          lastFailureAt: "2026-05-02T10:05:00.000Z",
+          degradedReasons: ["failed_jobs_observed", "stalled_jobs_observed"],
+        },
+      ],
+    };
+
+    expect(buildWorkerHealthPath()).toBe("/api/jobs/health");
+    expect(workerHealthTone("healthy")).toBe("ready");
+    expect(workerHealthTone("degraded")).toBe("risk");
+    expect(workerHealthTone("unknown")).toBe("neutral");
+    expect(summarizeWorkerHealth(degraded)).toContain(
+      "2 configured queues, 3 reserved, 1 not configured.",
+    );
+    expect(summarizeWorkerHealth(degraded)).toContain("1 failed and 1 stalled.");
+    expect(JSON.stringify(degraded)).not.toContain("rawBody");
   });
 
   it("builds an operations focus summary from existing authorized dashboard data", () => {

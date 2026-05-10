@@ -782,6 +782,28 @@ export interface OperationalViewsResponse {
   }>;
 }
 
+export interface SavedOperationalViewDefinition {
+  id: string;
+  firmId: string;
+  ownerUserId: string;
+  surface: "queues";
+  name: string;
+  filters: Record<string, unknown>;
+  columns: unknown[];
+  sort: Record<string, unknown>;
+  rowLimit: number;
+  dashboardBehavior: Record<string, unknown>;
+  permissionScope: string[];
+  status: "active" | "archived";
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string;
+}
+
+export interface OperationalViewDefinitionsResponse {
+  definitions: SavedOperationalViewDefinition[];
+}
+
 export type WorkerRunQueueFilter = "all" | "email" | "ocr";
 
 export interface WorkerQueueStatus {
@@ -848,6 +870,37 @@ export interface WorkerRunsDashboardResponse {
   all: WorkerRunsResponse;
   email: WorkerRunsResponse;
   ocr: WorkerRunsResponse;
+}
+
+export type WorkerHealthState = "healthy" | "degraded" | "unknown";
+
+export interface WorkerQueueHealthSummary {
+  queueName: string;
+  status: string;
+  health: WorkerHealthState;
+  total: number;
+  queued: number;
+  active: number;
+  failed: number;
+  terminal: number;
+  stalled: number;
+  lastObservedAt?: string;
+  lastFailureAt?: string;
+  degradedReasons: string[];
+}
+
+export interface WorkerHealthResponse {
+  status: WorkerHealthState;
+  generatedAt: string;
+  configuredQueues: number;
+  reservedQueues: number;
+  notConfiguredQueues: number;
+  totalRuns: number;
+  activeOrQueued: number;
+  failed: number;
+  stalled: number;
+  lastObservedAt?: string;
+  queues: WorkerQueueHealthSummary[];
 }
 
 export interface ProviderStatusSetting {

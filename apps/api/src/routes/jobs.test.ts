@@ -162,6 +162,132 @@ describe("jobs routes", () => {
     expect(response.json().jobs[0].errorSummary).not.toContain("synthetic fixture body");
   });
 
+  it("returns compact worker health without job bodies or credentials", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-email-complete",
+      firmId,
+      queueName: "email",
+      jobName: "send",
+      status: "completed",
+      targetResourceType: "email_outbox",
+      targetResourceId: "email-001",
+      attemptsMade: 1,
+      maxAttempts: 3,
+      queuedAt: "2026-05-02T09:00:00.000Z",
+      finishedAt: "2026-05-02T09:01:00.000Z",
+      metadata: {
+        emailId: "email-001",
+        rawBody: "raw email body must not be exposed",
+        token: "synthetic-token",
+      },
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-ocr-failed",
+      firmId,
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "failed",
+      targetResourceType: "document",
+      targetResourceId: "doc-001",
+      attemptsMade: 2,
+      maxAttempts: 3,
+      queuedAt: "2026-05-02T10:00:00.000Z",
+      startedAt: "2026-05-02T10:00:10.000Z",
+      failedAt: "2026-05-02T10:05:00.000Z",
+      errorMessage: "Synthetic provider failed with private content",
+      metadata: {
+        matterId: "matter-001",
+        documentId: "doc-001",
+        storageKey: "private/storage/key.pdf",
+      },
+    });
+
+    const response = await testServer({
+      repository,
+      emailJobQueue: fakeQueue,
+      ocrJobQueue: fakeQueue,
+    }).inject({
+      method: "GET",
+      url: "/api/jobs/health",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "degraded",
+      configuredQueues: 2,
+      reservedQueues: 3,
+      totalRuns: 2,
+      activeOrQueued: 0,
+      failed: 1,
+      stalled: 0,
+      lastObservedAt: "2026-05-02T10:05:00.000Z",
+      queues: expect.arrayContaining([
+        expect.objectContaining({
+          queueName: "email",
+          status: "configured",
+          health: "healthy",
+          total: 1,
+          failed: 0,
+          lastObservedAt: "2026-05-02T09:01:00.000Z",
+        }),
+        expect.objectContaining({
+          queueName: "ocr",
+          status: "configured",
+          health: "degraded",
+          total: 1,
+          failed: 1,
+          lastFailureAt: "2026-05-02T10:05:00.000Z",
+          degradedReasons: ["failed_jobs_observed"],
+        }),
+        expect.objectContaining({
+          queueName: "ai_triage",
+          status: "reserved",
+          health: "unknown",
+        }),
+      ]),
+    });
+    const serialized = JSON.stringify(response.json());
+    expect(serialized).not.toContain("raw email body");
+    expect(serialized).not.toContain("synthetic-token");
+    expect(serialized).not.toContain("private/storage/key");
+    expect(serialized).not.toContain("private content");
+  });
+
+  it("marks old queued and active jobs as stalled in worker health", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-email-stalled",
+      firmId,
+      queueName: "email",
+      jobName: "send",
+      status: "queued",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      queuedAt: "2026-05-02T08:00:00.000Z",
+      metadata: { emailId: "email-001" },
+    });
+
+    const response = await testServer({ repository, emailJobQueue: fakeQueue }).inject({
+      method: "GET",
+      url: "/api/jobs/health",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "degraded",
+      stalled: 1,
+      queues: expect.arrayContaining([
+        expect.objectContaining({
+          queueName: "email",
+          health: "degraded",
+          stalled: 1,
+          degradedReasons: ["stalled_jobs_observed"],
+        }),
+      ]),
+    });
+  });
+
   it("filters lifecycle run summaries by queue name", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createJobLifecycleRecord({

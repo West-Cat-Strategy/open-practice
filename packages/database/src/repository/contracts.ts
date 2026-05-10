@@ -1,110 +1,3 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import {
-  appendAuditEvent,
-  buildBasicDraftTemplates,
-  buildContactDossiers,
-  buildPracticePresetTemplates,
-  calculateInvoiceTotals,
-  canShareDocumentThroughPortal,
-  clientTrustBalanceByMatter,
-  clientTrustBalanceDeltas,
-  invoiceStatusForPayment,
-  ledgerBalanceByMatter,
-  ledgerRequestFingerprint,
-  postLedgerTransaction,
-  runConflictCheck,
-  shouldUpdateSignatureRequestStatus,
-  validateLedgerReconciliationRecord,
-  verifyAuditChain,
-  type ActivityTimelineEntry,
-  type AccessLogRecord,
-  type AuditEvent,
-  type NewAuditEvent,
-  type CalendarCredentialRecord,
-  type CalendarEventAttendeeRecord,
-  type CalendarEventRecord,
-  type ConnectorDeliveryAttemptRecord,
-  type ConnectorOutboxRecord,
-  type ConnectorRecord,
-  type ConversationThreadRecord,
-  type Contact,
-  type ContactDossier,
-  type ConflictCheckRecord,
-  type DocumentRecord,
-  type ExpenseEntry,
-  type ExternalUploadLinkRecord,
-  type Firm,
-  type FirmSettings,
-  type IntakeFormItemActionRecord,
-  type IntakeFormLinkRecord,
-  type IntakeFormReviewRecord,
-  type IntakeVariableProposal,
-  type InvoiceLineRecord,
-  type InvoiceRecord,
-  type LegalClinicMatterProfile,
-  type LegalClinicProgram,
-  type LedgerAccount,
-  type LedgerEntry,
-  type LedgerReconciliationRecord,
-  type LedgerReconciliationStatementRow,
-  type LedgerTransaction,
-  type LedgerTransactionApprovalRecord,
-  type EmailEventRecord,
-  type EmailOutboxRecord,
-  type ManualPaymentRecord,
-  type Matter,
-  type MatterParty,
-  type RecoveryCodeRecord,
-  type PaymentAllocationRecord,
-  type PortalGrant,
-  type PostedLedgerTransaction,
-  type JobLifecycleRecord,
-  type ProviderSettingRecord,
-  type TaskDeadlineRecord,
-  type TimeEntry,
-  type TrustTransferRequestRecord,
-  type User,
-  type WebAuthnChallengeRecord,
-  type WebAuthnCredentialRecord,
-  type DraftAssistRecord,
-  type DraftRecord,
-  type DraftTemplateRecord,
-  type InboundEmailAddressRecord,
-  type InboundEmailAttachmentRecord,
-  type InboundEmailMessageRecord,
-  type ShareLinkRecord,
-} from "@open-practice/domain";
-import {
-  sampleAuditEvents,
-  sampleCalendarEvents,
-  sampleContacts,
-  sampleDraftTemplates,
-  sampleDocuments,
-  sampleExpenseEntries,
-  sampleFirm,
-  sampleGeneratedDocuments,
-  sampleIntakeSessions,
-  sampleIntakeTemplates,
-  sampleInvoiceLines,
-  sampleInvoices,
-  sampleLegalClinicMatterProfiles,
-  sampleLegalClinicPrograms,
-  sampleLedgerAccounts,
-  sampleLedgerEntries,
-  sampleManualPayments,
-  sampleMatterParties,
-  sampleMatters,
-  samplePaymentAllocations,
-  samplePortalGrants,
-  sampleSignatureProviderEvents,
-  sampleSignatureRequestSigners,
-  sampleSignatureRequests,
-  sampleSignatureWebhookAttempts,
-  sampleTaskDeadlines,
-  sampleTimeEntries,
-  sampleTrustTransferRequests,
-  sampleUsers,
-} from "@open-practice/domain/sample-data";
 import type {
   AnswerSnapshotRecord,
   DocumentTextExtractionRecord,
@@ -112,16 +5,70 @@ import type {
   IntakeSessionRecord,
   IntakeTemplateRecord,
   SignatureProviderEventRecord,
-  SignatureProviderStatus,
   SignatureRequestRecord,
   SignatureRequestSignerRecord,
   SignatureWebhookAttemptRecord,
 } from "@open-practice/domain";
-import type { OpenPracticeDatabase } from "../runtime.js";
-import * as schema from "../schema.js";
-
-type OpenPracticeTransaction = Parameters<Parameters<OpenPracticeDatabase["transaction"]>[0]>[0];
-
+import {
+  runConflictCheck,
+  type AccessLogRecord,
+  type ActivityTimelineEntry,
+  type AuditEvent,
+  type CalendarCredentialRecord,
+  type CalendarEventAttendeeRecord,
+  type CalendarEventRecord,
+  type ConnectorDeliveryAttemptRecord,
+  type ConnectorOutboxRecord,
+  type ConnectorRecord,
+  type Contact,
+  type ContactDossier,
+  type ConversationThreadRecord,
+  type DocumentRecord,
+  type DraftAssistRecord,
+  type DraftRecord,
+  type DraftTemplateRecord,
+  type EmailEventRecord,
+  type EmailOutboxRecord,
+  type ExpenseEntry,
+  type ExternalUploadLinkRecord,
+  type Firm,
+  type FirmSettings,
+  type InboundEmailAddressRecord,
+  type InboundEmailAttachmentRecord,
+  type InboundEmailMessageRecord,
+  type IntakeFormItemActionRecord,
+  type IntakeFormLinkRecord,
+  type IntakeFormReviewRecord,
+  type IntakeVariableProposal,
+  type InvoiceLineRecord,
+  type InvoiceRecord,
+  type JobLifecycleRecord,
+  type LedgerAccount,
+  type LedgerEntry,
+  type LedgerReconciliationRecord,
+  type LedgerTransaction,
+  type LedgerTransactionApprovalRecord,
+  type LegalClinicMatterProfile,
+  type LegalClinicProgram,
+  type ManualPaymentRecord,
+  type Matter,
+  type MatterParty,
+  type NewAuditEvent,
+  type PaymentAllocationRecord,
+  type PortalGrant,
+  type PostedLedgerTransaction,
+  type ProviderSettingRecord,
+  type RecoveryCodeRecord,
+  type SavedOperationalViewDefinition,
+  type SavedOperationalViewDefinitionInput,
+  type ShareLinkRecord,
+  type TaskDeadlineRecord,
+  type TimeEntry,
+  type TrustTransferRequestRecord,
+  type User,
+  type WebAuthnChallengeRecord,
+  type WebAuthnCredentialRecord,
+} from "@open-practice/domain";
 export function clone<T>(value: T): T {
   return globalThis.structuredClone(value);
 }
@@ -592,6 +539,43 @@ export interface OpenPracticeRepository {
     options?: { matterId?: string },
   ): Promise<ExternalUploadLinkRecord[]>;
   createExternalUploadLink(link: ExternalUploadLinkRecord): Promise<ExternalUploadLinkRecord>;
+  listSavedOperationalViewDefinitions(
+    firmId: string,
+    options: {
+      ownerUserId: string;
+      surface?: SavedOperationalViewDefinition["surface"];
+      includeArchived?: boolean;
+    },
+  ): Promise<SavedOperationalViewDefinition[]>;
+  getSavedOperationalViewDefinition(
+    firmId: string,
+    id: string,
+  ): Promise<SavedOperationalViewDefinition | undefined>;
+  createSavedOperationalViewDefinition(
+    input: SavedOperationalViewDefinitionInput,
+  ): Promise<SavedOperationalViewDefinition>;
+  updateSavedOperationalViewDefinition(
+    firmId: string,
+    id: string,
+    updates: Partial<
+      Pick<
+        SavedOperationalViewDefinition,
+        | "name"
+        | "filters"
+        | "columns"
+        | "sort"
+        | "rowLimit"
+        | "dashboardBehavior"
+        | "permissionScope"
+        | "updatedAt"
+      >
+    >,
+  ): Promise<SavedOperationalViewDefinition | undefined>;
+  archiveSavedOperationalViewDefinition(input: {
+    firmId: string;
+    id: string;
+    archivedAt: string;
+  }): Promise<SavedOperationalViewDefinition | undefined>;
   getExternalUploadLinkByTokenHash(
     tokenHash: string,
   ): Promise<ExternalUploadLinkRecord | undefined>;
@@ -692,6 +676,18 @@ export interface OpenPracticeRepository {
     id: string;
     submittedAt: string;
     answerSnapshotId: string;
+  }): Promise<IntakeFormLinkRecord | undefined>;
+  reserveIntakeFormLinkSubmission(input: {
+    firmId: string;
+    id: string;
+    clientSubmissionId: string;
+    submissionFingerprint: string;
+  }): Promise<IntakeFormLinkRecord | undefined>;
+  saveIntakeFormLinkDraft(input: {
+    firmId: string;
+    id: string;
+    answers: Record<string, unknown>;
+    draftUpdatedAt: string;
   }): Promise<IntakeFormLinkRecord | undefined>;
   listIntakeFormReviews(
     firmId: string,

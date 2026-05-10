@@ -1,110 +1,3 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import {
-  appendAuditEvent,
-  buildBasicDraftTemplates,
-  buildContactDossiers,
-  buildPracticePresetTemplates,
-  calculateInvoiceTotals,
-  canShareDocumentThroughPortal,
-  clientTrustBalanceByMatter,
-  clientTrustBalanceDeltas,
-  invoiceStatusForPayment,
-  ledgerBalanceByMatter,
-  ledgerRequestFingerprint,
-  postLedgerTransaction,
-  runConflictCheck,
-  shouldUpdateSignatureRequestStatus,
-  validateLedgerReconciliationRecord,
-  verifyAuditChain,
-  type ActivityTimelineEntry,
-  type AccessLogRecord,
-  type AuditEvent,
-  type NewAuditEvent,
-  type CalendarCredentialRecord,
-  type CalendarEventAttendeeRecord,
-  type CalendarEventRecord,
-  type ConnectorDeliveryAttemptRecord,
-  type ConnectorOutboxRecord,
-  type ConnectorRecord,
-  type ConversationThreadRecord,
-  type Contact,
-  type ContactDossier,
-  type ConflictCheckRecord,
-  type DocumentRecord,
-  type ExpenseEntry,
-  type ExternalUploadLinkRecord,
-  type Firm,
-  type FirmSettings,
-  type IntakeFormItemActionRecord,
-  type IntakeFormLinkRecord,
-  type IntakeFormReviewRecord,
-  type IntakeVariableProposal,
-  type InvoiceLineRecord,
-  type InvoiceRecord,
-  type LegalClinicMatterProfile,
-  type LegalClinicProgram,
-  type LedgerAccount,
-  type LedgerEntry,
-  type LedgerReconciliationRecord,
-  type LedgerReconciliationStatementRow,
-  type LedgerTransaction,
-  type LedgerTransactionApprovalRecord,
-  type EmailEventRecord,
-  type EmailOutboxRecord,
-  type ManualPaymentRecord,
-  type Matter,
-  type MatterParty,
-  type RecoveryCodeRecord,
-  type PaymentAllocationRecord,
-  type PortalGrant,
-  type PostedLedgerTransaction,
-  type JobLifecycleRecord,
-  type ProviderSettingRecord,
-  type TaskDeadlineRecord,
-  type TimeEntry,
-  type TrustTransferRequestRecord,
-  type User,
-  type WebAuthnChallengeRecord,
-  type WebAuthnCredentialRecord,
-  type DraftAssistRecord,
-  type DraftRecord,
-  type DraftTemplateRecord,
-  type InboundEmailAddressRecord,
-  type InboundEmailAttachmentRecord,
-  type InboundEmailMessageRecord,
-  type ShareLinkRecord,
-} from "@open-practice/domain";
-import {
-  sampleAuditEvents,
-  sampleCalendarEvents,
-  sampleContacts,
-  sampleDraftTemplates,
-  sampleDocuments,
-  sampleExpenseEntries,
-  sampleFirm,
-  sampleGeneratedDocuments,
-  sampleIntakeSessions,
-  sampleIntakeTemplates,
-  sampleInvoiceLines,
-  sampleInvoices,
-  sampleLegalClinicMatterProfiles,
-  sampleLegalClinicPrograms,
-  sampleLedgerAccounts,
-  sampleLedgerEntries,
-  sampleManualPayments,
-  sampleMatterParties,
-  sampleMatters,
-  samplePaymentAllocations,
-  samplePortalGrants,
-  sampleSignatureProviderEvents,
-  sampleSignatureRequestSigners,
-  sampleSignatureRequests,
-  sampleSignatureWebhookAttempts,
-  sampleTaskDeadlines,
-  sampleTimeEntries,
-  sampleTrustTransferRequests,
-  sampleUsers,
-} from "@open-practice/domain/sample-data";
 import type {
   AnswerSnapshotRecord,
   DocumentTextExtractionRecord,
@@ -117,127 +10,195 @@ import type {
   SignatureRequestSignerRecord,
   SignatureWebhookAttemptRecord,
 } from "@open-practice/domain";
+import {
+  appendAuditEvent,
+  buildBasicDraftTemplates,
+  buildContactDossiers,
+  buildPracticePresetTemplates,
+  calculateInvoiceTotals,
+  clientTrustBalanceByMatter,
+  clientTrustBalanceDeltas,
+  invoiceStatusForPayment,
+  ledgerBalanceByMatter,
+  ledgerRequestFingerprint,
+  postLedgerTransaction,
+  runConflictCheck,
+  shouldUpdateSignatureRequestStatus,
+  validateLedgerReconciliationRecord,
+  verifyAuditChain,
+  type AccessLogRecord,
+  type AuditEvent,
+  type CalendarCredentialRecord,
+  type CalendarEventAttendeeRecord,
+  type CalendarEventRecord,
+  type ConnectorDeliveryAttemptRecord,
+  type ConnectorOutboxRecord,
+  type ConnectorRecord,
+  type Contact,
+  type ContactDossier,
+  type ConversationThreadRecord,
+  type DocumentRecord,
+  type DraftAssistRecord,
+  type DraftRecord,
+  type DraftTemplateRecord,
+  type EmailEventRecord,
+  type EmailOutboxRecord,
+  type ExpenseEntry,
+  type ExternalUploadLinkRecord,
+  type FirmSettings,
+  type InboundEmailAddressRecord,
+  type InboundEmailAttachmentRecord,
+  type InboundEmailMessageRecord,
+  type IntakeFormItemActionRecord,
+  type IntakeFormLinkRecord,
+  type IntakeFormReviewRecord,
+  type IntakeVariableProposal,
+  type InvoiceLineRecord,
+  type InvoiceRecord,
+  type JobLifecycleRecord,
+  type LedgerAccount,
+  type LedgerEntry,
+  type LedgerReconciliationRecord,
+  type LedgerTransaction,
+  type LedgerTransactionApprovalRecord,
+  type LegalClinicMatterProfile,
+  type LegalClinicProgram,
+  type ManualPaymentRecord,
+  type MatterParty,
+  type NewAuditEvent,
+  type PaymentAllocationRecord,
+  type PortalGrant,
+  type PostedLedgerTransaction,
+  type ProviderSettingRecord,
+  type RecoveryCodeRecord,
+  type SavedOperationalViewDefinition,
+  type SavedOperationalViewDefinitionInput,
+  type ShareLinkRecord,
+  type TaskDeadlineRecord,
+  type TimeEntry,
+  type TrustTransferRequestRecord,
+  type User,
+  type WebAuthnChallengeRecord,
+  type WebAuthnCredentialRecord,
+} from "@open-practice/domain";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../runtime.js";
 import * as schema from "../schema.js";
 
-type OpenPracticeTransaction = Parameters<Parameters<OpenPracticeDatabase["transaction"]>[0]>[0];
-
-import {
-  clone,
-  dateToIso,
-  CalendarEventScopeConflictError,
-  CalendarEventUidConflictError,
-  IdempotencyKeyConflictError,
-  canonicalizeForIdempotency,
-  idempotencyFingerprint,
-  assertSameIdempotencyFingerprint,
-  isPostgresUniqueViolation,
-  FirstRunSetupConflictError,
-} from "./contracts.js";
 import type {
-  MatterSummary,
-  PracticeOverview,
+  AuthAccountRecord,
+  AuthPasswordSetupTokenRecord,
+  AuthSessionRecord,
+  CalendarEventAttendeeUpsertInput,
+  CalendarEventUpsertInput,
   DocumentUploadIntent,
+  FirstRunSetupInput,
+  FirstRunSetupResult,
+  FirstRunSetupStatus,
   InboundAttachmentPromotionInput,
   InboundAttachmentPromotionResult,
   InvoiceWithLines,
-  PaymentWithAllocations,
-  AuthAccountRecord,
-  AuthSessionRecord,
-  CalendarEventUpsertInput,
-  CalendarEventAttendeeUpsertInput,
-  TaskDeadlineCompletionInput,
-  AuthPasswordSetupTokenRecord,
-  FirstRunSetupStatus,
-  FirstRunSetupInput,
-  FirstRunSetupResult,
+  MatterSummary,
   OpenPracticeRepository,
+  PaymentWithAllocations,
+  PracticeOverview,
+  TaskDeadlineCompletionInput,
+} from "./contracts.js";
+import {
+  CalendarEventScopeConflictError,
+  CalendarEventUidConflictError,
+  FirstRunSetupConflictError,
+  IdempotencyKeyConflictError,
+  assertSameIdempotencyFingerprint,
+  canonicalizeForIdempotency,
+  clone,
+  dateToIso,
+  isPostgresUniqueViolation,
 } from "./contracts.js";
 
 import {
-  mapAuthAccountRow,
-  mapAuthSessionRow,
-  mapShareLinkRow,
-  mapWebAuthnCredentialRow,
-  mapAuthChallengeRow,
-  mapPasswordSetupTokenRow,
-  mapRecoveryCodeRow,
-  mapCalendarCredentialRow,
-  mapCalendarEventRow,
-  mapCalendarEventAttendeeRow,
-  mapTaskDeadlineRow,
-  activeCalendarAttendees,
-  setupStatusFromCounts,
-  mapFirmSettingsRow,
-  mapProviderSettingRow,
-  mapConnectorRow,
-  connectorInsert,
-  mapJobLifecycleRow,
-  mapConnectorOutboxRow,
-  connectorOutboxInsert,
-  mapConnectorDeliveryAttemptRow,
-  connectorDeliveryAttemptInsert,
-  mapEmailOutboxRow,
-  emailOutboxInsert,
-  mapEmailEventRow,
-  emailEventInsert,
-  sanitizeEmailFailureSummary,
-  nextEmailAttemptCount,
-  jobLifecycleInsert,
-  matterTrustBalance,
-  userHasFirmWideLedgerAccess,
-  mapContactRow,
-  mapConflictCheckRow,
-  mapDocumentRow,
-  mapLegalClinicProgramRow,
-  mapLegalClinicMatterProfileRow,
-  mapConversationThreadRow,
-  mapDocumentTextExtractionRow,
-  mapGeneratedDocumentRow,
-  mapExternalUploadLinkRow,
-  mapIntakeFormLinkRow,
-  intakeFormLinkInsert,
-  mapIntakeFormReviewRow,
-  intakeFormReviewInsert,
-  mapIntakeFormItemActionRow,
-  intakeFormItemActionInsert,
-  mapIntakeVariableProposalRow,
-  intakeVariableProposalInsert,
-  applyVariableProposalWithTx,
-  externalUploadLinkInsert,
-  mapAccessLogRow,
   accessLogInsert,
-  mapSignatureRequestRow,
-  mapSignatureRequestSignerRow,
-  mapIntakeSessionRow,
-  mapAnswerSnapshotRow,
-  mapSignatureProviderEventRow,
-  mapSignatureWebhookAttemptRow,
-  mapLedgerApprovalRow,
-  mapLedgerReconciliationRow,
-  matterDateToOccurredAt,
-  safeAuditMetadata,
+  applyVariableProposalWithTx,
   buildActivityTimeline,
+  connectorDeliveryAttemptInsert,
+  connectorInsert,
+  connectorOutboxInsert,
+  emailEventInsert,
+  emailOutboxInsert,
+  externalUploadLinkInsert,
+  intakeFormItemActionInsert,
+  intakeFormLinkInsert,
+  intakeFormReviewInsert,
+  intakeVariableProposalInsert,
+  invoiceInsert,
+  invoiceLineInsert,
+  jobLifecycleInsert,
+  mapAccessLogRow,
+  mapAnswerSnapshotRow,
+  mapAuthAccountRow,
+  mapAuthChallengeRow,
+  mapAuthSessionRow,
+  mapCalendarCredentialRow,
+  mapCalendarEventAttendeeRow,
+  mapCalendarEventRow,
+  mapConflictCheckRow,
+  mapConnectorDeliveryAttemptRow,
+  mapConnectorOutboxRow,
+  mapConnectorRow,
+  mapContactRow,
+  mapConversationThreadRow,
+  mapDocumentRow,
+  mapDocumentTextExtractionRow,
+  mapDraftAssistRow,
   mapDraftRow,
   mapDraftTemplateRow,
-  mapDraftAssistRow,
-  mapIntakeTemplateRow,
-  mapInboundEmailAddressRow,
-  mapInboundEmailMessageRow,
-  mapInboundEmailAttachmentRow,
-  mapMatter,
-  mapTimeEntryRow,
+  mapEmailEventRow,
+  mapEmailOutboxRow,
   mapExpenseEntryRow,
-  mapInvoiceRow,
-  invoiceInsert,
+  mapExternalUploadLinkRow,
+  mapFirmSettingsRow,
+  mapGeneratedDocumentRow,
+  mapInboundEmailAddressRow,
+  mapInboundEmailAttachmentRow,
+  mapInboundEmailMessageRow,
+  mapIntakeFormItemActionRow,
+  mapIntakeFormLinkRow,
+  mapIntakeFormReviewRow,
+  mapIntakeSessionRow,
+  mapIntakeTemplateRow,
+  mapIntakeVariableProposalRow,
   mapInvoiceLineRow,
-  invoiceLineInsert,
-  mapPaymentRow,
-  paymentInsert,
+  mapInvoiceRow,
+  mapJobLifecycleRow,
+  mapLedgerApprovalRow,
+  mapLedgerReconciliationRow,
+  mapLegalClinicMatterProfileRow,
+  mapLegalClinicProgramRow,
+  mapMatter,
+  mapPasswordSetupTokenRow,
   mapPaymentAllocationRow,
-  paymentAllocationInsert,
+  mapPaymentRow,
+  mapProviderSettingRow,
+  mapRecoveryCodeRow,
+  mapSavedOperationalViewDefinitionRow,
+  mapShareLinkRow,
+  mapSignatureProviderEventRow,
+  mapSignatureRequestRow,
+  mapSignatureRequestSignerRow,
+  mapSignatureWebhookAttemptRow,
+  mapTaskDeadlineRow,
+  mapTimeEntryRow,
   mapTrustTransferRequestRow,
+  mapWebAuthnCredentialRow,
+  matterTrustBalance,
+  nextEmailAttemptCount,
+  paymentAllocationInsert,
+  paymentInsert,
+  sanitizeEmailFailureSummary,
+  savedOperationalViewDefinitionInsert,
+  setupStatusFromCounts,
   trustTransferRequestInsert,
+  userHasFirmWideLedgerAccess,
 } from "./drizzle-mappers.js";
 
 export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
@@ -2539,6 +2500,128 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     }
   }
 
+  async listSavedOperationalViewDefinitions(
+    firmId: string,
+    options: {
+      ownerUserId: string;
+      surface?: SavedOperationalViewDefinition["surface"];
+      includeArchived?: boolean;
+    },
+  ): Promise<SavedOperationalViewDefinition[]> {
+    const conditions = [
+      eq(schema.savedOperationalViewDefinitions.firmId, firmId),
+      eq(schema.savedOperationalViewDefinitions.ownerUserId, options.ownerUserId),
+    ];
+    if (options.surface) {
+      conditions.push(eq(schema.savedOperationalViewDefinitions.surface, options.surface));
+    }
+    if (!options.includeArchived) {
+      conditions.push(eq(schema.savedOperationalViewDefinitions.status, "active"));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.savedOperationalViewDefinitions)
+      .where(and(...conditions))
+      .orderBy(asc(schema.savedOperationalViewDefinitions.name));
+    return rows.map(mapSavedOperationalViewDefinitionRow);
+  }
+
+  async getSavedOperationalViewDefinition(
+    firmId: string,
+    id: string,
+  ): Promise<SavedOperationalViewDefinition | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.savedOperationalViewDefinitions)
+      .where(
+        and(
+          eq(schema.savedOperationalViewDefinitions.firmId, firmId),
+          eq(schema.savedOperationalViewDefinitions.id, id),
+        ),
+      );
+    return row ? mapSavedOperationalViewDefinitionRow(row) : undefined;
+  }
+
+  async createSavedOperationalViewDefinition(
+    input: SavedOperationalViewDefinitionInput,
+  ): Promise<SavedOperationalViewDefinition> {
+    const now = new Date().toISOString();
+    const definition: SavedOperationalViewDefinition = {
+      id: input.id ?? crypto.randomUUID(),
+      firmId: input.firmId,
+      ownerUserId: input.ownerUserId,
+      surface: input.surface,
+      name: input.name,
+      filters: input.filters ?? {},
+      columns: input.columns ?? [],
+      sort: input.sort ?? {},
+      rowLimit: input.rowLimit ?? 25,
+      dashboardBehavior: input.dashboardBehavior ?? {},
+      permissionScope: input.permissionScope ?? ["matter:read"],
+      status: input.status ?? "active",
+      createdAt: input.createdAt ?? now,
+      updatedAt: input.updatedAt ?? now,
+      archivedAt: input.archivedAt,
+    };
+    const [row] = await this.db
+      .insert(schema.savedOperationalViewDefinitions)
+      .values(savedOperationalViewDefinitionInsert(definition))
+      .returning();
+    return mapSavedOperationalViewDefinitionRow(row);
+  }
+
+  async updateSavedOperationalViewDefinition(
+    firmId: string,
+    id: string,
+    updates: Partial<
+      Pick<
+        SavedOperationalViewDefinition,
+        | "name"
+        | "filters"
+        | "columns"
+        | "sort"
+        | "rowLimit"
+        | "dashboardBehavior"
+        | "permissionScope"
+        | "updatedAt"
+      >
+    >,
+  ): Promise<SavedOperationalViewDefinition | undefined> {
+    const [row] = await this.db
+      .update(schema.savedOperationalViewDefinitions)
+      .set({
+        ...updates,
+        updatedAt: updates.updatedAt ? new Date(updates.updatedAt) : new Date(),
+      })
+      .where(
+        and(
+          eq(schema.savedOperationalViewDefinitions.firmId, firmId),
+          eq(schema.savedOperationalViewDefinitions.id, id),
+        ),
+      )
+      .returning();
+    return row ? mapSavedOperationalViewDefinitionRow(row) : undefined;
+  }
+
+  async archiveSavedOperationalViewDefinition(input: {
+    firmId: string;
+    id: string;
+    archivedAt: string;
+  }): Promise<SavedOperationalViewDefinition | undefined> {
+    const archivedAt = new Date(input.archivedAt);
+    const [row] = await this.db
+      .update(schema.savedOperationalViewDefinitions)
+      .set({ status: "archived", archivedAt, updatedAt: archivedAt })
+      .where(
+        and(
+          eq(schema.savedOperationalViewDefinitions.firmId, input.firmId),
+          eq(schema.savedOperationalViewDefinitions.id, input.id),
+        ),
+      )
+      .returning();
+    return row ? mapSavedOperationalViewDefinitionRow(row) : undefined;
+  }
+
   async getExternalUploadLinkByTokenHash(
     tokenHash: string,
   ): Promise<ExternalUploadLinkRecord | undefined> {
@@ -3086,6 +3169,56 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       )
       .returning();
     return row ? mapIntakeFormLinkRow(row) : undefined;
+  }
+
+  async reserveIntakeFormLinkSubmission(input: {
+    firmId: string;
+    id: string;
+    clientSubmissionId: string;
+    submissionFingerprint: string;
+  }): Promise<IntakeFormLinkRecord | undefined> {
+    const [row] = await this.db
+      .update(schema.intakeFormLinks)
+      .set({
+        clientSubmissionId: input.clientSubmissionId,
+        submissionFingerprint: input.submissionFingerprint,
+      })
+      .where(
+        and(
+          eq(schema.intakeFormLinks.firmId, input.firmId),
+          eq(schema.intakeFormLinks.id, input.id),
+          isNull(schema.intakeFormLinks.revokedAt),
+          isNull(schema.intakeFormLinks.submittedAt),
+          isNull(schema.intakeFormLinks.clientSubmissionId),
+        ),
+      )
+      .returning();
+    if (row) return mapIntakeFormLinkRow(row);
+    return this.getIntakeFormLink(input.firmId, input.id);
+  }
+
+  async saveIntakeFormLinkDraft(input: {
+    firmId: string;
+    id: string;
+    answers: Record<string, unknown>;
+    draftUpdatedAt: string;
+  }): Promise<IntakeFormLinkRecord | undefined> {
+    const [row] = await this.db
+      .update(schema.intakeFormLinks)
+      .set({
+        draftAnswers: input.answers,
+        draftUpdatedAt: new Date(input.draftUpdatedAt),
+      })
+      .where(
+        and(
+          eq(schema.intakeFormLinks.firmId, input.firmId),
+          eq(schema.intakeFormLinks.id, input.id),
+          isNull(schema.intakeFormLinks.revokedAt),
+          isNull(schema.intakeFormLinks.submittedAt),
+        ),
+      )
+      .returning();
+    return row ? mapIntakeFormLinkRow(row) : this.getIntakeFormLink(input.firmId, input.id);
   }
 
   async listIntakeFormReviews(

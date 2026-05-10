@@ -325,7 +325,7 @@ export interface AccessLogRecord {
   intakeFormLinkId?: string;
   resourceType: string;
   resourceId: string;
-  action: "view" | "download" | "upload" | "message" | "sign" | "submit";
+  action: "view" | "download" | "upload" | "message" | "sign" | "submit" | "draft";
   occurredAt: string;
   ipAddress?: string;
   userAgent?: string;

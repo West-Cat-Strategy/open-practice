@@ -1,17 +1,206 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { buildBuiltInOperationalViews } from "@open-practice/domain";
+import {
+  buildBuiltInOperationalViews,
+  canAccess,
+  type Action,
+  type ResourceKind,
+  type SavedOperationalViewDefinition,
+  type SavedOperationalViewPermissionScope,
+} from "@open-practice/domain";
+import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
+import type { ApiAuthContext } from "../server.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const operationalViewsQuerySchema = z.object({
   now: z.string().datetime().optional(),
 });
+const savedOperationalViewSurfaceSchema = z.enum(["queues"]);
+const permissionScopeSchema = z
+  .string()
+  .regex(/^[a-z_]+:(create|read|update|delete|approve|export)$/)
+  .transform((value) => value as SavedOperationalViewPermissionScope);
+const definitionPayloadSchema = z.object({
+  surface: savedOperationalViewSurfaceSchema.default("queues"),
+  name: z.string().trim().min(1).max(120),
+  filters: z.record(z.string(), z.unknown()).default({}),
+  columns: z.array(z.unknown()).default([]),
+  sort: z.record(z.string(), z.unknown()).default({}),
+  rowLimit: z.number().int().min(1).max(250).default(25),
+  dashboardBehavior: z.record(z.string(), z.unknown()).default({}),
+  permissionScope: z.array(permissionScopeSchema).min(1).max(20).default(["matter:read"]),
+});
+const definitionPatchSchema = definitionPayloadSchema.partial().extend({
+  permissionScope: z.array(permissionScopeSchema).min(1).max(20).optional(),
+});
+const definitionParamsSchema = z.object({
+  id: z.string().min(1),
+});
+const definitionQuerySchema = z.object({
+  surface: savedOperationalViewSurfaceSchema.optional(),
+  includeArchived: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => value === "true"),
+});
+
+const actions = new Set<Action>(["create", "read", "update", "delete", "approve", "export"]);
+
+type AuthenticatedRequest = FastifyRequest & { auth: ApiAuthContext };
+
+function parsePermissionScope(scope: SavedOperationalViewPermissionScope): {
+  resource: ResourceKind;
+  action: Action;
+} {
+  const [resource, action] = scope.split(":") as [ResourceKind, Action];
+  if (!resource || !actions.has(action)) {
+    throw new ApiHttpError(400, "INVALID_OPERATIONAL_VIEW_SCOPE", "Invalid permission scope");
+  }
+  return { resource, action };
+}
+
+function scopeMatterId(resource: ResourceKind, userMatterIds: string[]): string | undefined {
+  if (
+    [
+      "matter",
+      "document",
+      "portal_message",
+      "signature_request",
+      "trust_ledger",
+      "time_entry",
+      "expense_entry",
+      "conversation_thread",
+      "task",
+      "calendar_event",
+      "intake_session",
+      "email",
+      "inbound_email",
+      "document_processing",
+      "share_link",
+      "external_upload",
+      "draft",
+    ].includes(resource)
+  ) {
+    return userMatterIds[0];
+  }
+  return undefined;
+}
+
+function canUsePermissionScope(
+  request: AuthenticatedRequest,
+  scope: SavedOperationalViewPermissionScope,
+): boolean {
+  const parsed = parsePermissionScope(scope);
+  return canAccess({
+    user: request.auth.user,
+    firmId: request.auth.firmId,
+    resource: parsed.resource,
+    action: parsed.action,
+    matterId: scopeMatterId(parsed.resource, request.auth.user.assignedMatterIds),
+  });
+}
+
+function canUseDefinition(
+  request: AuthenticatedRequest,
+  definition: Pick<SavedOperationalViewDefinition, "permissionScope">,
+): boolean {
+  return definition.permissionScope.every((scope) => canUsePermissionScope(request, scope));
+}
+
+function assertDefinitionOwner(
+  request: AuthenticatedRequest,
+  definition: SavedOperationalViewDefinition | undefined,
+): SavedOperationalViewDefinition {
+  if (!definition || definition.ownerUserId !== request.auth.user.id) {
+    throw new ApiHttpError(
+      404,
+      "OPERATIONAL_VIEW_DEFINITION_NOT_FOUND",
+      "Saved operational view definition was not found",
+    );
+  }
+  return definition;
+}
+
+function assertCanUseDefinition(
+  request: AuthenticatedRequest,
+  definition: Pick<SavedOperationalViewDefinition, "permissionScope">,
+): void {
+  if (!canUseDefinition(request, definition)) {
+    throw new ApiHttpError(
+      403,
+      "OPERATIONAL_VIEW_SCOPE_FORBIDDEN",
+      "Saved operational view definition includes a permission scope unavailable to this user",
+    );
+  }
+}
 
 export function registerOperationalViewRoutes(
   server: FastifyInstance,
   { repository }: ApiRouteDependencies,
 ): void {
+  server.get("/api/operational-views/definitions", async (request) => {
+    const query = parseRequestPart(definitionQuerySchema, request.query, "query");
+    const definitions = await repository.listSavedOperationalViewDefinitions(request.auth.firmId, {
+      ownerUserId: request.auth.user.id,
+      surface: query.surface,
+      includeArchived: query.includeArchived,
+    });
+    return {
+      definitions: definitions.filter((definition) => canUseDefinition(request, definition)),
+    };
+  });
+
+  server.post("/api/operational-views/definitions", async (request) => {
+    const body = parseRequestPart(definitionPayloadSchema, request.body, "body");
+    assertCanUseDefinition(request, body);
+    const now = new Date().toISOString();
+    const definition = await repository.createSavedOperationalViewDefinition({
+      ...body,
+      firmId: request.auth.firmId,
+      ownerUserId: request.auth.user.id,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { definition };
+  });
+
+  server.patch("/api/operational-views/definitions/:id", async (request) => {
+    const params = parseRequestPart(definitionParamsSchema, request.params, "params");
+    const body = parseRequestPart(definitionPatchSchema, request.body, "body");
+    const existing = assertDefinitionOwner(
+      request,
+      await repository.getSavedOperationalViewDefinition(request.auth.firmId, params.id),
+    );
+    const permissionScope = body.permissionScope ?? existing.permissionScope;
+    assertCanUseDefinition(request, { permissionScope });
+    const updated = await repository.updateSavedOperationalViewDefinition(
+      request.auth.firmId,
+      params.id,
+      {
+        ...body,
+        permissionScope,
+        updatedAt: new Date().toISOString(),
+      },
+    );
+    return { definition: assertDefinitionOwner(request, updated) };
+  });
+
+  server.post("/api/operational-views/definitions/:id/archive", async (request) => {
+    const params = parseRequestPart(definitionParamsSchema, request.params, "params");
+    const existing = assertDefinitionOwner(
+      request,
+      await repository.getSavedOperationalViewDefinition(request.auth.firmId, params.id),
+    );
+    assertCanUseDefinition(request, existing);
+    const archived = await repository.archiveSavedOperationalViewDefinition({
+      firmId: request.auth.firmId,
+      id: params.id,
+      archivedAt: new Date().toISOString(),
+    });
+    return { definition: assertDefinitionOwner(request, archived) };
+  });
+
   server.get("/api/operational-views", async (request) => {
     const query = parseRequestPart(operationalViewsQuerySchema, request.query, "query");
     const matters = await repository.listMattersForUser(request.auth.user);

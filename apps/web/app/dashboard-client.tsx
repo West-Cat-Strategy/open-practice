@@ -152,6 +152,8 @@ import {
   formatWorkerRunAttempts,
   formatWorkerRunTiming,
   summarizeWorkerRuns,
+  summarizeWorkerHealth,
+  workerHealthTone,
   workerRunFilters,
   workerRunsForFilter,
   workerRunSafeContext,
@@ -225,6 +227,7 @@ import type {
   IntakeTemplateSavePayload,
   LegalClinicDashboardResponse,
   MatterSummary,
+  SavedOperationalViewDefinition,
   OperationalViewsResponse,
   PracticeOverview,
   ProvidersStatusResponse,
@@ -240,6 +243,7 @@ import type {
   TaskDeadlineWorkbenchResponse,
   TrustControlsDashboardResponse,
   IntakeVariableProposalsResponse,
+  WorkerHealthResponse,
   WorkerRunQueueFilter,
   WorkerRunsDashboardResponse,
 } from "./types";
@@ -261,6 +265,7 @@ interface DashboardClientProps {
   legalClinic: LegalClinicDashboardResponse;
   initialSection: DashboardNavigationSectionKey;
   overview: PracticeOverview;
+  operationalViewDefinitions?: SavedOperationalViewDefinition[];
   operationalViews: OperationalViewsResponse;
   providerStatus: ProvidersStatusResponse;
   matters: MatterSummary[];
@@ -270,6 +275,7 @@ interface DashboardClientProps {
   taskWorkbench: TaskDeadlineWorkbenchResponse;
   trustControls: TrustControlsDashboardResponse;
   queues: QueuesResponse;
+  workerHealth: WorkerHealthResponse;
   workerRuns: WorkerRunsDashboardResponse;
 }
 
@@ -320,6 +326,12 @@ function compactDate(value?: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("en-CA");
 }
 
+function formatSavedOperationalViewDefinition(definition: SavedOperationalViewDefinition): string {
+  const scope =
+    definition.permissionScope.length > 0 ? definition.permissionScope.join(", ") : "no scope";
+  return `${definition.rowLimit} rows · ${definition.columns.length} columns · ${scope}`;
+}
+
 export default function DashboardClient({
   apiBaseUrl,
   billing,
@@ -337,6 +349,7 @@ export default function DashboardClient({
   legalClinic,
   initialSection,
   overview,
+  operationalViewDefinitions = [],
   operationalViews,
   providerStatus,
   matters,
@@ -345,6 +358,7 @@ export default function DashboardClient({
   taskWorkbench,
   trustControls,
   queues,
+  workerHealth,
   workerRuns,
   shareLinksStatus,
 }: DashboardClientProps) {
@@ -354,6 +368,16 @@ export default function DashboardClient({
   const [activeMatterId, setActiveMatterId] = useState(matters[0]?.id ?? "");
   const [activeSection, setActiveSection] = useState<LocalDashboardSectionKey>(initialSection);
   const [workerRunFilter, setWorkerRunFilter] = useState<WorkerRunQueueFilter>("all");
+  const [savedOperationalViewDefinitions, setSavedOperationalViewDefinitions] = useState(
+    operationalViewDefinitions,
+  );
+  const [savedOperationalViewStatus, setSavedOperationalViewStatus] = useState(
+    operationalViewDefinitions.length > 0
+      ? `${operationalViewDefinitions.length} saved queue view${operationalViewDefinitions.length === 1 ? "" : "s"} loaded.`
+      : "No saved queue views yet.",
+  );
+  const [savingOperationalView, setSavingOperationalView] = useState(false);
+  const [archivingOperationalViewId, setArchivingOperationalViewId] = useState("");
   const [matterSearch, setMatterSearch] = useState("");
   const [activityKindFilter, setActivityKindFilter] = useState<MatterActivityKindFilter>("all");
   const [activityStatusFilter, setActivityStatusFilter] =
@@ -708,6 +732,8 @@ export default function DashboardClient({
     [workerRuns, workerRunFilter],
   );
   const workerRunSummary = useMemo(() => summarizeWorkerRuns(activeWorkerRuns), [activeWorkerRuns]);
+  const workerHealthSummary = useMemo(() => summarizeWorkerHealth(workerHealth), [workerHealth]);
+  const workerHealthStateTone = workerHealthTone(workerHealth.status);
   const taskDeadlineSummary = useMemo(() => {
     const my = taskWorkbench.counters.my;
     return `${my.overdue} overdue, ${my.today} due today, ${my.upcoming} upcoming`;
@@ -2016,6 +2042,65 @@ export default function DashboardClient({
     }));
     setShareStatus("Share link revoked.");
     setRevokingShareId("");
+  }
+
+  async function saveQueueOperationalViewDefinition(): Promise<void> {
+    setSavingOperationalView(true);
+    setSavedOperationalViewStatus("Saving queue view...");
+    try {
+      const payload = await requestDashboardJson<{ definition: SavedOperationalViewDefinition }>(
+        apiBaseUrl,
+        "/api/operational-views/definitions",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: {
+            surface: "queues",
+            name: `Queue focus ${savedOperationalViewDefinitions.length + 1}`,
+            filters: {
+              source: "dashboard-queues",
+              queueSections: queues.sections.map((section) => section.key),
+            },
+            columns: ["title", "status", "priority"],
+            sort: { priority: "desc" },
+            rowLimit: 25,
+            dashboardBehavior: { pinToFocus: true },
+            permissionScope: ["matter:read"],
+          },
+        },
+      );
+      setSavedOperationalViewDefinitions((current) => [payload.definition, ...current]);
+      setSavedOperationalViewStatus("Queue view saved.");
+    } catch (error) {
+      setSavedOperationalViewStatus(`Queue view save failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setSavingOperationalView(false);
+    }
+  }
+
+  async function archiveQueueOperationalViewDefinition(
+    definition: SavedOperationalViewDefinition,
+  ): Promise<void> {
+    setArchivingOperationalViewId(definition.id);
+    setSavedOperationalViewStatus(`Archiving ${definition.name}...`);
+    try {
+      const payload = await requestDashboardJson<{ definition: SavedOperationalViewDefinition }>(
+        apiBaseUrl,
+        `/api/operational-views/definitions/${encodeURIComponent(definition.id)}/archive`,
+        {
+          method: "POST",
+          headers: devHeaders,
+        },
+      );
+      setSavedOperationalViewDefinitions((current) =>
+        current.filter((candidate) => candidate.id !== payload.definition.id),
+      );
+      setSavedOperationalViewStatus("Queue view archived.");
+    } catch (error) {
+      setSavedOperationalViewStatus(`Queue view archive failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setArchivingOperationalViewId("");
+    }
   }
 
   function selectDashboardSection(sectionKey: LocalDashboardSectionKey): void {
@@ -4275,6 +4360,45 @@ export default function DashboardClient({
                 </p>
                 <p className="inline-empty">{taskDeadlineSummary}</p>
                 <div className="section-title">
+                  <h3>Saved views</h3>
+                  <button
+                    className="secondary-button compact-button row-button"
+                    disabled={savingOperationalView}
+                    onClick={saveQueueOperationalViewDefinition}
+                    type="button"
+                  >
+                    <Save aria-hidden="true" size={16} />
+                    {savingOperationalView ? "Saving" : "Save current focus"}
+                  </button>
+                </div>
+                <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+                  {savedOperationalViewStatus}
+                </p>
+                <div className="party-list queue-section-list">
+                  {savedOperationalViewDefinitions.map((definition) => (
+                    <div className="party-row" key={definition.id}>
+                      <span>
+                        <strong>{definition.name}</strong>
+                        <small>{formatSavedOperationalViewDefinition(definition)}</small>
+                        <small>updated {compactDate(definition.updatedAt)}</small>
+                      </span>
+                      <button
+                        aria-label={`Archive ${definition.name}`}
+                        className="secondary-button compact-button row-button"
+                        disabled={archivingOperationalViewId === definition.id}
+                        onClick={() => archiveQueueOperationalViewDefinition(definition)}
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={16} />
+                        {archivingOperationalViewId === definition.id ? "Archiving" : "Archive"}
+                      </button>
+                    </div>
+                  ))}
+                  {savedOperationalViewDefinitions.length === 0 ? (
+                    <p className="inline-empty">No saved queue views are active.</p>
+                  ) : null}
+                </div>
+                <div className="section-title">
                   <h3>Provider posture</h3>
                   <span>{compactProviderStatus(providerStatus.liveHealth.status)}</span>
                 </div>
@@ -4325,6 +4449,57 @@ export default function DashboardClient({
                       <em className={row.tone === "risk" ? "risk" : undefined}>{row.status}</em>
                     </div>
                   ))}
+                </div>
+                <div className="section-title">
+                  <h3>Worker health</h3>
+                  <span className={workerHealthStateTone === "risk" ? "risk" : undefined}>
+                    {compactStatus(workerHealth.status)}
+                  </span>
+                </div>
+                <p className="inline-empty">{workerHealthSummary}</p>
+                <div className="detail-grid queue-summary-grid">
+                  <div>
+                    <span className="field-label">Configured</span>
+                    <strong>{workerHealth.configuredQueues}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Active or queued</span>
+                    <strong>{workerHealth.activeOrQueued}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Failed</span>
+                    <strong>{workerHealth.failed}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Stalled</span>
+                    <strong>{workerHealth.stalled}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Observed</span>
+                    <strong>{compactDate(workerHealth.lastObservedAt)}</strong>
+                  </div>
+                </div>
+                <div className="party-list queue-section-list">
+                  {workerHealth.queues.map((queue) => (
+                    <div className="party-row" key={queue.queueName}>
+                      <span>
+                        <strong>{queue.queueName}</strong>
+                        <small>
+                          {queue.status} · {queue.total} runs · {queue.active} active ·{" "}
+                          {queue.queued} queued · {queue.failed} failed · {queue.stalled} stalled
+                        </small>
+                        {queue.lastObservedAt ? (
+                          <small>last observed {compactDate(queue.lastObservedAt)}</small>
+                        ) : null}
+                      </span>
+                      <em className={queue.health === "degraded" ? "risk" : undefined}>
+                        {compactStatus(queue.health)}
+                      </em>
+                    </div>
+                  ))}
+                  {workerHealth.queues.length === 0 ? (
+                    <p className="inline-empty">Worker health has not been observed yet.</p>
+                  ) : null}
                 </div>
                 <div className="section-title">
                   <h3>Worker runs</h3>

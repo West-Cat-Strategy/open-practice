@@ -137,6 +137,10 @@ export interface IntakeFormLinkRecord {
   clientContactId?: string;
   parentFormLinkId?: string;
   answerSnapshotId?: string;
+  clientSubmissionId?: string;
+  submissionFingerprint?: string;
+  draftAnswers?: Record<string, unknown>;
+  draftUpdatedAt?: string;
   expiresAt: string;
   revokedAt?: string;
   submittedAt?: string;

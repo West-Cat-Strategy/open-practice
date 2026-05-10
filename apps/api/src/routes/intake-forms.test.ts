@@ -338,17 +338,19 @@ describe("intake form builder routes", () => {
         consentText: "I confirm these synthetic intake answers are accurate.",
       },
     });
+    const submitPayload = {
+      clientSubmissionId: "browser-submit-001",
+      answers: {
+        issue_type: "repair",
+        urgent: true,
+        client_display_name: "Ada M.",
+        matter_title: "Ada tenancy repairs",
+      },
+    };
     const submitted = await server.inject({
       method: "POST",
       url: `/api/portal/intake-forms/${token}/submit`,
-      payload: {
-        answers: {
-          issue_type: "repair",
-          urgent: true,
-          client_display_name: "Ada M.",
-          matter_title: "Ada tenancy repairs",
-        },
-      },
+      payload: submitPayload,
     });
 
     expect(completeUpload.statusCode).toBe(200);
@@ -387,7 +389,11 @@ describe("intake form builder routes", () => {
     const submittedLinkId = created.json<{ link: { id: string } }>().link.id;
     const snapshotId = submitted.json<{ snapshot: { id: string } }>().snapshot.id;
     await expect(repository.getIntakeFormLink("firm-west-legal", submittedLinkId)).resolves.toEqual(
-      expect.objectContaining({ answerSnapshotId: snapshotId }),
+      expect.objectContaining({
+        answerSnapshotId: snapshotId,
+        clientSubmissionId: "browser-submit-001",
+        submissionFingerprint: expect.any(String),
+      }),
     );
     await expect(
       repository.getTaskDeadline("firm-west-legal", `intake-review:${submittedLinkId}`),
@@ -397,6 +403,45 @@ describe("intake form builder routes", () => {
         title: "Review submitted intake form",
       }),
     );
+    const snapshotsAfterSubmit = await repository.listAnswerSnapshots("firm-west-legal", {
+      intakeSessionId: "intake-session-001",
+    });
+    const proposalsAfterSubmit = await repository.listIntakeVariableProposals("firm-west-legal", {
+      matterId: "matter-001",
+    });
+    const replayed = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${token}/submit`,
+      payload: submitPayload,
+    });
+    const conflictingReplay = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${token}/submit`,
+      payload: {
+        ...submitPayload,
+        answers: { ...submitPayload.answers, matter_title: "Changed tenancy repairs" },
+      },
+    });
+
+    expect(replayed.statusCode).toBe(200);
+    expect(replayed.json()).toMatchObject({
+      status: "submitted",
+      link: expect.objectContaining({ id: submittedLinkId, answerSnapshotId: snapshotId }),
+      snapshot: expect.objectContaining({ id: snapshotId }),
+      proposals: expect.arrayContaining([
+        expect.objectContaining({ answerSnapshotId: snapshotId, status: "pending" }),
+      ]),
+    });
+    expect(conflictingReplay.statusCode).toBe(409);
+    expect(conflictingReplay.json()).toMatchObject({
+      code: "INTAKE_FORM_SUBMISSION_CONFLICT",
+    });
+    await expect(
+      repository.listAnswerSnapshots("firm-west-legal", { intakeSessionId: "intake-session-001" }),
+    ).resolves.toHaveLength(snapshotsAfterSubmit.length);
+    await expect(
+      repository.listIntakeVariableProposals("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toHaveLength(proposalsAfterSubmit.length);
 
     const reviewLoad = await server.inject({
       method: "GET",
@@ -890,7 +935,38 @@ describe("intake form builder routes", () => {
     expect(loaded.statusCode).toBe(200);
     expect(loaded.json()).toMatchObject({
       link: expect.objectContaining({ id: activeLinkId, status: "active" }),
+      draft: null,
       template: expect.objectContaining({ name: "Residential tenancy intake" }),
+    });
+    const draft = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${activeToken}/draft`,
+      payload: {
+        answers: {
+          issue_type: "repair",
+          urgent: true,
+          client_display_name: "Ada M.",
+        },
+      },
+    });
+    const draftLoad = await server.inject({
+      method: "GET",
+      url: `/api/portal/intake-forms/${activeToken}`,
+    });
+    expect(draft.statusCode).toBe(200);
+    expect(draft.json()).toMatchObject({
+      status: "draft_saved",
+      draftUpdatedAt: expect.any(String),
+    });
+    expect(draftLoad.json()).toMatchObject({
+      draft: {
+        answers: expect.objectContaining({
+          issue_type: "repair",
+          urgent: true,
+          client_display_name: "Ada M.",
+        }),
+        updatedAt: draft.json<{ draftUpdatedAt: string }>().draftUpdatedAt,
+      },
     });
 
     const expired = await server.inject({
@@ -987,11 +1063,19 @@ describe("intake form builder routes", () => {
     });
 
     expect(submitted.statusCode).toBe(200);
-    expect(resubmitted.statusCode).toBe(403);
+    expect(resubmitted.statusCode).toBe(409);
+    expect(resubmitted.json()).toMatchObject({ code: "INTAKE_FORM_SUBMISSION_CONFLICT" });
     expect(submittedLoad.statusCode).toBe(200);
     expect(submittedLoad.json()).toMatchObject({
       link: expect.objectContaining({ status: "submitted" }),
+      draft: null,
     });
+    const draftAfterSubmit = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${submittedToken}/draft`,
+      payload: { answers: { issue_type: "repair" } },
+    });
+    expect(draftAfterSubmit.statusCode).toBe(403);
     expect(JSON.stringify(submittedLoad.json())).not.toContain("tokenHash");
 
     await expect(
@@ -1007,8 +1091,8 @@ describe("intake form builder routes", () => {
           metadata: { outcome: "granted", status: "submitted" },
         }),
         expect.objectContaining({
-          action: "view",
-          metadata: { outcome: "denied", reason: "submitted" },
+          action: "submit",
+          metadata: { outcome: "submission_conflict" },
         }),
       ]),
     );

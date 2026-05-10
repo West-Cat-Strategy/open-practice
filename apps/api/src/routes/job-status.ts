@@ -83,6 +83,37 @@ export interface ReservedWorkerQueueStatus {
 
 export type WorkerQueueStatus = ConfigurableWorkerQueueStatus | ReservedWorkerQueueStatus;
 
+export type WorkerQueueHealthState = "healthy" | "degraded" | "unknown";
+
+export interface WorkerQueueHealthSummary {
+  queueName: OpenPracticeQueueName;
+  status: WorkerQueueStatus["status"];
+  health: WorkerQueueHealthState;
+  total: number;
+  queued: number;
+  active: number;
+  failed: number;
+  terminal: number;
+  stalled: number;
+  lastObservedAt?: string;
+  lastFailureAt?: string;
+  degradedReasons: string[];
+}
+
+export interface WorkerHealthSummary {
+  status: WorkerQueueHealthState;
+  generatedAt: string;
+  configuredQueues: number;
+  reservedQueues: number;
+  notConfiguredQueues: number;
+  totalRuns: number;
+  activeOrQueued: number;
+  failed: number;
+  stalled: number;
+  lastObservedAt?: string;
+  queues: WorkerQueueHealthSummary[];
+}
+
 function isTerminalStatus(status: OpenPracticeJobStatus): boolean {
   return status === "completed" || status === "dead_letter" || status === "skipped";
 }
@@ -154,6 +185,97 @@ export function summarizeJobRuns(records: JobLifecycleRecord[]) {
     ).length,
     terminal: records.filter((record) => isTerminalStatus(record.status)).length,
     byQueue,
+  };
+}
+
+function observedTime(record: JobLifecycleRecord): string | undefined {
+  return record.finishedAt ?? record.failedAt ?? record.startedAt ?? record.queuedAt;
+}
+
+function latestIso(values: Array<string | undefined>): string | undefined {
+  const timestamps = values
+    .map((value) => (value ? Date.parse(value) : Number.NaN))
+    .filter((value) => Number.isFinite(value));
+  if (timestamps.length === 0) return undefined;
+  return new Date(Math.max(...timestamps)).toISOString();
+}
+
+function isStalled(record: JobLifecycleRecord, nowMs: number): boolean {
+  if (record.status === "active") {
+    return nowMs - Date.parse(record.startedAt ?? record.queuedAt) > 30 * 60 * 1000;
+  }
+  if (record.status === "queued") {
+    return nowMs - Date.parse(record.queuedAt) > 60 * 60 * 1000;
+  }
+  return false;
+}
+
+export function summarizeWorkerHealth(input: {
+  records: JobLifecycleRecord[];
+  workerQueues: WorkerQueueStatus[];
+  now?: string;
+}): WorkerHealthSummary {
+  const generatedAt = input.now ?? new Date().toISOString();
+  const nowMs = Date.parse(generatedAt);
+  const queues = input.workerQueues.map((queue): WorkerQueueHealthSummary => {
+    const queueRecords = input.records.filter((record) => record.queueName === queue.queueName);
+    const failedRecords = queueRecords.filter(
+      (record) => record.status === "failed" || record.status === "dead_letter",
+    );
+    const stalled = queueRecords.filter((record) => isStalled(record, nowMs)).length;
+    const degradedReasons = [
+      failedRecords.length > 0 ? "failed_jobs_observed" : undefined,
+      stalled > 0 ? "stalled_jobs_observed" : undefined,
+    ].filter((reason): reason is string => Boolean(reason));
+    const health: WorkerQueueHealthState =
+      degradedReasons.length > 0
+        ? "degraded"
+        : queue.status === "configured" && queueRecords.length > 0
+          ? "healthy"
+          : "unknown";
+
+    return {
+      queueName: queue.queueName,
+      status: queue.status,
+      health,
+      total: queueRecords.length,
+      queued: queueRecords.filter((record) => record.status === "queued").length,
+      active: queueRecords.filter((record) => record.status === "active").length,
+      failed: failedRecords.length,
+      terminal: queueRecords.filter((record) => isTerminalStatus(record.status)).length,
+      stalled,
+      lastObservedAt: latestIso(queueRecords.map(observedTime)),
+      lastFailureAt: latestIso(failedRecords.map((record) => record.failedAt ?? record.finishedAt)),
+      degradedReasons,
+    };
+  });
+  const failed = queues.reduce((sum, queue) => sum + queue.failed, 0);
+  const stalled = queues.reduce((sum, queue) => sum + queue.stalled, 0);
+  const configuredQueues = input.workerQueues.filter(
+    (queue) => queue.status === "configured",
+  ).length;
+  const status: WorkerQueueHealthState =
+    failed > 0 || stalled > 0
+      ? "degraded"
+      : configuredQueues > 0 && queues.some((queue) => queue.health === "healthy")
+        ? "healthy"
+        : "unknown";
+
+  return {
+    status,
+    generatedAt,
+    configuredQueues,
+    reservedQueues: input.workerQueues.filter((queue) => queue.status === "reserved").length,
+    notConfiguredQueues: input.workerQueues.filter((queue) => queue.status === "not_configured")
+      .length,
+    totalRuns: input.records.length,
+    activeOrQueued: input.records.filter(
+      (record) => record.status === "queued" || record.status === "active",
+    ).length,
+    failed,
+    stalled,
+    lastObservedAt: latestIso(input.records.map(observedTime)),
+    queues,
   };
 }
 

@@ -1,5 +1,6 @@
 import type {
   WorkerRunQueueFilter,
+  WorkerHealthResponse,
   WorkerRunSummaryItem,
   WorkerRunsDashboardResponse,
   WorkerRunsResponse,
@@ -39,6 +40,10 @@ export function buildWorkerRunsPath(filter: WorkerRunQueueFilter = "all"): strin
   return filter === "all" ? "/api/jobs" : `/api/jobs?queueName=${encodeURIComponent(filter)}`;
 }
 
+export function buildWorkerHealthPath(): string {
+  return "/api/jobs/health";
+}
+
 export function emptyWorkerRunsResponse(status = "default"): WorkerRunsResponse {
   return {
     status,
@@ -51,6 +56,21 @@ export function emptyWorkerRunsResponse(status = "default"): WorkerRunsResponse 
   };
 }
 
+export function emptyWorkerHealthResponse(status: WorkerHealthResponse["status"] = "unknown") {
+  return {
+    status,
+    generatedAt: "",
+    configuredQueues: 0,
+    reservedQueues: reservedWorkerQueues.length,
+    notConfiguredQueues: 0,
+    totalRuns: 0,
+    activeOrQueued: 0,
+    failed: 0,
+    stalled: 0,
+    queues: [],
+  } satisfies WorkerHealthResponse;
+}
+
 export function workerRunsForFilter(
   dashboard: WorkerRunsDashboardResponse,
   filter: WorkerRunQueueFilter,
@@ -61,6 +81,21 @@ export function workerRunsForFilter(
 export function summarizeWorkerRuns(response: WorkerRunsResponse): string {
   const active = response.summary.queued + response.summary.active;
   return `${response.summary.total} worker runs. ${active} active or queued. ${response.summary.failed} failed. ${response.summary.terminal} terminal.`;
+}
+
+export function summarizeWorkerHealth(response: WorkerHealthResponse): string {
+  const observed = response.lastObservedAt
+    ? ` Last activity ${compactDate(response.lastObservedAt)}.`
+    : "";
+  return `${response.configuredQueues} configured queues, ${response.reservedQueues} reserved, ${response.notConfiguredQueues} not configured. ${response.failed} failed and ${response.stalled} stalled.${observed}`;
+}
+
+export function workerHealthTone(
+  status: WorkerHealthResponse["status"],
+): "neutral" | "ready" | "risk" {
+  if (status === "healthy") return "ready";
+  if (status === "degraded") return "risk";
+  return "neutral";
 }
 
 export function describeWorkerRunStatus(job: WorkerRunSummaryItem): {

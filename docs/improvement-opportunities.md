@@ -68,6 +68,21 @@ commitments.
 | **Document Suggestions Review Queue**   | Add reviewer-only OCR/extraction suggestions for classification, duplicate or supersession cues, matter/contact hints, and missing metadata without automatic merge or classification.                                              | Central: paperless-ngx                                                                           |
 | **Signature Evidence Packet View**      | Add a matter-scoped evidence view for embedded signature requests with signer role, delivery state, completion/decline timeline, linked document ID, and redacted audit references.                                                 | Central: DocuSeal, docassemble                                                                   |
 
+## Nonprofit-Manager Behavioral Pattern Candidates
+
+The May 2026 local `nonprofit-manager` review produced clean-room behavioral candidates only. Do not
+copy nonprofit-manager implementation structure, portal/case-form terminology, generic approval
+models, provider assumptions, or deployment workflows into Open Practice.
+
+| Topic                              | Candidate Goal                                                                                                                                    | Reference Posture                    |
+| :--------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------ | :----------------------------------- |
+| **Saved Operational Views**        | Add user-owned matter dashboard presets for overdue filings, uncontacted intake clients, and expiring upload links after built-in views grow.     | Behavioral reference; no code reuse. |
+| **Audit Projection Summaries**     | Add read-only operator summaries over the existing hash-chained audit taxonomy without changing stored audit events.                              | Behavioral reference; no code reuse. |
+| **Async Report Export Requests**   | Move large audit, billing, or trust exports behind capped direct responses and async job status when report size exceeds safe synchronous limits. | Behavioral reference; no code reuse. |
+| **Delivery Receipt Tokens**        | Add purpose-scoped public delivery receipt links for selected outbound emails without exposing sessions or message bodies.                        | Behavioral reference; no code reuse. |
+| **Fiscal-Host Workflow Design**    | Model fiscal-host program relationships and restricted-fund reporting cues as legal-operational metadata before adding accounting dimensions.     | Behavioral reference; no code reuse. |
+| **Jurisdictional Trust Reporting** | Add cautious trust report/export shapes over current balances, approvals, reconciliations, variance explanations, and matter jurisdiction labels. | Behavioral reference; no code reuse. |
+
 ## Implementation Guardrails
 
 - **Originality**: Keep Apache-2.0 core code original unless reuse passes `docs/reuse-decision-policy.md`.

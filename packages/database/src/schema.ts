@@ -25,6 +25,7 @@ import type {
   LegalClinicMatterProfile,
   LegalClinicProgram,
   LedgerReconciliationStatementRow,
+  SavedOperationalViewDefinition,
 } from "@open-practice/domain";
 
 export const province = pgEnum("province", ["BC", "ON", "CANADA", "OTHER"]);
@@ -130,6 +131,11 @@ export const conversationThreadNotificationBoundary = pgEnum(
   "conversation_thread_notification_boundary",
   ["disabled", "internal_only"],
 );
+export const savedOperationalViewSurface = pgEnum("saved_operational_view_surface", ["queues"]);
+export const savedOperationalViewStatus = pgEnum("saved_operational_view_status", [
+  "active",
+  "archived",
+]);
 
 export const firms = pgTable("firms", {
   id: text("id").primaryKey(),
@@ -214,6 +220,49 @@ export const providerSettings = pgTable(
       table.kind,
       table.key,
     ),
+  }),
+);
+
+export const savedOperationalViewDefinitions = pgTable(
+  "saved_operational_view_definitions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => users.id),
+    surface: savedOperationalViewSurface("surface").notNull(),
+    name: text("name").notNull(),
+    filters: jsonb("filters").$type<SavedOperationalViewDefinition["filters"]>().notNull(),
+    columns: jsonb("columns").$type<SavedOperationalViewDefinition["columns"]>().notNull(),
+    sort: jsonb("sort").$type<SavedOperationalViewDefinition["sort"]>().notNull(),
+    rowLimit: integer("row_limit").notNull(),
+    dashboardBehavior: jsonb("dashboard_behavior")
+      .$type<SavedOperationalViewDefinition["dashboardBehavior"]>()
+      .notNull(),
+    permissionScope: jsonb("permission_scope")
+      .$type<SavedOperationalViewDefinition["permissionScope"]>()
+      .notNull(),
+    status: savedOperationalViewStatus("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (table) => ({
+    ownerSurfaceStatus: index("saved_operational_views_owner_surface_status_idx").on(
+      table.firmId,
+      table.ownerUserId,
+      table.surface,
+      table.status,
+    ),
+    firmSurfaceName: index("saved_operational_views_firm_surface_name_idx").on(
+      table.firmId,
+      table.surface,
+      table.name,
+    ),
+    positiveRowLimit: check("saved_operational_views_positive_row_limit", sql`row_limit > 0`),
   }),
 );
 
@@ -1838,6 +1887,10 @@ export const intakeFormLinks = pgTable(
     clientContactId: text("client_contact_id").references(() => contacts.id),
     parentFormLinkId: text("parent_form_link_id").references((): AnyPgColumn => intakeFormLinks.id),
     answerSnapshotId: text("answer_snapshot_id").references(() => answerSnapshots.id),
+    clientSubmissionId: text("client_submission_id"),
+    submissionFingerprint: text("submission_fingerprint"),
+    draftAnswers: jsonb("draft_answers").$type<Record<string, unknown>>(),
+    draftUpdatedAt: timestamp("draft_updated_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
@@ -1848,6 +1901,7 @@ export const intakeFormLinks = pgTable(
     matterExpiry: index("intake_form_links_matter_expiry_idx").on(table.matterId, table.expiresAt),
     parent: index("intake_form_links_parent_idx").on(table.parentFormLinkId),
     snapshot: index("intake_form_links_snapshot_idx").on(table.answerSnapshotId),
+    submission: index("intake_form_links_submission_idx").on(table.id, table.clientSubmissionId),
   }),
 );
 

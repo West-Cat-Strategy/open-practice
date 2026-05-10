@@ -125,6 +125,42 @@ describe("repository intake persistence", () => {
     });
 
     await expect(
+      repository.reserveIntakeFormLinkSubmission({
+        firmId: "firm-west-legal",
+        id: link.id,
+        clientSubmissionId: "browser-submit-001",
+        submissionFingerprint: "fingerprint-001",
+      }),
+    ).resolves.toMatchObject({
+      id: link.id,
+      clientSubmissionId: "browser-submit-001",
+      submissionFingerprint: "fingerprint-001",
+    });
+    await expect(
+      repository.reserveIntakeFormLinkSubmission({
+        firmId: "firm-west-legal",
+        id: link.id,
+        clientSubmissionId: "browser-submit-002",
+        submissionFingerprint: "fingerprint-002",
+      }),
+    ).resolves.toMatchObject({
+      id: link.id,
+      clientSubmissionId: "browser-submit-001",
+      submissionFingerprint: "fingerprint-001",
+    });
+    await expect(
+      repository.saveIntakeFormLinkDraft({
+        firmId: "firm-west-legal",
+        id: link.id,
+        answers: { issue_type: "repair", urgent: true },
+        draftUpdatedAt: now,
+      }),
+    ).resolves.toMatchObject({
+      id: link.id,
+      draftAnswers: { issue_type: "repair", urgent: true },
+      draftUpdatedAt: now,
+    });
+    await expect(
       repository.markIntakeFormLinkSubmitted({
         firmId: "firm-west-legal",
         id: link.id,
@@ -132,6 +168,18 @@ describe("repository intake persistence", () => {
         answerSnapshotId: snapshot.id,
       }),
     ).resolves.toMatchObject({ id: link.id, answerSnapshotId: snapshot.id });
+    await expect(
+      repository.saveIntakeFormLinkDraft({
+        firmId: "firm-west-legal",
+        id: link.id,
+        answers: { issue_type: "changed" },
+        draftUpdatedAt: "2099-01-01T00:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({
+      id: link.id,
+      draftAnswers: { issue_type: "repair", urgent: true },
+      draftUpdatedAt: now,
+    });
     await expect(
       repository.createIntakeFormReview({
         id: "intake-form-review-accepted",

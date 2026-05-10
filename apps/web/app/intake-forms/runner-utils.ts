@@ -21,9 +21,20 @@ export interface PublicIntakeFormPayload {
     definition: EmbeddedIntakeTemplateDefinition;
   };
   actions: IntakeFormItemActionRecord[];
+  draft?: { answers: Record<string, unknown>; updatedAt: string } | null;
+  review?: {
+    decision: "accepted" | "rejected" | "request_more_info";
+    decidedAt: string;
+    reason?: string;
+    followUpFormLinkId?: string;
+  } | null;
 }
 
 export type Answers = Record<string, string | boolean>;
+export type VisibleIntakeSection = Extract<
+  EmbeddedIntakeTemplateDefinition,
+  { schemaVersion: 2 }
+>["sections"][number];
 
 export interface ApiErrorBody {
   code?: string;
@@ -100,6 +111,33 @@ export function coerceAnswer(
 ): string | boolean {
   if (question.type === "boolean") return Boolean(value);
   return String(value);
+}
+
+export function answersFromDraft(
+  definition: EmbeddedIntakeTemplateDefinition,
+  draftAnswers: Record<string, unknown> | undefined,
+): Answers {
+  if (!draftAnswers) return {};
+  const answers: Answers = {};
+  for (const question of definition.questions) {
+    const value = draftAnswers[question.id];
+    if (value === undefined || value === null) continue;
+    answers[question.id] = question.type === "boolean" ? Boolean(value) : String(value);
+  }
+  return answers;
+}
+
+export function intakeLifecycleMessage(payload: PublicIntakeFormPayload): string {
+  if (payload.review?.decision === "request_more_info") {
+    return "Staff requested more information. Use the new secure link from the request to continue.";
+  }
+  if (payload.review) return "This intake form has been reviewed by staff.";
+  if (payload.link.status === "active") {
+    return payload.draft?.updatedAt ? "Draft restored." : "Form ready.";
+  }
+  if (payload.link.status === "submitted")
+    return "Submitted. Your information is ready for staff review.";
+  return `This form is ${payload.link.status}.`;
 }
 
 export async function readApiError(response: Response): Promise<ApiErrorBody | null> {

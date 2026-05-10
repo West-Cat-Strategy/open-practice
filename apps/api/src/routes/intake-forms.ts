@@ -1,5 +1,6 @@
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type {
@@ -112,6 +113,11 @@ const publicCompleteParamsSchema = z.object({
 });
 
 const publicSubmitBodySchema = z.object({
+  clientSubmissionId: z.string().min(1).max(128).optional(),
+  answers: z.record(z.string(), z.unknown()),
+});
+
+const publicDraftBodySchema = z.object({
   answers: z.record(z.string(), z.unknown()),
 });
 
@@ -154,6 +160,14 @@ function requestUserAgent(request: FastifyRequest): string | undefined {
 
 function denied(): ApiHttpError {
   return new ApiHttpError(403, "INTAKE_FORM_LINK_UNAVAILABLE", "Intake form link is not available");
+}
+
+function submissionConflict(): ApiHttpError {
+  return new ApiHttpError(
+    409,
+    "INTAKE_FORM_SUBMISSION_CONFLICT",
+    "Intake form submission identifier conflicts with an existing submission",
+  );
 }
 
 function incomplete(requiredIncompleteItemIds: string[]): ApiHttpError {
@@ -221,6 +235,21 @@ function buildPortalUrl(publicWebBaseUrl: string, token: string): string {
 
 function intakeReviewTaskId(formLinkId: string): string {
   return `intake-review:${formLinkId}`;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function submissionFingerprint(answers: Record<string, unknown>): string {
+  return createHash("sha256").update(stableJson({ answers })).digest("hex");
 }
 
 function contentTypeAllowed(contentType: string, acceptedFileTypes?: string[]): boolean {
@@ -421,6 +450,41 @@ async function resolvePublicLink(
     throw denied();
   }
   return link;
+}
+
+async function buildIdempotentSubmissionReplay(input: {
+  repository: ApiRouteDependencies["repository"];
+  link: IntakeFormLinkRecord;
+  answers: Record<string, unknown>;
+  clientSubmissionId?: string;
+}) {
+  const fingerprint = submissionFingerprint(input.answers);
+  if (
+    !input.clientSubmissionId ||
+    input.link.clientSubmissionId !== input.clientSubmissionId ||
+    input.link.submissionFingerprint !== fingerprint ||
+    !input.link.answerSnapshotId
+  ) {
+    throw submissionConflict();
+  }
+
+  const snapshots = await input.repository.listAnswerSnapshots(input.link.firmId, {
+    intakeSessionId: input.link.intakeSessionId,
+  });
+  const snapshot = snapshots.find((candidate) => candidate.id === input.link.answerSnapshotId);
+  if (!snapshot) throw denied();
+  const proposals = (
+    await input.repository.listIntakeVariableProposals(input.link.firmId, {
+      matterId: input.link.matterId,
+    })
+  ).filter((proposal) => proposal.answerSnapshotId === snapshot.id);
+
+  return {
+    status: "submitted",
+    link: serializeLink(input.link),
+    snapshot,
+    proposals,
+  };
 }
 
 export function registerIntakeFormRoutes(
@@ -925,16 +989,31 @@ export function registerIntakeFormRoutes(
       const actions = await repository.listIntakeFormItemActions(link.firmId, {
         formLinkId: link.id,
       });
+      const reviews = await repository.listIntakeFormReviews(link.firmId, { formLinkId: link.id });
+      const latestReview = reviews[0];
+      const status = linkStatus(link);
       await recordAccessLog(repository, {
         link,
         request,
         action: "view",
         resourceType: "intake_form_link",
         resourceId: link.id,
-        metadata: { outcome: "granted", status: linkStatus(link) },
+        metadata: { outcome: "granted", status },
       });
       return {
         link: serializeLink(link),
+        draft:
+          status === "active" && link.draftUpdatedAt
+            ? { answers: link.draftAnswers ?? {}, updatedAt: link.draftUpdatedAt }
+            : null,
+        review: latestReview
+          ? {
+              decision: latestReview.decision,
+              decidedAt: latestReview.decidedAt,
+              reason: latestReview.reason,
+              followUpFormLinkId: latestReview.followUpFormLinkId,
+            }
+          : null,
         template: {
           id: template.id,
           name: template.name,
@@ -947,13 +1026,83 @@ export function registerIntakeFormRoutes(
   );
 
   server.post(
+    "/api/portal/intake-forms/:token/draft",
+    publicTokenPolicyOptions("intake-form", "mutation"),
+    async (request) => {
+      const params = parseRequestPart(publicTokenParamsSchema, request.params, "params");
+      const body = parseRequestPart(publicDraftBodySchema, request.body, "body");
+      if (!jwtSecret) throw denied();
+      const link = await resolvePublicLink(repository, {
+        token: params.token,
+        jwtSecret,
+        request,
+      });
+      const draftUpdatedAt = new Date().toISOString();
+      const saved = await repository.saveIntakeFormLinkDraft({
+        firmId: link.firmId,
+        id: link.id,
+        answers: body.answers,
+        draftUpdatedAt,
+      });
+      if (!saved || saved.submittedAt || saved.revokedAt) throw denied();
+      await recordAccessLog(repository, {
+        link: saved,
+        request,
+        action: "draft",
+        resourceType: "intake_form_link",
+        resourceId: saved.id,
+        metadata: { outcome: "draft_saved", answerCount: Object.keys(body.answers).length },
+      });
+      return { status: "draft_saved", draftUpdatedAt: saved.draftUpdatedAt ?? draftUpdatedAt };
+    },
+  );
+
+  server.post(
     "/api/portal/intake-forms/:token/submit",
     publicTokenPolicyOptions("intake-form", "mutation"),
     async (request) => {
       const params = parseRequestPart(publicTokenParamsSchema, request.params, "params");
       const body = parseRequestPart(publicSubmitBodySchema, request.body, "body");
       if (!jwtSecret) throw denied();
-      const link = await resolvePublicLink(repository, { token: params.token, jwtSecret, request });
+      let link = await resolvePublicLink(repository, {
+        token: params.token,
+        jwtSecret,
+        request,
+        allowSubmitted: true,
+      });
+      const fingerprint = submissionFingerprint(body.answers);
+      if (linkStatus(link) === "submitted") {
+        let replay: Awaited<ReturnType<typeof buildIdempotentSubmissionReplay>>;
+        try {
+          replay = await buildIdempotentSubmissionReplay({
+            repository,
+            link,
+            answers: body.answers,
+            clientSubmissionId: body.clientSubmissionId,
+          });
+        } catch (error) {
+          if (error instanceof ApiHttpError && error.code === "INTAKE_FORM_SUBMISSION_CONFLICT") {
+            await recordAccessLog(repository, {
+              link,
+              request,
+              action: "submit",
+              resourceType: "intake_form_link",
+              resourceId: link.id,
+              metadata: { outcome: "submission_conflict" },
+            });
+          }
+          throw error;
+        }
+        await recordAccessLog(repository, {
+          link,
+          request,
+          action: "submit",
+          resourceType: "answer_snapshot",
+          resourceId: replay.snapshot.id,
+          metadata: { outcome: "idempotent_replay" },
+        });
+        return replay;
+      }
       const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
       if (!session) throw denied();
       const template = await getTemplate(repository, link.firmId, session.templateId);
@@ -972,6 +1121,24 @@ export function registerIntakeFormRoutes(
       });
       const requiredIncompleteItemIds = resolution.requiredIncompleteItemIds ?? [];
       if (requiredIncompleteItemIds.length > 0) throw incomplete(requiredIncompleteItemIds);
+      if (body.clientSubmissionId) {
+        const reserved = await repository.reserveIntakeFormLinkSubmission({
+          firmId: link.firmId,
+          id: link.id,
+          clientSubmissionId: body.clientSubmissionId,
+          submissionFingerprint: fingerprint,
+        });
+        if (
+          !reserved ||
+          reserved.clientSubmissionId !== body.clientSubmissionId ||
+          reserved.submissionFingerprint !== fingerprint
+        ) {
+          throw submissionConflict();
+        }
+        link = reserved;
+      } else if (link.clientSubmissionId) {
+        throw submissionConflict();
+      }
       const now = new Date().toISOString();
       const snapshot = await repository.createAnswerSnapshot({
         id: crypto.randomUUID(),

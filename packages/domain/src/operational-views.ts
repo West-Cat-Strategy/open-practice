@@ -5,6 +5,7 @@ import type {
   ExternalUploadLinkRecord,
   InboundEmailMessageRecord,
 } from "./operations.js";
+import type { Action, ResourceKind } from "./permissions.js";
 import type { SignatureRequestRecord } from "./signatures.js";
 
 export type BuiltInOperationalViewKey =
@@ -16,6 +17,45 @@ export type BuiltInOperationalViewKey =
   | "overdue_tasks_deadlines";
 
 export type OperationalViewPriority = "high" | "medium" | "low";
+export type SavedOperationalViewSurface = "queues";
+export type SavedOperationalViewStatus = "active" | "archived";
+export type SavedOperationalViewPermissionScope = `${ResourceKind}:${Action}`;
+
+export interface SavedOperationalViewDefinition {
+  id: string;
+  firmId: string;
+  ownerUserId: string;
+  surface: SavedOperationalViewSurface;
+  name: string;
+  filters: Record<string, unknown>;
+  columns: unknown[];
+  sort: Record<string, unknown>;
+  rowLimit: number;
+  dashboardBehavior: Record<string, unknown>;
+  permissionScope: SavedOperationalViewPermissionScope[];
+  status: SavedOperationalViewStatus;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string;
+}
+
+export interface SavedOperationalViewDefinitionInput {
+  id?: string;
+  firmId: string;
+  ownerUserId: string;
+  surface: SavedOperationalViewSurface;
+  name: string;
+  filters?: Record<string, unknown>;
+  columns?: unknown[];
+  sort?: Record<string, unknown>;
+  rowLimit?: number;
+  dashboardBehavior?: Record<string, unknown>;
+  permissionScope?: SavedOperationalViewPermissionScope[];
+  status?: SavedOperationalViewStatus;
+  createdAt?: string;
+  updatedAt?: string;
+  archivedAt?: string;
+}
 
 export interface BuiltInOperationalViewDefinition {
   key: BuiltInOperationalViewKey;

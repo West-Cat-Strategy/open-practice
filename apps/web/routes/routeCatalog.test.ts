@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSidebarNavigationSections,
   buildDashboardSectionUrl,
   getDashboardSectionPath,
   getRouteCatalogEntry,
@@ -10,6 +11,7 @@ import {
   routeCatalog,
   type OpenPracticeSidebarNavigationSection,
   type OpenPracticeRouteId,
+  type RouteCatalogSectionCapability,
 } from "./routeCatalog";
 
 function enabledSidebarNavigation(): OpenPracticeSidebarNavigationSection[] {
@@ -167,5 +169,70 @@ describe("Open Practice route catalog", () => {
     const nonSidebarEntries = routeCatalog.filter((entry) => !entry.showInSidebar);
 
     expect(nonSidebarEntries).toEqual([]);
+  });
+
+  it("locks first-touch dashboard expectations for legal workflow roles", () => {
+    const roleMatrix: Array<{
+      role: string;
+      billingCanView: boolean;
+      shareLinksEnabled: boolean;
+      capabilitySections: RouteCatalogSectionCapability[];
+      expected: Record<string, "matched" | "disabled">;
+    }> = [
+      {
+        role: "owner",
+        billingCanView: true,
+        shareLinksEnabled: true,
+        capabilitySections: [
+          { key: "matters", enabled: true },
+          { key: "documents", enabled: true },
+          { key: "intake", enabled: true },
+          { key: "billing", enabled: true },
+        ],
+        expected: { matters: "matched", billing: "matched", intake: "matched" },
+      },
+      {
+        role: "reviewer",
+        billingCanView: false,
+        shareLinksEnabled: false,
+        capabilitySections: [
+          { key: "matters", enabled: true },
+          { key: "documents", enabled: true },
+          { key: "intake", enabled: true },
+          { key: "audit", enabled: true },
+        ],
+        expected: { intake: "matched", audit: "matched", billing: "disabled" },
+      },
+      {
+        role: "billing",
+        billingCanView: true,
+        shareLinksEnabled: false,
+        capabilitySections: [
+          { key: "matters", enabled: true },
+          { key: "billing", enabled: true },
+        ],
+        expected: { billing: "matched", intake: "disabled" },
+      },
+      {
+        role: "restricted",
+        billingCanView: false,
+        shareLinksEnabled: false,
+        capabilitySections: [{ key: "matters", enabled: true }],
+        expected: { matters: "matched", billing: "disabled", documents: "disabled" },
+      },
+    ];
+
+    for (const role of roleMatrix) {
+      const navigationSections = buildSidebarNavigationSections(role);
+      for (const [section, status] of Object.entries(role.expected)) {
+        expect(
+          resolveDashboardRouteSelection({
+            requestedSection: section,
+            navigationSections,
+          }).status,
+          `${role.role} ${section}`,
+        ).toBe(status);
+      }
+    }
   });
 });

@@ -3,7 +3,6 @@
 import { CheckCircle2, FileText, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
-  buildPublicSharePath,
   buildShareEmailVerificationPath,
   describePublicShareStatus,
   isShareEmailVerificationRequired,
@@ -11,18 +10,12 @@ import {
   type PublicShareErrorBody,
   type PublicShareLinkResponse,
 } from "../share-link-portal";
+import { buildPublicTokenPath, readPublicTokenError } from "../publicTokenClient";
+import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
 
 interface ShareLinkRunnerProps {
   apiBaseUrl: string;
   token: string;
-}
-
-async function readShareError(response: Response): Promise<PublicShareErrorBody> {
-  try {
-    return (await response.json()) as PublicShareErrorBody;
-  } catch {
-    return {};
-  }
 }
 
 export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerProps) {
@@ -34,10 +27,12 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
   useEffect(() => {
     let cancelled = false;
     async function loadShare(): Promise<void> {
-      const response = await fetch(`${apiBaseUrl}${buildPublicSharePath(token)}`);
+      const response = await fetch(
+        `${apiBaseUrl}${buildPublicTokenPath("/api/portal/shares", token)}`,
+      );
       if (cancelled) return;
       if (!response.ok) {
-        const body = await readShareError(response);
+        const body = (await readPublicTokenError(response)) as PublicShareErrorBody;
         if (response.status === 403 && isShareEmailVerificationRequired(body)) {
           setVerificationRequired(true);
           setStatus("Email verification is required before documents can be viewed.");
@@ -67,7 +62,7 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
       method: "POST",
     });
     if (!response.ok) {
-      const body = await readShareError(response);
+      const body = (await readPublicTokenError(response)) as PublicShareErrorBody;
       setStatus(publicShareErrorMessage(body, `Email verification failed: ${response.status}`));
       setVerifying(false);
       return;
@@ -80,65 +75,60 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
   }
 
   return (
-    <main className="public-form-shell">
-      <section className="public-form-panel">
-        <div className="panel-header">
+    <PublicTokenShell
+      badge={
+        payload ? (
+          <span className="user-pill">
+            <CheckCircle2 size={16} />
+            verified
+          </span>
+        ) : undefined
+      }
+      eyebrow="Secure share"
+      icon={<FileText size={22} />}
+      title="Shared documents"
+    >
+      <PublicStatusMessage>{status}</PublicStatusMessage>
+
+      {verificationRequired ? (
+        <div className="public-form-action">
           <div>
-            <span className="eyebrow">Secure share</span>
-            <h1>Shared documents</h1>
+            <strong>Email verification</strong>
+            <small>Complete verification from this email-delivered link to view documents.</small>
           </div>
-          {payload ? (
-            <span className="user-pill">
-              <CheckCircle2 size={16} />
-              verified
-            </span>
-          ) : null}
+          <button
+            className="secondary-button"
+            disabled={verifying}
+            onClick={() => void completeEmailVerification()}
+            type="button"
+          >
+            <ShieldCheck size={16} />
+            {verifying ? "Verifying..." : "Verify email"}
+          </button>
         </div>
+      ) : null}
 
-        <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-          {status}
-        </p>
-
-        {verificationRequired ? (
-          <div className="public-form-action">
-            <div>
-              <strong>Email verification</strong>
-              <small>Complete verification from this email-delivered link to view documents.</small>
-            </div>
-            <button
-              className="secondary-button"
-              disabled={verifying}
-              onClick={() => void completeEmailVerification()}
-              type="button"
-            >
-              <ShieldCheck size={16} />
-              {verifying ? "Verifying..." : "Verify email"}
-            </button>
+      {payload ? (
+        <div className="public-form-section">
+          <div className="section-title">
+            <h2>Documents</h2>
+            <span>{payload.documents.length} records</span>
           </div>
-        ) : null}
-
-        {payload ? (
-          <div className="public-form-section">
-            <div className="section-title">
-              <h2>Documents</h2>
-              <span>{payload.documents.length} records</span>
-            </div>
-            <div className="public-form-items">
-              {payload.documents.map((document) => (
-                <div className="public-form-action" key={document.id}>
-                  <div>
-                    <strong>{document.title}</strong>
-                    <small>
-                      {document.classification} · version {document.version}
-                    </small>
-                  </div>
-                  <FileText size={18} aria-hidden="true" />
+          <div className="public-form-items">
+            {payload.documents.map((document) => (
+              <div className="public-form-action" key={document.id}>
+                <div>
+                  <strong>{document.title}</strong>
+                  <small>
+                    {document.classification} · version {document.version}
+                  </small>
                 </div>
-              ))}
-            </div>
+                <FileText size={18} aria-hidden="true" />
+              </div>
+            ))}
           </div>
-        ) : null}
-      </section>
-    </main>
+        </div>
+      ) : null}
+    </PublicTokenShell>
   );
 }

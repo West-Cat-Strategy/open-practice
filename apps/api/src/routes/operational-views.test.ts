@@ -5,6 +5,7 @@ import {
   type OpenPracticeRepository,
 } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
+import { normalizeApiError } from "../http/response.js";
 import { registerOperationalViewRoutes } from "./operational-views.js";
 
 const servers: FastifyInstance[] = [];
@@ -20,6 +21,23 @@ interface OperationalViewResponse {
       title: string;
       metadata: Record<string, unknown>;
     }>;
+  }>;
+}
+
+interface SavedOperationalViewDefinitionsResponse {
+  definitions: Array<{
+    id: string;
+    ownerUserId: string;
+    surface: string;
+    name: string;
+    filters: Record<string, unknown>;
+    columns: unknown[];
+    sort: Record<string, unknown>;
+    rowLimit: number;
+    dashboardBehavior: Record<string, unknown>;
+    permissionScope: string[];
+    status: string;
+    archivedAt?: string;
   }>;
 }
 
@@ -47,6 +65,10 @@ function testServer(
   const repository = input.repository ?? new InMemoryOpenPracticeRepository();
   const authUser = input.authUser ?? user("owner_admin");
   const server = Fastify({ logger: false });
+  server.setErrorHandler((error, _request, reply) => {
+    const normalized = normalizeApiError(error);
+    reply.status(normalized.statusCode).send(normalized.body);
+  });
   server.addHook("preHandler", async (request) => {
     request.auth = { firmId: authUser.firmId, user: authUser };
   });
@@ -150,5 +172,138 @@ describe("operational view routes", () => {
       expect.arrayContaining([expect.objectContaining({ matterId: "matter-002" })]),
     );
     expect(JSON.stringify(payload)).not.toContain("matter-two-token-hash");
+  });
+
+  it("creates and returns private saved operational view definitions for the owner only", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const ownerServer = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
+    const created = await ownerServer.inject({
+      method: "POST",
+      url: "/api/operational-views/definitions",
+      payload: {
+        surface: "queues",
+        name: "My queue focus",
+        filters: { queue: "task-deadlines" },
+        columns: ["title", "status"],
+        sort: { dueAt: "asc" },
+        rowLimit: 12,
+        dashboardBehavior: { pinToFocus: true },
+        permissionScope: ["matter:read", "task:read"],
+      },
+    });
+    const createdPayload = created.json<{
+      definition: SavedOperationalViewDefinitionsResponse["definitions"][number];
+    }>();
+
+    expect(created.statusCode).toBe(200);
+    expect(createdPayload.definition).toMatchObject({
+      ownerUserId: "user-licensee",
+      surface: "queues",
+      name: "My queue focus",
+      filters: { queue: "task-deadlines" },
+      columns: ["title", "status"],
+      rowLimit: 12,
+      permissionScope: ["matter:read", "task:read"],
+      status: "active",
+    });
+
+    const listed = await ownerServer.inject({
+      method: "GET",
+      url: "/api/operational-views/definitions?surface=queues",
+    });
+    expect(listed.json<SavedOperationalViewDefinitionsResponse>().definitions).toEqual([
+      expect.objectContaining({ id: createdPayload.definition.id, name: "My queue focus" }),
+    ]);
+
+    const otherUserServer = testServer({
+      repository,
+      authUser: {
+        ...user("licensee", ["matter-001"]),
+        id: "user-other-licensee",
+        email: "other@example.test",
+      },
+    });
+    const otherUserList = await otherUserServer.inject({
+      method: "GET",
+      url: "/api/operational-views/definitions?includeArchived=true",
+    });
+    expect(otherUserList.json<SavedOperationalViewDefinitionsResponse>().definitions).toEqual([]);
+  });
+
+  it("updates and archives saved operational view definitions without showing archived rows by default", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/operational-views/definitions",
+      payload: {
+        surface: "queues",
+        name: "Queue exceptions",
+        permissionScope: ["audit_log:read"],
+      },
+    });
+    const id = created.json<{ definition: { id: string } }>().definition.id;
+
+    const updated = await server.inject({
+      method: "PATCH",
+      url: `/api/operational-views/definitions/${id}`,
+      payload: {
+        name: "Audit queue exceptions",
+        filters: { queue: "audit" },
+        rowLimit: 5,
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(
+      updated.json<{ definition: { name: string; rowLimit: number; filters: unknown } }>()
+        .definition,
+    ).toMatchObject({
+      name: "Audit queue exceptions",
+      rowLimit: 5,
+      filters: { queue: "audit" },
+    });
+
+    const archived = await server.inject({
+      method: "POST",
+      url: `/api/operational-views/definitions/${id}/archive`,
+    });
+    expect(archived.statusCode).toBe(200);
+    expect(
+      archived.json<{ definition: { status: string; archivedAt?: string } }>().definition,
+    ).toMatchObject({
+      status: "archived",
+      archivedAt: expect.any(String),
+    });
+
+    const activeOnly = await server.inject({
+      method: "GET",
+      url: "/api/operational-views/definitions",
+    });
+    expect(activeOnly.json<SavedOperationalViewDefinitionsResponse>().definitions).toEqual([]);
+
+    const includingArchived = await server.inject({
+      method: "GET",
+      url: "/api/operational-views/definitions?includeArchived=true",
+    });
+    expect(includingArchived.json<SavedOperationalViewDefinitionsResponse>().definitions).toEqual([
+      expect.objectContaining({ id, status: "archived" }),
+    ]);
+  });
+
+  it("rejects saved operational view scopes that exceed the current user's capabilities", async () => {
+    const response = await testServer({ authUser: user("firm_member", ["matter-001"]) }).inject({
+      method: "POST",
+      url: "/api/operational-views/definitions",
+      payload: {
+        surface: "queues",
+        name: "Audit review",
+        permissionScope: ["audit_log:read"],
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      error: { code: "OPERATIONAL_VIEW_SCOPE_FORBIDDEN" },
+    });
   });
 });

@@ -44,7 +44,12 @@ import {
   emptyTrustControlsDashboard,
   loadTrustControlsDashboardData,
 } from "./trust-controls-dashboard";
-import { buildWorkerRunsPath, emptyWorkerRunsResponse } from "./worker-runs-dashboard";
+import {
+  buildWorkerHealthPath,
+  buildWorkerRunsPath,
+  emptyWorkerHealthResponse,
+  emptyWorkerRunsResponse,
+} from "./worker-runs-dashboard";
 import {
   buildProvidersStatusPath,
   emptyProvidersStatusResponse,
@@ -74,6 +79,7 @@ import type {
   LegalClinicProfileResponse,
   LegalClinicProfilesResponse,
   LegalClinicProgramsResponse,
+  OperationalViewDefinitionsResponse,
   MatterSummary,
   OperationalViewsResponse,
   PracticeOverview,
@@ -86,6 +92,7 @@ import type {
   TaskDeadlineWorkbenchResponse,
   TrustControlsDashboardResponse,
   WorkerRunsDashboardResponse,
+  WorkerHealthResponse,
   WorkerRunsResponse,
 } from "./types";
 
@@ -304,6 +311,12 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       emptyWorkerRunsResponse("access_denied"),
     ),
   };
+  const workerHealth = await apiGetOptional<WorkerHealthResponse>(
+    buildWorkerHealthPath(),
+    emptyWorkerHealthResponse(),
+    headers,
+    emptyWorkerHealthResponse(),
+  );
   const providerStatus = await apiGetOptional<ProvidersStatusResponse>(
     buildProvidersStatusPath(),
     emptyProvidersStatusResponse(),
@@ -315,6 +328,12 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     { views: [] },
     headers,
     { views: [] },
+  );
+  const operationalViewDefinitions = await apiGetOptional<OperationalViewDefinitionsResponse>(
+    "/api/operational-views/definitions?surface=queues",
+    { definitions: [] },
+    headers,
+    { definitions: [] },
   );
   const billing = await apiGetOptional<BillingDashboardResponse>(
     "/api/billing/dashboard",
@@ -525,6 +544,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       legalClinic={legalClinic}
       matters={matters}
       overview={overview}
+      operationalViewDefinitions={operationalViewDefinitions.definitions}
       operationalViews={operationalViews}
       providerStatus={providerStatus}
       queues={queues}
@@ -533,6 +553,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       signatures={signatures}
       taskWorkbench={taskWorkbench}
       trustControls={trustControls}
+      workerHealth={workerHealth}
       workerRuns={workerRuns}
     />
   );

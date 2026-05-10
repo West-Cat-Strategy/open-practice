@@ -47,6 +47,7 @@ import {
   paymentAllocations,
   providerSettings,
   recoveryCodes,
+  savedOperationalViewDefinitions,
   shareLinks,
   signatureProviderEvents,
   signatureRequestSigners,
@@ -521,6 +522,35 @@ describe("database schema hardening", () => {
     );
   });
 
+  it("persists private saved operational view definitions", () => {
+    const config = getTableConfig(savedOperationalViewDefinitions);
+    expect(config.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "owner_user_id",
+        "surface",
+        "name",
+        "filters",
+        "columns",
+        "sort",
+        "row_limit",
+        "dashboard_behavior",
+        "permission_scope",
+        "status",
+        "archived_at",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "saved_operational_views_owner_surface_status_idx",
+        "saved_operational_views_firm_surface_name_idx",
+      ]),
+    );
+    expect(config.checks.map((check) => check.name)).toContain(
+      "saved_operational_views_positive_row_limit",
+    );
+  });
+
   it("persists answer snapshots for intake sessions", () => {
     expect(getTableConfig(answerSnapshots).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
@@ -547,10 +577,22 @@ describe("database schema hardening", () => {
     const reviewConfig = getTableConfig(intakeFormReviews);
 
     expect(linkConfig.columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["parent_form_link_id", "answer_snapshot_id", "submitted_at"]),
+      expect.arrayContaining([
+        "parent_form_link_id",
+        "answer_snapshot_id",
+        "client_submission_id",
+        "submission_fingerprint",
+        "draft_answers",
+        "draft_updated_at",
+        "submitted_at",
+      ]),
     );
     expect(linkConfig.indexes.map((index) => index.config.name)).toEqual(
-      expect.arrayContaining(["intake_form_links_parent_idx", "intake_form_links_snapshot_idx"]),
+      expect.arrayContaining([
+        "intake_form_links_parent_idx",
+        "intake_form_links_snapshot_idx",
+        "intake_form_links_submission_idx",
+      ]),
     );
     expect(reviewConfig.columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([

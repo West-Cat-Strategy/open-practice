@@ -8,6 +8,7 @@ import {
   queueStatus,
   serializeJobRun,
   summarizeJobRuns,
+  summarizeWorkerHealth,
 } from "./job-status.js";
 import type { ApiRouteDependencies } from "./types.js";
 
@@ -20,6 +21,15 @@ export function registerJobsRoutes(
   server: FastifyInstance,
   { repository, emailJobQueue, ocrJobQueue }: ApiRouteDependencies,
 ): void {
+  function workerQueues() {
+    return openPracticeQueueNames.map((queueName) =>
+      queueStatus(
+        queueName,
+        queueName === "email" ? emailJobQueue : queueName === "ocr" ? ocrJobQueue : undefined,
+      ),
+    );
+  }
+
   server.get("/api/jobs", async (request) => {
     const access = requireAccess(request.auth, { resource: "job", action: "read" });
     if (!access.ok) throw access.error;
@@ -35,21 +45,35 @@ export function registerJobsRoutes(
         record,
       }),
     );
-    const workerQueues = openPracticeQueueNames.map((queueName) =>
-      queueStatus(
-        queueName,
-        queueName === "email" ? emailJobQueue : queueName === "ocr" ? ocrJobQueue : undefined,
-      ),
-    );
+    const queueSummaries = workerQueues();
     return {
       status: visibleJobs.length > 0 ? "available" : "default",
       queues: openPracticeQueueNames,
-      workers: workerQueues.filter((queue) => queue.status === "configured"),
-      workerQueues,
-      reservedQueues: workerQueues.filter((queue) => queue.status === "reserved"),
+      workers: queueSummaries.filter((queue) => queue.status === "configured"),
+      workerQueues: queueSummaries,
+      reservedQueues: queueSummaries.filter((queue) => queue.status === "reserved"),
       summary: summarizeJobRuns(visibleJobs),
       jobs: visibleJobs.map(serializeJobRun),
     };
+  });
+
+  server.get("/api/jobs/health", async (request) => {
+    const access = requireAccess(request.auth, { resource: "job", action: "read" });
+    if (!access.ok) throw access.error;
+
+    const jobs = await repository.listJobLifecycleRecords(request.auth.firmId);
+    const visibleJobs = jobs.filter((record) =>
+      canReadJobLifecycleRecord({
+        user: request.auth.user,
+        firmId: request.auth.firmId,
+        record,
+      }),
+    );
+
+    return summarizeWorkerHealth({
+      records: visibleJobs,
+      workerQueues: workerQueues(),
+    });
   });
 
   server.get("/api/jobs/:jobId", async (request) => {

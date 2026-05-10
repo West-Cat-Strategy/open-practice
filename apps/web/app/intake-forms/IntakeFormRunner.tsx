@@ -1,18 +1,23 @@
 "use client";
 
-import { CheckCircle2, FileText, Upload } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { FileText } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   EmbeddedIntakeFormItem,
   EmbeddedIntakeQuestion,
   IntakeFormItemActionRecord,
 } from "@open-practice/domain";
 import {
-  actionComplete,
+  buildPublicTokenPath,
+  publicTokenErrorMessage,
+  readPublicTokenError,
+} from "../publicTokenClient";
+import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
+import IntakeFormRenderer from "./IntakeFormRenderer";
+import {
   coerceAnswer,
-  errorMessage,
-  itemAction,
-  readApiError,
+  answersFromDraft,
+  intakeLifecycleMessage,
   requiredIncompleteItemIds,
   visibleSections,
   type Answers,
@@ -34,33 +39,46 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
   const [payload, setPayload] = useState<PublicIntakeFormPayload | null>(null);
   const [answers, setAnswers] = useState<Answers>({});
   const [status, setStatus] = useState("Loading form...");
+  const [draftStatus, setDraftStatus] = useState("Draft not saved yet.");
+  const [draftSaving, setDraftSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [busyItemId, setBusyItemId] = useState("");
   const [acceptedSignatures, setAcceptedSignatures] = useState<Record<string, boolean>>({});
+  const [clientSubmissionId] = useState(() => crypto.randomUUID());
+  const draftSnapshotRef = useRef("");
+  const loadedDraftRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     async function loadForm(): Promise<void> {
       const response = await fetch(
-        `${apiBaseUrl}/api/portal/intake-forms/${encodeURIComponent(token)}`,
+        `${apiBaseUrl}${buildPublicTokenPath("/api/portal/intake-forms", token)}`,
       );
       if (cancelled) return;
       if (!response.ok) {
-        const body = await readApiError(response);
+        const body = await readPublicTokenError(response);
         setStatus(
           response.status === 403
             ? "This form link is not available."
-            : errorMessage(body, `Load failed: ${response.status}`),
+            : publicTokenErrorMessage(body, `Load failed: ${response.status}`),
         );
         return;
       }
       const nextPayload = (await response.json()) as PublicIntakeFormPayload;
-      setPayload(nextPayload);
-      setStatus(
-        nextPayload.link.status === "active"
-          ? "Form ready."
-          : `This form is ${nextPayload.link.status}.`,
+      const draftAnswers = answersFromDraft(
+        nextPayload.template.definition,
+        nextPayload.draft?.answers,
       );
+      setPayload(nextPayload);
+      setAnswers(draftAnswers);
+      draftSnapshotRef.current = JSON.stringify(draftAnswers);
+      loadedDraftRef.current = true;
+      setDraftStatus(
+        nextPayload.draft?.updatedAt
+          ? `Draft saved ${new Date(nextPayload.draft.updatedAt).toLocaleString()}.`
+          : "Draft not saved yet.",
+      );
+      setStatus(intakeLifecycleMessage(nextPayload));
     }
     void loadForm();
     return () => {
@@ -75,6 +93,48 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
     setAnswers((current) => ({ ...current, [question.id]: coerceAnswer(question, value) }));
   }
 
+  async function saveDraft(manual = false): Promise<void> {
+    if (!payload || disabled) return;
+    const snapshot = JSON.stringify(answers);
+    if (!manual && snapshot === draftSnapshotRef.current) return;
+    setDraftSaving(true);
+    setDraftStatus("Saving draft...");
+    const response = await fetch(
+      `${apiBaseUrl}${buildPublicTokenPath("/api/portal/intake-forms", token, "draft")}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers }),
+      },
+    );
+    if (!response.ok) {
+      const body = await readPublicTokenError(response);
+      setDraftStatus(publicTokenErrorMessage(body, `Draft save failed: ${response.status}`));
+      setDraftSaving(false);
+      return;
+    }
+    const saved = (await response.json()) as { status: "draft_saved"; draftUpdatedAt: string };
+    draftSnapshotRef.current = snapshot;
+    setPayload((current) =>
+      current
+        ? {
+            ...current,
+            draft: { answers, updatedAt: saved.draftUpdatedAt },
+          }
+        : current,
+    );
+    setDraftStatus(`Draft saved ${new Date(saved.draftUpdatedAt).toLocaleTimeString()}.`);
+    setDraftSaving(false);
+  }
+
+  useEffect(() => {
+    if (!payload || disabled || !loadedDraftRef.current) return;
+    const timeout = window.setTimeout(() => {
+      void saveDraft(false);
+    }, 1200);
+    return () => window.clearTimeout(timeout);
+  }, [answers, apiBaseUrl, disabled, payload, token]);
+
   async function uploadFile(item: Extract<EmbeddedIntakeFormItem, { kind: "upload" }>, file: File) {
     if (!payload) return;
     setBusyItemId(item.id);
@@ -82,9 +142,13 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
     const checksumSha256 = await sha256Hex(file);
     const contentType = file.type || "application/octet-stream";
     const intent = await fetch(
-      `${apiBaseUrl}/api/portal/intake-forms/${encodeURIComponent(token)}/items/${encodeURIComponent(
+      `${apiBaseUrl}${buildPublicTokenPath(
+        "/api/portal/intake-forms",
+        token,
+        "items",
         item.id,
-      )}/uploads`,
+        "uploads",
+      )}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -92,8 +156,8 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
       },
     );
     if (!intent.ok) {
-      const body = await readApiError(intent);
-      setStatus(errorMessage(body, `Upload intent failed: ${intent.status}`));
+      const body = await readPublicTokenError(intent);
+      setStatus(publicTokenErrorMessage(body, `Upload intent failed: ${intent.status}`));
       setBusyItemId("");
       return;
     }
@@ -115,9 +179,15 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
       return;
     }
     const completed = await fetch(
-      `${apiBaseUrl}/api/portal/intake-forms/${encodeURIComponent(token)}/items/${encodeURIComponent(
+      `${apiBaseUrl}${buildPublicTokenPath(
+        "/api/portal/intake-forms",
+        token,
+        "items",
         item.id,
-      )}/documents/${encodeURIComponent(intentPayload.document.id)}/complete`,
+        "documents",
+        intentPayload.document.id,
+        "complete",
+      )}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -125,8 +195,8 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
       },
     );
     if (!completed.ok) {
-      const body = await readApiError(completed);
-      setStatus(errorMessage(body, `Upload completion failed: ${completed.status}`));
+      const body = await readPublicTokenError(completed);
+      setStatus(publicTokenErrorMessage(body, `Upload completion failed: ${completed.status}`));
       setBusyItemId("");
       return;
     }
@@ -150,9 +220,13 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
     setBusyItemId(item.id);
     setStatus(item.documentId ? "Creating signature request..." : "Recording attestation...");
     const response = await fetch(
-      `${apiBaseUrl}/api/portal/intake-forms/${encodeURIComponent(token)}/items/${encodeURIComponent(
+      `${apiBaseUrl}${buildPublicTokenPath(
+        "/api/portal/intake-forms",
+        token,
+        "items",
         item.id,
-      )}/signature`,
+        "signature",
+      )}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -164,8 +238,8 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
       },
     );
     if (!response.ok) {
-      const body = await readApiError(response);
-      setStatus(errorMessage(body, `Signature failed: ${response.status}`));
+      const body = await readPublicTokenError(response);
+      setStatus(publicTokenErrorMessage(body, `Signature failed: ${response.status}`));
       setBusyItemId("");
       return;
     }
@@ -189,15 +263,15 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
     setSubmitting(true);
     setStatus("Submitting form...");
     const response = await fetch(
-      `${apiBaseUrl}/api/portal/intake-forms/${encodeURIComponent(token)}/submit`,
+      `${apiBaseUrl}${buildPublicTokenPath("/api/portal/intake-forms", token, "submit")}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ answers, clientSubmissionId }),
       },
     );
     if (!response.ok) {
-      const body = await readApiError(response);
+      const body = await readPublicTokenError(response);
       const missing = requiredIncompleteItemIds(body);
       setStatus(
         missing?.length
@@ -208,220 +282,63 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
       return;
     }
     const submitted = (await response.json()) as Pick<PublicIntakeFormPayload, "link">;
-    setPayload((current) => (current ? { ...current, link: submitted.link } : current));
+    setPayload((current) =>
+      current ? { ...current, draft: null, link: submitted.link } : current,
+    );
     setStatus("Submitted. Your information is ready for staff review.");
+    setDraftStatus("Draft closed after submission.");
     setSubmitting(false);
   }
 
   return (
-    <main className="public-form-shell">
-      <section className="public-form-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Client intake</p>
-            <h1>{payload?.template.name ?? "Intake form"}</h1>
-          </div>
-          <FileText size={22} />
-        </div>
-        <p className="inline-empty">{status}</p>
+    <PublicTokenShell
+      eyebrow="Client intake"
+      icon={<FileText size={22} />}
+      title={payload?.template.name ?? "Intake form"}
+    >
+      <PublicStatusMessage>{status}</PublicStatusMessage>
 
-        {payload?.template.definition.schemaVersion !== 2 && payload ? (
-          <p className="inline-empty">
-            This intake form version is not available for public completion.
-          </p>
-        ) : null}
+      {payload?.template.definition.schemaVersion !== 2 && payload ? (
+        <PublicStatusMessage>
+          This intake form version is not available for public completion.
+        </PublicStatusMessage>
+      ) : null}
 
-        {sections.map((section) => (
-          <div className="public-form-section" key={section.id}>
-            <div className="section-title">
-              <h2>{section.title}</h2>
-              <span>{section.items.length} items</span>
-            </div>
-            {section.description ? <p className="field-hint">{section.description}</p> : null}
-            <div className="public-form-items">
-              {section.items.map((item) => {
-                const action = payload ? itemAction(payload.actions, item) : undefined;
-                if (item.kind === "display") {
-                  return (
-                    <p className="inline-empty" key={item.id}>
-                      {item.body}
-                    </p>
-                  );
-                }
-                if (item.kind === "question" && payload?.template.definition.schemaVersion === 2) {
-                  const question = payload.template.definition.questions.find(
-                    (candidate) => candidate.id === item.questionId,
-                  );
-                  if (!question) return null;
-                  return (
-                    <QuestionField
-                      answers={answers}
-                      disabled={disabled}
-                      key={item.id}
-                      question={question}
-                      updateAnswer={updateAnswer}
-                    />
-                  );
-                }
-                if (item.kind === "upload") {
-                  return (
-                    <div className="public-form-action" key={item.id}>
-                      <div>
-                        <strong>{item.label}</strong>
-                        <small>
-                          {actionComplete(action)
-                            ? "uploaded"
-                            : item.required
-                              ? "required"
-                              : "optional"}
-                        </small>
-                      </div>
-                      <label className="secondary-button compact-button file-button">
-                        <Upload size={16} />
-                        {busyItemId === item.id ? "Uploading..." : "Choose file"}
-                        <input
-                          accept={item.acceptedFileTypes?.join(",")}
-                          disabled={disabled || busyItemId === item.id}
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (file) void uploadFile(item, file);
-                          }}
-                          type="file"
-                        />
-                      </label>
-                    </div>
-                  );
-                }
-                if (item.kind === "signature") {
-                  return (
-                    <div className="public-form-action" key={item.id}>
-                      <div>
-                        <strong>{item.label}</strong>
-                        <small>
-                          {actionComplete(action)
-                            ? action?.signatureRequestId
-                              ? "signature request completed"
-                              : "signed"
-                            : item.documentId
-                              ? "signature request"
-                              : item.consentText}
-                        </small>
-                      </div>
-                      <label className="check-row share-check-row signature-consent">
-                        <input
-                          checked={Boolean(acceptedSignatures[item.id])}
-                          disabled={disabled || actionComplete(action)}
-                          onChange={(event) =>
-                            setAcceptedSignatures((current) => ({
-                              ...current,
-                              [item.id]: event.target.checked,
-                            }))
-                          }
-                          type="checkbox"
-                        />
-                        <span>I agree</span>
-                      </label>
-                      <button
-                        className="secondary-button compact-button"
-                        disabled={
-                          disabled ||
-                          actionComplete(action) ||
-                          !acceptedSignatures[item.id] ||
-                          busyItemId === item.id
-                        }
-                        onClick={() => void recordSignature(item)}
-                        type="button"
-                      >
-                        <CheckCircle2 size={16} />
-                        Sign
-                      </button>
-                    </div>
-                  );
-                }
-                return null;
-              })}
-            </div>
-          </div>
-        ))}
-
-        <button
-          className="primary-button public-submit-button"
-          disabled={disabled || submitting || !payload}
-          onClick={() => void submitForm()}
-          type="button"
-        >
-          {submitting ? "Submitting..." : "Submit intake"}
-        </button>
-      </section>
-    </main>
-  );
-}
-
-function QuestionField({
-  answers,
-  disabled,
-  question,
-  updateAnswer,
-}: {
-  answers: Answers;
-  disabled: boolean;
-  question: EmbeddedIntakeQuestion;
-  updateAnswer: (question: EmbeddedIntakeQuestion, value: string | boolean) => void;
-}) {
-  const value = answers[question.id];
-  if (question.type === "textarea") {
-    return (
-      <label className="form-field public-question">
-        <span>{question.label}</span>
-        <textarea
+      {payload?.template.definition.schemaVersion === 2 ? (
+        <IntakeFormRenderer
+          acceptedSignatures={acceptedSignatures}
+          actions={payload.actions}
+          answers={answers}
+          busyItemId={busyItemId}
+          definition={payload.template.definition}
           disabled={disabled}
-          onChange={(event) => updateAnswer(question, event.target.value)}
-          value={typeof value === "string" ? value : ""}
+          recordSignature={(item) => void recordSignature(item)}
+          sections={sections}
+          setAcceptedSignatures={setAcceptedSignatures}
+          updateAnswer={updateAnswer}
+          uploadFile={(item, file) => void uploadFile(item, file)}
         />
-      </label>
-    );
-  }
-  if (question.type === "select") {
-    return (
-      <label className="form-field public-question">
-        <span>{question.label}</span>
-        <select
-          disabled={disabled}
-          onChange={(event) => updateAnswer(question, event.target.value)}
-          value={typeof value === "string" ? value : ""}
-        >
-          <option value="">Select</option>
-          {(question.options ?? []).map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-    );
-  }
-  if (question.type === "boolean") {
-    return (
-      <label className="check-row share-check-row public-question">
-        <input
-          checked={Boolean(value)}
-          disabled={disabled}
-          onChange={(event) => updateAnswer(question, event.target.checked)}
-          type="checkbox"
-        />
-        <span>{question.label}</span>
-      </label>
-    );
-  }
-  return (
-    <label className="form-field public-question">
-      <span>{question.label}</span>
-      <input
-        disabled={disabled}
-        onChange={(event) => updateAnswer(question, event.target.value)}
-        type={question.type === "date" ? "date" : "text"}
-        value={typeof value === "string" ? value : ""}
-      />
-    </label>
+      ) : null}
+
+      <PublicStatusMessage>{draftStatus}</PublicStatusMessage>
+
+      <button
+        className="secondary-button public-submit-button"
+        disabled={disabled || draftSaving || submitting || !payload}
+        onClick={() => void saveDraft(true)}
+        type="button"
+      >
+        {draftSaving ? "Saving draft..." : "Save draft"}
+      </button>
+
+      <button
+        className="primary-button public-submit-button"
+        disabled={disabled || submitting || !payload}
+        onClick={() => void submitForm()}
+        type="button"
+      >
+        {submitting ? "Submitting..." : "Submit intake"}
+      </button>
+    </PublicTokenShell>
   );
 }
