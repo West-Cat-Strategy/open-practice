@@ -65,13 +65,17 @@ import {
   upsertExternalUploadLink,
 } from "./external-uploads-dashboard";
 import {
+  buildIntakeTemplatePreviewPayload,
   buildIntakeFormLinkCreatePayload,
   coerceIntakeDefinitionV2,
   currentProposalValue,
+  describeIntakeTemplatePreview,
   getIntakeFormLinkState,
+  previewStatusClass,
   summarizeIntakeItemAction,
   upsertIntakeFormLink,
   upsertIntakeVariableProposal,
+  type IntakePreviewAnswers,
 } from "./intake-forms-dashboard";
 import DraftEditor from "./drafting/DraftEditor";
 import {
@@ -191,6 +195,7 @@ import type {
   IntakeFormsDashboardResponse,
   IntakeFormLinkCreateResponse,
   IntakeFormLinkRevokeResponse,
+  IntakeTemplatePreviewResponse,
   IntakeTemplateSavePayload,
   LegalClinicDashboardResponse,
   MatterSummary,
@@ -554,6 +559,11 @@ export default function DashboardClient({
   const [intakeTemplateDefinition, setIntakeTemplateDefinition] =
     useState<EmbeddedIntakeTemplateDefinitionV2>(coerceIntakeDefinitionV2(selectedIntakeTemplate));
   const [intakeTemplateStatus, setIntakeTemplateStatus] = useState("Template editor ready.");
+  const [intakePreviewAnswers, setIntakePreviewAnswers] = useState<IntakePreviewAnswers>({});
+  const [intakePreviewResult, setIntakePreviewResult] =
+    useState<IntakeTemplatePreviewResponse | null>(null);
+  const [intakePreviewStatus, setIntakePreviewStatus] = useState("Preview checks have not run.");
+  const [previewingIntakeTemplate, setPreviewingIntakeTemplate] = useState(false);
   const [savingIntakeTemplate, setSavingIntakeTemplate] = useState(false);
   const [startingIntakeSession, setStartingIntakeSession] = useState(false);
 
@@ -1587,6 +1597,9 @@ export default function DashboardClient({
     setIntakeTemplateName(template?.name ?? "New intake form");
     setIntakeTemplateDefinition(coerceIntakeDefinitionV2(template));
     setIntakeTemplateStatus(template ? `Editing ${template.name}.` : "Template editor ready.");
+    setIntakePreviewAnswers({});
+    setIntakePreviewResult(null);
+    setIntakePreviewStatus("Preview checks have not run.");
   }
 
   function startNewIntakeTemplate(): void {
@@ -1594,6 +1607,47 @@ export default function DashboardClient({
     setIntakeTemplateName("New intake form");
     setIntakeTemplateDefinition(coerceIntakeDefinitionV2());
     setIntakeTemplateStatus("New template ready.");
+    setIntakePreviewAnswers({});
+    setIntakePreviewResult(null);
+    setIntakePreviewStatus("Preview checks have not run.");
+  }
+
+  function updateIntakePreviewAnswer(questionId: string, value: string | boolean): void {
+    setIntakePreviewAnswers((current) => ({ ...current, [questionId]: value }));
+    setIntakePreviewResult(null);
+    setIntakePreviewStatus("Preview answers changed; run checks again.");
+  }
+
+  async function previewIntakeTemplate(): Promise<void> {
+    if (!activeMatter) return;
+    setPreviewingIntakeTemplate(true);
+    setIntakePreviewStatus("Running preview checks...");
+    const response = await fetch(`${apiBaseUrl}/api/intake-templates/preview`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        buildIntakeTemplatePreviewPayload({
+          definition: intakeTemplateDefinition,
+          matterId: activeMatter.id,
+          answers: intakePreviewAnswers,
+        }),
+      ),
+    });
+
+    if (!response.ok) {
+      setIntakePreviewStatus(`Preview failed: ${response.status}`);
+      setPreviewingIntakeTemplate(false);
+      return;
+    }
+
+    const result = (await response.json()) as IntakeTemplatePreviewResponse;
+    setIntakePreviewResult(result);
+    setIntakePreviewStatus(describeIntakeTemplatePreview(result));
+    setPreviewingIntakeTemplate(false);
   }
 
   async function saveIntakeTemplate(): Promise<void> {
@@ -1798,6 +1852,8 @@ export default function DashboardClient({
     setIntakeFormToken("");
     setIntakeFormPortalUrl("");
     setIntakeFormStatus("No form link created.");
+    setIntakePreviewResult(null);
+    setIntakePreviewStatus("Preview checks have not run.");
     setPendingDeliveryConfirmation(null);
     closeDraftEditor();
   }
@@ -3996,6 +4052,134 @@ export default function DashboardClient({
                     saving={savingIntakeTemplate}
                     status={intakeTemplateStatus}
                   />
+                </div>
+
+                <div className="section-title">
+                  <h3>Preview checks</h3>
+                  <span className={previewStatusClass(intakePreviewResult)}>
+                    {intakePreviewResult?.status ?? "not run"}
+                  </span>
+                </div>
+                <div className="intake-preview-grid">
+                  <div className="intake-preview-inputs">
+                    {intakeTemplateDefinition.questions.map((question) => (
+                      <label className="form-field" key={question.id}>
+                        <span>{question.label}</span>
+                        {question.type === "boolean" ? (
+                          <input
+                            checked={Boolean(intakePreviewAnswers[question.id])}
+                            onChange={(event) =>
+                              updateIntakePreviewAnswer(question.id, event.target.checked)
+                            }
+                            type="checkbox"
+                          />
+                        ) : question.type === "select" ? (
+                          <select
+                            onChange={(event) =>
+                              updateIntakePreviewAnswer(question.id, event.target.value)
+                            }
+                            value={String(intakePreviewAnswers[question.id] ?? "")}
+                          >
+                            <option value="">No preview answer</option>
+                            {(question.options ?? []).map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : question.type === "textarea" ? (
+                          <textarea
+                            onChange={(event) =>
+                              updateIntakePreviewAnswer(question.id, event.target.value)
+                            }
+                            value={String(intakePreviewAnswers[question.id] ?? "")}
+                          />
+                        ) : (
+                          <input
+                            onChange={(event) =>
+                              updateIntakePreviewAnswer(question.id, event.target.value)
+                            }
+                            type={question.type === "date" ? "date" : "text"}
+                            value={String(intakePreviewAnswers[question.id] ?? "")}
+                          />
+                        )}
+                      </label>
+                    ))}
+                    {intakeTemplateDefinition.questions.length === 0 ? (
+                      <p className="inline-empty">No preview answers are needed.</p>
+                    ) : null}
+                  </div>
+                  <div className="intake-preview-results">
+                    <div className="row-actions">
+                      <button
+                        className="secondary-button compact-button"
+                        disabled={previewingIntakeTemplate}
+                        onClick={() => void previewIntakeTemplate()}
+                        type="button"
+                      >
+                        {previewingIntakeTemplate ? "Checking..." : "Preview checks"}
+                      </button>
+                    </div>
+                    <p className="inline-empty">{intakePreviewStatus}</p>
+                    {intakePreviewResult?.checks.length ? (
+                      <div className="party-list">
+                        {intakePreviewResult.checks.map((check, index) => (
+                          <div className="party-row" key={`${check.code}-${index}`}>
+                            <span>
+                              <strong>{check.code.replaceAll("_", " ")}</strong>
+                              <small>{check.message}</small>
+                              <small>
+                                {[check.sectionId, check.itemId, check.questionId, check.packageId]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </small>
+                            </span>
+                            <em className={check.severity === "blocking" ? "risk" : undefined}>
+                              {check.severity}
+                            </em>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {intakePreviewResult?.preview ? (
+                      <div className="detail-grid intake-preview-summary">
+                        <div>
+                          <span className="field-label">Visible items</span>
+                          <strong>
+                            {intakePreviewResult.preview.visibleFormItemIds?.length ?? 0}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="field-label">Required incomplete</span>
+                          <strong>
+                            {intakePreviewResult.preview.requiredIncompleteItemIds?.length ?? 0}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="field-label">Packages</span>
+                          <strong>{intakePreviewResult.preview.packageSummaries.length}</strong>
+                        </div>
+                        <div>
+                          <span className="field-label">Documents</span>
+                          <strong>{intakePreviewResult.preview.packageDocuments.length}</strong>
+                        </div>
+                      </div>
+                    ) : null}
+                    {intakePreviewResult?.preview?.requiredIncompleteItemIds?.length ? (
+                      <p className="field-hint">
+                        Required before submit:{" "}
+                        {intakePreviewResult.preview.requiredIncompleteItemIds.join(", ")}
+                      </p>
+                    ) : null}
+                    {intakePreviewResult?.preview?.packageSummaries.length ? (
+                      <p className="field-hint">
+                        Package preview:{" "}
+                        {intakePreviewResult.preview.packageSummaries
+                          .map((summary) => summary.title)
+                          .join(", ")}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="section-title">

@@ -7,12 +7,19 @@ import type {
   IntakeTemplateRecord,
   IntakeVariableProposal,
 } from "@open-practice/domain";
-import type { IntakeFormLinkSummary, IntakeFormsDashboardResponse, MatterSummary } from "./types";
+import type {
+  IntakeFormLinkSummary,
+  IntakeFormsDashboardResponse,
+  IntakeTemplatePreviewResponse,
+  MatterSummary,
+} from "./types";
 
 export interface IntakeFormLinkCreateFormState {
   intakeSessionId: string;
   expiresAtLocal: string;
 }
+
+export type IntakePreviewAnswers = Record<string, string | boolean>;
 
 export const clientVariableFields = ["displayName", "notes"] as const;
 export const matterVariableFields = ["title", "practiceArea", "jurisdiction"] as const;
@@ -89,6 +96,43 @@ export function buildIntakePortalPath(token: string): string {
 
 export function buildIntakeVariableProposalListPath(matterId: string): string {
   return `/api/intake-variable-proposals?matterId=${encodeURIComponent(matterId)}`;
+}
+
+export function buildIntakeTemplatePreviewPayload(input: {
+  definition: EmbeddedIntakeTemplateDefinitionV2;
+  matterId?: string;
+  answers: IntakePreviewAnswers;
+  selectedPackageIds?: string[];
+}): {
+  definition: EmbeddedIntakeTemplateDefinitionV2;
+  matterId?: string;
+  answers: IntakePreviewAnswers;
+  selectedPackageIds?: string[];
+} {
+  return {
+    definition: input.definition,
+    ...(input.matterId ? { matterId: input.matterId } : {}),
+    answers: input.answers,
+    ...(input.selectedPackageIds ? { selectedPackageIds: input.selectedPackageIds } : {}),
+  };
+}
+
+export function describeIntakeTemplatePreview(
+  result: IntakeTemplatePreviewResponse | null,
+): string {
+  if (!result) return "Preview checks have not run.";
+  if (result.status === "pass") return "Preview passed with no checks.";
+  const warnings = result.checks.filter((check) => check.severity === "warning").length;
+  const blocking = result.checks.filter((check) => check.severity === "blocking").length;
+  if (blocking > 0) return `Preview blocked by ${blocking} check${blocking === 1 ? "" : "s"}.`;
+  return `Preview has ${warnings} warning${warnings === 1 ? "" : "s"}.`;
+}
+
+export function previewStatusClass(result: IntakeTemplatePreviewResponse | null): string {
+  if (!result) return "muted";
+  if (result.status === "blocked") return "risk";
+  if (result.status === "warnings") return "warning";
+  return "success";
 }
 
 export function buildIntakeFormLinkCreatePayload(input: IntakeFormLinkCreateFormState): {

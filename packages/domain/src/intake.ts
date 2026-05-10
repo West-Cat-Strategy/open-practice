@@ -189,6 +189,26 @@ export interface IntakeResolutionSnapshot {
   packageDocuments: IntakePackageDocumentResolution[];
 }
 
+export type IntakeTemplatePreviewStatus = "pass" | "warnings" | "blocked";
+
+export type IntakeTemplatePreviewCheckSeverity = "warning" | "blocking";
+
+export interface IntakeTemplatePreviewCheck {
+  code: string;
+  severity: IntakeTemplatePreviewCheckSeverity;
+  message: string;
+  sectionId?: string;
+  itemId?: string;
+  questionId?: string;
+  packageId?: string;
+}
+
+export interface IntakeTemplatePreviewResult {
+  status: IntakeTemplatePreviewStatus;
+  checks: IntakeTemplatePreviewCheck[];
+  preview: IntakeResolutionSnapshot | null;
+}
+
 export function validateEmbeddedIntakeTemplateDefinition(
   definition: EmbeddedIntakeTemplateDefinition,
 ): EmbeddedIntakeTemplateDefinition {
@@ -286,6 +306,172 @@ export function validateEmbeddedIntakeTemplateDefinition(
   }
 
   return definition;
+}
+
+export function intakeTemplatePreviewStatus(
+  checks: IntakeTemplatePreviewCheck[],
+): IntakeTemplatePreviewStatus {
+  if (checks.some((check) => check.severity === "blocking")) return "blocked";
+  if (checks.some((check) => check.severity === "warning")) return "warnings";
+  return "pass";
+}
+
+export function previewEmbeddedIntakeTemplate(input: {
+  templateId: string;
+  templateVersion: number;
+  definition: EmbeddedIntakeTemplateDefinition;
+  answers?: Record<string, unknown>;
+  selectedPackageIds?: string[];
+}): IntakeTemplatePreviewResult {
+  const checks: IntakeTemplatePreviewCheck[] = [];
+  let definition: EmbeddedIntakeTemplateDefinition;
+  try {
+    definition = validateEmbeddedIntakeTemplateDefinition(input.definition);
+  } catch (error) {
+    checks.push({
+      code: "invalid_definition",
+      severity: "blocking",
+      message: error instanceof Error ? error.message : "Intake definition is invalid",
+    });
+    return {
+      status: "blocked",
+      checks,
+      preview: null,
+    };
+  }
+
+  const answers = input.answers ?? {};
+  const preview = resolveEmbeddedIntakeAnswers({
+    templateId: input.templateId,
+    templateVersion: input.templateVersion,
+    definition,
+    answers,
+    selectedPackageIds: input.selectedPackageIds,
+  });
+
+  const referencedQuestionIds = new Set<string>();
+  const visibleQuestionIds = new Set(preview.visibleQuestionIds);
+  const conditionalQuestionIds = new Set(
+    definition.branchRules.flatMap((rule) => rule.showQuestionIds ?? []),
+  );
+
+  if (definition.packages.length === 0) {
+    checks.push({
+      code: "no_packages",
+      severity: "warning",
+      message: "Definition does not include any reusable package previews.",
+    });
+  } else if (preview.eligiblePackageIds.length === 0) {
+    checks.push({
+      code: "no_eligible_packages",
+      severity: "warning",
+      message: "Preview answers do not make any package eligible.",
+    });
+  }
+
+  if (definition.schemaVersion !== 2) {
+    checks.push({
+      code: "legacy_schema_preview",
+      severity: "warning",
+      message: "Staff preview is optimized for schema version 2 intake forms.",
+    });
+  } else {
+    const allItems = definition.sections.flatMap((section) =>
+      section.items.map((item) => ({ sectionId: section.id, item })),
+    );
+    for (const { sectionId, item } of allItems) {
+      if (item.kind === "question") {
+        referencedQuestionIds.add(item.questionId);
+        const question = definition.questions.find((candidate) => candidate.id === item.questionId);
+        if (question?.required && !visibleQuestionIds.has(item.questionId)) {
+          checks.push({
+            code: "required_question_hidden",
+            severity: "warning",
+            message: "A required question is hidden by the current preview answers.",
+            sectionId,
+            itemId: item.id,
+            questionId: item.questionId,
+          });
+        }
+      }
+      if (
+        item.kind === "upload" &&
+        item.required &&
+        !preview.visibleFormItemIds?.includes(item.id)
+      ) {
+        checks.push({
+          code: "required_upload_hidden",
+          severity: "warning",
+          message: "A required upload item is hidden by the current preview answers.",
+          sectionId,
+          itemId: item.id,
+        });
+      }
+      if (
+        item.kind === "signature" &&
+        item.required &&
+        !preview.visibleFormItemIds?.includes(item.id)
+      ) {
+        checks.push({
+          code: "required_signature_hidden",
+          severity: "warning",
+          message: "A required signature item is hidden by the current preview answers.",
+          sectionId,
+          itemId: item.id,
+        });
+      }
+      if (item.kind === "signature" && item.documentId) {
+        checks.push({
+          code: "signature_document_unverified",
+          severity: "warning",
+          message: "Signature document availability needs matter-scoped verification.",
+          sectionId,
+          itemId: item.id,
+        });
+      }
+    }
+  }
+
+  for (const question of definition.questions) {
+    if (!referencedQuestionIds.has(question.id) && definition.schemaVersion === 2) {
+      checks.push({
+        code: "unreferenced_question",
+        severity: "warning",
+        message: "Question is not placed in any form section.",
+        questionId: question.id,
+      });
+    }
+    if (question.required && !question.variableMapping) {
+      checks.push({
+        code: "required_question_unmapped",
+        severity: "warning",
+        message: "Required question has no reviewed-merge variable mapping.",
+        questionId: question.id,
+      });
+    }
+    if (conditionalQuestionIds.has(question.id)) {
+      const matchingRules = definition.branchRules.filter((rule) =>
+        (rule.showQuestionIds ?? []).includes(question.id),
+      );
+      const hasPracticalTrigger = matchingRules.some((rule) =>
+        branchRuleCanMatch(rule, definition),
+      );
+      if (!hasPracticalTrigger) {
+        checks.push({
+          code: "branch_question_without_trigger",
+          severity: "warning",
+          message: "Branch-only question has no practical trigger in the current definition.",
+          questionId: question.id,
+        });
+      }
+    }
+  }
+
+  return {
+    status: intakeTemplatePreviewStatus(checks),
+    checks,
+    preview,
+  };
 }
 
 export function resolveEmbeddedIntakeAnswers(input: {
@@ -461,4 +647,20 @@ function branchRuleMatches(rule: EmbeddedIntakeBranchRule, answer: unknown): boo
   }
   if (rule.operator === "equals") return answer === rule.value;
   return answer !== rule.value;
+}
+
+function branchRuleCanMatch(
+  rule: EmbeddedIntakeBranchRule,
+  definition: EmbeddedIntakeTemplateDefinition,
+): boolean {
+  if (rule.operator === "present") return true;
+  if (rule.operator === "not_equals") return true;
+  const question = definition.questions.find((candidate) => candidate.id === rule.questionId);
+  if (!question) return false;
+  if (question.type === "select") {
+    return Boolean(question.options?.some((option) => option.value === rule.value));
+  }
+  if (question.type === "boolean") return typeof rule.value === "boolean";
+  if (rule.operator === "includes") return false;
+  return rule.value !== undefined;
 }

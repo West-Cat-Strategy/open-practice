@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createIntakeVariableProposals,
+  previewEmbeddedIntakeTemplate,
   resolveEmbeddedIntakeAnswers,
   validateEmbeddedIntakeTemplateDefinition,
   type EmbeddedIntakeTemplateDefinition,
@@ -281,5 +282,64 @@ describe("embedded intake templates", () => {
         status: "pending",
       }),
     ]);
+  });
+
+  it("previews V2 intake QA checks without creating intake records", () => {
+    const preview = previewEmbeddedIntakeTemplate({
+      templateId: "preview",
+      templateVersion: 1,
+      definition: sampleResidentialTenancyIntakeDefinition,
+      answers: { issue_type: "repair" },
+    });
+
+    expect(preview.status).toBe("warnings");
+    expect(preview.preview).toMatchObject({
+      visibleQuestionIds: expect.arrayContaining(["issue_type", "repair_details"]),
+      requiredIncompleteItemIds: expect.arrayContaining(["evidence-upload", "client-attestation"]),
+      eligiblePackageIds: expect.arrayContaining(["repair_notice_package"]),
+    });
+    expect(preview.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "required_question_unmapped",
+          severity: "warning",
+          questionId: "issue_type",
+        }),
+      ]),
+    );
+  });
+
+  it("returns blocking preview checks for invalid definitions", () => {
+    const invalid: EmbeddedIntakeTemplateDefinition = {
+      schemaVersion: 2,
+      questions: [{ id: "client_name", label: "Client name", type: "text" }],
+      branchRules: [],
+      packages: [{ id: "base", title: "Base", documents: [{ id: "doc", title: "Doc" }] }],
+      sections: [
+        {
+          id: "client-basics",
+          title: "Client basics",
+          items: [{ id: "client-name-item", kind: "question", questionId: "missing" }],
+        },
+      ],
+    };
+
+    expect(
+      previewEmbeddedIntakeTemplate({
+        templateId: "preview",
+        templateVersion: 1,
+        definition: invalid,
+      }),
+    ).toMatchObject({
+      status: "blocked",
+      checks: [
+        expect.objectContaining({
+          code: "invalid_definition",
+          severity: "blocking",
+          message: "Form item client-name-item references unknown question missing",
+        }),
+      ],
+      preview: null,
+    });
   });
 });
