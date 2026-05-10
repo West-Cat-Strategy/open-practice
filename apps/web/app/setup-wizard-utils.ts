@@ -42,7 +42,8 @@ export function updateSetupWizardState<K extends keyof SetupWizardState>(
   value: SetupWizardState[K],
 ): SetupWizardState {
   if (key === "ownerEmail" && state.webAuthnCredential && state.ownerEmail !== value) {
-    const { webAuthnCredential: _webAuthnCredential, ...stateWithoutCredential } = state;
+    const stateWithoutCredential = { ...state };
+    delete stateWithoutCredential.webAuthnCredential;
     return { ...stateWithoutCredential, [key]: value };
   }
   return { ...state, [key]: value };
