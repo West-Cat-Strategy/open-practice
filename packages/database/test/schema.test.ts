@@ -34,6 +34,8 @@ import {
   invoiceLines,
   invoices,
   generatedDocuments,
+  intakeFormLinks,
+  intakeFormReviews,
   intakeTemplates,
   intakeSessions,
   jobLifecycleRecords,
@@ -537,6 +539,39 @@ describe("database schema hardening", () => {
     );
     expect(getTableConfig(intakeTemplates).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["description", "category", "created_at", "updated_at", "metadata"]),
+    );
+  });
+
+  it("persists submitted intake review lifecycle state", () => {
+    const linkConfig = getTableConfig(intakeFormLinks);
+    const reviewConfig = getTableConfig(intakeFormReviews);
+
+    expect(linkConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["parent_form_link_id", "answer_snapshot_id", "submitted_at"]),
+    );
+    expect(linkConfig.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining(["intake_form_links_parent_idx", "intake_form_links_snapshot_idx"]),
+    );
+    expect(reviewConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "intake_session_id",
+        "form_link_id",
+        "answer_snapshot_id",
+        "decision",
+        "decided_by_user_id",
+        "decided_at",
+        "reason",
+        "follow_up_form_link_id",
+      ]),
+    );
+    expect(reviewConfig.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "intake_form_reviews_form_link_idx",
+        "intake_form_reviews_snapshot_idx",
+        "intake_form_reviews_matter_decision_idx",
+      ]),
     );
   });
 

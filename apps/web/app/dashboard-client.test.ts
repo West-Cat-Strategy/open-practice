@@ -131,11 +131,14 @@ import {
 import {
   buildIntakeFormLinkCreatePayload,
   buildIntakeFormLinkListPath,
+  buildIntakeFormReviewDecisionPath,
+  buildIntakeFormReviewPath,
   buildIntakePortalPath,
   buildIntakeTemplatePreviewPayload,
   buildIntakeTemplateEditorValue,
   buildVariableMapping,
   currentProposalValue,
+  describeRequestMoreInfoResult,
   describeIntakeTemplatePreview,
   buildIntakeVariableProposalListPath,
   getIntakeFormLinkState,
@@ -2470,6 +2473,37 @@ describe("dashboard client behavior", () => {
     expect(buildIntakeVariableProposalListPath("matter 001")).toBe(
       "/api/intake-variable-proposals?matterId=matter%20001",
     );
+    expect(buildIntakeFormReviewPath("link 001")).toBe("/api/intake-form-links/link%20001/review");
+    expect(buildIntakeFormReviewDecisionPath("link 001", "accept")).toBe(
+      "/api/intake-form-links/link%20001/review/accept",
+    );
+    expect(buildIntakeFormReviewDecisionPath("link 001", "request-more-info")).toBe(
+      "/api/intake-form-links/link%20001/review/request-more-info",
+    );
+    expect(
+      describeRequestMoreInfoResult({
+        review: {
+          id: "review-001",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          intakeSessionId: "intake-session-001",
+          formLinkId: "intake-form-link-001",
+          answerSnapshotId: "snapshot-001",
+          decision: "request_more_info",
+          decidedByUserId: "user-admin",
+          decidedAt: "2026-04-30T13:00:00.000Z",
+          followUpFormLinkId: "intake-form-link-child",
+        },
+        followUp: {
+          link: intakeFormLink({
+            id: "intake-form-link-child",
+            parentFormLinkId: "intake-form-link-001",
+          }),
+          token: "one-time-token",
+          portalUrl: "http://localhost:3001/intake-forms/one-time-token",
+        },
+      }),
+    ).toBe("Follow-up intake link created. One-time token remains available below.");
     expect(
       buildIntakeTemplatePreviewPayload({
         definition: sampleResidentialTenancyIntakeDefinition,

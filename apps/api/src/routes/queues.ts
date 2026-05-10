@@ -16,6 +16,8 @@ export function registerQueuesRoutes(
     const grants = await repository.listPortalGrants(request.auth.firmId);
     const signatures = await repository.listSignatureRequests(request.auth.firmId);
     const intake = await repository.listIntakeSessions(request.auth.firmId);
+    const intakeLinks = await repository.listIntakeFormLinks(request.auth.firmId);
+    const intakeReviews = await repository.listIntakeFormReviews(request.auth.firmId);
     const canReadAudit = canAccess({
       user: request.auth.user,
       firmId: request.auth.firmId,
@@ -30,6 +32,14 @@ export function registerQueuesRoutes(
     const matterIds = new Set(matters.map((matter) => matter.id));
     const visibleSignatures = signatures.filter((signature) => matterIds.has(signature.matterId));
     const visibleIntake = intake.filter((session) => matterIds.has(session.matterId));
+    const reviewedIntakeLinkIds = new Set(intakeReviews.map((review) => review.formLinkId));
+    const visibleSubmittedIntakeLinks = intakeLinks.filter(
+      (link) =>
+        matterIds.has(link.matterId) &&
+        Boolean(link.submittedAt) &&
+        Boolean(link.answerSnapshotId) &&
+        !reviewedIntakeLinkIds.has(link.id),
+    );
     const documents = matters.flatMap((matter) => matter.documents);
     const taskWorkbench = buildTaskDeadlineWorkbench({
       tasks: await repository.listTaskDeadlines(request.auth.firmId, {
@@ -105,15 +115,24 @@ export function registerQueuesRoutes(
         {
           key: "intake",
           label: "Intake automation",
-          items: visibleIntake
-            .filter((session) => session.status !== "completed")
-            .map((session) => ({
-              id: session.id,
-              matterId: session.matterId,
-              title: session.templateId,
-              status: session.status,
-              priority: session.status === "provider_error" ? "high" : "medium",
+          items: [
+            ...visibleIntake
+              .filter((session) => session.status !== "completed")
+              .map((session) => ({
+                id: session.id,
+                matterId: session.matterId,
+                title: session.templateId,
+                status: session.status,
+                priority: session.status === "provider_error" ? "high" : "medium",
+              })),
+            ...visibleSubmittedIntakeLinks.map((link) => ({
+              id: link.id,
+              matterId: link.matterId,
+              title: "Submitted intake review",
+              status: "pending_review",
+              priority: "high",
             })),
+          ],
         },
         {
           key: "ledger",

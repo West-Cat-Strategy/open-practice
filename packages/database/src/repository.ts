@@ -37,6 +37,7 @@ import {
   type FirmSettings,
   type IntakeFormItemActionRecord,
   type IntakeFormLinkRecord,
+  type IntakeFormReviewRecord,
   type IntakeVariableProposal,
   type InvoiceLineRecord,
   type InvoiceRecord,
@@ -679,7 +680,13 @@ export interface OpenPracticeRepository {
     firmId: string;
     id: string;
     submittedAt: string;
+    answerSnapshotId: string;
   }): Promise<IntakeFormLinkRecord | undefined>;
+  listIntakeFormReviews(
+    firmId: string,
+    options?: { matterId?: string; intakeSessionId?: string; formLinkId?: string },
+  ): Promise<IntakeFormReviewRecord[]>;
+  createIntakeFormReview(review: IntakeFormReviewRecord): Promise<IntakeFormReviewRecord>;
   listIntakeFormItemActions(
     firmId: string,
     options?: { formLinkId?: string; intakeSessionId?: string; itemId?: string },
@@ -1507,6 +1514,8 @@ function mapIntakeFormLinkRow(
     tokenHash: row.tokenHash,
     requestedByUserId: row.requestedByUserId,
     clientContactId: row.clientContactId ?? undefined,
+    parentFormLinkId: row.parentFormLinkId ?? undefined,
+    answerSnapshotId: row.answerSnapshotId ?? undefined,
     expiresAt: row.expiresAt.toISOString(),
     revokedAt: dateToIso(row.revokedAt),
     submittedAt: dateToIso(row.submittedAt),
@@ -1520,10 +1529,41 @@ function intakeFormLinkInsert(
   return {
     ...link,
     clientContactId: link.clientContactId ?? null,
+    parentFormLinkId: link.parentFormLinkId ?? null,
+    answerSnapshotId: link.answerSnapshotId ?? null,
     expiresAt: new Date(link.expiresAt),
     revokedAt: link.revokedAt ? new Date(link.revokedAt) : null,
     submittedAt: link.submittedAt ? new Date(link.submittedAt) : null,
     createdAt: new Date(link.createdAt),
+  };
+}
+
+function mapIntakeFormReviewRow(
+  row: typeof schema.intakeFormReviews.$inferSelect,
+): IntakeFormReviewRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    intakeSessionId: row.intakeSessionId,
+    formLinkId: row.formLinkId,
+    answerSnapshotId: row.answerSnapshotId,
+    decision: row.decision,
+    decidedByUserId: row.decidedByUserId,
+    decidedAt: row.decidedAt.toISOString(),
+    reason: row.reason ?? undefined,
+    followUpFormLinkId: row.followUpFormLinkId ?? undefined,
+  };
+}
+
+function intakeFormReviewInsert(
+  review: IntakeFormReviewRecord,
+): typeof schema.intakeFormReviews.$inferInsert {
+  return {
+    ...review,
+    reason: review.reason ?? null,
+    followUpFormLinkId: review.followUpFormLinkId ?? null,
+    decidedAt: new Date(review.decidedAt),
   };
 }
 
@@ -2462,6 +2502,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private intakeSessions: IntakeSessionRecord[];
   private answerSnapshots: AnswerSnapshotRecord[] = [];
   private intakeFormLinks: IntakeFormLinkRecord[] = [];
+  private intakeFormReviews: IntakeFormReviewRecord[] = [];
   private intakeFormItemActions: IntakeFormItemActionRecord[] = [];
   private intakeVariableProposals: IntakeVariableProposal[] = [];
   private conflictChecks: ConflictCheckRecord[] = [];
@@ -4369,13 +4410,45 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     firmId: string;
     id: string;
     submittedAt: string;
+    answerSnapshotId: string;
   }): Promise<IntakeFormLinkRecord | undefined> {
     const link = this.intakeFormLinks.find(
       (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
     );
     if (!link || link.submittedAt || link.revokedAt) return undefined;
     link.submittedAt = input.submittedAt;
+    link.answerSnapshotId = input.answerSnapshotId;
     return clone(link);
+  }
+
+  async listIntakeFormReviews(
+    firmId: string,
+    options: { matterId?: string; intakeSessionId?: string; formLinkId?: string } = {},
+  ): Promise<IntakeFormReviewRecord[]> {
+    return clone(
+      this.intakeFormReviews
+        .filter(
+          (review) =>
+            review.firmId === firmId &&
+            (!options.matterId || review.matterId === options.matterId) &&
+            (!options.intakeSessionId || review.intakeSessionId === options.intakeSessionId) &&
+            (!options.formLinkId || review.formLinkId === options.formLinkId),
+        )
+        .sort((left, right) => right.decidedAt.localeCompare(left.decidedAt)),
+    );
+  }
+
+  async createIntakeFormReview(review: IntakeFormReviewRecord): Promise<IntakeFormReviewRecord> {
+    if (
+      this.intakeFormReviews.some(
+        (existing) =>
+          existing.firmId === review.firmId && existing.formLinkId === review.formLinkId,
+      )
+    ) {
+      throw new Error("Intake form link has already been reviewed");
+    }
+    this.intakeFormReviews = [...this.intakeFormReviews, clone(review)];
+    return clone(review);
   }
 
   async listIntakeFormItemActions(
@@ -7888,10 +7961,14 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     firmId: string;
     id: string;
     submittedAt: string;
+    answerSnapshotId: string;
   }): Promise<IntakeFormLinkRecord | undefined> {
     const [row] = await this.db
       .update(schema.intakeFormLinks)
-      .set({ submittedAt: new Date(input.submittedAt) })
+      .set({
+        submittedAt: new Date(input.submittedAt),
+        answerSnapshotId: input.answerSnapshotId,
+      })
       .where(
         and(
           eq(schema.intakeFormLinks.firmId, input.firmId),
@@ -7902,6 +7979,34 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       )
       .returning();
     return row ? mapIntakeFormLinkRow(row) : undefined;
+  }
+
+  async listIntakeFormReviews(
+    firmId: string,
+    options: { matterId?: string; intakeSessionId?: string; formLinkId?: string } = {},
+  ): Promise<IntakeFormReviewRecord[]> {
+    const conditions = [eq(schema.intakeFormReviews.firmId, firmId)];
+    if (options.matterId) conditions.push(eq(schema.intakeFormReviews.matterId, options.matterId));
+    if (options.intakeSessionId) {
+      conditions.push(eq(schema.intakeFormReviews.intakeSessionId, options.intakeSessionId));
+    }
+    if (options.formLinkId) {
+      conditions.push(eq(schema.intakeFormReviews.formLinkId, options.formLinkId));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.intakeFormReviews)
+      .where(and(...conditions))
+      .orderBy(desc(schema.intakeFormReviews.decidedAt));
+    return rows.map(mapIntakeFormReviewRow);
+  }
+
+  async createIntakeFormReview(review: IntakeFormReviewRecord): Promise<IntakeFormReviewRecord> {
+    const [row] = await this.db
+      .insert(schema.intakeFormReviews)
+      .values(intakeFormReviewInsert(review))
+      .returning();
+    return mapIntakeFormReviewRow(row);
   }
 
   async listIntakeFormItemActions(

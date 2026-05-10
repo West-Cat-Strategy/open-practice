@@ -9,6 +9,7 @@ import type {
 } from "@open-practice/domain";
 import type {
   IntakeFormLinkSummary,
+  IntakeFormReviewResponse,
   IntakeFormsDashboardResponse,
   IntakeTemplatePreviewResponse,
   MatterSummary,
@@ -96,6 +97,24 @@ export function buildIntakePortalPath(token: string): string {
 
 export function buildIntakeVariableProposalListPath(matterId: string): string {
   return `/api/intake-variable-proposals?matterId=${encodeURIComponent(matterId)}`;
+}
+
+export function buildIntakeFormReviewPath(linkId: string): string {
+  return `/api/intake-form-links/${encodeURIComponent(linkId)}/review`;
+}
+
+export function buildIntakeFormReviewDecisionPath(
+  linkId: string,
+  decision: "accept" | "reject" | "request-more-info",
+): string {
+  return `/api/intake-form-links/${encodeURIComponent(linkId)}/review/${decision}`;
+}
+
+export function describeRequestMoreInfoResult(payload: IntakeFormReviewResponse): string {
+  if (payload.followUp?.token && payload.followUp.portalUrl) {
+    return "Follow-up intake link created. One-time token remains available below.";
+  }
+  return "Follow-up intake link created; token unavailable.";
 }
 
 export function buildIntakeTemplatePreviewPayload(input: {
