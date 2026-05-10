@@ -1,16 +1,30 @@
 import type {
   DraftRecord,
+  DraftExportFormat,
   DraftAssistRecord,
   DraftTemplateRecord,
   TipTapDocument,
   TipTapNode,
 } from "@open-practice/domain";
-import type { DraftingDashboardResponse, MatterSummary } from "./types";
+import type { DraftExportResponse, DraftingDashboardResponse, MatterSummary } from "./types";
 
 export const blankDraftDocument: TipTapDocument = {
   type: "doc",
   content: [{ type: "paragraph" }],
 };
+
+export const draftMergeFields = [
+  "firm.name",
+  "firm.officeEmail",
+  "firm.officePhone",
+  "matter.number",
+  "matter.title",
+  "matter.practiceArea",
+  "matter.jurisdiction",
+  "client.displayName",
+  "client.email",
+  "client.phone",
+] as const;
 
 export async function loadDraftingDashboardData(input: {
   matters: Pick<MatterSummary, "id">[];
@@ -62,6 +76,39 @@ export function buildDraftUpdatePayload(input: { editorJson: TipTapDocument }): 
   return {
     editorJson: input.editorJson,
   };
+}
+
+export function buildDraftExportPayload(input: { format: DraftExportFormat; title?: string }): {
+  format: DraftExportFormat;
+  title?: string;
+} {
+  return {
+    format: input.format,
+    title: input.title?.trim() || undefined,
+  };
+}
+
+export function appendMergeFieldToDraftDocument(input: {
+  editorJson: TipTapDocument;
+  field: string;
+}): TipTapDocument {
+  return appendPlainTextToDraftDocument(input.editorJson, `{{ ${input.field} }}`);
+}
+
+export function appendDraftExportRecord(
+  recordsByDraftId: Record<string, DraftExportResponse[]>,
+  draftId: string,
+  record: DraftExportResponse,
+): Record<string, DraftExportResponse[]> {
+  return {
+    ...recordsByDraftId,
+    [draftId]: [record, ...(recordsByDraftId[draftId] ?? [])],
+  };
+}
+
+export function formatDraftExportSize(byteLength: number): string {
+  if (byteLength < 1024) return `${byteLength} B`;
+  return `${Math.round(byteLength / 1024)} KB`;
 }
 
 export function formatDraftApiFailure(

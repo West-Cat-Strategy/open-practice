@@ -38,11 +38,15 @@ import {
 } from "./share-link-portal";
 import {
   appendDraftToMatterDrafts,
+  appendDraftExportRecord,
+  appendMergeFieldToDraftDocument,
   buildBlankDraftPayload,
+  buildDraftExportPayload,
   buildDraftFromTemplatePayload,
   buildDraftUpdatePayload,
   describeDraftAssistStatus,
   extractDraftPlainText,
+  formatDraftExportSize,
   formatDraftApiFailure,
   insertDraftAssistSuggestion,
   isSameDraftDocument,
@@ -1734,6 +1738,61 @@ describe("dashboard client behavior", () => {
       "Draft creation failed: 400: Invalid request body",
     );
     expect(formatDraftApiFailure("save", 500)).toBe("Draft save failed: 500");
+  });
+
+  it("builds draft export payloads and local export history", () => {
+    const draft = draftRecord();
+    const exportRecord = {
+      format: "pdf" as const,
+      title: "Synthetic export",
+      contentType: "application/pdf",
+      byteLength: 2048,
+      checksumSha256: "a".repeat(64),
+      storageKey: "matters/matter-001/draft-exports/export.pdf",
+      document: documentRecord({ id: "doc-export-001", title: "Synthetic export.pdf" }),
+      generatedDocument: {
+        id: "generated-export-001",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        provider: "embedded" as const,
+        externalId: "draft-export:draft-001:doc-export-001",
+        title: "Synthetic export",
+        documentId: "doc-export-001",
+        storageKey: "matters/matter-001/draft-exports/export.pdf",
+        checksumSha256: "a".repeat(64),
+        evidence: { source: "draft_export", draftId: draft.id },
+        createdAt: "2026-05-10T12:00:00.000Z",
+      },
+    };
+
+    expect(buildDraftExportPayload({ format: "pdf", title: "  Synthetic export " })).toEqual({
+      format: "pdf",
+      title: "Synthetic export",
+    });
+    expect(buildDraftExportPayload({ format: "docx", title: " " })).toEqual({
+      format: "docx",
+      title: undefined,
+    });
+    expect(
+      appendDraftExportRecord({}, draft.id, exportRecord)[draft.id]?.map((record) => record.title),
+    ).toEqual(["Synthetic export"]);
+    expect(formatDraftExportSize(512)).toBe("512 B");
+    expect(formatDraftExportSize(2048)).toBe("2 KB");
+  });
+
+  it("inserts merge fields into local draft JSON", () => {
+    const editorJson = {
+      type: "doc" as const,
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Original draft" }] }],
+    };
+
+    const updated = appendMergeFieldToDraftDocument({
+      editorJson,
+      field: "matter.number",
+    });
+
+    expect(extractDraftPlainText(updated)).toBe("Original draft {{ matter.number }}");
+    expect(extractDraftPlainText(editorJson)).toBe("Original draft");
   });
 
   it("describes draft assist status and inserts suggestions into local editor JSON", () => {

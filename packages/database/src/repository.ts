@@ -1460,7 +1460,7 @@ function mapGeneratedDocumentRow(
     id: row.id,
     firmId: row.firmId,
     matterId: row.matterId,
-    intakeSessionId: row.intakeSessionId,
+    intakeSessionId: row.intakeSessionId ?? undefined,
     provider: row.provider as GeneratedDocumentRecord["provider"],
     externalId: row.externalId,
     title: row.title,
@@ -7994,6 +7994,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   ): Promise<GeneratedDocumentRecord> {
     await this.db.insert(schema.generatedDocuments).values({
       ...document,
+      intakeSessionId: document.intakeSessionId ?? null,
       createdAt: new Date(document.createdAt),
     });
     return document;

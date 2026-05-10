@@ -9,6 +9,7 @@ import {
   Clock3,
   ContactRound,
   CreditCard,
+  Download,
   FileText,
   FilePenLine,
   FileSignature,
@@ -26,7 +27,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ConflictCandidate, EmbeddedIntakeTemplateDefinitionV2 } from "@open-practice/domain";
+import type {
+  ConflictCandidate,
+  DraftExportFormat,
+  EmbeddedIntakeTemplateDefinitionV2,
+} from "@open-practice/domain";
 import {
   buildDashboardSectionUrl,
   buildSidebarNavigationSections,
@@ -44,11 +49,16 @@ import {
 } from "./share-links-dashboard";
 import {
   appendDraftToMatterDrafts,
+  appendDraftExportRecord,
+  appendMergeFieldToDraftDocument,
   buildBlankDraftPayload,
+  buildDraftExportPayload,
   buildDraftFromTemplatePayload,
   buildDraftUpdatePayload,
   describeDraftAssistStatus,
+  draftMergeFields,
   extractDraftPlainText,
+  formatDraftExportSize,
   formatDraftApiFailure,
   insertDraftAssistSuggestion,
   isSameDraftDocument,
@@ -180,6 +190,7 @@ import type {
   DocumentProcessingDashboardResponse,
   DocumentProcessingWorkbenchResponse,
   DraftingDashboardResponse,
+  DraftExportResponse,
   DraftAssistRecordsResponse,
   DraftAssistStatusResponse,
   EmailDeliveryDashboardResponse,
@@ -444,6 +455,14 @@ export default function DashboardClient({
   const [selectedDraftId, setSelectedDraftId] = useState("");
   const [draftEditorJson, setDraftEditorJson] = useState<DashboardDraft["editorJson"] | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [draftExportTitle, setDraftExportTitle] = useState("");
+  const [draftExportFormat, setDraftExportFormat] = useState<DraftExportFormat>("pdf");
+  const [draftMergeField, setDraftMergeField] =
+    useState<(typeof draftMergeFields)[number]>("matter.number");
+  const [exportingDraftFormat, setExportingDraftFormat] = useState<DraftExportFormat | "">("");
+  const [draftExportsByDraftId, setDraftExportsByDraftId] = useState<
+    Record<string, DraftExportResponse[]>
+  >({});
   const [draftAssistStatus, setDraftAssistStatus] = useState<DraftAssistStatusResponse>({
     status: "disabled",
     reason: "not_configured",
@@ -646,6 +665,7 @@ export default function DashboardClient({
   const activeDraftAssistRecords = selectedDraft
     ? (draftAssistRecordsByDraftId[selectedDraft.id] ?? [])
     : [];
+  const activeDraftExports = selectedDraft ? (draftExportsByDraftId[selectedDraft.id] ?? []) : [];
   const draftHasChanges =
     selectedDraft !== undefined &&
     draftEditorJson !== null &&
@@ -1142,15 +1162,80 @@ export default function DashboardClient({
     }
   }
 
+  async function exportDraft(): Promise<void> {
+    if (!selectedDraft) return;
+    if (draftHasChanges) {
+      setDraftStatus("Save draft changes before exporting.");
+      return;
+    }
+
+    setExportingDraftFormat(draftExportFormat);
+    setDraftStatus(`Exporting ${draftExportFormat.toUpperCase()}...`);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/drafts/${selectedDraft.id}/exports`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(
+          buildDraftExportPayload({
+            format: draftExportFormat,
+            title: draftExportTitle || selectedDraft.title,
+          }),
+        ),
+      });
+
+      if (!response.ok) {
+        setDraftStatus(
+          formatDraftApiFailure(
+            "save",
+            response.status,
+            await response.json().catch(() => undefined),
+          ).replace("Draft save", "Draft export"),
+        );
+        return;
+      }
+
+      const exported = (await response.json()) as DraftExportResponse;
+      setDraftExportsByDraftId((current) =>
+        appendDraftExportRecord(current, selectedDraft.id, exported),
+      );
+      setDraftStatus(
+        `Exported ${exported.title} as ${exported.format.toUpperCase()} (${formatDraftExportSize(
+          exported.byteLength,
+        )}).`,
+      );
+    } catch {
+      setDraftStatus("Draft export failed: network error");
+    } finally {
+      setExportingDraftFormat("");
+    }
+  }
+
+  function insertMergeField(): void {
+    if (!draftEditorJson) return;
+    setDraftEditorJson(
+      appendMergeFieldToDraftDocument({
+        editorJson: draftEditorJson,
+        field: draftMergeField,
+      }),
+    );
+    setDraftStatus(`Inserted {{ ${draftMergeField} }} locally. Save before exporting.`);
+  }
+
   function openDraft(draft: DashboardDraft): void {
     setSelectedDraftId(draft.id);
     setDraftEditorJson(draft.editorJson);
+    setDraftExportTitle(draft.title);
     setDraftStatus(`Editing ${draft.title}.`);
   }
 
   function closeDraftEditor(): void {
     setSelectedDraftId("");
     setDraftEditorJson(null);
+    setDraftExportTitle("");
   }
 
   async function runDraftAssist(): Promise<void> {
@@ -3776,6 +3861,92 @@ export default function DashboardClient({
                       content={draftEditorJson}
                       onChange={setDraftEditorJson}
                     />
+                    <div className="draft-office-panel">
+                      <div className="section-title">
+                        <h3>Office output</h3>
+                        <span>{activeDraftExports.length} exports</span>
+                      </div>
+                      <div className="draft-office-controls">
+                        <label>
+                          <span>Merge field</span>
+                          <select
+                            value={draftMergeField}
+                            onChange={(event) =>
+                              setDraftMergeField(
+                                event.target.value as (typeof draftMergeFields)[number],
+                              )
+                            }
+                          >
+                            {draftMergeFields.map((field) => (
+                              <option key={field} value={field}>
+                                {field}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          className="secondary-button compact-button"
+                          onClick={insertMergeField}
+                          type="button"
+                        >
+                          <Plus size={16} />
+                          Insert
+                        </button>
+                        <label>
+                          <span>Export title</span>
+                          <input
+                            value={draftExportTitle}
+                            onChange={(event) => setDraftExportTitle(event.target.value)}
+                            placeholder={selectedDraft.title}
+                          />
+                        </label>
+                        <label>
+                          <span>Format</span>
+                          <select
+                            value={draftExportFormat}
+                            onChange={(event) =>
+                              setDraftExportFormat(event.target.value as DraftExportFormat)
+                            }
+                          >
+                            <option value="pdf">PDF</option>
+                            <option value="docx">DOCX</option>
+                          </select>
+                        </label>
+                        <button
+                          className="secondary-button compact-button"
+                          disabled={draftHasChanges || exportingDraftFormat.length > 0}
+                          onClick={() => void exportDraft()}
+                          type="button"
+                        >
+                          <Download size={16} />
+                          {exportingDraftFormat ? "Exporting..." : "Export"}
+                        </button>
+                      </div>
+                      {draftHasChanges ? (
+                        <p className="inline-empty">Save draft changes before exporting.</p>
+                      ) : null}
+                      <div className="party-list">
+                        {activeDraftExports.map((record) => (
+                          <div
+                            className="party-row draft-export-row"
+                            key={record.generatedDocument.id}
+                          >
+                            <span>
+                              <strong>{record.title}</strong>
+                              <small>
+                                {record.format.toUpperCase()} ·{" "}
+                                {formatDraftExportSize(record.byteLength)} · {record.document.title}
+                              </small>
+                              <small>checksum {record.checksumSha256.slice(0, 12)}...</small>
+                            </span>
+                            <em>{record.document.scanStatus}</em>
+                          </div>
+                        ))}
+                        {activeDraftExports.length === 0 ? (
+                          <p className="inline-empty">No exports created for this draft.</p>
+                        ) : null}
+                      </div>
+                    </div>
                     <div className="draft-assist-panel">
                       <div className="section-title">
                         <h3>Draft assist</h3>

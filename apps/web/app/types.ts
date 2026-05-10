@@ -2,6 +2,7 @@ import type {
   Contact,
   ConflictCandidate,
   DocumentRecord,
+  GeneratedDocumentRecord,
   DraftRecord,
   DraftAssistRecord,
   DraftTemplateRecord,
@@ -175,6 +176,17 @@ export interface DraftAssistStatusResponse {
 
 export interface DraftAssistRecordsResponse {
   records: DraftAssistRecord[];
+}
+
+export interface DraftExportResponse {
+  format: "pdf" | "docx";
+  title: string;
+  contentType: string;
+  byteLength: number;
+  checksumSha256: string;
+  storageKey: string;
+  document: DocumentRecord;
+  generatedDocument: GeneratedDocumentRecord;
 }
 
 export interface ExternalUploadLinkRecord {

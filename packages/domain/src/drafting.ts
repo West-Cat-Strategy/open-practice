@@ -136,6 +136,210 @@ export interface DraftAssistProvider {
   createSuggestion(request: DraftAssistRequest): Promise<DraftAssistResult>;
 }
 
+export const draftExportFormats = ["pdf", "docx"] as const;
+export type DraftExportFormat = (typeof draftExportFormats)[number];
+
+export type DraftExportTextMark = "bold" | "italic" | "underline" | "link";
+
+export interface DraftExportTextRun {
+  text: string;
+  marks: DraftExportTextMark[];
+  href?: string;
+}
+
+export interface DraftExportBlock {
+  type: "paragraph" | "heading" | "bullet_list_item" | "ordered_list_item" | "blockquote";
+  level?: 1 | 2;
+  order?: number;
+  runs: DraftExportTextRun[];
+}
+
+export interface DraftExportDocument {
+  title: string;
+  blocks: DraftExportBlock[];
+}
+
+export interface DraftMergeContext {
+  firm: {
+    name: string;
+    officeEmail?: string;
+    officePhone?: string;
+  };
+  matter: {
+    number: string;
+    title: string;
+    practiceArea: string;
+    jurisdiction: string;
+  };
+  client?: {
+    displayName: string;
+    email?: string;
+    phone?: string;
+  };
+}
+
+const mergeFieldPattern = /\{\{\s*([a-zA-Z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]*)+)\s*\}\}/g;
+
+export const draftMergeFieldCatalog = [
+  "firm.name",
+  "firm.officeEmail",
+  "firm.officePhone",
+  "matter.number",
+  "matter.title",
+  "matter.practiceArea",
+  "matter.jurisdiction",
+  "client.displayName",
+  "client.email",
+  "client.phone",
+] as const;
+
+export type DraftMergeField = (typeof draftMergeFieldCatalog)[number];
+
+const draftMergeFieldSet = new Set<string>(draftMergeFieldCatalog);
+
+export class UnknownDraftMergeFieldError extends Error {
+  constructor(readonly fields: string[]) {
+    super(`Unknown draft merge field${fields.length === 1 ? "" : "s"}: ${fields.join(", ")}`);
+    this.name = "UnknownDraftMergeFieldError";
+  }
+}
+
+export function listDraftMergeFields(document: TipTapDocument): string[] {
+  const fields = new Set<string>();
+
+  function visit(node: TipTapNode): void {
+    if (typeof node.text === "string") {
+      for (const match of node.text.matchAll(mergeFieldPattern)) {
+        fields.add(match[1]!);
+      }
+    }
+    for (const child of node.content ?? []) visit(child);
+  }
+
+  visit(document);
+  return [...fields].sort();
+}
+
+export function assertKnownDraftMergeFields(document: TipTapDocument): void {
+  const unknownFields = listDraftMergeFields(document).filter(
+    (field) => !draftMergeFieldSet.has(field),
+  );
+  if (unknownFields.length > 0) {
+    throw new UnknownDraftMergeFieldError(unknownFields);
+  }
+}
+
+function mergeFieldValue(field: string, context: DraftMergeContext): string {
+  switch (field) {
+    case "firm.name":
+      return context.firm.name;
+    case "firm.officeEmail":
+      return context.firm.officeEmail ?? "";
+    case "firm.officePhone":
+      return context.firm.officePhone ?? "";
+    case "matter.number":
+      return context.matter.number;
+    case "matter.title":
+      return context.matter.title;
+    case "matter.practiceArea":
+      return context.matter.practiceArea;
+    case "matter.jurisdiction":
+      return context.matter.jurisdiction;
+    case "client.displayName":
+      return context.client?.displayName ?? "";
+    case "client.email":
+      return context.client?.email ?? "";
+    case "client.phone":
+      return context.client?.phone ?? "";
+    default:
+      return "";
+  }
+}
+
+export function resolveDraftMergeFields(text: string, context: DraftMergeContext): string {
+  return text.replace(mergeFieldPattern, (_match, field: string) =>
+    mergeFieldValue(field, context),
+  );
+}
+
+function textMarks(node: TipTapNode): { marks: DraftExportTextMark[]; href?: string } {
+  const marks: DraftExportTextMark[] = [];
+  let href: string | undefined;
+
+  for (const mark of node.marks ?? []) {
+    if (mark.type === "bold") marks.push("bold");
+    if (mark.type === "italic") marks.push("italic");
+    if (mark.type === "underline") marks.push("underline");
+    if (mark.type === "link") {
+      marks.push("link");
+      if (typeof mark.attrs?.href === "string") href = mark.attrs.href;
+    }
+  }
+
+  return { marks, href };
+}
+
+function collectTextRuns(node: TipTapNode, context: DraftMergeContext): DraftExportTextRun[] {
+  const runs: DraftExportTextRun[] = [];
+
+  function visit(current: TipTapNode): void {
+    if (typeof current.text === "string") {
+      const { marks, href } = textMarks(current);
+      runs.push({
+        text: resolveDraftMergeFields(current.text, context),
+        marks,
+        href,
+      });
+    }
+    for (const child of current.content ?? []) visit(child);
+  }
+
+  visit(node);
+  return runs.length > 0 ? runs : [{ text: "", marks: [] }];
+}
+
+function exportBlocksFromNode(node: TipTapNode, context: DraftMergeContext): DraftExportBlock[] {
+  if (node.type === "paragraph") {
+    return [{ type: "paragraph", runs: collectTextRuns(node, context) }];
+  }
+  if (node.type === "heading") {
+    const requestedLevel = node.attrs?.level === 2 ? 2 : 1;
+    return [{ type: "heading", level: requestedLevel, runs: collectTextRuns(node, context) }];
+  }
+  if (node.type === "blockquote") {
+    return [
+      {
+        type: "blockquote",
+        runs: collectTextRuns(node, context),
+      },
+    ];
+  }
+  if (node.type === "bulletList" || node.type === "orderedList") {
+    return (node.content ?? []).flatMap((item, index) => ({
+      type: node.type === "bulletList" ? "bullet_list_item" : "ordered_list_item",
+      order: node.type === "orderedList" ? index + 1 : undefined,
+      runs: collectTextRuns(item, context),
+    }));
+  }
+  return (node.content ?? []).flatMap((child) => exportBlocksFromNode(child, context));
+}
+
+export function buildDraftExportDocument(input: {
+  title: string;
+  editorJson: TipTapDocument;
+  mergeContext: DraftMergeContext;
+}): DraftExportDocument {
+  assertKnownDraftMergeFields(input.editorJson);
+  const blocks = (input.editorJson.content ?? []).flatMap((node) =>
+    exportBlocksFromNode(node, input.mergeContext),
+  );
+
+  return {
+    title: resolveDraftMergeFields(input.title, input.mergeContext),
+    blocks: blocks.length > 0 ? blocks : [{ type: "paragraph", runs: [{ text: "", marks: [] }] }],
+  };
+}
+
 export function assertDraftAssistTask(task: string): asserts task is DraftAssistTask {
   if (!draftAssistTasks.includes(task as DraftAssistTask)) {
     throw new Error(`Unsupported draft assist task: ${task}`);

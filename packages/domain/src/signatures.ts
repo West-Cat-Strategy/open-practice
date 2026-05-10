@@ -372,7 +372,7 @@ export interface GeneratedDocumentRecord {
   id: string;
   firmId: string;
   matterId: string;
-  intakeSessionId: string;
+  intakeSessionId?: string;
   provider: GeneratedDocumentRef["provider"];
   externalId: string;
   title: string;

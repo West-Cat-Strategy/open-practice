@@ -51,11 +51,14 @@ Next operational scale priorities:
 4.  **Local AI Drafting Assist**: Add disabled-by-default Ollama/LM Studio review workflows for
     draft assistance and matter/document summarization; generated text remains non-authoritative
     draft material.
-5.  **Calendaring and Meeting Management**: Grow the existing `calendar_events` schema and
+5.  **Office Suite Word Processing**: Extend saved TipTap drafts with safe firm/matter/client
+    merge fields, server-rendered PDF/DOCX exports, and persisted matter-scoped document metadata
+    while deferring spreadsheets, presentations, external office sync, and collaboration.
+6.  **Calendaring and Meeting Management**: Grow the existing `calendar_events` schema and
     `calendar_event` permissions into matter-scoped event visibility, dashboard deadline radar,
     CalDAV/iCalendar sync, and later explicit-capability slices for attendees, reminders,
     rescheduling/cancellation records, audit events, and optional self-hostable WebRTC meeting links.
-6.  **Specialized Workflows**: Add focused support for legal clinics, nonprofit fiscal hosts,
+7.  **Specialized Workflows**: Add focused support for legal clinics, nonprofit fiscal hosts,
     complex trust accounting, and multi-jurisdiction trust reporting without making
     jurisdiction-certified compliance claims.
 
