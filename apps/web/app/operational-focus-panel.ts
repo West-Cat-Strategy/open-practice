@@ -14,13 +14,7 @@ export interface OperationalFocusItem {
   detail: string;
   value: string;
   tone: OperationalFocusTone;
-  section:
-    | "Tasks"
-    | "Workers"
-    | "Queues"
-    | "Providers"
-    | "Active matter"
-    | "Operational views";
+  section: "Tasks" | "Workers" | "Queues" | "Providers" | "Active matter" | "Operational views";
 }
 
 export interface OperationalFocusSummary {
