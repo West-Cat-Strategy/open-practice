@@ -30,6 +30,13 @@ import {
   replaceShareLink,
 } from "./share-links-dashboard";
 import {
+  buildPublicSharePath,
+  buildShareEmailVerificationPath,
+  describePublicShareStatus,
+  isShareEmailVerificationRequired,
+  publicShareErrorMessage,
+} from "./share-link-portal";
+import {
   appendDraftToMatterDrafts,
   buildBlankDraftPayload,
   buildDraftFromTemplatePayload,
@@ -1631,6 +1638,35 @@ describe("dashboard client behavior", () => {
     );
     expect(describeShareLinkState(activeShare)).toEqual({ label: "active", tone: "active" });
     expect(replaceShareLink([activeShare], revokedShare)).toEqual([revokedShare]);
+  });
+
+  it("builds public share-link verification paths and status copy", () => {
+    expect(buildPublicSharePath("share token/with slash")).toBe(
+      "/api/portal/shares/share%20token%2Fwith%20slash",
+    );
+    expect(buildShareEmailVerificationPath("share-token")).toBe(
+      "/api/portal/shares/share-token/email-verification",
+    );
+    expect(
+      isShareEmailVerificationRequired({
+        code: "EMAIL_VERIFICATION_REQUIRED",
+        message: "Email verification is required",
+      }),
+    ).toBe(true);
+    expect(
+      isShareEmailVerificationRequired({
+        error: { code: "EMAIL_VERIFICATION_REQUIRED" },
+      }),
+    ).toBe(true);
+    expect(publicShareErrorMessage({ error: { message: "Not available" } }, "Fallback")).toBe(
+      "Not available",
+    );
+    expect(describePublicShareStatus({ documents: [{ id: "doc-001" }] })).toBe(
+      "Email verification complete. 1 document is available.",
+    );
+    expect(describePublicShareStatus({ documents: [{ id: "doc-001" }, { id: "doc-002" }] })).toBe(
+      "Email verification complete. 2 documents are available.",
+    );
   });
 
   it("loads draft templates once and existing drafts per matter for first render", async () => {
