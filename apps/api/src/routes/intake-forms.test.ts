@@ -5,7 +5,9 @@ import {
   type OpenPracticeRepository,
 } from "@open-practice/database";
 import type { MatterSummary } from "@open-practice/database";
+import { hashToken } from "../http/auth-helpers.js";
 import { createApiServer } from "../server.js";
+import { PUBLIC_TOKEN_UPLOAD_INTENT_RATE_LIMIT } from "./public-token-rate-limits.js";
 
 const jwtSecret = "test-intake-form-secret-at-least-32-chars";
 const checksum = "f".repeat(64);
@@ -627,6 +629,51 @@ describe("intake form builder routes", () => {
 
     expect(crossMatterList.statusCode).toBe(403);
     expect(crossMatterCreate.statusCode).toBe(200);
+  });
+
+  it("rate-limits public intake upload intents without leaking token material", async () => {
+    const { repository, server } = testServer({ s3: s3Config() });
+    await restrictEvidenceUpload(repository);
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/intake-form-links",
+      payload: {
+        intakeSessionId: "intake-session-001",
+        expiresAt: "2099-06-01T00:00:00.000Z",
+      },
+    });
+    const token = created.json<{ token: string }>().token;
+    const tokenHash = hashToken(token, jwtSecret);
+    let limited = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${token}/items/evidence-upload/uploads`,
+      payload: {
+        filename: "repair notes.txt",
+        checksumSha256: checksum,
+        contentType: "text/plain",
+      },
+    });
+
+    for (let index = 0; index < PUBLIC_TOKEN_UPLOAD_INTENT_RATE_LIMIT.max; index += 1) {
+      limited = await server.inject({
+        method: "POST",
+        url: `/api/portal/intake-forms/${token}/items/evidence-upload/uploads`,
+        payload: {
+          filename: `repair notes ${index}.txt`,
+          checksumSha256: checksum,
+          contentType: "text/plain",
+        },
+      });
+    }
+
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toMatchObject({
+      error: "RATE_LIMIT_EXCEEDED",
+      message: "Too many requests",
+    });
+    expect(limited.body).not.toContain(token);
+    expect(limited.body).not.toContain(tokenHash);
+    expect(limited.body).not.toContain("tokenHash");
   });
 
   it("returns stable public link states and logs granted and denied access", async () => {
