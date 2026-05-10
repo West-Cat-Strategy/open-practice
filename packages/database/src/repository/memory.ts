@@ -1,0 +1,2904 @@
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import {
+  appendAuditEvent,
+  buildBasicDraftTemplates,
+  buildContactDossiers,
+  buildPracticePresetTemplates,
+  calculateInvoiceTotals,
+  canShareDocumentThroughPortal,
+  clientTrustBalanceByMatter,
+  clientTrustBalanceDeltas,
+  invoiceStatusForPayment,
+  ledgerBalanceByMatter,
+  ledgerRequestFingerprint,
+  postLedgerTransaction,
+  runConflictCheck,
+  shouldUpdateSignatureRequestStatus,
+  validateLedgerReconciliationRecord,
+  verifyAuditChain,
+  type ActivityTimelineEntry,
+  type AccessLogRecord,
+  type AuditEvent,
+  type NewAuditEvent,
+  type CalendarCredentialRecord,
+  type CalendarEventAttendeeRecord,
+  type CalendarEventRecord,
+  type ConnectorDeliveryAttemptRecord,
+  type ConnectorOutboxRecord,
+  type ConnectorRecord,
+  type ConversationThreadRecord,
+  type Contact,
+  type ContactDossier,
+  type ConflictCheckRecord,
+  type DocumentRecord,
+  type ExpenseEntry,
+  type ExternalUploadLinkRecord,
+  type Firm,
+  type FirmSettings,
+  type IntakeFormItemActionRecord,
+  type IntakeFormLinkRecord,
+  type IntakeFormReviewRecord,
+  type IntakeVariableProposal,
+  type InvoiceLineRecord,
+  type InvoiceRecord,
+  type LegalClinicMatterProfile,
+  type LegalClinicProgram,
+  type LedgerAccount,
+  type LedgerEntry,
+  type LedgerReconciliationRecord,
+  type LedgerReconciliationStatementRow,
+  type LedgerTransaction,
+  type LedgerTransactionApprovalRecord,
+  type EmailEventRecord,
+  type EmailOutboxRecord,
+  type ManualPaymentRecord,
+  type Matter,
+  type MatterParty,
+  type RecoveryCodeRecord,
+  type PaymentAllocationRecord,
+  type PortalGrant,
+  type PostedLedgerTransaction,
+  type JobLifecycleRecord,
+  type ProviderSettingRecord,
+  type TaskDeadlineRecord,
+  type TimeEntry,
+  type TrustTransferRequestRecord,
+  type User,
+  type WebAuthnChallengeRecord,
+  type WebAuthnCredentialRecord,
+  type DraftAssistRecord,
+  type DraftRecord,
+  type DraftTemplateRecord,
+  type InboundEmailAddressRecord,
+  type InboundEmailAttachmentRecord,
+  type InboundEmailMessageRecord,
+  type ShareLinkRecord,
+} from "@open-practice/domain";
+import {
+  sampleAuditEvents,
+  sampleCalendarEvents,
+  sampleContacts,
+  sampleDraftTemplates,
+  sampleDocuments,
+  sampleExpenseEntries,
+  sampleFirm,
+  sampleGeneratedDocuments,
+  sampleIntakeSessions,
+  sampleIntakeTemplates,
+  sampleInvoiceLines,
+  sampleInvoices,
+  sampleLegalClinicMatterProfiles,
+  sampleLegalClinicPrograms,
+  sampleLedgerAccounts,
+  sampleLedgerEntries,
+  sampleManualPayments,
+  sampleMatterParties,
+  sampleMatters,
+  samplePaymentAllocations,
+  samplePortalGrants,
+  sampleSignatureProviderEvents,
+  sampleSignatureRequestSigners,
+  sampleSignatureRequests,
+  sampleSignatureWebhookAttempts,
+  sampleTaskDeadlines,
+  sampleTimeEntries,
+  sampleTrustTransferRequests,
+  sampleUsers,
+} from "@open-practice/domain/sample-data";
+import type {
+  AnswerSnapshotRecord,
+  DocumentTextExtractionRecord,
+  GeneratedDocumentRecord,
+  IntakeSessionRecord,
+  IntakeTemplateRecord,
+  SignatureProviderEventRecord,
+  SignatureProviderStatus,
+  SignatureRequestRecord,
+  SignatureRequestSignerRecord,
+  SignatureWebhookAttemptRecord,
+} from "@open-practice/domain";
+import type { OpenPracticeDatabase } from "../runtime.js";
+import * as schema from "../schema.js";
+
+type OpenPracticeTransaction = Parameters<Parameters<OpenPracticeDatabase["transaction"]>[0]>[0];
+
+import {
+  clone,
+  dateToIso,
+  CalendarEventScopeConflictError,
+  CalendarEventUidConflictError,
+  IdempotencyKeyConflictError,
+  canonicalizeForIdempotency,
+  idempotencyFingerprint,
+  assertSameIdempotencyFingerprint,
+  isPostgresUniqueViolation,
+  FirstRunSetupConflictError,
+} from "./contracts.js";
+import type {
+  MatterSummary,
+  PracticeOverview,
+  DocumentUploadIntent,
+  InboundAttachmentPromotionInput,
+  InboundAttachmentPromotionResult,
+  InvoiceWithLines,
+  PaymentWithAllocations,
+  AuthAccountRecord,
+  AuthSessionRecord,
+  CalendarEventUpsertInput,
+  CalendarEventAttendeeUpsertInput,
+  TaskDeadlineCompletionInput,
+  AuthPasswordSetupTokenRecord,
+  FirstRunSetupStatus,
+  FirstRunSetupInput,
+  FirstRunSetupResult,
+  OpenPracticeRepository,
+} from "./contracts.js";
+
+import {
+  mapAuthAccountRow,
+  mapAuthSessionRow,
+  mapShareLinkRow,
+  mapWebAuthnCredentialRow,
+  mapAuthChallengeRow,
+  mapPasswordSetupTokenRow,
+  mapRecoveryCodeRow,
+  mapCalendarCredentialRow,
+  mapCalendarEventRow,
+  mapCalendarEventAttendeeRow,
+  mapTaskDeadlineRow,
+  activeCalendarAttendees,
+  setupStatusFromCounts,
+  mapFirmSettingsRow,
+  mapProviderSettingRow,
+  mapConnectorRow,
+  connectorInsert,
+  mapJobLifecycleRow,
+  mapConnectorOutboxRow,
+  connectorOutboxInsert,
+  mapConnectorDeliveryAttemptRow,
+  connectorDeliveryAttemptInsert,
+  mapEmailOutboxRow,
+  emailOutboxInsert,
+  mapEmailEventRow,
+  emailEventInsert,
+  sanitizeEmailFailureSummary,
+  nextEmailAttemptCount,
+  jobLifecycleInsert,
+  matterTrustBalance,
+  userHasFirmWideLedgerAccess,
+  mapContactRow,
+  mapConflictCheckRow,
+  mapDocumentRow,
+  mapLegalClinicProgramRow,
+  mapLegalClinicMatterProfileRow,
+  mapConversationThreadRow,
+  mapDocumentTextExtractionRow,
+  mapGeneratedDocumentRow,
+  mapExternalUploadLinkRow,
+  mapIntakeFormLinkRow,
+  intakeFormLinkInsert,
+  mapIntakeFormReviewRow,
+  intakeFormReviewInsert,
+  mapIntakeFormItemActionRow,
+  intakeFormItemActionInsert,
+  mapIntakeVariableProposalRow,
+  intakeVariableProposalInsert,
+  applyVariableProposalWithTx,
+  externalUploadLinkInsert,
+  mapAccessLogRow,
+  accessLogInsert,
+  mapSignatureRequestRow,
+  mapSignatureRequestSignerRow,
+  mapIntakeSessionRow,
+  mapAnswerSnapshotRow,
+  mapSignatureProviderEventRow,
+  mapSignatureWebhookAttemptRow,
+  mapLedgerApprovalRow,
+  mapLedgerReconciliationRow,
+  matterDateToOccurredAt,
+  safeAuditMetadata,
+  buildActivityTimeline,
+  mapDraftRow,
+  mapDraftTemplateRow,
+  mapDraftAssistRow,
+  mapIntakeTemplateRow,
+  mapInboundEmailAddressRow,
+  mapInboundEmailMessageRow,
+  mapInboundEmailAttachmentRow,
+  mapMatter,
+  mapTimeEntryRow,
+  mapExpenseEntryRow,
+  mapInvoiceRow,
+  invoiceInsert,
+  mapInvoiceLineRow,
+  invoiceLineInsert,
+  mapPaymentRow,
+  paymentInsert,
+  mapPaymentAllocationRow,
+  paymentAllocationInsert,
+  mapTrustTransferRequestRow,
+  trustTransferRequestInsert,
+} from "./drizzle-mappers.js";
+
+export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
+  private firms: Firm[];
+  private users: User[];
+  private contacts: Contact[];
+  private matters: Matter[];
+  private matterParties: MatterParty[];
+  private documents: DocumentRecord[];
+  private legalClinicPrograms: LegalClinicProgram[];
+  private legalClinicMatterProfiles: LegalClinicMatterProfile[];
+  private conversationThreads: ConversationThreadRecord[] = [];
+  private calendarEvents: CalendarEventRecord[];
+  private taskDeadlines: TaskDeadlineRecord[];
+  private portalGrants: PortalGrant[];
+  private externalUploadLinks: ExternalUploadLinkRecord[] = [];
+  private timeEntries: TimeEntry[];
+  private expenseEntries: ExpenseEntry[];
+  private invoices: InvoiceRecord[];
+  private invoiceLines: InvoiceLineRecord[];
+  private manualPayments: ManualPaymentRecord[];
+  private paymentAllocations: PaymentAllocationRecord[];
+  private trustTransferRequests: TrustTransferRequestRecord[];
+  private ledgerAccounts: LedgerAccount[];
+  private ledgerApprovals: LedgerTransactionApprovalRecord[] = [];
+  private ledgerReconciliations: LedgerReconciliationRecord[] = [];
+  private intakeTemplates: IntakeTemplateRecord[];
+  private signatureRequestSigners: SignatureRequestSignerRecord[];
+  private signatureProviderEvents: SignatureProviderEventRecord[];
+  private signatureWebhookAttempts: SignatureWebhookAttemptRecord[];
+  private signatureRequests: SignatureRequestRecord[];
+  private intakeSessions: IntakeSessionRecord[];
+  private answerSnapshots: AnswerSnapshotRecord[] = [];
+  private intakeFormLinks: IntakeFormLinkRecord[] = [];
+  private intakeFormReviews: IntakeFormReviewRecord[] = [];
+  private intakeFormItemActions: IntakeFormItemActionRecord[] = [];
+  private intakeVariableProposals: IntakeVariableProposal[] = [];
+  private conflictChecks: ConflictCheckRecord[] = [];
+  private generatedDocuments: GeneratedDocumentRecord[];
+  private firmSettings: FirmSettings[] = [];
+  private providerSettings: ProviderSettingRecord[] = [];
+  private connectors: ConnectorRecord[] = [];
+  private connectorOutbox: ConnectorOutboxRecord[] = [];
+  private connectorDeliveryAttempts: ConnectorDeliveryAttemptRecord[] = [];
+  private jobLifecycleRecords: JobLifecycleRecord[] = [];
+  private emailOutbox: EmailOutboxRecord[] = [];
+  private emailEvents: EmailEventRecord[] = [];
+  private authAccounts: AuthAccountRecord[] = [];
+  private authSessions: AuthSessionRecord[] = [];
+  private calendarCredentials: CalendarCredentialRecord[] = [];
+  private passwordSetupTokens: AuthPasswordSetupTokenRecord[] = [];
+  private authChallenges: WebAuthnChallengeRecord[] = [];
+  private webAuthnCredentials: WebAuthnCredentialRecord[] = [];
+  private recoveryCodes: RecoveryCodeRecord[] = [];
+  private auditEvents: AuditEvent[];
+  private postedTransactions: PostedLedgerTransaction[];
+  private documentTextExtractions: DocumentTextExtractionRecord[] = [];
+  private drafts: DraftRecord[] = [];
+  private draftAssistRecords: DraftAssistRecord[] = [];
+  private draftTemplates: DraftTemplateRecord[] = [];
+  private inboundEmailAddresses: InboundEmailAddressRecord[] = [];
+  private inboundEmailMessages: InboundEmailMessageRecord[] = [];
+  private inboundEmailAttachments: InboundEmailAttachmentRecord[] = [];
+  private shareLinks: ShareLinkRecord[] = [];
+  private accessLogs: AccessLogRecord[] = [];
+
+  constructor(options: { seedSampleData?: boolean; firms?: Firm[]; users?: User[] } = {}) {
+    const seeded = options.seedSampleData ?? true;
+    this.firms = options.firms ? clone(options.firms) : seeded ? [clone(sampleFirm)] : [];
+    this.users = options.users ? clone(options.users) : seeded ? clone(sampleUsers) : [];
+    this.contacts = seeded ? clone(sampleContacts) : [];
+    this.matters = seeded ? clone(sampleMatters) : [];
+    this.matterParties = seeded ? clone(sampleMatterParties) : [];
+    this.documents = seeded ? clone(sampleDocuments) : [];
+    this.legalClinicPrograms = seeded ? clone(sampleLegalClinicPrograms) : [];
+    this.legalClinicMatterProfiles = seeded ? clone(sampleLegalClinicMatterProfiles) : [];
+    this.calendarEvents = seeded ? clone(sampleCalendarEvents) : [];
+    this.taskDeadlines = seeded ? clone(sampleTaskDeadlines) : [];
+    this.portalGrants = seeded ? clone(samplePortalGrants) : [];
+    this.timeEntries = seeded ? clone(sampleTimeEntries) : [];
+    this.expenseEntries = seeded ? clone(sampleExpenseEntries) : [];
+    this.invoices = seeded ? clone(sampleInvoices) : [];
+    this.invoiceLines = seeded ? clone(sampleInvoiceLines) : [];
+    this.manualPayments = seeded ? clone(sampleManualPayments) : [];
+    this.paymentAllocations = seeded ? clone(samplePaymentAllocations) : [];
+    this.trustTransferRequests = seeded ? clone(sampleTrustTransferRequests) : [];
+    this.ledgerAccounts = seeded ? clone(sampleLedgerAccounts) : [];
+    this.intakeTemplates = seeded ? clone(sampleIntakeTemplates) : [];
+    this.draftTemplates = seeded ? clone(sampleDraftTemplates) : [];
+    this.signatureRequestSigners = seeded ? clone(sampleSignatureRequestSigners) : [];
+    this.signatureProviderEvents = seeded ? clone(sampleSignatureProviderEvents) : [];
+    this.signatureWebhookAttempts = seeded ? clone(sampleSignatureWebhookAttempts) : [];
+    this.signatureRequests = seeded ? clone(sampleSignatureRequests) : [];
+    this.intakeSessions = seeded ? clone(sampleIntakeSessions) : [];
+    this.generatedDocuments = seeded ? clone(sampleGeneratedDocuments) : [];
+    this.auditEvents = seeded ? clone(sampleAuditEvents) : [];
+    this.postedTransactions = seeded
+      ? [
+          {
+            id: "trust-retainer",
+            firmId: sampleFirm.id,
+            idempotencyKey: "retainer",
+            requestFingerprint: "seed:retainer",
+            entries: clone(sampleLedgerEntries),
+          },
+        ]
+      : [];
+  }
+
+  async getSetupStatus(): Promise<FirstRunSetupStatus> {
+    return setupStatusFromCounts(this.firms.length, this.users.length);
+  }
+
+  async completeFirstRunSetup(input: FirstRunSetupInput): Promise<FirstRunSetupResult> {
+    const status = await this.getSetupStatus();
+    if (!status.required || status.blocked) {
+      throw new FirstRunSetupConflictError(status.reason ?? "First-run setup is already complete");
+    }
+
+    this.firms = [clone(input.firm)];
+    this.users = [clone(input.owner)];
+    this.firmSettings = [clone(input.settings)];
+    this.authAccounts = [
+      {
+        firmId: input.owner.firmId,
+        userId: input.owner.id,
+        passwordHash: input.ownerPasswordHash,
+        passwordUpdatedAt: input.ownerPasswordUpdatedAt,
+      },
+    ];
+    if (input.firstContact) this.contacts = [clone(input.firstContact)];
+    if (input.firstMatter) this.matters = [clone(input.firstMatter)];
+    if (input.firstMatterParty) this.matterParties = [clone(input.firstMatterParty)];
+    if (input.webAuthnCredential) this.webAuthnCredentials = [clone(input.webAuthnCredential)];
+    const presetTemplates = buildPracticePresetTemplates({
+      firmId: input.firm.id,
+      timestamp: input.settings.createdAt,
+      selectedPresetIds: input.selectedPresetIds ?? [],
+    });
+    this.draftTemplates = [
+      ...buildBasicDraftTemplates(input.firm.id, input.settings.createdAt),
+      ...presetTemplates.draftTemplates,
+    ];
+    this.intakeTemplates = presetTemplates.intakeTemplates;
+    this.auditEvents = [clone(input.auditEvent)];
+
+    return {
+      firm: clone(input.firm),
+      settings: clone(input.settings),
+      owner: clone(input.owner),
+      firstMatter: clone(input.firstMatter),
+    };
+  }
+
+  async getFirmSettings(firmId: string): Promise<FirmSettings | undefined> {
+    return clone(this.firmSettings.find((settings) => settings.firmId === firmId));
+  }
+
+  async listProviderSettings(
+    firmId: string,
+    options: { kind?: ProviderSettingRecord["kind"] } = {},
+  ): Promise<ProviderSettingRecord[]> {
+    return clone(
+      this.providerSettings.filter(
+        (setting) => setting.firmId === firmId && (!options.kind || setting.kind === options.kind),
+      ),
+    );
+  }
+
+  async upsertProviderSetting(setting: ProviderSettingRecord): Promise<ProviderSettingRecord> {
+    const existingIndex = this.providerSettings.findIndex(
+      (candidate) =>
+        candidate.firmId === setting.firmId &&
+        candidate.kind === setting.kind &&
+        candidate.key === setting.key,
+    );
+    if (existingIndex >= 0) {
+      this.providerSettings[existingIndex] = clone(setting);
+    } else {
+      this.providerSettings.push(clone(setting));
+    }
+    return clone(setting);
+  }
+
+  async createConnector(connector: ConnectorRecord): Promise<ConnectorRecord> {
+    const duplicate = this.connectors.find(
+      (candidate) => candidate.firmId === connector.firmId && candidate.key === connector.key,
+    );
+    if (duplicate) throw new Error(`Connector key ${connector.key} already exists`);
+    this.connectors.push(clone(connector));
+    return clone(connector);
+  }
+
+  async listConnectors(
+    firmId: string,
+    options: { type?: ConnectorRecord["type"]; status?: ConnectorRecord["status"] } = {},
+  ): Promise<ConnectorRecord[]> {
+    return clone(
+      this.connectors
+        .filter((connector) => {
+          if (connector.firmId !== firmId) return false;
+          if (options.type && connector.type !== options.type) return false;
+          if (options.status && connector.status !== options.status) return false;
+          return true;
+        })
+        .sort((left, right) => left.key.localeCompare(right.key)),
+    );
+  }
+
+  async getConnector(firmId: string, connectorId: string): Promise<ConnectorRecord | undefined> {
+    return clone(
+      this.connectors.find(
+        (connector) => connector.firmId === firmId && connector.id === connectorId,
+      ),
+    );
+  }
+
+  async createConnectorOutbox(
+    input: ConnectorOutboxRecord,
+  ): Promise<{ outbox: ConnectorOutboxRecord; created: boolean }> {
+    const existing = this.connectorOutbox.find(
+      (outbox) => outbox.firmId === input.firmId && outbox.idempotencyKey === input.idempotencyKey,
+    );
+    if (existing) {
+      const existingFingerprint = canonicalizeForIdempotency({
+        connectorId: existing.connectorId,
+        eventType: existing.eventType,
+        resourceType: existing.resourceType,
+        resourceId: existing.resourceId,
+        payloadSummary: existing.payloadSummary,
+        maxAttempts: existing.maxAttempts,
+      });
+      const inputFingerprint = canonicalizeForIdempotency({
+        connectorId: input.connectorId,
+        eventType: input.eventType,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        payloadSummary: input.payloadSummary,
+        maxAttempts: input.maxAttempts,
+      });
+      if (existingFingerprint !== inputFingerprint) throw new IdempotencyKeyConflictError();
+      return { outbox: clone(existing), created: false };
+    }
+    const connector = this.connectors.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.connectorId,
+    );
+    if (!connector) throw new Error(`Connector ${input.connectorId} was not found`);
+    this.connectorOutbox.push(clone(input));
+    return { outbox: clone(input), created: true };
+  }
+
+  async listConnectorOutbox(
+    firmId: string,
+    options: {
+      connectorId?: string;
+      status?: ConnectorOutboxRecord["status"];
+      limit?: number;
+    } = {},
+  ): Promise<ConnectorOutboxRecord[]> {
+    const limit = options.limit ?? 50;
+    return clone(
+      this.connectorOutbox
+        .filter((outbox) => {
+          if (outbox.firmId !== firmId) return false;
+          if (options.connectorId && outbox.connectorId !== options.connectorId) return false;
+          if (options.status && outbox.status !== options.status) return false;
+          return true;
+        })
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(0, limit),
+    );
+  }
+
+  async createConnectorDeliveryAttempt(
+    attempt: ConnectorDeliveryAttemptRecord,
+  ): Promise<ConnectorDeliveryAttemptRecord> {
+    const outbox = this.connectorOutbox.find(
+      (candidate) =>
+        candidate.firmId === attempt.firmId &&
+        candidate.id === attempt.outboxId &&
+        candidate.connectorId === attempt.connectorId,
+    );
+    if (!outbox) throw new Error(`Connector outbox ${attempt.outboxId} was not found`);
+    this.connectorDeliveryAttempts.push(clone(attempt));
+    return clone(attempt);
+  }
+
+  async listConnectorDeliveryAttempts(
+    firmId: string,
+    options: { outboxId?: string; connectorId?: string } = {},
+  ): Promise<ConnectorDeliveryAttemptRecord[]> {
+    return clone(
+      this.connectorDeliveryAttempts
+        .filter((attempt) => {
+          if (attempt.firmId !== firmId) return false;
+          if (options.outboxId && attempt.outboxId !== options.outboxId) return false;
+          if (options.connectorId && attempt.connectorId !== options.connectorId) return false;
+          return true;
+        })
+        .sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
+    );
+  }
+
+  async createJobLifecycleRecord(record: JobLifecycleRecord): Promise<JobLifecycleRecord> {
+    const existing = record.idempotencyKey
+      ? this.jobLifecycleRecords.find(
+          (job) => job.firmId === record.firmId && job.idempotencyKey === record.idempotencyKey,
+        )
+      : undefined;
+    if (existing) {
+      assertSameIdempotencyFingerprint(existing.metadata, record.metadata);
+      return clone(existing);
+    }
+    this.jobLifecycleRecords.push(clone(record));
+    return clone(record);
+  }
+
+  async createQueuedEmailOutbox(input: {
+    email: EmailOutboxRecord;
+    event: EmailEventRecord;
+    job: JobLifecycleRecord;
+  }): Promise<{
+    email: EmailOutboxRecord;
+    event: EmailEventRecord;
+    job: JobLifecycleRecord;
+  }> {
+    const existingEmail = input.email.idempotencyKey
+      ? this.emailOutbox.find(
+          (email) =>
+            email.firmId === input.email.firmId &&
+            email.idempotencyKey === input.email.idempotencyKey,
+        )
+      : undefined;
+    if (existingEmail) {
+      assertSameIdempotencyFingerprint(existingEmail.metadata, input.email.metadata);
+      const existingEvent =
+        this.emailEvents.find(
+          (event) => event.firmId === existingEmail.firmId && event.emailId === existingEmail.id,
+        ) ?? input.event;
+      const existingJob =
+        this.jobLifecycleRecords.find(
+          (job) =>
+            job.firmId === existingEmail.firmId &&
+            job.targetResourceType === "email_outbox" &&
+            job.targetResourceId === existingEmail.id,
+        ) ?? input.job;
+      return {
+        email: clone(existingEmail),
+        event: clone(existingEvent),
+        job: clone(existingJob),
+      };
+    }
+    this.emailOutbox.push(clone(input.email));
+    this.emailEvents.push(clone(input.event));
+    this.jobLifecycleRecords.push(clone(input.job));
+    return clone(input);
+  }
+
+  async getEmailOutbox(firmId: string, emailId: string): Promise<EmailOutboxRecord | undefined> {
+    return clone(this.emailOutbox.find((email) => email.firmId === firmId && email.id === emailId));
+  }
+
+  async listEmailOutbox(
+    firmId: string,
+    options: { matterId?: string; limit?: number } = {},
+  ): Promise<EmailOutboxRecord[]> {
+    const limit = options.limit ?? 50;
+    return clone(
+      this.emailOutbox
+        .filter((email) => {
+          if (email.firmId !== firmId) return false;
+          if (options.matterId && email.matterId !== options.matterId) return false;
+          return true;
+        })
+        .sort((left, right) => right.queuedAt.localeCompare(left.queuedAt))
+        .slice(0, limit),
+    );
+  }
+
+  async recordEmailDeliveryResult(input: {
+    firmId: string;
+    emailId: string;
+    status: "sending" | "sent" | "failed";
+    occurredAt: string;
+    providerMessageId?: string;
+    attemptNumber?: number;
+    jobId?: string;
+    source?: EmailEventRecord["source"];
+    terminal?: boolean;
+    errorMessage?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord }> {
+    const index = this.emailOutbox.findIndex(
+      (email) => email.firmId === input.firmId && email.id === input.emailId,
+    );
+    if (index === -1) throw new Error(`Email outbox record ${input.emailId} was not found`);
+
+    const existing = this.emailOutbox[index]!;
+    const terminal = input.terminal ?? input.status === "failed";
+    const failureSummary = sanitizeEmailFailureSummary(input.errorMessage);
+    const attemptCount = nextEmailAttemptCount(existing, input.attemptNumber);
+    const email: EmailOutboxRecord = {
+      ...existing,
+      status:
+        input.status === "failed" && !terminal
+          ? "queued"
+          : (input.status as EmailOutboxRecord["status"]),
+      sentAt: input.status === "sent" ? input.occurredAt : existing.sentAt,
+      failedAt: input.status === "failed" && terminal ? input.occurredAt : undefined,
+      attemptCount,
+      lastAttemptAt: input.attemptNumber ? input.occurredAt : existing.lastAttemptAt,
+      terminalFailureAt: input.status === "failed" && terminal ? input.occurredAt : undefined,
+      terminalFailureReason: input.status === "failed" && terminal ? failureSummary : undefined,
+      errorMessage: input.status === "failed" && terminal ? failureSummary : undefined,
+      metadata: {
+        ...existing.metadata,
+        deliveryState: input.metadata ?? {},
+      },
+    };
+    const event: EmailEventRecord = {
+      id: crypto.randomUUID(),
+      firmId: input.firmId,
+      emailId: input.emailId,
+      eventType: input.status,
+      occurredAt: input.occurredAt,
+      providerMessageId: input.providerMessageId,
+      attemptNumber: input.attemptNumber,
+      jobId: input.jobId,
+      source: input.source ?? "worker",
+      errorMessage: input.status === "failed" ? failureSummary : undefined,
+      metadata: input.metadata ?? {},
+    };
+    this.emailOutbox[index] = clone(email);
+    this.emailEvents.push(clone(event));
+    return { email: clone(email), event: clone(event) };
+  }
+
+  async retryEmailOutbox(input: {
+    firmId: string;
+    emailId: string;
+    occurredAt: string;
+    requestedByUserId: string;
+    job: JobLifecycleRecord;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord; job: JobLifecycleRecord }> {
+    const existingJob = input.job.idempotencyKey
+      ? this.jobLifecycleRecords.find(
+          (job) =>
+            job.firmId === input.firmId &&
+            job.idempotencyKey === input.job.idempotencyKey &&
+            job.targetResourceType === "email_outbox" &&
+            job.targetResourceId === input.emailId,
+        )
+      : undefined;
+    if (existingJob) {
+      assertSameIdempotencyFingerprint(existingJob.metadata, input.job.metadata);
+      const email = this.emailOutbox.find(
+        (candidate) => candidate.firmId === input.firmId && candidate.id === input.emailId,
+      );
+      if (!email) throw new Error(`Email outbox record ${input.emailId} was not found`);
+      const event = this.emailEvents.find(
+        (candidate) =>
+          candidate.firmId === input.firmId &&
+          candidate.emailId === input.emailId &&
+          candidate.jobId === existingJob.id,
+      ) ?? {
+        id: crypto.randomUUID(),
+        firmId: input.firmId,
+        emailId: input.emailId,
+        eventType: "queued" as const,
+        occurredAt: existingJob.queuedAt,
+        jobId: existingJob.id,
+        source: "api" as const,
+        metadata: input.metadata ?? {},
+      };
+      return { email: clone(email), event: clone(event), job: clone(existingJob) };
+    }
+    const index = this.emailOutbox.findIndex(
+      (email) => email.firmId === input.firmId && email.id === input.emailId,
+    );
+    if (index === -1) throw new Error(`Email outbox record ${input.emailId} was not found`);
+
+    const existing = this.emailOutbox[index]!;
+    const email: EmailOutboxRecord = {
+      ...existing,
+      status: "queued",
+      failedAt: undefined,
+      errorMessage: undefined,
+      metadata: {
+        ...existing.metadata,
+        deliveryState: {
+          ...(input.metadata ?? {}),
+          manualRetryRequestedAt: input.occurredAt,
+          manualRetryRequestedByUserId: input.requestedByUserId,
+          nextRetryAt: input.occurredAt,
+          terminal: false,
+        },
+      },
+    };
+    const event: EmailEventRecord = {
+      id: crypto.randomUUID(),
+      firmId: input.firmId,
+      emailId: input.emailId,
+      eventType: "queued",
+      occurredAt: input.occurredAt,
+      jobId: input.job.id,
+      source: "api",
+      metadata: {
+        ...(input.metadata ?? {}),
+        manualRetry: true,
+        requestedByUserId: input.requestedByUserId,
+        jobId: input.job.id,
+      },
+    };
+    this.emailOutbox[index] = clone(email);
+    this.emailEvents.push(clone(event));
+    this.jobLifecycleRecords.push(clone(input.job));
+    return { email: clone(email), event: clone(event), job: clone(input.job) };
+  }
+
+  async listEmailEvents(
+    firmId: string,
+    options: { emailId?: string } = {},
+  ): Promise<EmailEventRecord[]> {
+    return clone(
+      this.emailEvents
+        .filter(
+          (event) =>
+            event.firmId === firmId && (!options.emailId || event.emailId === options.emailId),
+        )
+        .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt)),
+    );
+  }
+
+  async updateJobLifecycleRecord(
+    firmId: string,
+    id: string,
+    updates: Partial<
+      Pick<
+        JobLifecycleRecord,
+        | "bullJobId"
+        | "status"
+        | "attemptsMade"
+        | "startedAt"
+        | "finishedAt"
+        | "failedAt"
+        | "errorMessage"
+        | "metadata"
+      >
+    >,
+  ): Promise<JobLifecycleRecord> {
+    const index = this.jobLifecycleRecords.findIndex(
+      (record) => record.firmId === firmId && record.id === id,
+    );
+    if (index === -1) throw new Error(`Job lifecycle record ${id} was not found`);
+    this.jobLifecycleRecords[index] = { ...this.jobLifecycleRecords[index], ...clone(updates) };
+    return clone(this.jobLifecycleRecords[index]);
+  }
+
+  async listJobLifecycleRecords(
+    firmId: string,
+    options: {
+      status?: JobLifecycleRecord["status"];
+      queueName?: JobLifecycleRecord["queueName"];
+    } = {},
+  ): Promise<JobLifecycleRecord[]> {
+    return clone(
+      this.jobLifecycleRecords.filter(
+        (record) =>
+          record.firmId === firmId &&
+          (!options.status || record.status === options.status) &&
+          (!options.queueName || record.queueName === options.queueName),
+      ),
+    );
+  }
+
+  async getUser(firmId: string, userId: string): Promise<User | undefined> {
+    return clone(this.users.find((user) => user.firmId === firmId && user.id === userId));
+  }
+
+  async createUser(user: User): Promise<User> {
+    this.users = [...this.users, clone(user)];
+    return clone(user);
+  }
+
+  async getUserByEmail(firmId: string, email: string): Promise<User | undefined> {
+    const normalized = email.trim().toLowerCase();
+    return clone(
+      this.users.find(
+        (user) => user.firmId === firmId && user.email.trim().toLowerCase() === normalized,
+      ),
+    );
+  }
+
+  async getAuthAccount(firmId: string, userId: string): Promise<AuthAccountRecord | undefined> {
+    return clone(
+      this.authAccounts.find((account) => account.firmId === firmId && account.userId === userId),
+    );
+  }
+
+  async setAuthPassword(input: {
+    firmId: string;
+    userId: string;
+    passwordHash: string;
+    passwordUpdatedAt: string;
+  }): Promise<AuthAccountRecord> {
+    const account: AuthAccountRecord = { ...input };
+    this.authAccounts = [
+      ...this.authAccounts.filter(
+        (candidate) => candidate.firmId !== input.firmId || candidate.userId !== input.userId,
+      ),
+      account,
+    ];
+    return clone(account);
+  }
+
+  async createAuthSession(session: AuthSessionRecord): Promise<AuthSessionRecord> {
+    this.authSessions = [...this.authSessions, clone(session)];
+    return clone(session);
+  }
+
+  async getAuthSessionByTokenHash(tokenHash: string): Promise<AuthSessionRecord | undefined> {
+    return clone(this.authSessions.find((session) => session.tokenHash === tokenHash));
+  }
+
+  async touchAuthSession(tokenHash: string, seenAt: string): Promise<void> {
+    this.authSessions = this.authSessions.map((session) =>
+      session.tokenHash === tokenHash ? { ...session, lastSeenAt: seenAt } : session,
+    );
+  }
+
+  async revokeAuthSession(tokenHash: string, revokedAt: string): Promise<void> {
+    this.authSessions = this.authSessions.map((session) =>
+      session.tokenHash === tokenHash ? { ...session, revokedAt } : session,
+    );
+  }
+
+  async createPasswordSetupToken(
+    token: AuthPasswordSetupTokenRecord,
+  ): Promise<AuthPasswordSetupTokenRecord> {
+    this.passwordSetupTokens = [...this.passwordSetupTokens, clone(token)];
+    return clone(token);
+  }
+
+  async consumePasswordSetupToken(
+    tokenHash: string,
+    usedAt: string,
+  ): Promise<AuthPasswordSetupTokenRecord | undefined> {
+    const token = this.passwordSetupTokens.find((candidate) => candidate.tokenHash === tokenHash);
+    if (!token || token.usedAt || Date.parse(token.expiresAt) <= Date.parse(usedAt)) {
+      return undefined;
+    }
+    token.usedAt = usedAt;
+    return clone(token);
+  }
+
+  async createWebAuthnChallenge(
+    challenge: WebAuthnChallengeRecord,
+  ): Promise<WebAuthnChallengeRecord> {
+    this.authChallenges = [...this.authChallenges, clone(challenge)];
+    return clone(challenge);
+  }
+
+  async getWebAuthnChallenge(challengeHash: string): Promise<WebAuthnChallengeRecord | undefined> {
+    return clone(this.authChallenges.find((c) => c.challengeHash === challengeHash));
+  }
+
+  async consumeWebAuthnChallenge(challengeHash: string, consumedAt: string): Promise<boolean> {
+    const challenge = this.authChallenges.find(
+      (c) => c.challengeHash === challengeHash && !c.consumedAt,
+    );
+    if (challenge) {
+      challenge.consumedAt = consumedAt;
+      return true;
+    }
+    return false;
+  }
+
+  async registerWebAuthnCredential(
+    credential: WebAuthnCredentialRecord,
+  ): Promise<WebAuthnCredentialRecord> {
+    this.webAuthnCredentials = [...this.webAuthnCredentials, clone(credential)];
+    return clone(credential);
+  }
+
+  async listWebAuthnCredentials(
+    firmId: string,
+    userId: string,
+  ): Promise<WebAuthnCredentialRecord[]> {
+    return clone(
+      this.webAuthnCredentials.filter((c) => c.firmId === firmId && c.userId === userId),
+    );
+  }
+
+  async getWebAuthnCredential(credentialId: string): Promise<WebAuthnCredentialRecord | undefined> {
+    return clone(this.webAuthnCredentials.find((c) => c.credentialId === credentialId));
+  }
+
+  async updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void> {
+    const cred = this.webAuthnCredentials.find((c) => c.id === id);
+    if (cred) {
+      cred.counter = counter;
+      cred.lastUsedAt = new Date().toISOString();
+    }
+  }
+
+  async deleteWebAuthnCredential(firmId: string, id: string): Promise<void> {
+    this.webAuthnCredentials = this.webAuthnCredentials.filter(
+      (c) => !(c.firmId === firmId && c.id === id),
+    );
+  }
+
+  async updateUserMfaStatus(firmId: string, userId: string, mfaEnabled: boolean): Promise<void> {
+    const user = this.users.find((u) => u.firmId === firmId && u.id === userId);
+    if (user) {
+      user.mfaEnabled = mfaEnabled;
+    }
+  }
+
+  async createRecoveryCodes(
+    firmId: string,
+    userId: string,
+    codes: RecoveryCodeRecord[],
+  ): Promise<void> {
+    // Invalidate old codes
+    this.recoveryCodes = this.recoveryCodes.filter(
+      (c) => !(c.firmId === firmId && c.userId === userId),
+    );
+    this.recoveryCodes = [...this.recoveryCodes, ...clone(codes)];
+  }
+
+  async useRecoveryCode(
+    firmId: string,
+    userId: string,
+    codeHash: string,
+    consumedAt: string,
+  ): Promise<boolean> {
+    const code = this.recoveryCodes.find(
+      (c) => c.firmId === firmId && c.userId === userId && c.codeHash === codeHash && !c.usedAt,
+    );
+    if (code) {
+      code.usedAt = consumedAt;
+      return true;
+    }
+    return false;
+  }
+
+  async listRecoveryCodes(firmId: string, userId: string): Promise<RecoveryCodeRecord[]> {
+    return clone(this.recoveryCodes.filter((c) => c.firmId === firmId && c.userId === userId));
+  }
+
+  async getOverview(firmId: string): Promise<PracticeOverview> {
+    const firm = this.firms.find((candidate) => candidate.id === firmId);
+    if (!firm) throw new Error(`Unknown firm ${firmId}`);
+    const matters = this.matters.filter((matter) => matter.firmId === firmId);
+    const ledger = await this.getLedger(firmId);
+    return {
+      firm: clone(firm),
+      metrics: {
+        openMatters: matters.filter((matter) => matter.status === "open").length,
+        intakeMatters: matters.filter((matter) => matter.status === "intake").length,
+        portalGrants: this.portalGrants.filter(
+          (grant) => grant.firmId === firmId && !grant.revokedAt,
+        ).length,
+        trustBalanceCents: Object.values(ledger.trustBalances).reduce(
+          (sum, value) => sum + value,
+          0,
+        ),
+        unbilledMinutes: this.timeEntries
+          .filter(
+            (entry) =>
+              entry.firmId === firmId &&
+              entry.billable &&
+              ["draft", "submitted", "approved"].includes(entry.billingStatus),
+          )
+          .reduce((sum, entry) => sum + entry.minutes, 0),
+      },
+      users: clone(this.users.filter((user) => user.firmId === firmId)),
+    };
+  }
+
+  async listMattersForUser(user: User): Promise<MatterSummary[]> {
+    const entries = this.postedTransactions.flatMap((transaction) => transaction.entries);
+    return this.matters
+      .filter(
+        (matter) => matter.firmId === user.firmId && user.assignedMatterIds.includes(matter.id),
+      )
+      .map((matter) => {
+        const parties = this.matterParties
+          .filter((party) => party.matterId === matter.id)
+          .map((party) => ({
+            ...party,
+            contact: this.contacts.find((contact) => contact.id === party.contactId)!,
+          }));
+        return {
+          ...matter,
+          parties,
+          documents: this.documents.filter((document) => document.matterId === matter.id),
+          timeEntries: this.timeEntries.filter((entry) => entry.matterId === matter.id),
+          expenses: this.expenseEntries.filter((entry) => entry.matterId === matter.id),
+          activity: buildActivityTimeline({
+            firmId: user.firmId,
+            matter,
+            contacts: this.contacts,
+            matterParties: this.matterParties,
+            documents: this.documents,
+            portalGrants: this.portalGrants,
+            shareLinks: this.shareLinks,
+            externalUploadLinks: this.externalUploadLinks,
+            accessLogs: this.accessLogs,
+            auditEvents: this.auditEvents,
+            emailOutbox: this.emailOutbox,
+            signatureRequests: this.signatureRequests,
+            intakeSessions: this.intakeSessions,
+            generatedDocuments: this.generatedDocuments,
+            calendarEvents: this.calendarEvents,
+            taskDeadlines: this.taskDeadlines,
+            timeEntries: this.timeEntries,
+            expenses: this.expenseEntries,
+            invoices: this.invoices.map((invoice) => ({
+              ...invoice,
+              lines: this.invoiceLines.filter((line) => line.invoiceId === invoice.id),
+            })),
+            payments: this.manualPayments.map((payment) => ({
+              ...payment,
+              allocations: this.paymentAllocations.filter(
+                (allocation) => allocation.paymentId === payment.id,
+              ),
+            })),
+            trustTransferRequests: this.trustTransferRequests,
+            ledgerAccounts: this.ledgerAccounts,
+            ledgerEntries: entries,
+          }),
+          trustBalanceCents: matterTrustBalance(
+            entries,
+            this.ledgerAccounts,
+            matter,
+            this.matterParties,
+          ),
+        };
+      });
+  }
+
+  async listContactDossiersForUser(user: User): Promise<ContactDossier[]> {
+    const matters = await this.listMattersForUser(user);
+    const matterParties = matters.flatMap((matter) =>
+      matter.parties.map((party) => ({
+        id: party.id,
+        firmId: party.firmId,
+        matterId: party.matterId,
+        contactId: party.contactId,
+        role: party.role,
+        adverse: party.adverse,
+        confidential: party.confidential,
+      })),
+    );
+    const contacts = matters.flatMap((matter) => matter.parties.map((party) => party.contact));
+    const intakeVariableProposals = this.intakeVariableProposals.filter(
+      (proposal) =>
+        proposal.firmId === user.firmId &&
+        proposal.status === "approved" &&
+        Boolean(proposal.appliedAt) &&
+        matters.some((matter) => matter.id === proposal.matterId),
+    );
+    return buildContactDossiers({
+      firmId: user.firmId,
+      contacts,
+      matters,
+      matterParties,
+      portalGrants: this.portalGrants,
+      intakeVariableProposals,
+      conflictChecks: this.conflictChecks,
+    });
+  }
+
+  async getContact(firmId: string, contactId: string): Promise<Contact | undefined> {
+    return clone(
+      this.contacts.find((contact) => contact.firmId === firmId && contact.id === contactId),
+    );
+  }
+
+  async getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined> {
+    return clone(
+      this.documents.find((document) => document.firmId === firmId && document.id === documentId),
+    );
+  }
+
+  async listMatterDocuments(firmId: string, matterId: string): Promise<DocumentRecord[]> {
+    return clone(
+      this.documents.filter(
+        (document) => document.firmId === firmId && document.matterId === matterId,
+      ),
+    );
+  }
+
+  async listTaskDeadlines(
+    firmId: string,
+    options: { matterIds?: string[]; matterId?: string; includeCompleted?: boolean } = {},
+  ): Promise<TaskDeadlineRecord[]> {
+    const matterIds = options.matterId ? [options.matterId] : options.matterIds;
+    return clone(
+      this.taskDeadlines
+        .filter((task) => {
+          if (task.firmId !== firmId) return false;
+          if (matterIds && !matterIds.includes(task.matterId)) return false;
+          if (!options.includeCompleted && task.completedAt) return false;
+          return true;
+        })
+        .sort((left, right) => {
+          const leftDue = left.dueAt ? Date.parse(left.dueAt) : Number.POSITIVE_INFINITY;
+          const rightDue = right.dueAt ? Date.parse(right.dueAt) : Number.POSITIVE_INFINITY;
+          if (leftDue !== rightDue) return leftDue - rightDue;
+          return left.id.localeCompare(right.id);
+        }),
+    );
+  }
+
+  async getTaskDeadline(firmId: string, taskId: string): Promise<TaskDeadlineRecord | undefined> {
+    return clone(this.taskDeadlines.find((task) => task.firmId === firmId && task.id === taskId));
+  }
+
+  async createTaskDeadline(task: TaskDeadlineRecord): Promise<TaskDeadlineRecord> {
+    if (this.taskDeadlines.some((candidate) => candidate.id === task.id)) {
+      throw new Error("Task deadline already exists");
+    }
+    this.taskDeadlines.push(clone(task));
+    return clone(task);
+  }
+
+  async completeTaskDeadline(
+    input: TaskDeadlineCompletionInput,
+  ): Promise<TaskDeadlineRecord | undefined> {
+    const index = this.taskDeadlines.findIndex(
+      (task) => task.firmId === input.firmId && task.id === input.taskId,
+    );
+    if (index < 0) return undefined;
+    const completed = {
+      ...this.taskDeadlines[index]!,
+      completedAt: this.taskDeadlines[index]!.completedAt ?? input.completedAt,
+    };
+    this.taskDeadlines[index] = clone(completed);
+    return clone(completed);
+  }
+
+  async listConversationThreads(
+    firmId: string,
+    options: { matterIds?: string[]; matterId?: string } = {},
+  ): Promise<ConversationThreadRecord[]> {
+    const matterIds = options.matterId ? [options.matterId] : options.matterIds;
+    return clone(
+      this.conversationThreads
+        .filter((thread) => {
+          if (thread.firmId !== firmId) return false;
+          if (matterIds && !matterIds.includes(thread.matterId)) return false;
+          return true;
+        })
+        .sort(
+          (left, right) =>
+            right.updatedAt.localeCompare(left.updatedAt) || left.topic.localeCompare(right.topic),
+        ),
+    );
+  }
+
+  async getConversationThread(
+    firmId: string,
+    threadId: string,
+  ): Promise<ConversationThreadRecord | undefined> {
+    return clone(
+      this.conversationThreads.find((thread) => thread.firmId === firmId && thread.id === threadId),
+    );
+  }
+
+  async createConversationThread(
+    thread: ConversationThreadRecord,
+  ): Promise<ConversationThreadRecord> {
+    if (
+      this.conversationThreads.some(
+        (candidate) =>
+          candidate.firmId === thread.firmId &&
+          candidate.matterId === thread.matterId &&
+          candidate.topic.trim().toLowerCase() === thread.topic.trim().toLowerCase(),
+      )
+    ) {
+      throw new Error("Conversation thread already exists");
+    }
+    this.conversationThreads = [...this.conversationThreads, clone(thread)];
+    return clone(thread);
+  }
+
+  async listLegalClinicPrograms(
+    firmId: string,
+    options: { status?: LegalClinicProgram["status"] } = {},
+  ): Promise<LegalClinicProgram[]> {
+    return clone(
+      this.legalClinicPrograms
+        .filter(
+          (program) =>
+            program.firmId === firmId && (!options.status || program.status === options.status),
+        )
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    );
+  }
+
+  async createLegalClinicProgram(program: LegalClinicProgram): Promise<LegalClinicProgram> {
+    if (
+      this.legalClinicPrograms.some(
+        (candidate) =>
+          candidate.firmId === program.firmId &&
+          candidate.name.trim().toLowerCase() === program.name.trim().toLowerCase(),
+      )
+    ) {
+      throw new Error("Legal clinic program already exists");
+    }
+    this.legalClinicPrograms = [...this.legalClinicPrograms, clone(program)];
+    return clone(program);
+  }
+
+  async getLegalClinicMatterProfile(
+    firmId: string,
+    matterId: string,
+  ): Promise<LegalClinicMatterProfile | undefined> {
+    return clone(
+      this.legalClinicMatterProfiles.find(
+        (profile) => profile.firmId === firmId && profile.matterId === matterId,
+      ),
+    );
+  }
+
+  async upsertLegalClinicMatterProfile(
+    profile: LegalClinicMatterProfile,
+  ): Promise<LegalClinicMatterProfile> {
+    const existingIndex = this.legalClinicMatterProfiles.findIndex(
+      (candidate) => candidate.firmId === profile.firmId && candidate.matterId === profile.matterId,
+    );
+    if (existingIndex >= 0) {
+      this.legalClinicMatterProfiles[existingIndex] = clone(profile);
+    } else {
+      this.legalClinicMatterProfiles = [...this.legalClinicMatterProfiles, clone(profile)];
+    }
+    return clone(profile);
+  }
+
+  async listCalendarEvents(
+    firmId: string,
+    options: { matterId: string; startsAfter?: string; startsBefore?: string },
+  ): Promise<CalendarEventRecord[]> {
+    return clone(
+      this.calendarEvents
+        .filter(
+          (event) =>
+            event.firmId === firmId &&
+            event.matterId === options.matterId &&
+            !event.deletedAt &&
+            (!options.startsAfter ||
+              Date.parse(event.startsAt) >= Date.parse(options.startsAfter)) &&
+            (!options.startsBefore ||
+              Date.parse(event.startsAt) < Date.parse(options.startsBefore)),
+        )
+        .sort((left, right) => {
+          const startDifference = Date.parse(left.startsAt) - Date.parse(right.startsAt);
+          return startDifference === 0 ? left.id.localeCompare(right.id) : startDifference;
+        })
+        .map((event) => ({
+          ...event,
+          attendees: activeCalendarAttendees(event.attendees, event),
+        })),
+    );
+  }
+
+  async getCalendarEvent(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+  ): Promise<CalendarEventRecord | undefined> {
+    const event = this.calendarEvents.find(
+      (event) =>
+        event.firmId === firmId &&
+        event.matterId === matterId &&
+        event.id === eventId &&
+        !event.deletedAt,
+    );
+    return event
+      ? clone({ ...event, attendees: activeCalendarAttendees(event.attendees, event) })
+      : undefined;
+  }
+
+  async getCalendarEventByUid(
+    firmId: string,
+    matterId: string,
+    uid: string,
+  ): Promise<CalendarEventRecord | undefined> {
+    const event = this.calendarEvents.find(
+      (event) =>
+        event.firmId === firmId &&
+        event.matterId === matterId &&
+        event.uid === uid &&
+        !event.deletedAt,
+    );
+    return event
+      ? clone({ ...event, attendees: activeCalendarAttendees(event.attendees, event) })
+      : undefined;
+  }
+
+  async upsertCalendarEvent(event: CalendarEventUpsertInput): Promise<CalendarEventRecord> {
+    const eventIdCollision = this.calendarEvents.find((candidate) => candidate.id === event.id);
+    if (
+      eventIdCollision &&
+      (eventIdCollision.firmId !== event.firmId || eventIdCollision.matterId !== event.matterId)
+    ) {
+      throw new CalendarEventScopeConflictError(event.id);
+    }
+
+    const activeUidCollision = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === event.firmId &&
+        candidate.matterId === event.matterId &&
+        candidate.uid === event.uid &&
+        candidate.id !== event.id &&
+        !candidate.deletedAt,
+    );
+    if (activeUidCollision) {
+      throw new CalendarEventUidConflictError(event.uid);
+    }
+
+    const existingIndex = this.calendarEvents.findIndex(
+      (candidate) =>
+        candidate.firmId === event.firmId &&
+        candidate.matterId === event.matterId &&
+        candidate.id === event.id,
+    );
+    if (existingIndex >= 0) {
+      this.calendarEvents[existingIndex] = clone({
+        ...event,
+        attendees: event.attendees ?? this.calendarEvents[existingIndex]!.attendees,
+      });
+    } else {
+      this.calendarEvents.push(clone(event));
+    }
+    const stored = this.calendarEvents.find((candidate) => candidate.id === event.id)!;
+    return clone({ ...stored, attendees: activeCalendarAttendees(stored.attendees, stored) });
+  }
+
+  async listCalendarEventAttendees(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+  ): Promise<CalendarEventAttendeeRecord[]> {
+    const event = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === firmId &&
+        candidate.matterId === matterId &&
+        candidate.id === eventId &&
+        !candidate.deletedAt,
+    );
+    return clone(activeCalendarAttendees(event?.attendees, { firmId, matterId, id: eventId }));
+  }
+
+  async upsertCalendarEventAttendee(
+    attendee: CalendarEventAttendeeUpsertInput,
+  ): Promise<CalendarEventAttendeeRecord> {
+    const event = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === attendee.firmId &&
+        candidate.matterId === attendee.matterId &&
+        candidate.id === attendee.eventId &&
+        !candidate.deletedAt,
+    );
+    if (!event) {
+      throw new Error(`Calendar event ${attendee.eventId} was not found`);
+    }
+    const attendees = event.attendees ?? [];
+    const existingIndex = attendees.findIndex((candidate) => candidate.id === attendee.id);
+    if (existingIndex >= 0) {
+      attendees[existingIndex] = clone(attendee);
+    } else {
+      const activeEmailCollision = attendees.find(
+        (candidate) =>
+          candidate.email.toLowerCase() === attendee.email.toLowerCase() &&
+          candidate.id !== attendee.id &&
+          !candidate.deletedAt,
+      );
+      if (activeEmailCollision) {
+        throw new Error(`Calendar attendee ${attendee.email} already exists on this event`);
+      }
+      attendees.push(clone(attendee));
+    }
+    event.attendees = attendees;
+    return clone(attendee);
+  }
+
+  async deleteCalendarEventAttendee(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    attendeeId: string;
+    deletedAt: string;
+    updatedByUserId: string;
+  }): Promise<CalendarEventAttendeeRecord | undefined> {
+    const event = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === input.firmId &&
+        candidate.matterId === input.matterId &&
+        candidate.id === input.eventId &&
+        !candidate.deletedAt,
+    );
+    const attendee = event?.attendees?.find(
+      (candidate) => candidate.id === input.attendeeId && !candidate.deletedAt,
+    );
+    if (!attendee) return undefined;
+    attendee.deletedAt = input.deletedAt;
+    attendee.updatedAt = input.deletedAt;
+    attendee.updatedByUserId = input.updatedByUserId;
+    return clone(attendee);
+  }
+
+  async replaceCalendarEventAttendees(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    attendees: CalendarEventAttendeeUpsertInput[];
+    replacedAt: string;
+    updatedByUserId: string;
+  }): Promise<CalendarEventAttendeeRecord[]> {
+    const event = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === input.firmId &&
+        candidate.matterId === input.matterId &&
+        candidate.id === input.eventId &&
+        !candidate.deletedAt,
+    );
+    if (!event) return [];
+    const retainedDeleted = (event.attendees ?? [])
+      .filter((attendee) => attendee.deletedAt)
+      .map(clone);
+    const replaced = input.attendees.map(clone);
+    event.attendees = [...retainedDeleted, ...replaced];
+    return clone(activeCalendarAttendees(event.attendees, event));
+  }
+
+  async deleteCalendarEvent(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    deletedAt: string;
+    updatedByUserId: string;
+  }): Promise<CalendarEventRecord | undefined> {
+    const existing = this.calendarEvents.find(
+      (event) =>
+        event.firmId === input.firmId &&
+        event.matterId === input.matterId &&
+        event.id === input.eventId &&
+        !event.deletedAt,
+    );
+    if (!existing) return undefined;
+    existing.deletedAt = input.deletedAt;
+    existing.updatedAt = input.deletedAt;
+    existing.updatedByUserId = input.updatedByUserId;
+    existing.sequence += 1;
+    return clone(existing);
+  }
+
+  async createCalendarCredential(
+    credential: CalendarCredentialRecord,
+  ): Promise<CalendarCredentialRecord> {
+    this.calendarCredentials.push(clone(credential));
+    return clone(credential);
+  }
+
+  async listCalendarCredentials(
+    firmId: string,
+    userId: string,
+  ): Promise<CalendarCredentialRecord[]> {
+    return clone(
+      this.calendarCredentials
+        .filter((credential) => credential.firmId === firmId && credential.userId === userId)
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
+    );
+  }
+
+  async getCalendarCredentialByUsername(
+    username: string,
+  ): Promise<CalendarCredentialRecord | undefined> {
+    return clone(
+      this.calendarCredentials.find(
+        (credential) => credential.username === username && !credential.revokedAt,
+      ),
+    );
+  }
+
+  async touchCalendarCredential(id: string, lastUsedAt: string): Promise<void> {
+    const credential = this.calendarCredentials.find((candidate) => candidate.id === id);
+    if (credential) credential.lastUsedAt = lastUsedAt;
+  }
+
+  async revokeCalendarCredential(input: {
+    firmId: string;
+    userId: string;
+    credentialId: string;
+    revokedAt: string;
+  }): Promise<CalendarCredentialRecord | undefined> {
+    const credential = this.calendarCredentials.find(
+      (candidate) =>
+        candidate.firmId === input.firmId &&
+        candidate.userId === input.userId &&
+        candidate.id === input.credentialId,
+    );
+    if (!credential) return undefined;
+    credential.revokedAt = input.revokedAt;
+    return clone(credential);
+  }
+  async runConflictCheck(input: {
+    firmId: string;
+    actorId: string;
+    prospectiveName: string;
+    aliases?: string[];
+    identifiers?: Array<{ type: string; value: string }>;
+    prospectiveRole?: "client" | "opposing_party" | "third_party";
+    includeClosedMatters: boolean;
+  }): Promise<{ results: ReturnType<typeof runConflictCheck>; auditChainValid: boolean }> {
+    const results = runConflictCheck({
+      ...input,
+      contacts: this.contacts,
+      matters: this.matters,
+      matterParties: this.matterParties,
+    });
+    const checkId = `conflict-check-${String(this.conflictChecks.length + 1).padStart(3, "0")}`;
+    const createdAt = new Date().toISOString();
+    this.conflictChecks = [
+      ...this.conflictChecks,
+      {
+        id: checkId,
+        firmId: input.firmId,
+        requestedByUserId: input.actorId,
+        prospectiveName: input.prospectiveName,
+        querySnapshot: {
+          prospectiveName: input.prospectiveName,
+          aliases: input.aliases ?? [],
+          identifiers: input.identifiers ?? [],
+          includeClosedMatters: input.includeClosedMatters,
+          ...(input.prospectiveRole ? { prospectiveRole: input.prospectiveRole } : {}),
+        },
+        resultSnapshot: clone(results),
+        disposition: "pending_review",
+        createdAt,
+      },
+    ];
+    this.auditEvents = [
+      ...this.auditEvents,
+      appendAuditEvent(this.auditEvents.at(-1), {
+        id: `audit-${String(this.auditEvents.length + 1).padStart(3, "0")}`,
+        firmId: input.firmId,
+        actorId: input.actorId,
+        action: "conflict_check.completed",
+        resourceType: "conflict_check",
+        resourceId: checkId,
+        occurredAt: createdAt,
+        metadata: { prospectiveName: input.prospectiveName, matchCount: results.length },
+      }),
+    ];
+    return { results, auditChainValid: this.auditEvents.length > 0 };
+  }
+
+  async getLedger(
+    firmId: string,
+    options: { matterId?: string } = {},
+  ): Promise<{
+    accounts: LedgerAccount[];
+    entries: LedgerEntry[];
+    balances: Record<string, number>;
+    trustBalances: Record<string, number>;
+  }> {
+    const accounts = this.ledgerAccounts.filter((account) => account.firmId === firmId);
+    const entries = this.postedTransactions
+      .flatMap((transaction) => transaction.entries)
+      .filter(
+        (entry) =>
+          entry.firmId === firmId && (!options.matterId || entry.matterId === options.matterId),
+      );
+    return {
+      accounts: clone(accounts),
+      entries: clone(entries),
+      balances: ledgerBalanceByMatter(entries),
+      trustBalances: clientTrustBalanceByMatter(entries, accounts),
+    };
+  }
+
+  async validateLedgerTransactionScope(input: {
+    user: User;
+    transaction: LedgerTransaction;
+  }): Promise<void> {
+    if (input.transaction.firmId !== input.user.firmId) {
+      throw new Error("Ledger transaction firm does not match authenticated user");
+    }
+
+    const firmWide = userHasFirmWideLedgerAccess(input.user);
+    for (const entry of input.transaction.entries) {
+      if (entry.firmId !== input.user.firmId) {
+        throw new Error("Ledger entry firm does not match authenticated user");
+      }
+      if (!firmWide && !input.user.assignedMatterIds.includes(entry.matterId)) {
+        throw new Error("Ledger entry is outside the authenticated matter scope");
+      }
+      const matter = this.matters.find(
+        (candidate) => candidate.firmId === input.user.firmId && candidate.id === entry.matterId,
+      );
+      if (!matter) throw new Error(`Unknown ledger matter ${entry.matterId}`);
+      const contact = this.contacts.find(
+        (candidate) => candidate.firmId === input.user.firmId && candidate.id === entry.clientId,
+      );
+      if (!contact) throw new Error(`Unknown ledger client ${entry.clientId}`);
+      const account = this.ledgerAccounts.find(
+        (candidate) => candidate.firmId === input.user.firmId && candidate.id === entry.accountId,
+      );
+      if (!account) throw new Error(`Unknown ledger account ${entry.accountId}`);
+      const party = this.matterParties.find(
+        (candidate) =>
+          candidate.firmId === input.user.firmId &&
+          candidate.matterId === entry.matterId &&
+          candidate.contactId === entry.clientId &&
+          !candidate.adverse,
+      );
+      if (!party) {
+        throw new Error("Ledger client must be a non-adverse party on the matter");
+      }
+    }
+  }
+
+  async postLedgerTransaction(transaction: LedgerTransaction): Promise<PostedLedgerTransaction> {
+    const posted = postLedgerTransaction(
+      { postedTransactions: this.postedTransactions, accounts: this.ledgerAccounts },
+      transaction,
+    );
+    if (!this.postedTransactions.some((existing) => existing.id === posted.id)) {
+      this.postedTransactions = [...this.postedTransactions, posted];
+    }
+    return clone(posted);
+  }
+
+  async listAuditEvents(firmId: string): Promise<{ events: AuditEvent[]; valid: boolean }> {
+    const events = this.auditEvents.filter((event) => event.firmId === firmId);
+    return { events: clone(events), valid: verifyAuditChain(events) };
+  }
+
+  async appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent> {
+    const firmEvents = this.auditEvents.filter((candidate) => candidate.firmId === event.firmId);
+    const appended = appendAuditEvent(firmEvents.at(-1), event);
+    this.auditEvents = [...this.auditEvents, appended];
+    return clone(appended);
+  }
+
+  async recordAuditEvent(event: AuditEvent): Promise<void> {
+    this.auditEvents = [...this.auditEvents, clone(event)];
+  }
+
+  async listPortalGrants(firmId: string): Promise<PortalGrant[]> {
+    return clone(this.portalGrants.filter((grant) => grant.firmId === firmId));
+  }
+
+  async listShareLinks(
+    firmId: string,
+    options: { matterId?: string } = {},
+  ): Promise<ShareLinkRecord[]> {
+    return clone(
+      this.shareLinks
+        .filter(
+          (link) =>
+            link.firmId === firmId && (!options.matterId || link.matterId === options.matterId),
+        )
+        .sort(
+          (left, right) =>
+            right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id),
+        ),
+    );
+  }
+
+  async listExternalUploadLinks(
+    firmId: string,
+    options: { matterId?: string } = {},
+  ): Promise<ExternalUploadLinkRecord[]> {
+    return clone(
+      this.externalUploadLinks
+        .filter(
+          (link) =>
+            link.firmId === firmId && (!options.matterId || link.matterId === options.matterId),
+        )
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+    );
+  }
+
+  async createExternalUploadLink(
+    link: ExternalUploadLinkRecord,
+  ): Promise<ExternalUploadLinkRecord> {
+    const existing = link.idempotencyKey
+      ? this.externalUploadLinks.find(
+          (candidate) =>
+            candidate.firmId === link.firmId && candidate.idempotencyKey === link.idempotencyKey,
+        )
+      : undefined;
+    if (existing) {
+      const existingFingerprint = canonicalizeForIdempotency({
+        matterId: existing.matterId,
+        requestedByUserId: existing.requestedByUserId,
+        maxUploads: existing.maxUploads,
+        expiresAt: existing.expiresAt,
+      });
+      const inputFingerprint = canonicalizeForIdempotency({
+        matterId: link.matterId,
+        requestedByUserId: link.requestedByUserId,
+        maxUploads: link.maxUploads,
+        expiresAt: link.expiresAt,
+      });
+      if (existingFingerprint !== inputFingerprint) throw new IdempotencyKeyConflictError();
+      return clone(existing);
+    }
+    if (this.externalUploadLinks.some((existing) => existing.tokenHash === link.tokenHash)) {
+      throw new Error("External upload link token hash already exists");
+    }
+    this.externalUploadLinks = [...this.externalUploadLinks, clone(link)];
+    return clone(link);
+  }
+
+  async getExternalUploadLinkByTokenHash(
+    tokenHash: string,
+  ): Promise<ExternalUploadLinkRecord | undefined> {
+    return clone(this.externalUploadLinks.find((link) => link.tokenHash === tokenHash));
+  }
+
+  async revokeExternalUploadLink(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<ExternalUploadLinkRecord | undefined> {
+    const link = this.externalUploadLinks.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+    );
+    if (!link) return undefined;
+    link.revokedAt = input.revokedAt;
+    return clone(link);
+  }
+
+  async claimExternalUploadUse(input: {
+    firmId: string;
+    id: string;
+    usedAt: string;
+  }): Promise<ExternalUploadLinkRecord | undefined> {
+    const link = this.externalUploadLinks.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+    );
+    if (
+      !link ||
+      link.revokedAt ||
+      Date.parse(link.expiresAt) <= Date.parse(input.usedAt) ||
+      link.usedUploads >= link.maxUploads
+    ) {
+      return undefined;
+    }
+    link.usedUploads += 1;
+    return clone(link);
+  }
+
+  async createShareLink(link: ShareLinkRecord): Promise<ShareLinkRecord> {
+    if (this.shareLinks.some((existing) => existing.tokenHash === link.tokenHash)) {
+      throw new Error("Share link token hash already exists");
+    }
+    const matter = this.matters.find(
+      (candidate) => candidate.firmId === link.firmId && candidate.id === link.matterId,
+    );
+    if (!matter) throw new Error(`Unknown share link matter ${link.matterId}`);
+    const user = this.users.find(
+      (candidate) => candidate.firmId === link.firmId && candidate.id === link.grantedByUserId,
+    );
+    if (!user) throw new Error(`Unknown share link grantor ${link.grantedByUserId}`);
+
+    this.shareLinks = [...this.shareLinks, clone(link)];
+    return clone(link);
+  }
+
+  async getShareLink(firmId: string, id: string): Promise<ShareLinkRecord | undefined> {
+    return clone(this.shareLinks.find((link) => link.firmId === firmId && link.id === id));
+  }
+
+  async getShareLinkByTokenHash(tokenHash: string): Promise<ShareLinkRecord | undefined> {
+    return clone(this.shareLinks.find((link) => link.tokenHash === tokenHash));
+  }
+
+  async revokeShareLink(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<ShareLinkRecord | undefined> {
+    const link = this.shareLinks.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+    );
+    if (!link) return undefined;
+    link.revokedAt = input.revokedAt;
+    return clone(link);
+  }
+
+  async createAccessLog(log: AccessLogRecord): Promise<AccessLogRecord> {
+    this.accessLogs = [...this.accessLogs, clone(log)];
+    return clone(log);
+  }
+
+  async listAccessLogs(
+    firmId: string,
+    options: {
+      shareLinkId?: string;
+      externalUploadLinkId?: string;
+      intakeFormLinkId?: string;
+      resourceType?: string;
+      resourceId?: string;
+    } = {},
+  ): Promise<AccessLogRecord[]> {
+    return clone(
+      this.accessLogs
+        .filter(
+          (log) =>
+            log.firmId === firmId &&
+            (!options.shareLinkId || log.shareLinkId === options.shareLinkId) &&
+            (!options.externalUploadLinkId ||
+              log.externalUploadLinkId === options.externalUploadLinkId) &&
+            (!options.intakeFormLinkId || log.intakeFormLinkId === options.intakeFormLinkId) &&
+            (!options.resourceType || log.resourceType === options.resourceType) &&
+            (!options.resourceId || log.resourceId === options.resourceId),
+        )
+        .sort(
+          (left, right) =>
+            right.occurredAt.localeCompare(left.occurredAt) || left.id.localeCompare(right.id),
+        ),
+    );
+  }
+
+  async createDocumentUploadIntent(input: DocumentUploadIntent): Promise<DocumentRecord> {
+    const supersededDocument = input.supersedesDocumentId
+      ? this.documents.find(
+          (candidate) =>
+            candidate.firmId === input.firmId &&
+            candidate.matterId === input.matterId &&
+            candidate.id === input.supersedesDocumentId,
+        )
+      : undefined;
+    if (input.supersedesDocumentId && !supersededDocument) {
+      throw new Error(`Unknown superseded document ${input.supersedesDocumentId}`);
+    }
+    const now = new Date().toISOString();
+    if (supersededDocument) {
+      supersededDocument.supersededAt = now;
+    }
+    const document: DocumentRecord = {
+      id: input.id,
+      firmId: input.firmId,
+      matterId: input.matterId,
+      title: input.title,
+      storageKey: input.storageKey,
+      checksumSha256: input.checksumSha256,
+      version: supersededDocument ? supersededDocument.version + 1 : 1,
+      classification: input.classification,
+      legalHold: input.legalHold,
+      uploadStatus: "intent_created",
+      checksumStatus: "pending",
+      scanStatus: "pending",
+      reviewStatus: input.reviewStatus ?? "not_required",
+      reviewMetadata: {},
+      externalUploadLinkId: input.externalUploadLinkId,
+      supersedesDocumentId: input.supersedesDocumentId,
+    };
+    this.documents.push(document);
+    return clone(document);
+  }
+
+  async completeDocumentUpload(input: {
+    firmId: string;
+    documentId: string;
+    checksumSha256: string;
+    scanStatus?: DocumentRecord["scanStatus"];
+  }): Promise<DocumentRecord> {
+    const document = this.documents.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.documentId,
+    );
+    if (!document) throw new Error(`Unknown document ${input.documentId}`);
+
+    const duplicate = this.documents.find(
+      (candidate) =>
+        candidate.firmId === input.firmId &&
+        candidate.id !== input.documentId &&
+        candidate.checksumSha256 === input.checksumSha256 &&
+        candidate.checksumStatus === "verified",
+    );
+    const now = new Date().toISOString();
+    document.uploadedAt = now;
+    document.verifiedAt = now;
+
+    if (document.checksumSha256 !== input.checksumSha256) {
+      document.uploadStatus = "rejected";
+      document.checksumStatus = "mismatch";
+      document.scanStatus = "failed";
+      if (document.externalUploadLinkId) {
+        document.reviewStatus = "retry_requested";
+        document.reviewReason = "checksum_mismatch";
+        document.reviewMetadata = { automatedOutcome: "checksum_mismatch" };
+      }
+      return clone(document);
+    }
+
+    document.uploadStatus = "verified";
+    document.checksumStatus = duplicate ? "duplicate" : "verified";
+    document.duplicateOfDocumentId = duplicate?.id;
+    document.scanStatus = input.scanStatus ?? "queued";
+    document.reviewStatus = document.externalUploadLinkId ? "pending_review" : "not_required";
+    document.reviewReason = duplicate ? "duplicate" : undefined;
+    document.reviewMetadata = duplicate
+      ? { automatedOutcome: "duplicate_detected", duplicateOfDocumentId: duplicate.id }
+      : {};
+    return clone(document);
+  }
+
+  async updateDocumentScanStatus(input: {
+    firmId: string;
+    documentId: string;
+    scanStatus: DocumentRecord["scanStatus"];
+  }): Promise<DocumentRecord> {
+    const document = this.documents.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.documentId,
+    );
+    if (!document) throw new Error(`Unknown document ${input.documentId}`);
+    document.scanStatus = input.scanStatus;
+    return clone(document);
+  }
+
+  async reviewUploadedDocument(input: {
+    firmId: string;
+    documentId: string;
+    status: DocumentRecord["reviewStatus"];
+    decision: DocumentRecord["reviewDecision"];
+    reason?: DocumentRecord["reviewReason"];
+    metadata: Record<string, unknown>;
+    reviewedByUserId: string;
+    reviewedAt: string;
+  }): Promise<DocumentRecord> {
+    const document = this.documents.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.documentId,
+    );
+    if (!document) throw new Error(`Unknown document ${input.documentId}`);
+    document.reviewStatus = input.status;
+    document.reviewDecision = input.decision;
+    document.reviewReason = input.reason;
+    document.reviewMetadata = clone(input.metadata);
+    document.reviewedByUserId = input.reviewedByUserId;
+    document.reviewedAt = input.reviewedAt;
+    return clone(document);
+  }
+
+  async listSignatureRequests(
+    firmId: string,
+    options: { matterId?: string } = {},
+  ): Promise<SignatureRequestRecord[]> {
+    return clone(
+      this.signatureRequests.filter(
+        (request) =>
+          request.firmId === firmId && (!options.matterId || request.matterId === options.matterId),
+      ),
+    );
+  }
+
+  async listSignatureRequestSigners(
+    firmId: string,
+    signatureRequestId: string,
+  ): Promise<SignatureRequestSignerRecord[]> {
+    return clone(
+      this.signatureRequestSigners.filter(
+        (signer) => signer.firmId === firmId && signer.signatureRequestId === signatureRequestId,
+      ),
+    );
+  }
+
+  async createSignatureRequest(input: {
+    request: SignatureRequestRecord;
+    signers: SignatureRequestSignerRecord[];
+    event: SignatureProviderEventRecord;
+  }): Promise<{ request: SignatureRequestRecord; signers: SignatureRequestSignerRecord[] }> {
+    this.signatureRequests = [...this.signatureRequests, clone(input.request)];
+    this.signatureRequestSigners = [...this.signatureRequestSigners, ...clone(input.signers)];
+    this.signatureProviderEvents = [...this.signatureProviderEvents, clone(input.event)];
+    return { request: clone(input.request), signers: clone(input.signers) };
+  }
+
+  async recordSignatureProviderEvent(
+    event: SignatureProviderEventRecord,
+    webhookAttempt?: SignatureWebhookAttemptRecord,
+  ): Promise<SignatureProviderEventRecord> {
+    this.signatureProviderEvents = [...this.signatureProviderEvents, clone(event)];
+    if (webhookAttempt) {
+      this.signatureWebhookAttempts = [...this.signatureWebhookAttempts, clone(webhookAttempt)];
+    }
+    this.signatureRequests = this.signatureRequests.map((request) => {
+      if (request.firmId !== event.firmId || request.id !== event.signatureRequestId) {
+        return request;
+      }
+      if (!shouldUpdateSignatureRequestStatus(request.status, event)) {
+        return request;
+      }
+      return {
+        ...request,
+        status: event.status,
+        completedAt: event.status === "completed" ? event.occurredAt : request.completedAt,
+        declinedAt: event.status === "declined" ? event.occurredAt : request.declinedAt,
+        evidence: event.evidence,
+      };
+    });
+    return clone(event);
+  }
+
+  async recordSignatureWebhookAttempt(
+    attempt: SignatureWebhookAttemptRecord,
+  ): Promise<SignatureWebhookAttemptRecord> {
+    this.signatureWebhookAttempts = [...this.signatureWebhookAttempts, clone(attempt)];
+    return clone(attempt);
+  }
+
+  async listSignatureProviderEvents(
+    firmId: string,
+    options: { signatureRequestId?: string } = {},
+  ): Promise<SignatureProviderEventRecord[]> {
+    return clone(
+      this.signatureProviderEvents.filter(
+        (event) =>
+          event.firmId === firmId &&
+          (!options.signatureRequestId || event.signatureRequestId === options.signatureRequestId),
+      ),
+    );
+  }
+
+  async listSignatureWebhookAttempts(
+    firmId: string,
+    options: { provider?: SignatureWebhookAttemptRecord["provider"]; externalId?: string } = {},
+  ): Promise<SignatureWebhookAttemptRecord[]> {
+    return clone(
+      this.signatureWebhookAttempts.filter(
+        (attempt) =>
+          attempt.firmId === firmId &&
+          (!options.provider || attempt.provider === options.provider) &&
+          (!options.externalId || attempt.externalId === options.externalId),
+      ),
+    );
+  }
+
+  async listIntakeTemplates(firmId: string): Promise<IntakeTemplateRecord[]> {
+    return clone(this.intakeTemplates.filter((template) => template.firmId === firmId));
+  }
+
+  async createIntakeTemplate(template: IntakeTemplateRecord): Promise<IntakeTemplateRecord> {
+    if (this.intakeTemplates.some((existing) => existing.id === template.id)) {
+      throw new Error(`Intake template ${template.id} already exists`);
+    }
+    this.intakeTemplates = [...this.intakeTemplates, clone(template)];
+    return clone(template);
+  }
+
+  async updateIntakeTemplate(template: IntakeTemplateRecord): Promise<IntakeTemplateRecord> {
+    const index = this.intakeTemplates.findIndex(
+      (candidate) => candidate.firmId === template.firmId && candidate.id === template.id,
+    );
+    if (index === -1) throw new Error(`Unknown intake template ${template.id}`);
+    this.intakeTemplates[index] = clone(template);
+    return clone(template);
+  }
+
+  async listIntakeSessions(
+    firmId: string,
+    options: { matterId?: string } = {},
+  ): Promise<IntakeSessionRecord[]> {
+    return clone(
+      this.intakeSessions.filter(
+        (session) =>
+          session.firmId === firmId && (!options.matterId || session.matterId === options.matterId),
+      ),
+    );
+  }
+
+  async getIntakeSession(
+    firmId: string,
+    sessionId: string,
+  ): Promise<IntakeSessionRecord | undefined> {
+    return clone(
+      this.intakeSessions.find((session) => session.firmId === firmId && session.id === sessionId),
+    );
+  }
+
+  async createIntakeSession(session: IntakeSessionRecord): Promise<IntakeSessionRecord> {
+    this.intakeSessions = [...this.intakeSessions, clone(session)];
+    return clone(session);
+  }
+
+  async listIntakeFormLinks(
+    firmId: string,
+    options: { matterId?: string; intakeSessionId?: string } = {},
+  ): Promise<IntakeFormLinkRecord[]> {
+    return clone(
+      this.intakeFormLinks
+        .filter(
+          (link) =>
+            link.firmId === firmId &&
+            (!options.matterId || link.matterId === options.matterId) &&
+            (!options.intakeSessionId || link.intakeSessionId === options.intakeSessionId),
+        )
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    );
+  }
+
+  async createIntakeFormLink(link: IntakeFormLinkRecord): Promise<IntakeFormLinkRecord> {
+    if (this.intakeFormLinks.some((existing) => existing.tokenHash === link.tokenHash)) {
+      throw new Error("Intake form link token hash already exists");
+    }
+    this.intakeFormLinks = [...this.intakeFormLinks, clone(link)];
+    return clone(link);
+  }
+
+  async getIntakeFormLink(firmId: string, id: string): Promise<IntakeFormLinkRecord | undefined> {
+    return clone(this.intakeFormLinks.find((link) => link.firmId === firmId && link.id === id));
+  }
+
+  async getIntakeFormLinkByTokenHash(tokenHash: string): Promise<IntakeFormLinkRecord | undefined> {
+    return clone(this.intakeFormLinks.find((link) => link.tokenHash === tokenHash));
+  }
+
+  async revokeIntakeFormLink(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<IntakeFormLinkRecord | undefined> {
+    const link = this.intakeFormLinks.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+    );
+    if (!link) return undefined;
+    link.revokedAt = input.revokedAt;
+    return clone(link);
+  }
+
+  async markIntakeFormLinkSubmitted(input: {
+    firmId: string;
+    id: string;
+    submittedAt: string;
+    answerSnapshotId: string;
+  }): Promise<IntakeFormLinkRecord | undefined> {
+    const link = this.intakeFormLinks.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+    );
+    if (!link || link.submittedAt || link.revokedAt) return undefined;
+    link.submittedAt = input.submittedAt;
+    link.answerSnapshotId = input.answerSnapshotId;
+    return clone(link);
+  }
+
+  async listIntakeFormReviews(
+    firmId: string,
+    options: { matterId?: string; intakeSessionId?: string; formLinkId?: string } = {},
+  ): Promise<IntakeFormReviewRecord[]> {
+    return clone(
+      this.intakeFormReviews
+        .filter(
+          (review) =>
+            review.firmId === firmId &&
+            (!options.matterId || review.matterId === options.matterId) &&
+            (!options.intakeSessionId || review.intakeSessionId === options.intakeSessionId) &&
+            (!options.formLinkId || review.formLinkId === options.formLinkId),
+        )
+        .sort((left, right) => right.decidedAt.localeCompare(left.decidedAt)),
+    );
+  }
+
+  async createIntakeFormReview(review: IntakeFormReviewRecord): Promise<IntakeFormReviewRecord> {
+    if (
+      this.intakeFormReviews.some(
+        (existing) =>
+          existing.firmId === review.firmId && existing.formLinkId === review.formLinkId,
+      )
+    ) {
+      throw new Error("Intake form link has already been reviewed");
+    }
+    this.intakeFormReviews = [...this.intakeFormReviews, clone(review)];
+    return clone(review);
+  }
+
+  async listIntakeFormItemActions(
+    firmId: string,
+    options: { formLinkId?: string; intakeSessionId?: string; itemId?: string } = {},
+  ): Promise<IntakeFormItemActionRecord[]> {
+    return clone(
+      this.intakeFormItemActions.filter(
+        (action) =>
+          action.firmId === firmId &&
+          (!options.formLinkId || action.formLinkId === options.formLinkId) &&
+          (!options.intakeSessionId || action.intakeSessionId === options.intakeSessionId) &&
+          (!options.itemId || action.itemId === options.itemId),
+      ),
+    );
+  }
+
+  async upsertIntakeFormItemAction(
+    action: IntakeFormItemActionRecord,
+  ): Promise<IntakeFormItemActionRecord> {
+    const existingIndex = this.intakeFormItemActions.findIndex(
+      (candidate) => candidate.firmId === action.firmId && candidate.id === action.id,
+    );
+    if (existingIndex >= 0) {
+      this.intakeFormItemActions[existingIndex] = clone(action);
+    } else {
+      this.intakeFormItemActions = [...this.intakeFormItemActions, clone(action)];
+    }
+    return clone(action);
+  }
+
+  async createAnswerSnapshot(snapshot: AnswerSnapshotRecord): Promise<AnswerSnapshotRecord> {
+    this.answerSnapshots = [...this.answerSnapshots, clone(snapshot)];
+    return clone(snapshot);
+  }
+
+  async listAnswerSnapshots(
+    firmId: string,
+    options: { intakeSessionId?: string } = {},
+  ): Promise<AnswerSnapshotRecord[]> {
+    return clone(
+      this.answerSnapshots.filter(
+        (snapshot) =>
+          snapshot.firmId === firmId &&
+          (!options.intakeSessionId || snapshot.intakeSessionId === options.intakeSessionId),
+      ),
+    );
+  }
+
+  async createIntakeVariableProposals(
+    proposals: IntakeVariableProposal[],
+  ): Promise<IntakeVariableProposal[]> {
+    const newIds = new Set(proposals.map((proposal) => proposal.id));
+    this.intakeVariableProposals = [
+      ...this.intakeVariableProposals.filter((proposal) => !newIds.has(proposal.id)),
+      ...clone(proposals),
+    ];
+    return clone(proposals);
+  }
+
+  async listIntakeVariableProposals(
+    firmId: string,
+    options: { matterId?: string; status?: IntakeVariableProposal["status"] } = {},
+  ): Promise<IntakeVariableProposal[]> {
+    return clone(
+      this.intakeVariableProposals.filter(
+        (proposal) =>
+          proposal.firmId === firmId &&
+          (!options.matterId || proposal.matterId === options.matterId) &&
+          (!options.status || proposal.status === options.status),
+      ),
+    );
+  }
+
+  async reviewIntakeVariableProposal(input: {
+    firmId: string;
+    id: string;
+    status: "approved" | "rejected";
+    reviewedByUserId: string;
+    reviewedAt: string;
+    rejectionReason?: string;
+  }): Promise<IntakeVariableProposal | undefined> {
+    const proposal = this.intakeVariableProposals.find(
+      (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+    );
+    if (!proposal || proposal.status !== "pending") return undefined;
+    proposal.status = input.status;
+    proposal.reviewedByUserId = input.reviewedByUserId;
+    proposal.reviewedAt = input.reviewedAt;
+    proposal.rejectionReason = input.status === "rejected" ? input.rejectionReason : undefined;
+    if (input.status === "approved") {
+      this.applyVariableProposal(proposal);
+      proposal.appliedAt = input.reviewedAt;
+    }
+    return clone(proposal);
+  }
+
+  private applyVariableProposal(proposal: IntakeVariableProposal): void {
+    if (proposal.targetScope === "client") {
+      const contact = this.contacts.find(
+        (candidate) =>
+          candidate.firmId === proposal.firmId && candidate.id === proposal.targetRecordId,
+      );
+      if (!contact) throw new Error(`Unknown intake proposal contact ${proposal.targetRecordId}`);
+      if (proposal.targetField === "displayName") contact.displayName = proposal.proposedValue;
+      if (proposal.targetField === "notes") contact.notes = proposal.proposedValue;
+      return;
+    }
+    const matter = this.matters.find(
+      (candidate) =>
+        candidate.firmId === proposal.firmId && candidate.id === proposal.targetRecordId,
+    );
+    if (!matter) throw new Error(`Unknown intake proposal matter ${proposal.targetRecordId}`);
+    if (proposal.targetField === "title") matter.title = proposal.proposedValue;
+    if (proposal.targetField === "practiceArea") matter.practiceArea = proposal.proposedValue;
+    if (proposal.targetField === "jurisdiction") {
+      if (!["BC", "ON", "CANADA", "OTHER"].includes(proposal.proposedValue)) {
+        throw new Error(`Unsupported intake proposal jurisdiction ${proposal.proposedValue}`);
+      }
+      matter.jurisdiction = proposal.proposedValue as Matter["jurisdiction"];
+    }
+  }
+
+  async createGeneratedDocument(
+    document: GeneratedDocumentRecord,
+  ): Promise<GeneratedDocumentRecord> {
+    this.generatedDocuments = [...this.generatedDocuments, clone(document)];
+    return clone(document);
+  }
+
+  async createLedgerTransactionApproval(
+    approval: LedgerTransactionApprovalRecord,
+  ): Promise<LedgerTransactionApprovalRecord> {
+    const transaction = this.postedTransactions.find(
+      (posted) => posted.firmId === approval.firmId && posted.id === approval.transactionId,
+    );
+    if (!transaction) {
+      throw new Error(`Unknown ledger transaction ${approval.transactionId}`);
+    }
+    const duplicateReviewer = this.ledgerApprovals.find(
+      (candidate) =>
+        candidate.firmId === approval.firmId &&
+        candidate.transactionId === approval.transactionId &&
+        candidate.decidedByUserId === approval.decidedByUserId,
+    );
+    if (duplicateReviewer) {
+      throw new Error("Ledger approval reviewer has already recorded a decision");
+    }
+    this.ledgerApprovals = [...this.ledgerApprovals, clone(approval)];
+    return clone(approval);
+  }
+
+  async listLedgerTransactionApprovals(
+    firmId: string,
+    options: { transactionId?: string } = {},
+  ): Promise<LedgerTransactionApprovalRecord[]> {
+    return clone(
+      this.ledgerApprovals.filter(
+        (approval) =>
+          approval.firmId === firmId &&
+          (!options.transactionId || approval.transactionId === options.transactionId),
+      ),
+    );
+  }
+
+  async createLedgerReconciliation(
+    reconciliation: LedgerReconciliationRecord,
+  ): Promise<LedgerReconciliationRecord> {
+    const account = this.ledgerAccounts.find(
+      (candidate) =>
+        candidate.firmId === reconciliation.firmId && candidate.id === reconciliation.accountId,
+    );
+    if (!account) {
+      throw new Error(`Unknown ledger account ${reconciliation.accountId}`);
+    }
+    validateLedgerReconciliationRecord(reconciliation);
+    this.ledgerReconciliations = [...this.ledgerReconciliations, clone(reconciliation)];
+    return clone(reconciliation);
+  }
+
+  async listLedgerReconciliations(firmId: string): Promise<LedgerReconciliationRecord[]> {
+    return clone(
+      this.ledgerReconciliations.filter((reconciliation) => reconciliation.firmId === firmId),
+    );
+  }
+
+  async listTimeEntries(
+    firmId: string,
+    options: { matterId?: string; status?: TimeEntry["billingStatus"] } = {},
+  ): Promise<TimeEntry[]> {
+    return clone(
+      this.timeEntries.filter(
+        (entry) =>
+          entry.firmId === firmId &&
+          (!options.matterId || entry.matterId === options.matterId) &&
+          (!options.status || entry.billingStatus === options.status),
+      ),
+    );
+  }
+
+  async getTimeEntry(firmId: string, entryId: string): Promise<TimeEntry | undefined> {
+    return clone(this.timeEntries.find((entry) => entry.firmId === firmId && entry.id === entryId));
+  }
+
+  async createTimeEntry(entry: TimeEntry): Promise<TimeEntry> {
+    this.timeEntries = [...this.timeEntries, clone(entry)];
+    return clone(entry);
+  }
+
+  async updateTimeEntry(
+    firmId: string,
+    entryId: string,
+    updates: Partial<TimeEntry>,
+  ): Promise<TimeEntry> {
+    const index = this.timeEntries.findIndex(
+      (entry) => entry.firmId === firmId && entry.id === entryId,
+    );
+    if (index === -1) throw new Error("Time entry was not found");
+    const updated = { ...this.timeEntries[index]!, ...updates };
+    this.timeEntries = this.timeEntries.map((entry, candidateIndex) =>
+      candidateIndex === index ? updated : entry,
+    );
+    return clone(updated);
+  }
+
+  async listExpenseEntries(
+    firmId: string,
+    options: { matterId?: string; status?: ExpenseEntry["billingStatus"] } = {},
+  ): Promise<ExpenseEntry[]> {
+    return clone(
+      this.expenseEntries.filter(
+        (entry) =>
+          entry.firmId === firmId &&
+          (!options.matterId || entry.matterId === options.matterId) &&
+          (!options.status || entry.billingStatus === options.status),
+      ),
+    );
+  }
+
+  async getExpenseEntry(firmId: string, entryId: string): Promise<ExpenseEntry | undefined> {
+    return clone(
+      this.expenseEntries.find((entry) => entry.firmId === firmId && entry.id === entryId),
+    );
+  }
+
+  async createExpenseEntry(entry: ExpenseEntry): Promise<ExpenseEntry> {
+    this.expenseEntries = [...this.expenseEntries, clone(entry)];
+    return clone(entry);
+  }
+
+  async updateExpenseEntry(
+    firmId: string,
+    entryId: string,
+    updates: Partial<ExpenseEntry>,
+  ): Promise<ExpenseEntry> {
+    const index = this.expenseEntries.findIndex(
+      (entry) => entry.firmId === firmId && entry.id === entryId,
+    );
+    if (index === -1) throw new Error("Expense entry was not found");
+    const updated = { ...this.expenseEntries[index]!, ...updates };
+    this.expenseEntries = this.expenseEntries.map((entry, candidateIndex) =>
+      candidateIndex === index ? updated : entry,
+    );
+    return clone(updated);
+  }
+
+  async listInvoices(
+    firmId: string,
+    options: { matterId?: string; status?: InvoiceRecord["status"] } = {},
+  ): Promise<InvoiceWithLines[]> {
+    return clone(
+      this.invoices
+        .filter(
+          (invoice) =>
+            invoice.firmId === firmId &&
+            (!options.matterId || invoice.matterId === options.matterId) &&
+            (!options.status || invoice.status === options.status),
+        )
+        .map((invoice) => ({
+          ...invoice,
+          lines: this.invoiceLines.filter((line) => line.invoiceId === invoice.id),
+        })),
+    );
+  }
+
+  async getInvoice(firmId: string, invoiceId: string): Promise<InvoiceWithLines | undefined> {
+    const invoice = this.invoices.find(
+      (candidate) => candidate.firmId === firmId && candidate.id === invoiceId,
+    );
+    if (!invoice) return undefined;
+    return clone({
+      ...invoice,
+      lines: this.invoiceLines.filter((line) => line.invoiceId === invoice.id),
+    });
+  }
+
+  async createInvoice(input: {
+    invoice: InvoiceRecord;
+    lines: InvoiceLineRecord[];
+  }): Promise<InvoiceWithLines> {
+    this.invoices = [...this.invoices, clone(input.invoice)];
+    this.invoiceLines = [...this.invoiceLines, ...clone(input.lines)];
+    return clone({ ...input.invoice, lines: input.lines });
+  }
+
+  async updateInvoice(invoice: InvoiceRecord): Promise<InvoiceWithLines> {
+    const index = this.invoices.findIndex(
+      (candidate) => candidate.firmId === invoice.firmId && candidate.id === invoice.id,
+    );
+    if (index === -1) throw new Error("Invoice was not found");
+    this.invoices = this.invoices.map((candidate, candidateIndex) =>
+      candidateIndex === index ? clone(invoice) : candidate,
+    );
+    return (await this.getInvoice(invoice.firmId, invoice.id))!;
+  }
+
+  async createPayment(input: {
+    payment: ManualPaymentRecord;
+    allocations: PaymentAllocationRecord[];
+  }): Promise<PaymentWithAllocations> {
+    const allocatedCents = input.allocations.reduce(
+      (sum, allocation) => sum + allocation.amountCents,
+      0,
+    );
+    if (allocatedCents > input.payment.amountCents) {
+      throw new Error("Payment allocations exceed payment amount");
+    }
+    for (const allocation of input.allocations) {
+      const invoice = await this.getInvoice(input.payment.firmId, allocation.invoiceId);
+      if (!invoice) throw new Error("Payment allocation invoice was not found");
+      if (allocation.amountCents > invoice.balanceDueCents) {
+        throw new Error("Payment allocation exceeds invoice balance");
+      }
+      const totals = calculateInvoiceTotals({
+        lines: invoice.lines,
+        allocations: [
+          ...this.paymentAllocations.filter((existing) => existing.invoiceId === invoice.id),
+          allocation,
+        ],
+      });
+      await this.updateInvoice({
+        ...invoice,
+        ...totals,
+        status: invoiceStatusForPayment({
+          currentStatus: invoice.status,
+          totalCents: totals.totalCents,
+          paidCents: totals.paidCents,
+        }),
+      });
+    }
+    this.manualPayments = [...this.manualPayments, clone(input.payment)];
+    this.paymentAllocations = [...this.paymentAllocations, ...clone(input.allocations)];
+    return clone({ ...input.payment, allocations: input.allocations });
+  }
+
+  async listPayments(
+    firmId: string,
+    options: { matterId?: string; invoiceId?: string } = {},
+  ): Promise<PaymentWithAllocations[]> {
+    return clone(
+      this.manualPayments
+        .filter(
+          (payment) =>
+            payment.firmId === firmId &&
+            (!options.matterId || payment.matterId === options.matterId) &&
+            (!options.invoiceId || payment.invoiceId === options.invoiceId),
+        )
+        .map((payment) => ({
+          ...payment,
+          allocations: this.paymentAllocations.filter(
+            (allocation) => allocation.paymentId === payment.id,
+          ),
+        })),
+    );
+  }
+
+  async createTrustTransferRequest(
+    request: TrustTransferRequestRecord,
+  ): Promise<TrustTransferRequestRecord> {
+    this.trustTransferRequests = [...this.trustTransferRequests, clone(request)];
+    return clone(request);
+  }
+
+  async listTrustTransferRequests(
+    firmId: string,
+    options: { matterId?: string; status?: TrustTransferRequestRecord["status"] } = {},
+  ): Promise<TrustTransferRequestRecord[]> {
+    return clone(
+      this.trustTransferRequests.filter(
+        (request) =>
+          request.firmId === firmId &&
+          (!options.matterId || request.matterId === options.matterId) &&
+          (!options.status || request.status === options.status),
+      ),
+    );
+  }
+
+  async createDocumentTextExtraction(
+    extraction: DocumentTextExtractionRecord,
+  ): Promise<DocumentTextExtractionRecord> {
+    this.documentTextExtractions = [...this.documentTextExtractions, clone(extraction)];
+    return clone(extraction);
+  }
+
+  async getDocumentTextExtractions(
+    firmId: string,
+    documentId: string,
+  ): Promise<DocumentTextExtractionRecord[]> {
+    return clone(
+      this.documentTextExtractions.filter(
+        (ext) => ext.firmId === firmId && ext.documentId === documentId,
+      ),
+    );
+  }
+
+  async listDrafts(
+    firmId: string,
+    options: { matterId?: string; userId?: string } = {},
+  ): Promise<DraftRecord[]> {
+    return clone(
+      this.drafts.filter(
+        (draft) =>
+          draft.firmId === firmId &&
+          (!options.matterId || draft.matterId === options.matterId) &&
+          (!options.userId || draft.createdByUserId === options.userId),
+      ),
+    );
+  }
+
+  async getDraft(firmId: string, draftId: string): Promise<DraftRecord | undefined> {
+    return clone(this.drafts.find((draft) => draft.firmId === firmId && draft.id === draftId));
+  }
+
+  async createDraft(draft: DraftRecord): Promise<DraftRecord> {
+    this.drafts = [...this.drafts, clone(draft)];
+    return clone(draft);
+  }
+
+  async updateDraft(
+    firmId: string,
+    draftId: string,
+    updates: Partial<
+      Pick<DraftRecord, "title" | "editorJson" | "renderedHtml" | "updatedByUserId">
+    >,
+  ): Promise<DraftRecord> {
+    const draftIndex = this.drafts.findIndex((d) => d.firmId === firmId && d.id === draftId);
+    if (draftIndex === -1) {
+      throw new Error(`Draft ${draftId} not found`);
+    }
+    const updatedDraft = {
+      ...this.drafts[draftIndex],
+      ...updates,
+      version: this.drafts[draftIndex]!.version + 1,
+      updatedAt: new Date().toISOString(),
+    } as DraftRecord;
+    this.drafts[draftIndex] = updatedDraft;
+    return clone(updatedDraft);
+  }
+
+  async deleteDraft(firmId: string, draftId: string): Promise<void> {
+    this.drafts = this.drafts.filter((d) => d.firmId !== firmId || d.id !== draftId);
+  }
+
+  async listDraftAssistRecords(
+    firmId: string,
+    options: { matterId?: string; draftId?: string; documentId?: string } = {},
+  ): Promise<DraftAssistRecord[]> {
+    return clone(
+      this.draftAssistRecords
+        .filter(
+          (record) =>
+            record.firmId === firmId &&
+            (!options.matterId || record.matterId === options.matterId) &&
+            (!options.draftId || record.draftId === options.draftId) &&
+            (!options.documentId || record.documentId === options.documentId),
+        )
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    );
+  }
+
+  async getDraftAssistRecord(firmId: string, id: string): Promise<DraftAssistRecord | undefined> {
+    return clone(
+      this.draftAssistRecords.find((record) => record.firmId === firmId && record.id === id),
+    );
+  }
+
+  async createDraftAssistRecord(record: DraftAssistRecord): Promise<DraftAssistRecord> {
+    this.draftAssistRecords = [...this.draftAssistRecords, clone(record)];
+    return clone(record);
+  }
+
+  async updateDraftAssistRecord(record: DraftAssistRecord): Promise<DraftAssistRecord> {
+    const index = this.draftAssistRecords.findIndex(
+      (candidate) => candidate.firmId === record.firmId && candidate.id === record.id,
+    );
+    if (index === -1) throw new Error(`Draft assist record ${record.id} was not found`);
+    this.draftAssistRecords[index] = clone(record);
+    return clone(record);
+  }
+
+  async listDraftTemplates(
+    firmId: string,
+    options: { category?: string; activeOnly?: boolean } = {},
+  ): Promise<DraftTemplateRecord[]> {
+    return clone(
+      this.draftTemplates.filter(
+        (t) =>
+          t.firmId === firmId &&
+          (!options.category || t.category === options.category) &&
+          (!options.activeOnly || t.active),
+      ),
+    );
+  }
+
+  async createDraftTemplate(template: DraftTemplateRecord): Promise<DraftTemplateRecord> {
+    this.draftTemplates = [...this.draftTemplates, clone(template)];
+    return clone(template);
+  }
+
+  async getInboundEmailAddressByAddress(
+    firmId: string,
+    address: string,
+  ): Promise<InboundEmailAddressRecord | undefined> {
+    const normalized = address.trim().toLowerCase();
+    return clone(
+      this.inboundEmailAddresses.find(
+        (candidate) =>
+          candidate.firmId === firmId && candidate.address.trim().toLowerCase() === normalized,
+      ),
+    );
+  }
+
+  async listInboundEmailAddresses(firmId: string): Promise<InboundEmailAddressRecord[]> {
+    return clone(this.inboundEmailAddresses.filter((address) => address.firmId === firmId));
+  }
+
+  async createInboundEmailAddress(
+    address: InboundEmailAddressRecord,
+  ): Promise<InboundEmailAddressRecord> {
+    const normalized = address.address.trim().toLowerCase();
+    if (
+      this.inboundEmailAddresses.some(
+        (candidate) =>
+          candidate.firmId === address.firmId &&
+          candidate.address.trim().toLowerCase() === normalized,
+      )
+    ) {
+      throw new Error("Inbound email address already exists");
+    }
+    this.inboundEmailAddresses = [...this.inboundEmailAddresses, clone(address)];
+    return clone(address);
+  }
+
+  async listInboundEmailMessages(
+    firmId: string,
+    options: { matterId?: string; status?: InboundEmailMessageRecord["status"] } = {},
+  ): Promise<InboundEmailMessageRecord[]> {
+    return clone(
+      this.inboundEmailMessages
+        .filter(
+          (message) =>
+            message.firmId === firmId &&
+            (!options.matterId || message.matterId === options.matterId) &&
+            (!options.status || message.status === options.status),
+        )
+        .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt)),
+    );
+  }
+
+  async getInboundEmailMessage(
+    firmId: string,
+    messageId: string,
+  ): Promise<InboundEmailMessageRecord | undefined> {
+    return clone(
+      this.inboundEmailMessages.find(
+        (message) => message.firmId === firmId && message.id === messageId,
+      ),
+    );
+  }
+
+  async createInboundEmailMessage(
+    message: InboundEmailMessageRecord,
+  ): Promise<InboundEmailMessageRecord> {
+    this.inboundEmailMessages = [...this.inboundEmailMessages, clone(message)];
+    return clone(message);
+  }
+
+  async updateInboundEmailMessage(
+    firmId: string,
+    messageId: string,
+    updates: Partial<
+      Pick<InboundEmailMessageRecord, "status" | "matterId" | "labels" | "metadata">
+    >,
+  ): Promise<InboundEmailMessageRecord> {
+    const index = this.inboundEmailMessages.findIndex(
+      (message) => message.firmId === firmId && message.id === messageId,
+    );
+    if (index === -1) throw new Error("Inbound email message was not found");
+    const updated = { ...this.inboundEmailMessages[index]!, ...clone(updates) };
+    this.inboundEmailMessages[index] = updated;
+    return clone(updated);
+  }
+
+  async createInboundEmailAttachment(
+    attachment: InboundEmailAttachmentRecord,
+  ): Promise<InboundEmailAttachmentRecord> {
+    this.inboundEmailAttachments = [...this.inboundEmailAttachments, clone(attachment)];
+    return clone(attachment);
+  }
+
+  async listInboundEmailAttachments(
+    firmId: string,
+    messageId: string,
+  ): Promise<InboundEmailAttachmentRecord[]> {
+    return clone(
+      this.inboundEmailAttachments.filter(
+        (attachment) => attachment.firmId === firmId && attachment.inboundMessageId === messageId,
+      ),
+    );
+  }
+
+  async promoteInboundEmailAttachmentToDocument(
+    input: InboundAttachmentPromotionInput,
+  ): Promise<InboundAttachmentPromotionResult> {
+    const attachmentIndex = this.inboundEmailAttachments.findIndex(
+      (attachment) =>
+        attachment.firmId === input.firmId &&
+        attachment.inboundMessageId === input.messageId &&
+        attachment.id === input.attachmentId,
+    );
+    if (attachmentIndex === -1) throw new Error("Inbound email attachment was not found");
+    const attachment = this.inboundEmailAttachments[attachmentIndex]!;
+    if (!attachment.checksumSha256) {
+      throw new Error("Inbound email attachment checksum is required for document promotion");
+    }
+    if (attachment.documentId) {
+      const document = this.documents.find(
+        (candidate) => candidate.firmId === input.firmId && candidate.id === attachment.documentId,
+      );
+      if (!document) throw new Error("Promoted document was not found");
+      return { attachment: clone(attachment), document: clone(document), created: false };
+    }
+
+    const duplicate = this.documents.find(
+      (candidate) =>
+        candidate.firmId === input.firmId &&
+        candidate.checksumSha256 === attachment.checksumSha256 &&
+        candidate.checksumStatus === "verified",
+    );
+    const now = input.now ?? new Date().toISOString();
+    const document: DocumentRecord = {
+      id: crypto.randomUUID(),
+      firmId: input.firmId,
+      matterId: input.matterId,
+      title: input.title,
+      storageKey: attachment.storageKey,
+      checksumSha256: attachment.checksumSha256,
+      version: 1,
+      classification: input.classification,
+      legalHold: input.legalHold,
+      uploadStatus: "verified",
+      checksumStatus: duplicate ? "duplicate" : "verified",
+      scanStatus: "queued",
+      reviewStatus: "not_required",
+      reviewDecision: undefined,
+      reviewReason: duplicate ? "duplicate" : "other",
+      reviewMetadata: duplicate
+        ? { automatedOutcome: "duplicate_detected", duplicateOfDocumentId: duplicate.id }
+        : { source: "inbound_email_promotion" },
+      duplicateOfDocumentId: duplicate?.id,
+      uploadedAt: now,
+      verifiedAt: now,
+    };
+    this.documents = [...this.documents, clone(document)];
+    const updatedAttachment = { ...attachment, documentId: document.id };
+    this.inboundEmailAttachments[attachmentIndex] = clone(updatedAttachment);
+    return {
+      attachment: clone(updatedAttachment),
+      document: clone(document),
+      created: true,
+    };
+  }
+}

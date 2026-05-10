@@ -1,0 +1,445 @@
+.setup-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 3vw, 32px);
+  background: linear-gradient(180deg, #111612 0%, #0b0e0c 48%, var(--bg) 100%);
+}
+
+.setup-frame {
+  width: min(1180px, 100%);
+  min-height: 760px;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(24, 27, 25, 0.96);
+  backdrop-filter: var(--glass);
+  -webkit-backdrop-filter: var(--glass);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.setup-rail {
+  background: linear-gradient(180deg, rgba(22, 28, 24, 0.94), rgba(16, 19, 17, 0.94));
+  border-right: 1px solid var(--line);
+  color: #f7f2e8;
+  padding: 28px 22px;
+  display: grid;
+  align-content: start;
+  gap: 22px;
+}
+
+.setup-rail-summary {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(233, 226, 214, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  padding: 14px;
+}
+
+.setup-rail-summary div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.setup-rail-summary span,
+.setup-rail-summary small {
+  color: rgba(247, 242, 232, 0.7);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.setup-rail-summary strong {
+  color: var(--ink);
+}
+
+.setup-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.setup-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--gold));
+}
+
+.setup-step-list {
+  display: grid;
+  gap: 8px;
+}
+
+.setup-step {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: transparent;
+  color: rgba(247, 242, 232, 0.76);
+  text-align: left;
+}
+
+.setup-step span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.setup-step em {
+  min-width: 24px;
+  border-radius: 999px;
+  background: rgba(255, 138, 101, 0.12);
+  color: var(--warning);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+  padding: 5px 7px;
+  text-align: center;
+}
+
+.setup-step.active,
+.setup-step:hover {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fffdfa;
+}
+
+.setup-step.completed {
+  color: var(--accent-strong);
+}
+
+.preset-section {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.preset-title {
+  margin: 0;
+}
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.preset-card {
+  display: grid;
+  gap: 5px;
+  min-height: 78px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--ink);
+  padding: 12px;
+  text-align: left;
+  min-width: 0;
+}
+
+.preset-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.preset-card.selected,
+.preset-card:hover {
+  border-color: rgba(63, 185, 173, 0.45);
+  background: rgba(63, 185, 173, 0.1);
+}
+
+.setup-panel,
+.auth-panel {
+  padding: 28px;
+  display: grid;
+  align-content: start;
+  gap: 20px;
+}
+
+.setup-panel {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.auth-panel {
+  width: min(520px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(24, 27, 25, 0.94);
+  box-shadow: var(--shadow);
+}
+
+.auth-entry-panel {
+  min-height: auto;
+}
+
+.auth-heading {
+  align-items: flex-start;
+}
+
+.auth-form-grid {
+  gap: 12px;
+}
+
+.auth-submit-button {
+  min-width: 136px;
+}
+
+.button-icon {
+  flex: 0 0 auto;
+}
+
+.setup-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.setup-heading svg {
+  color: var(--accent);
+}
+
+.setup-step-summary {
+  max-width: 620px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 6px 0 0;
+}
+
+.setup-step-meta,
+.auth-readiness-strip,
+.setup-review-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.setup-step-meta span,
+.auth-readiness-strip span,
+.setup-review-strip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  border: 1px solid rgba(233, 226, 214, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 10px;
+}
+
+.setup-step-pane {
+  min-width: 0;
+}
+
+.setup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.setup-grid.one-column {
+  grid-template-columns: 1fr;
+}
+
+.form-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.form-field.wide,
+.check-row.wide {
+  grid-column: 1 / -1;
+}
+
+.form-field span,
+.check-row span,
+.review-row span,
+.setup-actions span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--ink);
+  padding: 0 12px;
+}
+
+.form-field.has-error input,
+.form-field.has-error select,
+.form-field.has-error textarea,
+.check-row.has-error {
+  border-color: rgba(255, 138, 101, 0.48);
+  box-shadow: 0 0 0 1px rgba(255, 138, 101, 0.12);
+}
+
+.form-field input::placeholder,
+.form-field textarea::placeholder,
+.search-field input::placeholder,
+.search-field textarea::placeholder {
+  color: rgba(185, 176, 163, 0.72);
+}
+
+.form-field textarea {
+  min-height: 104px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  flex-wrap: wrap;
+}
+
+.check-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.setup-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.setup-actions div {
+  display: flex;
+  gap: 10px;
+}
+
+.secondary-button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-weight: 600;
+  padding: 0 20px;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: var(--line);
+  transform: translateY(-1px);
+}
+
+.compact-action-button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+}
+
+.passkey-button {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 56px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(63, 185, 173, 0.08);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 15px;
+  margin: 8px 0;
+}
+
+.passkey-button:hover:not(:disabled) {
+  background: rgba(63, 185, 173, 0.12);
+  border-color: var(--accent-strong);
+  transform: translateY(-1px);
+}
+
+.passkey-button.verified {
+  background: rgba(63, 185, 173, 0.16);
+  border-color: var(--accent-strong);
+  color: var(--ink);
+}
+
+.secondary-button:disabled {
+  cursor: default;
+  background: rgba(35, 38, 35, 0.58);
+  color: rgba(247, 243, 232, 0.62);
+  border-color: rgba(233, 226, 214, 0.1);
+}
+
+.review-list {
+  display: grid;
+  gap: 10px;
+}
+
+.review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+  min-width: 0;
+}
+
+.setup-errors {
+  border: 1px solid rgba(255, 107, 74, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 107, 74, 0.08);
+  color: var(--warning);
+  padding: 12px;
+}
+
+.setup-errors p {
+  margin: 0 0 6px;
+}
+
+.setup-errors p:last-child {
+  margin-bottom: 0;
+}
+
+.setup-ready {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-strong);
+  font-weight: 800;
+}
+
+@keyframes contentReveal {
+  from {
+    transform: translateY(8px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}

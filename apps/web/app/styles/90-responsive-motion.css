@@ -1,0 +1,378 @@
+@media (max-width: 1100px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace {
+    width: 100%;
+    max-width: none;
+    overflow-x: hidden;
+  }
+
+  .setup-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+  }
+
+  .nav-list {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(148px, max-content);
+    grid-template-columns: none;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .operational-focus-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .context-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    position: static;
+  }
+
+  .draft-office-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .workspace,
+  .sidebar {
+    padding: 18px;
+  }
+
+  .topbar,
+  .metric-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .topbar {
+    gap: 12px;
+  }
+
+  .draft-office-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    gap: 16px;
+    overflow: visible;
+    position: relative;
+  }
+
+  .sidebar::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 86px;
+    width: 36px;
+    height: 52px;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgba(23, 26, 24, 0), var(--bg-rail) 80%);
+  }
+
+  .brand {
+    align-items: center;
+  }
+
+  .security-card {
+    display: none;
+  }
+
+  .nav-list {
+    display: flex;
+    gap: 8px;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    padding: 0 24px 6px 0;
+    scroll-padding-inline: 18px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+
+  .nav-item {
+    flex: 0 0 auto;
+    min-width: 132px;
+    max-width: 170px;
+    scroll-snap-align: start;
+  }
+
+  .matter-context-panel .panel-header,
+  .topbar,
+  .setup-actions-bar {
+    display: grid;
+  }
+
+  .matter-search-field {
+    width: 100%;
+  }
+
+  .metric-grid,
+  .operational-focus-list,
+  .operational-focus-summary,
+  .detail-grid,
+  .activity-grid,
+  .activity-filter-row,
+  .command-center-grid,
+  .command-center-summary-grid,
+  .command-jump-actions,
+  .contact-dossier-grid,
+  .context-rail,
+  .permission-toggle-grid,
+  .share-form-row,
+  .calendar-attendee-form,
+  .delivery-confirmation-grid,
+  .upload-create-grid,
+  .billing-action-row,
+  .intake-builder-grid,
+  .intake-preview-grid,
+  .intake-preview-summary,
+  .intake-item-add-row,
+  .intake-question-grid,
+  .nav-list,
+  .setup-grid,
+  .review-grid,
+  .preset-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .contact-dossier-detail {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding-left: 0;
+    padding-top: 12px;
+  }
+
+  .calendar-event-summary,
+  .calendar-attendee-row {
+    flex-direction: column;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .matter-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .matter-action-strip,
+  .draft-editor-header,
+  .draft-assist-controls,
+  .row-actions,
+  .share-row-actions,
+  .button-group,
+  .setup-actions,
+  .setup-actions-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .action-strip-button,
+  .primary-button,
+  .secondary-button {
+    justify-content: center;
+  }
+
+  .action-strip-button {
+    min-height: 40px;
+    white-space: normal;
+  }
+
+  .public-form-shell {
+    padding: 18px;
+  }
+
+  .public-form-action {
+    grid-template-columns: 1fr;
+  }
+
+  .public-submit-button {
+    justify-self: stretch;
+  }
+
+  .user-pill {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .setup-shell,
+  .public-form-shell {
+    padding: 16px;
+  }
+
+  .setup-panel,
+  .auth-panel {
+    padding: 20px;
+  }
+
+  .setup-rail {
+    padding: 20px;
+  }
+
+  .setup-step-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .setup-step {
+    justify-content: flex-start;
+    padding: 0 10px;
+  }
+
+  .review-card-item,
+  .setup-ready-banner,
+  .glass-card {
+    padding: 14px;
+  }
+
+  .draft-editor-header {
+    display: flex;
+  }
+
+  .draft-editor-header .save-draft-button,
+  .draft-assist-controls .compact-button,
+  .share-form-row .compact-button,
+  .upload-create-grid .primary-button,
+  .billing-action-row .primary-button,
+  .calendar-credential-form .compact-button {
+    width: 100%;
+  }
+
+  .row-actions {
+    width: 100%;
+  }
+
+  .row-button {
+    flex: 1 1 auto;
+  }
+
+  h1 {
+    font-size: 26px;
+  }
+
+  .dashboard-topbar h1 {
+    max-width: 100%;
+    overflow-wrap: break-word;
+  }
+}
+
+@media (max-width: 520px) {
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-step-list {
+    grid-template-columns: 1fr;
+  }
+
+  .section-title,
+  .party-row,
+  .matter-row,
+  .review-row,
+  .setup-ready-banner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .section-title span {
+    text-align: left;
+  }
+
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar::after {
+    top: 82px;
+  }
+
+  .nav-item {
+    min-width: 124px;
+    max-width: 150px;
+  }
+
+  .nav-disabled-reason {
+    font-size: 10px;
+  }
+
+  .workspace,
+  .sidebar {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .panel,
+  .setup-panel,
+  .auth-panel {
+    padding: 16px;
+  }
+
+  .matter-action-strip {
+    gap: 7px;
+  }
+
+  .inline-empty,
+  .conflict-results p {
+    padding: 12px;
+  }
+
+  .setup-content-area {
+    min-height: auto;
+  }
+
+  .setup-errors-box {
+    padding: 12px;
+  }
+
+  .setup-actions-bar {
+    gap: 14px;
+    margin-top: 20px;
+  }
+
+  .status-message {
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+
+  .matter-row:hover,
+  .primary-button:hover:not(:disabled),
+  .secondary-button:hover:not(:disabled),
+  .passkey-button:hover:not(:disabled) {
+    transform: none;
+  }
+
+  .animate-spin {
+    animation: none !important;
+  }
+}
