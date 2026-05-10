@@ -10,6 +10,24 @@ export interface ConflictCandidate {
   matchedValue: string;
 }
 
+export interface ConflictCheckRecord {
+  id: string;
+  firmId: string;
+  requestedByUserId: string;
+  prospectiveName: string;
+  querySnapshot: {
+    prospectiveName: string;
+    aliases: string[];
+    identifiers: Array<{ type: string; value: string }>;
+    prospectiveRole?: "client" | "opposing_party" | "third_party";
+    includeClosedMatters: boolean;
+  };
+  resultSnapshot: ConflictCandidate[];
+  disposition: "pending_review" | "cleared" | "conflict_found" | string;
+  reviewedByUserId?: string;
+  createdAt: string;
+}
+
 export interface ConflictCheckInput {
   firmId: string;
   prospectiveName: string;

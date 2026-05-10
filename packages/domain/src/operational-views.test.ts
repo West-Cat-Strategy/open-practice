@@ -109,6 +109,7 @@ describe("built-in operational views", () => {
             },
             signals: [],
           },
+          conflictHistory: [],
         },
       ],
     });

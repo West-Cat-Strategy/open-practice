@@ -752,6 +752,21 @@ describe("API auth and persistence boundaries", () => {
         conflicts: (beforePayload.taxonomySummary.byCategory.conflicts ?? 0) + 1,
       },
     });
+    const dossiers = await server.inject({ method: "GET", url: "/api/contacts/dossiers" });
+    expect(dossiers.statusCode).toBe(200);
+    const river = dossiers
+      .json<Array<{ contact: { id: string }; conflictHistory: unknown[] }>>()
+      .find((dossier) => dossier.contact.id === "contact-river");
+    expect(river?.conflictHistory).toEqual([
+      expect.objectContaining({
+        matchedContactId: "contact-river",
+        visibleMatchedMatterIds: ["matter-001"],
+        matchCount: 1,
+        maxSeverity: "blocker",
+      }),
+    ]);
+    expect(JSON.stringify(river?.conflictHistory)).not.toContain("River City Rentals");
+    expect(JSON.stringify(river?.conflictHistory)).not.toContain("river city rentals");
   });
 
   it("accepts expanded conflict input through the existing route contract", async () => {

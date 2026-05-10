@@ -74,6 +74,18 @@ describe("contact routes", () => {
         appliedAt: "2026-05-01T11:00:00.000Z",
       },
     ]);
+    await repository.runConflictCheck({
+      firmId: "firm-west-legal",
+      actorId: "user-licensee",
+      prospectiveName: "River City Rentals",
+      includeClosedMatters: true,
+    });
+    await repository.runConflictCheck({
+      firmId: "firm-west-legal",
+      actorId: "user-licensee",
+      prospectiveName: "North Star Holdings",
+      includeClosedMatters: true,
+    });
     const response = await testServer({
       repository,
       user: user("licensee", ["matter-001"]),
@@ -84,6 +96,13 @@ describe("contact routes", () => {
       Array<{
         contact: { id: string };
         matters: unknown[];
+        conflictHistory: Array<{
+          id: string;
+          matchedContactId: string;
+          visibleMatchedMatterIds: string[];
+          matchCount: number;
+          maxSeverity: string;
+        }>;
         qualityReview: { summary: { revalidationPromptCount: number }; signals: unknown[] };
       }>
     >();
@@ -109,7 +128,19 @@ describe("contact routes", () => {
           }),
         ],
       },
+      conflictHistory: [],
     });
+    const river = payload.find((dossier) => dossier.contact.id === "contact-river")!;
+    expect(river.conflictHistory).toEqual([
+      expect.objectContaining({
+        matchedContactId: "contact-river",
+        visibleMatchedMatterIds: ["matter-001"],
+        matchCount: 1,
+        maxSeverity: "blocker",
+      }),
+    ]);
+    expect(JSON.stringify(payload)).not.toContain("North Star Holdings");
+    expect(JSON.stringify(payload)).not.toContain("matter-002");
   });
 
   it("rejects users without contact read access", async () => {

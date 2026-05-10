@@ -29,6 +29,7 @@ import {
   type ConversationThreadRecord,
   type Contact,
   type ContactDossier,
+  type ConflictCheckRecord,
   type DocumentRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
@@ -1329,6 +1330,20 @@ function mapContactRow(row: typeof schema.contacts.$inferSelect): Contact {
   };
 }
 
+function mapConflictCheckRow(row: typeof schema.conflictChecks.$inferSelect): ConflictCheckRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    requestedByUserId: row.requestedByUserId,
+    prospectiveName: row.prospectiveName,
+    querySnapshot: row.querySnapshot as ConflictCheckRecord["querySnapshot"],
+    resultSnapshot: row.resultSnapshot as ConflictCheckRecord["resultSnapshot"],
+    disposition: row.disposition,
+    reviewedByUserId: row.reviewedByUserId ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
 function mapDocumentRow(row: typeof schema.documents.$inferSelect): DocumentRecord {
   return {
     id: row.id,
@@ -2429,6 +2444,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private intakeFormLinks: IntakeFormLinkRecord[] = [];
   private intakeFormItemActions: IntakeFormItemActionRecord[] = [];
   private intakeVariableProposals: IntakeVariableProposal[] = [];
+  private conflictChecks: ConflictCheckRecord[] = [];
   private generatedDocuments: GeneratedDocumentRecord[];
   private firmSettings: FirmSettings[] = [];
   private providerSettings: ProviderSettingRecord[] = [];
@@ -3262,6 +3278,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       matterParties,
       portalGrants: this.portalGrants,
       intakeVariableProposals,
+      conflictChecks: this.conflictChecks,
     });
   }
 
@@ -3715,6 +3732,27 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       matters: this.matters,
       matterParties: this.matterParties,
     });
+    const checkId = `conflict-check-${String(this.conflictChecks.length + 1).padStart(3, "0")}`;
+    const createdAt = new Date().toISOString();
+    this.conflictChecks = [
+      ...this.conflictChecks,
+      {
+        id: checkId,
+        firmId: input.firmId,
+        requestedByUserId: input.actorId,
+        prospectiveName: input.prospectiveName,
+        querySnapshot: {
+          prospectiveName: input.prospectiveName,
+          aliases: input.aliases ?? [],
+          identifiers: input.identifiers ?? [],
+          includeClosedMatters: input.includeClosedMatters,
+          ...(input.prospectiveRole ? { prospectiveRole: input.prospectiveRole } : {}),
+        },
+        resultSnapshot: clone(results),
+        disposition: "pending_review",
+        createdAt,
+      },
+    ];
     this.auditEvents = [
       ...this.auditEvents,
       appendAuditEvent(this.auditEvents.at(-1), {
@@ -3723,8 +3761,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         actorId: input.actorId,
         action: "conflict_check.completed",
         resourceType: "conflict_check",
-        resourceId: `conflict-${Date.now()}`,
-        occurredAt: new Date().toISOString(),
+        resourceId: checkId,
+        occurredAt: createdAt,
         metadata: { prospectiveName: input.prospectiveName, matchCount: results.length },
       }),
     ];
@@ -6155,6 +6193,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       (proposal) =>
         Boolean(proposal.appliedAt) && matters.some((matter) => matter.id === proposal.matterId),
     );
+    const conflictChecks = (
+      await this.db
+        .select()
+        .from(schema.conflictChecks)
+        .where(eq(schema.conflictChecks.firmId, user.firmId))
+    ).map(mapConflictCheckRow);
     return buildContactDossiers({
       firmId: user.firmId,
       contacts,
@@ -6162,6 +6206,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       matterParties,
       portalGrants,
       intakeVariableProposals,
+      conflictChecks,
     });
   }
 
@@ -6819,6 +6864,8 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     ).map(mapMatter);
     const matterParties = await this.listMatterParties(input.firmId);
     const results = runConflictCheck({ ...input, contacts, matters, matterParties });
+    const checkId = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
     const previous = (await this.listAuditEvents(input.firmId)).events.at(-1);
     const event = appendAuditEvent(previous, {
       id: crypto.randomUUID(),
@@ -6826,9 +6873,25 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       actorId: input.actorId,
       action: "conflict_check.completed",
       resourceType: "conflict_check",
-      resourceId: crypto.randomUUID(),
-      occurredAt: new Date().toISOString(),
+      resourceId: checkId,
+      occurredAt: createdAt,
       metadata: { prospectiveName: input.prospectiveName, matchCount: results.length },
+    });
+    await this.db.insert(schema.conflictChecks).values({
+      id: checkId,
+      firmId: input.firmId,
+      requestedByUserId: input.actorId,
+      prospectiveName: input.prospectiveName,
+      querySnapshot: {
+        prospectiveName: input.prospectiveName,
+        aliases: input.aliases ?? [],
+        identifiers: input.identifiers ?? [],
+        includeClosedMatters: input.includeClosedMatters,
+        ...(input.prospectiveRole ? { prospectiveRole: input.prospectiveRole } : {}),
+      },
+      resultSnapshot: results,
+      disposition: "pending_review",
+      createdAt: new Date(createdAt),
     });
     await this.db.insert(schema.auditEvents).values({
       ...event,
