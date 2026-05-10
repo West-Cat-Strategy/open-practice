@@ -386,6 +386,110 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.text-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--accent);
+  padding: 9px 12px;
+  font-weight: 700;
+}
+
+.text-button:hover,
+.text-button:focus-visible {
+  border-color: rgba(194, 229, 177, 0.45);
+  background: rgba(194, 229, 177, 0.1);
+}
+
+.operational-focus-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.operational-focus-header {
+  margin-bottom: 0;
+}
+
+.operational-focus-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.operational-focus-summary span {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.operational-focus-summary strong {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.operational-focus-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(156px, 1fr));
+  gap: 10px;
+}
+
+.operational-focus-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 11px;
+  min-width: 0;
+}
+
+.operational-focus-item.risk {
+  border-color: rgba(239, 184, 121, 0.36);
+}
+
+.operational-focus-item.ready {
+  border-color: rgba(145, 214, 172, 0.32);
+}
+
+.operational-focus-item-value {
+  min-width: 32px;
+  border-radius: 8px;
+  background: rgba(194, 229, 177, 0.12);
+  color: var(--accent);
+  padding: 6px;
+  text-align: center;
+  font-weight: 800;
+}
+
+.operational-focus-item.risk .operational-focus-item-value {
+  background: rgba(239, 184, 121, 0.14);
+  color: var(--warning);
+}
+
+.operational-focus-item strong,
+.operational-focus-item small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.operational-focus-item small {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
 .main-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(296px, 0.38fr);
@@ -2021,6 +2125,10 @@ h3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .operational-focus-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .main-grid {
     grid-template-columns: 1fr;
   }
@@ -2110,6 +2218,8 @@ h3 {
   }
 
   .metric-grid,
+  .operational-focus-list,
+  .operational-focus-summary,
   .detail-grid,
   .activity-grid,
   .activity-filter-row,

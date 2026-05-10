@@ -175,6 +175,11 @@ import {
   summarizeProvidersStatus,
 } from "./provider-status-dashboard";
 import {
+  buildOperationalFocusSummary,
+  focusItemToneClass,
+  operationalFocusEmptyMessage,
+} from "./operational-focus-panel";
+import {
   buildMatterFileCommandCenter,
   filterMatterActivity,
   formatMatterActivityKind,
@@ -806,6 +811,26 @@ export default function DashboardClient({
     const my = taskWorkbench.counters.my;
     return `${my.overdue} overdue, ${my.today} due today, ${my.upcoming} upcoming`;
   }, [taskWorkbench.counters.my]);
+  const operationalFocus = useMemo(
+    () =>
+      buildOperationalFocusSummary({
+        taskWorkbench,
+        queues,
+        workerRuns,
+        providerStatus,
+        activeMatterCommandCenter,
+        activeMatterActivitySummary: activeActivitySummary,
+      }),
+    [
+      activeActivitySummary,
+      activeMatterCommandCenter,
+      providerStatus,
+      queues,
+      taskWorkbench,
+      workerRuns,
+    ],
+  );
+  const operationalFocusEmpty = operationalFocusEmptyMessage(operationalFocus);
 
   useEffect(() => {
     if (!activeMatter) return;
@@ -2180,6 +2205,57 @@ export default function DashboardClient({
               <strong>{metric.value}</strong>
             </article>
           ))}
+        </section>
+
+        <section
+          className="panel operational-focus-panel"
+          aria-labelledby="operational-focus-title"
+        >
+          <div className="panel-header operational-focus-header">
+            <div>
+              <p className="eyebrow">Operations focus</p>
+              <h2 id="operational-focus-title">What needs attention</h2>
+            </div>
+            <button
+              className="text-button"
+              onClick={() => selectDashboardSection("queues")}
+              type="button"
+            >
+              <Clock3 size={16} aria-hidden="true" />
+              Open queues
+            </button>
+          </div>
+          <div className="operational-focus-summary" aria-label="Operations focus summary">
+            <span>
+              <strong>{operationalFocus.attentionCount}</strong>
+              Attention
+            </span>
+            <span>
+              <strong>{operationalFocus.activeCount}</strong>
+              Active
+            </span>
+            <span>
+              <strong>{operationalFocus.providerRiskCount}</strong>
+              Provider risks
+            </span>
+          </div>
+          <div className="operational-focus-list">
+            {operationalFocus.items.map((item) => (
+              <article
+                className={`operational-focus-item ${focusItemToneClass(item.tone)}`}
+                key={item.key}
+              >
+                <span className="operational-focus-item-value">{item.value}</span>
+                <span>
+                  <strong>{item.label}</strong>
+                  <small>
+                    {item.section} · {item.detail}
+                  </small>
+                </span>
+              </article>
+            ))}
+            {operationalFocusEmpty ? <p className="inline-empty">{operationalFocusEmpty}</p> : null}
+          </div>
         </section>
 
         <section

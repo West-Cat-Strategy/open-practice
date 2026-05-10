@@ -125,6 +125,10 @@ import {
   summarizeProvidersStatus,
 } from "./provider-status-dashboard";
 import {
+  buildOperationalFocusSummary,
+  operationalFocusEmptyMessage,
+} from "./operational-focus-panel";
+import {
   buildIntakeFormLinkCreatePayload,
   buildIntakeFormLinkListPath,
   buildIntakePortalPath,
@@ -184,7 +188,10 @@ import type {
   BillingDashboardResponse,
   IntakeFormLinkSummary,
   MatterSummary,
+  ProvidersStatusResponse,
+  QueuesResponse,
   ShareLinkRecord,
+  TaskDeadlineWorkbenchResponse,
   TrustControlsDashboardResponse,
   WorkerRunsDashboardResponse,
 } from "./types";
@@ -1726,6 +1733,129 @@ describe("dashboard client behavior", () => {
     );
     expect(workerRunSafeContext(dashboard.all.jobs[1]!)).not.toContain("storage");
     expect(workerRunSafeContext(dashboard.all.jobs[1]!)).not.toContain("raw document text");
+  });
+
+  it("builds an operations focus summary from existing authorized dashboard data", () => {
+    const taskWorkbench: TaskDeadlineWorkbenchResponse = {
+      tasks: [],
+      counters: {
+        my: { overdue: 2, today: 1, upcoming: 0 },
+        team: { overdue: 2, today: 3, upcoming: 1 },
+        matterQueues: [],
+        contactQueues: [],
+      },
+      focusQueues: {
+        myOverdueTaskIds: ["task-overdue-1", "task-overdue-2"],
+        teamTodayTaskIds: ["task-today-1"],
+        upcomingTaskIds: [],
+        unassignedTaskIds: [],
+      },
+    };
+    const queues: QueuesResponse = {
+      sections: [
+        {
+          key: "intake",
+          label: "Intake",
+          items: [
+            {
+              id: "queue-1",
+              matterId: "matter-001",
+              title: "contains raw-token-secret but must not render",
+              status: "pending_review",
+              priority: "high",
+            },
+          ],
+        },
+      ],
+    };
+    const workerRuns: WorkerRunsDashboardResponse = {
+      all: {
+        ...emptyWorkerRunsResponse("loaded"),
+        summary: { total: 3, queued: 1, active: 1, failed: 1, terminal: 1, byQueue: [] },
+      },
+      email: emptyWorkerRunsResponse("loaded"),
+      ocr: emptyWorkerRunsResponse("loaded"),
+    };
+    const providerStatus = emptyProvidersStatusResponse("smtp_not_configured");
+
+    const focus = buildOperationalFocusSummary({
+      taskWorkbench,
+      queues,
+      workerRuns,
+      providerStatus,
+      activeMatterCommandCenter: {
+        rail: [
+          {
+            key: "communications",
+            label: "Communication records",
+            value: 2,
+            detail: "Inbound and outbound delivery records",
+            tone: "ready",
+          },
+        ],
+      },
+      activeMatterActivitySummary: { attention: 1 },
+    });
+
+    expect(focus.items.map((item) => item.key).slice(0, 4)).toEqual([
+      "tasks-overdue",
+      "tasks-today",
+      "workers-failed",
+      "workers-active",
+    ]);
+    expect(focus.attentionCount).toBe(5);
+    expect(focus.providerRiskCount).toBe(1);
+    expect(JSON.stringify(focus.items)).not.toContain("raw-token-secret");
+    expect(JSON.stringify(focus.items)).not.toContain("token");
+  });
+
+  it("returns an empty operations focus message when no attention signals exist", () => {
+    const emptyStatus = emptyProvidersStatusResponse();
+    const providerStatus: ProvidersStatusResponse = {
+      ...emptyStatus,
+      email: {
+        ...emptyStatus.email,
+        status: "configured",
+        provider: "smtp",
+        queue: { queueName: "email", status: "configured" },
+      },
+      documentProcessing: {
+        ...emptyStatus.documentProcessing,
+        status: "configured",
+        workerQueues: [{ queueName: "ocr", status: "configured" }],
+      },
+    };
+
+    const focus = buildOperationalFocusSummary({
+      taskWorkbench: {
+        tasks: [],
+        counters: {
+          my: { overdue: 0, today: 0, upcoming: 0 },
+          team: { overdue: 0, today: 0, upcoming: 0 },
+          matterQueues: [],
+          contactQueues: [],
+        },
+        focusQueues: {
+          myOverdueTaskIds: [],
+          teamTodayTaskIds: [],
+          upcomingTaskIds: [],
+          unassignedTaskIds: [],
+        },
+      },
+      queues: { sections: [] },
+      workerRuns: {
+        all: emptyWorkerRunsResponse("loaded"),
+        email: emptyWorkerRunsResponse("loaded"),
+        ocr: emptyWorkerRunsResponse("loaded"),
+      },
+      providerStatus,
+      activeMatterActivitySummary: { attention: 0 },
+    });
+
+    expect(focus.items).toEqual([]);
+    expect(operationalFocusEmptyMessage(focus)).toBe(
+      "No overdue tasks, failed runs, high-priority queues, or provider risks need attention.",
+    );
   });
 
   it("builds share-link payloads and replaces revoked links without leaking token hashes", () => {
