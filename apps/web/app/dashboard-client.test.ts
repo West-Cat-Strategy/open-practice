@@ -1781,6 +1781,56 @@ describe("dashboard client behavior", () => {
     const focus = buildOperationalFocusSummary({
       taskWorkbench,
       queues,
+      operationalViews: {
+        generatedAt: "2026-06-20T12:00:00.000Z",
+        views: [
+          {
+            definition: {
+              key: "uncontacted_clients",
+              label: "Uncontacted clients",
+              defaultPriority: "medium",
+            },
+            resultCount: 9,
+            results: [
+              {
+                matterId: "matter-cross-scope",
+                body: "raw body text must not render",
+                metadata: { token: "private-token", hash: "private-hash" },
+              },
+            ],
+          },
+          {
+            definition: {
+              key: "conflicts_pending_review",
+              label: "Conflicts pending review",
+              defaultPriority: "high",
+            },
+            resultCount: 3,
+            results: [
+              {
+                matterId: "matter-hidden",
+                extractionText: "raw extraction text must not render",
+              },
+            ],
+          },
+          {
+            definition: {
+              key: "overdue_tasks_deadlines",
+              label: "Overdue tasks and deadlines",
+              defaultPriority: "high",
+            },
+            resultCount: 1,
+          },
+          {
+            definition: {
+              key: "awaiting_signature",
+              label: "Awaiting signature",
+              defaultPriority: "medium",
+            },
+            resultCount: 5,
+          },
+        ],
+      },
       workerRuns,
       providerStatus,
       activeMatterCommandCenter: {
@@ -1803,10 +1853,28 @@ describe("dashboard client behavior", () => {
       "workers-failed",
       "workers-active",
     ]);
-    expect(focus.attentionCount).toBe(5);
+    expect(focus.items.map((item) => item.key).slice(4, 7)).toEqual([
+      "operational-view-conflicts_pending_review",
+      "operational-view-overdue_tasks_deadlines",
+      "operational-view-uncontacted_clients",
+    ]);
+    expect(
+      focus.items
+        .filter((item) => item.section === "Operational views")
+        .map((item) => [item.label, item.value, item.detail]),
+    ).toEqual([
+      ["Conflicts pending review", "3", ""],
+      ["Overdue tasks and deadlines", "1", ""],
+      ["Uncontacted clients", "9", ""],
+    ]);
+    expect(focus.attentionCount).toBe(9);
     expect(focus.providerRiskCount).toBe(1);
     expect(JSON.stringify(focus.items)).not.toContain("raw-token-secret");
     expect(JSON.stringify(focus.items)).not.toContain("token");
+    expect(JSON.stringify(focus.items)).not.toContain("raw body text");
+    expect(JSON.stringify(focus.items)).not.toContain("raw extraction text");
+    expect(JSON.stringify(focus.items)).not.toContain("private-hash");
+    expect(JSON.stringify(focus.items)).not.toContain("matter-cross-scope");
   });
 
   it("returns an empty operations focus message when no attention signals exist", () => {
@@ -1843,6 +1911,7 @@ describe("dashboard client behavior", () => {
         },
       },
       queues: { sections: [] },
+      operationalViews: { views: [] },
       workerRuns: {
         all: emptyWorkerRunsResponse("loaded"),
         email: emptyWorkerRunsResponse("loaded"),
@@ -1854,7 +1923,7 @@ describe("dashboard client behavior", () => {
 
     expect(focus.items).toEqual([]);
     expect(operationalFocusEmptyMessage(focus)).toBe(
-      "No overdue tasks, failed runs, high-priority queues, or provider risks need attention.",
+      "No overdue tasks, operational views, failed runs, high-priority queues, or provider risks need attention.",
     );
   });
 

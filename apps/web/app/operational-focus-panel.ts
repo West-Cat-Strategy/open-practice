@@ -1,5 +1,6 @@
 import type {
   ProvidersStatusResponse,
+  OperationalViewsResponse,
   QueuesResponse,
   TaskDeadlineWorkbenchResponse,
   WorkerRunsDashboardResponse,
@@ -13,7 +14,13 @@ export interface OperationalFocusItem {
   detail: string;
   value: string;
   tone: OperationalFocusTone;
-  section: "Tasks" | "Workers" | "Queues" | "Providers" | "Active matter";
+  section:
+    | "Tasks"
+    | "Workers"
+    | "Queues"
+    | "Providers"
+    | "Active matter"
+    | "Operational views";
 }
 
 export interface OperationalFocusSummary {
@@ -158,9 +165,35 @@ function activeMatterItems(input: {
   return railItems.slice(0, 3);
 }
 
+function operationalViewItems(operationalViews: OperationalViewsResponse): OperationalFocusItem[] {
+  const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+  return operationalViews.views
+    .filter((view) => view.resultCount > 0)
+    .sort((left, right) => {
+      const leftPriority = priorityRank[left.definition.defaultPriority ?? "medium"] ?? 3;
+      const rightPriority = priorityRank[right.definition.defaultPriority ?? "medium"] ?? 3;
+      return (
+        leftPriority - rightPriority ||
+        right.resultCount - left.resultCount ||
+        left.definition.label.localeCompare(right.definition.label)
+      );
+    })
+    .slice(0, 3)
+    .map((view) => ({
+      key: `operational-view-${view.definition.key}`,
+      label: view.definition.label,
+      value: view.resultCount.toString(),
+      detail: "",
+      tone: view.definition.defaultPriority === "high" ? "risk" : "neutral",
+      section: "Operational views" as const,
+    }));
+}
+
 export function buildOperationalFocusSummary(input: {
   taskWorkbench: TaskDeadlineWorkbenchResponse;
   queues: QueuesResponse;
+  operationalViews: OperationalViewsResponse;
   workerRuns: WorkerRunsDashboardResponse;
   providerStatus: ProvidersStatusResponse;
   activeMatterCommandCenter?: { rail: MatterCommandCenterRail };
@@ -220,6 +253,7 @@ export function buildOperationalFocusSummary(input: {
           },
         ]
       : []),
+    ...operationalViewItems(input.operationalViews),
     ...queueAttentionItems(input.queues),
     ...providerItems,
     ...activeMatterItems({
@@ -232,6 +266,9 @@ export function buildOperationalFocusSummary(input: {
     attentionCount:
       myTasks.overdue +
       workerSummary.failed +
+      input.operationalViews.views
+        .filter((view) => view.definition.defaultPriority === "high")
+        .reduce((sum, view) => sum + view.resultCount, 0) +
       input.queues.sections
         .flatMap((section) => section.items)
         .filter((item) => item.priority === "high").length +
@@ -244,7 +281,7 @@ export function buildOperationalFocusSummary(input: {
 
 export function operationalFocusEmptyMessage(summary: OperationalFocusSummary): string {
   if (summary.items.length > 0) return "";
-  return "No overdue tasks, failed runs, high-priority queues, or provider risks need attention.";
+  return "No overdue tasks, operational views, failed runs, high-priority queues, or provider risks need attention.";
 }
 
 export function focusItemToneClass(tone: OperationalFocusTone): string {

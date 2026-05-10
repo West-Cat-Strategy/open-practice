@@ -227,6 +227,7 @@ import type {
   IntakeTemplateSavePayload,
   LegalClinicDashboardResponse,
   MatterSummary,
+  OperationalViewsResponse,
   PracticeOverview,
   ProvidersStatusResponse,
   QueuesResponse,
@@ -262,6 +263,7 @@ interface DashboardClientProps {
   legalClinic: LegalClinicDashboardResponse;
   initialSection: DashboardNavigationSectionKey;
   overview: PracticeOverview;
+  operationalViews: OperationalViewsResponse;
   providerStatus: ProvidersStatusResponse;
   matters: MatterSummary[];
   session: SessionResponse;
@@ -437,6 +439,7 @@ export default function DashboardClient({
   legalClinic,
   initialSection,
   overview,
+  operationalViews,
   providerStatus,
   matters,
   session,
@@ -816,6 +819,7 @@ export default function DashboardClient({
       buildOperationalFocusSummary({
         taskWorkbench,
         queues,
+        operationalViews,
         workerRuns,
         providerStatus,
         activeMatterCommandCenter,
@@ -824,6 +828,7 @@ export default function DashboardClient({
     [
       activeActivitySummary,
       activeMatterCommandCenter,
+      operationalViews,
       providerStatus,
       queues,
       taskWorkbench,
@@ -2248,9 +2253,13 @@ export default function DashboardClient({
                 <span className="operational-focus-item-value">{item.value}</span>
                 <span>
                   <strong>{item.label}</strong>
-                  <small>
-                    {item.section} · {item.detail}
-                  </small>
+                  {item.detail ? (
+                    <small>
+                      {item.section} · {item.detail}
+                    </small>
+                  ) : (
+                    <small>{item.section}</small>
+                  )}
                 </span>
               </article>
             ))}
