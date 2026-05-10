@@ -4,11 +4,15 @@ import {
   assertDraftAssistTask,
   buildBasicDraftTemplates,
   buildDraftAssistAuditMetadata,
+  buildDraftExportDocument,
   extractTipTapPlainText,
+  listDraftMergeFields,
   reviewDraftAssistRecord,
   sanitizeDraftHtml,
   tipTapDocumentSchema,
+  UnknownDraftMergeFieldError,
   type DraftAssistRecord,
+  type DraftMergeContext,
   type TipTapDocument,
 } from "./drafting.js";
 import {
@@ -104,6 +108,113 @@ describe("drafting domain", () => {
         "2026-04-28T12:00:00.000Z",
         "2026-04-28T12:00:00.000Z",
       ]);
+    });
+  });
+
+  describe("draft export helpers", () => {
+    const mergeContext: DraftMergeContext = {
+      firm: {
+        name: "West Coast Legal Services Collective",
+        officeEmail: "office@example.test",
+        officePhone: "604-555-0100",
+      },
+      matter: {
+        number: "2026-0001",
+        title: "Morgan tenancy dispute",
+        practiceArea: "Residential tenancy",
+        jurisdiction: "BC",
+      },
+      client: {
+        displayName: "Ada Morgan",
+        email: "ada@example.test",
+        phone: "604-555-0101",
+      },
+    };
+
+    it("resolves safe matter, client, and firm merge fields into export blocks", () => {
+      const document = buildDraftExportDocument({
+        title: "Letter for {{ matter.number }}",
+        mergeContext,
+        editorJson: {
+          type: "doc",
+          content: [
+            {
+              type: "heading",
+              attrs: { level: 1 },
+              content: [{ type: "text", text: "{{ firm.name }}" }],
+            },
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "Dear " },
+                {
+                  type: "text",
+                  text: "{{ client.displayName }}",
+                  marks: [{ type: "bold" }],
+                },
+                { type: "text", text: ", regarding {{ matter.title }}." },
+              ],
+            },
+            {
+              type: "bulletList",
+              content: [
+                {
+                  type: "listItem",
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "{{ matter.practiceArea }}" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      expect(document.title).toBe("Letter for 2026-0001");
+      expect(document.blocks).toEqual([
+        {
+          type: "heading",
+          level: 1,
+          runs: [{ text: "West Coast Legal Services Collective", marks: [] }],
+        },
+        {
+          type: "paragraph",
+          runs: [
+            { text: "Dear ", marks: [] },
+            { text: "Ada Morgan", marks: ["bold"] },
+            { text: ", regarding Morgan tenancy dispute.", marks: [] },
+          ],
+        },
+        {
+          type: "bullet_list_item",
+          order: undefined,
+          runs: [{ text: "Residential tenancy", marks: [] }],
+        },
+      ]);
+    });
+
+    it("rejects unknown merge fields before rendering", () => {
+      const editorJson: TipTapDocument = {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "{{ intake.answer }} {{ matter.title }}" }],
+          },
+        ],
+      };
+
+      expect(listDraftMergeFields(editorJson)).toEqual(["intake.answer", "matter.title"]);
+      expect(() =>
+        buildDraftExportDocument({
+          title: "Blocked",
+          editorJson,
+          mergeContext,
+        }),
+      ).toThrow(UnknownDraftMergeFieldError);
     });
   });
 

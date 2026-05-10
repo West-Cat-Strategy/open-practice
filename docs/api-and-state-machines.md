@@ -150,6 +150,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/drafts/:id`                                                             | Fetch an authorized draft by ID.                                                                                                                                                        |
 | `PUT /api/drafts/:id`                                                             | Save structured draft content or rendered snapshot updates and increment the draft version.                                                                                             |
 | `DELETE /api/drafts/:id`                                                          | Delete an authorized draft record.                                                                                                                                                      |
+| `POST /api/drafts/:id/exports`                                                    | Export a saved matter-scoped draft to PDF or DOCX through configured object storage, creating verified document metadata plus generated-document metadata.                              |
 | `GET /api/draft-assist/status`                                                    | Disabled-by-default drafting assist status from firm AI provider settings and injected provider availability.                                                                           |
 | `GET /api/draft-assist/records?matterId=&draftId=&documentId=`                    | Matter-scoped non-authoritative assist records filtered by matter, draft, or document.                                                                                                  |
 | `POST /api/drafts/:id/assist`                                                     | Synchronous review-first draft assist suggestion from structured draft text; does not mutate the draft.                                                                                 |
@@ -392,6 +393,16 @@ version and records the updating user. `POST /api/drafts` accepts exactly one se
 `editorJson` for direct structured content or `templateId` for an active firm-scoped template. Basic
 draft templates are firm-scoped seed records and can be filtered by category while remaining editable
 through future template-management workflows.
+
+Draft exports are the first office-suite word-processing slice. `POST /api/drafts/:id/exports`
+accepts `format: "pdf" | "docx"` and an optional title, reads only the saved draft version, resolves
+the safe server-owned merge fields for firm, matter, and primary client/contact data, and rejects
+unknown placeholders before rendering or creating records. Exports require configured S3-compatible
+storage. A successful export stores rendered bytes in object storage, creates a verified
+matter-scoped document row, creates generated-document metadata with optional `intakeSessionId`, and
+records a redacted audit event with IDs, format, checksum, byte length, and draft version only.
+Spreadsheet, presentation, external legal-template, intake-answer, and collaboration surfaces remain
+deferred.
 
 Ledger posting has no mutable status field. A transaction is accepted only when entries are balanced,
 non-zero, one-sided debit/credit rows; all accounts, matters, and clients are valid; the idempotency

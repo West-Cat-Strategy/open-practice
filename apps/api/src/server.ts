@@ -361,7 +361,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     s3: options.s3,
     ocrJobQueue: options.ocrJobQueue,
   });
-  registerDraftRoutes(server, { repository: options.repository });
+  registerDraftRoutes(server, { repository: options.repository, s3: options.s3 });
   registerDraftAssistRoutes(server, {
     repository: options.repository,
     draftAssistProvider: options.draftAssistProvider,

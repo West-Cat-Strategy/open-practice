@@ -367,6 +367,7 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
       .values(
         sampleGeneratedDocuments.map((document) => ({
           ...document,
+          intakeSessionId: document.intakeSessionId ?? null,
           createdAt: new Date(document.createdAt),
         })),
       )

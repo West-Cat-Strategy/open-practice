@@ -1,3 +1,4 @@
+import type { S3Client } from "@aws-sdk/client-s3";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { createApiServer } from "../server.js";
@@ -24,6 +25,18 @@ const staffHeaders = {
   "x-open-practice-user-id": "user-staff",
   "x-open-practice-firm-id": "firm-west-legal",
 };
+
+function s3Config(calls: unknown[]): NonNullable<CreateServerOptions["s3"]> {
+  return {
+    bucket: "open-practice-test-documents",
+    client: {
+      async send(command: unknown) {
+        calls.push(command);
+        return {};
+      },
+    } as unknown as S3Client,
+  };
+}
 
 function draftPayload(overrides: Record<string, unknown> = {}) {
   return {
@@ -484,5 +497,189 @@ describe("draft routes", () => {
       version: 1,
       updatedByUserId: "user-admin",
     });
+  });
+
+  it("exports saved matter drafts to PDF and DOCX with generated-document metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const s3Calls: unknown[] = [];
+    const server = testServer({ repository, s3: s3Config(s3Calls) });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/drafts",
+      payload: draftPayload({
+        title: "Merge letter {{ matter.number }}",
+        editorJson: {
+          type: "doc",
+          content: [
+            {
+              type: "heading",
+              attrs: { level: 1 },
+              content: [{ type: "text", text: "{{ firm.name }}" }],
+            },
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "Dear " },
+                { type: "text", text: "{{ client.displayName }}", marks: [{ type: "bold" }] },
+                { type: "text", text: ", this concerns {{ matter.title }}." },
+              ],
+            },
+          ],
+        },
+      }),
+    });
+
+    for (const format of ["pdf", "docx"] as const) {
+      const exported = await server.inject({
+        method: "POST",
+        url: `/api/drafts/${created.json<{ id: string }>().id}/exports`,
+        payload: { format, title: `Office export ${format}` },
+      });
+
+      expect(exported.statusCode).toBe(200);
+      expect(exported.json()).toMatchObject({
+        format,
+        title: `Office export ${format}`,
+        contentType:
+          format === "pdf"
+            ? "application/pdf"
+            : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        document: {
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          classification: "work_product",
+          legalHold: true,
+          uploadStatus: "verified",
+          checksumStatus: expect.stringMatching(/^(verified|duplicate)$/),
+          scanStatus: "passed",
+        },
+        generatedDocument: {
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          provider: "embedded",
+          evidence: {
+            source: "draft_export",
+            draftId: created.json<{ id: string }>().id,
+            draftVersion: 1,
+            format,
+            byteLength: expect.any(Number),
+          },
+        },
+      });
+      expect(exported.json<{ byteLength: number }>().byteLength).toBeGreaterThan(100);
+      expect(exported.json<{ checksumSha256: string }>().checksumSha256).toMatch(/^[a-f0-9]{64}$/);
+    }
+
+    expect(s3Calls).toHaveLength(2);
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "draft.export.created",
+          resourceType: "generated_document",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            draftId: created.json<{ id: string }>().id,
+            draftVersion: 1,
+            documentId: expect.any(String),
+            generatedDocumentId: expect.any(String),
+            format: "pdf",
+            checksumSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+            byteLength: expect.any(Number),
+          }),
+        }),
+        expect.objectContaining({
+          action: "draft.export.created",
+          metadata: expect.objectContaining({ format: "docx" }),
+        }),
+      ]),
+      valid: true,
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    expect(JSON.stringify(audit.events)).not.toContain("Dear Ada Morgan");
+    expect(JSON.stringify(audit.events)).not.toContain("West Coast Legal Services Collective");
+  });
+
+  it("rejects draft exports when storage is not configured", async () => {
+    const server = testServer();
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/drafts",
+      payload: draftPayload({ title: "No storage export" }),
+    });
+
+    const exported = await server.inject({
+      method: "POST",
+      url: `/api/drafts/${created.json<{ id: string }>().id}/exports`,
+      payload: { format: "pdf" },
+    });
+
+    expect(exported.statusCode).toBe(503);
+    expect(exported.json()).toMatchObject({
+      error: "Error",
+      message: "Document export storage is not configured",
+    });
+  });
+
+  it("rejects unknown merge fields before uploading or creating document records", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const s3Calls: unknown[] = [];
+    const server = testServer({ repository, s3: s3Config(s3Calls) });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/drafts",
+      payload: draftPayload({
+        title: "Unknown merge field",
+        editorJson: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Unsupported {{ intake.answer }}" }],
+            },
+          ],
+        },
+      }),
+    });
+
+    const exported = await server.inject({
+      method: "POST",
+      url: `/api/drafts/${created.json<{ id: string }>().id}/exports`,
+      payload: { format: "docx" },
+    });
+
+    expect(exported.statusCode).toBe(400);
+    expect(exported.json()).toMatchObject({
+      error: "UnknownDraftMergeFieldError",
+      message: "Unknown draft merge field: intake.answer",
+    });
+    expect(s3Calls).toHaveLength(0);
+    await expect(
+      repository.listMatterDocuments("firm-west-legal", "matter-001"),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("keeps cross-matter draft exports behind matter-scoped access", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const s3Calls: unknown[] = [];
+    const server = testServer({ repository, s3: s3Config(s3Calls) });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/drafts",
+      payload: draftPayload({ matterId: "matter-002", title: "Restricted export" }),
+    });
+
+    const exported = await server.inject({
+      method: "POST",
+      url: `/api/drafts/${created.json<{ id: string }>().id}/exports`,
+      headers: licenseeHeaders,
+      payload: { format: "pdf" },
+    });
+
+    expect(exported.statusCode).toBe(403);
+    expect(exported.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Draft access required",
+    });
+    expect(s3Calls).toHaveLength(0);
   });
 });

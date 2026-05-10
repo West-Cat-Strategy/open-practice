@@ -1920,9 +1920,7 @@ export const generatedDocuments = pgTable("generated_documents", {
   matterId: text("matter_id")
     .notNull()
     .references(() => matters.id),
-  intakeSessionId: text("intake_session_id")
-    .notNull()
-    .references(() => intakeSessions.id),
+  intakeSessionId: text("intake_session_id").references(() => intakeSessions.id),
   provider: text("provider").notNull(),
   externalId: text("external_id").notNull(),
   title: text("title").notNull(),

@@ -29,6 +29,7 @@ documentation; dependency admission and service reuse still follow
 | Local LLM             | [Ollama](https://docs.ollama.com/)                                                                                 | Optional local assistive provider for summarization, classification, and drafting aids. Disabled by default; never system of record.                                    |
 | Passkeys              | [SimpleWebAuthn](https://simplewebauthn.dev/docs/)                                                                 | Accepted future embedded-auth extension for passkeys, bound to configured RP ID and origin.                                                                             |
 | Rich text             | [TipTap](https://tiptap.dev/docs) editor core                                                                      | Accepted for local notes, drafts, templates, and portal text. Store structured editor JSON plus rendered snapshots; avoid cloud/pro services unless reviewed.           |
+| Document export       | [docx](https://github.com/dolanmiu/docx) and [PDFKit](https://pdfkit.org/)                                         | Generate saved draft exports as DOCX/PDF from server-owned TipTap export models. Store binaries in object storage and metadata/checksums in PostgreSQL.                 |
 | Calendar sync         | [CalDAV](https://datatracker.ietf.org/doc/rfc4791/) and [iCalendar](https://datatracker.ietf.org/doc/html/rfc5545) | Open Practice-hosted matter calendars sync to iOS Calendar through revocable app-password CalDAV accounts. Authenticated `.ics` export remains read-only compatibility. |
 | Video meetings        | [WebRTC](https://www.w3.org/TR/webrtc/) with private signaling and STUN/TURN configuration                         | Planned self-hostable meeting substrate. Meeting links are disabled until capability tokens, signaling, TURN, chat, upload, and audit controls are designed.            |
 
@@ -49,6 +50,9 @@ documentation; dependency admission and service reuse still follow
 - Defer Google Calendar, Microsoft 365, iCloud, and other external provider sync until a provider-auth,
   conflict-resolution, consent, retention, and privacy plan is approved. Open Practice-hosted CalDAV
   account sync is the OP-T34 first sync target.
+- Defer spreadsheet, presentation, real-time collaboration, external office-provider sync, and
+  third-party legal-template libraries until separate matter-scoped authorization, retention, and
+  reuse-policy decisions are recorded.
 - Calendar dashboard deadline radar displays operator-entered event dates only. It is not a
   jurisdiction-certified limitation, filing-deadline, or recurrence calculation engine.
 - Keep DocuSeal, docassemble, OIDC providers, live payment processors, paperless-ngx, Kimai, LedgerSMB,
