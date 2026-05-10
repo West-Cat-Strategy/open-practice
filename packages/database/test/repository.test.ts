@@ -2051,6 +2051,74 @@ describe("repository operations foundation", () => {
     });
   });
 
+  it("links submitted intake form links to snapshots and records review decisions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const [template] = await repository.listIntakeTemplates("firm-west-legal");
+    const link = await repository.createIntakeFormLink({
+      id: "intake-form-link-review",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      intakeSessionId: "intake-session-001",
+      tokenHash: "review-link-token-hash",
+      requestedByUserId: "user-admin",
+      clientContactId: "contact-ada",
+      expiresAt: "2099-06-01T00:00:00.000Z",
+      createdAt: now,
+    });
+    const snapshot = await repository.createAnswerSnapshot({
+      id: "answer-snapshot-review",
+      firmId: "firm-west-legal",
+      intakeSessionId: "intake-session-001",
+      capturedAt: now,
+      answers: { issue_type: "repair" },
+      resolution: {
+        templateId: template.id,
+        templateVersion: template.definitionVersion,
+        visibleQuestionIds: ["issue_type"],
+        matchedBranchRuleIds: [],
+        eligiblePackageIds: [],
+        selectedPackageIds: [],
+        packageSummaries: [],
+        packageDocuments: [],
+      },
+    });
+
+    await expect(
+      repository.markIntakeFormLinkSubmitted({
+        firmId: "firm-west-legal",
+        id: link.id,
+        submittedAt: now,
+        answerSnapshotId: snapshot.id,
+      }),
+    ).resolves.toMatchObject({ id: link.id, answerSnapshotId: snapshot.id });
+    await expect(
+      repository.createIntakeFormReview({
+        id: "intake-form-review-accepted",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        intakeSessionId: "intake-session-001",
+        formLinkId: link.id,
+        answerSnapshotId: snapshot.id,
+        decision: "accepted",
+        decidedByUserId: "user-admin",
+        decidedAt: now,
+      }),
+    ).resolves.toMatchObject({
+      formLinkId: link.id,
+      answerSnapshotId: snapshot.id,
+      decision: "accepted",
+    });
+    await expect(
+      repository.listIntakeFormReviews("firm-west-legal", { formLinkId: link.id }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        formLinkId: link.id,
+        answerSnapshotId: snapshot.id,
+        decision: "accepted",
+      }),
+    ]);
+  });
+
   it("maps draft assist records and review decisions", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const created = await repository.createDraftAssistRecord({

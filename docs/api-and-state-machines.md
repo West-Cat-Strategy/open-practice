@@ -77,11 +77,15 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/intake-form-links?matterId=&intakeSessionId=`                           | Lists token-hashed form links plus upload/signature item actions without returning token hashes.                                                                                                        |
 | `POST /api/intake-form-links`                                                     | Creates an expiring token-hashed client form link, returns the raw token plus public portal URL once, and can queue one confirmed token email.                                                          |
 | `POST /api/intake-form-links/:id/revoke`                                          | Revokes an active matter-scoped client form link.                                                                                                                                                       |
+| `GET /api/intake-form-links/:id/review`                                           | Staff-only submitted intake review load for the linked answer snapshot, item actions, and review decision history.                                                                                      |
+| `POST /api/intake-form-links/:id/review/accept`                                   | Records an accepted submitted-intake review decision and closes the review task without applying variable proposals.                                                                                    |
+| `POST /api/intake-form-links/:id/review/reject`                                   | Records a rejected submitted-intake review decision with a required reason and closes the review task without applying variable proposals.                                                              |
+| `POST /api/intake-form-links/:id/review/request-more-info`                        | Records a follow-up decision, creates a child token-hashed form link, and returns the raw follow-up token and URL once.                                                                                 |
 | `GET /api/intake-variable-proposals?matterId=&status=`                            | Lists pending/approved/rejected staff-reviewed client/matter variable proposals created from public form answers.                                                                                       |
 | `POST /api/intake-variable-proposals/:id/approve`                                 | Applies one pending proposal to the allowed client or matter field and records reviewer evidence.                                                                                                       |
 | `POST /api/intake-variable-proposals/:id/reject`                                  | Rejects one pending proposal with a required reviewer reason.                                                                                                                                           |
 | `GET /api/portal/intake-forms/:token`                                             | Public token-scoped form load with sanitized link metadata, template definition, item actions, and access logging.                                                                                      |
-| `POST /api/portal/intake-forms/:token/submit`                                     | Public answer submission that gates required items, creates an answer snapshot, and creates pending proposals only.                                                                                     |
+| `POST /api/portal/intake-forms/:token/submit`                                     | Public answer submission that gates required items, creates an answer snapshot, links it to the form link, creates a review task/queue signal, and creates pending proposals only.                      |
 | `POST /api/portal/intake-forms/:token/items/:itemId/uploads`                      | Public token-scoped S3 upload intent for an intake upload item, including accepted MIME-type validation.                                                                                                |
 | `POST /api/portal/intake-forms/:token/items/:itemId/documents/:id/complete`       | Public checksum completion for an intake upload item document.                                                                                                                                          |
 | `POST /api/portal/intake-forms/:token/items/:itemId/signature`                    | Public embedded attestation fallback or document-backed signature request creation for an intake signature item.                                                                                        |
@@ -394,6 +398,13 @@ Answer snapshots keep the existing request shape, but the response and persisted
 computed `resolution` with the template ID/version, visible question IDs, eligible and selected
 package IDs, matched branch rule IDs, package summaries, and resolved package document references.
 Branch-only questions are visible only after their branch rule matches.
+Public form submission links the created answer snapshot back to the submitted form link and creates
+a deterministic `intake-review:<formLinkId>` task plus an intake queue item using only link/session
+IDs, review status, and generic titles. Staff review decisions are persisted separately from intake
+variable proposals: accept/reject/request-more-info records do not apply proposed client or matter
+field changes. Request-more-info creates a child form link with only the token hash stored; the raw
+token and URL are returned once in that create-time response. Task, queue, and audit metadata must
+not include raw answers, raw tokens, token hashes, or client-facing follow-up reason text.
 `POST /api/intake-sessions/:id/generated-packages` accepts a package ID and renders package document
 records from the latest stored resolution snapshot, so later template edits do not change the
 documents selected by a captured answer set. The response includes a `packageRuntime` replay proof

@@ -372,11 +372,95 @@ describe("intake form builder routes", () => {
     expect(submitted.statusCode).toBe(200);
     expect(submitted.json()).toMatchObject({
       status: "submitted",
+      link: expect.objectContaining({
+        answerSnapshotId: expect.any(String),
+      }),
+      snapshot: expect.objectContaining({
+        id: expect.any(String),
+        answers: expect.objectContaining({ matter_title: "Ada tenancy repairs" }),
+      }),
       proposals: [
         expect.objectContaining({ targetScope: "client", status: "pending" }),
         expect.objectContaining({ targetScope: "matter", status: "pending" }),
       ],
     });
+    const submittedLinkId = created.json<{ link: { id: string } }>().link.id;
+    const snapshotId = submitted.json<{ snapshot: { id: string } }>().snapshot.id;
+    await expect(repository.getIntakeFormLink("firm-west-legal", submittedLinkId)).resolves.toEqual(
+      expect.objectContaining({ answerSnapshotId: snapshotId }),
+    );
+    await expect(
+      repository.getTaskDeadline("firm-west-legal", `intake-review:${submittedLinkId}`),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        matterId: "matter-001",
+        title: "Review submitted intake form",
+      }),
+    );
+
+    const reviewLoad = await server.inject({
+      method: "GET",
+      url: `/api/intake-form-links/${encodeURIComponent(submittedLinkId)}/review`,
+    });
+    const queuesBeforeReview = await server.inject({ method: "GET", url: "/api/queues" });
+
+    expect(reviewLoad.statusCode).toBe(200);
+    expect(reviewLoad.json()).toMatchObject({
+      link: expect.objectContaining({ id: submittedLinkId, answerSnapshotId: snapshotId }),
+      snapshot: expect.objectContaining({
+        id: snapshotId,
+        answers: expect.objectContaining({ client_display_name: "Ada M." }),
+      }),
+      reviews: [],
+    });
+    expect(queuesBeforeReview.json()).toMatchObject({
+      sections: expect.arrayContaining([
+        expect.objectContaining({
+          key: "task-deadlines",
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              id: `intake-review:${submittedLinkId}`,
+              title: "Review submitted intake form",
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          key: "intake",
+          items: expect.arrayContaining([
+            expect.objectContaining({
+              id: submittedLinkId,
+              status: "pending_review",
+              title: "Submitted intake review",
+            }),
+          ]),
+        }),
+      ]),
+    });
+    expect(JSON.stringify(queuesBeforeReview.json())).not.toContain("Ada M.");
+    expect(JSON.stringify(queuesBeforeReview.json())).not.toContain("Ada tenancy repairs");
+
+    const acceptedReview = await server.inject({
+      method: "POST",
+      url: `/api/intake-form-links/${encodeURIComponent(submittedLinkId)}/review/accept`,
+    });
+    expect(acceptedReview.statusCode).toBe(200);
+    expect(acceptedReview.json()).toMatchObject({
+      review: {
+        decision: "accepted",
+        answerSnapshotId: snapshotId,
+        formLinkId: submittedLinkId,
+      },
+    });
+    await expect(
+      repository.getTaskDeadline("firm-west-legal", `intake-review:${submittedLinkId}`),
+    ).resolves.toEqual(expect.objectContaining({ completedAt: expect.any(String) }));
+    await expect(
+      repository.listIntakeVariableProposals("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: expect.any(String), status: "pending" }),
+      ]),
+    );
     const proposalId = submitted
       .json<{ proposals: Array<{ id: string; targetScope: string }> }>()
       .proposals.find((proposal) => proposal.targetScope === "matter")!.id;
@@ -413,7 +497,7 @@ describe("intake form builder routes", () => {
     expect(matter.title).toBe("Ada tenancy repairs");
     await expect(
       repository.listAccessLogs("firm-west-legal", {
-        intakeFormLinkId: created.json().link.id,
+        intakeFormLinkId: submittedLinkId,
       }),
     ).resolves.toEqual(
       expect.arrayContaining([
@@ -537,6 +621,115 @@ describe("intake form builder routes", () => {
     );
     expect(auditEvent?.metadata).not.toHaveProperty("consentText");
     expect(auditEvent?.metadata).not.toHaveProperty("signers");
+  });
+
+  it("requests more information with a fresh child token link returned once", async () => {
+    const { repository, server } = testServer();
+    const parentLink = await repository.createIntakeFormLink({
+      id: "intake-form-link-review-parent",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      intakeSessionId: "intake-session-001",
+      tokenHash: hashToken("parent-token", jwtSecret),
+      requestedByUserId: "user-admin",
+      clientContactId: "contact-ada",
+      expiresAt: "2099-06-01T00:00:00.000Z",
+      createdAt: "2026-05-01T12:00:00.000Z",
+    });
+    const snapshot = await repository.createAnswerSnapshot({
+      id: "answer-snapshot-review-parent",
+      firmId: "firm-west-legal",
+      intakeSessionId: "intake-session-001",
+      capturedAt: "2026-05-01T12:05:00.000Z",
+      answers: { matter_title: "Synthetic private answer" },
+      resolution: {
+        templateId: "intake-template-001",
+        templateVersion: 2,
+        visibleQuestionIds: ["matter_title"],
+        matchedBranchRuleIds: [],
+        eligiblePackageIds: [],
+        selectedPackageIds: [],
+        packageSummaries: [],
+        packageDocuments: [],
+      },
+    });
+    await repository.markIntakeFormLinkSubmitted({
+      firmId: "firm-west-legal",
+      id: parentLink.id,
+      submittedAt: "2026-05-01T12:06:00.000Z",
+      answerSnapshotId: snapshot.id,
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/intake-form-links/${parentLink.id}/review/request-more-info`,
+      payload: {
+        reason: "Synthetic follow-up request.",
+        expiresAt: "2099-06-08T00:00:00.000Z",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      review: {
+        decision: "request_more_info",
+        formLinkId: parentLink.id,
+        answerSnapshotId: snapshot.id,
+        followUpFormLinkId: expect.any(String),
+        reason: "Synthetic follow-up request.",
+      },
+      followUp: {
+        link: expect.objectContaining({
+          parentFormLinkId: parentLink.id,
+          status: "active",
+        }),
+        token: expect.any(String),
+        portalUrl: expect.stringMatching(/^http:\/\/localhost:3001\/intake-forms\//),
+      },
+    });
+    const body = response.json<{
+      followUp: { link: { id: string }; token: string; portalUrl: string };
+      review: { followUpFormLinkId: string };
+    }>();
+    expect(body.followUp.link).not.toHaveProperty("answerSnapshotId");
+    const storedFollowUp = await repository.getIntakeFormLink(
+      "firm-west-legal",
+      body.followUp.link.id,
+    );
+    expect(storedFollowUp).toEqual(
+      expect.objectContaining({
+        id: body.review.followUpFormLinkId,
+        parentFormLinkId: parentLink.id,
+        tokenHash: expect.any(String),
+      }),
+    );
+    expect(storedFollowUp?.tokenHash).not.toBe(body.followUp.token);
+    expect(storedFollowUp?.tokenHash).toBe(hashToken(body.followUp.token, jwtSecret));
+    const listed = await server.inject({
+      method: "GET",
+      url: "/api/intake-form-links?matterId=matter-001",
+    });
+    expect(JSON.stringify(listed.json())).not.toContain(body.followUp.token);
+    expect(JSON.stringify(listed.json())).not.toContain("Synthetic private answer");
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "intake_form_review.request_more_info",
+          metadata: expect.objectContaining({
+            formLinkId: parentLink.id,
+            answerSnapshotId: snapshot.id,
+            followUpFormLinkId: body.review.followUpFormLinkId,
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const reviewAudit = audit.events.find(
+      (event) => event.action === "intake_form_review.request_more_info",
+    );
+    expect(reviewAudit?.metadata).not.toHaveProperty("reason");
+    expect(JSON.stringify(reviewAudit?.metadata)).not.toContain("Synthetic private answer");
   });
 
   it("rejects document-backed signature items with missing document or signer email", async () => {

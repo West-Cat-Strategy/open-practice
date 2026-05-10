@@ -159,6 +159,52 @@ async function addMatterTwoQueueItems(repository: InMemoryOpenPracticeRepository
   });
 }
 
+async function addSubmittedIntakeReviewSignal(
+  repository: InMemoryOpenPracticeRepository,
+): Promise<void> {
+  const link = await repository.createIntakeFormLink({
+    id: "intake-form-link-submitted-review",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    intakeSessionId: "intake-session-001",
+    tokenHash: "submitted-review-token-hash",
+    requestedByUserId: "user-admin",
+    clientContactId: "contact-ada",
+    expiresAt: "2099-06-01T00:00:00.000Z",
+    createdAt: "2026-05-01T12:00:00.000Z",
+  });
+  const snapshot = await repository.createAnswerSnapshot({
+    id: "answer-snapshot-submitted-review",
+    firmId: "firm-west-legal",
+    intakeSessionId: "intake-session-001",
+    capturedAt: "2026-05-01T12:05:00.000Z",
+    answers: { client_display_name: "Private synthetic answer" },
+    resolution: {
+      templateId: "intake-template-001",
+      templateVersion: 2,
+      visibleQuestionIds: ["client_display_name"],
+      matchedBranchRuleIds: [],
+      eligiblePackageIds: [],
+      selectedPackageIds: [],
+      packageSummaries: [],
+      packageDocuments: [],
+    },
+  });
+  await repository.markIntakeFormLinkSubmitted({
+    firmId: "firm-west-legal",
+    id: link.id,
+    submittedAt: "2026-05-01T12:06:00.000Z",
+    answerSnapshotId: snapshot.id,
+  });
+  await repository.createTaskDeadline({
+    id: `intake-review:${link.id}`,
+    firmId: link.firmId,
+    matterId: link.matterId,
+    title: "Review submitted intake form",
+    dueAt: "2026-05-01T12:06:00.000Z",
+  });
+}
+
 class InvalidAuditRepository extends InMemoryOpenPracticeRepository {
   override async listAuditEvents(
     firmId: string,
@@ -273,6 +319,34 @@ describe("queue routes", () => {
       );
     }
     expect(section(payload, "ledger").items).toEqual([]);
+  });
+
+  it("surfaces submitted intake review signals without raw answers", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await addSubmittedIntakeReviewSignal(repository);
+    const response = await testServer({ repository }).inject({ method: "GET", url: "/api/queues" });
+    const payload = response.json<QueueResponse>();
+
+    expect(response.statusCode).toBe(200);
+    expect(section(payload, "task-deadlines").items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "intake-review:intake-form-link-submitted-review",
+          title: "Review submitted intake form",
+        }),
+      ]),
+    );
+    expect(section(payload, "intake").items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "intake-form-link-submitted-review",
+          status: "pending_review",
+          title: "Submitted intake review",
+        }),
+      ]),
+    );
+    expect(JSON.stringify(payload)).not.toContain("Private synthetic answer");
+    expect(JSON.stringify(payload)).not.toContain("submitted-review-token-hash");
   });
 
   it("adds an audit queue item when the audit chain is invalid", async () => {

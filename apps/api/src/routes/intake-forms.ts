@@ -5,11 +5,14 @@ import { z } from "zod";
 import type {
   AccessLogRecord,
   AccessRequest,
+  AnswerSnapshotRecord,
   Contact,
   EmbeddedIntakeFormItem,
   EmbeddedIntakeTemplateDefinition,
   IntakeFormItemActionRecord,
   IntakeFormLinkRecord,
+  IntakeFormReviewDecision,
+  IntakeFormReviewRecord,
   SignatureProviderEventRecord,
   SignatureRequestRecord,
   SignatureRequestSignerRecord,
@@ -82,6 +85,17 @@ const proposalParamsSchema = z.object({ id: z.string().min(1) });
 
 const proposalRejectBodySchema = z.object({
   reason: z.string().min(1),
+});
+
+const reviewParamsSchema = z.object({ id: z.string().min(1) });
+
+const reviewDecisionBodySchema = z.object({
+  reason: z.string().min(1).optional(),
+});
+
+const requestMoreInfoBodySchema = z.object({
+  reason: z.string().min(1),
+  expiresAt: z.string().datetime({ offset: true }).optional(),
 });
 
 const publicTokenParamsSchema = z.object({ token: z.string().min(1) });
@@ -191,6 +205,8 @@ function serializeLink(link: IntakeFormLinkRecord): Omit<IntakeFormLinkRecord, "
     intakeSessionId: link.intakeSessionId,
     requestedByUserId: link.requestedByUserId,
     clientContactId: link.clientContactId,
+    parentFormLinkId: link.parentFormLinkId,
+    answerSnapshotId: link.answerSnapshotId,
     expiresAt: link.expiresAt,
     revokedAt: link.revokedAt,
     submittedAt: link.submittedAt,
@@ -201,6 +217,10 @@ function serializeLink(link: IntakeFormLinkRecord): Omit<IntakeFormLinkRecord, "
 
 function buildPortalUrl(publicWebBaseUrl: string, token: string): string {
   return `${publicWebBaseUrl.replace(/\/+$/, "")}/intake-forms/${encodeURIComponent(token)}`;
+}
+
+function intakeReviewTaskId(formLinkId: string): string {
+  return `intake-review:${formLinkId}`;
 }
 
 function contentTypeAllowed(contentType: string, acceptedFileTypes?: string[]): boolean {
@@ -252,6 +272,101 @@ async function getTemplate(
     throw Object.assign(new Error("Intake template was not found"), { statusCode: 404 });
   validateEmbeddedIntakeTemplateDefinition(template.definition);
   return template;
+}
+
+async function ensureIntakeReviewTask(
+  repository: ApiRouteDependencies["repository"],
+  link: IntakeFormLinkRecord,
+  now: string,
+): Promise<void> {
+  const taskId = intakeReviewTaskId(link.id);
+  const existing = await repository.getTaskDeadline(link.firmId, taskId);
+  if (existing) return;
+  await repository.createTaskDeadline({
+    id: taskId,
+    firmId: link.firmId,
+    matterId: link.matterId,
+    title: "Review submitted intake form",
+    dueAt: now,
+  });
+}
+
+async function completeIntakeReviewTask(
+  repository: ApiRouteDependencies["repository"],
+  link: IntakeFormLinkRecord,
+  completedAt: string,
+): Promise<void> {
+  await repository.completeTaskDeadline({
+    firmId: link.firmId,
+    taskId: intakeReviewTaskId(link.id),
+    completedAt,
+  });
+}
+
+async function getSubmittedReviewPayload(
+  repository: ApiRouteDependencies["repository"],
+  firmId: string,
+  linkId: string,
+): Promise<{
+  link: IntakeFormLinkRecord;
+  snapshot: AnswerSnapshotRecord;
+  actions: IntakeFormItemActionRecord[];
+  reviews: IntakeFormReviewRecord[];
+}> {
+  const link = await repository.getIntakeFormLink(firmId, linkId);
+  if (!link) throw Object.assign(new Error("Intake form link was not found"), { statusCode: 404 });
+  if (!link.submittedAt || !link.answerSnapshotId) {
+    throw new ApiHttpError(
+      409,
+      "INTAKE_FORM_REVIEW_NOT_READY",
+      "Intake form link is not ready for review",
+      { linkId },
+    );
+  }
+  const snapshots = await repository.listAnswerSnapshots(firmId, {
+    intakeSessionId: link.intakeSessionId,
+  });
+  const snapshot = snapshots.find((candidate) => candidate.id === link.answerSnapshotId);
+  if (!snapshot) {
+    throw new ApiHttpError(
+      409,
+      "INTAKE_FORM_REVIEW_SNAPSHOT_MISSING",
+      "Submitted intake answer snapshot is not available",
+      { linkId },
+    );
+  }
+  const [actions, reviews] = await Promise.all([
+    repository.listIntakeFormItemActions(firmId, { formLinkId: link.id }),
+    repository.listIntakeFormReviews(firmId, { formLinkId: link.id }),
+  ]);
+  return { link, snapshot, actions, reviews };
+}
+
+async function recordReviewDecision(
+  repository: ApiRouteDependencies["repository"],
+  input: {
+    link: IntakeFormLinkRecord;
+    snapshot: AnswerSnapshotRecord;
+    decision: IntakeFormReviewDecision;
+    decidedByUserId: string;
+    decidedAt: string;
+    reason?: string;
+    followUpFormLinkId?: string;
+  },
+): Promise<IntakeFormReviewRecord> {
+  return repository.createIntakeFormReview({
+    id: crypto.randomUUID(),
+    firmId: input.link.firmId,
+    matterId: input.link.matterId,
+    intakeSessionId: input.link.intakeSessionId,
+    formLinkId: input.link.id,
+    answerSnapshotId: input.snapshot.id,
+    decision: input.decision,
+    decidedByUserId: input.decidedByUserId,
+    decidedAt: input.decidedAt,
+    reason: input.reason,
+    followUpFormLinkId: input.followUpFormLinkId,
+  });
 }
 
 function findFormItem(
@@ -559,6 +674,177 @@ export function registerIntakeFormRoutes(
     return { link: revoked ? serializeLink(revoked) : null };
   });
 
+  server.get("/api/intake-form-links/:id/review", async (request) => {
+    const params = parseRequestPart(reviewParamsSchema, request.params, "params");
+    const payload = await getSubmittedReviewPayload(repository, request.auth.firmId, params.id);
+    assertIntakeAccess(request.auth, {
+      resource: "intake_session",
+      action: "read",
+      matterId: payload.link.matterId,
+    });
+    return {
+      link: serializeLink(payload.link),
+      snapshot: payload.snapshot,
+      actions: payload.actions,
+      reviews: payload.reviews,
+    };
+  });
+
+  server.post("/api/intake-form-links/:id/review/accept", async (request) => {
+    const params = parseRequestPart(reviewParamsSchema, request.params, "params");
+    const body = parseRequestPart(reviewDecisionBodySchema, request.body ?? {}, "body");
+    const payload = await getSubmittedReviewPayload(repository, request.auth.firmId, params.id);
+    assertIntakeAccess(request.auth, {
+      resource: "intake_session",
+      action: "approve",
+      matterId: payload.link.matterId,
+    });
+    if (payload.reviews.length > 0) {
+      throw new ApiHttpError(
+        409,
+        "INTAKE_FORM_ALREADY_REVIEWED",
+        "Intake form is already reviewed",
+      );
+    }
+    const decidedAt = new Date().toISOString();
+    const review = await recordReviewDecision(repository, {
+      link: payload.link,
+      snapshot: payload.snapshot,
+      decision: "accepted",
+      decidedByUserId: request.auth.user.id,
+      decidedAt,
+      reason: body.reason,
+    });
+    await completeIntakeReviewTask(repository, payload.link, decidedAt);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "intake_form_review.accepted",
+      resourceType: "intake_form_review",
+      resourceId: review.id,
+      metadata: {
+        matterId: payload.link.matterId,
+        intakeSessionId: payload.link.intakeSessionId,
+        formLinkId: payload.link.id,
+        answerSnapshotId: payload.snapshot.id,
+        decision: review.decision,
+        taskId: intakeReviewTaskId(payload.link.id),
+      },
+    });
+    return { review };
+  });
+
+  server.post("/api/intake-form-links/:id/review/reject", async (request) => {
+    const params = parseRequestPart(reviewParamsSchema, request.params, "params");
+    const body = parseRequestPart(reviewDecisionBodySchema.required(), request.body ?? {}, "body");
+    const payload = await getSubmittedReviewPayload(repository, request.auth.firmId, params.id);
+    assertIntakeAccess(request.auth, {
+      resource: "intake_session",
+      action: "approve",
+      matterId: payload.link.matterId,
+    });
+    if (payload.reviews.length > 0) {
+      throw new ApiHttpError(
+        409,
+        "INTAKE_FORM_ALREADY_REVIEWED",
+        "Intake form is already reviewed",
+      );
+    }
+    const decidedAt = new Date().toISOString();
+    const review = await recordReviewDecision(repository, {
+      link: payload.link,
+      snapshot: payload.snapshot,
+      decision: "rejected",
+      decidedByUserId: request.auth.user.id,
+      decidedAt,
+      reason: body.reason,
+    });
+    await completeIntakeReviewTask(repository, payload.link, decidedAt);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "intake_form_review.rejected",
+      resourceType: "intake_form_review",
+      resourceId: review.id,
+      metadata: {
+        matterId: payload.link.matterId,
+        intakeSessionId: payload.link.intakeSessionId,
+        formLinkId: payload.link.id,
+        answerSnapshotId: payload.snapshot.id,
+        decision: review.decision,
+        taskId: intakeReviewTaskId(payload.link.id),
+      },
+    });
+    return { review };
+  });
+
+  server.post("/api/intake-form-links/:id/review/request-more-info", async (request) => {
+    const params = parseRequestPart(reviewParamsSchema, request.params, "params");
+    const body = parseRequestPart(requestMoreInfoBodySchema, request.body ?? {}, "body");
+    const payload = await getSubmittedReviewPayload(repository, request.auth.firmId, params.id);
+    assertIntakeAccess(request.auth, {
+      resource: "intake_session",
+      action: "approve",
+      matterId: payload.link.matterId,
+    });
+    if (payload.reviews.length > 0) {
+      throw new ApiHttpError(
+        409,
+        "INTAKE_FORM_ALREADY_REVIEWED",
+        "Intake form is already reviewed",
+      );
+    }
+    if (!jwtSecret) {
+      throw Object.assign(new Error("Intake form token signing is not configured"), {
+        statusCode: 503,
+      });
+    }
+
+    const token = createSessionToken();
+    const portalUrl = buildPortalUrl(publicWebBaseUrl, token);
+    const decidedAt = new Date().toISOString();
+    const followUpLink = await repository.createIntakeFormLink({
+      id: crypto.randomUUID(),
+      firmId: payload.link.firmId,
+      matterId: payload.link.matterId,
+      intakeSessionId: payload.link.intakeSessionId,
+      tokenHash: hashToken(token, jwtSecret),
+      requestedByUserId: request.auth.user.id,
+      clientContactId: payload.link.clientContactId,
+      parentFormLinkId: payload.link.id,
+      expiresAt: body.expiresAt ?? defaultExpiry(new Date()),
+      createdAt: decidedAt,
+    });
+    const review = await recordReviewDecision(repository, {
+      link: payload.link,
+      snapshot: payload.snapshot,
+      decision: "request_more_info",
+      decidedByUserId: request.auth.user.id,
+      decidedAt,
+      reason: body.reason,
+      followUpFormLinkId: followUpLink.id,
+    });
+    await completeIntakeReviewTask(repository, payload.link, decidedAt);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "intake_form_review.request_more_info",
+      resourceType: "intake_form_review",
+      resourceId: review.id,
+      metadata: {
+        matterId: payload.link.matterId,
+        intakeSessionId: payload.link.intakeSessionId,
+        formLinkId: payload.link.id,
+        answerSnapshotId: payload.snapshot.id,
+        decision: review.decision,
+        followUpFormLinkId: followUpLink.id,
+        taskId: intakeReviewTaskId(payload.link.id),
+      },
+    });
+    return {
+      review,
+      followUp: {
+        link: serializeLink(followUpLink),
+        token,
+        portalUrl,
+      },
+    };
+  });
+
   server.get("/api/intake-variable-proposals", async (request) => {
     const query = parseRequestPart(proposalQuerySchema, request.query, "query");
     if (query.matterId) {
@@ -710,7 +996,9 @@ export function registerIntakeFormRoutes(
         firmId: link.firmId,
         id: link.id,
         submittedAt: now,
+        answerSnapshotId: snapshot.id,
       });
+      await ensureIntakeReviewTask(repository, link, now);
       await recordAccessLog(repository, {
         link,
         request,

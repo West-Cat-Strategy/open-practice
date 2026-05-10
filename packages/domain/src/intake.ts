@@ -135,10 +135,28 @@ export interface IntakeFormLinkRecord {
   tokenHash: string;
   requestedByUserId: string;
   clientContactId?: string;
+  parentFormLinkId?: string;
+  answerSnapshotId?: string;
   expiresAt: string;
   revokedAt?: string;
   submittedAt?: string;
   createdAt: string;
+}
+
+export type IntakeFormReviewDecision = "accepted" | "rejected" | "request_more_info";
+
+export interface IntakeFormReviewRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  intakeSessionId: string;
+  formLinkId: string;
+  answerSnapshotId: string;
+  decision: IntakeFormReviewDecision;
+  decidedByUserId: string;
+  decidedAt: string;
+  reason?: string;
+  followUpFormLinkId?: string;
 }
 
 export type IntakeFormItemActionKind = "upload" | "signature";

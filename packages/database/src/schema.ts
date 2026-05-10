@@ -1,6 +1,7 @@
 import {
   boolean,
   check,
+  type AnyPgColumn,
   index,
   integer,
   jsonb,
@@ -17,6 +18,7 @@ import type {
   ConversationThreadRecord,
   DraftAssistRecord,
   EmbeddedIntakeTemplateDefinition,
+  IntakeFormReviewRecord,
   IntakeFormItemActionRecord,
   IntakeResolutionSnapshot,
   IntakeVariableProposal,
@@ -1834,6 +1836,8 @@ export const intakeFormLinks = pgTable(
       .notNull()
       .references(() => users.id),
     clientContactId: text("client_contact_id").references(() => contacts.id),
+    parentFormLinkId: text("parent_form_link_id").references((): AnyPgColumn => intakeFormLinks.id),
+    answerSnapshotId: text("answer_snapshot_id").references(() => answerSnapshots.id),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
@@ -1842,6 +1846,45 @@ export const intakeFormLinks = pgTable(
   (table) => ({
     tokenHash: uniqueIndex("intake_form_links_token_hash_idx").on(table.tokenHash),
     matterExpiry: index("intake_form_links_matter_expiry_idx").on(table.matterId, table.expiresAt),
+    parent: index("intake_form_links_parent_idx").on(table.parentFormLinkId),
+    snapshot: index("intake_form_links_snapshot_idx").on(table.answerSnapshotId),
+  }),
+);
+
+export const intakeFormReviews = pgTable(
+  "intake_form_reviews",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    intakeSessionId: text("intake_session_id")
+      .notNull()
+      .references(() => intakeSessions.id),
+    formLinkId: text("form_link_id")
+      .notNull()
+      .references(() => intakeFormLinks.id),
+    answerSnapshotId: text("answer_snapshot_id")
+      .notNull()
+      .references(() => answerSnapshots.id),
+    decision: text("decision").$type<IntakeFormReviewRecord["decision"]>().notNull(),
+    decidedByUserId: text("decided_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
+    reason: text("reason"),
+    followUpFormLinkId: text("follow_up_form_link_id").references(() => intakeFormLinks.id),
+  },
+  (table) => ({
+    formLink: uniqueIndex("intake_form_reviews_form_link_idx").on(table.formLinkId),
+    snapshot: index("intake_form_reviews_snapshot_idx").on(table.answerSnapshotId),
+    matterDecision: index("intake_form_reviews_matter_decision_idx").on(
+      table.matterId,
+      table.decision,
+    ),
   }),
 );
 

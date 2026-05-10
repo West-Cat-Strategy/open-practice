@@ -16,6 +16,7 @@ import type {
   DashboardSectionCapability,
   IntakeSessionRecord,
   IntakeTemplateRecord,
+  IntakeFormReviewRecord,
   IntakeVariableProposal,
   LedgerAccount,
   LedgerEntry,
@@ -136,6 +137,15 @@ export interface IntakeFormLinkCreateResponse {
   link: IntakeFormLinkSummary;
   token?: string;
   portalUrl?: string;
+}
+
+export interface IntakeFormReviewResponse {
+  review: IntakeFormReviewRecord;
+  followUp?: {
+    link: IntakeFormLinkSummary;
+    token?: string;
+    portalUrl?: string;
+  };
 }
 
 export interface IntakeFormLinkRevokeResponse {
