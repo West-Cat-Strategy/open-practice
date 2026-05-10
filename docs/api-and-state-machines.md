@@ -7,11 +7,11 @@ This document records the current API and lifecycle contracts. Keep it aligned w
 
 ## API Surface
 
-All `/api/*` routes require authentication except first-run setup status/completion,
-`POST /api/auth/login`, `POST /api/auth/password-setup`, and token-scoped public portal routes such
-as `GET /api/portal/shares/:token` plus external-upload collection links. Production accepts
-embedded session cookies or `x-open-practice-session` tokens backed by PostgreSQL session records.
-Development may use
+All `/api/*` routes require authentication except first-run setup status/completion/setup passkey
+options, embedded-auth login, password setup, recovery-code verification, public passkey login
+options/verification, and token-scoped public portal routes such as `GET /api/portal/shares/:token`
+plus external-upload collection links. Production accepts embedded session cookies or
+`x-open-practice-session` tokens backed by PostgreSQL session records. Development may use
 `x-open-practice-user-id`, `x-open-practice-firm-id`, and bearer JWT helpers. Production rejects
 unauthenticated requests, development headers, and bearer JWTs.
 
@@ -23,12 +23,23 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /health`                                                                     | Liveness and repository mode (`memory` or `postgres`).                                                                                                                                  |
 | `GET /api/setup/status`                                                           | First-run bootstrap status, including blocked partial-state and setup-key requirement flags.                                                                                            |
+| `POST /api/setup/webauthn-options`                                                | Guarded first-run SimpleWebAuthn registration options for the optional owner-admin passkey; requires the setup key when configured.                                                     |
 | `POST /api/setup/complete`                                                        | Guarded first-run creation of firm settings, owner admin auth, optional first matter, selected preset templates, audit event, and session.                                              |
 | `POST /api/auth/login`                                                            | Embedded session login with firm ID, email, and password.                                                                                                                               |
+| `POST /api/auth/login/options`                                                    | Public SimpleWebAuthn passkey login challenge generation without revealing whether the submitted email exists.                                                                          |
+| `POST /api/auth/login/verify`                                                     | Public SimpleWebAuthn assertion verification that creates an embedded session after matching an active same-firm credential.                                                            |
 | `POST /api/auth/logout`                                                           | Revokes the current embedded session and clears the session cookie.                                                                                                                     |
 | `GET /api/auth/session`                                                           | Current embedded-auth session user.                                                                                                                                                     |
 | `POST /api/auth/password-setup-tokens`                                            | Owner-admin password setup token creation for local invitation/setup flows.                                                                                                             |
 | `POST /api/auth/password-setup`                                                   | Consumes a setup token and stores a local password hash.                                                                                                                                |
+| `POST /api/auth/recovery-codes/generate`                                          | Authenticated recovery-code issuance for the current embedded-auth user.                                                                                                                |
+| `POST /api/auth/recovery-codes/verify`                                            | Public recovery-code verification that consumes one unused code and creates an embedded session.                                                                                        |
+| `POST /api/auth/register/options`                                                 | Authenticated SimpleWebAuthn registration challenge creation for the current embedded-auth user.                                                                                        |
+| `POST /api/auth/register/verify`                                                  | Authenticated passkey registration verification and credential persistence for the current user.                                                                                        |
+| `GET /api/auth/credentials`                                                       | Authenticated listing of the current user's passkey credentials.                                                                                                                        |
+| `DELETE /api/auth/credentials/:id`                                                | Authenticated same-firm passkey credential disable/delete action.                                                                                                                       |
+| `POST /api/auth/mfa/enable`                                                       | Enables MFA for the current user after confirming at least one active passkey exists.                                                                                                   |
+| `POST /api/auth/mfa/disable`                                                      | Disables MFA for the current user without deleting passkey credentials.                                                                                                                 |
 | `GET /api/session`                                                                | Current authenticated user.                                                                                                                                                             |
 | `GET /api/capabilities`                                                           | Permission-aware dashboard sections for the current user and first assigned matter.                                                                                                     |
 | `GET /api/overview`                                                               | Firm overview metrics.                                                                                                                                                                  |
@@ -199,10 +210,10 @@ errors, storage keys, message bodies, generated text, or auth secrets.
 | `GET /api/providers/status`                       | Operator-visible configuration posture for Redis/BullMQ producers, object storage, provider settings, reserved workers, redacted jobs, and auth extensions. |
 | `POST /api/media/:id/transcription-jobs`          | Enqueue FFmpeg normalization and Whisper transcription for authorized media.                                                                                |
 | `POST /api/documents/:id/assistive-drafting-jobs` | Future async Ollama/LM Studio drafting worker job after provider and queue governance land.                                                                 |
-| `POST /api/auth/register/options`                 | Create a SimpleWebAuthn registration challenge for the current user.                                                                                        |
-| `POST /api/auth/register/verify`                  | Verify and store a passkey credential for embedded auth.                                                                                                    |
-| `POST /api/auth/login/options`                    | Create a passkey login challenge for configured RP ID/origin.                                                                                               |
-| `POST /api/auth/login/verify`                     | Verify passkey assertion and create an embedded session.                                                                                                    |
+
+The authenticated and public SimpleWebAuthn routes are live embedded-auth routes in the main API
+surface above. They remain deployment-gated by the configured RP ID/origin and setup/session secrets;
+they are no longer tracked as planned worker/provider routes.
 
 ## State Machines
 
@@ -557,9 +568,11 @@ upload link create/list/revoke plus token-scoped S3 intent and completion flows 
 token hashing, matter-scoped authorization, S3-disabled fallbacks, audit events, and access logs.
 Inbound email parsing is implemented for raw messages already stored in object storage, with
 matter-scoped message detail and attachment-record reads; provider webhooks and automatic document
-promotion remain deferred. Concrete Postal, Tesseract, Whisper/FFmpeg, live Ollama/LM Studio
-adapters, SimpleWebAuthn, and TipTap behavior still requires explicit setup, provider adapters,
-review states, and deployment profiles. `DOCUSEAL_*`, `DOCASSEMBLE_*`, and `OIDC_*` variables are
+promotion remain deferred. Concrete Postal, Tesseract, Whisper/FFmpeg, and live Ollama/LM Studio
+adapters still require explicit setup, provider adapters, review states, and deployment profiles.
+SimpleWebAuthn passkey routes and TipTap-backed drafting/template routes are embedded app surfaces;
+production still must configure RP ID/origin, session secrets, setup keys, authorization, and
+retention controls before exposing them. `DOCUSEAL_*`, `DOCASSEMBLE_*`, and `OIDC_*` variables are
 deprecated and rejected in production. There is no live payment processor configuration. Future
 processor keys, webhooks, and settlement imports should be introduced behind explicit deployment
 profiles and reconciliation controls.

@@ -55,8 +55,9 @@ Environment variables must be treated as deployment inputs, not application defa
   production. Signature, intake, and auth are embedded local workflows.
 - Worker/provider configuration should be explicit and disabled by default. Reserved defaults are
   recorded in [Tech Stack](tech-stack.md); production must not enable Redis/BullMQ, Postal, OCR,
-  transcription, Ollama, passkeys, or rich-text publishing without the corresponding runbook,
-  authorization checks, and retention controls.
+  transcription, or Ollama without the corresponding runbook, authorization checks, and retention
+  controls. Embedded passkey and rich-text publishing surfaces require their own RP/origin, session,
+  authorization, rendering, and retention controls before production exposure.
 - Billing and invoice settings should ship as operational configuration only: invoice numbering,
   review roles, tax labels, payment terms, write-off reasons, and evidence requirements. They should
   not be represented as accounting or tax certification.
