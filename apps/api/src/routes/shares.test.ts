@@ -1,8 +1,13 @@
+import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
 import { hashToken } from "../http/auth-helpers.js";
+import {
+  PUBLIC_TOKEN_MUTATION_RATE_LIMIT,
+  PUBLIC_TOKEN_VIEW_RATE_LIMIT,
+} from "./public-token-rate-limits.js";
 import { registerShareRoutes } from "./shares.js";
 
 const jwtSecret = "test-share-secret-at-least-32-chars";
@@ -46,7 +51,19 @@ function testServer(input: {
       request.auth = { firmId: authUser.firmId, user: authUser };
     });
   }
-  registerShareRoutes(server, { repository: input.repository, jwtSecret, emailJobQueue });
+  server.register(async (app) => {
+    await app.register(rateLimit, {
+      global: true,
+      max: 1_000,
+      timeWindow: "1 minute",
+      errorResponseBuilder: () => ({
+        statusCode: 429,
+        error: "RATE_LIMIT_EXCEEDED",
+        message: "Too many requests",
+      }),
+    });
+    registerShareRoutes(app, { repository: input.repository, jwtSecret, emailJobQueue });
+  });
   servers.push(server);
   return server;
 }
@@ -324,6 +341,78 @@ describe("share routes", () => {
         metadata: { outcome: "granted", documentCount: 1 },
       },
     ]);
+  });
+
+  it("rate-limits public share views without leaking token material", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await addShareableDocument(repository);
+    const authedServer = testServer({ repository });
+    const created = await authedServer.inject({
+      method: "POST",
+      url: "/api/shares",
+      payload: { matterId: "matter-001", permissions: ["view_documents"] },
+    });
+    const token = created.json<{ token: string }>().token;
+    const tokenHash = hashToken(token, jwtSecret);
+    const publicServer = testServer({ repository, withAuthHook: false });
+    let limited = await publicServer.inject({
+      method: "GET",
+      url: `/api/portal/shares/${token}`,
+    });
+
+    for (let index = 0; index < PUBLIC_TOKEN_VIEW_RATE_LIMIT.max; index += 1) {
+      limited = await publicServer.inject({
+        method: "GET",
+        url: `/api/portal/shares/${token}`,
+      });
+    }
+
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toMatchObject({
+      error: "RATE_LIMIT_EXCEEDED",
+      message: "Too many requests",
+    });
+    expect(limited.body).not.toContain(token);
+    expect(limited.body).not.toContain(tokenHash);
+    expect(limited.body).not.toContain("tokenHash");
+  });
+
+  it("rate-limits public share email verification without leaking token material", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await addShareableDocument(repository);
+    const authedServer = testServer({ repository });
+    const created = await authedServer.inject({
+      method: "POST",
+      url: "/api/shares",
+      payload: {
+        matterId: "matter-001",
+        permissions: ["view_documents"],
+        requireEmailVerification: true,
+      },
+    });
+    const token = created.json<{ token: string }>().token;
+    const tokenHash = hashToken(token, jwtSecret);
+    const publicServer = testServer({ repository, withAuthHook: false });
+    let limited = await publicServer.inject({
+      method: "POST",
+      url: `/api/portal/shares/${token}/email-verification`,
+    });
+
+    for (let index = 0; index < PUBLIC_TOKEN_MUTATION_RATE_LIMIT.max; index += 1) {
+      limited = await publicServer.inject({
+        method: "POST",
+        url: `/api/portal/shares/${token}/email-verification`,
+      });
+    }
+
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toMatchObject({
+      error: "RATE_LIMIT_EXCEEDED",
+      message: "Too many requests",
+    });
+    expect(limited.body).not.toContain(token);
+    expect(limited.body).not.toContain(tokenHash);
+    expect(limited.body).not.toContain("tokenHash");
   });
 
   it("blocks revoked share links from public reads", async () => {

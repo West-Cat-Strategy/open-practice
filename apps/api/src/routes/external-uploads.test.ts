@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { hashToken } from "../http/auth-helpers.js";
 import { createApiServer } from "../server.js";
+import { PUBLIC_TOKEN_UPLOAD_INTENT_RATE_LIMIT } from "./public-token-rate-limits.js";
 
 const jwtSecret = "test-external-upload-secret-at-least-32-chars";
 const checksum = "d".repeat(64);
@@ -551,6 +552,40 @@ describe("external upload routes", () => {
       ]),
       valid: true,
     });
+  });
+
+  it("rate-limits public external upload intents without leaking token material", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { server } = testServer({ repository, s3: s3Config() });
+    const token = await createDirectToken({
+      repository,
+      id: "external-upload-rate-limit",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      maxUploads: PUBLIC_TOKEN_UPLOAD_INTENT_RATE_LIMIT.max + 5,
+    });
+    const tokenHash = hashToken(token, jwtSecret);
+    let limited = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${token}/intents`,
+      payload: { filename: "rate-limited-0.pdf", checksumSha256: checksum },
+    });
+
+    for (let index = 1; index <= PUBLIC_TOKEN_UPLOAD_INTENT_RATE_LIMIT.max; index += 1) {
+      limited = await server.inject({
+        method: "POST",
+        url: `/api/portal/external-uploads/${token}/intents`,
+        payload: { filename: `rate-limited-${index}.pdf`, checksumSha256: checksum },
+      });
+    }
+
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toMatchObject({
+      error: "RATE_LIMIT_EXCEEDED",
+      message: "Too many requests",
+    });
+    expect(limited.body).not.toContain(token);
+    expect(limited.body).not.toContain(tokenHash);
+    expect(limited.body).not.toContain("tokenHash");
   });
 
   it("flags duplicate uploads for review while preserving the original duplicate pointer", async () => {

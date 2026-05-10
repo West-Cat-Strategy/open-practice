@@ -24,6 +24,7 @@ import {
   requireEmailDeliveryConfirmation,
 } from "./delivery-confirmation.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
+import { publicTokenPolicyOptions } from "./public-token-rate-limits.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const SIGNED_URL_EXPIRES_IN_SECONDS = 600;
@@ -650,83 +651,88 @@ export function registerExternalUploadRoutes(
     return { reviewItem: await serializeReviewItem(externalUploadRepository, reviewed) };
   });
 
-  server.post("/api/portal/external-uploads/:token/intents", async (request) => {
-    const params = parseRequestPart(publicTokenParamsSchema, request.params, "params");
-    const body = parseRequestPart(publicIntentBodySchema, request.body, "body");
-    const externalUploadRepository = requireExternalUploadRepository(repository);
-    const signingSecret = requireJwtSecret(jwtSecret);
-    if (!s3) {
-      throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
-    }
+  server.post(
+    "/api/portal/external-uploads/:token/intents",
+    publicTokenPolicyOptions("external-upload", "upload-intent"),
+    async (request) => {
+      const params = parseRequestPart(publicTokenParamsSchema, request.params, "params");
+      const body = parseRequestPart(publicIntentBodySchema, request.body, "body");
+      const externalUploadRepository = requireExternalUploadRepository(repository);
+      const signingSecret = requireJwtSecret(jwtSecret);
+      if (!s3) {
+        throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
+      }
 
-    const link = await resolvePublicLink(externalUploadRepository, {
-      token: params.token,
-      jwtSecret: signingSecret,
-      request,
-      enforceUploadLimit: true,
-    });
-    const documentId = crypto.randomUUID();
-    const storageKey = `external-uploads/${link.id}/${documentId}-${sanitizeFilename(body.filename)}`;
-    const command = new PutObjectCommand({
-      Bucket: s3.bucket,
-      Key: storageKey,
-      ChecksumSHA256: body.checksumSha256,
-      Metadata: {
-        "open-practice-upload-scope": "external-upload",
-        "open-practice-scan": "required-before-share",
-      },
-    });
-    const uploadUrl = await getSignedUrl(s3.client, command, {
-      expiresIn: SIGNED_URL_EXPIRES_IN_SECONDS,
-    });
-    const document = await repository.createDocumentUploadIntent({
-      id: documentId,
-      firmId: link.firmId,
-      matterId: link.matterId,
-      title: body.filename,
-      storageKey,
-      checksumSha256: body.checksumSha256,
-      classification: body.classification,
-      legalHold: body.legalHold,
-      reviewStatus: "pending_review",
-      externalUploadLinkId: link.id,
-    });
-    const claimed = await claimExternalUploadUse(externalUploadRepository, {
-      firmId: link.firmId,
-      id: link.id,
-      usedAt: new Date().toISOString(),
-    });
-    if (!claimed) {
+      const link = await resolvePublicLink(externalUploadRepository, {
+        token: params.token,
+        jwtSecret: signingSecret,
+        request,
+        enforceUploadLimit: true,
+      });
+      const documentId = crypto.randomUUID();
+      const storageKey = `external-uploads/${link.id}/${documentId}-${sanitizeFilename(body.filename)}`;
+      const command = new PutObjectCommand({
+        Bucket: s3.bucket,
+        Key: storageKey,
+        ChecksumSHA256: body.checksumSha256,
+        Metadata: {
+          "open-practice-upload-scope": "external-upload",
+          "open-practice-scan": "required-before-share",
+        },
+      });
+      const uploadUrl = await getSignedUrl(s3.client, command, {
+        expiresIn: SIGNED_URL_EXPIRES_IN_SECONDS,
+      });
+      const document = await repository.createDocumentUploadIntent({
+        id: documentId,
+        firmId: link.firmId,
+        matterId: link.matterId,
+        title: body.filename,
+        storageKey,
+        checksumSha256: body.checksumSha256,
+        classification: body.classification,
+        legalHold: body.legalHold,
+        reviewStatus: "pending_review",
+        externalUploadLinkId: link.id,
+      });
+      const claimed = await claimExternalUploadUse(externalUploadRepository, {
+        firmId: link.firmId,
+        id: link.id,
+        usedAt: new Date().toISOString(),
+      });
+      if (!claimed) {
+        await recordAccessLog(externalUploadRepository, {
+          link,
+          request,
+          resourceType: "external_upload_link",
+          resourceId: link.id,
+          metadata: { outcome: "denied", reason: "upload_limit" },
+        });
+        throw externalUploadDenied();
+      }
       await recordAccessLog(externalUploadRepository, {
         link,
         request,
-        resourceType: "external_upload_link",
-        resourceId: link.id,
-        metadata: { outcome: "denied", reason: "upload_limit" },
+        resourceType: "document",
+        resourceId: document.id,
+        metadata: { outcome: "intent_created" },
       });
-      throw externalUploadDenied();
-    }
-    await recordAccessLog(externalUploadRepository, {
-      link,
-      request,
-      resourceType: "document",
-      resourceId: document.id,
-      metadata: { outcome: "intent_created" },
-    });
 
-    return {
-      method: "PUT",
-      uploadUrl,
-      expiresInSeconds: SIGNED_URL_EXPIRES_IN_SECONDS,
-      document: serializePublicDocument(document),
-      requiredHeaders: {
-        "x-open-practice-malware-scan": "required-before-share",
-      },
-    };
-  });
+      return {
+        method: "PUT",
+        uploadUrl,
+        expiresInSeconds: SIGNED_URL_EXPIRES_IN_SECONDS,
+        document: serializePublicDocument(document),
+        requiredHeaders: {
+          "x-open-practice-malware-scan": "required-before-share",
+        },
+      };
+    },
+  );
 
   server.post(
     "/api/portal/external-uploads/:token/documents/:documentId/complete",
+    publicTokenPolicyOptions("external-upload", "mutation"),
     async (request) => {
       const params = parseRequestPart(publicCompleteParamsSchema, request.params, "params");
       const body = parseRequestPart(publicCompleteBodySchema, request.body, "body");

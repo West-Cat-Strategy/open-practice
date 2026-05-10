@@ -34,6 +34,7 @@ import {
   requireEmailDeliveryConfirmation,
 } from "./delivery-confirmation.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
+import { publicTokenPolicyOptions } from "./public-token-rate-limits.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const SIGNED_URL_EXPIRES_IN_SECONDS = 600;
@@ -620,183 +621,196 @@ export function registerIntakeFormRoutes(
     return reviewed;
   });
 
-  server.get("/api/portal/intake-forms/:token", async (request) => {
-    const params = parseRequestPart(publicTokenParamsSchema, request.params, "params");
-    if (!jwtSecret) throw denied();
-    const link = await resolvePublicLink(repository, {
-      token: params.token,
-      jwtSecret,
-      request,
-      allowSubmitted: true,
-    });
-    const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
-    if (!session) throw denied();
-    const template = await getTemplate(repository, link.firmId, session.templateId);
-    const actions = await repository.listIntakeFormItemActions(link.firmId, {
-      formLinkId: link.id,
-    });
-    await recordAccessLog(repository, {
-      link,
-      request,
-      action: "view",
-      resourceType: "intake_form_link",
-      resourceId: link.id,
-      metadata: { outcome: "granted", status: linkStatus(link) },
-    });
-    return {
-      link: serializeLink(link),
-      template: {
-        id: template.id,
-        name: template.name,
-        definitionVersion: template.definitionVersion,
-        definition: template.definition,
-      },
-      actions,
-    };
-  });
-
-  server.post("/api/portal/intake-forms/:token/submit", async (request) => {
-    const params = parseRequestPart(publicTokenParamsSchema, request.params, "params");
-    const body = parseRequestPart(publicSubmitBodySchema, request.body, "body");
-    if (!jwtSecret) throw denied();
-    const link = await resolvePublicLink(repository, { token: params.token, jwtSecret, request });
-    const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
-    if (!session) throw denied();
-    const template = await getTemplate(repository, link.firmId, session.templateId);
-    const completedActions = await repository.listIntakeFormItemActions(link.firmId, {
-      formLinkId: link.id,
-    });
-    const completedItemIds = completedActions
-      .filter((action) => action.status === "uploaded" || action.status === "completed")
-      .map((action) => action.itemId);
-    const resolution = resolveEmbeddedIntakeAnswers({
-      templateId: template.id,
-      templateVersion: template.definitionVersion,
-      definition: template.definition,
-      answers: body.answers,
-      completedItemIds,
-    });
-    const requiredIncompleteItemIds = resolution.requiredIncompleteItemIds ?? [];
-    if (requiredIncompleteItemIds.length > 0) throw incomplete(requiredIncompleteItemIds);
-    const now = new Date().toISOString();
-    const snapshot = await repository.createAnswerSnapshot({
-      id: crypto.randomUUID(),
-      firmId: link.firmId,
-      intakeSessionId: link.intakeSessionId,
-      capturedAt: now,
-      answers: body.answers,
-      resolution,
-    });
-    const proposals = createIntakeVariableProposals({
-      firmId: link.firmId,
-      matterId: link.matterId,
-      clientContactId: link.clientContactId,
-      intakeSessionId: link.intakeSessionId,
-      answerSnapshotId: snapshot.id,
-      definition: template.definition,
-      answers: body.answers,
-      now,
-    });
-    const createdProposals = await repository.createIntakeVariableProposals(proposals);
-    const submitted = await repository.markIntakeFormLinkSubmitted({
-      firmId: link.firmId,
-      id: link.id,
-      submittedAt: now,
-    });
-    await recordAccessLog(repository, {
-      link,
-      request,
-      action: "submit",
-      resourceType: "answer_snapshot",
-      resourceId: snapshot.id,
-      metadata: {
-        outcome: "submitted",
-        answerCount: Object.keys(body.answers).length,
-        proposalCount: createdProposals.length,
-      },
-    });
-    return {
-      status: "submitted",
-      link: submitted ? serializeLink(submitted) : serializeLink(link),
-      snapshot,
-      proposals: createdProposals,
-    };
-  });
-
-  server.post("/api/portal/intake-forms/:token/items/:itemId/uploads", async (request) => {
-    const params = parseRequestPart(publicItemParamsSchema, request.params, "params");
-    const body = parseRequestPart(publicUploadIntentBodySchema, request.body, "body");
-    if (!jwtSecret) throw denied();
-    if (!s3) {
-      throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
-    }
-    const link = await resolvePublicLink(repository, { token: params.token, jwtSecret, request });
-    const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
-    if (!session) throw denied();
-    const template = await getTemplate(repository, link.firmId, session.templateId);
-    const item = findFormItem(template.definition, params.itemId, "upload");
-    if (!item || item.kind !== "upload") throw denied();
-    if (!contentTypeAllowed(body.contentType, item.acceptedFileTypes)) {
-      throw unsupportedUploadContentType(body.contentType, item.acceptedFileTypes ?? []);
-    }
-    const documentId = crypto.randomUUID();
-    const storageKey = `intake-forms/${link.id}/${params.itemId}/${documentId}-${sanitizeFilename(body.filename)}`;
-    const uploadUrl = await getSignedUrl(
-      s3.client,
-      new PutObjectCommand({
-        Bucket: s3.bucket,
-        Key: storageKey,
-        ChecksumSHA256: body.checksumSha256,
-        ContentType: body.contentType,
-        Metadata: {
-          "open-practice-upload-scope": "intake-form",
-          "open-practice-scan": "required-before-share",
+  server.get(
+    "/api/portal/intake-forms/:token",
+    publicTokenPolicyOptions("intake-form", "view"),
+    async (request) => {
+      const params = parseRequestPart(publicTokenParamsSchema, request.params, "params");
+      if (!jwtSecret) throw denied();
+      const link = await resolvePublicLink(repository, {
+        token: params.token,
+        jwtSecret,
+        request,
+        allowSubmitted: true,
+      });
+      const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
+      if (!session) throw denied();
+      const template = await getTemplate(repository, link.firmId, session.templateId);
+      const actions = await repository.listIntakeFormItemActions(link.firmId, {
+        formLinkId: link.id,
+      });
+      await recordAccessLog(repository, {
+        link,
+        request,
+        action: "view",
+        resourceType: "intake_form_link",
+        resourceId: link.id,
+        metadata: { outcome: "granted", status: linkStatus(link) },
+      });
+      return {
+        link: serializeLink(link),
+        template: {
+          id: template.id,
+          name: template.name,
+          definitionVersion: template.definitionVersion,
+          definition: template.definition,
         },
-      }),
-      { expiresIn: SIGNED_URL_EXPIRES_IN_SECONDS },
-    );
-    const document = await repository.createDocumentUploadIntent({
-      id: documentId,
-      firmId: link.firmId,
-      matterId: link.matterId,
-      title: body.filename,
-      storageKey,
-      checksumSha256: body.checksumSha256,
-      classification: item.classification ?? "general",
-      legalHold: item.legalHold ?? false,
-    });
-    const action = await repository.upsertIntakeFormItemAction({
-      id: `${link.id}:${params.itemId}:upload`,
-      firmId: link.firmId,
-      matterId: link.matterId,
-      intakeSessionId: link.intakeSessionId,
-      formLinkId: link.id,
-      itemId: params.itemId,
-      kind: "upload",
-      status: "intent_created",
-      documentId: document.id,
-      evidence: { filename: body.filename, contentType: body.contentType },
-      createdAt: new Date().toISOString(),
-    });
-    await recordAccessLog(repository, {
-      link,
-      request,
-      action: "upload",
-      resourceType: "document",
-      resourceId: document.id,
-      metadata: { outcome: "intent_created", itemId: params.itemId },
-    });
-    return {
-      method: "PUT",
-      uploadUrl,
-      expiresInSeconds: SIGNED_URL_EXPIRES_IN_SECONDS,
-      document,
-      action,
-    };
-  });
+        actions,
+      };
+    },
+  );
+
+  server.post(
+    "/api/portal/intake-forms/:token/submit",
+    publicTokenPolicyOptions("intake-form", "mutation"),
+    async (request) => {
+      const params = parseRequestPart(publicTokenParamsSchema, request.params, "params");
+      const body = parseRequestPart(publicSubmitBodySchema, request.body, "body");
+      if (!jwtSecret) throw denied();
+      const link = await resolvePublicLink(repository, { token: params.token, jwtSecret, request });
+      const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
+      if (!session) throw denied();
+      const template = await getTemplate(repository, link.firmId, session.templateId);
+      const completedActions = await repository.listIntakeFormItemActions(link.firmId, {
+        formLinkId: link.id,
+      });
+      const completedItemIds = completedActions
+        .filter((action) => action.status === "uploaded" || action.status === "completed")
+        .map((action) => action.itemId);
+      const resolution = resolveEmbeddedIntakeAnswers({
+        templateId: template.id,
+        templateVersion: template.definitionVersion,
+        definition: template.definition,
+        answers: body.answers,
+        completedItemIds,
+      });
+      const requiredIncompleteItemIds = resolution.requiredIncompleteItemIds ?? [];
+      if (requiredIncompleteItemIds.length > 0) throw incomplete(requiredIncompleteItemIds);
+      const now = new Date().toISOString();
+      const snapshot = await repository.createAnswerSnapshot({
+        id: crypto.randomUUID(),
+        firmId: link.firmId,
+        intakeSessionId: link.intakeSessionId,
+        capturedAt: now,
+        answers: body.answers,
+        resolution,
+      });
+      const proposals = createIntakeVariableProposals({
+        firmId: link.firmId,
+        matterId: link.matterId,
+        clientContactId: link.clientContactId,
+        intakeSessionId: link.intakeSessionId,
+        answerSnapshotId: snapshot.id,
+        definition: template.definition,
+        answers: body.answers,
+        now,
+      });
+      const createdProposals = await repository.createIntakeVariableProposals(proposals);
+      const submitted = await repository.markIntakeFormLinkSubmitted({
+        firmId: link.firmId,
+        id: link.id,
+        submittedAt: now,
+      });
+      await recordAccessLog(repository, {
+        link,
+        request,
+        action: "submit",
+        resourceType: "answer_snapshot",
+        resourceId: snapshot.id,
+        metadata: {
+          outcome: "submitted",
+          answerCount: Object.keys(body.answers).length,
+          proposalCount: createdProposals.length,
+        },
+      });
+      return {
+        status: "submitted",
+        link: submitted ? serializeLink(submitted) : serializeLink(link),
+        snapshot,
+        proposals: createdProposals,
+      };
+    },
+  );
+
+  server.post(
+    "/api/portal/intake-forms/:token/items/:itemId/uploads",
+    publicTokenPolicyOptions("intake-form-upload", "upload-intent"),
+    async (request) => {
+      const params = parseRequestPart(publicItemParamsSchema, request.params, "params");
+      const body = parseRequestPart(publicUploadIntentBodySchema, request.body, "body");
+      if (!jwtSecret) throw denied();
+      if (!s3) {
+        throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
+      }
+      const link = await resolvePublicLink(repository, { token: params.token, jwtSecret, request });
+      const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
+      if (!session) throw denied();
+      const template = await getTemplate(repository, link.firmId, session.templateId);
+      const item = findFormItem(template.definition, params.itemId, "upload");
+      if (!item || item.kind !== "upload") throw denied();
+      if (!contentTypeAllowed(body.contentType, item.acceptedFileTypes)) {
+        throw unsupportedUploadContentType(body.contentType, item.acceptedFileTypes ?? []);
+      }
+      const documentId = crypto.randomUUID();
+      const storageKey = `intake-forms/${link.id}/${params.itemId}/${documentId}-${sanitizeFilename(body.filename)}`;
+      const uploadUrl = await getSignedUrl(
+        s3.client,
+        new PutObjectCommand({
+          Bucket: s3.bucket,
+          Key: storageKey,
+          ChecksumSHA256: body.checksumSha256,
+          ContentType: body.contentType,
+          Metadata: {
+            "open-practice-upload-scope": "intake-form",
+            "open-practice-scan": "required-before-share",
+          },
+        }),
+        { expiresIn: SIGNED_URL_EXPIRES_IN_SECONDS },
+      );
+      const document = await repository.createDocumentUploadIntent({
+        id: documentId,
+        firmId: link.firmId,
+        matterId: link.matterId,
+        title: body.filename,
+        storageKey,
+        checksumSha256: body.checksumSha256,
+        classification: item.classification ?? "general",
+        legalHold: item.legalHold ?? false,
+      });
+      const action = await repository.upsertIntakeFormItemAction({
+        id: `${link.id}:${params.itemId}:upload`,
+        firmId: link.firmId,
+        matterId: link.matterId,
+        intakeSessionId: link.intakeSessionId,
+        formLinkId: link.id,
+        itemId: params.itemId,
+        kind: "upload",
+        status: "intent_created",
+        documentId: document.id,
+        evidence: { filename: body.filename, contentType: body.contentType },
+        createdAt: new Date().toISOString(),
+      });
+      await recordAccessLog(repository, {
+        link,
+        request,
+        action: "upload",
+        resourceType: "document",
+        resourceId: document.id,
+        metadata: { outcome: "intent_created", itemId: params.itemId },
+      });
+      return {
+        method: "PUT",
+        uploadUrl,
+        expiresInSeconds: SIGNED_URL_EXPIRES_IN_SECONDS,
+        document,
+        action,
+      };
+    },
+  );
 
   server.post(
     "/api/portal/intake-forms/:token/items/:itemId/documents/:documentId/complete",
+    publicTokenPolicyOptions("intake-form-upload", "mutation"),
     async (request) => {
       const params = parseRequestPart(publicCompleteParamsSchema, request.params, "params");
       const body = parseRequestPart(publicCompleteBodySchema, request.body, "body");
@@ -833,123 +847,182 @@ export function registerIntakeFormRoutes(
     },
   );
 
-  server.post("/api/portal/intake-forms/:token/items/:itemId/signature", async (request) => {
-    const params = parseRequestPart(publicItemParamsSchema, request.params, "params");
-    const body = parseRequestPart(publicSignatureBodySchema, request.body, "body");
-    if (!jwtSecret) throw denied();
-    const link = await resolvePublicLink(repository, { token: params.token, jwtSecret, request });
-    const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
-    if (!session) throw denied();
-    const template = await getTemplate(repository, link.firmId, session.templateId);
-    const item = findFormItem(template.definition, params.itemId, "signature");
-    if (!item || item.kind !== "signature") throw denied();
-    const existingAction = (
-      await repository.listIntakeFormItemActions(link.firmId, {
-        formLinkId: link.id,
-        itemId: params.itemId,
-      })
-    ).find((candidate) => candidate.kind === "signature");
-    if (existingAction?.status === "completed" || existingAction?.status === "declined") {
-      return { action: existingAction };
-    }
-    const now = new Date().toISOString();
-    if (item.documentId) {
-      if (!signatureProvider) {
-        throw Object.assign(new Error("Signature provider is not configured"), {
-          statusCode: 503,
-        });
-      }
-      const document = await repository.getDocument(link.firmId, item.documentId);
-      if (!document || document.matterId !== link.matterId) {
-        throw signatureConfigurationError(
-          "INTAKE_SIGNATURE_DOCUMENT_UNAVAILABLE",
-          "Signature document is not available for this intake form",
-          { itemId: params.itemId, documentId: item.documentId },
-        );
-      }
-      if (!session.clientContactId) {
-        throw signatureConfigurationError(
-          "INTAKE_SIGNATURE_SIGNER_UNAVAILABLE",
-          "Signature signer contact is not available for this intake form",
-          { itemId: params.itemId },
-        );
-      }
-      const contact = await repository.getContact(link.firmId, session.clientContactId);
-      const signerEmail = contact ? firstContactEmail(contact) : undefined;
-      if (!contact || !signerEmail) {
-        throw signatureConfigurationError(
-          "INTAKE_SIGNATURE_SIGNER_UNAVAILABLE",
-          "Signature signer contact email is not available for this intake form",
-          { itemId: params.itemId, clientContactId: session.clientContactId },
-        );
-      }
-
-      const signer = { name: contact.displayName, email: signerEmail, role: "client" };
-      const submission = await signatureProvider.createSubmission({
-        matterId: link.matterId,
-        documentId: document.id,
-        title: item.label,
-        signers: [signer],
-        consentText: body.consentText ?? item.consentText,
-      });
-      const signatureRequest: SignatureRequestRecord = {
-        id: crypto.randomUUID(),
-        firmId: link.firmId,
-        matterId: link.matterId,
-        documentId: document.id,
-        title: item.label,
-        requestedByUserId: link.requestedByUserId,
-        provider: submission.provider,
-        externalId: submission.externalId,
-        status: submission.status ?? "sent",
-        signingUrl: submission.signingUrl,
-        consentText: body.consentText ?? item.consentText,
-        evidence: submission.evidence ?? {},
-        createdAt: now,
-      };
-      const signerRecord: SignatureRequestSignerRecord = {
-        id: crypto.randomUUID(),
-        firmId: link.firmId,
-        signatureRequestId: signatureRequest.id,
-        ...signer,
-        status: signatureRequest.status,
-        signingUrl: submission.signingUrl,
-      };
-      const initialEvent: SignatureProviderEventRecord = {
-        id: crypto.randomUUID(),
-        firmId: link.firmId,
-        signatureRequestId: signatureRequest.id,
-        provider: signatureRequest.provider,
-        externalId: signatureRequest.externalId,
-        status: signatureRequest.status,
-        occurredAt: now,
-        evidence: signatureRequest.evidence,
-      };
-      await repository.createSignatureRequest({
-        request: signatureRequest,
-        signers: [signerRecord],
-        event: initialEvent,
-      });
-      const embeddedEvent = await repository.recordSignatureProviderEvent({
-        id: crypto.randomUUID(),
-        firmId: link.firmId,
-        signatureRequestId: signatureRequest.id,
-        provider: signatureRequest.provider,
-        externalId: signatureRequest.externalId,
-        status: body.status,
-        occurredAt: now,
-        evidence: {
-          mode: "embedded_intake_signature_request",
+  server.post(
+    "/api/portal/intake-forms/:token/items/:itemId/signature",
+    publicTokenPolicyOptions("intake-form-signature", "mutation"),
+    async (request) => {
+      const params = parseRequestPart(publicItemParamsSchema, request.params, "params");
+      const body = parseRequestPart(publicSignatureBodySchema, request.body, "body");
+      if (!jwtSecret) throw denied();
+      const link = await resolvePublicLink(repository, { token: params.token, jwtSecret, request });
+      const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
+      if (!session) throw denied();
+      const template = await getTemplate(repository, link.firmId, session.templateId);
+      const item = findFormItem(template.definition, params.itemId, "signature");
+      if (!item || item.kind !== "signature") throw denied();
+      const existingAction = (
+        await repository.listIntakeFormItemActions(link.firmId, {
           formLinkId: link.id,
           itemId: params.itemId,
-          signerId: signerRecord.id,
+        })
+      ).find((candidate) => candidate.kind === "signature");
+      if (existingAction?.status === "completed" || existingAction?.status === "declined") {
+        return { action: existingAction };
+      }
+      const now = new Date().toISOString();
+      if (item.documentId) {
+        if (!signatureProvider) {
+          throw Object.assign(new Error("Signature provider is not configured"), {
+            statusCode: 503,
+          });
+        }
+        const document = await repository.getDocument(link.firmId, item.documentId);
+        if (!document || document.matterId !== link.matterId) {
+          throw signatureConfigurationError(
+            "INTAKE_SIGNATURE_DOCUMENT_UNAVAILABLE",
+            "Signature document is not available for this intake form",
+            { itemId: params.itemId, documentId: item.documentId },
+          );
+        }
+        if (!session.clientContactId) {
+          throw signatureConfigurationError(
+            "INTAKE_SIGNATURE_SIGNER_UNAVAILABLE",
+            "Signature signer contact is not available for this intake form",
+            { itemId: params.itemId },
+          );
+        }
+        const contact = await repository.getContact(link.firmId, session.clientContactId);
+        const signerEmail = contact ? firstContactEmail(contact) : undefined;
+        if (!contact || !signerEmail) {
+          throw signatureConfigurationError(
+            "INTAKE_SIGNATURE_SIGNER_UNAVAILABLE",
+            "Signature signer contact email is not available for this intake form",
+            { itemId: params.itemId, clientContactId: session.clientContactId },
+          );
+        }
+
+        const signer = { name: contact.displayName, email: signerEmail, role: "client" };
+        const submission = await signatureProvider.createSubmission({
+          matterId: link.matterId,
+          documentId: document.id,
+          title: item.label,
+          signers: [signer],
           consentText: body.consentText ?? item.consentText,
-          ip: request.ip,
-          userAgent: requestUserAgent(request),
-          ...body.evidence,
-        },
-      });
-      const action = await repository.upsertIntakeFormItemAction({
+        });
+        const signatureRequest: SignatureRequestRecord = {
+          id: crypto.randomUUID(),
+          firmId: link.firmId,
+          matterId: link.matterId,
+          documentId: document.id,
+          title: item.label,
+          requestedByUserId: link.requestedByUserId,
+          provider: submission.provider,
+          externalId: submission.externalId,
+          status: submission.status ?? "sent",
+          signingUrl: submission.signingUrl,
+          consentText: body.consentText ?? item.consentText,
+          evidence: submission.evidence ?? {},
+          createdAt: now,
+        };
+        const signerRecord: SignatureRequestSignerRecord = {
+          id: crypto.randomUUID(),
+          firmId: link.firmId,
+          signatureRequestId: signatureRequest.id,
+          ...signer,
+          status: signatureRequest.status,
+          signingUrl: submission.signingUrl,
+        };
+        const initialEvent: SignatureProviderEventRecord = {
+          id: crypto.randomUUID(),
+          firmId: link.firmId,
+          signatureRequestId: signatureRequest.id,
+          provider: signatureRequest.provider,
+          externalId: signatureRequest.externalId,
+          status: signatureRequest.status,
+          occurredAt: now,
+          evidence: signatureRequest.evidence,
+        };
+        await repository.createSignatureRequest({
+          request: signatureRequest,
+          signers: [signerRecord],
+          event: initialEvent,
+        });
+        const embeddedEvent = await repository.recordSignatureProviderEvent({
+          id: crypto.randomUUID(),
+          firmId: link.firmId,
+          signatureRequestId: signatureRequest.id,
+          provider: signatureRequest.provider,
+          externalId: signatureRequest.externalId,
+          status: body.status,
+          occurredAt: now,
+          evidence: {
+            mode: "embedded_intake_signature_request",
+            formLinkId: link.id,
+            itemId: params.itemId,
+            signerId: signerRecord.id,
+            consentText: body.consentText ?? item.consentText,
+            ip: request.ip,
+            userAgent: requestUserAgent(request),
+            ...body.evidence,
+          },
+        });
+        const action = await repository.upsertIntakeFormItemAction({
+          id: `${link.id}:${params.itemId}:signature`,
+          firmId: link.firmId,
+          matterId: link.matterId,
+          intakeSessionId: link.intakeSessionId,
+          formLinkId: link.id,
+          itemId: params.itemId,
+          kind: "signature",
+          status: body.status,
+          documentId: document.id,
+          signatureRequestId: signatureRequest.id,
+          evidence: {
+            mode: "embedded_intake_signature_request",
+            provider: signatureRequest.provider,
+            documentId: document.id,
+            signatureRequestId: signatureRequest.id,
+            signerCount: 1,
+          },
+          createdAt: now,
+          completedAt: now,
+        });
+        await repository.appendAuditEvent({
+          id: crypto.randomUUID(),
+          firmId: link.firmId,
+          actorId: `public:intake_form_link:${link.id}`,
+          action: "intake_signature_request.created",
+          resourceType: "signature_request",
+          resourceId: signatureRequest.id,
+          occurredAt: now,
+          metadata: {
+            matterId: link.matterId,
+            intakeSessionId: link.intakeSessionId,
+            formLinkId: link.id,
+            itemId: params.itemId,
+            documentId: document.id,
+            provider: signatureRequest.provider,
+            status: embeddedEvent.status,
+            signerCount: 1,
+          },
+        });
+        await recordAccessLog(repository, {
+          link,
+          request,
+          action: "sign",
+          resourceType: "signature_request",
+          resourceId: signatureRequest.id,
+          metadata: {
+            outcome: body.status,
+            itemId: params.itemId,
+            documentId: document.id,
+            signatureRequestId: signatureRequest.id,
+          },
+        });
+        return { action, signatureRequest: { id: signatureRequest.id, status: body.status } };
+      }
+
+      const action: IntakeFormItemActionRecord = {
         id: `${link.id}:${params.itemId}:signature`,
         firmId: link.firmId,
         matterId: link.matterId,
@@ -958,81 +1031,26 @@ export function registerIntakeFormRoutes(
         itemId: params.itemId,
         kind: "signature",
         status: body.status,
-        documentId: document.id,
-        signatureRequestId: signatureRequest.id,
         evidence: {
-          mode: "embedded_intake_signature_request",
-          provider: signatureRequest.provider,
-          documentId: document.id,
-          signatureRequestId: signatureRequest.id,
-          signerCount: 1,
+          mode: "embedded_intake_attestation",
+          consentText: body.consentText ?? item.consentText,
+          ip: request.ip,
+          userAgent: requestUserAgent(request),
+          ...body.evidence,
         },
         createdAt: now,
         completedAt: now,
-      });
-      await repository.appendAuditEvent({
-        id: crypto.randomUUID(),
-        firmId: link.firmId,
-        actorId: `public:intake_form_link:${link.id}`,
-        action: "intake_signature_request.created",
-        resourceType: "signature_request",
-        resourceId: signatureRequest.id,
-        occurredAt: now,
-        metadata: {
-          matterId: link.matterId,
-          intakeSessionId: link.intakeSessionId,
-          formLinkId: link.id,
-          itemId: params.itemId,
-          documentId: document.id,
-          provider: signatureRequest.provider,
-          status: embeddedEvent.status,
-          signerCount: 1,
-        },
-      });
+      };
+      const recorded = await repository.upsertIntakeFormItemAction(action);
       await recordAccessLog(repository, {
         link,
         request,
         action: "sign",
-        resourceType: "signature_request",
-        resourceId: signatureRequest.id,
-        metadata: {
-          outcome: body.status,
-          itemId: params.itemId,
-          documentId: document.id,
-          signatureRequestId: signatureRequest.id,
-        },
+        resourceType: "intake_form_item",
+        resourceId: params.itemId,
+        metadata: { outcome: body.status },
       });
-      return { action, signatureRequest: { id: signatureRequest.id, status: body.status } };
-    }
-
-    const action: IntakeFormItemActionRecord = {
-      id: `${link.id}:${params.itemId}:signature`,
-      firmId: link.firmId,
-      matterId: link.matterId,
-      intakeSessionId: link.intakeSessionId,
-      formLinkId: link.id,
-      itemId: params.itemId,
-      kind: "signature",
-      status: body.status,
-      evidence: {
-        mode: "embedded_intake_attestation",
-        consentText: body.consentText ?? item.consentText,
-        ip: request.ip,
-        userAgent: requestUserAgent(request),
-        ...body.evidence,
-      },
-      createdAt: now,
-      completedAt: now,
-    };
-    const recorded = await repository.upsertIntakeFormItemAction(action);
-    await recordAccessLog(repository, {
-      link,
-      request,
-      action: "sign",
-      resourceType: "intake_form_item",
-      resourceId: params.itemId,
-      metadata: { outcome: body.status },
-    });
-    return { action: recorded };
-  });
+      return { action: recorded };
+    },
+  );
 }
