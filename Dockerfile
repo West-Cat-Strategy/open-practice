@@ -1,8 +1,7 @@
 FROM node:24-alpine AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
-RUN npm install -g npm@11.13.0
+RUN npm install -g npm@11.14.1 pnpm@10.33.3
 RUN apk add --no-cache libc6-compat
 
 FROM base AS builder
