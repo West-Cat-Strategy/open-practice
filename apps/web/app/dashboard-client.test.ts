@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  ActivityTimelineEntry,
   CalendarEventRecord,
   DashboardSectionCapability,
   DashboardSectionKey,
@@ -160,6 +161,13 @@ import {
   visibleSections,
   type PublicIntakeFormPayload,
 } from "./intake-forms/runner-utils";
+import {
+  buildMatterFileCommandCenter,
+  filterMatterActivity,
+  formatMatterActivityKind,
+  matterActivityStatus,
+  summarizeMatterActivity,
+} from "./matter-command-center";
 import {
   buildEmailDeliveryConfirmation,
   buildIntakeSessionCreatePayload,
@@ -332,6 +340,19 @@ function documentRecord(
     reviewMetadata: {},
     uploadedAt: "2026-05-01T12:00:00.000Z",
     verifiedAt: "2026-05-01T12:01:00.000Z",
+    ...overrides,
+  };
+}
+
+function activityEntry(overrides: Partial<ActivityTimelineEntry> = {}): ActivityTimelineEntry {
+  return {
+    id: "activity-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    occurredAt: "2026-05-01T12:00:00.000Z",
+    title: "Document verified",
+    kind: "document",
+    metadata: { status: "verified" },
     ...overrides,
   };
 }
@@ -1481,6 +1502,124 @@ describe("dashboard client behavior", () => {
         documentProcessingWorkbench({ matterId: "matter-002" }),
       ),
     ).toHaveProperty("matter-002");
+  });
+
+  it("derives matter activity and file command-center summaries without raw file fields", () => {
+    const activeMatter = matter({
+      documents: [
+        documentRecord(),
+        documentRecord({
+          id: "doc-002",
+          title: "Superseded photo evidence",
+          scanStatus: "failed",
+          reviewStatus: "pending_review",
+          supersedesDocumentId: "doc-001",
+        }),
+      ],
+      activity: [
+        activityEntry({
+          id: "activity-document",
+          kind: "document",
+          title: "Document verified",
+          metadata: { scanStatus: "passed", storageKey: "must-not-drive-status" },
+        }),
+        activityEntry({
+          id: "activity-upload",
+          kind: "upload",
+          title: "External upload needs metadata",
+          occurredAt: "2026-05-02T12:00:00.000Z",
+          metadata: { reviewStatus: "needs_metadata" },
+        }),
+        activityEntry({
+          id: "activity-email",
+          kind: "email",
+          title: "Outbound email sent",
+          occurredAt: "2026-05-03T12:00:00.000Z",
+          metadata: { status: "sent" },
+        }),
+      ],
+    });
+    const rows = documentProcessingRowsForMatter(
+      activeMatter.documents,
+      documentProcessingWorkbench({
+        documents: [
+          documentProcessingWorkbench().documents[0]!,
+          {
+            document: {
+              id: "doc-002",
+              matterId: "matter-001",
+              title: "Superseded photo evidence",
+              version: 1,
+              classification: "general",
+              legalHold: false,
+              uploadStatus: "verified",
+              checksumStatus: "verified",
+              scanStatus: "failed",
+              reviewStatus: "pending_review",
+            },
+            group: "blocked",
+            queueEligibility: { eligible: false, reason: "scan_failed" },
+          },
+        ],
+      }),
+    );
+    const summary = buildMatterFileCommandCenter({
+      matter: activeMatter,
+      documentRows: rows,
+      shares: [shareLink(), shareLink({ id: "share-revoked", revokedAt: "2026-05-04" })],
+      externalUploadDocuments: [externalUploadDocument()],
+      communicationsInbox: {
+        matterId: "matter-001",
+        status: "available",
+        channelState: {
+          inboundEmailStatus: "configured",
+          outboundEmailStatus: "configured",
+          inboundEmailAddressCount: 1,
+          enabledInboundEmailAddressCount: 1,
+        },
+        inboundEmail: [
+          { id: "inbound-001" } as CommunicationsInboxMatterResponse["inboundEmail"][number],
+        ],
+        outboundDeliveryHistory: [],
+        conversations: [
+          { id: "conversation-001" } as CommunicationsInboxMatterResponse["conversations"][number],
+        ],
+        contactCues: [],
+      },
+    });
+
+    expect(matterActivityStatus(activeMatter.activity[1]!)).toBe("attention");
+    expect(formatMatterActivityKind("upload")).toBe("Upload");
+    expect(summarizeMatterActivity(activeMatter.activity)).toEqual({
+      total: 3,
+      attention: 1,
+      complete: 2,
+      byKind: [
+        { kind: "document", count: 1 },
+        { kind: "email", count: 1 },
+        { kind: "upload", count: 1 },
+      ],
+    });
+    expect(
+      filterMatterActivity({
+        entries: activeMatter.activity,
+        kind: "upload",
+        status: "attention",
+      }).map((entry) => entry.id),
+    ).toEqual(["activity-upload"]);
+    expect(summary.summary).toEqual(
+      expect.objectContaining({
+        documents: 2,
+        readyForOcr: 1,
+        blocked: 1,
+        activeShares: 1,
+        externalUploads: 1,
+        externalReviewAttention: 1,
+        supersessionCues: 1,
+        communicationRecords: 2,
+      }),
+    );
+    expect(JSON.stringify(summary)).not.toContain("private/storage/key");
   });
 
   it("describes worker run filters and redacted run context", () => {

@@ -170,6 +170,17 @@ import {
   providerPostureRows,
   summarizeProvidersStatus,
 } from "./provider-status-dashboard";
+import {
+  buildMatterFileCommandCenter,
+  filterMatterActivity,
+  formatMatterActivityKind,
+  formatMatterActivityStatus,
+  matterActivityKindFilters,
+  matterActivityStatus,
+  summarizeMatterActivity,
+  type MatterActivityKindFilter,
+  type MatterActivityStatusFilter,
+} from "./matter-command-center";
 import { dashboardApiStatus, requestDashboardJson } from "./api-client";
 import {
   buildEmailDeliveryConfirmation,
@@ -433,6 +444,9 @@ export default function DashboardClient({
   const [activeSection, setActiveSection] = useState<LocalDashboardSectionKey>(initialSection);
   const [workerRunFilter, setWorkerRunFilter] = useState<WorkerRunQueueFilter>("all");
   const [matterSearch, setMatterSearch] = useState("");
+  const [activityKindFilter, setActivityKindFilter] = useState<MatterActivityKindFilter>("all");
+  const [activityStatusFilter, setActivityStatusFilter] =
+    useState<MatterActivityStatusFilter>("all");
   const [contactSearch, setContactSearch] = useState("");
   const [activeContactId, setActiveContactId] = useState(contactDossiers[0]?.contact.id ?? "");
   const [conflictName, setConflictName] = useState("");
@@ -604,6 +618,38 @@ export default function DashboardClient({
   const activeDocumentProcessingRows = useMemo(
     () => documentProcessingRowsForMatter(activeDocuments, activeDocumentProcessing),
     [activeDocuments, activeDocumentProcessing],
+  );
+  const activeMatterCommandCenter = useMemo(
+    () =>
+      activeMatter
+        ? buildMatterFileCommandCenter({
+            matter: activeMatter,
+            documentRows: activeDocumentProcessingRows,
+            shares: sharesByMatterId[activeMatter.id] ?? [],
+            externalUploadDocuments: externalUploadDocumentsByMatterId[activeMatter.id] ?? [],
+            communicationsInbox: communicationsInbox.inboxByMatterId[activeMatter.id],
+          })
+        : undefined,
+    [
+      activeDocumentProcessingRows,
+      activeMatter,
+      communicationsInbox.inboxByMatterId,
+      externalUploadDocumentsByMatterId,
+      sharesByMatterId,
+    ],
+  );
+  const activeActivitySummary = useMemo(
+    () => summarizeMatterActivity(activeMatter?.activity ?? []),
+    [activeMatter?.activity],
+  );
+  const filteredMatterActivity = useMemo(
+    () =>
+      filterMatterActivity({
+        entries: activeMatter?.activity ?? [],
+        kind: activityKindFilter,
+        status: activityStatusFilter,
+      }),
+    [activeMatter?.activity, activityKindFilter, activityStatusFilter],
   );
   const documentProcessingSummary = useMemo(
     () => summarizeDocumentProcessingWorkbench(activeDocumentProcessing),
@@ -2190,6 +2236,144 @@ export default function DashboardClient({
                     <span className="field-label">Data source</span>
                     <strong>API</strong>
                   </div>
+                </div>
+
+                <div className="section-title command-center-title">
+                  <h3>Activity and files</h3>
+                  <span>{activeActivitySummary.total} timeline events</span>
+                </div>
+                <div className="command-center-grid">
+                  <section className="command-center-main" aria-label="Matter activity timeline">
+                    <div className="activity-filter-row">
+                      <label className="search-field compact">
+                        <span>Kind</span>
+                        <select
+                          onChange={(event) =>
+                            setActivityKindFilter(event.target.value as MatterActivityKindFilter)
+                          }
+                          value={activityKindFilter}
+                        >
+                          {matterActivityKindFilters.map((kind) => (
+                            <option key={kind} value={kind}>
+                              {formatMatterActivityKind(kind)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="search-field compact">
+                        <span>Status</span>
+                        <select
+                          onChange={(event) =>
+                            setActivityStatusFilter(
+                              event.target.value as MatterActivityStatusFilter,
+                            )
+                          }
+                          value={activityStatusFilter}
+                        >
+                          {(["all", "attention", "open", "complete"] as const).map((status) => (
+                            <option key={status} value={status}>
+                              {formatMatterActivityStatus(status)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <div className="activity-grid command-center-summary-grid">
+                      <div className="activity-card">
+                        <Clock3 size={18} />
+                        <strong>{activeActivitySummary.total} events</strong>
+                        <span>{activeActivitySummary.attention} need attention</span>
+                      </div>
+                      <div className="activity-card">
+                        <Files size={18} />
+                        <strong>{activeMatterCommandCenter?.summary.documents ?? 0} files</strong>
+                        <span>
+                          {activeMatterCommandCenter?.summary.readyForOcr ?? 0} OCR-ready ·{" "}
+                          {activeMatterCommandCenter?.summary.blocked ?? 0} blocked
+                        </span>
+                      </div>
+                      <div className="activity-card">
+                        <Link2 size={18} />
+                        <strong>
+                          {activeMatterCommandCenter?.summary.activeShares ?? 0} active shares
+                        </strong>
+                        <span>
+                          {activeMatterCommandCenter?.summary.externalReviewAttention ?? 0} upload
+                          reviews
+                        </span>
+                      </div>
+                    </div>
+                    <div className="party-list command-center-timeline">
+                      {filteredMatterActivity.slice(0, 8).map((entry) => (
+                        <div className="party-row" key={entry.id}>
+                          <span>
+                            <strong>{entry.title}</strong>
+                            <small>
+                              {formatMatterActivityKind(entry.kind)} ·{" "}
+                              {compactDate(entry.occurredAt)}
+                            </small>
+                          </span>
+                          <em
+                            className={
+                              matterActivityStatus(entry) === "attention" ? "risk" : undefined
+                            }
+                          >
+                            {formatMatterActivityStatus(matterActivityStatus(entry))}
+                          </em>
+                        </div>
+                      ))}
+                      {filteredMatterActivity.length === 0 ? (
+                        <p className="inline-empty">No matter activity matches these filters.</p>
+                      ) : null}
+                    </div>
+                  </section>
+
+                  <aside className="command-center-rail" aria-label="File status">
+                    <div className="file-status-rail">
+                      {activeMatterCommandCenter?.rail.map((item) => (
+                        <div className="file-status-item" key={item.key}>
+                          <span>
+                            <strong>{item.value}</strong>
+                            <small>{item.label}</small>
+                          </span>
+                          <em className={item.tone === "risk" ? "risk" : undefined}>
+                            {item.detail}
+                          </em>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="command-jump-actions" aria-label="Command center shortcuts">
+                      {[
+                        { key: "documents", label: "Documents/OCR", icon: Files },
+                        { key: "shares", label: "Share Links", icon: Link2 },
+                        { key: "externalUploads", label: "Uploads", icon: Upload },
+                        { key: "calendar", label: "Calendar", icon: CalendarDays },
+                        { key: "billing", label: "Billing", icon: CreditCard },
+                        { key: "intake", label: "Intake", icon: FileText },
+                        { key: "signatures", label: "Signatures", icon: FileSignature },
+                        { key: "queues", label: "Tasks", icon: Clock3 },
+                      ].map((action) => {
+                        const enabled = navigationSections.some(
+                          (section) => section.key === action.key && section.enabled,
+                        );
+                        const Icon = action.icon;
+                        return (
+                          <button
+                            className="secondary-button compact-button command-jump-button"
+                            disabled={!enabled}
+                            key={action.key}
+                            onClick={() =>
+                              selectDashboardSection(action.key as LocalDashboardSectionKey)
+                            }
+                            type="button"
+                          >
+                            <Icon size={15} />
+                            {action.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </aside>
                 </div>
 
                 <div className="section-title">
