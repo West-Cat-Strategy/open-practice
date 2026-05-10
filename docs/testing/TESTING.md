@@ -12,6 +12,7 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Dependency audit       | `pnpm deps:audit`                                | Runs local production and development dependency audits.                                              |
 | License evidence       | `pnpm deps:licenses`                             | Summarizes dependency license groups and fails only on unknown or unlicensed groups.                  |
 | Selective validation   | `pnpm verify:select -- --base <git-ref>`         | Prints recommended commands for changed files without running them.                                   |
+| Dirty-tree selection   | `pnpm verify:select -- --dirty`                  | Prints recommended commands for staged, unstaged, and untracked working-tree files.                   |
 | Formatting             | `pnpm format:check`                              | Required before handoff.                                                                              |
 | Static lint            | `pnpm lint`                                      | Runs Turbo package lint tasks.                                                                        |
 | Type checking          | `pnpm typecheck`                                 | Runs Turbo package type checks.                                                                       |
@@ -34,6 +35,19 @@ Inspect an explicit path list:
 
 ```bash
 pnpm verify:select -- --files apps/api/src/server.ts docs/testing/TESTING.md
+```
+
+Inspect the current dirty working tree, including staged, unstaged, and untracked files:
+
+```bash
+pnpm verify:select -- --dirty
+```
+
+Add `--strict` to any selector mode when you want unmapped paths to fail instead of printing no
+commands for those paths:
+
+```bash
+pnpm verify:select -- --strict --files README.md
 ```
 
 Selection rules:
