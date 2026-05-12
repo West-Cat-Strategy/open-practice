@@ -16,6 +16,18 @@
   padding: 22px;
 }
 
+.public-token-description {
+  max-width: 560px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.public-token-status {
+  margin: 0;
+}
+
 .public-form-section {
   display: grid;
   gap: 12px;
@@ -74,6 +86,40 @@
   padding: 0 18px;
 }
 
+.public-upload-button {
+  justify-self: end;
+  min-width: 160px;
+}
+
+.public-upload-meta {
+  grid-template-columns: minmax(140px, 0.7fr) minmax(220px, 1fr);
+}
+
+.public-upload-receipt {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.public-upload-document-list {
+  display: grid;
+  gap: 10px;
+}
+
+.public-upload-document {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.public-upload-document > span {
+  align-self: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.public-upload-document > span.risk {
+  color: var(--danger);
+}
+
 .share-check-row {
   min-height: 42px;
   border: 1px solid var(--line);
@@ -121,7 +167,22 @@
 .upload-review-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
-  max-width: 520px;
+  max-width: 680px;
+}
+
+.compact-select,
+.compact-input {
+  min-height: 34px;
+  max-width: 180px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--ink);
+  padding: 0 10px;
+}
+
+.compact-input {
+  width: min(180px, 100%);
 }
 
 .calendar-radar-card span {

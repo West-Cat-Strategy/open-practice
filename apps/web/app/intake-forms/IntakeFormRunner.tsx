@@ -292,6 +292,7 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
 
   return (
     <PublicTokenShell
+      description="Complete the requested intake items from this secure link."
       eyebrow="Client intake"
       icon={<FileText size={22} />}
       title={payload?.template.name ?? "Intake form"}

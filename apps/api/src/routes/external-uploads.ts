@@ -28,6 +28,13 @@ import { publicTokenPolicyOptions } from "./public-token-rate-limits.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const SIGNED_URL_EXPIRES_IN_SECONDS = 600;
+const publicExternalUploadClassifications = [
+  "general",
+  "privileged",
+  "work_product",
+  "financial",
+  "identity",
+] as const;
 
 type ExternalUploadRepository = ApiRouteDependencies["repository"] & {
   listExternalUploadLinks: (
@@ -70,9 +77,7 @@ const publicCompleteParamsSchema = z.object({
 const publicIntentBodySchema = z.object({
   filename: z.string().min(1),
   checksumSha256: z.string().min(16),
-  classification: z
-    .enum(["general", "privileged", "work_product", "financial", "identity"])
-    .default("general"),
+  classification: z.enum(publicExternalUploadClassifications).default("general"),
   legalHold: z.coerce.boolean().default(false),
 });
 
@@ -167,6 +172,16 @@ function serializeLink(link: ExternalUploadLinkRecord): Record<string, unknown> 
   };
 }
 
+function serializePublicLink(link: ExternalUploadLinkRecord): Record<string, unknown> {
+  return {
+    id: link.id,
+    expiresAt: link.expiresAt,
+    maxUploads: link.maxUploads,
+    usedUploads: link.usedUploads,
+    status: linkStatus(link),
+  };
+}
+
 function defaultExpiry(now: Date): string {
   return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
 }
@@ -183,6 +198,21 @@ function serializePublicDocument(document: DocumentRecord): Record<string, unkno
     scanStatus: document.scanStatus,
     reviewStatus: document.reviewStatus,
     reviewReason: document.reviewReason,
+  };
+}
+
+function serializePublicReviewDocument(document: DocumentRecord): Record<string, unknown> {
+  return {
+    id: document.id,
+    title: document.title,
+    classification: document.classification,
+    legalHold: document.legalHold,
+    uploadStatus: document.uploadStatus,
+    checksumStatus: document.checksumStatus,
+    scanStatus: document.scanStatus,
+    reviewStatus: document.reviewStatus,
+    reviewReason: document.reviewReason,
+    reviewedAt: document.reviewedAt,
   };
 }
 
@@ -650,6 +680,39 @@ export function registerExternalUploadRoutes(
 
     return { reviewItem: await serializeReviewItem(externalUploadRepository, reviewed) };
   });
+
+  server.get(
+    "/api/portal/external-uploads/:token",
+    publicTokenPolicyOptions("external-upload", "view"),
+    async (request) => {
+      const params = parseRequestPart(publicTokenParamsSchema, request.params, "params");
+      const externalUploadRepository = requireExternalUploadRepository(repository);
+      const signingSecret = requireJwtSecret(jwtSecret);
+      const link = await resolvePublicLink(externalUploadRepository, {
+        token: params.token,
+        jwtSecret: signingSecret,
+        request,
+        enforceUploadLimit: false,
+      });
+      const status = linkStatus(link);
+      await recordAccessLog(externalUploadRepository, {
+        link,
+        request,
+        resourceType: "external_upload_link",
+        resourceId: link.id,
+        metadata: { outcome: status === "active" ? "granted" : "unavailable", status },
+      });
+      const documents = (await repository.listMatterDocuments(link.firmId, link.matterId))
+        .filter((document) => externalUploadLinkIdForDocument(document) === link.id)
+        .map(serializePublicReviewDocument);
+
+      return {
+        upload: serializePublicLink(link),
+        acceptedClassifications: publicExternalUploadClassifications,
+        documents,
+      };
+    },
+  );
 
   server.post(
     "/api/portal/external-uploads/:token/intents",

@@ -68,9 +68,12 @@ import {
   buildExternalUploadRevokePath,
   canCreateExternalUpload,
   describeExternalUploadReviewState,
+  externalUploadReviewReasons,
   getExternalUploadLinkState,
   upsertExternalUploadDocument,
   upsertExternalUploadLink,
+  type ExternalUploadReviewDecision,
+  type ExternalUploadReviewReason,
 } from "./external-uploads-dashboard";
 import {
   buildIntakeTemplatePreviewPayload,
@@ -459,6 +462,10 @@ export default function DashboardClient({
   const [creatingExternalUpload, setCreatingExternalUpload] = useState(false);
   const [revokingExternalUploadId, setRevokingExternalUploadId] = useState("");
   const [reviewingExternalUploadDocumentId, setReviewingExternalUploadDocumentId] = useState("");
+  const [externalUploadReviewReasonsByDocumentId, setExternalUploadReviewReasonsByDocumentId] =
+    useState<Record<string, ExternalUploadReviewReason | "">>({});
+  const [externalUploadReviewNotesByDocumentId, setExternalUploadReviewNotesByDocumentId] =
+    useState<Record<string, string>>({});
   const [calendarEventsByMatterId, setCalendarEventsByMatterId] = useState(
     calendar.eventsByMatterId,
   );
@@ -1380,8 +1387,10 @@ export default function DashboardClient({
 
   async function reviewExternalUploadDocument(
     document: ExternalUploadReviewItem,
-    decision: "accept" | "request_metadata" | "request_retry" | "discard",
+    decision: ExternalUploadReviewDecision,
   ): Promise<void> {
+    const reason = externalUploadReviewReasonsByDocumentId[document.id];
+    const note = externalUploadReviewNotesByDocumentId[document.id];
     setReviewingExternalUploadDocumentId(`${document.id}:${decision}`);
     setExternalUploadStatus("Updating upload review...");
     const response = await fetch(`${apiBaseUrl}${buildExternalUploadReviewPath(document.id)}`, {
@@ -1394,7 +1403,9 @@ export default function DashboardClient({
       body: JSON.stringify(
         buildExternalUploadReviewPayload({
           decision,
+          reason,
           duplicateOfDocumentId: document.duplicateOfDocumentId,
+          note,
         }),
       ),
     });
@@ -1410,6 +1421,7 @@ export default function DashboardClient({
       upsertExternalUploadDocument(current, payload.reviewItem),
     );
     setExternalUploadStatus("Upload review updated.");
+    setExternalUploadReviewNotesByDocumentId((current) => ({ ...current, [document.id]: "" }));
     setReviewingExternalUploadDocumentId("");
   }
 
@@ -2982,11 +2994,55 @@ export default function DashboardClient({
                               ? ` · duplicate of ${document.duplicateOfDocumentId}`
                               : ""}
                           </small>
+                          {document.accessLogProof ? (
+                            <small>
+                              Access proof: {document.accessLogProof.total} log
+                              {document.accessLogProof.total === 1 ? "" : "s"}
+                              {document.accessLogProof.outcomes.length
+                                ? ` · ${document.accessLogProof.outcomes.join(", ")}`
+                                : ""}
+                            </small>
+                          ) : null}
                         </span>
                         <div className="row-actions upload-review-actions">
                           <em className={reviewState.tone === "risk" ? "risk" : undefined}>
                             {reviewState.label}
                           </em>
+                          <select
+                            aria-label={`Review reason for ${document.title}`}
+                            className="compact-select"
+                            disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
+                            onChange={(event) =>
+                              setExternalUploadReviewReasonsByDocumentId((current) => ({
+                                ...current,
+                                [document.id]: event.target.value as
+                                  | ExternalUploadReviewReason
+                                  | "",
+                              }))
+                            }
+                            value={externalUploadReviewReasonsByDocumentId[document.id] ?? ""}
+                          >
+                            <option value="">Reason</option>
+                            {externalUploadReviewReasons.map((reason) => (
+                              <option key={reason} value={reason}>
+                                {compactStatus(reason)}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            aria-label={`Private review note for ${document.title}`}
+                            className="compact-input"
+                            disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
+                            maxLength={500}
+                            onChange={(event) =>
+                              setExternalUploadReviewNotesByDocumentId((current) => ({
+                                ...current,
+                                [document.id]: event.target.value,
+                              }))
+                            }
+                            placeholder="Private note"
+                            value={externalUploadReviewNotesByDocumentId[document.id] ?? ""}
+                          />
                           <button
                             className="secondary-button compact-button row-button"
                             disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
