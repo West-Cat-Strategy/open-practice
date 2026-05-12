@@ -84,6 +84,7 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
           </span>
         ) : undefined
       }
+      description="View the documents made available through this secure link."
       eyebrow="Secure share"
       icon={<FileText size={22} />}
       title="Shared documents"

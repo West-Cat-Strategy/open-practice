@@ -78,6 +78,51 @@ async function createDirectToken(input: {
   return token;
 }
 
+async function createReviewedExternalUploadDocument(input: {
+  repository: InMemoryOpenPracticeRepository;
+  linkId: string;
+  id: string;
+  title: string;
+  status: "pending_review" | "accepted" | "needs_metadata" | "retry_requested" | "discarded";
+  decision?: "accept" | "request_metadata" | "request_retry" | "discard";
+  reason?:
+    | "duplicate"
+    | "missing_metadata"
+    | "checksum_mismatch"
+    | "scan_failed"
+    | "wrong_matter"
+    | "unreadable"
+    | "other";
+}): Promise<void> {
+  await input.repository.createDocumentUploadIntent({
+    id: input.id,
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    title: input.title,
+    storageKey: `external-uploads/${input.linkId}/${input.id}.pdf`,
+    checksumSha256: checksum,
+    classification: "general",
+    legalHold: false,
+    reviewStatus: "pending_review",
+    externalUploadLinkId: input.linkId,
+  });
+  if (input.status !== "pending_review") {
+    await input.repository.reviewUploadedDocument({
+      firmId: "firm-west-legal",
+      documentId: input.id,
+      status: input.status,
+      decision: input.decision ?? "accept",
+      reason: input.reason ?? "other",
+      metadata: {
+        note: "Private staff-only note",
+        storageKey: "private/review/evidence.json",
+      },
+      reviewedByUserId: "user-admin",
+      reviewedAt: "2026-05-11T10:30:00.000Z",
+    });
+  }
+}
+
 async function enableSmtp(repository: InMemoryOpenPracticeRepository): Promise<void> {
   await repository.upsertProviderSetting({
     id: "provider-smtp-mailpit",
@@ -552,6 +597,241 @@ describe("external upload routes", () => {
       ]),
       valid: true,
     });
+  });
+
+  it("loads safe public external upload link metadata before file selection", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { server } = testServer({ repository, s3: s3Config() });
+    const token = await createDirectToken({
+      repository,
+      id: "external-upload-public-active",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      maxUploads: 2,
+    });
+    await createReviewedExternalUploadDocument({
+      repository,
+      linkId: "external-upload-public-active",
+      id: "doc-public-pending",
+      title: "Pending synthetic upload.pdf",
+      status: "pending_review",
+    });
+    await createReviewedExternalUploadDocument({
+      repository,
+      linkId: "external-upload-public-active",
+      id: "doc-public-accepted",
+      title: "Accepted synthetic upload.pdf",
+      status: "accepted",
+      decision: "accept",
+    });
+    await createReviewedExternalUploadDocument({
+      repository,
+      linkId: "external-upload-public-active",
+      id: "doc-public-metadata",
+      title: "Metadata synthetic upload.pdf",
+      status: "needs_metadata",
+      decision: "request_metadata",
+      reason: "missing_metadata",
+    });
+    await createReviewedExternalUploadDocument({
+      repository,
+      linkId: "external-upload-public-active",
+      id: "doc-public-retry",
+      title: "Retry synthetic upload.pdf",
+      status: "retry_requested",
+      decision: "request_retry",
+      reason: "unreadable",
+    });
+    await createReviewedExternalUploadDocument({
+      repository,
+      linkId: "external-upload-public-active",
+      id: "doc-public-discarded",
+      title: "Discarded synthetic upload.pdf",
+      status: "discarded",
+      decision: "discard",
+      reason: "wrong_matter",
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: `/api/portal/external-uploads/${token}`,
+      headers: { "user-agent": "external-upload-public-view-test" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      upload: {
+        id: "external-upload-public-active",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        maxUploads: 2,
+        usedUploads: 0,
+        status: "active",
+      },
+      acceptedClassifications: ["general", "privileged", "work_product", "financial", "identity"],
+      documents: expect.arrayContaining([
+        expect.objectContaining({
+          id: "doc-public-pending",
+          title: "Pending synthetic upload.pdf",
+          uploadStatus: "intent_created",
+          checksumStatus: "pending",
+          scanStatus: "pending",
+          reviewStatus: "pending_review",
+        }),
+        expect.objectContaining({
+          id: "doc-public-accepted",
+          reviewStatus: "accepted",
+          reviewReason: "other",
+          reviewedAt: "2026-05-11T10:30:00.000Z",
+        }),
+        expect.objectContaining({
+          id: "doc-public-metadata",
+          reviewStatus: "needs_metadata",
+          reviewReason: "missing_metadata",
+        }),
+        expect.objectContaining({
+          id: "doc-public-retry",
+          reviewStatus: "retry_requested",
+          reviewReason: "unreadable",
+        }),
+        expect.objectContaining({
+          id: "doc-public-discarded",
+          reviewStatus: "discarded",
+          reviewReason: "wrong_matter",
+        }),
+      ]),
+    });
+    expect(response.json().documents).toHaveLength(5);
+    expect(response.json().upload).not.toHaveProperty("matterId");
+    expect(response.json().upload).not.toHaveProperty("firmId");
+    expect(response.json().upload).not.toHaveProperty("requestedByUserId");
+    expect(response.json().documents[0]).not.toHaveProperty("matterId");
+    expect(response.json().documents[0]).not.toHaveProperty("externalUploadLinkId");
+    expect(response.json().documents[0]).not.toHaveProperty("storageKey");
+    expect(response.json().documents[0]).not.toHaveProperty("reviewMetadata");
+    expect(response.json().documents[0]).not.toHaveProperty("reviewedByUserId");
+    expect(response.body).not.toContain("Private staff-only note");
+    expect(response.body).not.toContain("private/review/evidence.json");
+    expect(response.body).not.toContain("tokenHash");
+    expect(response.body).not.toContain("matter-001");
+    expect(response.body).not.toContain("user-admin");
+    await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalUploadLinkId: "external-upload-public-active",
+          resourceType: "external_upload_link",
+          resourceId: "external-upload-public-active",
+          action: "upload",
+          userAgent: "external-upload-public-view-test",
+          metadata: { outcome: "granted", status: "active" },
+        }),
+      ]),
+    );
+  });
+
+  it("denies missing, revoked, and expired public external upload metadata safely", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { server } = testServer({ repository, s3: s3Config() });
+    const expiredToken = await createDirectToken({
+      repository,
+      id: "external-upload-public-expired",
+      expiresAt: "2020-01-01T00:00:00.000Z",
+    });
+    const revokedToken = await createDirectToken({
+      repository,
+      id: "external-upload-public-revoked",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      revokedAt: "2026-04-29T12:00:00.000Z",
+    });
+
+    for (const token of ["missing-external-upload-token", expiredToken, revokedToken]) {
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/portal/external-uploads/${token}`,
+        headers: { "user-agent": "external-upload-public-denial-test" },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({
+        message: "External upload link is not available",
+      });
+      expect(response.body).not.toContain(token);
+      expect(response.body).not.toContain("tokenHash");
+    }
+
+    await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalUploadLinkId: "external-upload-public-expired",
+          resourceType: "external_upload_link",
+          resourceId: "external-upload-public-expired",
+          action: "upload",
+          userAgent: "external-upload-public-denial-test",
+          metadata: { outcome: "denied", reason: "expired" },
+        }),
+        expect.objectContaining({
+          externalUploadLinkId: "external-upload-public-revoked",
+          resourceType: "external_upload_link",
+          resourceId: "external-upload-public-revoked",
+          action: "upload",
+          userAgent: "external-upload-public-denial-test",
+          metadata: { outcome: "denied", reason: "revoked" },
+        }),
+      ]),
+    );
+  });
+
+  it("reports exhausted public external upload metadata without enabling another upload", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { server } = testServer({ repository, s3: s3Config() });
+    const token = await createDirectToken({
+      repository,
+      id: "external-upload-public-exhausted",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      maxUploads: 1,
+      usedUploads: 1,
+    });
+
+    const loaded = await server.inject({
+      method: "GET",
+      url: `/api/portal/external-uploads/${token}`,
+      headers: { "user-agent": "external-upload-public-exhausted-test" },
+    });
+    expect(loaded.statusCode).toBe(200);
+    expect(loaded.json()).toMatchObject({
+      upload: {
+        id: "external-upload-public-exhausted",
+        maxUploads: 1,
+        usedUploads: 1,
+        status: "exhausted",
+      },
+    });
+
+    const intent = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${token}/intents`,
+      payload: { filename: "extra.pdf", checksumSha256: checksum },
+    });
+    expect(intent.statusCode).toBe(403);
+    expect(intent.json()).toMatchObject({
+      message: "External upload link is not available",
+    });
+    await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalUploadLinkId: "external-upload-public-exhausted",
+          resourceType: "external_upload_link",
+          resourceId: "external-upload-public-exhausted",
+          action: "upload",
+          userAgent: "external-upload-public-exhausted-test",
+          metadata: { outcome: "unavailable", status: "exhausted" },
+        }),
+        expect.objectContaining({
+          externalUploadLinkId: "external-upload-public-exhausted",
+          resourceType: "external_upload_link",
+          resourceId: "external-upload-public-exhausted",
+          action: "upload",
+          metadata: { outcome: "denied", reason: "upload_limit" },
+        }),
+      ]),
+    );
   });
 
   it("rate-limits public external upload intents without leaking token material", async () => {

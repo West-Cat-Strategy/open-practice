@@ -13,6 +13,31 @@ export interface ExternalUploadCreateFormState {
   expiresAtLocal: string;
 }
 
+export type ExternalUploadReviewDecision =
+  | "accept"
+  | "request_metadata"
+  | "request_retry"
+  | "discard";
+
+export type ExternalUploadReviewReason =
+  | "duplicate"
+  | "missing_metadata"
+  | "checksum_mismatch"
+  | "scan_failed"
+  | "wrong_matter"
+  | "unreadable"
+  | "other";
+
+export const externalUploadReviewReasons: ExternalUploadReviewReason[] = [
+  "duplicate",
+  "missing_metadata",
+  "checksum_mismatch",
+  "scan_failed",
+  "wrong_matter",
+  "unreadable",
+  "other",
+];
+
 export const externalUploadsStatusFallback: ExternalUploadsStatusResponse = {
   status: "unavailable",
   reason: "external_uploads_unavailable",
@@ -116,12 +141,14 @@ export function describeExternalUploadReviewState(document: ExternalUploadReview
 }
 
 export function buildExternalUploadReviewPayload(input: {
-  decision: "accept" | "request_metadata" | "request_retry" | "discard";
+  decision: ExternalUploadReviewDecision;
+  reason?: ExternalUploadReviewReason | "";
   duplicateOfDocumentId?: string;
   note?: string;
 }): Record<string, string> {
   return {
     decision: input.decision,
+    ...(input.reason ? { reason: input.reason } : {}),
     ...(input.duplicateOfDocumentId ? { duplicateOfDocumentId: input.duplicateOfDocumentId } : {}),
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
   };

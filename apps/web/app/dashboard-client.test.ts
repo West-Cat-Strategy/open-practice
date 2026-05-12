@@ -2269,11 +2269,13 @@ describe("dashboard client behavior", () => {
     expect(
       buildExternalUploadReviewPayload({
         decision: "discard",
+        reason: "wrong_matter",
         duplicateOfDocumentId: "doc-001",
         note: "  Synthetic note  ",
       }),
     ).toEqual({
       decision: "discard",
+      reason: "wrong_matter",
       duplicateOfDocumentId: "doc-001",
       note: "Synthetic note",
     });
