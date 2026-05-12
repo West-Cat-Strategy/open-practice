@@ -13,6 +13,7 @@ import {
   billingTrustTransferRequests,
   calendarCredentials,
   calendarEventAttendees,
+  calendarEventReminders,
   calendarEvents,
   connectorDeliveryAttempts,
   connectorOutbox,
@@ -169,6 +170,40 @@ describe("database schema hardening", () => {
         "calendar_event_attendees_role_value",
         "calendar_event_attendees_response_status_value",
         "calendar_event_attendees_invitation_status_value",
+      ]),
+    );
+  });
+
+  it("persists manual reminder state for calendar events", () => {
+    const config = getTableConfig(calendarEventReminders);
+    const columns = config.columns.map((column) => column.name);
+
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "event_id",
+        "remind_at",
+        "channel",
+        "status",
+        "note",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "created_by_user_id",
+        "updated_by_user_id",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "calendar_event_reminders_event_active_idx",
+        "calendar_event_reminders_status_due_idx",
+      ]),
+    );
+    expect(config.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "calendar_event_reminders_channel_value",
+        "calendar_event_reminders_status_value",
       ]),
     );
   });

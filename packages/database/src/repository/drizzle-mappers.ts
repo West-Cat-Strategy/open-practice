@@ -19,6 +19,7 @@ import {
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
+  type CalendarEventReminderRecord,
   type ConflictCheckRecord,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
@@ -250,6 +251,26 @@ export function mapCalendarEventAttendeeRow(
   };
 }
 
+export function mapCalendarEventReminderRow(
+  row: typeof schema.calendarEventReminders.$inferSelect,
+): CalendarEventReminderRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    eventId: row.eventId,
+    remindAt: row.remindAt.toISOString(),
+    channel: row.channel as CalendarEventReminderRecord["channel"],
+    status: row.status as CalendarEventReminderRecord["status"],
+    note: row.note ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    deletedAt: dateToIso(row.deletedAt),
+    createdByUserId: row.createdByUserId,
+    updatedByUserId: row.updatedByUserId,
+  };
+}
+
 export function mapTaskDeadlineRow(row: typeof schema.tasks.$inferSelect): TaskDeadlineRecord {
   return {
     id: row.id,
@@ -275,6 +296,24 @@ export function activeCalendarAttendees(
         !attendee.deletedAt,
     )
     .sort((left, right) => left.email.localeCompare(right.email));
+}
+
+export function activeCalendarReminders(
+  reminders: CalendarEventReminderRecord[] | undefined,
+  event: Pick<CalendarEventRecord, "firmId" | "matterId" | "id">,
+): CalendarEventReminderRecord[] {
+  return (reminders ?? [])
+    .filter(
+      (reminder) =>
+        reminder.firmId === event.firmId &&
+        reminder.matterId === event.matterId &&
+        reminder.eventId === event.id &&
+        !reminder.deletedAt,
+    )
+    .sort((left, right) => {
+      const remindAtDifference = Date.parse(left.remindAt) - Date.parse(right.remindAt);
+      return remindAtDifference === 0 ? left.id.localeCompare(right.id) : remindAtDifference;
+    });
 }
 
 export function setupStatusFromCounts(firmCount: number, userCount: number): FirstRunSetupStatus {

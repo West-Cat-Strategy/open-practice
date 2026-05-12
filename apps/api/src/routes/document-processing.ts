@@ -6,7 +6,7 @@ import type {
   DocumentTextExtractionRecord,
   JobLifecycleRecord,
 } from "@open-practice/domain";
-import { redactJobMetadata } from "@open-practice/domain";
+import { buildDocumentReviewSuggestions, redactJobMetadata } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -462,6 +462,9 @@ export function registerDocumentProcessingRoutes(
           (typeof job.metadata.documentId === "string" &&
             documentIds.has(job.metadata.documentId))),
     );
+    const matter = (await repository.listMattersForUser(request.auth.user)).find(
+      (candidate) => candidate.id === query.matterId,
+    );
 
     const documentItems = await Promise.all(
       documents.map(async (document) => {
@@ -481,6 +484,12 @@ export function registerDocumentProcessingRoutes(
           queueEligibility: eligibility,
           latestJob: latestJob ? serializeJobRun(latestJob) : undefined,
           latestExtraction: sanitizeTextExtraction(latestExtraction),
+          reviewSuggestions: buildDocumentReviewSuggestions({
+            document,
+            sameMatterDocuments: documents,
+            latestExtraction,
+            matter,
+          }),
         };
       }),
     );

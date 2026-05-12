@@ -28,6 +28,7 @@ import {
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
+  type CalendarEventReminderRecord,
   type ConflictCheckRecord,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
@@ -117,6 +118,7 @@ import type {
   AuthPasswordSetupTokenRecord,
   AuthSessionRecord,
   CalendarEventAttendeeUpsertInput,
+  CalendarEventReminderUpsertInput,
   CalendarEventUpsertInput,
   DocumentUploadIntent,
   FirstRunSetupInput,
@@ -145,6 +147,7 @@ import {
 
 import {
   activeCalendarAttendees,
+  activeCalendarReminders,
   buildActivityTimeline,
   matterTrustBalance,
   nextEmailAttemptCount,
@@ -1233,6 +1236,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         .map((event) => ({
           ...event,
           attendees: activeCalendarAttendees(event.attendees, event),
+          reminders: activeCalendarReminders(event.reminders, event),
         })),
     );
   }
@@ -1250,7 +1254,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         !event.deletedAt,
     );
     return event
-      ? clone({ ...event, attendees: activeCalendarAttendees(event.attendees, event) })
+      ? clone({
+          ...event,
+          attendees: activeCalendarAttendees(event.attendees, event),
+          reminders: activeCalendarReminders(event.reminders, event),
+        })
       : undefined;
   }
 
@@ -1267,7 +1275,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         !event.deletedAt,
     );
     return event
-      ? clone({ ...event, attendees: activeCalendarAttendees(event.attendees, event) })
+      ? clone({
+          ...event,
+          attendees: activeCalendarAttendees(event.attendees, event),
+          reminders: activeCalendarReminders(event.reminders, event),
+        })
       : undefined;
   }
 
@@ -1302,12 +1314,17 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       this.calendarEvents[existingIndex] = clone({
         ...event,
         attendees: event.attendees ?? this.calendarEvents[existingIndex]!.attendees,
+        reminders: event.reminders ?? this.calendarEvents[existingIndex]!.reminders,
       });
     } else {
       this.calendarEvents.push(clone(event));
     }
     const stored = this.calendarEvents.find((candidate) => candidate.id === event.id)!;
-    return clone({ ...stored, attendees: activeCalendarAttendees(stored.attendees, stored) });
+    return clone({
+      ...stored,
+      attendees: activeCalendarAttendees(stored.attendees, stored),
+      reminders: activeCalendarReminders(stored.reminders, stored),
+    });
   }
 
   async listCalendarEventAttendees(
@@ -1405,6 +1422,70 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     const replaced = input.attendees.map(clone);
     event.attendees = [...retainedDeleted, ...replaced];
     return clone(activeCalendarAttendees(event.attendees, event));
+  }
+
+  async listCalendarEventReminders(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+  ): Promise<CalendarEventReminderRecord[]> {
+    const event = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === firmId &&
+        candidate.matterId === matterId &&
+        candidate.id === eventId &&
+        !candidate.deletedAt,
+    );
+    return clone(activeCalendarReminders(event?.reminders, { firmId, matterId, id: eventId }));
+  }
+
+  async upsertCalendarEventReminder(
+    reminder: CalendarEventReminderUpsertInput,
+  ): Promise<CalendarEventReminderRecord> {
+    const event = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === reminder.firmId &&
+        candidate.matterId === reminder.matterId &&
+        candidate.id === reminder.eventId &&
+        !candidate.deletedAt,
+    );
+    if (!event) {
+      throw new Error(`Calendar event ${reminder.eventId} was not found`);
+    }
+    const reminders = event.reminders ?? [];
+    const existingIndex = reminders.findIndex((candidate) => candidate.id === reminder.id);
+    if (existingIndex >= 0) {
+      reminders[existingIndex] = clone(reminder);
+    } else {
+      reminders.push(clone(reminder));
+    }
+    event.reminders = reminders;
+    return clone(reminder);
+  }
+
+  async deleteCalendarEventReminder(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    reminderId: string;
+    deletedAt: string;
+    updatedByUserId: string;
+  }): Promise<CalendarEventReminderRecord | undefined> {
+    const event = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === input.firmId &&
+        candidate.matterId === input.matterId &&
+        candidate.id === input.eventId &&
+        !candidate.deletedAt,
+    );
+    const reminder = event?.reminders?.find(
+      (candidate) => candidate.id === input.reminderId && !candidate.deletedAt,
+    );
+    if (!reminder) return undefined;
+    reminder.deletedAt = input.deletedAt;
+    reminder.updatedAt = input.deletedAt;
+    reminder.updatedByUserId = input.updatedByUserId;
+    return clone(reminder);
   }
 
   async deleteCalendarEvent(input: {

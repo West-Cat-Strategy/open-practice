@@ -39,8 +39,8 @@ Completed Phase 3 slices:
     storage-disabled fallbacks.
 2.  **Operational Queues And Workbenches**: Audit taxonomy/coverage, document-processing status,
     worker-run inspection, task/deadline projections, built-in operational views, matter timelines,
-    contact dossiers, contact review queues, and operations focus panels are live as read-only or
-    constrained workflow surfaces.
+    contact dossiers, contact review queues, reviewer-only document suggestion summaries, and
+    operations focus panels are live as read-only or constrained workflow surfaces.
 3.  **Communications And Connectors Foundation**: SMTP outbox queueing, email delivery state,
     inbound email triage, communications inbox aggregation, conversation topics/lifecycle,
     connector registry/outbox, and preview-only outbound webhook guardrails are live.
@@ -54,20 +54,18 @@ Completed Phase 3 slices:
 
 Next operational scale priorities:
 
-1.  **Document Suggestions Review Queue**: Promote OP-T85 as the next concrete backlog pick:
-    reviewer-only OCR/extraction suggestions for classification, duplicate/supersession,
-    matter/contact hints, and missing metadata without automatic merge or classification.
-2.  **Calendar And Native Meeting Controls**: Add calendar event write/reschedule/reminder records
-    and later native WebRTC guest-session controls without redoing shipped attendees, iCalendar,
-    invitations, or stored meeting-link boundaries.
-3.  **Async Local AI Jobs**: Move selected matter/document summary and drafting-assist requests
+1.  **Calendar And Native Meeting Controls**: Finish validation for calendar event
+    write/reschedule/reminder records, then add native WebRTC guest-session controls without redoing
+    shipped attendees, iCalendar, invitations, or stored meeting-link boundaries.
+2.  **Async Local AI Jobs**: Move selected matter/document summary and drafting-assist requests
     behind disabled-by-default queue jobs while preserving reviewed, non-authoritative outputs.
-4.  **Connector/Webhook Delivery**: Turn existing connector outbox rows into a first delivery worker
-    slice with HTTPS allowlists, signing, leases, delivery attempts, and redacted dead-letter state.
-5.  **Conversation And Communications Follow-Through**: Add matter-scoped conversation message
+3.  **Connector/Webhook Delivery**: Surface existing connector delivery attempts read-only first,
+    then turn connector outbox rows into a delivery worker slice with HTTPS allowlists, signing,
+    leases, delivery attempts, and redacted dead-letter state.
+4.  **Conversation And Communications Follow-Through**: Add matter-scoped conversation message
     records, communications ownership, private staff notes, and consent/channel follow-up state
     without adding realtime chat or duplicating existing inbox triage.
-6.  **Resolution And Reporting Surfaces**: Add contact data-quality decision records, audit
+5.  **Resolution And Reporting Surfaces**: Add contact data-quality decision records, audit
     projection summaries, async report export requests, delivery receipt tokens, and saved
     operational-view expansion beyond the current queue-dashboard surface.
 

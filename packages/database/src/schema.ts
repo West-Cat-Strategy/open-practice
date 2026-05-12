@@ -1738,6 +1738,56 @@ export const calendarEventAttendees = pgTable(
   }),
 );
 
+export const calendarEventReminders = pgTable(
+  "calendar_event_reminders",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => calendarEvents.id),
+    remindAt: timestamp("remind_at", { withTimezone: true }).notNull(),
+    channel: text("channel").notNull().default("dashboard"),
+    status: text("status").notNull().default("pending"),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    updatedByUserId: text("updated_by_user_id")
+      .notNull()
+      .references(() => users.id),
+  },
+  (table) => ({
+    eventActive: index("calendar_event_reminders_event_active_idx").on(
+      table.firmId,
+      table.matterId,
+      table.eventId,
+      table.deletedAt,
+    ),
+    statusDue: index("calendar_event_reminders_status_due_idx").on(
+      table.firmId,
+      table.status,
+      table.remindAt,
+    ),
+    channelValue: check(
+      "calendar_event_reminders_channel_value",
+      sql`${table.channel} in ('dashboard')`,
+    ),
+    statusValue: check(
+      "calendar_event_reminders_status_value",
+      sql`${table.status} in ('pending', 'acknowledged', 'dismissed', 'cancelled')`,
+    ),
+  }),
+);
+
 export const signatureRequests = pgTable("signature_requests", {
   id: text("id").primaryKey(),
   firmId: text("firm_id")

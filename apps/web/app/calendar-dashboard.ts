@@ -1,6 +1,7 @@
 import type {
   CalendarEventAttendeeRecord,
   CalendarEventRecord,
+  CalendarEventReminderRecord,
   CalendarMeetingInvitationBoundary,
   CalendarMeetingLinkMode,
 } from "@open-practice/domain";
@@ -130,6 +131,74 @@ export function buildCalendarMeetingLinkPayload(input: {
   };
 }
 
+export function buildCalendarEventPayload(input: {
+  matterId: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  status?: CalendarEventRecord["status"];
+  description?: string;
+  location?: string;
+}): {
+  matterId: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  status?: CalendarEventRecord["status"];
+  description?: string;
+  location?: string;
+} {
+  return {
+    matterId: input.matterId,
+    title: input.title.trim(),
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    ...(input.status ? { status: input.status } : {}),
+    ...(input.description?.trim() ? { description: input.description.trim() } : {}),
+    ...(input.location?.trim() ? { location: input.location.trim() } : {}),
+  };
+}
+
+export function buildCalendarReschedulePayload(input: {
+  matterId: string;
+  startsAt: string;
+  endsAt: string;
+  status?: CalendarEventRecord["status"];
+}): {
+  matterId: string;
+  startsAt: string;
+  endsAt: string;
+  status?: CalendarEventRecord["status"];
+} {
+  return {
+    matterId: input.matterId,
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    ...(input.status ? { status: input.status } : {}),
+  };
+}
+
+export function buildCalendarReminderPayload(input: {
+  matterId: string;
+  remindAt: string;
+  status?: CalendarEventReminderRecord["status"];
+  note?: string;
+}): {
+  matterId: string;
+  remindAt: string;
+  channel: "dashboard";
+  status?: CalendarEventReminderRecord["status"];
+  note?: string;
+} {
+  return {
+    matterId: input.matterId,
+    remindAt: input.remindAt,
+    channel: "dashboard",
+    ...(input.status ? { status: input.status } : {}),
+    ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+  };
+}
+
 export function buildCalendarInvitationPayload(input: {
   matterId: string;
   recipientCount: number;
@@ -146,6 +215,22 @@ export function buildCalendarInvitationPayload(input: {
   };
 }
 
+export function upsertCalendarEvent(
+  eventsByMatterId: Record<string, CalendarEventRecord[]>,
+  matterId: string,
+  event: CalendarEventRecord,
+): Record<string, CalendarEventRecord[]> {
+  const existingEvents = eventsByMatterId[matterId] ?? [];
+  const exists = existingEvents.some((candidate) => candidate.id === event.id);
+  const nextEvents = exists
+    ? existingEvents.map((candidate) => (candidate.id === event.id ? event : candidate))
+    : [...existingEvents, event];
+  return {
+    ...eventsByMatterId,
+    [matterId]: sortCalendarEvents(nextEvents),
+  };
+}
+
 export function upsertCalendarCredential(
   credentials: CalendarCredentialSummary[],
   credential: CalendarCredentialSummary,
@@ -153,6 +238,53 @@ export function upsertCalendarCredential(
   const exists = credentials.some((candidate) => candidate.id === credential.id);
   if (!exists) return [...credentials, credential];
   return credentials.map((candidate) => (candidate.id === credential.id ? credential : candidate));
+}
+
+export function upsertCalendarEventReminder(
+  eventsByMatterId: Record<string, CalendarEventRecord[]>,
+  matterId: string,
+  eventId: string,
+  reminder: CalendarEventReminderRecord,
+): Record<string, CalendarEventRecord[]> {
+  return {
+    ...eventsByMatterId,
+    [matterId]: (eventsByMatterId[matterId] ?? []).map((event) => {
+      if (event.id !== eventId) return event;
+      const reminders = event.reminders ?? [];
+      const exists = reminders.some((candidate) => candidate.id === reminder.id);
+      const nextReminders = exists
+        ? reminders.map((candidate) => (candidate.id === reminder.id ? reminder : candidate))
+        : [...reminders, reminder];
+      return {
+        ...event,
+        reminders: nextReminders
+          .filter((candidate) => !candidate.deletedAt)
+          .sort((left, right) => {
+            const remindAtDifference = Date.parse(left.remindAt) - Date.parse(right.remindAt);
+            return remindAtDifference === 0 ? left.id.localeCompare(right.id) : remindAtDifference;
+          }),
+      };
+    }),
+  };
+}
+
+export function removeCalendarEventReminder(
+  eventsByMatterId: Record<string, CalendarEventRecord[]>,
+  matterId: string,
+  eventId: string,
+  reminderId: string,
+): Record<string, CalendarEventRecord[]> {
+  return {
+    ...eventsByMatterId,
+    [matterId]: (eventsByMatterId[matterId] ?? []).map((event) =>
+      event.id === eventId
+        ? {
+            ...event,
+            reminders: (event.reminders ?? []).filter((reminder) => reminder.id !== reminderId),
+          }
+        : event,
+    ),
+  };
 }
 
 export function upsertCalendarEventAttendee(

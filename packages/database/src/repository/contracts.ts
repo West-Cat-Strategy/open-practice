@@ -17,6 +17,7 @@ import {
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
+  type CalendarEventReminderRecord,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
   type ConnectorRecord,
@@ -158,6 +159,7 @@ export interface AuthSessionRecord {
 
 export type CalendarEventUpsertInput = CalendarEventRecord;
 export type CalendarEventAttendeeUpsertInput = CalendarEventAttendeeRecord;
+export type CalendarEventReminderUpsertInput = CalendarEventReminderRecord;
 
 export interface TaskDeadlineCompletionInput {
   firmId: string;
@@ -525,6 +527,22 @@ export interface OpenPracticeRepository {
     replacedAt: string;
     updatedByUserId: string;
   }): Promise<CalendarEventAttendeeRecord[]>;
+  listCalendarEventReminders(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+  ): Promise<CalendarEventReminderRecord[]>;
+  upsertCalendarEventReminder(
+    reminder: CalendarEventReminderUpsertInput,
+  ): Promise<CalendarEventReminderRecord>;
+  deleteCalendarEventReminder(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    reminderId: string;
+    deletedAt: string;
+    updatedByUserId: string;
+  }): Promise<CalendarEventReminderRecord | undefined>;
   deleteCalendarEvent(input: {
     firmId: string;
     matterId: string;

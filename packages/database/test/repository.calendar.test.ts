@@ -233,6 +233,55 @@ describe("repository calendar and tasks", () => {
     });
   });
 
+  it("creates, updates, and soft-deletes manual calendar reminders", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const reminder = await repository.upsertCalendarEventReminder({
+      id: "calendar-reminder-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-001",
+      remindAt: "2026-05-05T15:30:00.000Z",
+      channel: "dashboard",
+      status: "pending",
+      note: "Synthetic note for repository proof.",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+    });
+
+    await expect(
+      repository.listCalendarEventReminders("firm-west-legal", "matter-001", "calendar-event-001"),
+    ).resolves.toMatchObject([{ id: reminder.id, status: "pending", channel: "dashboard" }]);
+    await expect(
+      repository.getCalendarEvent("firm-west-legal", "matter-001", "calendar-event-001"),
+    ).resolves.toMatchObject({
+      reminders: [{ id: reminder.id, remindAt: "2026-05-05T15:30:00.000Z" }],
+    });
+
+    await expect(
+      repository.upsertCalendarEventReminder({
+        ...reminder,
+        status: "acknowledged",
+        updatedAt: "2026-04-25T12:10:00.000Z",
+      }),
+    ).resolves.toMatchObject({ status: "acknowledged" });
+
+    await expect(
+      repository.deleteCalendarEventReminder({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-001",
+        reminderId: reminder.id,
+        deletedAt: "2026-04-25T12:15:00.000Z",
+        updatedByUserId: "user-licensee",
+      }),
+    ).resolves.toMatchObject({ deletedAt: "2026-04-25T12:15:00.000Z" });
+    await expect(
+      repository.listCalendarEventReminders("firm-west-legal", "matter-001", "calendar-event-001"),
+    ).resolves.toEqual([]);
+  });
+
   it("rejects calendar event writes that would cross firm or matter scope", async () => {
     const repository = new InMemoryOpenPracticeRepository();
 

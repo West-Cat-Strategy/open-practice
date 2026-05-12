@@ -150,6 +150,10 @@ function assertValidEventRange(startsAt: string, endsAt: string): void {
   }
 }
 
+export function assertValidCalendarEventRange(startsAt: string, endsAt: string): void {
+  assertValidEventRange(startsAt, endsAt);
+}
+
 function eventUid(event: CalendarEventRecord): string {
   return event.uid || `${event.id}@open-practice.local`;
 }

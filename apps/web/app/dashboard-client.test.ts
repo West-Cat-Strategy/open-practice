@@ -72,25 +72,34 @@ import {
   buildDocumentProcessingQueuePath,
   buildDocumentProcessingWorkbenchPath,
   describeDocumentQueueAction,
+  describeDocumentReviewSuggestion,
   describeLatestDocumentJob,
   describeLatestExtraction,
   documentProcessingRowsForMatter,
+  emptyDocumentReviewSuggestions,
   emptyDocumentProcessingWorkbench,
   loadDocumentProcessingDashboardData,
   replaceDocumentProcessingWorkbench,
+  summarizeDocumentReviewSuggestions,
   summarizeDocumentProcessingWorkbench,
 } from "./document-processing-dashboard";
 import {
+  buildCalendarEventPayload,
   buildCalendarInvitationPayload,
   buildCalendarMeetingLinkPayload,
   buildCalendarRadarBuckets,
+  buildCalendarReminderPayload,
+  buildCalendarReschedulePayload,
   describeCalendarEventTiming,
   describeMeetingInvitationBoundary,
   describeMeetingLinkAvailability,
   loadCalendarDashboardData,
+  removeCalendarEventReminder,
   removeCalendarEventAttendee,
+  upsertCalendarEvent,
   upsertCalendarEventAttendee,
   upsertCalendarCredential,
+  upsertCalendarEventReminder,
 } from "./calendar-dashboard";
 import {
   buildContactDossierConflictCheckPrefill,
@@ -451,6 +460,44 @@ function documentProcessingWorkbench(
           language: "eng",
           pageCount: 2,
           confidence: 0.91,
+        },
+        reviewSuggestions: {
+          reviewerOnly: true,
+          mutating: false,
+          summaryCounts: {
+            classification: 1,
+            duplicate_or_supersession: 0,
+            matter_contact: 1,
+            missing_metadata: 0,
+            total: 2,
+          },
+          groups: {
+            classification: [
+              {
+                id: "doc-001:classification",
+                group: "classification",
+                label: "Extraction suggests financial",
+                detail: "Current classification is general.",
+                tone: "risk",
+                documentId: "doc-001",
+                classification: "financial",
+                confidence: 0.88,
+                metadataKeys: ["suggestedClassification"],
+              },
+            ],
+            duplicate_or_supersession: [],
+            matter_contact: [
+              {
+                id: "doc-001:matter",
+                group: "matter_contact",
+                label: "Matter 2026-0001",
+                detail: "Synthetic matter context",
+                tone: "neutral",
+                documentId: "doc-001",
+              },
+            ],
+            missing_metadata: [],
+          },
         },
       },
     ],
@@ -1658,6 +1705,19 @@ describe("dashboard client behavior", () => {
         storageKey: "private/storage/key.txt",
       } as unknown as Parameters<typeof describeLatestExtraction>[0]),
     ).toBe("completed · language eng · 3 pages · 88% confidence");
+    expect(summarizeDocumentReviewSuggestions(workbench.documents)).toBe(
+      "2 reviewer suggestion cues. 0 duplicate or supersession. 0 missing metadata.",
+    );
+    expect(
+      describeDocumentReviewSuggestion(item.reviewSuggestions!.groups.classification[0]!),
+    ).toBe(
+      "Current classification is general. · classification financial · 88% confidence · metadata suggestedClassification",
+    );
+    expect(emptyDocumentReviewSuggestions()).toMatchObject({
+      reviewerOnly: true,
+      mutating: false,
+      summaryCounts: { total: 0 },
+    });
     expect(summarizeDocumentProcessingWorkbench(workbench)).toBe(
       "1 providers configured. 1/1 actionable worker queues configured. 3 reserved queues. 0 active or queued jobs. 0 failed jobs.",
     );
@@ -2645,6 +2705,53 @@ describe("dashboard client behavior", () => {
     });
   });
 
+  it("builds calendar event and reminder lifecycle payloads", () => {
+    expect(
+      buildCalendarEventPayload({
+        matterId: "matter-001",
+        title: "  Synthetic conference  ",
+        startsAt: "2026-05-12T16:00:00.000Z",
+        endsAt: "2026-05-12T17:00:00.000Z",
+        status: "tentative",
+        description: "  Synthetic notes  ",
+        location: "  Room 4  ",
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      title: "Synthetic conference",
+      startsAt: "2026-05-12T16:00:00.000Z",
+      endsAt: "2026-05-12T17:00:00.000Z",
+      status: "tentative",
+      description: "Synthetic notes",
+      location: "Room 4",
+    });
+    expect(
+      buildCalendarReschedulePayload({
+        matterId: "matter-001",
+        startsAt: "2026-05-13T16:00:00.000Z",
+        endsAt: "2026-05-13T17:00:00.000Z",
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      startsAt: "2026-05-13T16:00:00.000Z",
+      endsAt: "2026-05-13T17:00:00.000Z",
+    });
+    expect(
+      buildCalendarReminderPayload({
+        matterId: "matter-001",
+        remindAt: "2026-05-12T15:45:00.000Z",
+        status: "pending",
+        note: "  Bring synthetic exhibit list  ",
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      remindAt: "2026-05-12T15:45:00.000Z",
+      channel: "dashboard",
+      status: "pending",
+      note: "Bring synthetic exhibit list",
+    });
+  });
+
   it("loads calendar dashboard events, links, and credentials for first render", async () => {
     const event = calendarEvent({ matterId: "matter-002" });
     const data = await loadCalendarDashboardData({
@@ -2718,6 +2825,53 @@ describe("dashboard client behavior", () => {
       ]![0]!.attendees,
     ).toEqual([]);
     expect(updated["matter-002"]).toHaveLength(1);
+  });
+
+  it("updates calendar event and reminder state without mutating unrelated matters", () => {
+    const event = calendarEvent({
+      id: "calendar-event-lifecycle",
+      matterId: "matter-001",
+      reminders: [],
+    });
+    const otherMatterEvent = calendarEvent({ id: "calendar-event-other", matterId: "matter-002" });
+    const upsertedEvent = upsertCalendarEvent(
+      { "matter-001": [event], "matter-002": [otherMatterEvent] },
+      "matter-001",
+      { ...event, title: "Updated lifecycle event" },
+    );
+    expect(upsertedEvent["matter-001"]![0]).toMatchObject({
+      id: "calendar-event-lifecycle",
+      title: "Updated lifecycle event",
+    });
+
+    const reminder = {
+      id: "calendar-reminder-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: event.id,
+      remindAt: "2026-05-12T15:45:00.000Z",
+      channel: "dashboard" as const,
+      status: "pending" as const,
+      createdAt: "2026-05-01T12:00:00.000Z",
+      updatedAt: "2026-05-01T12:00:00.000Z",
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+    };
+    const withReminder = upsertCalendarEventReminder(
+      upsertedEvent,
+      "matter-001",
+      event.id,
+      reminder,
+    );
+    expect(withReminder["matter-001"]![0]!.reminders).toMatchObject([
+      { id: "calendar-reminder-test", status: "pending" },
+    ]);
+    expect(
+      removeCalendarEventReminder(withReminder, "matter-001", event.id, reminder.id)[
+        "matter-001"
+      ]![0]!.reminders,
+    ).toEqual([]);
+    expect(withReminder["matter-002"]).toEqual([otherMatterEvent]);
   });
 
   it("describes meeting invitation boundaries without exposing links or tokens", () => {

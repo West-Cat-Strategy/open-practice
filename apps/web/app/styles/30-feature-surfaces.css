@@ -26,6 +26,19 @@
   gap: 2px;
 }
 
+.document-suggestions {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.document-suggestion-group {
+  display: grid;
+  gap: 3px;
+}
+
 .queue-item-row {
   width: 100%;
   border: 0;

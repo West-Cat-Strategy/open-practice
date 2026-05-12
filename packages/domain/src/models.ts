@@ -258,6 +258,8 @@ export type CalendarAttendeeRole = "required" | "optional";
 export type CalendarAttendeeResponseStatus = "needs_action" | "accepted" | "tentative" | "declined";
 export type CalendarInvitationStatus = "not_sent" | "queued" | "skipped";
 export type CalendarMeetingLinkMode = "blank" | "external_url" | "hosted_webrtc";
+export type CalendarEventReminderChannel = "dashboard";
+export type CalendarEventReminderStatus = "pending" | "acknowledged" | "dismissed" | "cancelled";
 export type CalendarMeetingBoundaryStatus = "disabled" | "configured";
 export type CalendarMeetingBoundaryReason =
   | "not_configured"
@@ -297,6 +299,22 @@ export interface CalendarEventAttendeeRecord {
   updatedByUserId: string;
 }
 
+export interface CalendarEventReminderRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  eventId: string;
+  remindAt: string;
+  channel: CalendarEventReminderChannel;
+  status: CalendarEventReminderStatus;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
+  createdByUserId: string;
+  updatedByUserId: string;
+}
+
 export interface CalendarEventRecord {
   id: string;
   firmId: string;
@@ -319,6 +337,7 @@ export interface CalendarEventRecord {
   createdByUserId: string;
   updatedByUserId: string;
   attendees?: CalendarEventAttendeeRecord[];
+  reminders?: CalendarEventReminderRecord[];
   meetingInvitationBoundary?: CalendarMeetingInvitationBoundary;
 }
 

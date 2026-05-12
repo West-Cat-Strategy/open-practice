@@ -5,6 +5,7 @@ export * from "./calendar.js";
 export * from "./contacts.js";
 export * from "./conversations.js";
 export * from "./conflicts.js";
+export * from "./document-suggestions.js";
 export * from "./fiscal-host-workflows.js";
 export * from "./intake.js";
 export * from "./ledger.js";

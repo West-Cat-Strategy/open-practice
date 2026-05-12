@@ -402,6 +402,8 @@ describe("document processing routes", () => {
       metadata: {
         language: "eng",
         textLength: 243,
+        suggestedClassification: "financial",
+        classificationConfidence: 0.88,
         storageKey: "matters/matter-001/doc-001.txt",
         token: "private-token",
         providerPayload: { private: true },
@@ -497,6 +499,30 @@ describe("document processing routes", () => {
               textLength: 243,
             },
           },
+          reviewSuggestions: {
+            reviewerOnly: true,
+            mutating: false,
+            summaryCounts: {
+              classification: 1,
+              duplicate_or_supersession: 0,
+              matter_contact: 3,
+              missing_metadata: 0,
+              total: 4,
+            },
+            groups: expect.objectContaining({
+              classification: [
+                expect.objectContaining({
+                  classification: "financial",
+                  confidence: 0.88,
+                  metadataKeys: ["suggestedClassification", "classificationConfidence"],
+                }),
+              ],
+              matter_contact: expect.arrayContaining([
+                expect.objectContaining({ label: "Matter 2026-0001" }),
+                expect.objectContaining({ contactId: "contact-ada", role: "client" }),
+              ]),
+            }),
+          },
         }),
       ],
     });
@@ -512,6 +538,9 @@ describe("document processing routes", () => {
     expect(documentItem.latestExtraction.metadata).not.toHaveProperty("storageKey");
     expect(documentItem.latestExtraction.metadata).not.toHaveProperty("token");
     expect(documentItem.latestExtraction.metadata).not.toHaveProperty("providerPayload");
+    expect(JSON.stringify(documentItem.reviewSuggestions)).not.toContain("private");
+    expect(JSON.stringify(documentItem.reviewSuggestions)).not.toContain("storageKey");
+    expect(JSON.stringify(documentItem.reviewSuggestions)).not.toContain("providerPayload");
   });
 
   it("summarizes visible document review queue states without cross-matter counts", async () => {

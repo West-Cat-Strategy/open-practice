@@ -111,28 +111,39 @@ import {
 } from "./conflict-check-dashboard";
 import StructuredIntakeBuilder from "./intake-forms/StructuredIntakeBuilder";
 import {
+  buildCalendarEventPayload,
   buildCalendarRadarBuckets,
   buildCalendarInvitationPayload,
   buildCalendarMeetingLinkPayload,
+  buildCalendarReminderPayload,
+  buildCalendarReschedulePayload,
   describeMeetingInvitationBoundary,
   describeMeetingLinkAvailability,
   describeCalendarEventTiming,
+  removeCalendarEventReminder,
   removeCalendarEventAttendee,
+  upsertCalendarEvent,
   upsertCalendarEventAttendee,
   upsertCalendarCredential,
+  upsertCalendarEventReminder,
 } from "./calendar-dashboard";
 import {
   buildDocumentProcessingQueuePath,
   buildDocumentProcessingWorkbenchPath,
   compactDocumentProcessingReason,
+  describeDocumentReviewSuggestion,
   describeDocumentQueueAction,
   describeLatestDocumentJob,
   describeLatestExtraction,
   documentProcessingGroupLabel,
   documentProcessingGroupOrder,
+  documentReviewSuggestionGroupLabel,
+  documentReviewSuggestionGroupOrder,
   documentProcessingRowsForMatter,
+  emptyDocumentReviewSuggestions,
   emptyDocumentProcessingWorkbench,
   replaceDocumentProcessingWorkbench,
+  summarizeDocumentReviewSuggestions,
   summarizeDocumentProcessingWorkbench,
 } from "./document-processing-dashboard";
 import {
@@ -225,8 +236,10 @@ import type {
   CalendarCredentialCreateResponse,
   CalendarCredentialRevokeResponse,
   CalendarDashboardResponse,
+  CalendarEventMutationResponse,
   CalendarInvitationResponse,
   CalendarMeetingLinkMutationResponse,
+  CalendarReminderMutationResponse,
   CapabilitiesResponse,
   CommunicationsInboxDashboardResponse,
   ConnectorOperationsResponse,
@@ -517,6 +530,31 @@ export default function DashboardClient({
     useState<CalendarCredentialCreateResponse | null>(null);
   const [creatingCalendarCredential, setCreatingCalendarCredential] = useState(false);
   const [revokingCalendarCredentialId, setRevokingCalendarCredentialId] = useState("");
+  const [calendarEventTitle, setCalendarEventTitle] = useState("");
+  const [calendarEventStartsAt, setCalendarEventStartsAt] = useState("");
+  const [calendarEventEndsAt, setCalendarEventEndsAt] = useState("");
+  const [calendarEventLocation, setCalendarEventLocation] = useState("");
+  const [calendarEventDescription, setCalendarEventDescription] = useState("");
+  const [calendarEventStatusValue, setCalendarEventStatusValue] =
+    useState<DashboardCalendarEvent["status"]>("confirmed");
+  const [calendarEventLifecycleStatus, setCalendarEventLifecycleStatus] = useState(
+    "Calendar events have not changed.",
+  );
+  const [creatingCalendarEvent, setCreatingCalendarEvent] = useState(false);
+  const [updatingCalendarEventId, setUpdatingCalendarEventId] = useState("");
+  const [cancelingCalendarEventId, setCancelingCalendarEventId] = useState("");
+  const [calendarReminderEventId, setCalendarReminderEventId] = useState("");
+  const [calendarReminderAt, setCalendarReminderAt] = useState("");
+  const [calendarReminderNote, setCalendarReminderNote] = useState("");
+  const [calendarReminderStatusValue, setCalendarReminderStatusValue] = useState<
+    "pending" | "acknowledged" | "dismissed" | "cancelled"
+  >("pending");
+  const [calendarReminderStatus, setCalendarReminderStatus] = useState(
+    "Reminder state has not changed.",
+  );
+  const [addingCalendarReminder, setAddingCalendarReminder] = useState(false);
+  const [updatingCalendarReminderId, setUpdatingCalendarReminderId] = useState("");
+  const [removingCalendarReminderId, setRemovingCalendarReminderId] = useState("");
   const [calendarMeetingEventId, setCalendarMeetingEventId] = useState("");
   const [calendarAttendeeName, setCalendarAttendeeName] = useState("");
   const [calendarAttendeeEmail, setCalendarAttendeeEmail] = useState("");
@@ -647,6 +685,10 @@ export default function DashboardClient({
     () => summarizeDocumentProcessingWorkbench(activeDocumentProcessing),
     [activeDocumentProcessing],
   );
+  const documentReviewSuggestionsSummary = useMemo(
+    () => summarizeDocumentReviewSuggestions(activeDocumentProcessingRows),
+    [activeDocumentProcessingRows],
+  );
   const activeShares = activeMatter ? (sharesByMatterId[activeMatter.id] ?? []) : [];
   const activeDrafts = activeMatter ? (draftsByMatterId[activeMatter.id] ?? []) : [];
   const activeExternalUploads = activeMatter
@@ -666,16 +708,23 @@ export default function DashboardClient({
   const selectedCalendarMeetingEvent =
     activeCalendarEvents.find((event) => event.id === calendarMeetingEventId) ??
     activeCalendarEvents[0];
+  const selectedCalendarReminderEvent =
+    activeCalendarEvents.find((event) => event.id === calendarReminderEventId) ??
+    activeCalendarEvents[0];
 
   useEffect(() => {
     if (!activeCalendarEvents.length) {
       if (calendarMeetingEventId) setCalendarMeetingEventId("");
+      if (calendarReminderEventId) setCalendarReminderEventId("");
       return;
     }
     if (!activeCalendarEvents.some((event) => event.id === calendarMeetingEventId)) {
       setCalendarMeetingEventId(activeCalendarEvents[0]!.id);
     }
-  }, [activeCalendarEvents, calendarMeetingEventId]);
+    if (!activeCalendarEvents.some((event) => event.id === calendarReminderEventId)) {
+      setCalendarReminderEventId(activeCalendarEvents[0]!.id);
+    }
+  }, [activeCalendarEvents, calendarMeetingEventId, calendarReminderEventId]);
   const activeIntakeFormLinks = activeMatter
     ? (intakeFormLinksByMatterId[activeMatter.id] ?? [])
     : [];
@@ -1604,6 +1653,205 @@ export default function DashboardClient({
     setCalendarCredentials((current) => upsertCalendarCredential(current, payload.credential));
     setCalendarCredentialStatus("Calendar app password revoked.");
     setRevokingCalendarCredentialId("");
+  }
+
+  function calendarDateTimePayload(value: string): string {
+    return value ? new Date(value).toISOString() : "";
+  }
+
+  async function createCalendarEvent(): Promise<void> {
+    if (!activeMatter) return;
+    setCreatingCalendarEvent(true);
+    setCalendarEventLifecycleStatus("Creating calendar event...");
+    let payload: CalendarEventMutationResponse;
+    try {
+      payload = await requestDashboardJson<CalendarEventMutationResponse>(
+        apiBaseUrl,
+        "/api/calendar/events",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: buildCalendarEventPayload({
+            matterId: activeMatter.id,
+            title: calendarEventTitle,
+            startsAt: calendarDateTimePayload(calendarEventStartsAt),
+            endsAt: calendarDateTimePayload(calendarEventEndsAt),
+            description: calendarEventDescription,
+            location: calendarEventLocation,
+            status: calendarEventStatusValue,
+          }),
+        },
+      );
+    } catch (error) {
+      setCalendarEventLifecycleStatus(`Event create failed: ${dashboardApiStatus(error)}`);
+      setCreatingCalendarEvent(false);
+      return;
+    }
+    setCalendarEventsByMatterId((current) =>
+      upsertCalendarEvent(current, activeMatter.id, payload.event),
+    );
+    setCalendarEventTitle("");
+    setCalendarEventStartsAt("");
+    setCalendarEventEndsAt("");
+    setCalendarEventDescription("");
+    setCalendarEventLocation("");
+    setCalendarEventLifecycleStatus("Calendar event created.");
+    setCreatingCalendarEvent(false);
+  }
+
+  async function rescheduleCalendarEvent(event: DashboardCalendarEvent): Promise<void> {
+    if (!activeMatter || !calendarEventStartsAt || !calendarEventEndsAt) return;
+    setUpdatingCalendarEventId(event.id);
+    setCalendarEventLifecycleStatus("Rescheduling calendar event...");
+    let payload: CalendarEventMutationResponse;
+    try {
+      payload = await requestDashboardJson<CalendarEventMutationResponse>(
+        apiBaseUrl,
+        `/api/calendar/events/${encodeURIComponent(event.id)}/reschedule`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: buildCalendarReschedulePayload({
+            matterId: activeMatter.id,
+            startsAt: calendarDateTimePayload(calendarEventStartsAt),
+            endsAt: calendarDateTimePayload(calendarEventEndsAt),
+            status: event.status === "cancelled" ? "confirmed" : undefined,
+          }),
+        },
+      );
+    } catch (error) {
+      setCalendarEventLifecycleStatus(`Event reschedule failed: ${dashboardApiStatus(error)}`);
+      setUpdatingCalendarEventId("");
+      return;
+    }
+    setCalendarEventsByMatterId((current) =>
+      upsertCalendarEvent(current, activeMatter.id, payload.event),
+    );
+    setCalendarEventLifecycleStatus("Calendar event rescheduled.");
+    setUpdatingCalendarEventId("");
+  }
+
+  async function cancelCalendarEvent(event: DashboardCalendarEvent): Promise<void> {
+    if (!activeMatter) return;
+    setCancelingCalendarEventId(event.id);
+    setCalendarEventLifecycleStatus("Cancelling calendar event...");
+    let payload: CalendarEventMutationResponse;
+    try {
+      payload = await requestDashboardJson<CalendarEventMutationResponse>(
+        apiBaseUrl,
+        `/api/calendar/events/${encodeURIComponent(event.id)}/cancel`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: { matterId: activeMatter.id },
+        },
+      );
+    } catch (error) {
+      setCalendarEventLifecycleStatus(`Event cancel failed: ${dashboardApiStatus(error)}`);
+      setCancelingCalendarEventId("");
+      return;
+    }
+    setCalendarEventsByMatterId((current) =>
+      upsertCalendarEvent(current, activeMatter.id, payload.event),
+    );
+    setCalendarEventLifecycleStatus("Calendar event cancelled.");
+    setCancelingCalendarEventId("");
+  }
+
+  async function addCalendarReminder(): Promise<void> {
+    if (!activeMatter || !selectedCalendarReminderEvent) return;
+    setAddingCalendarReminder(true);
+    setCalendarReminderStatus("Adding reminder...");
+    let payload: CalendarReminderMutationResponse;
+    try {
+      payload = await requestDashboardJson<CalendarReminderMutationResponse>(
+        apiBaseUrl,
+        `/api/calendar/events/${encodeURIComponent(selectedCalendarReminderEvent.id)}/reminders`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: buildCalendarReminderPayload({
+            matterId: activeMatter.id,
+            remindAt: calendarDateTimePayload(calendarReminderAt),
+            status: calendarReminderStatusValue,
+            note: calendarReminderNote,
+          }),
+        },
+      );
+    } catch (error) {
+      setCalendarReminderStatus(`Reminder add failed: ${dashboardApiStatus(error)}`);
+      setAddingCalendarReminder(false);
+      return;
+    }
+    setCalendarEventsByMatterId((current) =>
+      upsertCalendarEventReminder(
+        current,
+        activeMatter.id,
+        selectedCalendarReminderEvent.id,
+        payload.reminder,
+      ),
+    );
+    setCalendarReminderAt("");
+    setCalendarReminderNote("");
+    setCalendarReminderStatus("Reminder added.");
+    setAddingCalendarReminder(false);
+  }
+
+  async function updateCalendarReminder(
+    eventId: string,
+    reminderId: string,
+    status: "pending" | "acknowledged" | "dismissed" | "cancelled",
+  ): Promise<void> {
+    if (!activeMatter) return;
+    setUpdatingCalendarReminderId(reminderId);
+    setCalendarReminderStatus("Updating reminder...");
+    let payload: CalendarReminderMutationResponse;
+    try {
+      payload = await requestDashboardJson<CalendarReminderMutationResponse>(
+        apiBaseUrl,
+        `/api/calendar/events/${encodeURIComponent(eventId)}/reminders/${encodeURIComponent(
+          reminderId,
+        )}`,
+        {
+          method: "PATCH",
+          headers: devHeaders,
+          payload: { matterId: activeMatter.id, status },
+        },
+      );
+    } catch (error) {
+      setCalendarReminderStatus(`Reminder update failed: ${dashboardApiStatus(error)}`);
+      setUpdatingCalendarReminderId("");
+      return;
+    }
+    setCalendarEventsByMatterId((current) =>
+      upsertCalendarEventReminder(current, activeMatter.id, eventId, payload.reminder),
+    );
+    setCalendarReminderStatus("Reminder updated.");
+    setUpdatingCalendarReminderId("");
+  }
+
+  async function removeCalendarReminder(eventId: string, reminderId: string): Promise<void> {
+    if (!activeMatter) return;
+    setRemovingCalendarReminderId(reminderId);
+    setCalendarReminderStatus("Removing reminder...");
+    const response = await fetch(
+      `${apiBaseUrl}/api/calendar/events/${encodeURIComponent(
+        eventId,
+      )}/reminders/${encodeURIComponent(reminderId)}?matterId=${encodeURIComponent(
+        activeMatter.id,
+      )}`,
+      { method: "DELETE", credentials: "include", headers: devHeaders },
+    );
+    if (!response.ok) {
+      setCalendarReminderStatus(`Reminder remove failed: ${response.status}`);
+      setRemovingCalendarReminderId("");
+      return;
+    }
+    setCalendarEventsByMatterId((current) =>
+      removeCalendarEventReminder(current, activeMatter.id, eventId, reminderId),
+    );
+    setCalendarReminderStatus("Reminder removed.");
+    setRemovingCalendarReminderId("");
   }
 
   async function addCalendarAttendee(): Promise<void> {
@@ -2914,7 +3162,8 @@ export default function DashboardClient({
                   </div>
                 </div>
                 <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-                  {documentProcessingStatus} {documentProcessingSummary}
+                  {documentProcessingStatus} {documentProcessingSummary}{" "}
+                  {documentReviewSuggestionsSummary}
                 </p>
 
                 {activeDocumentProcessing.providerStatus.length > 0 ? (
@@ -2984,6 +3233,8 @@ export default function DashboardClient({
                             activeDocumentProcessing,
                           );
                           const job = describeLatestDocumentJob(item.latestJob);
+                          const reviewSuggestions =
+                            item.reviewSuggestions ?? emptyDocumentReviewSuggestions();
                           return (
                             <div className="party-row upload-review-row" key={item.document.id}>
                               <span>
@@ -3009,6 +3260,39 @@ export default function DashboardClient({
                                 </small>
                                 {action.disabledReason ? (
                                   <small>Disabled: {action.disabledReason}</small>
+                                ) : null}
+                                {reviewSuggestions.summaryCounts.total > 0 ? (
+                                  <div className="document-suggestions">
+                                    <small>
+                                      Reviewer suggestions · {reviewSuggestions.summaryCounts.total}{" "}
+                                      cues · read only
+                                    </small>
+                                    {documentReviewSuggestionGroupOrder.map((suggestionGroup) => {
+                                      const cues = reviewSuggestions.groups[suggestionGroup] ?? [];
+                                      if (cues.length === 0) return null;
+                                      return (
+                                        <div
+                                          className="document-suggestion-group"
+                                          key={suggestionGroup}
+                                        >
+                                          <small>
+                                            {documentReviewSuggestionGroupLabel(suggestionGroup)}
+                                          </small>
+                                          {cues.map((cue) => (
+                                            <small
+                                              className={cue.tone === "risk" ? "risk" : undefined}
+                                              key={cue.id}
+                                            >
+                                              {cue.label}
+                                              {describeDocumentReviewSuggestion(cue)
+                                                ? ` · ${describeDocumentReviewSuggestion(cue)}`
+                                                : ""}
+                                            </small>
+                                          ))}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
                                 ) : null}
                               </span>
                               <div className="row-actions upload-review-actions">
@@ -3444,6 +3728,82 @@ export default function DashboardClient({
                   </div>
                 </div>
 
+                <div className="share-controls calendar-event-controls">
+                  <div className="section-title">
+                    <h3>Event lifecycle</h3>
+                    <span>Create or reschedule one matter event</span>
+                  </div>
+                  <div className="calendar-attendee-form">
+                    <label className="search-field">
+                      <span>Title</span>
+                      <input
+                        onChange={(event) => setCalendarEventTitle(event.target.value)}
+                        value={calendarEventTitle}
+                      />
+                    </label>
+                    <label className="search-field">
+                      <span>Starts</span>
+                      <input
+                        onChange={(event) => setCalendarEventStartsAt(event.target.value)}
+                        type="datetime-local"
+                        value={calendarEventStartsAt}
+                      />
+                    </label>
+                    <label className="search-field">
+                      <span>Ends</span>
+                      <input
+                        onChange={(event) => setCalendarEventEndsAt(event.target.value)}
+                        type="datetime-local"
+                        value={calendarEventEndsAt}
+                      />
+                    </label>
+                    <label className="search-field">
+                      <span>Status</span>
+                      <select
+                        onChange={(event) =>
+                          setCalendarEventStatusValue(
+                            event.target.value as DashboardCalendarEvent["status"],
+                          )
+                        }
+                        value={calendarEventStatusValue}
+                      >
+                        <option value="confirmed">Confirmed</option>
+                        <option value="tentative">Tentative</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                    </label>
+                    <label className="search-field">
+                      <span>Location</span>
+                      <input
+                        onChange={(event) => setCalendarEventLocation(event.target.value)}
+                        value={calendarEventLocation}
+                      />
+                    </label>
+                    <label className="search-field">
+                      <span>Description</span>
+                      <input
+                        onChange={(event) => setCalendarEventDescription(event.target.value)}
+                        value={calendarEventDescription}
+                      />
+                    </label>
+                    <button
+                      className="secondary-button compact-button"
+                      disabled={
+                        creatingCalendarEvent ||
+                        !calendarEventTitle.trim() ||
+                        !calendarEventStartsAt ||
+                        !calendarEventEndsAt
+                      }
+                      onClick={() => void createCalendarEvent()}
+                      type="button"
+                    >
+                      <Plus size={16} />
+                      {creatingCalendarEvent ? "Creating..." : "Create event"}
+                    </button>
+                  </div>
+                  <p className="inline-empty">{calendarEventLifecycleStatus}</p>
+                </div>
+
                 <div className="section-title">
                   <h3>Matter calendar events</h3>
                   <span>{activeMatter.number}</span>
@@ -3504,6 +3864,31 @@ export default function DashboardClient({
                               {sendingCalendarInvitationsEventId === event.id
                                 ? "Sending..."
                                 : meetingLinkAvailability.label}
+                            </button>
+                            <button
+                              className="secondary-button compact-button row-button"
+                              disabled={
+                                updatingCalendarEventId === event.id ||
+                                !calendarEventStartsAt ||
+                                !calendarEventEndsAt
+                              }
+                              onClick={() => void rescheduleCalendarEvent(event)}
+                              type="button"
+                            >
+                              {updatingCalendarEventId === event.id
+                                ? "Rescheduling..."
+                                : "Reschedule"}
+                            </button>
+                            <button
+                              className="secondary-button compact-button row-button"
+                              disabled={
+                                event.status === "cancelled" ||
+                                cancelingCalendarEventId === event.id
+                              }
+                              onClick={() => void cancelCalendarEvent(event)}
+                              type="button"
+                            >
+                              {cancelingCalendarEventId === event.id ? "Cancelling..." : "Cancel"}
                             </button>
                             <button
                               className="secondary-button compact-button row-button"
@@ -3589,6 +3974,48 @@ export default function DashboardClient({
                           />
                         ) : null}
                         <div className="calendar-attendee-list">
+                          {(event.reminders ?? []).map((reminder) => (
+                            <div className="calendar-attendee-row" key={reminder.id}>
+                              <span>
+                                <strong>{compactDate(reminder.remindAt)}</strong>
+                                <small>
+                                  {reminder.channel} · {reminder.status.replace("_", " ")}
+                                  {reminder.note ? ` · ${reminder.note}` : ""}
+                                </small>
+                              </span>
+                              <div className="row-actions">
+                                <button
+                                  className="secondary-button compact-button row-button"
+                                  disabled={updatingCalendarReminderId === reminder.id}
+                                  onClick={() =>
+                                    void updateCalendarReminder(
+                                      event.id,
+                                      reminder.id,
+                                      "acknowledged",
+                                    )
+                                  }
+                                  type="button"
+                                >
+                                  Acknowledge
+                                </button>
+                                <button
+                                  aria-label={`Remove reminder ${reminder.id}`}
+                                  className="icon-button"
+                                  disabled={removingCalendarReminderId === reminder.id}
+                                  onClick={() => void removeCalendarReminder(event.id, reminder.id)}
+                                  title="Remove reminder"
+                                  type="button"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                          {(event.reminders ?? []).length === 0 ? (
+                            <p className="inline-empty">No reminders are linked to this event.</p>
+                          ) : null}
+                        </div>
+                        <div className="calendar-attendee-list">
                           {attendees.map((attendee) => (
                             <div className="calendar-attendee-row" key={attendee.id}>
                               <span>
@@ -3630,6 +4057,77 @@ export default function DashboardClient({
                   {activeCalendarEvents.length === 0 ? (
                     <p className="inline-empty">No calendar events are linked to this matter.</p>
                   ) : null}
+                </div>
+
+                <div className="share-controls calendar-reminder-controls">
+                  <div className="section-title">
+                    <h3>Reminder state</h3>
+                    <span>{selectedCalendarReminderEvent?.title ?? "No event selected"}</span>
+                  </div>
+                  <div className="calendar-attendee-form">
+                    <label className="search-field">
+                      <span>Event</span>
+                      <select
+                        onChange={(event) => setCalendarReminderEventId(event.target.value)}
+                        value={selectedCalendarReminderEvent?.id ?? ""}
+                      >
+                        {activeCalendarEvents.map((event) => (
+                          <option key={event.id} value={event.id}>
+                            {event.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="search-field">
+                      <span>Remind at</span>
+                      <input
+                        onChange={(event) => setCalendarReminderAt(event.target.value)}
+                        type="datetime-local"
+                        value={calendarReminderAt}
+                      />
+                    </label>
+                    <label className="search-field">
+                      <span>Status</span>
+                      <select
+                        onChange={(event) =>
+                          setCalendarReminderStatusValue(
+                            event.target.value as
+                              | "pending"
+                              | "acknowledged"
+                              | "dismissed"
+                              | "cancelled",
+                          )
+                        }
+                        value={calendarReminderStatusValue}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="acknowledged">Acknowledged</option>
+                        <option value="dismissed">Dismissed</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                    </label>
+                    <label className="search-field">
+                      <span>Note</span>
+                      <input
+                        onChange={(event) => setCalendarReminderNote(event.target.value)}
+                        value={calendarReminderNote}
+                      />
+                    </label>
+                    <button
+                      className="secondary-button compact-button"
+                      disabled={
+                        !selectedCalendarReminderEvent ||
+                        !calendarReminderAt ||
+                        addingCalendarReminder
+                      }
+                      onClick={() => void addCalendarReminder()}
+                      type="button"
+                    >
+                      <Plus size={16} />
+                      {addingCalendarReminder ? "Adding..." : "Add reminder"}
+                    </button>
+                  </div>
+                  <p className="inline-empty">{calendarReminderStatus}</p>
                 </div>
 
                 <div className="share-controls calendar-meeting-controls">

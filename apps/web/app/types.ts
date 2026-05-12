@@ -11,6 +11,7 @@ import type {
   ActivityTimelineEntry,
   CalendarEventRecord,
   CalendarEventAttendeeRecord,
+  CalendarEventReminderRecord,
   CalendarMeetingInvitationBoundary,
   ContactDossier,
   DashboardSectionCapability,
@@ -335,6 +336,14 @@ export interface CalendarCredentialRevokeResponse {
 
 export interface CalendarAttendeeMutationResponse {
   attendee: CalendarEventAttendeeRecord;
+}
+
+export interface CalendarEventMutationResponse {
+  event: CalendarEventRecord;
+}
+
+export interface CalendarReminderMutationResponse {
+  reminder: CalendarEventReminderRecord;
 }
 
 export interface CalendarMeetingLinkMutationResponse {
@@ -667,6 +676,36 @@ export interface DocumentProcessingLatestExtraction {
   errorSummary?: string;
 }
 
+export type DocumentReviewSuggestionGroup =
+  | "classification"
+  | "duplicate_or_supersession"
+  | "matter_contact"
+  | "missing_metadata";
+
+export interface DocumentReviewSuggestionCue {
+  id: string;
+  group: DocumentReviewSuggestionGroup;
+  label: string;
+  detail?: string;
+  tone: "neutral" | "ready" | "risk";
+  documentId?: string;
+  relatedDocumentId?: string;
+  classification?: string;
+  confidence?: number;
+  status?: string;
+  role?: string;
+  contactId?: string;
+  contactName?: string;
+  metadataKeys?: string[];
+}
+
+export interface DocumentReviewSuggestions {
+  reviewerOnly: true;
+  mutating: false;
+  summaryCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
+  groups: Record<DocumentReviewSuggestionGroup, DocumentReviewSuggestionCue[]>;
+}
+
 export interface DocumentProcessingWorkbenchItem {
   document: DocumentProcessingDocumentSummary;
   group: DocumentProcessingGroup;
@@ -676,6 +715,7 @@ export interface DocumentProcessingWorkbenchItem {
   };
   latestJob?: DocumentProcessingLatestJob;
   latestExtraction?: DocumentProcessingLatestExtraction;
+  reviewSuggestions?: DocumentReviewSuggestions;
 }
 
 export interface DocumentProcessingWorkbenchResponse {

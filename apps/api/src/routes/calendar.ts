@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
+  assertValidCalendarEventRange,
   buildCalendarMeetingInvitationBoundary,
   buildICalendarFeed,
   calendarMeetingInvitationBoundaryMetadata,
@@ -9,6 +10,7 @@ import type {
   CalendarCredentialRecord,
   CalendarEventAttendeeRecord,
   CalendarEventRecord,
+  CalendarEventReminderRecord,
   CalendarMeetingInvitationBoundary,
   CalendarMeetingLinkMode,
   NewAuditEvent,
@@ -45,6 +47,52 @@ const calendarCredentialParamsSchema = z.object({
 
 const calendarEventParamsSchema = z.object({
   eventId: z.string().min(1),
+});
+
+const calendarEventReminderParamsSchema = z.object({
+  eventId: z.string().min(1),
+  reminderId: z.string().min(1),
+});
+
+const calendarEventWriteBodySchema = z.object({
+  matterId: z.string().min(1),
+  title: z.string().min(1).max(160),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+  description: z.string().max(2000).optional(),
+  location: z.string().max(160).optional(),
+  status: z.enum(["confirmed", "tentative", "cancelled"]).default("confirmed"),
+});
+
+const calendarEventPatchBodySchema = calendarEventWriteBodySchema.partial().extend({
+  matterId: z.string().min(1),
+});
+
+const calendarEventCancelBodySchema = z.object({
+  matterId: z.string().min(1),
+});
+
+const calendarEventRescheduleBodySchema = z.object({
+  matterId: z.string().min(1),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+  status: z.enum(["confirmed", "tentative", "cancelled"]).optional(),
+});
+
+const calendarEventReminderBodySchema = z.object({
+  matterId: z.string().min(1),
+  remindAt: z.string().datetime(),
+  channel: z.literal("dashboard").default("dashboard"),
+  status: z.enum(["pending", "acknowledged", "dismissed", "cancelled"]).default("pending"),
+  note: z.string().max(240).optional(),
+});
+
+const calendarEventReminderPatchBodySchema = calendarEventReminderBodySchema.partial().extend({
+  matterId: z.string().min(1),
+});
+
+const calendarEventReminderDeleteQuerySchema = z.object({
+  matterId: z.string().min(1),
 });
 
 const calendarAttendeeParamsSchema = z.object({
@@ -186,6 +234,42 @@ function calendarEventResponse(
   };
 }
 
+function assertCalendarEventRangeForRequest(startsAt: string, endsAt: string): void {
+  try {
+    assertValidCalendarEventRange(startsAt, endsAt);
+  } catch {
+    throw new ApiHttpError(
+      400,
+      "INVALID_CALENDAR_EVENT_RANGE",
+      "Calendar event start must be before end",
+    );
+  }
+}
+
+function calendarEventAuditMetadata(event: CalendarEventRecord): Record<string, unknown> {
+  return {
+    matterId: event.matterId,
+    eventId: event.id,
+    uid: event.uid,
+    status: event.status,
+    sequence: event.sequence,
+    attendeeCount: event.attendees?.length ?? 0,
+    reminderCount: event.reminders?.length ?? 0,
+  };
+}
+
+function calendarReminderAuditMetadata(
+  reminder: CalendarEventReminderRecord,
+): Record<string, unknown> {
+  return {
+    matterId: reminder.matterId,
+    eventId: reminder.eventId,
+    reminderId: reminder.id,
+    channel: reminder.channel,
+    status: reminder.status,
+  };
+}
+
 function assertMeetingIssuanceAllowed(input: {
   includeMeetingLink: boolean;
   issueGuestAccessToken: boolean;
@@ -281,6 +365,284 @@ export function registerCalendarRoutes(
       caldavUrl: `${baseUrl(request)}/caldav`,
       subscriptionUrl: webcalSubscriptionUrl(request, query.matterId),
     };
+  });
+
+  server.post("/api/calendar/events", async (request, reply) => {
+    const body = parseRequestPart(calendarEventWriteBodySchema, request.body, "body");
+    assertCalendarAccess(request.auth, body.matterId, "create");
+    assertCalendarEventRangeForRequest(body.startsAt, body.endsAt);
+    const now = new Date().toISOString();
+    const eventId = `calendar-event-${createSessionToken().slice(0, 16)}`;
+    const event = await repository.upsertCalendarEvent({
+      id: eventId,
+      firmId: request.auth.firmId,
+      matterId: body.matterId,
+      uid: `${eventId}@open-practice.local`,
+      title: body.title,
+      startsAt: body.startsAt,
+      endsAt: body.endsAt,
+      description: body.description,
+      location: body.location,
+      status: body.status,
+      sequence: 0,
+      meetingLinkMode: "blank",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: request.auth.user.id,
+      updatedByUserId: request.auth.user.id,
+    });
+    await recordCalendarAuditEvent(repository, {
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      action: "calendar.event.created",
+      resourceType: "calendar_event",
+      resourceId: event.id,
+      occurredAt: now,
+      metadata: calendarEventAuditMetadata(event),
+    });
+    const meetingInvitationBoundary = await calendarMeetingInvitationBoundaryForRequest(
+      dependencies,
+      request.auth.firmId,
+    );
+    return reply.code(201).send({ event: calendarEventResponse(event, meetingInvitationBoundary) });
+  });
+
+  server.patch("/api/calendar/events/:eventId", async (request, reply) => {
+    const params = parseRequestPart(calendarEventParamsSchema, request.params, "params");
+    const body = parseRequestPart(calendarEventPatchBodySchema, request.body, "body");
+    assertCalendarAccess(request.auth, body.matterId, "update");
+    const event = await repository.getCalendarEvent(
+      request.auth.firmId,
+      body.matterId,
+      params.eventId,
+    );
+    if (!event) return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    const startsAt = body.startsAt ?? event.startsAt;
+    const endsAt = body.endsAt ?? event.endsAt;
+    assertCalendarEventRangeForRequest(startsAt, endsAt);
+    const now = new Date().toISOString();
+    const updated = await repository.upsertCalendarEvent({
+      ...event,
+      title: body.title ?? event.title,
+      startsAt,
+      endsAt,
+      description: body.description ?? event.description,
+      location: body.location ?? event.location,
+      status: body.status ?? event.status,
+      sequence: event.sequence + 1,
+      updatedAt: now,
+      updatedByUserId: request.auth.user.id,
+      attendees: undefined,
+      reminders: undefined,
+    });
+    await recordCalendarAuditEvent(repository, {
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      action: "calendar.event.updated",
+      resourceType: "calendar_event",
+      resourceId: event.id,
+      occurredAt: now,
+      metadata: {
+        ...calendarEventAuditMetadata(updated),
+        startsAtChanged: startsAt !== event.startsAt,
+        endsAtChanged: endsAt !== event.endsAt,
+      },
+    });
+    const meetingInvitationBoundary = await calendarMeetingInvitationBoundaryForRequest(
+      dependencies,
+      request.auth.firmId,
+    );
+    return { event: calendarEventResponse(updated, meetingInvitationBoundary) };
+  });
+
+  server.post("/api/calendar/events/:eventId/cancel", async (request, reply) => {
+    const params = parseRequestPart(calendarEventParamsSchema, request.params, "params");
+    const body = parseRequestPart(calendarEventCancelBodySchema, request.body, "body");
+    assertCalendarAccess(request.auth, body.matterId, "update");
+    const event = await repository.getCalendarEvent(
+      request.auth.firmId,
+      body.matterId,
+      params.eventId,
+    );
+    if (!event) return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    const now = new Date().toISOString();
+    const updated = await repository.upsertCalendarEvent({
+      ...event,
+      status: "cancelled",
+      sequence: event.sequence + 1,
+      updatedAt: now,
+      updatedByUserId: request.auth.user.id,
+      attendees: undefined,
+      reminders: undefined,
+    });
+    await recordCalendarAuditEvent(repository, {
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      action: "calendar.event.cancelled",
+      resourceType: "calendar_event",
+      resourceId: event.id,
+      occurredAt: now,
+      metadata: {
+        ...calendarEventAuditMetadata(updated),
+        previousStatus: event.status,
+      },
+    });
+    const meetingInvitationBoundary = await calendarMeetingInvitationBoundaryForRequest(
+      dependencies,
+      request.auth.firmId,
+    );
+    return { event: calendarEventResponse(updated, meetingInvitationBoundary) };
+  });
+
+  server.post("/api/calendar/events/:eventId/reschedule", async (request, reply) => {
+    const params = parseRequestPart(calendarEventParamsSchema, request.params, "params");
+    const body = parseRequestPart(calendarEventRescheduleBodySchema, request.body, "body");
+    assertCalendarAccess(request.auth, body.matterId, "update");
+    assertCalendarEventRangeForRequest(body.startsAt, body.endsAt);
+    const event = await repository.getCalendarEvent(
+      request.auth.firmId,
+      body.matterId,
+      params.eventId,
+    );
+    if (!event) return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    const now = new Date().toISOString();
+    const updated = await repository.upsertCalendarEvent({
+      ...event,
+      startsAt: body.startsAt,
+      endsAt: body.endsAt,
+      status: body.status ?? (event.status === "cancelled" ? "confirmed" : event.status),
+      sequence: event.sequence + 1,
+      updatedAt: now,
+      updatedByUserId: request.auth.user.id,
+      attendees: undefined,
+      reminders: undefined,
+    });
+    await recordCalendarAuditEvent(repository, {
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      action: "calendar.event.rescheduled",
+      resourceType: "calendar_event",
+      resourceId: event.id,
+      occurredAt: now,
+      metadata: {
+        ...calendarEventAuditMetadata(updated),
+        previousStatus: event.status,
+        startsAtChanged: body.startsAt !== event.startsAt,
+        endsAtChanged: body.endsAt !== event.endsAt,
+      },
+    });
+    const meetingInvitationBoundary = await calendarMeetingInvitationBoundaryForRequest(
+      dependencies,
+      request.auth.firmId,
+    );
+    return { event: calendarEventResponse(updated, meetingInvitationBoundary) };
+  });
+
+  server.post("/api/calendar/events/:eventId/reminders", async (request, reply) => {
+    const params = parseRequestPart(calendarEventParamsSchema, request.params, "params");
+    const body = parseRequestPart(calendarEventReminderBodySchema, request.body, "body");
+    assertCalendarAccess(request.auth, body.matterId, "update");
+    const event = await repository.getCalendarEvent(
+      request.auth.firmId,
+      body.matterId,
+      params.eventId,
+    );
+    if (!event) return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    const now = new Date().toISOString();
+    const reminder = await repository.upsertCalendarEventReminder({
+      id: `calendar-reminder-${createSessionToken().slice(0, 16)}`,
+      firmId: request.auth.firmId,
+      matterId: body.matterId,
+      eventId: event.id,
+      remindAt: body.remindAt,
+      channel: body.channel,
+      status: body.status,
+      note: body.note,
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: request.auth.user.id,
+      updatedByUserId: request.auth.user.id,
+    });
+    await recordCalendarAuditEvent(repository, {
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      action: "calendar.reminder.created",
+      resourceType: "calendar_event",
+      resourceId: event.id,
+      occurredAt: now,
+      metadata: calendarReminderAuditMetadata(reminder),
+    });
+    return reply.code(201).send({ reminder });
+  });
+
+  server.patch("/api/calendar/events/:eventId/reminders/:reminderId", async (request, reply) => {
+    const params = parseRequestPart(calendarEventReminderParamsSchema, request.params, "params");
+    const body = parseRequestPart(calendarEventReminderPatchBodySchema, request.body, "body");
+    assertCalendarAccess(request.auth, body.matterId, "update");
+    const event = await repository.getCalendarEvent(
+      request.auth.firmId,
+      body.matterId,
+      params.eventId,
+    );
+    if (!event) return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    const current = (
+      await repository.listCalendarEventReminders(request.auth.firmId, body.matterId, event.id)
+    ).find((reminder) => reminder.id === params.reminderId);
+    if (!current) return reply.code(404).send({ error: "NotFound", message: "Reminder not found" });
+    const now = new Date().toISOString();
+    const reminder = await repository.upsertCalendarEventReminder({
+      ...current,
+      remindAt: body.remindAt ?? current.remindAt,
+      channel: body.channel ?? current.channel,
+      status: body.status ?? current.status,
+      note: body.note ?? current.note,
+      updatedAt: now,
+      updatedByUserId: request.auth.user.id,
+    });
+    await recordCalendarAuditEvent(repository, {
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      action: "calendar.reminder.updated",
+      resourceType: "calendar_event",
+      resourceId: event.id,
+      occurredAt: now,
+      metadata: calendarReminderAuditMetadata(reminder),
+    });
+    return { reminder };
+  });
+
+  server.delete("/api/calendar/events/:eventId/reminders/:reminderId", async (request, reply) => {
+    const params = parseRequestPart(calendarEventReminderParamsSchema, request.params, "params");
+    const query = parseRequestPart(calendarEventReminderDeleteQuerySchema, request.query, "query");
+    assertCalendarAccess(request.auth, query.matterId, "update");
+    const event = await repository.getCalendarEvent(
+      request.auth.firmId,
+      query.matterId,
+      params.eventId,
+    );
+    if (!event) return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    const now = new Date().toISOString();
+    const reminder = await repository.deleteCalendarEventReminder({
+      firmId: request.auth.firmId,
+      matterId: query.matterId,
+      eventId: event.id,
+      reminderId: params.reminderId,
+      deletedAt: now,
+      updatedByUserId: request.auth.user.id,
+    });
+    if (!reminder) {
+      return reply.code(404).send({ error: "NotFound", message: "Reminder not found" });
+    }
+    await recordCalendarAuditEvent(repository, {
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      action: "calendar.reminder.deleted",
+      resourceType: "calendar_event",
+      resourceId: event.id,
+      occurredAt: now,
+      metadata: calendarReminderAuditMetadata(reminder),
+    });
+    return { reminder };
   });
 
   server.post("/api/calendar/events/:eventId/attendees", async (request, reply) => {

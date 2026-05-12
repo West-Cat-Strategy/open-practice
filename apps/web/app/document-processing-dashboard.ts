@@ -7,6 +7,9 @@ import type {
   DocumentProcessingLatestJob,
   DocumentProcessingWorkbenchItem,
   DocumentProcessingWorkbenchResponse,
+  DocumentReviewSuggestionCue,
+  DocumentReviewSuggestionGroup,
+  DocumentReviewSuggestions,
   MatterSummary,
 } from "./types";
 
@@ -24,6 +27,13 @@ export const documentProcessingGroupOrder: DocumentProcessingGroup[] = [
   "queued_or_active",
   "needs_review",
   "blocked",
+];
+
+export const documentReviewSuggestionGroupOrder: DocumentReviewSuggestionGroup[] = [
+  "classification",
+  "duplicate_or_supersession",
+  "matter_contact",
+  "missing_metadata",
 ];
 
 export function buildDocumentProcessingWorkbenchPath(matterId: string): string {
@@ -175,6 +185,68 @@ export function documentProcessingGroupLabel(group: DocumentProcessingGroup): st
 
 export function compactDocumentProcessingReason(value?: string): string {
   return value ? value.replaceAll("_", " ") : "none";
+}
+
+export function emptyDocumentReviewSuggestions(): DocumentReviewSuggestions {
+  return {
+    reviewerOnly: true,
+    mutating: false,
+    summaryCounts: {
+      classification: 0,
+      duplicate_or_supersession: 0,
+      matter_contact: 0,
+      missing_metadata: 0,
+      total: 0,
+    },
+    groups: {
+      classification: [],
+      duplicate_or_supersession: [],
+      matter_contact: [],
+      missing_metadata: [],
+    },
+  };
+}
+
+export function documentReviewSuggestionGroupLabel(group: DocumentReviewSuggestionGroup): string {
+  if (group === "classification") return "Classification";
+  if (group === "duplicate_or_supersession") return "Duplicate or supersession";
+  if (group === "matter_contact") return "Matter and contact";
+  return "Missing metadata";
+}
+
+export function describeDocumentReviewSuggestion(cue: DocumentReviewSuggestionCue): string {
+  const details = [
+    cue.detail,
+    cue.classification
+      ? `classification ${compactDocumentProcessingReason(cue.classification)}`
+      : undefined,
+    typeof cue.confidence === "number"
+      ? `${Math.round(cue.confidence * 100)}% confidence`
+      : undefined,
+    cue.role ? `role ${compactDocumentProcessingReason(cue.role)}` : undefined,
+    cue.relatedDocumentId ? `related ${cue.relatedDocumentId}` : undefined,
+    cue.metadataKeys?.length ? `metadata ${cue.metadataKeys.join(", ")}` : undefined,
+  ].filter(Boolean);
+  return details.join(" · ");
+}
+
+export function summarizeDocumentReviewSuggestions(
+  rows: DocumentProcessingWorkbenchItem[],
+): string {
+  const total = rows.reduce(
+    (sum, row) => sum + (row.reviewSuggestions?.summaryCounts.total ?? 0),
+    0,
+  );
+  const missingMetadata = rows.reduce(
+    (sum, row) => sum + (row.reviewSuggestions?.summaryCounts.missing_metadata ?? 0),
+    0,
+  );
+  const duplicateOrSupersession = rows.reduce(
+    (sum, row) => sum + (row.reviewSuggestions?.summaryCounts.duplicate_or_supersession ?? 0),
+    0,
+  );
+  if (total === 0) return "No reviewer suggestion cues.";
+  return `${total} reviewer suggestion cues. ${duplicateOrSupersession} duplicate or supersession. ${missingMetadata} missing metadata.`;
 }
 
 function isReservedWorkerQueue(queue: { status?: string }): boolean {

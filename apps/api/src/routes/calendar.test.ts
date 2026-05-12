@@ -147,6 +147,237 @@ describe("calendar routes", () => {
     expect(response.body).not.toContain("Corporate records review");
   });
 
+  it("creates, updates, cancels, and reschedules matter-scoped calendar events", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository);
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events",
+      payload: {
+        matterId: "matter-001",
+        title: "Synthetic lifecycle conference",
+        startsAt: "2026-05-12T16:00:00.000Z",
+        endsAt: "2026-05-12T17:00:00.000Z",
+        description: "Synthetic event body should not enter audit metadata.",
+        location: "Room 4",
+        status: "tentative",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().event).toMatchObject({
+      matterId: "matter-001",
+      title: "Synthetic lifecycle conference",
+      status: "tentative",
+      sequence: 0,
+      meetingLinkMode: "blank",
+      reminders: [],
+    });
+    const eventId = created.json().event.id;
+
+    const updated = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/events/${eventId}`,
+      payload: {
+        matterId: "matter-001",
+        title: "Updated lifecycle conference",
+        startsAt: "2026-05-12T16:30:00.000Z",
+        endsAt: "2026-05-12T17:30:00.000Z",
+        status: "confirmed",
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().event).toMatchObject({
+      title: "Updated lifecycle conference",
+      startsAt: "2026-05-12T16:30:00.000Z",
+      endsAt: "2026-05-12T17:30:00.000Z",
+      status: "confirmed",
+      sequence: 1,
+    });
+
+    const cancelled = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/${eventId}/cancel`,
+      payload: { matterId: "matter-001" },
+    });
+    expect(cancelled.statusCode).toBe(200);
+    expect(cancelled.json().event).toMatchObject({ status: "cancelled", sequence: 2 });
+
+    const rescheduled = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/${eventId}/reschedule`,
+      payload: {
+        matterId: "matter-001",
+        startsAt: "2026-05-13T18:00:00.000Z",
+        endsAt: "2026-05-13T19:00:00.000Z",
+      },
+    });
+    expect(rescheduled.statusCode).toBe(200);
+    expect(rescheduled.json().event).toMatchObject({
+      startsAt: "2026-05-13T18:00:00.000Z",
+      endsAt: "2026-05-13T19:00:00.000Z",
+      status: "confirmed",
+      sequence: 3,
+    });
+
+    expect(repository.recordedAuditEvents.map((event) => event.action)).toEqual([
+      "calendar.event.created",
+      "calendar.event.updated",
+      "calendar.event.cancelled",
+      "calendar.event.rescheduled",
+    ]);
+    expect(JSON.stringify(repository.recordedAuditEvents)).not.toContain(
+      "Synthetic event body should not enter audit metadata.",
+    );
+  });
+
+  it("preserves attendee and reminder children across lifecycle updates", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository);
+
+    const reminder = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-002/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: "2026-05-07T17:30:00.000Z",
+      },
+    });
+    expect(reminder.statusCode).toBe(201);
+    const reminderId = reminder.json().reminder.id;
+
+    const updated = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/calendar-event-002",
+      payload: {
+        matterId: "matter-001",
+        title: "Updated client preparation call",
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().event).toMatchObject({
+      attendees: [{ id: "calendar-attendee-001", email: "ada.morgan@example.test" }],
+      reminders: [{ id: reminderId, status: "pending" }],
+    });
+
+    const cancelled = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-002/cancel",
+      payload: { matterId: "matter-001" },
+    });
+    expect(cancelled.statusCode).toBe(200);
+    expect(cancelled.json().event).toMatchObject({
+      attendees: [{ id: "calendar-attendee-001", email: "ada.morgan@example.test" }],
+      reminders: [{ id: reminderId, status: "pending" }],
+    });
+
+    const rescheduled = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-002/reschedule",
+      payload: {
+        matterId: "matter-001",
+        startsAt: "2026-05-08T18:00:00.000Z",
+        endsAt: "2026-05-08T18:45:00.000Z",
+      },
+    });
+    expect(rescheduled.statusCode).toBe(200);
+    expect(rescheduled.json().event).toMatchObject({
+      status: "confirmed",
+      attendees: [{ id: "calendar-attendee-001", email: "ada.morgan@example.test" }],
+      reminders: [{ id: reminderId, status: "pending" }],
+    });
+  });
+
+  it("rejects cross-matter and invalid calendar event lifecycle writes", async () => {
+    const server = testServer(user("licensee", ["matter-001"]));
+
+    const crossMatter = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events",
+      payload: {
+        matterId: "matter-002",
+        title: "Cross matter event",
+        startsAt: "2026-05-12T16:00:00.000Z",
+        endsAt: "2026-05-12T17:00:00.000Z",
+      },
+    });
+    expect(crossMatter.statusCode).toBe(403);
+
+    const invalidRange = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/calendar-event-001",
+      payload: {
+        matterId: "matter-001",
+        startsAt: "2026-05-12T18:00:00.000Z",
+        endsAt: "2026-05-12T17:00:00.000Z",
+      },
+    });
+    expect(invalidRange.statusCode).toBe(400);
+    expect(invalidRange.json()).toMatchObject({ code: "INVALID_CALENDAR_EVENT_RANGE" });
+  });
+
+  it("creates, updates, and deletes manual reminder-state records without delivery side effects", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository);
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-001/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: "2026-05-05T15:45:00.000Z",
+        status: "pending",
+        note: "Synthetic reminder note should stay out of audit metadata.",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().reminder).toMatchObject({
+      eventId: "calendar-event-001",
+      channel: "dashboard",
+      status: "pending",
+      note: "Synthetic reminder note should stay out of audit metadata.",
+    });
+    const reminderId = created.json().reminder.id;
+
+    const updated = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/events/calendar-event-001/reminders/${reminderId}`,
+      payload: {
+        matterId: "matter-001",
+        status: "acknowledged",
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().reminder).toMatchObject({ status: "acknowledged" });
+
+    const listed = await server.inject({
+      method: "GET",
+      url: "/api/calendar/events?matterId=matter-001",
+    });
+    expect(
+      listed.json().events.find((event: { id: string }) => event.id === "calendar-event-001"),
+    ).toMatchObject({
+      reminders: [{ id: reminderId, status: "acknowledged" }],
+    });
+
+    const deleted = await server.inject({
+      method: "DELETE",
+      url: `/api/calendar/events/calendar-event-001/reminders/${reminderId}?matterId=matter-001`,
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json().reminder.deletedAt).toEqual(expect.any(String));
+    expect(repository.recordedAuditEvents.map((event) => event.action)).toEqual([
+      "calendar.reminder.created",
+      "calendar.reminder.updated",
+      "calendar.reminder.deleted",
+    ]);
+    expect(JSON.stringify(repository.recordedAuditEvents)).not.toContain(
+      "Synthetic reminder note should stay out of audit metadata.",
+    );
+    expect(await repository.listJobLifecycleRecords("firm-west-legal", {})).toEqual([]);
+    expect(JSON.stringify(repository.recordedAuditEvents)).not.toContain("email");
+  });
+
   it("creates, lists, and revokes current-user calendar app passwords without echoing secrets", async () => {
     const repository = new AuditRecordingRepository();
     const server = testServer(user("licensee", ["matter-001"]), repository);

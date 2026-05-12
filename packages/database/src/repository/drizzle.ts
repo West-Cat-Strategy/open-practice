@@ -31,6 +31,7 @@ import {
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
+  type CalendarEventReminderRecord,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
   type ConnectorRecord,
@@ -90,6 +91,7 @@ import type {
   AuthPasswordSetupTokenRecord,
   AuthSessionRecord,
   CalendarEventAttendeeUpsertInput,
+  CalendarEventReminderUpsertInput,
   CalendarEventUpsertInput,
   DocumentUploadIntent,
   FirstRunSetupInput,
@@ -142,6 +144,7 @@ import {
   mapAuthSessionRow,
   mapCalendarCredentialRow,
   mapCalendarEventAttendeeRow,
+  mapCalendarEventReminderRow,
   mapCalendarEventRow,
   mapConflictCheckRow,
   mapConnectorDeliveryAttemptRow,
@@ -1654,6 +1657,42 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     }));
   }
 
+  private async attachCalendarEventReminders(
+    events: CalendarEventRecord[],
+  ): Promise<CalendarEventRecord[]> {
+    if (events.length === 0) return events;
+    const reminders = await this.db
+      .select()
+      .from(schema.calendarEventReminders)
+      .where(
+        and(
+          eq(schema.calendarEventReminders.firmId, events[0]!.firmId),
+          inArray(
+            schema.calendarEventReminders.eventId,
+            events.map((event) => event.id),
+          ),
+          isNull(schema.calendarEventReminders.deletedAt),
+        ),
+      )
+      .orderBy(asc(schema.calendarEventReminders.remindAt), asc(schema.calendarEventReminders.id));
+    const remindersByEventId = new Map<string, CalendarEventReminderRecord[]>();
+    for (const reminder of reminders.map(mapCalendarEventReminderRow)) {
+      const eventReminders = remindersByEventId.get(reminder.eventId) ?? [];
+      eventReminders.push(reminder);
+      remindersByEventId.set(reminder.eventId, eventReminders);
+    }
+    return events.map((event) => ({
+      ...event,
+      reminders: remindersByEventId.get(event.id) ?? [],
+    }));
+  }
+
+  private async attachCalendarEventChildren(
+    events: CalendarEventRecord[],
+  ): Promise<CalendarEventRecord[]> {
+    return this.attachCalendarEventReminders(await this.attachCalendarEventAttendees(events));
+  }
+
   async listCalendarEvents(
     firmId: string,
     options: { matterId: string; startsAfter?: string; startsBefore?: string },
@@ -1674,7 +1713,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .from(schema.calendarEvents)
       .where(and(...filters))
       .orderBy(asc(schema.calendarEvents.startsAt), asc(schema.calendarEvents.id));
-    return this.attachCalendarEventAttendees(rows.map(mapCalendarEventRow));
+    return this.attachCalendarEventChildren(rows.map(mapCalendarEventRow));
   }
 
   async getCalendarEvent(
@@ -1694,7 +1733,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         ),
       );
     if (!row) return undefined;
-    return (await this.attachCalendarEventAttendees([mapCalendarEventRow(row)]))[0];
+    return (await this.attachCalendarEventChildren([mapCalendarEventRow(row)]))[0];
   }
 
   async getCalendarEventByUid(
@@ -1714,7 +1753,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         ),
       );
     if (!row) return undefined;
-    return (await this.attachCalendarEventAttendees([mapCalendarEventRow(row)]))[0];
+    return (await this.attachCalendarEventChildren([mapCalendarEventRow(row)]))[0];
   }
 
   async upsertCalendarEvent(event: CalendarEventUpsertInput): Promise<CalendarEventRecord> {
@@ -1802,7 +1841,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     if (!row) {
       throw new CalendarEventScopeConflictError(event.id);
     }
-    return (await this.attachCalendarEventAttendees([mapCalendarEventRow(row)]))[0]!;
+    return (await this.attachCalendarEventChildren([mapCalendarEventRow(row)]))[0]!;
   }
 
   async listCalendarEventAttendees(
@@ -1951,6 +1990,95 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       }
     });
     return this.listCalendarEventAttendees(input.firmId, input.matterId, input.eventId);
+  }
+
+  async listCalendarEventReminders(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+  ): Promise<CalendarEventReminderRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.calendarEventReminders)
+      .where(
+        and(
+          eq(schema.calendarEventReminders.firmId, firmId),
+          eq(schema.calendarEventReminders.matterId, matterId),
+          eq(schema.calendarEventReminders.eventId, eventId),
+          isNull(schema.calendarEventReminders.deletedAt),
+        ),
+      )
+      .orderBy(asc(schema.calendarEventReminders.remindAt), asc(schema.calendarEventReminders.id));
+    return rows.map(mapCalendarEventReminderRow);
+  }
+
+  async upsertCalendarEventReminder(
+    reminder: CalendarEventReminderUpsertInput,
+  ): Promise<CalendarEventReminderRecord> {
+    const values = {
+      id: reminder.id,
+      firmId: reminder.firmId,
+      matterId: reminder.matterId,
+      eventId: reminder.eventId,
+      remindAt: new Date(reminder.remindAt),
+      channel: reminder.channel,
+      status: reminder.status,
+      note: reminder.note ?? null,
+      createdAt: new Date(reminder.createdAt),
+      updatedAt: new Date(reminder.updatedAt),
+      deletedAt: reminder.deletedAt ? new Date(reminder.deletedAt) : null,
+      createdByUserId: reminder.createdByUserId,
+      updatedByUserId: reminder.updatedByUserId,
+    };
+    const [row] = await this.db
+      .insert(schema.calendarEventReminders)
+      .values(values)
+      .onConflictDoUpdate({
+        target: schema.calendarEventReminders.id,
+        set: {
+          remindAt: values.remindAt,
+          channel: values.channel,
+          status: values.status,
+          note: values.note,
+          updatedAt: values.updatedAt,
+          deletedAt: values.deletedAt,
+          updatedByUserId: values.updatedByUserId,
+        },
+        setWhere: sql`${schema.calendarEventReminders.firmId} = ${reminder.firmId} and ${schema.calendarEventReminders.matterId} = ${reminder.matterId} and ${schema.calendarEventReminders.eventId} = ${reminder.eventId}`,
+      })
+      .returning();
+    if (!row) {
+      throw new Error(`Calendar reminder ${reminder.id} already exists in another scope`);
+    }
+    return mapCalendarEventReminderRow(row);
+  }
+
+  async deleteCalendarEventReminder(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    reminderId: string;
+    deletedAt: string;
+    updatedByUserId: string;
+  }): Promise<CalendarEventReminderRecord | undefined> {
+    const [row] = await this.db
+      .update(schema.calendarEventReminders)
+      .set({
+        deletedAt: new Date(input.deletedAt),
+        updatedAt: new Date(input.deletedAt),
+        updatedByUserId: input.updatedByUserId,
+      })
+      .where(
+        and(
+          eq(schema.calendarEventReminders.firmId, input.firmId),
+          eq(schema.calendarEventReminders.matterId, input.matterId),
+          eq(schema.calendarEventReminders.eventId, input.eventId),
+          eq(schema.calendarEventReminders.id, input.reminderId),
+          isNull(schema.calendarEventReminders.deletedAt),
+        ),
+      )
+      .returning();
+    return row ? mapCalendarEventReminderRow(row) : undefined;
   }
 
   async deleteCalendarEvent(input: {
