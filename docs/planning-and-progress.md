@@ -11,8 +11,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
 | Current focus         | No active implementation row.                                        |
-| Next recommended pick | OP-T88 connector delivery attempt visibility.                        |
-| Ready rows            | 1                                                                    |
+| Next recommended pick | No active ready or candidate rows after OP-T88 closeout.             |
+| Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
 | Review rows           | 0                                                                    |
@@ -22,11 +22,11 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Forward Development Plan
 
-| Status | ID     | Task                                  | Immediate Next Move                                                                                                                                                                                                        | Validation Plan                                                                                                               |
-| ------ | ------ | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Done   | OP-T86 | Calendar event lifecycle slice        | Added staff create/update, cancel/reschedule, and manual reminder-state records for matter-scoped calendar events; attendee, invitation, iCalendar, and meeting-link behavior stayed bounded.                              | 2026-05-12 proof archived in [Planning completed archive](archive/planning-completed-archive.md).                             |
-| Done   | OP-T85 | Document suggestions review queue     | Added reviewer-only OCR/extraction suggestion summaries for classification, duplicate/supersession, matter/contact hints, and missing metadata; no automatic merge, classification write, metadata write, or merge action. | 2026-05-12 proof archived in [Planning completed archive](archive/planning-completed-archive.md).                             |
-| Ready  | OP-T88 | Connector delivery attempt visibility | Add a read-only API and dashboard detail for existing connector delivery attempts before enabling live webhook sends; do not deliver payloads, mutate outbox state, or add connector engines.                              | Selector on connector API/domain/database/web docs; focused connector route/repository/web tests; API/database/web typecheck. |
+| Status | ID     | Task                              | Immediate Next Move                                                                                                                                                                                                        | Validation Plan                                                                                   |
+| ------ | ------ | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Done   | OP-T88 | Connector delivery worker V1      | Added the `connectors` worker queue, durable connector-outbox leasing, HMAC-signed HTTPS summary delivery, redacted retry/dead-letter settlement, and job/API status coverage without exposing secrets or raw payloads.    | 2026-05-12 proof archived in [Planning completed archive](archive/planning-completed-archive.md). |
+| Done   | OP-T86 | Calendar event lifecycle slice    | Added staff create/update, cancel/reschedule, and manual reminder-state records for matter-scoped calendar events; attendee, invitation, iCalendar, and meeting-link behavior stayed bounded.                              | 2026-05-12 proof archived in [Planning completed archive](archive/planning-completed-archive.md). |
+| Done   | OP-T85 | Document suggestions review queue | Added reviewer-only OCR/extraction suggestion summaries for classification, duplicate/supersession, matter/contact hints, and missing metadata; no automatic merge, classification write, metadata write, or merge action. | 2026-05-12 proof archived in [Planning completed archive](archive/planning-completed-archive.md). |
 
 Historical snapshots and completed-work proof live in [Archive](archive/README.md).
 

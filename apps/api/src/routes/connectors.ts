@@ -256,7 +256,7 @@ export function registerConnectorRoutes(
           connectorId: connector.id,
           connectorType: connector.type,
           eventType: queued.outbox.eventType,
-          idempotencyKey: queued.outbox.idempotencyKey,
+          idempotencyKeyPresent: Boolean(queued.outbox.idempotencyKey),
           resourceType: queued.outbox.resourceType,
           resourceId: queued.outbox.resourceId,
         },

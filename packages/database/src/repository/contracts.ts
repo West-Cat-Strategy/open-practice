@@ -342,6 +342,35 @@ export interface OpenPracticeRepository {
   createConnectorDeliveryAttempt(
     attempt: ConnectorDeliveryAttemptRecord,
   ): Promise<ConnectorDeliveryAttemptRecord>;
+  leaseConnectorOutbox(input: {
+    firmId: string;
+    leaseId: string;
+    leasedUntil: string;
+    now: string;
+    limit?: number;
+  }): Promise<
+    Array<{
+      connector: ConnectorRecord;
+      outbox: ConnectorOutboxRecord;
+      attempt: ConnectorDeliveryAttemptRecord;
+    }>
+  >;
+  recordConnectorDeliveryResult(input: {
+    firmId: string;
+    connectorId: string;
+    outboxId: string;
+    attemptId: string;
+    leaseId: string;
+    status: "delivered" | "failed";
+    occurredAt: string;
+    terminal?: boolean;
+    nextAttemptAt?: string;
+    errorSummary?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{
+    outbox: ConnectorOutboxRecord;
+    attempt: ConnectorDeliveryAttemptRecord;
+  }>;
   listConnectorDeliveryAttempts(
     firmId: string,
     options?: { outboxId?: string; connectorId?: string },

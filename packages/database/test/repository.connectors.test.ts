@@ -84,4 +84,206 @@ describe("repository connectors", () => {
       }),
     ).rejects.toThrow("Connector outbox connector-outbox-1 was not found");
   });
+
+  it("leases due enabled connector outbox rows and records redacted delivery outcomes", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const createdAt = "2026-05-12T12:00:00.000Z";
+    const now = "2026-05-12T12:05:00.000Z";
+    const leasedUntil = "2026-05-12T12:10:00.000Z";
+    const connector = await repository.createConnector({
+      id: "connector-webhook",
+      firmId: "firm-west-legal",
+      type: "generic",
+      key: "synthetic.webhook",
+      displayName: "Synthetic Webhook",
+      status: "enabled",
+      secretReference: { id: "secret-ref/webhook" },
+      configSummary: { deliveryUrl: "https://webhooks.example.test/open-practice" },
+      createdAt,
+      updatedAt: createdAt,
+    });
+    const pausedConnector = await repository.createConnector({
+      id: "connector-paused",
+      firmId: "firm-west-legal",
+      type: "generic",
+      key: "synthetic.paused",
+      displayName: "Synthetic Paused Webhook",
+      status: "paused",
+      configSummary: { deliveryUrl: "https://paused.example.test/open-practice" },
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-later",
+      firmId: "firm-west-legal",
+      connectorId: connector.id,
+      eventType: "document.verified",
+      resourceType: "document",
+      resourceId: "doc-later",
+      idempotencyKey: "doc-later:verified:v1",
+      status: "pending",
+      payloadSummary: { documentId: "doc-later" },
+      attemptCount: 0,
+      maxAttempts: 3,
+      nextAttemptAt: "2026-05-12T12:06:00.000Z",
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-ready",
+      firmId: "firm-west-legal",
+      connectorId: connector.id,
+      eventType: "document.verified",
+      resourceType: "document",
+      resourceId: "doc-ready",
+      idempotencyKey: "doc-ready:verified:v1",
+      status: "pending",
+      payloadSummary: { documentId: "doc-ready" },
+      attemptCount: 0,
+      maxAttempts: 3,
+      nextAttemptAt: "2026-05-12T12:00:00.000Z",
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-paused",
+      firmId: "firm-west-legal",
+      connectorId: pausedConnector.id,
+      eventType: "document.verified",
+      idempotencyKey: "doc-paused:verified:v1",
+      status: "pending",
+      payloadSummary: { documentId: "doc-paused" },
+      attemptCount: 0,
+      maxAttempts: 3,
+      nextAttemptAt: "2026-05-12T12:00:00.000Z",
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    const leased = await repository.leaseConnectorOutbox({
+      firmId: "firm-west-legal",
+      leaseId: "lease-001",
+      leasedUntil,
+      now,
+      limit: 5,
+    });
+
+    expect(leased).toHaveLength(1);
+    expect(leased[0]).toMatchObject({
+      connector: { id: "connector-webhook", status: "enabled" },
+      outbox: {
+        id: "connector-outbox-ready",
+        status: "leased",
+        attemptCount: 1,
+        leaseId: "lease-001",
+      },
+      attempt: {
+        status: "leased",
+        attemptNumber: 1,
+        leaseId: "lease-001",
+        idempotencyKey: "doc-ready:verified:v1",
+      },
+    });
+
+    const delivered = await repository.recordConnectorDeliveryResult({
+      firmId: "firm-west-legal",
+      connectorId: connector.id,
+      outboxId: "connector-outbox-ready",
+      attemptId: leased[0].attempt.id,
+      leaseId: "lease-001",
+      status: "delivered",
+      occurredAt: "2026-05-12T12:05:30.000Z",
+      metadata: { destinationHost: "webhooks.example.test", httpStatus: 202 },
+    });
+
+    expect(delivered.outbox).toMatchObject({
+      status: "delivered",
+      deliveredAt: "2026-05-12T12:05:30.000Z",
+      leaseId: undefined,
+    });
+    expect(delivered.attempt).toMatchObject({
+      status: "delivered",
+      finishedAt: "2026-05-12T12:05:30.000Z",
+      metadata: expect.objectContaining({
+        destinationHost: "webhooks.example.test",
+        terminal: true,
+      }),
+    });
+  });
+
+  it("recovers expired connector leases and dead-letters terminal failures", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const createdAt = "2026-05-12T12:00:00.000Z";
+    const connector = await repository.createConnector({
+      id: "connector-expired",
+      firmId: "firm-west-legal",
+      type: "generic",
+      key: "synthetic.expired",
+      displayName: "Synthetic Expired Webhook",
+      status: "enabled",
+      secretReference: { id: "secret-ref/expired" },
+      configSummary: { deliveryUrl: "https://webhooks.example.test/open-practice" },
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-expired",
+      firmId: "firm-west-legal",
+      connectorId: connector.id,
+      eventType: "document.verified",
+      idempotencyKey: "doc-expired:verified:v1",
+      status: "leased",
+      payloadSummary: { documentId: "doc-expired" },
+      attemptCount: 1,
+      maxAttempts: 2,
+      nextAttemptAt: "2026-05-12T12:00:00.000Z",
+      leaseId: "stale-lease",
+      leasedUntil: "2026-05-12T12:02:00.000Z",
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    const [leased] = await repository.leaseConnectorOutbox({
+      firmId: "firm-west-legal",
+      leaseId: "lease-002",
+      leasedUntil: "2026-05-12T12:15:00.000Z",
+      now: "2026-05-12T12:10:00.000Z",
+      limit: 1,
+    });
+
+    expect(leased.outbox).toMatchObject({
+      status: "leased",
+      attemptCount: 2,
+      leaseId: "lease-002",
+    });
+
+    const failed = await repository.recordConnectorDeliveryResult({
+      firmId: "firm-west-legal",
+      connectorId: connector.id,
+      outboxId: "connector-outbox-expired",
+      attemptId: leased.attempt.id,
+      leaseId: "lease-002",
+      status: "failed",
+      occurredAt: "2026-05-12T12:10:30.000Z",
+      terminal: true,
+      errorSummary: "Connector destination failed HTTPS guardrail validation",
+      metadata: { reason: "localhost_or_loopback_denied" },
+    });
+
+    expect(failed.outbox).toMatchObject({
+      status: "dead_letter",
+      deadLetteredAt: "2026-05-12T12:10:30.000Z",
+      lastErrorSummary: "Connector destination failed HTTPS guardrail validation",
+      leaseId: undefined,
+    });
+    expect(failed.attempt).toMatchObject({
+      status: "failed",
+      errorSummary: "Connector destination failed HTTPS guardrail validation",
+      metadata: expect.objectContaining({
+        reason: "localhost_or_loopback_denied",
+        terminal: true,
+      }),
+    });
+  });
 });

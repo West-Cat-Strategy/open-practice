@@ -12,6 +12,7 @@ describe("worker queue foundation", () => {
   it("defines all planned background queues with retry policies", () => {
     expect(openPracticeQueues).toEqual([
       "email",
+      "connectors",
       "inbound_email",
       "ai_triage",
       "ocr",

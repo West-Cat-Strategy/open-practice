@@ -1,10 +1,16 @@
+import { createHmac } from "node:crypto";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type {
+  ConnectorOutboxRecord,
   OpenPracticeQueueName,
   DocumentTextExtractionRecord,
   InboundEmailParser,
   MailSender,
   OcrProvider,
+} from "@open-practice/domain";
+import {
+  outboundWebhookEventAllowlist,
+  validateOutboundWebhookDestination,
 } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { processInboundEmailJob } from "./processors/inbound-email.js";
@@ -23,8 +29,25 @@ export interface WorkerJobResult {
   metadata: Record<string, unknown>;
 }
 
+export interface ConnectorDeliveryRequest {
+  url: string;
+  body: string;
+  headers: Record<string, string>;
+}
+
+export interface ConnectorDeliveryResponse {
+  status: number;
+}
+
+export type ConnectorSecretResolver = (secretReferenceId: string) => string | undefined;
+
+export type ConnectorHttpDeliverer = (
+  request: ConnectorDeliveryRequest,
+) => Promise<ConnectorDeliveryResponse>;
+
 const disabledReasons: Record<OpenPracticeQueueName, string> = {
   email: "SMTP email delivery is not configured",
+  connectors: "Connector delivery is not configured",
   inbound_email: "Inbound email parsing is not configured",
   ai_triage: "AI triage is reserved/deferred and has no worker processor",
   ocr: "OCR worker dependencies are not configured",
@@ -46,6 +69,8 @@ export async function processOpenPracticeJob(input: {
   ocrProvider: OcrProvider;
   mailSender: MailSender;
   inboundEmailParser: InboundEmailParser;
+  connectorSecretResolver?: ConnectorSecretResolver;
+  connectorHttpDeliverer?: ConnectorHttpDeliverer;
 }): Promise<WorkerJobResult> {
   const { data } = input;
 
@@ -93,11 +118,14 @@ async function processOpenPracticeJobBody(input: {
   ocrProvider: OcrProvider;
   mailSender: MailSender;
   inboundEmailParser: InboundEmailParser;
+  connectorSecretResolver?: ConnectorSecretResolver;
+  connectorHttpDeliverer?: ConnectorHttpDeliverer;
 }): Promise<WorkerJobResult> {
   const { queueName, data } = input;
 
   if (queueName === "ocr") return processOcrJob(input);
   if (queueName === "email") return processEmailJob(input);
+  if (queueName === "connectors") return processConnectorJob(input);
   if (queueName === "inbound_email") return processInboundEmailJob(input);
 
   return {
@@ -112,6 +140,283 @@ async function processOpenPracticeJobBody(input: {
       providerConfigured: false,
     },
   };
+}
+
+const allowedConnectorEvents = new Set<string>(outboundWebhookEventAllowlist);
+
+function errorSummary(message: string): string {
+  return message.length > 180 ? `${message.slice(0, 177)}...` : message;
+}
+
+function connectorBatchSize(metadata: Record<string, unknown>): number {
+  const value = metadata.batchSize;
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? Math.min(value, 25)
+    : 10;
+}
+
+function connectorLeaseMs(metadata: Record<string, unknown>): number {
+  const value = metadata.leaseMs;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 5 * 60 * 1000;
+}
+
+function connectorRetryAt(attemptNumber: number, now: string): string {
+  const delayMs = Math.min(30 * 60 * 1000, 30_000 * 2 ** Math.max(0, attemptNumber - 1));
+  return new Date(Date.parse(now) + delayMs).toISOString();
+}
+
+function responseClass(status: number): string {
+  if (status >= 200 && status < 300) return "2xx";
+  if (status >= 400 && status < 500) return "4xx";
+  if (status >= 500 && status < 600) return "5xx";
+  return "other";
+}
+
+function connectorDestinationUrl(configSummary: Record<string, unknown>): string | undefined {
+  const value = configSummary.deliveryUrl;
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function connectorSummaryEnvelope(input: {
+  outbox: ConnectorOutboxRecord;
+  createdAt: string;
+}): Record<string, unknown> {
+  return {
+    deliveryId: input.outbox.id,
+    event: input.outbox.eventType,
+    createdAt: input.createdAt,
+    data: {
+      resourceType: input.outbox.resourceType,
+      resourceId: input.outbox.resourceId,
+      payloadSummary: input.outbox.payloadSummary,
+    },
+  };
+}
+
+function signConnectorBody(input: { body: string; timestamp: string; secret: string }): string {
+  return createHmac("sha256", input.secret)
+    .update(`${input.timestamp}.${input.body}`)
+    .digest("hex");
+}
+
+async function defaultConnectorDeliverer(
+  request: ConnectorDeliveryRequest,
+): Promise<ConnectorDeliveryResponse> {
+  const response = await fetch(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: request.body,
+  });
+  return { status: response.status };
+}
+
+async function processConnectorJob(input: {
+  data: WorkerJobEnvelope;
+  repository: OpenPracticeRepository;
+  connectorSecretResolver?: ConnectorSecretResolver;
+  connectorHttpDeliverer?: ConnectorHttpDeliverer;
+}): Promise<WorkerJobResult> {
+  const { data, repository } = input;
+  const metadata = data.metadata ?? {};
+  const now = new Date().toISOString();
+  const leaseId = crypto.randomUUID();
+  const leasedUntil = new Date(Date.parse(now) + connectorLeaseMs(metadata)).toISOString();
+  const leased = await repository.leaseConnectorOutbox({
+    firmId: data.firmId,
+    leaseId,
+    leasedUntil,
+    now,
+    limit: connectorBatchSize(metadata),
+  });
+  const deliveredIds: string[] = [];
+  const failedIds: string[] = [];
+  const deadLetterIds: string[] = [];
+
+  for (const item of leased) {
+    const settled = await deliverConnectorOutbox({
+      ...item,
+      repository,
+      secretResolver: input.connectorSecretResolver,
+      deliverer: input.connectorHttpDeliverer ?? defaultConnectorDeliverer,
+    });
+    if (settled.status === "delivered") deliveredIds.push(item.outbox.id);
+    if (settled.status === "failed") failedIds.push(item.outbox.id);
+    if (settled.status === "dead_letter") deadLetterIds.push(item.outbox.id);
+  }
+
+  return {
+    status: "completed",
+    metadata: {
+      firmId: data.firmId,
+      leasedCount: leased.length,
+      deliveredCount: deliveredIds.length,
+      failedCount: failedIds.length,
+      deadLetterCount: deadLetterIds.length,
+      deliveredIds,
+      failedIds,
+      deadLetterIds,
+    },
+  };
+}
+
+async function deliverConnectorOutbox(input: {
+  connector: Awaited<
+    ReturnType<OpenPracticeRepository["leaseConnectorOutbox"]>
+  >[number]["connector"];
+  outbox: Awaited<ReturnType<OpenPracticeRepository["leaseConnectorOutbox"]>>[number]["outbox"];
+  attempt: Awaited<ReturnType<OpenPracticeRepository["leaseConnectorOutbox"]>>[number]["attempt"];
+  repository: OpenPracticeRepository;
+  secretResolver?: ConnectorSecretResolver;
+  deliverer: ConnectorHttpDeliverer;
+}): Promise<{ status: "delivered" | "failed" | "dead_letter" }> {
+  const now = new Date().toISOString();
+  const destinationUrl = connectorDestinationUrl(input.connector.configSummary);
+  const destination = destinationUrl
+    ? validateOutboundWebhookDestination(destinationUrl)
+    : { ok: false as const, reason: "invalid_url" as const };
+  const baseMetadata = {
+    eventType: input.outbox.eventType,
+    resourceType: input.outbox.resourceType,
+    resourceId: input.outbox.resourceId,
+    attemptNumber: input.attempt.attemptNumber,
+  };
+
+  if (!allowedConnectorEvents.has(input.outbox.eventType)) {
+    await input.repository.recordConnectorDeliveryResult({
+      firmId: input.outbox.firmId,
+      connectorId: input.outbox.connectorId,
+      outboxId: input.outbox.id,
+      attemptId: input.attempt.id,
+      leaseId: input.attempt.leaseId ?? "",
+      status: "failed",
+      occurredAt: now,
+      terminal: true,
+      errorSummary: "Connector event type is not allowlisted",
+      metadata: { ...baseMetadata, reason: "event_not_allowlisted" },
+    });
+    return { status: "dead_letter" };
+  }
+
+  if (!destination.ok) {
+    await input.repository.recordConnectorDeliveryResult({
+      firmId: input.outbox.firmId,
+      connectorId: input.outbox.connectorId,
+      outboxId: input.outbox.id,
+      attemptId: input.attempt.id,
+      leaseId: input.attempt.leaseId ?? "",
+      status: "failed",
+      occurredAt: now,
+      terminal: true,
+      errorSummary: "Connector destination failed HTTPS guardrail validation",
+      metadata: { ...baseMetadata, reason: destination.reason },
+    });
+    return { status: "dead_letter" };
+  }
+
+  const secretReferenceId = input.connector.secretReference?.id;
+  const secret = secretReferenceId ? input.secretResolver?.(secretReferenceId) : undefined;
+  if (!secret) {
+    await input.repository.recordConnectorDeliveryResult({
+      firmId: input.outbox.firmId,
+      connectorId: input.outbox.connectorId,
+      outboxId: input.outbox.id,
+      attemptId: input.attempt.id,
+      leaseId: input.attempt.leaseId ?? "",
+      status: "failed",
+      occurredAt: now,
+      terminal: true,
+      errorSummary: "Connector signing secret is not configured",
+      metadata: {
+        ...baseMetadata,
+        destinationScheme: destination.scheme,
+        destinationHost: destination.host,
+        destinationPort: destination.port,
+        reason: "secret_not_configured",
+        secretReferencePresent: Boolean(secretReferenceId),
+      },
+    });
+    return { status: "dead_letter" };
+  }
+
+  const envelope = connectorSummaryEnvelope({ outbox: input.outbox, createdAt: now });
+  const body = JSON.stringify(envelope);
+  const timestamp = now;
+  const signature = signConnectorBody({ body, timestamp, secret });
+  const deliveryMetadata = {
+    ...baseMetadata,
+    destinationScheme: destination.scheme,
+    destinationHost: destination.host,
+    destinationPort: destination.port,
+    signingAlgorithm: "hmac-sha256",
+  };
+
+  try {
+    const response = await input.deliverer({
+      url: destination.normalizedUrl,
+      body,
+      headers: {
+        "content-type": "application/json",
+        "x-open-practice-delivery-id": input.outbox.id,
+        "x-open-practice-event": input.outbox.eventType,
+        "x-open-practice-timestamp": timestamp,
+        "x-open-practice-signature": signature,
+      },
+    });
+    if (response.status >= 200 && response.status < 300) {
+      await input.repository.recordConnectorDeliveryResult({
+        firmId: input.outbox.firmId,
+        connectorId: input.outbox.connectorId,
+        outboxId: input.outbox.id,
+        attemptId: input.attempt.id,
+        leaseId: input.attempt.leaseId ?? "",
+        status: "delivered",
+        occurredAt: now,
+        metadata: { ...deliveryMetadata, httpStatus: response.status, responseClass: "2xx" },
+      });
+      return { status: "delivered" };
+    }
+
+    const terminal =
+      response.status >= 400 && response.status < 500
+        ? true
+        : input.attempt.attemptNumber >= input.outbox.maxAttempts;
+    await input.repository.recordConnectorDeliveryResult({
+      firmId: input.outbox.firmId,
+      connectorId: input.outbox.connectorId,
+      outboxId: input.outbox.id,
+      attemptId: input.attempt.id,
+      leaseId: input.attempt.leaseId ?? "",
+      status: "failed",
+      occurredAt: now,
+      terminal,
+      nextAttemptAt: terminal ? undefined : connectorRetryAt(input.attempt.attemptNumber, now),
+      errorSummary: `Connector delivery failed with HTTP ${response.status}`,
+      metadata: {
+        ...deliveryMetadata,
+        httpStatus: response.status,
+        responseClass: responseClass(response.status),
+      },
+    });
+    return { status: terminal ? "dead_letter" : "failed" };
+  } catch (error) {
+    const terminal = input.attempt.attemptNumber >= input.outbox.maxAttempts;
+    await input.repository.recordConnectorDeliveryResult({
+      firmId: input.outbox.firmId,
+      connectorId: input.outbox.connectorId,
+      outboxId: input.outbox.id,
+      attemptId: input.attempt.id,
+      leaseId: input.attempt.leaseId ?? "",
+      status: "failed",
+      occurredAt: now,
+      terminal,
+      nextAttemptAt: terminal ? undefined : connectorRetryAt(input.attempt.attemptNumber, now),
+      errorSummary: errorSummary(
+        error instanceof Error ? error.message : "Connector delivery failed",
+      ),
+      metadata: { ...deliveryMetadata, reason: "network_or_provider_error" },
+    });
+    return { status: terminal ? "dead_letter" : "failed" };
+  }
 }
 
 async function updateJobLifecycle(

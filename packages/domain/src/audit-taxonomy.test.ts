@@ -77,7 +77,7 @@ describe("audit event taxonomy", () => {
           action: "connector_outbox.queued",
           resourceType: "connector_outbox",
           resourceId: "connector-outbox-001",
-          metadata: { eventType: "matter.summary.ready", idempotencyKey: "synthetic-key" },
+          metadata: { eventType: "matter.summary.ready", idempotencyKeyPresent: true },
         }),
       ),
     ).toMatchObject({

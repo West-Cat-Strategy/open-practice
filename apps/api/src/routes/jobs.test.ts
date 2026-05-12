@@ -55,7 +55,15 @@ describe("jobs routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       status: "default",
-      queues: ["email", "inbound_email", "ai_triage", "ocr", "transcription", "media"],
+      queues: [
+        "email",
+        "connectors",
+        "inbound_email",
+        "ai_triage",
+        "ocr",
+        "transcription",
+        "media",
+      ],
       reservedQueues: expect.arrayContaining([
         expect.objectContaining({ queueName: "ai_triage", status: "reserved" }),
         expect.objectContaining({ queueName: "transcription", status: "reserved" }),
@@ -392,17 +400,49 @@ describe("jobs routes", () => {
     expect(ocrResponse.json().jobs[0].errorSummary).not.toContain("provider details");
   });
 
-  it("rejects unsupported queue filters", async () => {
-    const response = await testServer({ repository: new InMemoryOpenPracticeRepository() }).inject({
+  it("accepts connector queue filters as a worker status surface", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-connectors-001",
+      firmId: "firm-west-legal",
+      queueName: "connectors",
+      jobName: "deliver_connectors",
+      status: "queued",
+      targetResourceType: "connector_outbox",
+      targetResourceId: "connector-outbox-001",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      queuedAt: "2026-05-12T12:00:00.000Z",
+      metadata: {
+        leasedCount: 1,
+        deliveredCount: 0,
+        failedCount: 0,
+        deadLetterCount: 0,
+        rawBody: "Synthetic private body must not be exposed",
+      },
+    });
+    const response = await testServer({ repository }).inject({
       method: "GET",
       url: "/api/jobs?queueName=connectors",
     });
 
-    expect(response.statusCode).toBe(400);
+    expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      code: "VALIDATION_ERROR",
-      message: "Invalid request query",
+      jobs: [
+        {
+          queueName: "connectors",
+          targetResourceType: "connector_outbox",
+          targetResourceId: "connector-outbox-001",
+          metadata: {
+            leasedCount: 1,
+            deliveredCount: 0,
+            failedCount: 0,
+            deadLetterCount: 0,
+          },
+        },
+      ],
     });
+    expect(JSON.stringify(response.json())).not.toContain("Synthetic private body");
   });
 
   it("limits non-admin lifecycle run summaries to assigned matter jobs", async () => {

@@ -92,6 +92,7 @@ export const providerSettingKind = pgEnum("provider_setting_kind", [
 ]);
 export const jobQueueName = pgEnum("job_queue_name", [
   "email",
+  "connectors",
   "inbound_email",
   "ai_triage",
   "ocr",

@@ -15,7 +15,11 @@ import {
   MailParserProvider,
 } from "@open-practice/providers";
 import { openPracticeQueues, redisConnectionFromUrl } from "./queues.js";
-import { processOpenPracticeJob, type WorkerJobEnvelope } from "./processors.js";
+import {
+  processOpenPracticeJob,
+  type ConnectorSecretResolver,
+  type WorkerJobEnvelope,
+} from "./processors.js";
 
 const optionalString = z.preprocess(
   (value) => (value === "" ? undefined : value),
@@ -44,6 +48,7 @@ const envSchema = z.object({
   SMTP_FROM: z.string().default("Open Practice <no-reply@open-practice.local>"),
   SMTP_USERNAME: optionalString,
   SMTP_PASSWORD: optionalString,
+  CONNECTOR_WEBHOOK_SECRETS: optionalString,
 });
 
 function selectedQueues(value: string | undefined): OpenPracticeQueueName[] {
@@ -69,6 +74,7 @@ export function createWorkers(input: {
   ocrProvider: TesseractOcrProvider;
   mailSender: SmtpMailSender | DisabledMailSender;
   inboundEmailParser: MailParserProvider;
+  connectorSecretResolver?: ConnectorSecretResolver;
 }): Worker[] {
   const connection = redisConnectionFromUrl(input.redisUrl);
   return input.queues.map(
@@ -91,6 +97,7 @@ export function createWorkers(input: {
             ocrProvider: input.ocrProvider,
             mailSender: input.mailSender,
             inboundEmailParser: input.inboundEmailParser,
+            connectorSecretResolver: input.connectorSecretResolver,
           }),
         { connection, concurrency: input.concurrency },
       ),
@@ -131,6 +138,10 @@ if (process.env.NODE_ENV !== "test") {
         })
       : new DisabledMailSender();
 
+  const connectorSecrets = env.CONNECTOR_WEBHOOK_SECRETS
+    ? (JSON.parse(env.CONNECTOR_WEBHOOK_SECRETS) as Record<string, string>)
+    : {};
+
   const workers = createWorkers({
     redisUrl: env.REDIS_URL,
     queues: selectedQueues(env.WORKER_QUEUES),
@@ -140,6 +151,7 @@ if (process.env.NODE_ENV !== "test") {
     ocrProvider,
     mailSender,
     inboundEmailParser: new MailParserProvider(),
+    connectorSecretResolver: (secretReferenceId) => connectorSecrets[secretReferenceId],
   });
 
   for (const worker of workers) {

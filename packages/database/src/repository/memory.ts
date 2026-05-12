@@ -442,6 +442,157 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(attempt);
   }
 
+  async leaseConnectorOutbox(input: {
+    firmId: string;
+    leaseId: string;
+    leasedUntil: string;
+    now: string;
+    limit?: number;
+  }): Promise<
+    Array<{
+      connector: ConnectorRecord;
+      outbox: ConnectorOutboxRecord;
+      attempt: ConnectorDeliveryAttemptRecord;
+    }>
+  > {
+    const limit = input.limit ?? 10;
+    const nowMs = Date.parse(input.now);
+    const candidates = this.connectorOutbox
+      .filter((outbox) => {
+        if (outbox.firmId !== input.firmId) return false;
+        if (outbox.status === "cancelled" || outbox.status === "delivered") return false;
+        const connector = this.connectors.find(
+          (candidate) =>
+            candidate.firmId === outbox.firmId &&
+            candidate.id === outbox.connectorId &&
+            candidate.status === "enabled",
+        );
+        if (!connector) return false;
+        if (outbox.status === "leased") {
+          return outbox.leasedUntil ? Date.parse(outbox.leasedUntil) <= nowMs : true;
+        }
+        if (outbox.status !== "pending" && outbox.status !== "failed") return false;
+        return !outbox.nextAttemptAt || Date.parse(outbox.nextAttemptAt) <= nowMs;
+      })
+      .sort((left, right) => {
+        const leftNext = left.nextAttemptAt ?? left.createdAt;
+        const rightNext = right.nextAttemptAt ?? right.createdAt;
+        return leftNext.localeCompare(rightNext);
+      })
+      .slice(0, limit);
+
+    return candidates.map((candidate) => {
+      const index = this.connectorOutbox.findIndex(
+        (outbox) => outbox.firmId === candidate.firmId && outbox.id === candidate.id,
+      );
+      const current = this.connectorOutbox[index];
+      const attemptNumber = current.attemptCount + 1;
+      const outbox: ConnectorOutboxRecord = {
+        ...current,
+        status: "leased",
+        attemptCount: attemptNumber,
+        leaseId: input.leaseId,
+        leasedUntil: input.leasedUntil,
+        lastErrorSummary: undefined,
+        updatedAt: input.now,
+      };
+      this.connectorOutbox[index] = outbox;
+      const connector = this.connectors.find(
+        (item) => item.firmId === outbox.firmId && item.id === outbox.connectorId,
+      );
+      if (!connector) throw new Error(`Connector ${outbox.connectorId} was not found`);
+      const attempt: ConnectorDeliveryAttemptRecord = {
+        id: crypto.randomUUID(),
+        firmId: outbox.firmId,
+        connectorId: outbox.connectorId,
+        outboxId: outbox.id,
+        attemptNumber,
+        status: "leased",
+        idempotencyKey: outbox.idempotencyKey,
+        leaseId: input.leaseId,
+        startedAt: input.now,
+        metadata: {
+          eventType: outbox.eventType,
+          resourceType: outbox.resourceType,
+          resourceId: outbox.resourceId,
+        },
+      };
+      this.connectorDeliveryAttempts.push(clone(attempt));
+      return { connector: clone(connector), outbox: clone(outbox), attempt: clone(attempt) };
+    });
+  }
+
+  async recordConnectorDeliveryResult(input: {
+    firmId: string;
+    connectorId: string;
+    outboxId: string;
+    attemptId: string;
+    leaseId: string;
+    status: "delivered" | "failed";
+    occurredAt: string;
+    terminal?: boolean;
+    nextAttemptAt?: string;
+    errorSummary?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{
+    outbox: ConnectorOutboxRecord;
+    attempt: ConnectorDeliveryAttemptRecord;
+  }> {
+    const outboxIndex = this.connectorOutbox.findIndex(
+      (candidate) =>
+        candidate.firmId === input.firmId &&
+        candidate.id === input.outboxId &&
+        candidate.connectorId === input.connectorId &&
+        candidate.leaseId === input.leaseId,
+    );
+    if (outboxIndex < 0) throw new Error(`Connector outbox ${input.outboxId} lease was not found`);
+    const outbox = this.connectorOutbox[outboxIndex];
+    const attemptIndex = this.connectorDeliveryAttempts.findIndex(
+      (candidate) =>
+        candidate.firmId === input.firmId &&
+        candidate.id === input.attemptId &&
+        candidate.outboxId === input.outboxId &&
+        candidate.leaseId === input.leaseId,
+    );
+    if (attemptIndex < 0) throw new Error(`Connector attempt ${input.attemptId} was not found`);
+    const updatedOutbox: ConnectorOutboxRecord =
+      input.status === "delivered"
+        ? {
+            ...outbox,
+            status: "delivered",
+            leaseId: undefined,
+            leasedUntil: undefined,
+            deliveredAt: input.occurredAt,
+            nextAttemptAt: undefined,
+            lastErrorSummary: undefined,
+            updatedAt: input.occurredAt,
+          }
+        : {
+            ...outbox,
+            status: input.terminal ? "dead_letter" : "failed",
+            leaseId: undefined,
+            leasedUntil: undefined,
+            nextAttemptAt: input.terminal ? undefined : input.nextAttemptAt,
+            deadLetteredAt: input.terminal ? input.occurredAt : outbox.deadLetteredAt,
+            lastErrorSummary: input.errorSummary,
+            updatedAt: input.occurredAt,
+          };
+    const attempt: ConnectorDeliveryAttemptRecord = {
+      ...this.connectorDeliveryAttempts[attemptIndex],
+      status: input.status,
+      finishedAt: input.occurredAt,
+      errorSummary: input.errorSummary,
+      metadata: {
+        ...this.connectorDeliveryAttempts[attemptIndex].metadata,
+        ...(input.metadata ?? {}),
+        terminal: input.status === "failed" ? Boolean(input.terminal) : true,
+      },
+    };
+    this.connectorOutbox[outboxIndex] = updatedOutbox;
+    this.connectorDeliveryAttempts[attemptIndex] = attempt;
+    return { outbox: clone(updatedOutbox), attempt: clone(attempt) };
+  }
+
   async listConnectorDeliveryAttempts(
     firmId: string,
     options: { outboxId?: string; connectorId?: string } = {},

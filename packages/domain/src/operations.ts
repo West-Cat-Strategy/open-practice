@@ -49,6 +49,7 @@ export interface ConnectorRecord {
 
 export type OpenPracticeQueueName =
   | "email"
+  | "connectors"
   | "inbound_email"
   | "ai_triage"
   | "ocr"

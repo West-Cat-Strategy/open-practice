@@ -1,10 +1,79 @@
+import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { MailSender, OcrProvider } from "@open-practice/domain";
-import { processOpenPracticeJob } from "./processors.js";
+import { processOpenPracticeJob, type ConnectorDeliveryRequest } from "./processors.js";
 
 describe("worker processors", () => {
+  async function createConnectorOutboxFixture(
+    repository: InMemoryOpenPracticeRepository,
+    overrides: {
+      connectorId?: string;
+      connectorStatus?: "disabled" | "enabled" | "paused" | "error";
+      eventType?: string;
+      deliveryUrl?: string;
+      secretReferenceId?: string;
+      maxAttempts?: number;
+      attemptCount?: number;
+      outboxId?: string;
+    } = {},
+  ) {
+    const createdAt = "2026-05-12T12:00:00.000Z";
+    const connectorId = overrides.connectorId ?? "connector-worker-test";
+    await repository.createConnector({
+      id: connectorId,
+      firmId: "firm-west-legal",
+      type: "generic",
+      key: connectorId,
+      displayName: "Synthetic Connector",
+      status: overrides.connectorStatus ?? "enabled",
+      secretReference: overrides.secretReferenceId
+        ? { id: overrides.secretReferenceId, label: "Synthetic secret" }
+        : { id: "secret-ref/connector-worker", label: "Synthetic secret" },
+      configSummary: {
+        deliveryUrl: overrides.deliveryUrl ?? "https://webhooks.example.test/open-practice",
+      },
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await repository.createConnectorOutbox({
+      id: overrides.outboxId ?? "connector-outbox-worker-test",
+      firmId: "firm-west-legal",
+      connectorId,
+      eventType: overrides.eventType ?? "document.verified",
+      resourceType: "document",
+      resourceId: "doc-001",
+      idempotencyKey: `${connectorId}:doc-001:verified:v1`,
+      status: "pending",
+      payloadSummary: {
+        documentId: "doc-001",
+        fieldCount: 3,
+      },
+      attemptCount: overrides.attemptCount ?? 0,
+      maxAttempts: overrides.maxAttempts ?? 3,
+      nextAttemptAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+    });
+  }
+
+  function connectorJobDefaults(repository: InMemoryOpenPracticeRepository) {
+    return {
+      queueName: "connectors" as const,
+      jobName: "deliver_connectors",
+      data: {
+        firmId: "firm-west-legal",
+        metadata: { batchSize: 5, leaseMs: 60_000 },
+      },
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    };
+  }
+
   it("loads outbound email content from the outbox record instead of job metadata", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const sentMessages: unknown[] = [];
@@ -395,6 +464,197 @@ describe("worker processors", () => {
       reason: "Email outbox record not found",
       metadata: { emailId: "missing-email" },
     });
+  });
+
+  it("leases connector outbox rows and signs safe summary payloads", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createConnectorOutboxFixture(repository);
+    const deliveries: ConnectorDeliveryRequest[] = [];
+
+    const result = await processOpenPracticeJob({
+      ...connectorJobDefaults(repository),
+      connectorSecretResolver: (referenceId) =>
+        referenceId === "secret-ref/connector-worker" ? "synthetic-signing-secret" : undefined,
+      async connectorHttpDeliverer(request) {
+        deliveries.push(request);
+        return { status: 202 };
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      metadata: {
+        leasedCount: 1,
+        deliveredCount: 1,
+        failedCount: 0,
+        deadLetterCount: 0,
+      },
+    });
+    expect(deliveries).toHaveLength(1);
+    const [delivery] = deliveries;
+    expect(delivery.url).toBe("https://webhooks.example.test/open-practice");
+    expect(delivery.headers).toMatchObject({
+      "content-type": "application/json",
+      "x-open-practice-delivery-id": "connector-outbox-worker-test",
+      "x-open-practice-event": "document.verified",
+      "x-open-practice-signature": expect.any(String),
+      "x-open-practice-timestamp": expect.any(String),
+    });
+    expect(JSON.parse(delivery.body)).toMatchObject({
+      deliveryId: "connector-outbox-worker-test",
+      event: "document.verified",
+      data: {
+        resourceType: "document",
+        resourceId: "doc-001",
+        payloadSummary: { documentId: "doc-001", fieldCount: 3 },
+      },
+    });
+    expect(delivery.body).not.toContain("synthetic-signing-secret");
+    const expectedSignature = createHmac("sha256", "synthetic-signing-secret")
+      .update(`${delivery.headers["x-open-practice-timestamp"]}.${delivery.body}`)
+      .digest("hex");
+    expect(delivery.headers["x-open-practice-signature"]).toBe(expectedSignature);
+    await expect(
+      repository.listConnectorOutbox("firm-west-legal", { connectorId: "connector-worker-test" }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "connector-outbox-worker-test",
+        status: "delivered",
+        attemptCount: 1,
+        deliveredAt: expect.any(String),
+        leaseId: undefined,
+      }),
+    ]);
+    const attempts = await repository.listConnectorDeliveryAttempts("firm-west-legal", {
+      outboxId: "connector-outbox-worker-test",
+    });
+    expect(attempts).toEqual([
+      expect.objectContaining({
+        status: "delivered",
+        errorSummary: undefined,
+        metadata: expect.objectContaining({
+          destinationHost: "webhooks.example.test",
+          httpStatus: 202,
+          signingAlgorithm: "hmac-sha256",
+        }),
+      }),
+    ]);
+    expect(JSON.stringify(attempts)).not.toContain("synthetic-signing-secret");
+    expect(JSON.stringify(attempts)).not.toContain("x-open-practice-signature");
+  });
+
+  it("dead-letters non-allowlisted connector events without delivery", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createConnectorOutboxFixture(repository, {
+      eventType: "matter.summary.ready",
+      outboxId: "connector-outbox-not-allowlisted",
+    });
+
+    const result = await processOpenPracticeJob({
+      ...connectorJobDefaults(repository),
+      connectorSecretResolver: () => "synthetic-signing-secret",
+      async connectorHttpDeliverer() {
+        throw new Error("Should not deliver");
+      },
+    });
+
+    expect(result.metadata).toMatchObject({ deadLetterCount: 1, deliveredCount: 0 });
+    await expect(
+      repository.listConnectorOutbox("firm-west-legal", { status: "dead_letter" }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "connector-outbox-not-allowlisted",
+        lastErrorSummary: "Connector event type is not allowlisted",
+      }),
+    ]);
+  });
+
+  it("dead-letters invalid destinations and missing connector secrets without raw leakage", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createConnectorOutboxFixture(repository, {
+      connectorId: "connector-localhost",
+      deliveryUrl: "https://localhost/hooks",
+      outboxId: "connector-outbox-localhost",
+    });
+    await createConnectorOutboxFixture(repository, {
+      connectorId: "connector-missing-secret",
+      secretReferenceId: "secret-ref/missing",
+      outboxId: "connector-outbox-missing-secret",
+    });
+
+    const result = await processOpenPracticeJob({
+      ...connectorJobDefaults(repository),
+      connectorSecretResolver: (referenceId) =>
+        referenceId === "secret-ref/connector-worker" ? "synthetic-signing-secret" : undefined,
+      async connectorHttpDeliverer() {
+        throw new Error("Should not deliver");
+      },
+    });
+
+    expect(result.metadata).toMatchObject({ deadLetterCount: 2, deliveredCount: 0 });
+    const outbox = await repository.listConnectorOutbox("firm-west-legal", {
+      status: "dead_letter",
+    });
+    expect(outbox).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "connector-outbox-localhost",
+          lastErrorSummary: "Connector destination failed HTTPS guardrail validation",
+        }),
+        expect.objectContaining({
+          id: "connector-outbox-missing-secret",
+          lastErrorSummary: "Connector signing secret is not configured",
+        }),
+      ]),
+    );
+    const attempts = await repository.listConnectorDeliveryAttempts("firm-west-legal");
+    expect(JSON.stringify(attempts)).not.toContain("synthetic-signing-secret");
+  });
+
+  it("records retryable and terminal connector HTTP failures", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createConnectorOutboxFixture(repository, {
+      connectorId: "connector-retryable",
+      outboxId: "connector-outbox-retryable",
+      maxAttempts: 3,
+    });
+    await createConnectorOutboxFixture(repository, {
+      connectorId: "connector-terminal",
+      outboxId: "connector-outbox-terminal",
+      maxAttempts: 1,
+    });
+
+    const result = await processOpenPracticeJob({
+      ...connectorJobDefaults(repository),
+      connectorSecretResolver: () => "synthetic-signing-secret",
+      async connectorHttpDeliverer() {
+        return { status: 503 };
+      },
+    });
+
+    expect(result.metadata).toMatchObject({
+      failedCount: 1,
+      deadLetterCount: 1,
+      deliveredCount: 0,
+    });
+    await expect(
+      repository.listConnectorOutbox("firm-west-legal", { connectorId: "connector-retryable" }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        status: "failed",
+        nextAttemptAt: expect.any(String),
+        lastErrorSummary: "Connector delivery failed with HTTP 503",
+      }),
+    ]);
+    await expect(
+      repository.listConnectorOutbox("firm-west-legal", { connectorId: "connector-terminal" }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        status: "dead_letter",
+        nextAttemptAt: undefined,
+        lastErrorSummary: "Connector delivery failed with HTTP 503",
+      }),
+    ]);
   });
 
   it("skips reserved document-processing queues with redacted deferred metadata", async () => {

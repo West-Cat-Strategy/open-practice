@@ -82,7 +82,7 @@ import {
   type WebAuthnChallengeRecord,
   type WebAuthnCredentialRecord,
 } from "@open-practice/domain";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../runtime.js";
 import * as schema from "../schema.js";
 
@@ -491,6 +491,211 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .values(connectorDeliveryAttemptInsert(attempt))
       .returning();
     return mapConnectorDeliveryAttemptRow(row);
+  }
+
+  async leaseConnectorOutbox(input: {
+    firmId: string;
+    leaseId: string;
+    leasedUntil: string;
+    now: string;
+    limit?: number;
+  }): Promise<
+    Array<{
+      connector: ConnectorRecord;
+      outbox: ConnectorOutboxRecord;
+      attempt: ConnectorDeliveryAttemptRecord;
+    }>
+  > {
+    const now = new Date(input.now);
+    return this.db.transaction(async (tx) => {
+      const rows = await tx
+        .select({
+          outbox: schema.connectorOutbox,
+          connector: schema.connectors,
+        })
+        .from(schema.connectorOutbox)
+        .innerJoin(
+          schema.connectors,
+          and(
+            eq(schema.connectors.firmId, schema.connectorOutbox.firmId),
+            eq(schema.connectors.id, schema.connectorOutbox.connectorId),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.connectorOutbox.firmId, input.firmId),
+            eq(schema.connectors.status, "enabled"),
+            or(
+              and(
+                inArray(schema.connectorOutbox.status, ["pending", "failed"]),
+                or(
+                  isNull(schema.connectorOutbox.nextAttemptAt),
+                  lte(schema.connectorOutbox.nextAttemptAt, now),
+                ),
+              ),
+              and(
+                eq(schema.connectorOutbox.status, "leased"),
+                or(
+                  isNull(schema.connectorOutbox.leasedUntil),
+                  lte(schema.connectorOutbox.leasedUntil, now),
+                ),
+              ),
+            ),
+          ),
+        )
+        .orderBy(asc(schema.connectorOutbox.nextAttemptAt), asc(schema.connectorOutbox.createdAt))
+        .limit(input.limit ?? 10);
+
+      const leased: Array<{
+        connector: ConnectorRecord;
+        outbox: ConnectorOutboxRecord;
+        attempt: ConnectorDeliveryAttemptRecord;
+      }> = [];
+      for (const row of rows) {
+        const attemptNumber = row.outbox.attemptCount + 1;
+        const [updatedOutbox] = await tx
+          .update(schema.connectorOutbox)
+          .set({
+            status: "leased",
+            attemptCount: attemptNumber,
+            leaseId: input.leaseId,
+            leasedUntil: new Date(input.leasedUntil),
+            lastErrorSummary: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.connectorOutbox.firmId, input.firmId),
+              eq(schema.connectorOutbox.id, row.outbox.id),
+              or(
+                inArray(schema.connectorOutbox.status, ["pending", "failed"]),
+                and(
+                  eq(schema.connectorOutbox.status, "leased"),
+                  or(
+                    isNull(schema.connectorOutbox.leasedUntil),
+                    lte(schema.connectorOutbox.leasedUntil, now),
+                  ),
+                ),
+              ),
+            ),
+          )
+          .returning();
+        if (!updatedOutbox) continue;
+        const attempt: ConnectorDeliveryAttemptRecord = {
+          id: crypto.randomUUID(),
+          firmId: updatedOutbox.firmId,
+          connectorId: updatedOutbox.connectorId,
+          outboxId: updatedOutbox.id,
+          attemptNumber,
+          status: "leased",
+          idempotencyKey: updatedOutbox.idempotencyKey,
+          leaseId: input.leaseId,
+          startedAt: input.now,
+          metadata: {
+            eventType: updatedOutbox.eventType,
+            resourceType: updatedOutbox.resourceType ?? undefined,
+            resourceId: updatedOutbox.resourceId ?? undefined,
+          },
+        };
+        const [attemptRow] = await tx
+          .insert(schema.connectorDeliveryAttempts)
+          .values(connectorDeliveryAttemptInsert(attempt))
+          .returning();
+        leased.push({
+          connector: mapConnectorRow(row.connector),
+          outbox: mapConnectorOutboxRow(updatedOutbox),
+          attempt: mapConnectorDeliveryAttemptRow(attemptRow),
+        });
+      }
+      return leased;
+    });
+  }
+
+  async recordConnectorDeliveryResult(input: {
+    firmId: string;
+    connectorId: string;
+    outboxId: string;
+    attemptId: string;
+    leaseId: string;
+    status: "delivered" | "failed";
+    occurredAt: string;
+    terminal?: boolean;
+    nextAttemptAt?: string;
+    errorSummary?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{
+    outbox: ConnectorOutboxRecord;
+    attempt: ConnectorDeliveryAttemptRecord;
+  }> {
+    const occurredAt = new Date(input.occurredAt);
+    return this.db.transaction(async (tx) => {
+      const [outboxRow] = await tx
+        .update(schema.connectorOutbox)
+        .set(
+          input.status === "delivered"
+            ? {
+                status: "delivered",
+                leaseId: null,
+                leasedUntil: null,
+                deliveredAt: occurredAt,
+                nextAttemptAt: null,
+                lastErrorSummary: null,
+                updatedAt: occurredAt,
+              }
+            : {
+                status: input.terminal ? "dead_letter" : "failed",
+                leaseId: null,
+                leasedUntil: null,
+                nextAttemptAt:
+                  input.terminal || !input.nextAttemptAt ? null : new Date(input.nextAttemptAt),
+                deadLetteredAt: input.terminal ? occurredAt : null,
+                lastErrorSummary: input.errorSummary ?? null,
+                updatedAt: occurredAt,
+              },
+        )
+        .where(
+          and(
+            eq(schema.connectorOutbox.firmId, input.firmId),
+            eq(schema.connectorOutbox.connectorId, input.connectorId),
+            eq(schema.connectorOutbox.id, input.outboxId),
+            eq(schema.connectorOutbox.leaseId, input.leaseId),
+          ),
+        )
+        .returning();
+      if (!outboxRow) throw new Error(`Connector outbox ${input.outboxId} lease was not found`);
+
+      const [existingAttempt] = await tx
+        .select()
+        .from(schema.connectorDeliveryAttempts)
+        .where(
+          and(
+            eq(schema.connectorDeliveryAttempts.firmId, input.firmId),
+            eq(schema.connectorDeliveryAttempts.id, input.attemptId),
+            eq(schema.connectorDeliveryAttempts.outboxId, input.outboxId),
+            eq(schema.connectorDeliveryAttempts.leaseId, input.leaseId),
+          ),
+        );
+      if (!existingAttempt) throw new Error(`Connector attempt ${input.attemptId} was not found`);
+
+      const [attemptRow] = await tx
+        .update(schema.connectorDeliveryAttempts)
+        .set({
+          status: input.status,
+          finishedAt: occurredAt,
+          errorSummary: input.errorSummary ?? null,
+          metadata: {
+            ...existingAttempt.metadata,
+            ...(input.metadata ?? {}),
+            terminal: input.status === "failed" ? Boolean(input.terminal) : true,
+          },
+        })
+        .where(eq(schema.connectorDeliveryAttempts.id, input.attemptId))
+        .returning();
+      return {
+        outbox: mapConnectorOutboxRow(outboxRow),
+        attempt: mapConnectorDeliveryAttemptRow(attemptRow),
+      };
+    });
   }
 
   async listConnectorDeliveryAttempts(

@@ -8,6 +8,7 @@ import { redactJobMetadata } from "@open-practice/domain";
 
 export const openPracticeQueues = [
   "email",
+  "connectors",
   "inbound_email",
   "ai_triage",
   "ocr",
@@ -27,6 +28,12 @@ export type RedisConnectionOptions = {
 export const defaultJobOptionsByQueue: Record<OpenPracticeQueueName, JobsOptions> = {
   email: {
     attempts: 5,
+    backoff: { type: "exponential", delay: 30_000 },
+    removeOnComplete: 1_000,
+    removeOnFail: false,
+  },
+  connectors: {
+    attempts: 3,
     backoff: { type: "exponential", delay: 30_000 },
     removeOnComplete: 1_000,
     removeOnFail: false,

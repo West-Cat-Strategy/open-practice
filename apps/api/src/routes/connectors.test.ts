@@ -226,6 +226,83 @@ describe("connector routes", () => {
     expect(conflict.json()).toMatchObject({ code: "IDEMPOTENCY_KEY_CONFLICT" });
   });
 
+  it("returns redacted connector delivery and dead-letter status", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const connector = await repository.createConnector({
+      id: "connector-webhook-status",
+      firmId,
+      type: "generic",
+      key: "synthetic.webhook-status",
+      displayName: "Synthetic Webhook Status",
+      status: "enabled",
+      secretReference: { id: "secret-ref/webhook-status" },
+      configSummary: { deliveryUrl: "https://webhooks.example.test/open-practice" },
+      createdAt: "2026-05-12T12:00:00.000Z",
+      updatedAt: "2026-05-12T12:00:00.000Z",
+    });
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-status",
+      firmId,
+      connectorId: connector.id,
+      eventType: "document.verified",
+      resourceType: "document",
+      resourceId: "doc-001",
+      idempotencyKey: "doc-001:verified:v1",
+      status: "pending",
+      payloadSummary: { documentId: "doc-001" },
+      attemptCount: 0,
+      maxAttempts: 1,
+      nextAttemptAt: "2026-05-12T12:00:00.000Z",
+      createdAt: "2026-05-12T12:00:00.000Z",
+      updatedAt: "2026-05-12T12:00:00.000Z",
+    });
+    const [leased] = await repository.leaseConnectorOutbox({
+      firmId,
+      leaseId: "lease-status",
+      leasedUntil: "2026-05-12T12:10:00.000Z",
+      now: "2026-05-12T12:05:00.000Z",
+      limit: 1,
+    });
+    await repository.recordConnectorDeliveryResult({
+      firmId,
+      connectorId: connector.id,
+      outboxId: "connector-outbox-status",
+      attemptId: leased.attempt.id,
+      leaseId: "lease-status",
+      status: "failed",
+      occurredAt: "2026-05-12T12:05:30.000Z",
+      terminal: true,
+      errorSummary: "Connector delivery failed with HTTP 403",
+      metadata: {
+        destinationHost: "webhooks.example.test",
+        signature: "raw-signature-must-not-return",
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: `/api/connectors/outbox?connectorId=${connector.id}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      outbox: [
+        {
+          id: "connector-outbox-status",
+          status: "dead_letter",
+          idempotencyKeyPresent: true,
+          leasePresent: false,
+          deadLetteredAt: "2026-05-12T12:05:30.000Z",
+          lastErrorSummary: "Connector delivery failed with HTTP 403",
+        },
+      ],
+    });
+    expect(JSON.stringify(response.json())).not.toContain("doc-001:verified:v1");
+    expect(JSON.stringify(response.json())).not.toContain("raw-signature-must-not-return");
+    expect(JSON.stringify(response.json())).not.toContain("secret-ref/webhook-status");
+  });
+
   it("limits connector writes to owner admins", async () => {
     const response = await testServer({
       repository: new InMemoryOpenPracticeRepository(),
