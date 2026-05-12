@@ -3,6 +3,7 @@
 import { CheckCircle2, FileUp, ShieldCheck, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { readPublicTokenError } from "../publicTokenClient";
+import { PublicTokenNeedsAttention } from "../publicTokenActions";
 import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
 import {
   buildExternalUploadIntentPayload,
@@ -14,6 +15,7 @@ import {
   describeExternalUploadDocumentStatus,
   describeExternalUploadCompletion,
   describeExternalUploadPutFailure,
+  externalUploadAttentionItems,
   externalUploadClassifications,
   externalUploadLifecycleMessage,
   publicExternalUploadErrorMessage,
@@ -154,6 +156,7 @@ export default function ExternalUploadRunner({ apiBaseUrl, token }: ExternalUplo
 
   const canUpload = canUploadExternalDocument(payload);
   const acceptedClassifications = payload?.acceptedClassifications ?? externalUploadClassifications;
+  const attentionItems = externalUploadAttentionItems(payload);
 
   return (
     <PublicTokenShell
@@ -171,6 +174,13 @@ export default function ExternalUploadRunner({ apiBaseUrl, token }: ExternalUplo
       title="Upload documents"
     >
       <PublicStatusMessage>{status}</PublicStatusMessage>
+
+      {payload ? (
+        <PublicTokenNeedsAttention
+          emptyLabel="No action is needed on this upload link right now."
+          items={attentionItems}
+        />
+      ) : null}
 
       {payload ? (
         <div className="public-form-section">

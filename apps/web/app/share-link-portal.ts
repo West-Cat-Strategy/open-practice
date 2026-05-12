@@ -31,6 +31,44 @@ export interface PublicShareErrorBody {
   };
 }
 
+export function shareLinkAttentionItems(input: {
+  payload: PublicShareLinkResponse | null;
+  verificationRequired: boolean;
+}): {
+  id: string;
+  title: string;
+  detail: string;
+  status: string;
+  tone?: "neutral" | "ready" | "risk";
+}[] {
+  if (input.verificationRequired) {
+    return [
+      {
+        id: "share-email-verification",
+        title: "Verify email",
+        detail: "Complete verification before viewing the shared documents.",
+        status: "required",
+        tone: "risk",
+      },
+    ];
+  }
+
+  if (!input.payload) return [];
+
+  if (input.payload.documents.length === 0) {
+    return [
+      {
+        id: "share-no-documents",
+        title: "No shared documents available",
+        detail: "The link is valid, but no documents are currently visible from this page.",
+        status: "waiting",
+      },
+    ];
+  }
+
+  return [];
+}
+
 export function buildPublicSharePath(token: string): string {
   return `/api/portal/shares/${encodeURIComponent(token)}`;
 }

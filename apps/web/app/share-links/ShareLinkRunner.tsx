@@ -7,11 +7,13 @@ import {
   describePublicShareStatus,
   isShareEmailVerificationRequired,
   publicShareErrorMessage,
+  shareLinkAttentionItems,
   type PublicShareErrorBody,
   type PublicShareLinkResponse,
 } from "../share-link-portal";
 import { buildPublicTokenPath, readPublicTokenError } from "../publicTokenClient";
 import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
+import { PublicTokenNeedsAttention } from "../publicTokenActions";
 
 interface ShareLinkRunnerProps {
   apiBaseUrl: string;
@@ -23,6 +25,7 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
   const [status, setStatus] = useState("Loading share link...");
   const [verificationRequired, setVerificationRequired] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const attentionItems = shareLinkAttentionItems({ payload, verificationRequired });
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +93,11 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
       title="Shared documents"
     >
       <PublicStatusMessage>{status}</PublicStatusMessage>
+
+      <PublicTokenNeedsAttention
+        emptyLabel="No action is needed on this share link right now."
+        items={attentionItems}
+      />
 
       {verificationRequired ? (
         <div className="public-form-action">

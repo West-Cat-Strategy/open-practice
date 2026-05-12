@@ -13,7 +13,9 @@ Use this index as the first stop for repo orientation. Open Practice is a legal-
 6. [GitHub Maintenance](development/github-maintenance.md) covers local-only repository gates,
    GitHub settings cutover, dependency audits, and branch cleanup.
 7. [Testing](testing/TESTING.md) maps change types to validation commands.
-8. [API and State Machines](api-and-state-machines.md) records the current API and lifecycle contracts.
+8. [Validation Proof Index](validation/README.md) tracks active validation notes and skipped-check
+   context.
+9. [API and State Machines](api-and-state-machines.md) records the current API and lifecycle contracts.
 
 ## Governance
 

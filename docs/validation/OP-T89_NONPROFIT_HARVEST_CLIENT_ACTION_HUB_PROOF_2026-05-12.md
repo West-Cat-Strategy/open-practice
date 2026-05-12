@@ -1,0 +1,45 @@
+# OP-T89 Nonprofit Harvest Client Action Hub Proof
+
+**Date:** 2026-05-12
+**Status:** Review
+
+## Scope
+
+Implemented the first Open Practice improvement harvest from nonprofit-manager by adapting concepts
+only:
+
+- Added the validation proof index at [README.md](README.md).
+- Added evidence-backed candidate rows for the remaining harvest opportunities in
+  [Planning and Progress](../planning-and-progress.md).
+- Added a read-only `Needs attention` summary to secure share links, external upload links, and
+  intake form links without exposing matter internals.
+- Locked unsupported public intake schema versions out of draft save and submit controls.
+- Extended `pnpm verify:select` coverage for runtime configuration changes without importing
+  nonprofit-manager Make/Bash scripts.
+
+## Validation
+
+| Command                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Result                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `pnpm verify:select -- --files docs/validation/README.md docs/README.md docs/planning-and-progress.md scripts/select-validation.mjs scripts/select-validation.test.mjs apps/web/app/publicTokenActions.tsx apps/web/app/share-link-portal.ts apps/web/app/share-link-portal.test.ts apps/web/app/share-links/ShareLinkRunner.tsx apps/web/app/external-uploads/ExternalUploadRunner.tsx apps/web/app/external-uploads/runner-utils.ts apps/web/app/external-uploads/runner-utils.test.ts apps/web/app/intake-forms/IntakeFormRunner.tsx apps/web/app/intake-forms/runner-utils.ts apps/web/app/intake-forms/IntakeFormRenderer.test.ts apps/web/app/styles/40-public-forms-intake-share.css` | Passed; recommended format, docs, policy, repo tests, web tests, web typecheck, and build. |
+| `pnpm --filter @open-practice/web test`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Passed: 9 files, 77 tests.                                                                 |
+| `node --test scripts/select-validation.test.mjs`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Passed: 6 tests.                                                                           |
+| `pnpm docs:check`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Passed.                                                                                    |
+| `pnpm format:check`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Passed.                                                                                    |
+| `pnpm policy:check`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Passed.                                                                                    |
+| `pnpm --filter @open-practice/web typecheck`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Passed after tightening the legacy-schema test fixture.                                    |
+| `pnpm build`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Passed: 6 packages built successfully.                                                     |
+
+## Skipped Checks
+
+- Browser smoke was not run for this first slice. The shipped change is covered by pure helper tests,
+  web typecheck, and production build; a future browser pass should cover the token pages when the
+  local stack is already running.
+- No API, database, provider, or worker-specific checks were run because this slice did not change
+  those workspaces.
+
+## Clean-Room Reuse
+
+No nonprofit-manager source or proof text was copied into runtime code. The implementation adapts
+the concept of a client action summary, row-local proof index, and runtime-aware selector coverage
+using Open Practice-specific names, data shapes, and validation.

@@ -185,6 +185,18 @@ function isRootConfig(path) {
   );
 }
 
+function isRuntimeConfig(path) {
+  return (
+    path === "Dockerfile" ||
+    path.startsWith("Dockerfile.") ||
+    path === "docker-compose.yml" ||
+    path.startsWith("docker-compose.") ||
+    path.startsWith("docker/") ||
+    path === ".env.example" ||
+    path.endsWith(".env.example")
+  );
+}
+
 function isMigration(path) {
   return path === "migrations" || path.startsWith("migrations/") || path.includes("/migrations/");
 }
@@ -259,6 +271,13 @@ export function classifyPath(path) {
 
   if (isRootConfig(path)) {
     commands.add(COMMANDS.ciLocal);
+  }
+
+  if (isRuntimeConfig(path)) {
+    commands.add(COMMANDS.formatCheck);
+    commands.add(COMMANDS.docsCheck);
+    commands.add(COMMANDS.policyCheck);
+    commands.add(COMMANDS.build);
   }
 
   return { commands: [...commands], known: commands.size > 0 };

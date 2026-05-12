@@ -3,6 +3,7 @@ import {
   publicTokenErrorMessage,
   type PublicTokenErrorBody,
 } from "../publicTokenClient";
+import type { PublicTokenActionItem } from "../publicTokenActions";
 
 export const externalUploadClassifications = [
   "general",
@@ -197,6 +198,51 @@ export function describeExternalUploadDocumentStatus(document: PublicExternalUpl
     detail: "Upload complete. Staff review is pending.",
     tone: "neutral",
   };
+}
+
+export function externalUploadAttentionItems(
+  payload: PublicExternalUploadPayload | null,
+): PublicTokenActionItem[] {
+  if (!payload) return [];
+
+  const items: PublicTokenActionItem[] = [];
+  const remaining = remainingUploadCount(payload);
+  if (canUploadExternalDocument(payload)) {
+    items.push({
+      id: "external-upload-open",
+      title: remaining === 1 ? "Upload requested document" : "Upload requested documents",
+      detail:
+        remaining === 1
+          ? "One upload remains on this secure link."
+          : `${remaining} uploads remain on this secure link.`,
+      status: "open",
+    });
+  }
+
+  for (const document of payload.documents) {
+    if (canRetryExternalUploadDocument(payload, document)) {
+      items.push({
+        id: `external-upload-retry-${document.id}`,
+        title: `Replace ${document.title}`,
+        detail: "Staff requested a replacement upload for this document.",
+        status: "retry",
+        tone: "risk",
+      });
+      continue;
+    }
+
+    if (document.reviewStatus === "needs_metadata") {
+      items.push({
+        id: `external-upload-metadata-${document.id}`,
+        title: `Follow up on ${document.title}`,
+        detail: "Staff needs more information and will follow up outside this page.",
+        status: "follow up",
+        tone: "risk",
+      });
+    }
+  }
+
+  return items;
 }
 
 export function upsertPublicExternalUploadDocument(

@@ -120,6 +120,22 @@
   color: var(--danger);
 }
 
+.public-attention-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.public-attention-item > span {
+  align-self: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.public-attention-item > span.risk {
+  color: var(--danger);
+}
+
 .share-check-row {
   min-height: 42px;
   border: 1px solid var(--line);

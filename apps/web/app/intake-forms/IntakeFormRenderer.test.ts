@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { EmbeddedIntakeTemplateDefinition } from "@open-practice/domain";
-import { answersFromDraft, intakeLifecycleMessage, visibleSections } from "./runner-utils";
+import type { PublicIntakeFormPayload } from "./runner-utils";
+import {
+  answersFromDraft,
+  canSubmitPublicIntakeForm,
+  intakeFormAttentionItems,
+  intakeLifecycleMessage,
+  visibleSections,
+} from "./runner-utils";
 
 const definition: Extract<EmbeddedIntakeTemplateDefinition, { schemaVersion: 2 }> = {
   schemaVersion: 2,
@@ -110,5 +117,54 @@ describe("shared intake renderer inputs", () => {
         actions: [],
       }),
     ).toContain("new secure link");
+  });
+
+  it("summarizes public intake actions and locks unsupported schema versions", () => {
+    const activePayload = {
+      link: {
+        id: "active-link",
+        status: "active",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      },
+      draft: null,
+      review: null,
+      template: {
+        id: "template-001",
+        name: "Synthetic intake",
+        definitionVersion: 2,
+        definition,
+      },
+      actions: [],
+    };
+
+    expect(canSubmitPublicIntakeForm(activePayload)).toBe(true);
+    expect(intakeFormAttentionItems(activePayload)).toEqual([
+      {
+        id: "intake-complete-form",
+        title: "Complete intake form",
+        detail: "Complete the requested answers and required items before submitting.",
+        status: "open",
+      },
+    ]);
+
+    const unsupportedPayload = {
+      ...activePayload,
+      template: {
+        ...activePayload.template,
+        definitionVersion: 1,
+        definition: { schemaVersion: 1, questions: [] as never[] },
+      },
+    } as unknown as PublicIntakeFormPayload;
+
+    expect(canSubmitPublicIntakeForm(unsupportedPayload)).toBe(false);
+    expect(intakeFormAttentionItems(unsupportedPayload)).toEqual([
+      {
+        id: "intake-version-unavailable",
+        title: "Form unavailable",
+        detail: "This intake form version is not available for public completion.",
+        status: "locked",
+        tone: "risk",
+      },
+    ]);
   });
 });

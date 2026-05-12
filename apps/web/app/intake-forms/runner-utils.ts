@@ -5,6 +5,7 @@ import type {
   EmbeddedIntakeTemplateDefinition,
   IntakeFormItemActionRecord,
 } from "@open-practice/domain";
+import type { PublicTokenActionItem } from "../publicTokenActions";
 
 export interface PublicIntakeFormPayload {
   link: {
@@ -138,6 +139,64 @@ export function intakeLifecycleMessage(payload: PublicIntakeFormPayload): string
   if (payload.link.status === "submitted")
     return "Submitted. Your information is ready for staff review.";
   return `This form is ${payload.link.status}.`;
+}
+
+export function intakeFormAttentionItems(
+  payload: PublicIntakeFormPayload | null,
+): PublicTokenActionItem[] {
+  if (!payload) return [];
+  if (payload.review?.decision === "request_more_info") {
+    return [
+      {
+        id: "intake-more-info",
+        title: "More information requested",
+        detail: "Use the new secure link from the staff request to continue.",
+        status: "requested",
+        tone: "risk",
+      },
+    ];
+  }
+  if (payload.review) return [];
+  if (payload.link.status === "submitted") {
+    return [
+      {
+        id: "intake-submitted",
+        title: "Submitted for staff review",
+        detail: "Staff can review this intake. No further action is available from this link.",
+        status: "submitted",
+        tone: "ready",
+      },
+    ];
+  }
+  if (payload.link.status !== "active") return [];
+  if (payload.template.definition.schemaVersion !== 2) {
+    return [
+      {
+        id: "intake-version-unavailable",
+        title: "Form unavailable",
+        detail: "This intake form version is not available for public completion.",
+        status: "locked",
+        tone: "risk",
+      },
+    ];
+  }
+
+  return [
+    {
+      id: "intake-complete-form",
+      title: payload.draft?.updatedAt ? "Review and submit saved draft" : "Complete intake form",
+      detail: payload.draft?.updatedAt
+        ? "A saved draft is available. Review it before submitting."
+        : "Complete the requested answers and required items before submitting.",
+      status: "open",
+    },
+  ];
+}
+
+export function canSubmitPublicIntakeForm(payload: PublicIntakeFormPayload | null): boolean {
+  return Boolean(
+    payload && payload.link.status === "active" && payload.template.definition.schemaVersion === 2,
+  );
 }
 
 export async function readApiError(response: Response): Promise<ApiErrorBody | null> {
