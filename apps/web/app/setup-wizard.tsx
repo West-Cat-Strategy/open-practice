@@ -301,7 +301,10 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
               <section className="setup-grid setup-step-pane" aria-label="Workspace setup">
                 <TextField
                   className="wide"
+                  id="setup-firm-name"
                   label="Workspace name"
+                  name="firmName"
+                  autoComplete="organization"
                   placeholder="e.g. North Shore Law"
                   value={state.firmName}
                   onChange={(value) => update("firmName", value)}
@@ -314,15 +317,23 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
             {step === 1 && (
               <section className="setup-grid setup-step-pane" aria-label="Initial owner account">
                 <TextField
+                  id="setup-owner-name"
                   label="Owner name"
+                  name="ownerName"
+                  autoComplete="name"
                   placeholder="Avery Owner"
                   value={state.ownerName}
                   onChange={(value) => update("ownerName", value)}
                   error={fieldErrors.ownerName}
                 />
                 <TextField
+                  id="setup-owner-email"
                   label="Owner email"
-                  type="email"
+                  name="ownerEmail"
+                  autoComplete="off"
+                  inputMode="email"
+                  passwordManagerIgnore
+                  spellCheck={false}
                   placeholder="avery@example.test"
                   value={state.ownerEmail}
                   onChange={(value) => update("ownerEmail", value)}
@@ -331,8 +342,11 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                 {setupKeyRequired && (
                   <TextField
                     className="wide"
+                    id="setup-key"
                     label="System setup key"
+                    name="setupKey"
                     type="password"
+                    autoComplete="off"
                     value={state.setupKey}
                     onChange={(value) => update("setupKey", value)}
                     hint="Whitespace is ignored when the key is submitted."
@@ -340,16 +354,22 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                   />
                 )}
                 <TextField
+                  id="setup-owner-password"
                   label="Backup password"
+                  name="ownerPassword"
                   type="password"
+                  autoComplete="new-password"
                   value={state.ownerPassword}
                   onChange={(value) => update("ownerPassword", value)}
                   hint="Minimum 8 characters."
                   error={fieldErrors.ownerPassword}
                 />
                 <TextField
+                  id="setup-owner-password-confirmation"
                   label="Confirm password"
+                  name="ownerPasswordConfirmation"
                   type="password"
+                  autoComplete="new-password"
                   value={state.ownerPasswordConfirmation}
                   onChange={(value) => update("ownerPasswordConfirmation", value)}
                   error={fieldErrors.ownerPasswordConfirmation}
@@ -533,8 +553,14 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
 }
 
 function TextField({
+  autoComplete,
   label,
+  id,
+  inputMode,
+  name,
   onChange,
+  passwordManagerIgnore,
+  spellCheck,
   type = "text",
   value,
   placeholder,
@@ -542,8 +568,14 @@ function TextField({
   hint,
   error,
 }: {
+  autoComplete?: string;
   label: string;
+  id: string;
+  inputMode?: "email" | "search" | "tel" | "text" | "url" | "none" | "numeric" | "decimal";
+  name: string;
   onChange: (value: string) => void;
+  passwordManagerIgnore?: boolean;
+  spellCheck?: boolean;
   type?: string;
   value: string;
   placeholder?: string;
@@ -556,8 +588,17 @@ function TextField({
       <span>{label}</span>
       <input
         aria-invalid={Boolean(error)}
+        autoComplete={autoComplete}
+        id={id}
+        inputMode={inputMode}
+        name={name}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
+        data-1p-ignore={passwordManagerIgnore ? "true" : undefined}
+        data-bwignore={passwordManagerIgnore ? "true" : undefined}
+        data-lpignore={passwordManagerIgnore ? "true" : undefined}
+        data-protonpass-ignore={passwordManagerIgnore ? "true" : undefined}
+        spellCheck={spellCheck}
         type={type}
         value={value}
       />
