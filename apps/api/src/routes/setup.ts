@@ -103,6 +103,15 @@ function setupKeyRequired(options: Pick<SetupRouteDependencies, "nodeEnv" | "set
   return options.nodeEnv === "production" || Boolean(options.setupKey);
 }
 
+const PRODUCTION_SETUP_KEY_MISSING_REASON =
+  "OPEN_PRACTICE_SETUP_KEY is required before production first-run setup can start.";
+
+function productionSetupKeyMissing(
+  options: Pick<SetupRouteDependencies, "nodeEnv" | "setupKey">,
+): boolean {
+  return options.nodeEnv === "production" && !options.setupKey;
+}
+
 function headerValue(request: FastifyRequest, name: string): string | undefined {
   const value = request.headers[name];
   if (Array.isArray(value)) return value[0];
@@ -188,10 +197,24 @@ export function registerSetupRoutes(
   server: FastifyInstance,
   options: SetupRouteDependencies,
 ): void {
-  server.get("/api/setup/status", async () => ({
-    ...(await options.repository.getSetupStatus()),
-    setupKeyRequired: setupKeyRequired(options),
-  }));
+  server.get("/api/setup/status", async () => {
+    const status = await options.repository.getSetupStatus();
+    const publicStatus = {
+      ...status,
+      setupKeyRequired: setupKeyRequired(options),
+    };
+
+    if (status.required && !status.blocked && productionSetupKeyMissing(options)) {
+      return {
+        ...publicStatus,
+        required: false,
+        blocked: true,
+        reason: PRODUCTION_SETUP_KEY_MISSING_REASON,
+      };
+    }
+
+    return publicStatus;
+  });
 
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this setup route has a tighter per-route cap.
   server.post(

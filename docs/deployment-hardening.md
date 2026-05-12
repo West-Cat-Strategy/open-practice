@@ -42,10 +42,10 @@ Environment variables must be treated as deployment inputs, not application defa
   manager, not through images or checked-in env files.
 - `SESSION_TTL_HOURS` controls embedded session expiry and should be set intentionally per
   deployment.
-- `OPEN_PRACTICE_SETUP_KEY` is required to complete first-run setup in production. The setup route
-  only proceeds while both firm and user tables are empty; any partial bootstrap state is blocked for
-  operator review. The web setup flow is intentionally minimal and creates editable operational
-  defaults after the first owner admin is created.
+- `OPEN_PRACTICE_SETUP_KEY` is required to start and complete first-run setup in production. The
+  setup route only proceeds while both firm and user tables are empty; any missing production setup
+  key or partial bootstrap state is blocked for operator review. The web setup flow is intentionally
+  minimal and creates editable operational defaults after the first owner admin is created.
 - `API_BASE_URL`, `WEB_PORT`, and `API_PORT` should be explicit per environment, with TLS termination
   and allowed origins configured at the edge.
 - `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY` must reference a

@@ -588,9 +588,10 @@ checksums, and evidence bodies stay out of audit metadata.
 Provider/bootstrap selection is local-first. `DATABASE_URL` selects PostgreSQL unless
 `OPEN_PRACTICE_USE_MEMORY_REPO=true` or the database URL is absent. `OPEN_PRACTICE_DEV_SEED=true`
 loads seed data. Empty firm/user state exposes first-run setup; partial firm/user state is blocked
-until an operator repairs it. Production first-run completion requires `OPEN_PRACTICE_SETUP_KEY`
-and the matching `x-open-practice-setup-key` header. Non-production setup without a configured key
-is limited to local/private network access. Signature and intake providers default to embedded
+until an operator repairs it. Production first-run status is blocked until `OPEN_PRACTICE_SETUP_KEY`
+is configured, and completion requires the matching `x-open-practice-setup-key` header.
+Non-production setup without a configured key is limited to local/private network access.
+Signature and intake providers default to embedded
 implementations. S3 upload signing is enabled only when endpoint and credentials are configured.
 Redis/BullMQ queues, firm provider settings, job lifecycle records, and disabled-by-default API
 scaffolds are implemented for email, AI triage, OCR, transcription, media, draft assist, and auth
