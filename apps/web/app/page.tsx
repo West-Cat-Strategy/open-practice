@@ -39,6 +39,7 @@ import {
 import LoginClient from "./login-client";
 import SetupWizard from "./setup-wizard";
 import { selectStartupView } from "./setup-wizard-utils";
+import { browserApiBaseUrl, serverApiBaseUrl } from "./api-base-urls";
 import {
   buildTrustControlsPath,
   emptyTrustControlsDashboard,
@@ -100,7 +101,6 @@ export const dynamic = "force-dynamic";
 
 type HomeSearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 const devHeaders = {
   "x-open-practice-user-id": process.env.DEV_AUTH_USER_ID ?? "user-admin",
   "x-open-practice-firm-id": process.env.DEV_AUTH_FIRM_ID ?? "firm-west-legal",
@@ -124,7 +124,7 @@ async function buildApiHeaders(): Promise<Record<string, string>> {
 }
 
 async function apiGet<T>(path: string, headers: Record<string, string>): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await fetch(`${serverApiBaseUrl}${path}`, {
     cache: "no-store",
     headers,
   });
@@ -143,7 +143,7 @@ async function apiGetOptional<T>(
   headers: Record<string, string>,
   forbiddenFallback = fallback,
 ): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await fetch(`${serverApiBaseUrl}${path}`, {
     cache: "no-store",
     headers,
   });
@@ -238,7 +238,9 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     );
   }
   if (selectStartupView(setupStatus, null) === "setup") {
-    return <SetupWizard apiBaseUrl={apiBaseUrl} setupKeyRequired={setupStatus.setupKeyRequired} />;
+    return (
+      <SetupWizard apiBaseUrl={browserApiBaseUrl} setupKeyRequired={setupStatus.setupKeyRequired} />
+    );
   }
 
   const headers = await buildApiHeaders();
@@ -267,7 +269,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       error instanceof ApiRequestError &&
       selectStartupView(setupStatus, error.status) === "login"
     ) {
-      return <LoginClient apiBaseUrl={apiBaseUrl} />;
+      return <LoginClient apiBaseUrl={browserApiBaseUrl} />;
     }
     throw error;
   }
@@ -527,7 +529,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
 
   return (
     <DashboardClient
-      apiBaseUrl={apiBaseUrl}
+      apiBaseUrl={browserApiBaseUrl}
       billing={billing}
       calendar={calendar}
       capabilities={capabilities}
