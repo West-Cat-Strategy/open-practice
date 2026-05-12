@@ -1652,6 +1652,10 @@ export const calendarEvents = pgTable(
     location: text("location"),
     status: text("status").notNull().default("confirmed"),
     sequence: integer("sequence").notNull().default(0),
+    meetingLinkMode: text("meeting_link_mode").notNull().default("blank"),
+    meetingLinkUrl: text("meeting_link_url"),
+    meetingRoomId: text("meeting_room_id"),
+    meetingProviderKey: text("meeting_provider_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -1670,6 +1674,10 @@ export const calendarEvents = pgTable(
       table.firmId,
       table.matterId,
       table.startsAt,
+    ),
+    meetingLinkModeValue: check(
+      "calendar_events_meeting_link_mode_value",
+      sql`${table.meetingLinkMode} in ('blank', 'external_url', 'hosted_webrtc')`,
     ),
   }),
 );

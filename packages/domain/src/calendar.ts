@@ -4,6 +4,7 @@ import type {
   CalendarEventAttendeeRecord,
   CalendarEventRecord,
   CalendarEventStatus,
+  CalendarMeetingLinkMode,
   CalendarMeetingInvitationBoundary,
 } from "./models.js";
 
@@ -51,11 +52,34 @@ export interface ParsedCalendarAttendeeInput {
   responseStatus: CalendarAttendeeResponseStatus;
 }
 
+export interface CalendarMeetingLinkStateInput {
+  mode?: CalendarMeetingLinkMode;
+  url?: string;
+  roomId?: string;
+  providerKey?: string;
+}
+
 export interface CalendarMeetingInvitationBoundaryInput {
   meetingProviderKey?: string;
   guestAccessTokenSigningConfigured?: boolean;
   invitationEmailProviderKey?: string;
   emailQueueConfigured?: boolean;
+}
+
+export function normalizeCalendarMeetingLinkState(
+  input: CalendarMeetingLinkStateInput = {},
+): Required<Pick<CalendarMeetingLinkStateInput, "mode">> &
+  Pick<CalendarMeetingLinkStateInput, "url" | "roomId" | "providerKey"> {
+  const mode = input.mode ?? "blank";
+  if (mode === "blank") {
+    return { mode: "blank" };
+  }
+  return {
+    mode,
+    url: input.url,
+    roomId: input.roomId,
+    providerKey: input.providerKey,
+  };
 }
 
 export class UnsupportedCalendarPayloadError extends Error {

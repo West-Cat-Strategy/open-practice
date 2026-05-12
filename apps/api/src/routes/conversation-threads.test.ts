@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
+import { InMemoryOpenPracticeRepository } from "../../../../packages/database/src/repository/memory.js";
 import { registerConversationThreadRoutes } from "./conversation-threads.js";
 
 const servers: FastifyInstance[] = [];
@@ -133,6 +133,134 @@ describe("conversation thread routes", () => {
     expect(read.json()).toMatchObject({
       thread: { matterId: "matter-001", topic: "Synthetic disclosure checklist" },
     });
+  });
+
+  it("updates thread lifecycle state with matter-scoped audit metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/conversation-threads",
+      payload: {
+        matterId: "matter-001",
+        topic: "Synthetic lifecycle thread",
+      },
+    });
+    const close = await server.inject({
+      method: "PATCH",
+      url: `/api/conversation-threads/${created.json().thread.id}/lifecycle`,
+      payload: { action: "close" },
+    });
+    const reopen = await server.inject({
+      method: "PATCH",
+      url: `/api/conversation-threads/${created.json().thread.id}/lifecycle`,
+      payload: { action: "reopen" },
+    });
+    const exportRequest = await server.inject({
+      method: "PATCH",
+      url: `/api/conversation-threads/${created.json().thread.id}/lifecycle`,
+      payload: { action: "request_export" },
+    });
+
+    expect(close.statusCode).toBe(200);
+    expect(close.json()).toMatchObject({
+      thread: { status: "closed", exportState: "not_requested" },
+    });
+    expect(reopen.statusCode).toBe(200);
+    expect(reopen.json()).toMatchObject({
+      thread: { status: "open" },
+    });
+    expect(exportRequest.statusCode).toBe(200);
+    expect(exportRequest.json()).toMatchObject({
+      thread: { status: "open", exportState: "requested" },
+    });
+
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "conversation_thread.closed",
+          metadata: expect.objectContaining({
+            lifecycleAction: "close",
+            status: "closed",
+            accessRevoked: false,
+          }),
+        }),
+        expect.objectContaining({
+          action: "conversation_thread.export_requested",
+          metadata: expect.objectContaining({
+            lifecycleAction: "request_export",
+            exportState: "requested",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("revokes access and denies reopening a revoked thread", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/conversation-threads",
+      payload: {
+        matterId: "matter-001",
+        topic: "Synthetic revoked lifecycle",
+      },
+    });
+    const revoked = await server.inject({
+      method: "PATCH",
+      url: `/api/conversation-threads/${created.json().thread.id}/lifecycle`,
+      payload: { action: "revoke_access" },
+    });
+    const reopen = await server.inject({
+      method: "PATCH",
+      url: `/api/conversation-threads/${created.json().thread.id}/lifecycle`,
+      payload: { action: "reopen" },
+    });
+
+    expect(revoked.statusCode).toBe(200);
+    expect(revoked.json().thread).toMatchObject({
+      status: "revoked",
+      accessRevokedAt: expect.any(String),
+    });
+    expect(reopen.statusCode).toBe(409);
+    expect(reopen.json()).toMatchObject({ code: "CONVERSATION_THREAD_REVOKED" });
+    await expect(
+      repository.getConversationThread("firm-west-legal", created.json().thread.id),
+    ).resolves.toMatchObject({ status: "revoked", accessRevokedAt: expect.any(String) });
+  });
+
+  it("requires export permission for lifecycle export requests", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const ownerServer = testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001"]),
+    });
+    const created = await ownerServer.inject({
+      method: "POST",
+      url: "/api/conversation-threads",
+      payload: {
+        matterId: "matter-001",
+        topic: "Synthetic export permission",
+      },
+    });
+    await ownerServer.close();
+    servers.splice(servers.indexOf(ownerServer), 1);
+
+    const server = testServer({ repository, authUser: user("firm_member", ["matter-001"]) });
+    const denied = await server.inject({
+      method: "PATCH",
+      url: `/api/conversation-threads/${created.json().thread.id}/lifecycle`,
+      payload: { action: "request_export" },
+    });
+
+    expect(denied.statusCode).toBe(403);
+    await expect(
+      repository.getConversationThread("firm-west-legal", created.json().thread.id),
+    ).resolves.toMatchObject({ exportState: "not_requested" });
   });
 
   it("rejects cross-matter list, read, and create attempts", async () => {

@@ -124,7 +124,8 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/calendar/events/:eventId/attendees`                                    | Adds a matter-scoped event attendee with role, response status, and not-yet-sent invitation state.                                                                                                                                                                                                 |
 | `PATCH /api/calendar/events/:eventId/attendees/:attendeeId`                       | Updates an attendee name, email, role, or response status for one authorized matter event.                                                                                                                                                                                                         |
 | `DELETE /api/calendar/events/:eventId/attendees/:attendeeId?matterId=`            | Soft-deletes an attendee from one authorized matter event.                                                                                                                                                                                                                                         |
-| `POST /api/calendar/events/:eventId/invitations`                                  | Queues confirmed attendee invitation email through the SMTP outbox or marks invitations skipped/disabled when email is unavailable; meeting-link issuance/preview remains deferred.                                                                                                                |
+| `PATCH /api/calendar/events/:eventId/meeting-link`                                | Sets a matter-scoped calendar event meeting link to blank, HTTPS external URL, or configured hosted WebRTC room URL; native media/signaling remains deferred.                                                                                                                                      |
+| `POST /api/calendar/events/:eventId/invitations`                                  | Queues confirmed attendee invitation email through the SMTP outbox or marks invitations skipped/disabled when email is unavailable; stored meeting links can be included only when explicitly requested.                                                                                           |
 | `GET /api/calendar/matters/:matterId.ics`                                         | Authenticated read-only iCalendar export for one authorized matter calendar.                                                                                                                                                                                                                       |
 | `GET /api/calendar/credentials`                                                   | Current-user CalDAV app-password credentials without password hashes or one-time secrets.                                                                                                                                                                                                          |
 | `POST /api/calendar/credentials`                                                  | Creates a current-user CalDAV app password and returns the generated password only once.                                                                                                                                                                                                           |
@@ -151,6 +152,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/conversation-threads?matterId=`                                         | Lists matter-scoped provider-neutral conversation topic records with retention/export/revocation boundary fields and no message bodies.                                                                                                                                                            |
 | `GET /api/conversation-threads/:id`                                               | Reads one authorized conversation topic record after resolving its matter scope.                                                                                                                                                                                                                   |
 | `POST /api/conversation-threads`                                                  | Creates one authorized matter-scoped conversation topic record and records redacted boundary metadata; realtime chat, messages, and notifications remain deferred.                                                                                                                                 |
+| `PATCH /api/conversation-threads/:id/lifecycle`                                   | Applies a constrained matter-scoped thread lifecycle action for close, reopen, access revocation, or export request without accepting message bodies or producing export artifacts.                                                                                                                |
 | `GET /api/document-processing/status`                                             | OCR-only actionable document-processing status with reserved/deferred AI triage, transcription, and media queue metadata plus redacted job summaries.                                                                                                                                              |
 | `GET /api/document-processing/workbench?matterId=`                                | Matter-scoped document processing workbench with sanitized document states, review-queue counts, queue eligibility, provider/worker status, and redacted latest job/extraction summaries.                                                                                                          |
 | `POST /api/document-processing/documents/:id/queue`                               | Queues OCR for an authorized verified document when the OCR worker queue is configured.                                                                                                                                                                                                            |
@@ -355,13 +357,14 @@ against out-of-order non-terminal events. Embedded signature events capture sign
 actor ID, IP, user-agent, timestamps, and caller-provided evidence. Legacy `docuseal` requests
 remain historical records and are rejected by embedded event routes.
 
-Conversation threads are non-real-time matter-scoped topic records. The first slice stores topic,
+Conversation threads are non-real-time matter-scoped topic records. The current slice stores topic,
 status, retention boundary, export state, access-revocation timestamp, notification boundary,
 creator/updater IDs, timestamps, and server-owned operational metadata behind `conversation_thread`
-authorization. Create/list/read routes never accept or return message bodies, connector delivery
-attempts, webhook payloads, raw notification content, or public tokens. Create audit events include
-only thread ID, matter ID, status, retention/export/notification boundary state, and access-revoked
-state.
+authorization. Create/list/read/lifecycle routes never accept or return message bodies, connector
+delivery attempts, webhook payloads, raw notification content, or public tokens. Lifecycle updates
+are limited to close, reopen, access revocation, and export-request state; export request marks the
+thread as requested only and does not create an export artifact. Audit events include only thread
+ID, matter ID, status, retention/export/notification boundary state, and access-revoked state.
 
 Email preview is render-only. `POST /api/email/previews` requires matter-scoped email create access
 and returns normalized template key, recipients, subject, sanitized/truncated body preview,
@@ -574,9 +577,13 @@ and optional lease/error summary fields, but route responses expose idempotency-
 presence rather than raw values. Creating an outbox row is idempotent by firm and idempotency key.
 Matching replays return the existing outbox row; conflicting replays return
 `IDEMPOTENCY_KEY_CONFLICT`.
-This slice does not emit outbound webhooks, validate destination URLs, sign
-payloads, or implement provider-specific worker delivery; those guardrails remain separate from the
-registry/outbox foundation.
+The dashboard operations panel may present connector/outbox posture as read-only redacted status:
+connector type/key/status/display name, idempotency-key presence, attempt counts, next-attempt time,
+lease presence, delivery/dead-letter timestamps, last error summary, and safe payload-summary shape.
+It does not expose raw idempotency keys, lease IDs, secret references, webhook signing material, or
+payload bodies. This slice does not emit outbound webhooks, validate destination URLs, sign
+payloads, retry or lease outbox rows, or implement provider-specific worker delivery; those
+guardrails remain separate from the registry/outbox foundation.
 
 Email outbox records and retry jobs store firm-scoped idempotency keys. Replaying a matching
 outbox or retry request returns the existing email/job projection without requeueing; changed safe
@@ -588,11 +595,15 @@ and intake-form notification emails are create-time only because raw tokens are 
 after the response. Calendar attendees are stored as matter-scoped event children with
 required/optional role, response status, and invitation state. Invitation attempts are optional:
 when SMTP or queue delivery is unavailable, the API records a skipped attendee invitation state
-without failing attendee management. Meeting links and guest-token access remain disabled until an
-explicit meeting provider/configuration is present; invitation requests that require unavailable
-meeting-link capability are rejected before email delivery state changes. The dashboard presents
-meeting-link availability as passive status only; current calendar invitations are email delivery
-records, not link issuance or meeting-preview records.
+without failing attendee management. `PATCH /api/calendar/events/:eventId/meeting-link` stores
+blank, HTTPS external, or configured hosted WebRTC room URLs on the authorized event. Hosted links
+require `WEBRTC_MEETING_PROVIDER_KEY` and `WEBRTC_MEETING_BASE_URL`; guest-access capability is
+reported as configured only when hosted meeting configuration and token signing are both available.
+Invitation requests that include a meeting link require an existing stored link and are rejected
+before email delivery state changes when the link is unavailable. The dashboard lets staff save or
+clear stored event meeting links and send link invitations only after a link is present. Native
+Open Practice media rooms, signaling, chat, recordings, temporary room uploads, and public meeting
+preview/session pages remain deferred.
 Calendar audit metadata records event, attendee, email, job, meeting-boundary status, and count
 identifiers only; invitation message bodies remain in the outbox record.
 

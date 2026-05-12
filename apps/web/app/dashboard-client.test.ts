@@ -82,6 +82,7 @@ import {
 } from "./document-processing-dashboard";
 import {
   buildCalendarInvitationPayload,
+  buildCalendarMeetingLinkPayload,
   buildCalendarRadarBuckets,
   describeCalendarEventTiming,
   describeMeetingInvitationBoundary,
@@ -136,6 +137,13 @@ import {
   providerPostureRows,
   summarizeProvidersStatus,
 } from "./provider-status-dashboard";
+import {
+  connectorDisplayName,
+  connectorOutboxStatusTone,
+  emptyConnectorOperationsResponse,
+  summarizeConnectorOperations,
+  summarizeConnectorPayload,
+} from "./connector-outbox-dashboard";
 import {
   buildOperationalFocusSummary,
   operationalFocusEmptyMessage,
@@ -207,6 +215,7 @@ import type {
   DocumentProcessingWorkbenchResponse,
   CommunicationsInboxMatterResponse,
   BillingDashboardResponse,
+  ConnectorOperationsResponse,
   IntakeFormLinkSummary,
   MatterSummary,
   ProvidersStatusResponse,
@@ -792,6 +801,64 @@ describe("dashboard client behavior", () => {
           tone: "risk",
         }),
       ]),
+    );
+  });
+
+  it("summarizes connector outbox posture with redacted payload context only", () => {
+    const response: ConnectorOperationsResponse = {
+      status: "available",
+      connectors: [
+        {
+          id: "connector-001",
+          type: "generic",
+          key: "synthetic.review",
+          displayName: "Synthetic Review Connector",
+          status: "enabled",
+        },
+      ],
+      outbox: [
+        {
+          id: "connector-outbox-001",
+          connectorId: "connector-001",
+          eventType: "matter.summary.ready",
+          resourceType: "matter",
+          resourceId: "matter-001",
+          idempotencyKeyPresent: true,
+          status: "dead_letter",
+          payloadSummary: {
+            fieldCount: 3,
+            matterId: "matter-001",
+            secretToken: "raw-secret-value-must-not-render",
+          },
+          attemptCount: 4,
+          maxAttempts: 4,
+          nextAttemptAt: "2026-05-02T10:10:00.000Z",
+          leasePresent: false,
+          deadLetteredAt: "2026-05-02T10:11:00.000Z",
+          lastErrorSummary:
+            "Delivery failed. Error details are redacted; review server logs for diagnostics.",
+        },
+      ],
+    };
+
+    expect(emptyConnectorOperationsResponse("access_denied")).toEqual({
+      connectors: [],
+      outbox: [],
+      status: "access_denied",
+    });
+    expect(summarizeConnectorOperations(response)).toBe(
+      "1 connector loaded. 1 outbox item: 0 pending, 0 leased, 1 dead letter.",
+    );
+    expect(connectorDisplayName(response.connectors[0])).toBe("Synthetic Review Connector");
+    expect(connectorOutboxStatusTone(response.outbox[0]!)).toBe("risk");
+    expect(summarizeConnectorPayload(response.outbox[0]!.payloadSummary)).toBe(
+      "2 payload-summary keys: fieldCount, matterId",
+    );
+    expect(summarizeConnectorPayload(response.outbox[0]!.payloadSummary)).not.toContain(
+      "secretToken",
+    );
+    expect(summarizeConnectorPayload(response.outbox[0]!.payloadSummary)).not.toContain(
+      "raw-secret-value",
     );
   });
 
@@ -2554,6 +2621,30 @@ describe("dashboard client behavior", () => {
     });
   });
 
+  it("builds calendar meeting-link payloads for blank, hosted, and external modes", () => {
+    expect(buildCalendarMeetingLinkPayload({ matterId: "matter-001", mode: "blank" })).toEqual({
+      matterId: "matter-001",
+      mode: "blank",
+    });
+    expect(
+      buildCalendarMeetingLinkPayload({ matterId: "matter-001", mode: "hosted_webrtc" }),
+    ).toEqual({
+      matterId: "matter-001",
+      mode: "hosted_webrtc",
+    });
+    expect(
+      buildCalendarMeetingLinkPayload({
+        matterId: "matter-001",
+        mode: "external_url",
+        externalUrl: "  https://video.example.test/client-prep  ",
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      mode: "external_url",
+      url: "https://video.example.test/client-prep",
+    });
+  });
+
   it("loads calendar dashboard events, links, and credentials for first render", async () => {
     const event = calendarEvent({ matterId: "matter-002" });
     const data = await loadCalendarDashboardData({
@@ -2631,9 +2722,10 @@ describe("dashboard client behavior", () => {
 
   it("describes meeting invitation boundaries without exposing links or tokens", () => {
     expect(describeMeetingInvitationBoundary(undefined)).toBe("Meeting links disabled.");
-    expect(describeMeetingLinkAvailability(undefined)).toEqual({
-      label: "No meeting provider",
-      detail: "No meeting provider is configured for meeting-link invitation requests.",
+    expect(describeMeetingLinkAvailability(calendarEvent())).toEqual({
+      label: "No meeting link",
+      detail:
+        "Add another meeting link, leave it blank, or configure Hosted WebRTC before using hosted links.",
       status: "disabled",
       actionable: false,
     });
@@ -2645,14 +2737,19 @@ describe("dashboard client behavior", () => {
       }),
     ).toBe("Meeting links disabled. Guest access tokens disabled.");
     expect(
-      describeMeetingLinkAvailability({
-        meetingLinks: { status: "disabled", reason: "not_configured" },
-        guestAccess: { status: "disabled", reason: "not_configured" },
-        invitationEmail: { status: "disabled", reason: "smtp_not_configured" },
-      }),
+      describeMeetingLinkAvailability(
+        calendarEvent({
+          meetingInvitationBoundary: {
+            meetingLinks: { status: "disabled", reason: "not_configured" },
+            guestAccess: { status: "disabled", reason: "not_configured" },
+            invitationEmail: { status: "disabled", reason: "smtp_not_configured" },
+          },
+        }),
+      ),
     ).toEqual({
-      label: "No meeting provider",
-      detail: "No meeting provider is configured for meeting-link invitation requests.",
+      label: "No meeting link",
+      detail:
+        "Add another meeting link, leave it blank, or configure Hosted WebRTC before using hosted links.",
       status: "disabled",
       actionable: false,
     });
@@ -2665,14 +2762,21 @@ describe("dashboard client behavior", () => {
     ).toBe("Meeting links configured (synthetic-meeting). Guest access tokens configured.");
     expect(
       describeMeetingLinkAvailability({
-        meetingLinks: { status: "configured", provider: "synthetic-meeting" },
-        guestAccess: { status: "configured", provider: "synthetic-meeting" },
-        invitationEmail: { status: "configured", provider: "mailpit" },
+        ...calendarEvent({
+          meetingLinkMode: "hosted_webrtc",
+          meetingLinkUrl: "https://meet.example.test/rooms/calendar-room-001",
+          meetingProviderKey: "synthetic-meeting",
+          meetingInvitationBoundary: {
+            meetingLinks: { status: "configured", provider: "synthetic-meeting" },
+            guestAccess: { status: "configured", provider: "synthetic-meeting" },
+            invitationEmail: { status: "configured", provider: "mailpit" },
+          },
+        }),
       }),
     ).toEqual({
       label: "Send link invite",
       detail:
-        "synthetic-meeting is configured; the invitation action can request a meeting link through the calendar API boundary.",
+        "synthetic-meeting link ready; the invitation action can include the stored meeting link.",
       status: "configured",
       actionable: true,
     });

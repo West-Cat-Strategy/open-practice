@@ -10,6 +10,7 @@ import type {
   CalendarEventAttendeeRecord,
   CalendarEventRecord,
   CalendarMeetingInvitationBoundary,
+  CalendarMeetingLinkMode,
   NewAuditEvent,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
@@ -73,6 +74,25 @@ const calendarInvitationBodySchema = z.object({
   deliveryConfirmation: deliveryConfirmationSchema.optional(),
 });
 
+const calendarMeetingLinkBodySchema = z.discriminatedUnion("mode", [
+  z.object({
+    matterId: z.string().min(1),
+    mode: z.literal("blank"),
+  }),
+  z.object({
+    matterId: z.string().min(1),
+    mode: z.literal("external_url"),
+    url: z
+      .string()
+      .url()
+      .refine((value) => value.startsWith("https://"), "Meeting links must use HTTPS"),
+  }),
+  z.object({
+    matterId: z.string().min(1),
+    mode: z.literal("hosted_webrtc"),
+  }),
+]);
+
 const calendarAttendeeDeleteQuerySchema = z.object({
   matterId: z.string().min(1),
 });
@@ -127,11 +147,15 @@ function credentialResponse(credential: CalendarCredentialRecord) {
 function calendarInvitationText(
   event: CalendarEventRecord,
   attendee: CalendarEventAttendeeRecord,
+  options: { includeMeetingLink?: boolean } = {},
 ): string {
   return [
     `You are invited to ${event.title}.`,
     `When: ${event.startsAt} to ${event.endsAt}.`,
     event.location ? `Location: ${event.location}.` : undefined,
+    options.includeMeetingLink && event.meetingLinkUrl
+      ? `Meeting link: ${event.meetingLinkUrl}.`
+      : undefined,
     `Attendee: ${attendee.name} <${attendee.email}>.`,
   ]
     .filter((line): line is string => Boolean(line))
@@ -165,13 +189,15 @@ function calendarEventResponse(
 function assertMeetingIssuanceAllowed(input: {
   includeMeetingLink: boolean;
   issueGuestAccessToken: boolean;
+  event: CalendarEventRecord;
   meetingInvitationBoundary: CalendarMeetingInvitationBoundary;
 }): void {
-  if (
-    input.includeMeetingLink &&
-    input.meetingInvitationBoundary.meetingLinks.status !== "configured"
-  ) {
-    throw new ApiHttpError(503, "MEETING_LINKS_NOT_CONFIGURED", "Meeting links are not configured");
+  if (input.includeMeetingLink && !input.event.meetingLinkUrl) {
+    throw new ApiHttpError(
+      400,
+      "MEETING_LINK_NOT_AVAILABLE",
+      "A meeting link is not set for this event",
+    );
   }
   if (
     input.issueGuestAccessToken &&
@@ -183,6 +209,55 @@ function assertMeetingIssuanceAllowed(input: {
       "Meeting guest access tokens are not configured",
     );
   }
+}
+
+function hostedMeetingUrl(baseUrl: string, roomId: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(roomId)}`;
+}
+
+function nextMeetingLinkFields(input: {
+  event: CalendarEventRecord;
+  mode: CalendarMeetingLinkMode;
+  hostedMeetingBaseUrl?: string;
+  providerKey?: string;
+  externalUrl?: string;
+}): Pick<
+  CalendarEventRecord,
+  "meetingLinkMode" | "meetingLinkUrl" | "meetingRoomId" | "meetingProviderKey"
+> {
+  if (input.mode === "blank") {
+    return {
+      meetingLinkMode: "blank",
+      meetingLinkUrl: undefined,
+      meetingRoomId: undefined,
+      meetingProviderKey: undefined,
+    };
+  }
+  if (input.mode === "external_url") {
+    return {
+      meetingLinkMode: "external_url",
+      meetingLinkUrl: input.externalUrl,
+      meetingRoomId: undefined,
+      meetingProviderKey: undefined,
+    };
+  }
+  if (!input.hostedMeetingBaseUrl || !input.providerKey) {
+    throw new ApiHttpError(
+      503,
+      "HOSTED_MEETING_NOT_CONFIGURED",
+      "Hosted WebRTC meetings are not configured",
+    );
+  }
+  const roomId =
+    input.event.meetingLinkMode === "hosted_webrtc" && input.event.meetingRoomId
+      ? input.event.meetingRoomId
+      : `calendar-room-${createSessionToken().slice(0, 16)}`;
+  return {
+    meetingLinkMode: "hosted_webrtc",
+    meetingLinkUrl: hostedMeetingUrl(input.hostedMeetingBaseUrl, roomId),
+    meetingRoomId: roomId,
+    meetingProviderKey: input.providerKey,
+  };
 }
 
 export function registerCalendarRoutes(
@@ -329,6 +404,55 @@ export function registerCalendarRoutes(
     return { attendee };
   });
 
+  server.patch("/api/calendar/events/:eventId/meeting-link", async (request, reply) => {
+    const params = parseRequestPart(calendarEventParamsSchema, request.params, "params");
+    const body = parseRequestPart(calendarMeetingLinkBodySchema, request.body, "body");
+    assertCalendarAccess(request.auth, body.matterId, "update");
+    const event = await repository.getCalendarEvent(
+      request.auth.firmId,
+      body.matterId,
+      params.eventId,
+    );
+    if (!event) return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+
+    const meetingLinkFields = nextMeetingLinkFields({
+      event,
+      mode: body.mode,
+      hostedMeetingBaseUrl: dependencies.meetingLinks?.hostedMeetingBaseUrl,
+      providerKey: dependencies.meetingLinks?.providerKey,
+      externalUrl: body.mode === "external_url" ? body.url : undefined,
+    });
+    const now = new Date().toISOString();
+    const updated = await repository.upsertCalendarEvent({
+      ...event,
+      ...meetingLinkFields,
+      sequence: event.sequence + 1,
+      updatedAt: now,
+      updatedByUserId: request.auth.user.id,
+      attendees: undefined,
+    });
+    await recordCalendarAuditEvent(repository, {
+      firmId: request.auth.firmId,
+      actorId: request.auth.user.id,
+      action: "calendar.event.updated",
+      resourceType: "calendar_event",
+      resourceId: event.id,
+      occurredAt: now,
+      metadata: {
+        matterId: event.matterId,
+        eventId: event.id,
+        meetingLinkMode: updated.meetingLinkMode ?? "blank",
+        meetingProviderKey: updated.meetingProviderKey,
+        hasMeetingLink: Boolean(updated.meetingLinkUrl),
+      },
+    });
+    const meetingInvitationBoundary = await calendarMeetingInvitationBoundaryForRequest(
+      dependencies,
+      request.auth.firmId,
+    );
+    return { event: calendarEventResponse(updated, meetingInvitationBoundary) };
+  });
+
   server.post("/api/calendar/events/:eventId/invitations", async (request, reply) => {
     const params = parseRequestPart(calendarEventParamsSchema, request.params, "params");
     const body = parseRequestPart(calendarInvitationBodySchema, request.body, "body");
@@ -346,6 +470,7 @@ export function registerCalendarRoutes(
     assertMeetingIssuanceAllowed({
       includeMeetingLink: body.includeMeetingLink,
       issueGuestAccessToken: body.issueGuestAccessToken,
+      event,
       meetingInvitationBoundary,
     });
     const attendeeIds = new Set(body.attendeeIds ?? []);
@@ -363,13 +488,18 @@ export function registerCalendarRoutes(
         templateKey: "calendar.invitation",
         to: [attendee.email],
         subject: `Calendar invitation: ${event.title}`,
-        textBody: calendarInvitationText(event, attendee),
+        textBody: calendarInvitationText(event, attendee, {
+          includeMeetingLink: body.includeMeetingLink,
+        }),
         relatedResourceType: "calendar_event",
         relatedResourceId: event.id,
         metadata: {
           attendeeId: attendee.id,
           eventId: event.id,
           requestedMeetingLink: body.includeMeetingLink,
+          meetingLinkMode: event.meetingLinkMode ?? "blank",
+          meetingLinkIncluded: body.includeMeetingLink && Boolean(event.meetingLinkUrl),
+          meetingProviderKey: event.meetingProviderKey,
           requestedGuestAccessToken: body.issueGuestAccessToken,
           ...boundaryMetadata,
         },
@@ -386,6 +516,9 @@ export function registerCalendarRoutes(
                   attendeeId: attendee.id,
                   eventId: event.id,
                   requestedMeetingLink: body.includeMeetingLink,
+                  meetingLinkMode: event.meetingLinkMode ?? "blank",
+                  meetingLinkIncluded: body.includeMeetingLink && Boolean(event.meetingLinkUrl),
+                  meetingProviderKey: event.meetingProviderKey,
                   requestedGuestAccessToken: body.issueGuestAccessToken,
                   ...boundaryMetadata,
                 },
@@ -419,6 +552,9 @@ export function registerCalendarRoutes(
           emailId: queuedEmailWithAttemptMetadata?.email.id,
           jobId: queuedEmailWithAttemptMetadata?.job.id,
           requestedMeetingLink: body.includeMeetingLink,
+          meetingLinkMode: event.meetingLinkMode ?? "blank",
+          meetingLinkIncluded: body.includeMeetingLink && Boolean(event.meetingLinkUrl),
+          meetingProviderKey: event.meetingProviderKey,
           requestedGuestAccessToken: body.issueGuestAccessToken,
           ...boundaryMetadata,
         },

@@ -36,12 +36,19 @@ function testServer(
   authUser: User = user("owner_admin", ["matter-001", "matter-002"]),
   repository = new AuditRecordingRepository(),
   emailJobQueue: { add: () => Promise<{ id: string }> } | undefined = undefined,
+  meetingLinks:
+    | {
+        providerKey: string;
+        hostedMeetingBaseUrl?: string;
+        guestAccessTokenSigningConfigured?: boolean;
+      }
+    | undefined = undefined,
 ) {
   const server = Fastify({ logger: false });
   server.addHook("preHandler", async (request) => {
     request.auth = { firmId: authUser.firmId, user: authUser };
   });
-  registerCalendarRoutes(server, { repository, emailJobQueue });
+  registerCalendarRoutes(server, { repository, emailJobQueue, meetingLinks });
   servers.push(server);
   return server;
 }
@@ -258,6 +265,136 @@ describe("calendar routes", () => {
     expect(crossMatter.statusCode).toBe(403);
   });
 
+  it("stores blank, external, and hosted meeting links inside matter scope", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository, undefined, {
+      providerKey: "open-practice-webrtc",
+      hostedMeetingBaseUrl: "https://meet.example.test/rooms",
+    });
+
+    const external = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/calendar-event-002/meeting-link",
+      payload: {
+        matterId: "matter-001",
+        mode: "external_url",
+        url: "https://video.example.test/client-prep",
+      },
+    });
+    expect(external.statusCode).toBe(200);
+    expect(external.json().event).toMatchObject({
+      id: "calendar-event-002",
+      meetingLinkMode: "external_url",
+      meetingLinkUrl: "https://video.example.test/client-prep",
+    });
+
+    const hosted = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/calendar-event-002/meeting-link",
+      payload: { matterId: "matter-001", mode: "hosted_webrtc" },
+    });
+    expect(hosted.statusCode).toBe(200);
+    expect(hosted.json().event).toMatchObject({
+      meetingLinkMode: "hosted_webrtc",
+      meetingLinkUrl: expect.stringMatching(
+        /^https:\/\/meet\.example\.test\/rooms\/calendar-room-/,
+      ),
+      meetingRoomId: expect.stringMatching(/^calendar-room-/),
+      meetingProviderKey: "open-practice-webrtc",
+    });
+    const hostedRoomId = hosted.json().event.meetingRoomId;
+
+    const hostedReplay = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/calendar-event-002/meeting-link",
+      payload: { matterId: "matter-001", mode: "hosted_webrtc" },
+    });
+    expect(hostedReplay.statusCode).toBe(200);
+    expect(hostedReplay.json().event).toMatchObject({
+      meetingLinkMode: "hosted_webrtc",
+      meetingRoomId: hostedRoomId,
+      meetingLinkUrl: `https://meet.example.test/rooms/${hostedRoomId}`,
+      meetingProviderKey: "open-practice-webrtc",
+    });
+
+    const blank = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/calendar-event-002/meeting-link",
+      payload: { matterId: "matter-001", mode: "blank" },
+    });
+    expect(blank.statusCode).toBe(200);
+    const blankEvent = blank.json().event;
+    expect(blankEvent).toMatchObject({
+      meetingLinkMode: "blank",
+    });
+    expect(blankEvent).not.toHaveProperty("meetingLinkUrl");
+    expect(blankEvent).not.toHaveProperty("meetingRoomId");
+    expect(blankEvent).not.toHaveProperty("meetingProviderKey");
+    expect(repository.recordedAuditEvents.map((event) => event.action)).toEqual([
+      "calendar.event.updated",
+      "calendar.event.updated",
+      "calendar.event.updated",
+      "calendar.event.updated",
+    ]);
+    expect(JSON.stringify(repository.recordedAuditEvents)).not.toContain("video.example.test");
+    expect(JSON.stringify(repository.recordedAuditEvents)).not.toContain("meet.example.test");
+  });
+
+  it("reports configured hosted meeting and guest-access boundaries without issuing room sessions", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository, undefined, {
+      providerKey: "open-practice-webrtc",
+      hostedMeetingBaseUrl: "https://meet.example.test/rooms",
+      guestAccessTokenSigningConfigured: true,
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/calendar/events?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().events[0].meetingInvitationBoundary).toEqual({
+      meetingLinks: { status: "configured", provider: "open-practice-webrtc" },
+      guestAccess: { status: "configured", provider: "open-practice-webrtc" },
+      invitationEmail: { status: "disabled", reason: "smtp_not_configured" },
+    });
+    expect(JSON.stringify(response.json())).not.toContain("token");
+  });
+
+  it("rejects cross-matter, invalid, and unconfigured hosted meeting-link updates", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository);
+
+    const crossMatter = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/calendar-event-003/meeting-link",
+      payload: { matterId: "matter-002", mode: "blank" },
+    });
+    expect(crossMatter.statusCode).toBe(403);
+
+    const invalidUrl = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/calendar-event-002/meeting-link",
+      payload: {
+        matterId: "matter-001",
+        mode: "external_url",
+        url: "http://video.example.test/client-prep",
+      },
+    });
+    expect(invalidUrl.statusCode).toBe(400);
+
+    const hosted = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/calendar-event-002/meeting-link",
+      payload: { matterId: "matter-001", mode: "hosted_webrtc" },
+    });
+    expect(hosted.statusCode).toBe(503);
+    expect(hosted.json()).toMatchObject({
+      code: "HOSTED_MEETING_NOT_CONFIGURED",
+    });
+  });
+
   it("queues attendee invitations when SMTP and the email queue are configured", async () => {
     const repository = new AuditRecordingRepository();
     await enableSmtp(repository);
@@ -341,6 +478,49 @@ describe("calendar routes", () => {
     expect(JSON.stringify(queuedAudit?.metadata)).not.toContain("Client preparation call");
   });
 
+  it("includes stored meeting links in invitations only when requested", async () => {
+    const repository = new AuditRecordingRepository();
+    await enableSmtp(repository);
+    const emailJobQueue = {
+      add: async () => ({ id: "bull-calendar-invitation-001" }),
+    };
+    const server = testServer(user("licensee", ["matter-001"]), repository, emailJobQueue);
+
+    const link = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/calendar-event-002/meeting-link",
+      payload: {
+        matterId: "matter-001",
+        mode: "external_url",
+        url: "https://video.example.test/client-prep",
+      },
+    });
+    expect(link.statusCode).toBe(200);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-002/invitations",
+      payload: {
+        matterId: "matter-001",
+        includeMeetingLink: true,
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const email = await repository.getEmailOutbox(
+      "firm-west-legal",
+      response.json().results[0].attendee.invitationEmailId,
+    );
+    expect(email?.textBody).toContain("Meeting link: https://video.example.test/client-prep.");
+    expect(email?.metadata).toMatchObject({
+      requestedMeetingLink: true,
+      meetingLinkMode: "external_url",
+      meetingLinkIncluded: true,
+    });
+    expect(JSON.stringify(email?.metadata)).not.toContain("video.example.test");
+  });
+
   it("requires confirmation before calendar invitations update attendee delivery state", async () => {
     const repository = new AuditRecordingRepository();
     await enableSmtp(repository);
@@ -365,7 +545,7 @@ describe("calendar routes", () => {
     ).toMatchObject([{ id: "calendar-attendee-001", invitationStatus: "not_sent" }]);
   });
 
-  it("rejects meeting link and guest-token issuance when meeting access is not configured", async () => {
+  it("rejects link invitations without a stored link and guest-token issuance when access is not configured", async () => {
     const repository = new AuditRecordingRepository();
     const server = testServer(user("licensee", ["matter-001"]), repository);
 
@@ -374,10 +554,10 @@ describe("calendar routes", () => {
       url: "/api/calendar/events/calendar-event-002/invitations",
       payload: { matterId: "matter-001", includeMeetingLink: true },
     });
-    expect(meetingLinkResponse.statusCode).toBe(503);
+    expect(meetingLinkResponse.statusCode).toBe(400);
     expect(meetingLinkResponse.json()).toMatchObject({
-      code: "MEETING_LINKS_NOT_CONFIGURED",
-      message: "Meeting links are not configured",
+      code: "MEETING_LINK_NOT_AVAILABLE",
+      message: "A meeting link is not set for this event",
     });
 
     const guestTokenResponse = await server.inject({

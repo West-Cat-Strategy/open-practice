@@ -6,6 +6,7 @@ import {
   buildICalendarFeed,
   calendarMeetingInvitationBoundaryMetadata,
   calendarEventEtag,
+  normalizeCalendarMeetingLinkState,
   parseICalendarEvent,
 } from "./calendar.js";
 import type { CalendarEventRecord } from "./models.js";
@@ -215,6 +216,34 @@ END:VCALENDAR`,
       meetingLinksStatus: "configured",
       guestAccessStatus: "configured",
       invitationEmailStatus: "configured",
+    });
+  });
+
+  it("normalizes provider-neutral meeting link state", () => {
+    expect(normalizeCalendarMeetingLinkState()).toEqual({ mode: "blank" });
+    expect(
+      normalizeCalendarMeetingLinkState({
+        mode: "external_url",
+        url: "https://meet.example.test/rooms/external-001",
+      }),
+    ).toEqual({
+      mode: "external_url",
+      url: "https://meet.example.test/rooms/external-001",
+      roomId: undefined,
+      providerKey: undefined,
+    });
+    expect(
+      normalizeCalendarMeetingLinkState({
+        mode: "hosted_webrtc",
+        url: "https://meet.example.test/rooms/calendar-room-001",
+        roomId: "calendar-room-001",
+        providerKey: "synthetic-meeting",
+      }),
+    ).toEqual({
+      mode: "hosted_webrtc",
+      url: "https://meet.example.test/rooms/calendar-room-001",
+      roomId: "calendar-room-001",
+      providerKey: "synthetic-meeting",
     });
   });
 });

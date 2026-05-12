@@ -1,5 +1,6 @@
 import { Clock3, RotateCcw, Save, X } from "lucide-react";
 import type {
+  ConnectorOperationsResponse,
   ProvidersStatusResponse,
   QueuesResponse,
   SavedOperationalViewDefinition,
@@ -8,6 +9,11 @@ import type {
   WorkerRunQueueFilter,
   WorkerRunSummaryItem,
 } from "../types";
+import {
+  connectorDisplayName,
+  connectorOutboxStatusTone,
+  summarizeConnectorPayload,
+} from "../connector-outbox-dashboard";
 
 export interface ProviderPostureRow {
   key: string;
@@ -32,6 +38,8 @@ export interface QueuesSectionProps {
   compactDate: (value?: string) => string;
   compactProviderStatus: (value?: string) => string;
   compactStatus: (value?: string) => string;
+  connectorOperations: ConnectorOperationsResponse;
+  connectorOperationsSummary: string;
   displayedQueues: QueuesResponse;
   formatSavedOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => string;
   formatWorkerRunAttempts: (job: WorkerRunSummaryItem) => string;
@@ -69,6 +77,8 @@ export function QueuesSection({
   compactDate,
   compactProviderStatus,
   compactStatus,
+  connectorOperations,
+  connectorOperationsSummary,
   displayedQueues,
   formatSavedOperationalViewDefinition,
   formatWorkerRunAttempts,
@@ -158,6 +168,13 @@ export function QueuesSection({
         workerHealthSummary={workerHealthSummary}
       />
 
+      <ConnectorOperationsBlock
+        compactDate={compactDate}
+        compactStatus={compactStatus}
+        connectorOperations={connectorOperations}
+        connectorOperationsSummary={connectorOperationsSummary}
+      />
+
       <WorkerRunsBlock
         activeWorkerRuns={activeWorkerRuns}
         formatWorkerRunAttempts={formatWorkerRunAttempts}
@@ -171,6 +188,105 @@ export function QueuesSection({
       />
 
       <QueueRowsBlock displayedQueues={displayedQueues} onSelectMatter={onSelectMatter} />
+    </>
+  );
+}
+
+function ConnectorOperationsBlock({
+  compactDate,
+  compactStatus,
+  connectorOperations,
+  connectorOperationsSummary,
+}: Pick<
+  QueuesSectionProps,
+  "compactDate" | "compactStatus" | "connectorOperations" | "connectorOperationsSummary"
+>) {
+  const connectorById = new Map(
+    connectorOperations.connectors.map((connector) => [connector.id, connector]),
+  );
+
+  return (
+    <>
+      <div className="section-title">
+        <h3>Connector outbox</h3>
+        <span>{compactStatus(connectorOperations.status)}</span>
+      </div>
+      <p className="inline-empty">{connectorOperationsSummary}</p>
+      <div className="detail-grid queue-summary-grid">
+        <div>
+          <span className="field-label">Connectors</span>
+          <strong>{connectorOperations.connectors.length}</strong>
+        </div>
+        <div>
+          <span className="field-label">Outbox rows</span>
+          <strong>{connectorOperations.outbox.length}</strong>
+        </div>
+        <div>
+          <span className="field-label">Pending</span>
+          <strong>
+            {connectorOperations.outbox.filter((item) => item.status === "pending").length}
+          </strong>
+        </div>
+        <div>
+          <span className="field-label">Leased</span>
+          <strong>{connectorOperations.outbox.filter((item) => item.leasePresent).length}</strong>
+        </div>
+        <div>
+          <span className="field-label">Dead letter</span>
+          <strong>
+            {connectorOperations.outbox.filter((item) => item.status === "dead_letter").length}
+          </strong>
+        </div>
+      </div>
+      <div className="party-list queue-section-list">
+        {connectorOperations.connectors.map((connector) => (
+          <div className="party-row" key={connector.id}>
+            <span>
+              <strong>{connector.displayName}</strong>
+              <small>
+                {connector.type} · {connector.key} · {connector.id}
+              </small>
+            </span>
+            <em className={connector.status === "error" ? "risk" : undefined}>
+              {compactStatus(connector.status)}
+            </em>
+          </div>
+        ))}
+        {connectorOperations.connectors.length === 0 ? (
+          <p className="inline-empty">No connector registry records are visible.</p>
+        ) : null}
+      </div>
+      <div className="party-list queue-section-list">
+        {connectorOperations.outbox.map((item) => {
+          const connector = connectorById.get(item.connectorId);
+          const tone = connectorOutboxStatusTone(item);
+          return (
+            <div className="party-row" key={item.id}>
+              <span>
+                <strong>
+                  {connectorDisplayName(connector)} · {item.eventType}
+                </strong>
+                <small>
+                  {item.id} · {item.status} · attempts {item.attemptCount}/{item.maxAttempts} ·
+                  idempotency key {item.idempotencyKeyPresent ? "present" : "absent"} · lease{" "}
+                  {item.leasePresent ? "present" : "absent"}
+                </small>
+                <small>{summarizeConnectorPayload(item.payloadSummary)}</small>
+                <small>
+                  next {compactDate(item.nextAttemptAt)} · leased until{" "}
+                  {compactDate(item.leasedUntil)} · delivered {compactDate(item.deliveredAt)} · dead
+                  letter {compactDate(item.deadLetteredAt)}
+                </small>
+                {item.lastErrorSummary ? <small>{item.lastErrorSummary}</small> : null}
+              </span>
+              <em className={tone === "risk" ? "risk" : undefined}>{compactStatus(item.status)}</em>
+            </div>
+          );
+        })}
+        {connectorOperations.outbox.length === 0 ? (
+          <p className="inline-empty">No connector outbox rows are visible.</p>
+        ) : null}
+      </div>
     </>
   );
 }

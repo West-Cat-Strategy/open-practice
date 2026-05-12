@@ -228,6 +228,23 @@
   margin-top: 14px;
 }
 
+.calendar-meeting-link-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.6fr) minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.calendar-meeting-link-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.calendar-meeting-link-url {
+  align-self: center;
+  overflow-wrap: anywhere;
+}
+
 .calendar-attendee-form {
   display: grid;
   grid-template-columns:
@@ -245,6 +262,7 @@
 
 .share-row-actions .compact-button,
 .share-form-row .compact-button,
+.calendar-meeting-link-form .compact-button,
 .calendar-attendee-form .compact-button,
 .calendar-event-summary .compact-button {
   display: inline-flex;

@@ -29,6 +29,7 @@ import type {
   ConflictCandidate,
   DraftExportFormat,
   EmbeddedIntakeTemplateDefinitionV2,
+  CalendarMeetingLinkMode,
 } from "@open-practice/domain";
 import {
   buildDashboardSectionUrl,
@@ -112,6 +113,7 @@ import StructuredIntakeBuilder from "./intake-forms/StructuredIntakeBuilder";
 import {
   buildCalendarRadarBuckets,
   buildCalendarInvitationPayload,
+  buildCalendarMeetingLinkPayload,
   describeMeetingInvitationBoundary,
   describeMeetingLinkAvailability,
   describeCalendarEventTiming,
@@ -181,6 +183,7 @@ import {
   providerPostureRows,
   summarizeProvidersStatus,
 } from "./provider-status-dashboard";
+import { summarizeConnectorOperations } from "./connector-outbox-dashboard";
 import {
   buildOperationalFocusSummary,
   operationalFocusEmptyMessage,
@@ -223,8 +226,10 @@ import type {
   CalendarCredentialRevokeResponse,
   CalendarDashboardResponse,
   CalendarInvitationResponse,
+  CalendarMeetingLinkMutationResponse,
   CapabilitiesResponse,
   CommunicationsInboxDashboardResponse,
+  ConnectorOperationsResponse,
   ConflictResponse,
   ContactDossiersResponse,
   ContactReviewQueueResponse,
@@ -277,6 +282,7 @@ interface DashboardClientProps {
   calendar: CalendarDashboardResponse;
   capabilities: CapabilitiesResponse;
   communicationsInbox: CommunicationsInboxDashboardResponse;
+  connectorOperations: ConnectorOperationsResponse;
   contactDossiers: ContactDossiersResponse;
   contactReviewQueue: ContactReviewQueueResponse;
   devHeaders: Record<string, string>;
@@ -363,6 +369,7 @@ export default function DashboardClient({
   calendar,
   capabilities,
   communicationsInbox,
+  connectorOperations,
   contactDossiers,
   contactReviewQueue,
   devHeaders,
@@ -519,6 +526,13 @@ export default function DashboardClient({
   const [calendarMeetingStatus, setCalendarMeetingStatus] = useState(
     "Meeting attendees have not changed.",
   );
+  const [calendarMeetingLinkModesByEventId, setCalendarMeetingLinkModesByEventId] = useState<
+    Record<string, CalendarMeetingLinkMode>
+  >({});
+  const [calendarMeetingLinkUrlsByEventId, setCalendarMeetingLinkUrlsByEventId] = useState<
+    Record<string, string>
+  >({});
+  const [updatingCalendarMeetingLinkEventId, setUpdatingCalendarMeetingLinkEventId] = useState("");
   const [addingCalendarAttendee, setAddingCalendarAttendee] = useState(false);
   const [removingCalendarAttendeeId, setRemovingCalendarAttendeeId] = useState("");
   const [sendingCalendarInvitationsEventId, setSendingCalendarInvitationsEventId] = useState("");
@@ -783,6 +797,10 @@ export default function DashboardClient({
     [activeSavedOperationalViewDefinition, queues],
   );
   const queueSummary = useMemo(() => summarizeQueues(displayedQueues), [displayedQueues]);
+  const connectorOperationsSummary = useMemo(
+    () => summarizeConnectorOperations(connectorOperations),
+    [connectorOperations],
+  );
   const providerStatusSummary = useMemo(
     () => summarizeProvidersStatus(providerStatus),
     [providerStatus],
@@ -1663,16 +1681,77 @@ export default function DashboardClient({
     setRemovingCalendarAttendeeId("");
   }
 
+  function calendarMeetingLinkModeValue(event: DashboardCalendarEvent): CalendarMeetingLinkMode {
+    return calendarMeetingLinkModesByEventId[event.id] ?? event.meetingLinkMode ?? "blank";
+  }
+
+  function calendarMeetingLinkUrlValue(event: DashboardCalendarEvent): string {
+    return calendarMeetingLinkUrlsByEventId[event.id] ?? event.meetingLinkUrl ?? "";
+  }
+
+  async function updateCalendarMeetingLink(event: DashboardCalendarEvent): Promise<void> {
+    if (!activeMatter) return;
+    const mode = calendarMeetingLinkModeValue(event);
+    const externalUrl = calendarMeetingLinkUrlValue(event);
+    setUpdatingCalendarMeetingLinkEventId(event.id);
+    setCalendarMeetingStatus("Updating meeting link...");
+    const response = await fetch(
+      `${apiBaseUrl}/api/calendar/events/${encodeURIComponent(event.id)}/meeting-link`,
+      {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(
+          buildCalendarMeetingLinkPayload({
+            matterId: activeMatter.id,
+            mode,
+            externalUrl,
+          }),
+        ),
+      },
+    );
+
+    if (!response.ok) {
+      setCalendarMeetingStatus(`Meeting link update failed: ${response.status}`);
+      setUpdatingCalendarMeetingLinkEventId("");
+      return;
+    }
+
+    const payload = (await response.json()) as CalendarMeetingLinkMutationResponse;
+    setCalendarEventsByMatterId((current) => ({
+      ...current,
+      [activeMatter.id]: (current[activeMatter.id] ?? []).map((candidate) =>
+        candidate.id === payload.event.id ? payload.event : candidate,
+      ),
+    }));
+    setCalendarMeetingLinkModesByEventId((current) => {
+      const next = { ...current };
+      delete next[event.id];
+      return next;
+    });
+    setCalendarMeetingLinkUrlsByEventId((current) => {
+      const next = { ...current };
+      delete next[event.id];
+      return next;
+    });
+    setCalendarMeetingStatus(
+      payload.event.meetingLinkUrl ? "Meeting link saved." : "Meeting link cleared.",
+    );
+    setUpdatingCalendarMeetingLinkEventId("");
+  }
+
   function calendarInvitationProviderState(
     event: DashboardCalendarEvent,
     includeMeetingLink = false,
   ): string {
     const emailBoundary = event.meetingInvitationBoundary?.invitationEmail;
-    const meetingBoundary = event.meetingInvitationBoundary?.meetingLinks;
     const meetingDetail = includeMeetingLink
-      ? meetingBoundary?.status === "configured"
-        ? ` Meeting provider ${meetingBoundary.provider ?? "configured"} will be requested.`
-        : " No meeting provider is configured; the link request will stay unavailable."
+      ? event.meetingLinkUrl
+        ? " The stored meeting link will be included."
+        : " No meeting link is set; the link request will stay unavailable."
       : "";
     if (emailBoundary?.status === "configured") {
       return `SMTP provider ${emailBoundary.provider ?? "configured"} will queue eligible invitations.${meetingDetail}`;
@@ -1685,9 +1764,7 @@ export default function DashboardClient({
     options: { includeMeetingLink?: boolean } = {},
   ): void {
     if (!activeMatter) return;
-    const includeMeetingLink =
-      options.includeMeetingLink === true &&
-      event.meetingInvitationBoundary?.meetingLinks.status === "configured";
+    const includeMeetingLink = options.includeMeetingLink === true && Boolean(event.meetingLinkUrl);
     const recipients = (event.attendees ?? []).map((attendee) => attendee.email);
     setPendingDeliveryConfirmation({
       kind: "calendar-invitations",
@@ -3375,9 +3452,15 @@ export default function DashboardClient({
                   {activeCalendarEvents.map((event) => {
                     const timing = describeCalendarEventTiming(event);
                     const attendees = event.attendees ?? [];
-                    const meetingLinkAvailability = describeMeetingLinkAvailability(
-                      event.meetingInvitationBoundary,
-                    );
+                    const meetingLinkAvailability = describeMeetingLinkAvailability(event);
+                    const meetingLinkMode = calendarMeetingLinkModeValue(event);
+                    const meetingLinkUrl = calendarMeetingLinkUrlValue(event);
+                    const hostedMeetingConfigured =
+                      event.meetingInvitationBoundary?.meetingLinks.status === "configured";
+                    const canSaveMeetingLink =
+                      meetingLinkMode === "blank" ||
+                      (meetingLinkMode === "external_url" && Boolean(meetingLinkUrl.trim())) ||
+                      (meetingLinkMode === "hosted_webrtc" && hostedMeetingConfigured);
                     return (
                       <div className="party-row calendar-event-row" key={event.id}>
                         <div className="calendar-event-summary">
@@ -3436,6 +3519,65 @@ export default function DashboardClient({
                                 : "Send invites"}
                             </button>
                           </div>
+                        </div>
+                        <div className="calendar-meeting-link-form">
+                          <label>
+                            <span className="field-label">Meeting link</span>
+                            <select
+                              value={meetingLinkMode}
+                              onChange={(changeEvent) =>
+                                setCalendarMeetingLinkModesByEventId((current) => ({
+                                  ...current,
+                                  [event.id]: changeEvent.currentTarget
+                                    .value as CalendarMeetingLinkMode,
+                                }))
+                              }
+                            >
+                              <option value="blank">Blank</option>
+                              <option value="external_url">Other link</option>
+                              <option disabled={!hostedMeetingConfigured} value="hosted_webrtc">
+                                Hosted WebRTC
+                              </option>
+                            </select>
+                          </label>
+                          {meetingLinkMode === "external_url" ? (
+                            <label>
+                              <span className="field-label">URL</span>
+                              <input
+                                type="url"
+                                value={meetingLinkUrl}
+                                onChange={(inputEvent) =>
+                                  setCalendarMeetingLinkUrlsByEventId((current) => ({
+                                    ...current,
+                                    [event.id]: inputEvent.currentTarget.value,
+                                  }))
+                                }
+                                placeholder="https://meet.example.test/room"
+                              />
+                            </label>
+                          ) : null}
+                          {meetingLinkMode === "hosted_webrtc" && !hostedMeetingConfigured ? (
+                            <p className="inline-empty">
+                              Hosted WebRTC meetings are not configured.
+                            </p>
+                          ) : null}
+                          {event.meetingLinkUrl ? (
+                            <code className="calendar-meeting-link-url">
+                              {event.meetingLinkUrl}
+                            </code>
+                          ) : null}
+                          <button
+                            className="secondary-button compact-button row-button"
+                            disabled={
+                              updatingCalendarMeetingLinkEventId === event.id || !canSaveMeetingLink
+                            }
+                            onClick={() => updateCalendarMeetingLink(event)}
+                            type="button"
+                          >
+                            {updatingCalendarMeetingLinkEventId === event.id
+                              ? "Saving..."
+                              : "Save link"}
+                          </button>
                         </div>
                         {pendingDeliveryConfirmation?.kind === "calendar-invitations" &&
                         pendingDeliveryConfirmation.eventId === event.id ? (
@@ -4520,6 +4662,8 @@ export default function DashboardClient({
                 compactDate={compactDate}
                 compactProviderStatus={compactProviderStatus}
                 compactStatus={compactStatus}
+                connectorOperations={connectorOperations}
+                connectorOperationsSummary={connectorOperationsSummary}
                 displayedQueues={displayedQueues}
                 formatSavedOperationalViewDefinition={formatSavedOperationalViewDefinition}
                 formatWorkerRunAttempts={formatWorkerRunAttempts}

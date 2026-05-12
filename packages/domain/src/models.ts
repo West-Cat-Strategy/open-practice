@@ -257,6 +257,7 @@ export type CalendarEventStatus = "confirmed" | "tentative" | "cancelled";
 export type CalendarAttendeeRole = "required" | "optional";
 export type CalendarAttendeeResponseStatus = "needs_action" | "accepted" | "tentative" | "declined";
 export type CalendarInvitationStatus = "not_sent" | "queued" | "skipped";
+export type CalendarMeetingLinkMode = "blank" | "external_url" | "hosted_webrtc";
 export type CalendarMeetingBoundaryStatus = "disabled" | "configured";
 export type CalendarMeetingBoundaryReason =
   | "not_configured"
@@ -308,6 +309,10 @@ export interface CalendarEventRecord {
   location?: string;
   status: CalendarEventStatus;
   sequence: number;
+  meetingLinkMode?: CalendarMeetingLinkMode;
+  meetingLinkUrl?: string;
+  meetingRoomId?: string;
+  meetingProviderKey?: string;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;

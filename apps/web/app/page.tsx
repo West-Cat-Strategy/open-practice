@@ -57,6 +57,7 @@ import {
   buildProvidersStatusPath,
   emptyProvidersStatusResponse,
 } from "./provider-status-dashboard";
+import { emptyConnectorOperationsResponse } from "./connector-outbox-dashboard";
 import type {
   BillingDashboardResponse,
   CalendarCredentialsResponse,
@@ -65,6 +66,9 @@ import type {
   CapabilitiesResponse,
   CommunicationsInboxDashboardResponse,
   CommunicationsInboxMatterResponse,
+  ConnectorOperationsResponse,
+  ConnectorOutboxResponse,
+  ConnectorsResponse,
   ContactDossiersResponse,
   ContactReviewQueueResponse,
   DocumentProcessingDashboardResponse,
@@ -160,6 +164,49 @@ async function apiGetOptional<T>(
     );
   }
   return response.json() as Promise<T>;
+}
+
+async function apiGetOptionalWithStatus<T>(
+  path: string,
+  fallback: T,
+  headers: Record<string, string>,
+): Promise<{ data: T; status: ConnectorOperationsResponse["status"] }> {
+  try {
+    return { data: await apiGet<T>(path, headers), status: "available" };
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 403) {
+      return { data: fallback, status: "access_denied" };
+    }
+    if (error instanceof ApiRequestError && error.status === 404) {
+      return { data: fallback, status: "unavailable" };
+    }
+    throw error;
+  }
+}
+
+async function loadConnectorOperations(
+  headers: Record<string, string>,
+): Promise<ConnectorOperationsResponse> {
+  const [connectorsResult, outboxResult] = await Promise.all([
+    apiGetOptionalWithStatus<ConnectorsResponse>("/api/connectors", { connectors: [] }, headers),
+    apiGetOptionalWithStatus<ConnectorOutboxResponse>(
+      "/api/connectors/outbox",
+      { outbox: [] },
+      headers,
+    ),
+  ]);
+  const status =
+    connectorsResult.status === "access_denied" || outboxResult.status === "access_denied"
+      ? "access_denied"
+      : connectorsResult.status === "unavailable" || outboxResult.status === "unavailable"
+        ? "unavailable"
+        : "available";
+
+  return {
+    ...emptyConnectorOperationsResponse(status),
+    connectors: connectorsResult.data.connectors,
+    outbox: outboxResult.data.outbox,
+  };
 }
 
 function canViewBilling(role: string): boolean {
@@ -353,6 +400,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     headers,
     emptyProvidersStatusResponse("access_denied"),
   );
+  const connectorOperations = await loadConnectorOperations(headers);
   const operationalViews = await apiGetOptional<OperationalViewsResponse>(
     "/api/operational-views",
     { views: [] },
@@ -568,6 +616,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       calendar={calendar}
       capabilities={capabilities}
       communicationsInbox={communicationsInbox}
+      connectorOperations={connectorOperations}
       contactDossiers={contactDossiers}
       contactReviewQueue={contactReviewQueue}
       devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}

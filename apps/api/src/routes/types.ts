@@ -26,6 +26,7 @@ export interface ApiRouteDependencies {
   signatureProvider?: SignatureProvider;
   meetingLinks?: {
     providerKey: string;
+    hostedMeetingBaseUrl?: string;
     guestAccessTokenSigningConfigured?: boolean;
   };
   emailJobQueue?: ApiJobQueue;

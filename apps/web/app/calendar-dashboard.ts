@@ -2,6 +2,7 @@ import type {
   CalendarEventAttendeeRecord,
   CalendarEventRecord,
   CalendarMeetingInvitationBoundary,
+  CalendarMeetingLinkMode,
 } from "@open-practice/domain";
 import type {
   CalendarCredentialSummary,
@@ -88,25 +89,44 @@ export interface MeetingLinkAvailability {
 }
 
 export function describeMeetingLinkAvailability(
-  boundary: CalendarMeetingInvitationBoundary | undefined,
+  event: Pick<
+    CalendarEventRecord,
+    "meetingLinkMode" | "meetingLinkUrl" | "meetingProviderKey" | "meetingInvitationBoundary"
+  >,
 ): MeetingLinkAvailability {
-  if (boundary?.meetingLinks.status === "configured") {
-    const providerDetail = boundary.meetingLinks.provider
-      ? `${boundary.meetingLinks.provider} is configured`
-      : "A meeting provider is configured";
+  if (event.meetingLinkUrl) {
+    const providerDetail =
+      event.meetingLinkMode === "hosted_webrtc"
+        ? `${event.meetingProviderKey ?? "Hosted WebRTC"} link ready`
+        : "External meeting link ready";
     return {
       label: "Send link invite",
-      detail: `${providerDetail}; the invitation action can request a meeting link through the calendar API boundary.`,
+      detail: `${providerDetail}; the invitation action can include the stored meeting link.`,
       status: "configured",
       actionable: true,
     };
   }
 
+  const hostedConfigured = event.meetingInvitationBoundary?.meetingLinks.status === "configured";
   return {
-    label: "No meeting provider",
-    detail: "No meeting provider is configured for meeting-link invitation requests.",
+    label: "No meeting link",
+    detail: hostedConfigured
+      ? "Choose Hosted WebRTC or add another meeting link before sending link invites."
+      : "Add another meeting link, leave it blank, or configure Hosted WebRTC before using hosted links.",
     status: "disabled",
     actionable: false,
+  };
+}
+
+export function buildCalendarMeetingLinkPayload(input: {
+  matterId: string;
+  mode: CalendarMeetingLinkMode;
+  externalUrl?: string;
+}): { matterId: string; mode: CalendarMeetingLinkMode; url?: string } {
+  return {
+    matterId: input.matterId,
+    mode: input.mode,
+    ...(input.mode === "external_url" ? { url: (input.externalUrl ?? "").trim() } : {}),
   };
 }
 

@@ -108,6 +108,8 @@ export const envSchema = z.object({
   WEBAUTHN_RP_ID: z.string().default("localhost"),
   WEBAUTHN_ORIGIN: z.string().default("http://localhost:3000"),
   PUBLIC_WEB_BASE_URL: optionalUrl,
+  WEBRTC_MEETING_PROVIDER_KEY: optionalString,
+  WEBRTC_MEETING_BASE_URL: optionalUrl,
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;
@@ -136,6 +138,11 @@ interface ApiOptions {
   ocrJobQueue?: ApiJobQueue;
   sessionTtlHours?: number;
   publicWebBaseUrl?: string;
+  meetingLinks?: {
+    providerKey: string;
+    hostedMeetingBaseUrl?: string;
+    guestAccessTokenSigningConfigured?: boolean;
+  };
   setupKey?: string;
   s3?: {
     client: S3Client;
@@ -161,6 +168,10 @@ function requireCompleteGroup(name: string, values: Array<string | undefined>): 
 
 export function validateProductionReadiness(env: ApiEnv): void {
   requireCompleteGroup("S3", [env.S3_ENDPOINT, env.S3_ACCESS_KEY, env.S3_SECRET_KEY]);
+  requireCompleteGroup("Hosted WebRTC meetings", [
+    env.WEBRTC_MEETING_PROVIDER_KEY,
+    env.WEBRTC_MEETING_BASE_URL,
+  ]);
   const deprecatedProviderEnv = [
     "DOCUSEAL_BASE_URL",
     "DOCUSEAL_API_KEY",
@@ -354,6 +365,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerCalendarRoutes(server, {
     repository: options.repository,
     emailJobQueue: options.emailJobQueue,
+    meetingLinks: options.meetingLinks,
   });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
   registerDocumentProcessingRoutes(server, {
@@ -500,6 +512,15 @@ function createS3FromEnv(env: ApiEnv): ApiOptions["s3"] {
   };
 }
 
+function createMeetingLinksFromEnv(env: ApiEnv): ApiOptions["meetingLinks"] {
+  if (!env.WEBRTC_MEETING_PROVIDER_KEY || !env.WEBRTC_MEETING_BASE_URL) return undefined;
+  return {
+    providerKey: env.WEBRTC_MEETING_PROVIDER_KEY,
+    hostedMeetingBaseUrl: env.WEBRTC_MEETING_BASE_URL,
+    guestAccessTokenSigningConfigured: Boolean(env.AUTH_JWT_SECRET),
+  };
+}
+
 function redisConnectionFromUrl(redisUrl: string): {
   host: string;
   port: number;
@@ -564,6 +585,7 @@ if (process.env.NODE_ENV !== "test") {
     ocrJobQueue,
     sessionTtlHours: env.SESSION_TTL_HOURS,
     publicWebBaseUrl: env.PUBLIC_WEB_BASE_URL ?? env.WEBAUTHN_ORIGIN,
+    meetingLinks: createMeetingLinksFromEnv(env),
     setupKey: env.OPEN_PRACTICE_SETUP_KEY,
     s3: createS3FromEnv(env),
     webAuthn: {

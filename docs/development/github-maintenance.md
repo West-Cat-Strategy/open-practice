@@ -34,21 +34,28 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
 
 ### Docker Dependency Snapshot
 
-2026-05-05 dependency refresh evidence:
+2026-05-05 dependency refresh evidence, with the 2026-05-12 infra-image follow-up:
 
-- `node:24-alpine` stayed as the app base to avoid a Node major or Debian image-family swap. The
-  Dockerfile updates bundled npm to `11.13.0`, deploys runtime images with production dependencies,
-  and uses Node's built-in `fetch` for API health checks instead of installing `curl`. Final local app
-  images had no critical/high Scout findings; the upstream `node:24-alpine` base still reported the
-  unfixed npm `picomatch` high finding.
-- `postgres:17-alpine` stayed pinned to the current major to avoid a database-major migration inside
-  this dependency slice. Scout still reported upstream Go standard-library critical/high findings on
-  the image.
+- `node:24.15.0-alpine3.23` is pinned by digest as the app base to avoid a Node major or Debian
+  image-family swap. The Dockerfile still updates bundled npm and pnpm explicitly, deploys runtime
+  images with production dependencies, and uses Node's built-in `fetch` for API health checks instead
+  of installing `curl`. Final local app images, not only the upstream base, are the validation target;
+  the upstream Node base still reported the npm `picomatch` high finding in the planning scan.
+- The local Postgres service now builds `open-practice-postgres:17-alpine-su-exec` from the pinned
+  `postgres:17-alpine` digest and replaces the vulnerable bundled `gosu` helper with Alpine
+  `su-exec` while preserving the standard Postgres 17 entrypoint and health-check contract. The
+  2026-05-12 local Scout proof reported no critical/high findings for the rebuilt image.
 - `redis:8-alpine` replaced `redis:7-alpine` in the local Docker stack because the Scout result
   dropped from critical/high Go runtime findings to no critical/high findings in the current scan.
-- `minio/minio:RELEASE.2025-09-07T16-13-09Z` and `axllent/mailpit:v1.29.7` replaced floating
-  `latest` tags. Scout still reported upstream MinIO/Go module critical/high findings and a Mailpit
-  Markdown high finding without a safer deterministic same-scope replacement selected in this pass.
+- `minio/minio:RELEASE.2025-09-07T16-13-09Z` is pinned by digest. Current Docker Hub, Quay, hotfix,
+  and common S3-compatible substitute scans still carried critical/high findings or changed the
+  service shape, so MinIO stays product-compatible with residual upstream MinIO/Go CVEs documented
+  until a cleaner compatible deterministic release is available.
+- The local Mailpit service now builds `open-practice-mailpit:v1.29.7-go1.26.3` from the checked
+  v1.29.7 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
+  `8025`. The 2026-05-12 local Scout proof reduced Mailpit to one high finding in the upstream
+  `github.com/gomarkdown/markdown` dependency that is still present in v1.29.7, not the older bundled
+  Go standard library.
 
 ## GitHub Settings Cutover
 

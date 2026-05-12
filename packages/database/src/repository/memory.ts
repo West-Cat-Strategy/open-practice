@@ -136,9 +136,11 @@ import {
   CalendarEventUidConflictError,
   FirstRunSetupConflictError,
   IdempotencyKeyConflictError,
+  applyConversationThreadLifecycleAction,
   assertSameIdempotencyFingerprint,
   canonicalizeForIdempotency,
   clone,
+  type ConversationThreadLifecycleAction,
 } from "./contracts.js";
 
 import {
@@ -1137,6 +1139,22 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     }
     this.conversationThreads = [...this.conversationThreads, clone(thread)];
     return clone(thread);
+  }
+
+  async updateConversationThreadLifecycle(input: {
+    firmId: string;
+    threadId: string;
+    action: ConversationThreadLifecycleAction;
+    occurredAt: string;
+    actorUserId: string;
+  }): Promise<ConversationThreadRecord | undefined> {
+    const index = this.conversationThreads.findIndex(
+      (thread) => thread.firmId === input.firmId && thread.id === input.threadId,
+    );
+    if (index < 0) return undefined;
+    const updated = applyConversationThreadLifecycleAction(this.conversationThreads[index]!, input);
+    this.conversationThreads[index] = clone(updated);
+    return clone(updated);
   }
 
   async listLegalClinicPrograms(

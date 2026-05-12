@@ -121,6 +121,10 @@ describe("database schema hardening", () => {
         "location",
         "status",
         "sequence",
+        "meeting_link_mode",
+        "meeting_link_url",
+        "meeting_room_id",
+        "meeting_provider_key",
         "created_at",
         "updated_at",
         "deleted_at",
@@ -130,6 +134,9 @@ describe("database schema hardening", () => {
     );
     expect(uidIndex?.config.unique).toBe(true);
     expect(uidIndex?.config.where).toBeDefined();
+    expect(
+      config.checks.some((check) => check.name === "calendar_events_meeting_link_mode_value"),
+    ).toBe(true);
   });
 
   it("persists meeting attendees for calendar events", () => {

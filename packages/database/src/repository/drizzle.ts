@@ -109,11 +109,13 @@ import {
   CalendarEventUidConflictError,
   FirstRunSetupConflictError,
   IdempotencyKeyConflictError,
+  applyConversationThreadLifecycleAction,
   assertSameIdempotencyFingerprint,
   canonicalizeForIdempotency,
   clone,
   dateToIso,
   isPostgresUniqueViolation,
+  type ConversationThreadLifecycleAction,
 } from "./contracts.js";
 
 import {
@@ -1517,6 +1519,35 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return mapConversationThreadRow(row!);
   }
 
+  async updateConversationThreadLifecycle(input: {
+    firmId: string;
+    threadId: string;
+    action: ConversationThreadLifecycleAction;
+    occurredAt: string;
+    actorUserId: string;
+  }): Promise<ConversationThreadRecord | undefined> {
+    const existing = await this.getConversationThread(input.firmId, input.threadId);
+    if (!existing) return undefined;
+    const updated = applyConversationThreadLifecycleAction(existing, input);
+    const [row] = await this.db
+      .update(schema.conversationThreads)
+      .set({
+        status: updated.status,
+        exportState: updated.exportState,
+        accessRevokedAt: updated.accessRevokedAt ? new Date(updated.accessRevokedAt) : null,
+        updatedAt: new Date(updated.updatedAt),
+        updatedByUserId: updated.updatedByUserId,
+      })
+      .where(
+        and(
+          eq(schema.conversationThreads.firmId, input.firmId),
+          eq(schema.conversationThreads.id, input.threadId),
+        ),
+      )
+      .returning();
+    return row ? mapConversationThreadRow(row) : undefined;
+  }
+
   async listLegalClinicPrograms(
     firmId: string,
     options: { status?: LegalClinicProgram["status"] } = {},
@@ -1699,6 +1730,10 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       location: event.location ?? null,
       status: event.status,
       sequence: event.sequence,
+      meetingLinkMode: event.meetingLinkMode ?? "blank",
+      meetingLinkUrl: event.meetingLinkUrl ?? null,
+      meetingRoomId: event.meetingRoomId ?? null,
+      meetingProviderKey: event.meetingProviderKey ?? null,
       createdAt: new Date(event.createdAt),
       updatedAt: new Date(event.updatedAt),
       deletedAt: event.deletedAt ? new Date(event.deletedAt) : null,
@@ -1747,6 +1782,10 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
             location: values.location,
             status: values.status,
             sequence: values.sequence,
+            meetingLinkMode: values.meetingLinkMode,
+            meetingLinkUrl: values.meetingLinkUrl,
+            meetingRoomId: values.meetingRoomId,
+            meetingProviderKey: values.meetingProviderKey,
             updatedAt: values.updatedAt,
             deletedAt: values.deletedAt,
             updatedByUserId: values.updatedByUserId,

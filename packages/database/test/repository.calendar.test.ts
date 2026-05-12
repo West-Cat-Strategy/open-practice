@@ -166,6 +166,8 @@ describe("repository calendar and tasks", () => {
       location: "Office",
       status: "confirmed",
       sequence: 0,
+      meetingLinkMode: "external_url",
+      meetingLinkUrl: "https://meet.example.test/external-room",
       createdAt: now,
       updatedAt: now,
       createdByUserId: "user-licensee",
@@ -174,7 +176,12 @@ describe("repository calendar and tasks", () => {
 
     await expect(
       repository.getCalendarEvent("firm-west-legal", "matter-001", event.id),
-    ).resolves.toMatchObject({ uid: "calendar-event-test@example.test", sequence: 0 });
+    ).resolves.toMatchObject({
+      uid: "calendar-event-test@example.test",
+      sequence: 0,
+      meetingLinkMode: "external_url",
+      meetingLinkUrl: "https://meet.example.test/external-room",
+    });
     await expect(
       repository.getCalendarEventByUid("firm-west-legal", "matter-001", event.uid),
     ).resolves.toMatchObject({ id: event.id });
@@ -183,11 +190,21 @@ describe("repository calendar and tasks", () => {
       ...event,
       title: "Updated synthetic CalDAV event",
       sequence: 1,
+      meetingLinkMode: "hosted_webrtc",
+      meetingLinkUrl: "https://meet.example.test/rooms/calendar-room-test",
+      meetingRoomId: "calendar-room-test",
+      meetingProviderKey: "open-practice-webrtc",
       updatedAt: "2026-04-25T12:10:00.000Z",
     });
     await expect(
       repository.getCalendarEvent("firm-west-legal", "matter-001", event.id),
-    ).resolves.toMatchObject({ title: "Updated synthetic CalDAV event", sequence: 1 });
+    ).resolves.toMatchObject({
+      title: "Updated synthetic CalDAV event",
+      sequence: 1,
+      meetingLinkMode: "hosted_webrtc",
+      meetingRoomId: "calendar-room-test",
+      meetingProviderKey: "open-practice-webrtc",
+    });
 
     await expect(
       repository.deleteCalendarEvent({
