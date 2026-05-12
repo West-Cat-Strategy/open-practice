@@ -180,6 +180,22 @@ describe("API auth and persistence boundaries", () => {
     expect(response.statusCode).toBe(503);
   });
 
+  it("blocks production first-run setup status until a setup key is configured", async () => {
+    const response = await testServer({
+      repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
+      nodeEnv: "production",
+      jwtSecret: "production-test-secret-at-least-32-characters",
+    }).inject({ method: "GET", url: "/api/setup/status" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      required: false,
+      blocked: true,
+      setupKeyRequired: true,
+      reason: "OPEN_PRACTICE_SETUP_KEY is required before production first-run setup can start.",
+    });
+  });
+
   it("applies the setup key gate to first-run passkey registration options", async () => {
     const server = testServer({
       repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
