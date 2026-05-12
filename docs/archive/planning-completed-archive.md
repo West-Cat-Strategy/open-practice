@@ -3,7 +3,8 @@
 **Archived From:** `docs/planning-and-progress.md` on 2026-04-29.
 
 This file preserves historical workboard proof that is no longer active status. Use
-`docs/planning-and-progress.md` for live tracked work and immediate next moves.
+[`docs/planning-and-progress.md`](../planning-and-progress.md) for live tracked work and immediate
+next moves.
 
 ## Archived Recent Thread Follow-through
 

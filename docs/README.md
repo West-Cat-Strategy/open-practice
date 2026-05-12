@@ -6,7 +6,8 @@ Use this index as the first stop for repo orientation. Open Practice is a legal-
 
 1. [Architecture](architecture.md) explains the monorepo shape, source-of-truth boundaries, and local-first provider decisions.
 2. [Tech Stack](tech-stack.md) records accepted, deferred, and rejected stack choices with upstream source links.
-3. [Planning](planning.md) is the durable roadmap; [Planning and Progress](planning-and-progress.md) is the live workboard.
+3. [Planning](planning.md) is the durable roadmap; [Planning and Progress](planning-and-progress.md)
+   is the live workboard.
 4. [Getting Started](development/getting-started.md) covers local runtime choices, services, and environment defaults.
 5. [Repository Guide](development/repo-guide.md) maps workspace ownership, boundaries, and common edit paths.
 6. [GitHub Maintenance](development/github-maintenance.md) covers local-only repository gates,
@@ -17,7 +18,8 @@ Use this index as the first stop for repo orientation. Open Practice is a legal-
 ## Governance
 
 - [Improvement Opportunities](improvement-opportunities.md) tracks the next useful implementation directions.
-- [Planning Completed Archive](planning-completed-archive.md) preserves historical workboard proof that is no longer active status.
+- [Documentation Archive](archive/README.md) preserves historical planning snapshots and completed
+  workboard proof that is no longer active status.
 - [Threat Model](threat-model.md), [Deployment Hardening](deployment-hardening.md), and [Trust/Funds Caveats](trust-funds-caveats.md) define security and compliance posture.
 - [OSS References](oss-references.md), [Reference Repos](reference-repos.md), [Reuse Decision Policy](reuse-decision-policy.md), [License Policy](license-policy.md), and [OSS reference lockfile](oss-references.lock.json) define clean-room reference and reuse rules.
 - [Maintenance](development/maintenance.md), [Agent Workflows](development/agent-workflows.md), and

@@ -34,33 +34,42 @@ stay local-first, matter-scoped, and auditable.
 
 Completed Phase 3 slices:
 
-1.  **Secure Shares**: Token-hashed, time-bound, revocable v1 portal share links for document
-    metadata, with matter-scoped authorization, access logs, and audit events.
-2.  **External Uploads**: Expiring, revocable document collection links for external parties, with
-    token-scoped S3 intent/complete flows, S3-disabled fallback behavior, access logs, and audit
-    records.
+1.  **Public Document Exchange**: Secure share links, external-upload links, public upload status,
+    and staff upload review loops are live with token hashing, access logs, audit events, and
+    storage-disabled fallbacks.
+2.  **Operational Queues And Workbenches**: Audit taxonomy/coverage, document-processing status,
+    worker-run inspection, task/deadline projections, built-in operational views, matter timelines,
+    contact dossiers, contact review queues, and operations focus panels are live as read-only or
+    constrained workflow surfaces.
+3.  **Communications And Connectors Foundation**: SMTP outbox queueing, email delivery state,
+    inbound email triage, communications inbox aggregation, conversation topics/lifecycle,
+    connector registry/outbox, and preview-only outbound webhook guardrails are live.
+4.  **Intake, Drafting, And Assistive Review**: Guided intake packages, answer snapshots,
+    staff QA/preview, public draft save/reload, office-style draft exports, and synchronous
+    review-first draft/document assist are live without automatic source-record mutation.
+5.  **Calendar, Meeting, Trust, And Specialized Controls**: Calendar attendee/invitation flows,
+    CalDAV/iCalendar export, stored meeting-link boundary, fiscal-host metadata cues, trust
+    reconciliation records, and read-only jurisdictional trust reports are live with cautious
+    non-certified compliance language.
 
 Next operational scale priorities:
 
-1.  **Audit Coverage**: Broaden append-only audit events across signature, intake, drafting,
-    document, billing, ledger, email, share, and external-upload state changes.
-2.  **Email Workflow Closure**: Connect the local SMTP/outbox worker foundation to API preview/send
-    flows for signature, intake, share, upload, and future meeting notices.
-3.  **Guided Intake**: Expand the embedded intake engine with branching logic, reusable packages,
-    and multi-document automation while keeping generated records inside Open Practice.
-4.  **Local AI Drafting Assist**: Add disabled-by-default Ollama/LM Studio review workflows for
-    draft assistance and matter/document summarization; generated text remains non-authoritative
-    draft material.
-5.  **Office Suite Word Processing**: Extend saved TipTap drafts with safe firm/matter/client
-    merge fields, server-rendered PDF/DOCX exports, and persisted matter-scoped document metadata
-    while deferring spreadsheets, presentations, external office sync, and collaboration.
-6.  **Calendaring and Meeting Management**: Grow the existing `calendar_events` schema and
-    `calendar_event` permissions into matter-scoped event visibility, dashboard deadline radar,
-    CalDAV/iCalendar sync, and later explicit-capability slices for attendees, reminders,
-    rescheduling/cancellation records, audit events, and optional self-hostable WebRTC meeting links.
-7.  **Specialized Workflows**: Add focused support for legal clinics, nonprofit fiscal hosts,
-    complex trust accounting, and multi-jurisdiction trust reporting without making
-    jurisdiction-certified compliance claims.
+1.  **Document Suggestions Review Queue**: Promote OP-T85 as the next concrete backlog pick:
+    reviewer-only OCR/extraction suggestions for classification, duplicate/supersession,
+    matter/contact hints, and missing metadata without automatic merge or classification.
+2.  **Calendar And Native Meeting Controls**: Add calendar event write/reschedule/reminder records
+    and later native WebRTC guest-session controls without redoing shipped attendees, iCalendar,
+    invitations, or stored meeting-link boundaries.
+3.  **Async Local AI Jobs**: Move selected matter/document summary and drafting-assist requests
+    behind disabled-by-default queue jobs while preserving reviewed, non-authoritative outputs.
+4.  **Connector/Webhook Delivery**: Turn existing connector outbox rows into a first delivery worker
+    slice with HTTPS allowlists, signing, leases, delivery attempts, and redacted dead-letter state.
+5.  **Conversation And Communications Follow-Through**: Add matter-scoped conversation message
+    records, communications ownership, private staff notes, and consent/channel follow-up state
+    without adding realtime chat or duplicating existing inbox triage.
+6.  **Resolution And Reporting Surfaces**: Add contact data-quality decision records, audit
+    projection summaries, async report export requests, delivery receipt tokens, and saved
+    operational-view expansion beyond the current queue-dashboard surface.
 
 ## Reuse Guardrails
 
