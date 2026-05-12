@@ -1,4 +1,8 @@
-import type { MatterSummary, TrustControlsDashboardResponse } from "./types";
+import type {
+  JurisdictionalTrustReportResponse,
+  MatterSummary,
+  TrustControlsDashboardResponse,
+} from "./types";
 
 export interface RecentTrustPosting {
   transactionId: string;
@@ -22,8 +26,29 @@ export interface TrustReviewSummary {
   overdrawnBalanceCount: number;
 }
 
+export interface ActiveJurisdictionTrustReportSummary {
+  jurisdiction: string;
+  matterCount: number;
+  trustBalanceCents: number;
+  pendingApprovalCount: number;
+  rejectedApprovalCount: number;
+  exceptionReconciliationCount: number;
+  importedStatementRowCount: number;
+  matchedStatementRowCount: number;
+  unmatchedStatementRowCount: number;
+  totalVarianceCents: number;
+  unreconciledAccountCount: number;
+  overdrawnBalanceCount: number;
+  compliancePosture: string;
+}
+
 export function buildTrustControlsPath(matterId: string): string {
   return `/api/ledger/controls?matterId=${encodeURIComponent(matterId)}`;
+}
+
+export function buildJurisdictionalTrustReportPath(jurisdiction?: string): string {
+  const basePath = "/api/ledger/reports/jurisdictional-trust";
+  return jurisdiction ? `${basePath}?jurisdiction=${encodeURIComponent(jurisdiction)}` : basePath;
 }
 
 export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
@@ -53,6 +78,13 @@ export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
       },
       compliancePosture: "operational_controls_only_not_jurisdiction_certified",
     },
+  };
+}
+
+export function emptyJurisdictionalTrustReport(): JurisdictionalTrustReportResponse {
+  return {
+    summaries: [],
+    compliancePosture: "operational_controls_only_not_jurisdiction_certified",
   };
 }
 
@@ -148,6 +180,33 @@ export function summarizeTrustControls(
     unreconciledAccountCount: controls.diagnostics.unreconciledAccountIds.length,
     overdrawnBalanceCount: controls.diagnostics.overdrawnBalanceKeys.length,
   };
+}
+
+export function activeJurisdictionTrustReportSummary({
+  matter,
+  report,
+}: {
+  matter?: MatterSummary;
+  report: JurisdictionalTrustReportResponse;
+}): ActiveJurisdictionTrustReportSummary {
+  const jurisdiction = matter?.jurisdiction ?? "OTHER";
+  return (
+    report.summaries.find((summary) => summary.jurisdiction === jurisdiction) ?? {
+      jurisdiction,
+      matterCount: 0,
+      trustBalanceCents: 0,
+      pendingApprovalCount: 0,
+      rejectedApprovalCount: 0,
+      exceptionReconciliationCount: 0,
+      importedStatementRowCount: 0,
+      matchedStatementRowCount: 0,
+      unmatchedStatementRowCount: 0,
+      totalVarianceCents: 0,
+      unreconciledAccountCount: 0,
+      overdrawnBalanceCount: 0,
+      compliancePosture: report.compliancePosture,
+    }
+  );
 }
 
 export function recentTrustPostings(

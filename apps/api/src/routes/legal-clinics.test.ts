@@ -157,6 +157,107 @@ describe("legal clinic routes", () => {
     expect(auditMetadata).not.toContain("raw private facts");
   });
 
+  it("returns a matter-scoped fiscal-host workflow selector without private profile metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
+
+    const createdProgram = await server.inject({
+      method: "POST",
+      url: "/api/legal-clinic/programs",
+      payload: {
+        name: "Synthetic Housing Host Program",
+        serviceArea: "Housing stability",
+        eligibilitySummary: "Synthetic restricted-fund clinic program summary.",
+        metadata: {
+          fiscalHost: {
+            hostName: "Synthetic Community Host",
+            programCode: "TEN-STAB",
+            reportingCadence: "monthly",
+            bankAccount: "Private notes",
+          },
+        },
+      },
+    });
+    const programId = createdProgram.json<{ program: { id: string } }>().program.id;
+    await server.inject({
+      method: "PUT",
+      url: "/api/legal-clinic/profiles/matter-001",
+      payload: {
+        programId,
+        eligibilityStatus: "likely_eligible",
+        referralSource: "community_partner",
+        referralStatus: "referred",
+        clinicRelationshipRole: "clinic client",
+        metadata: {
+          restrictedFund: {
+            fundCode: "RF-HOUSING-01",
+            purpose: "Synthetic housing stability grant",
+            reviewStatus: "staff_review_ready",
+            nextReviewDate: "2026-05-20",
+            privateReviewerNote: "raw private facts",
+          },
+        },
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/legal-clinic/fiscal-host-workflow?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      selector: {
+        matterId: "matter-001",
+        relationship: {
+          status: "active_program_profile",
+          programId,
+          eligibilityStatus: "likely_eligible",
+        },
+        programMetadata: {
+          hostName: "Synthetic Community Host",
+          programCode: "TEN-STAB",
+          reportingCadence: "monthly",
+        },
+        restrictedFundMetadata: {
+          fundCode: "RF-HOUSING-01",
+          purpose: "Synthetic housing stability grant",
+          reviewStatus: "staff_review_ready",
+          nextReviewDate: "2026-05-20",
+        },
+        reportingSurfaces: expect.arrayContaining([
+          expect.objectContaining({
+            key: "trust_controls_context",
+            posture: "operational_summary_only",
+          }),
+        ]),
+        reusePoints: expect.arrayContaining([
+          expect.objectContaining({ surface: "billing" }),
+          expect.objectContaining({ surface: "trust_controls" }),
+        ]),
+      },
+    });
+    const payload = JSON.stringify(response.json());
+    expect(payload).toContain("not accounting");
+    expect(payload).not.toContain("raw private facts");
+    expect(payload).not.toContain("Private notes");
+  });
+
+  it("denies cross-matter fiscal-host workflow selectors", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository, authUser: user("firm_member", ["matter-001"]) });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/legal-clinic/fiscal-host-workflow?matterId=matter-002",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      message: "Legal clinic access required",
+    });
+  });
+
   it("rejects cross-matter reads and updates without mutating the profile", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository, authUser: user("firm_member", ["matter-001"]) });

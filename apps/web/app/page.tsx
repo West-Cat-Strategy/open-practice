@@ -40,7 +40,9 @@ import LoginClient from "./login-client";
 import SetupWizard from "./setup-wizard";
 import { selectStartupView } from "./setup-wizard-utils";
 import {
+  buildJurisdictionalTrustReportPath,
   buildTrustControlsPath,
+  emptyJurisdictionalTrustReport,
   emptyTrustControlsDashboard,
   loadTrustControlsDashboardData,
 } from "./trust-controls-dashboard";
@@ -75,6 +77,7 @@ import type {
   IntakeFormsDashboardResponse,
   IntakeFormLinksResponse,
   IntakeVariableProposalsResponse,
+  JurisdictionalTrustReportResponse,
   LegalClinicDashboardResponse,
   LegalClinicProfileResponse,
   LegalClinicProfilesResponse,
@@ -354,6 +357,12 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
         emptyTrustControlsDashboard(),
       ),
   });
+  const jurisdictionalTrustReport = await apiGetOptional<JurisdictionalTrustReportResponse>(
+    buildJurisdictionalTrustReportPath(),
+    emptyJurisdictionalTrustReport(),
+    headers,
+    emptyJurisdictionalTrustReport(),
+  );
   const canViewDrafting = capabilities.sections.some(
     (section) => section.key === "drafting" && section.enabled,
   );
@@ -552,6 +561,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       shareLinksStatus={shareLinksStatus}
       signatures={signatures}
       taskWorkbench={taskWorkbench}
+      jurisdictionalTrustReport={jurisdictionalTrustReport}
       trustControls={trustControls}
       workerHealth={workerHealth}
       workerRuns={workerRuns}

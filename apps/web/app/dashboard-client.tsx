@@ -17,6 +17,7 @@ import {
   Link2,
   LockKeyhole,
   Plus,
+  RotateCcw,
   Save,
   Search,
   ShieldCheck,
@@ -75,19 +76,31 @@ import {
 } from "./external-uploads-dashboard";
 import {
   buildIntakeTemplatePreviewPayload,
+  buildIntakeFormReviewDecisionPath,
+  buildIntakeFormReviewPath,
   buildIntakeFormLinkCreatePayload,
   coerceIntakeDefinitionV2,
   currentProposalValue,
+  describeRequestMoreInfoResult,
   describeIntakeTemplatePreview,
   getIntakeFormLinkState,
+  pendingSubmittedIntakeReviewLinks,
   previewStatusClass,
+  summarizeAnswerValue,
   summarizeIntakeItemAction,
+  summarizeIntakeReview,
   upsertIntakeFormLink,
   upsertIntakeVariableProposal,
+  type IntakeFormReviewLoadResponse,
   type IntakePreviewAnswers,
 } from "./intake-forms-dashboard";
 import DraftEditor from "./drafting/DraftEditor";
-import { filterMatters, summarizeQueues } from "./dashboard-utils";
+import {
+  applySavedQueueFocus,
+  describeSavedQueueFocus,
+  filterMatters,
+  summarizeQueues,
+} from "./dashboard-utils";
 import {
   buildConflictCheckPayload,
   describeConflictCheckStatus,
@@ -130,9 +143,16 @@ import {
   formatMatterPartyRoleLabel,
   formatProfessionalRoleLabel,
 } from "./participant-role-labels";
-import { describeLegalClinicProgram, findLegalClinicProgram } from "./legal-clinic-dashboard";
+import {
+  describeFiscalHostProgramMetadata,
+  describeLegalClinicProgram,
+  describeRestrictedFundMetadata,
+  findLegalClinicProgram,
+  fiscalHostWorkflowMetadata,
+} from "./legal-clinic-dashboard";
 import {
   accountLabel,
+  activeJurisdictionTrustReportSummary,
   buildTrustControlsPath,
   emptyTrustControlsDashboard,
   matterTrustBalanceCents,
@@ -223,6 +243,7 @@ import type {
   IntakeFormsDashboardResponse,
   IntakeFormLinkCreateResponse,
   IntakeFormLinkRevokeResponse,
+  IntakeFormReviewResponse,
   IntakeTemplatePreviewResponse,
   IntakeTemplateSavePayload,
   LegalClinicDashboardResponse,
@@ -243,6 +264,7 @@ import type {
   TaskDeadlineWorkbenchResponse,
   TrustControlsDashboardResponse,
   IntakeVariableProposalsResponse,
+  JurisdictionalTrustReportResponse,
   WorkerHealthResponse,
   WorkerRunQueueFilter,
   WorkerRunsDashboardResponse,
@@ -262,6 +284,7 @@ interface DashboardClientProps {
   externalUploads: ExternalUploadsDashboardResponse;
   intake: IntakeSessionsResponse;
   intakeForms: IntakeFormsDashboardResponse;
+  jurisdictionalTrustReport: JurisdictionalTrustReportResponse;
   legalClinic: LegalClinicDashboardResponse;
   initialSection: DashboardNavigationSectionKey;
   overview: PracticeOverview;
@@ -346,6 +369,7 @@ export default function DashboardClient({
   externalUploads,
   intake,
   intakeForms,
+  jurisdictionalTrustReport,
   legalClinic,
   initialSection,
   overview,
@@ -378,6 +402,7 @@ export default function DashboardClient({
   );
   const [savingOperationalView, setSavingOperationalView] = useState(false);
   const [archivingOperationalViewId, setArchivingOperationalViewId] = useState("");
+  const [activeSavedOperationalViewId, setActiveSavedOperationalViewId] = useState("");
   const [matterSearch, setMatterSearch] = useState("");
   const [activityKindFilter, setActivityKindFilter] = useState<MatterActivityKindFilter>("all");
   const [activityStatusFilter, setActivityStatusFilter] =
@@ -505,6 +530,12 @@ export default function DashboardClient({
   const [intakeFormStatus, setIntakeFormStatus] = useState("No form link created.");
   const [creatingIntakeFormLink, setCreatingIntakeFormLink] = useState(false);
   const [revokingIntakeFormLinkId, setRevokingIntakeFormLinkId] = useState("");
+  const [intakeReviewDetailsByLinkId, setIntakeReviewDetailsByLinkId] = useState<
+    Record<string, IntakeFormReviewLoadResponse | undefined>
+  >({});
+  const [loadingIntakeReviewLinkId, setLoadingIntakeReviewLinkId] = useState("");
+  const [reviewingIntakeFormLinkId, setReviewingIntakeFormLinkId] = useState("");
+  const [intakeReviewReasons, setIntakeReviewReasons] = useState<Record<string, string>>({});
   const [reviewingIntakeProposalId, setReviewingIntakeProposalId] = useState("");
   const [proposalRejectionReasons, setProposalRejectionReasons] = useState<Record<string, string>>(
     {},
@@ -627,6 +658,10 @@ export default function DashboardClient({
   const activeIntakeFormLinks = activeMatter
     ? (intakeFormLinksByMatterId[activeMatter.id] ?? [])
     : [];
+  const activePendingIntakeReviewLinks = pendingSubmittedIntakeReviewLinks(
+    activeIntakeFormLinks,
+    intakeReviewDetailsByLinkId,
+  );
   const activeIntakeVariableProposals = activeMatter
     ? (intakeVariableProposalsByMatterId[activeMatter.id] ?? [])
     : [];
@@ -635,6 +670,10 @@ export default function DashboardClient({
     : undefined;
   const activeLegalClinicProgram = findLegalClinicProgram(
     legalClinic.programs,
+    activeLegalClinicProfile,
+  );
+  const activeFiscalHostMetadata = fiscalHostWorkflowMetadata(
+    activeLegalClinicProgram,
     activeLegalClinicProfile,
   );
   const activeEmailDeliveries = activeMatter
@@ -666,6 +705,10 @@ export default function DashboardClient({
     ? matterTrustBalanceCents(activeTrustControls, activeMatter.id, activeMatter.trustBalanceCents)
     : 0;
   const trustReviewSummary = summarizeTrustControls(activeTrustControls);
+  const activeJurisdictionTrustSummary = activeJurisdictionTrustReportSummary({
+    matter: activeMatter,
+    report: jurisdictionalTrustReport,
+  });
   const activeTrustPostings = activeMatter
     ? recentTrustPostings(activeTrustControls, activeMatter.id)
     : [];
@@ -721,7 +764,18 @@ export default function DashboardClient({
       ),
     [navigationSections],
   );
-  const queueSummary = useMemo(() => summarizeQueues(queues), [queues]);
+  const activeSavedOperationalViewDefinition = useMemo(
+    () =>
+      savedOperationalViewDefinitions.find(
+        (definition) => definition.id === activeSavedOperationalViewId,
+      ) ?? null,
+    [activeSavedOperationalViewId, savedOperationalViewDefinitions],
+  );
+  const displayedQueues = useMemo(
+    () => applySavedQueueFocus(queues, activeSavedOperationalViewDefinition),
+    [activeSavedOperationalViewDefinition, queues],
+  );
+  const queueSummary = useMemo(() => summarizeQueues(displayedQueues), [displayedQueues]);
   const providerStatusSummary = useMemo(
     () => summarizeProvidersStatus(providerStatus),
     [providerStatus],
@@ -1905,6 +1959,86 @@ export default function DashboardClient({
     setRevokingIntakeFormLinkId("");
   }
 
+  async function loadSubmittedIntakeReview(linkId: string): Promise<void> {
+    setLoadingIntakeReviewLinkId(linkId);
+    setIntakeFormStatus("Loading submitted intake review...");
+    try {
+      const payload = await requestDashboardJson<IntakeFormReviewLoadResponse>(
+        apiBaseUrl,
+        buildIntakeFormReviewPath(linkId),
+        {
+          headers: devHeaders,
+        },
+      );
+      setIntakeReviewDetailsByLinkId((current) => ({ ...current, [linkId]: payload }));
+      setIntakeFormLinksByMatterId((current) => upsertIntakeFormLink(current, payload.link));
+      setIntakeFormStatus(
+        payload.reviews.length > 0
+          ? "Submitted intake review already has a decision."
+          : "Submitted intake review loaded.",
+      );
+    } catch (error) {
+      setIntakeFormStatus(`Review load failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setLoadingIntakeReviewLinkId("");
+    }
+  }
+
+  async function decideSubmittedIntakeReview(
+    linkId: string,
+    decision: "accept" | "reject" | "request-more-info",
+  ): Promise<void> {
+    const reason = intakeReviewReasons[linkId]?.trim() ?? "";
+    if ((decision === "reject" || decision === "request-more-info") && reason.length === 0) {
+      setIntakeFormStatus("Review decision failed: add a reason.");
+      return;
+    }
+
+    setReviewingIntakeFormLinkId(`${linkId}:${decision}`);
+    setIntakeFormStatus("Recording submitted intake review...");
+    setIntakeFormToken("");
+    setIntakeFormPortalUrl("");
+    try {
+      const payload = await requestDashboardJson<IntakeFormReviewResponse>(
+        apiBaseUrl,
+        buildIntakeFormReviewDecisionPath(linkId, decision),
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: reason ? { reason } : {},
+        },
+      );
+      setIntakeReviewDetailsByLinkId((current) => {
+        const existing = current[linkId];
+        if (!existing) return current;
+        return {
+          ...current,
+          [linkId]: {
+            ...existing,
+            reviews: [payload.review, ...existing.reviews],
+          },
+        };
+      });
+      if (payload.followUp?.link) {
+        setIntakeFormLinksByMatterId((current) =>
+          upsertIntakeFormLink(current, payload.followUp!.link),
+        );
+      }
+      setIntakeReviewReasons((current) => ({ ...current, [linkId]: "" }));
+      setIntakeFormToken(payload.followUp?.token ?? "");
+      setIntakeFormPortalUrl(payload.followUp?.portalUrl ?? "");
+      setIntakeFormStatus(
+        decision === "request-more-info"
+          ? describeRequestMoreInfoResult(payload)
+          : `Submitted intake review ${payload.review.decision.replaceAll("_", " ")}.`,
+      );
+    } catch (error) {
+      setIntakeFormStatus(`Review decision failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setReviewingIntakeFormLinkId("");
+    }
+  }
+
   async function reviewIntakeVariableProposal(
     proposal: DashboardIntakeVariableProposal,
     status: "approved" | "rejected",
@@ -1955,6 +2089,7 @@ export default function DashboardClient({
     setIntakeFormStatus("No form link created.");
     setIntakePreviewResult(null);
     setIntakePreviewStatus("Preview checks have not run.");
+    setIntakeReviewReasons({});
     setPendingDeliveryConfirmation(null);
     closeDraftEditor();
   }
@@ -2059,7 +2194,7 @@ export default function DashboardClient({
             name: `Queue focus ${savedOperationalViewDefinitions.length + 1}`,
             filters: {
               source: "dashboard-queues",
-              queueSections: queues.sections.map((section) => section.key),
+              queueSections: displayedQueues.sections.map((section) => section.key),
             },
             columns: ["title", "status", "priority"],
             sort: { priority: "desc" },
@@ -2070,6 +2205,7 @@ export default function DashboardClient({
         },
       );
       setSavedOperationalViewDefinitions((current) => [payload.definition, ...current]);
+      setActiveSavedOperationalViewId(payload.definition.id);
       setSavedOperationalViewStatus("Queue view saved.");
     } catch (error) {
       setSavedOperationalViewStatus(`Queue view save failed: ${dashboardApiStatus(error)}`);
@@ -2095,12 +2231,25 @@ export default function DashboardClient({
       setSavedOperationalViewDefinitions((current) =>
         current.filter((candidate) => candidate.id !== payload.definition.id),
       );
+      if (activeSavedOperationalViewId === payload.definition.id) {
+        setActiveSavedOperationalViewId("");
+      }
       setSavedOperationalViewStatus("Queue view archived.");
     } catch (error) {
       setSavedOperationalViewStatus(`Queue view archive failed: ${dashboardApiStatus(error)}`);
     } finally {
       setArchivingOperationalViewId("");
     }
+  }
+
+  function applyQueueOperationalViewDefinition(definition: SavedOperationalViewDefinition): void {
+    setActiveSavedOperationalViewId(definition.id);
+    setSavedOperationalViewStatus(describeSavedQueueFocus(definition, queues));
+  }
+
+  function clearQueueOperationalViewDefinition(): void {
+    setActiveSavedOperationalViewId("");
+    setSavedOperationalViewStatus("Showing all authorized queue sections.");
   }
 
   function selectDashboardSection(sectionKey: LocalDashboardSectionKey): void {
@@ -2500,6 +2649,44 @@ export default function DashboardClient({
                     <Clock3 size={18} />
                     <strong>{activeTrustPostings.length} recent postings</strong>
                     <span>{cents(trustReviewSummary.totalVarianceCents)} total variance</span>
+                  </div>
+                </div>
+
+                <div className="section-title">
+                  <h3>Jurisdiction trust report</h3>
+                  <span>operator review only · not jurisdiction-certified</span>
+                </div>
+                <div className="activity-grid two-column">
+                  <div className="activity-card">
+                    <ShieldCheck size={18} />
+                    <strong>{activeJurisdictionTrustSummary.jurisdiction}</strong>
+                    <span>{activeJurisdictionTrustSummary.matterCount} matters in report</span>
+                  </div>
+                  <div className="activity-card">
+                    <Banknote size={18} />
+                    <strong>{cents(activeJurisdictionTrustSummary.trustBalanceCents)}</strong>
+                    <span>aggregate recorded trust balance</span>
+                  </div>
+                  <div className="activity-card">
+                    <AlertTriangle size={18} />
+                    <strong>
+                      {activeJurisdictionTrustSummary.exceptionReconciliationCount} exceptions
+                    </strong>
+                    <span>
+                      {activeJurisdictionTrustSummary.unreconciledAccountCount} unreconciled ·{" "}
+                      {activeJurisdictionTrustSummary.overdrawnBalanceCount} overdrawn
+                    </span>
+                  </div>
+                  <div className="activity-card">
+                    <FileText size={18} />
+                    <strong>
+                      {activeJurisdictionTrustSummary.importedStatementRowCount} statement rows
+                    </strong>
+                    <span>
+                      {activeJurisdictionTrustSummary.matchedStatementRowCount} matched ·{" "}
+                      {activeJurisdictionTrustSummary.unmatchedStatementRowCount} unmatched ·{" "}
+                      {cents(activeJurisdictionTrustSummary.totalVarianceCents)} variance
+                    </span>
                   </div>
                 </div>
 
@@ -3905,6 +4092,10 @@ export default function DashboardClient({
                     <strong>{activeIntakeFormLinks.length}</strong>
                   </div>
                   <div>
+                    <span className="field-label">Pending reviews</span>
+                    <strong>{activePendingIntakeReviewLinks.length}</strong>
+                  </div>
+                  <div>
                     <span className="field-label">Pending proposals</span>
                     <strong>{activePendingIntakeVariableProposals.length}</strong>
                   </div>
@@ -3937,6 +4128,22 @@ export default function DashboardClient({
                       <div>
                         <span className="field-label">Next review</span>
                         <strong>{compactDate(activeLegalClinicProfile.nextReviewDate)}</strong>
+                      </div>
+                      <div>
+                        <span className="field-label">Fiscal host</span>
+                        <strong>
+                          {describeFiscalHostProgramMetadata(
+                            activeFiscalHostMetadata.programMetadata,
+                          )}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="field-label">Restricted fund</span>
+                        <strong>
+                          {describeRestrictedFundMetadata(
+                            activeFiscalHostMetadata.restrictedFundMetadata,
+                          )}
+                        </strong>
                       </div>
                     </div>
                   </>
@@ -4209,6 +4416,122 @@ export default function DashboardClient({
                 </div>
 
                 <div className="section-title">
+                  <h3>Submitted review</h3>
+                  <span>{activePendingIntakeReviewLinks.length} pending</span>
+                </div>
+                <div className="party-list">
+                  {activePendingIntakeReviewLinks.map((link) => {
+                    const reviewPayload = intakeReviewDetailsByLinkId[link.id];
+                    const reason = intakeReviewReasons[link.id] ?? "";
+                    const decisionBusy = reviewingIntakeFormLinkId.startsWith(`${link.id}:`);
+                    const answers = reviewPayload
+                      ? Object.entries(reviewPayload.snapshot.answers)
+                      : [];
+                    return (
+                      <div className="party-row upload-link-row" key={`review-${link.id}`}>
+                        <span>
+                          <strong>{link.id}</strong>
+                          <small>
+                            submitted {compactDate(link.submittedAt)} · session{" "}
+                            {link.intakeSessionId}
+                          </small>
+                          {reviewPayload ? (
+                            <>
+                              <small>
+                                snapshot {reviewPayload.snapshot.id} · captured{" "}
+                                {compactDate(reviewPayload.snapshot.capturedAt)}
+                              </small>
+                              <small>
+                                answers:{" "}
+                                {answers.length === 0
+                                  ? "none"
+                                  : answers
+                                      .map(
+                                        ([questionId, value]) =>
+                                          `${questionId}: ${summarizeAnswerValue(value)}`,
+                                      )
+                                      .join(" · ")}
+                              </small>
+                              {reviewPayload.actions.length > 0 ? (
+                                <small>
+                                  item actions:{" "}
+                                  {reviewPayload.actions.map(summarizeIntakeItemAction).join(" · ")}
+                                </small>
+                              ) : null}
+                              {reviewPayload.reviews.length > 0 ? (
+                                <small>
+                                  decisions:{" "}
+                                  {reviewPayload.reviews.map(summarizeIntakeReview).join(" · ")}
+                                </small>
+                              ) : null}
+                            </>
+                          ) : (
+                            <small>
+                              Load the staff review payload before recording a decision.
+                            </small>
+                          )}
+                        </span>
+                        <div className="row-actions">
+                          <button
+                            className="secondary-button compact-button row-button"
+                            disabled={loadingIntakeReviewLinkId === link.id}
+                            onClick={() => void loadSubmittedIntakeReview(link.id)}
+                            type="button"
+                          >
+                            {loadingIntakeReviewLinkId === link.id ? "Loading..." : "Load review"}
+                          </button>
+                          {reviewPayload && reviewPayload.reviews.length === 0 ? (
+                            <>
+                              <label className="search-field compact rejection-field">
+                                <span>Decision reason</span>
+                                <input
+                                  onChange={(event) =>
+                                    setIntakeReviewReasons((current) => ({
+                                      ...current,
+                                      [link.id]: event.target.value,
+                                    }))
+                                  }
+                                  value={reason}
+                                />
+                              </label>
+                              <button
+                                className="secondary-button compact-button row-button"
+                                disabled={decisionBusy}
+                                onClick={() => void decideSubmittedIntakeReview(link.id, "accept")}
+                                type="button"
+                              >
+                                Accept
+                              </button>
+                              <button
+                                className="secondary-button compact-button row-button"
+                                disabled={decisionBusy}
+                                onClick={() => void decideSubmittedIntakeReview(link.id, "reject")}
+                                type="button"
+                              >
+                                Reject
+                              </button>
+                              <button
+                                className="secondary-button compact-button row-button"
+                                disabled={decisionBusy}
+                                onClick={() =>
+                                  void decideSubmittedIntakeReview(link.id, "request-more-info")
+                                }
+                                type="button"
+                              >
+                                More info
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {activePendingIntakeReviewLinks.length === 0 ? (
+                    <p className="inline-empty">No submitted intake forms are pending review.</p>
+                  ) : null}
+                </div>
+
+                <div className="section-title">
                   <h3>Variable proposals</h3>
                   <span>{activeIntakeVariableProposals.length} records</span>
                 </div>
@@ -4326,19 +4649,22 @@ export default function DashboardClient({
                 <div className="detail-grid queue-summary-grid">
                   <div>
                     <span className="field-label">Queue sections</span>
-                    <strong>{queues.sections.length}</strong>
+                    <strong>{displayedQueues.sections.length}</strong>
                   </div>
                   <div>
                     <span className="field-label">Open items</span>
                     <strong>
-                      {queues.sections.reduce((sum, section) => sum + section.items.length, 0)}
+                      {displayedQueues.sections.reduce(
+                        (sum, section) => sum + section.items.length,
+                        0,
+                      )}
                     </strong>
                   </div>
                   <div>
                     <span className="field-label">High priority</span>
                     <strong>
                       {
-                        queues.sections
+                        displayedQueues.sections
                           .flatMap((section) => section.items)
                           .filter((item) => item.priority === "high").length
                       }
@@ -4361,16 +4687,33 @@ export default function DashboardClient({
                 <p className="inline-empty">{taskDeadlineSummary}</p>
                 <div className="section-title">
                   <h3>Saved views</h3>
-                  <button
-                    className="secondary-button compact-button row-button"
-                    disabled={savingOperationalView}
-                    onClick={saveQueueOperationalViewDefinition}
-                    type="button"
-                  >
-                    <Save aria-hidden="true" size={16} />
-                    {savingOperationalView ? "Saving" : "Save current focus"}
-                  </button>
+                  <span className="row-actions">
+                    {activeSavedOperationalViewDefinition ? (
+                      <button
+                        className="secondary-button compact-button row-button"
+                        onClick={clearQueueOperationalViewDefinition}
+                        type="button"
+                      >
+                        <RotateCcw aria-hidden="true" size={16} />
+                        Clear focus
+                      </button>
+                    ) : null}
+                    <button
+                      className="secondary-button compact-button row-button"
+                      disabled={savingOperationalView}
+                      onClick={saveQueueOperationalViewDefinition}
+                      type="button"
+                    >
+                      <Save aria-hidden="true" size={16} />
+                      {savingOperationalView ? "Saving" : "Save current focus"}
+                    </button>
+                  </span>
                 </div>
+                {activeSavedOperationalViewDefinition ? (
+                  <p className="inline-empty">
+                    Applied saved focus: {activeSavedOperationalViewDefinition.name}
+                  </p>
+                ) : null}
                 <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
                   {savedOperationalViewStatus}
                 </p>
@@ -4382,16 +4725,28 @@ export default function DashboardClient({
                         <small>{formatSavedOperationalViewDefinition(definition)}</small>
                         <small>updated {compactDate(definition.updatedAt)}</small>
                       </span>
-                      <button
-                        aria-label={`Archive ${definition.name}`}
-                        className="secondary-button compact-button row-button"
-                        disabled={archivingOperationalViewId === definition.id}
-                        onClick={() => archiveQueueOperationalViewDefinition(definition)}
-                        type="button"
-                      >
-                        <X aria-hidden="true" size={16} />
-                        {archivingOperationalViewId === definition.id ? "Archiving" : "Archive"}
-                      </button>
+                      <span className="row-actions">
+                        <button
+                          aria-label={`Apply ${definition.name}`}
+                          className="secondary-button compact-button row-button"
+                          disabled={activeSavedOperationalViewId === definition.id}
+                          onClick={() => applyQueueOperationalViewDefinition(definition)}
+                          type="button"
+                        >
+                          <Clock3 aria-hidden="true" size={16} />
+                          {activeSavedOperationalViewId === definition.id ? "Applied" : "Apply"}
+                        </button>
+                        <button
+                          aria-label={`Archive ${definition.name}`}
+                          className="secondary-button compact-button row-button"
+                          disabled={archivingOperationalViewId === definition.id}
+                          onClick={() => archiveQueueOperationalViewDefinition(definition)}
+                          type="button"
+                        >
+                          <X aria-hidden="true" size={16} />
+                          {archivingOperationalViewId === definition.id ? "Archiving" : "Archive"}
+                        </button>
+                      </span>
                     </div>
                   ))}
                   {savedOperationalViewDefinitions.length === 0 ? (
@@ -4545,7 +4900,7 @@ export default function DashboardClient({
                   ) : null}
                 </div>
                 <div className="party-list queue-section-list">
-                  {queues.sections.map((section) => (
+                  {displayedQueues.sections.map((section) => (
                     <section className="queue-section" key={section.key}>
                       <div className="section-title">
                         <h3>{section.label}</h3>
@@ -4572,7 +4927,7 @@ export default function DashboardClient({
                       ) : null}
                     </section>
                   ))}
-                  {queues.sections.length === 0 ? (
+                  {displayedQueues.sections.length === 0 ? (
                     <p className="inline-empty">No operational queues were returned.</p>
                   ) : null}
                 </div>

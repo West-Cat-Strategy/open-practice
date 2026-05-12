@@ -1,5 +1,5 @@
 import type { OpenPracticeSidebarNavigationSection } from "../routes/routeCatalog";
-import type { MatterSummary, QueuesResponse } from "./types";
+import type { MatterSummary, QueuesResponse, SavedOperationalViewDefinition } from "./types";
 
 export function filterMatters(matters: MatterSummary[], query: string): MatterSummary[] {
   const normalized = query.trim().toLowerCase();
@@ -33,4 +33,48 @@ export function summarizeQueues(queues: QueuesResponse): string {
       ? ` ${highPriorityCount} high priority ${highPriorityCount === 1 ? "item" : "items"}.`
       : "";
   return `${items.length} queue ${items.length === 1 ? "item needs" : "items need"} attention.${highPrioritySuffix}`;
+}
+
+function queueSectionKeys(definition: SavedOperationalViewDefinition): Set<string> {
+  const rawKeys = definition.filters.queueSections;
+  if (!Array.isArray(rawKeys)) return new Set();
+  return new Set(rawKeys.filter((key): key is string => typeof key === "string" && key.length > 0));
+}
+
+function applyRowLimit(queues: QueuesResponse, rowLimit: number): QueuesResponse {
+  let remaining = Math.max(0, rowLimit);
+  return {
+    sections: queues.sections.map((section) => {
+      const items = section.items.slice(0, remaining);
+      remaining -= items.length;
+      return { ...section, items };
+    }),
+  };
+}
+
+export function applySavedQueueFocus(
+  queues: QueuesResponse,
+  definition?: SavedOperationalViewDefinition | null,
+): QueuesResponse {
+  if (!definition) return queues;
+
+  const visibleSectionKeys = queueSectionKeys(definition);
+  const scopedQueues =
+    visibleSectionKeys.size > 0
+      ? {
+          sections: queues.sections.filter((section) => visibleSectionKeys.has(section.key)),
+        }
+      : queues;
+
+  return applyRowLimit(scopedQueues, definition.rowLimit);
+}
+
+export function describeSavedQueueFocus(
+  definition: SavedOperationalViewDefinition,
+  queues: QueuesResponse,
+): string {
+  const scopedQueues = applySavedQueueFocus(queues, definition);
+  const itemCount = scopedQueues.sections.flatMap((section) => section.items).length;
+  const sectionCount = scopedQueues.sections.length;
+  return `${definition.name} applies ${itemCount} ${itemCount === 1 ? "item" : "items"} across ${sectionCount} ${sectionCount === 1 ? "section" : "sections"}.`;
 }

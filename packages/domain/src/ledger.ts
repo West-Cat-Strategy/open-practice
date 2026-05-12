@@ -1,3 +1,5 @@
+import type { Matter, Province } from "./models.js";
+
 export type LedgerAccountType =
   | "trust_asset"
   | "client_liability"
@@ -123,6 +125,27 @@ export interface LedgerControlsDiagnostics {
   unreconciledAccountIds: string[];
   exceptionReconciliationIds: string[];
   overdrawnBalanceKeys: string[];
+}
+
+export interface JurisdictionalTrustReportSummary {
+  jurisdiction: Province;
+  matterCount: number;
+  trustBalanceCents: number;
+  pendingApprovalCount: number;
+  rejectedApprovalCount: number;
+  exceptionReconciliationCount: number;
+  importedStatementRowCount: number;
+  matchedStatementRowCount: number;
+  unmatchedStatementRowCount: number;
+  totalVarianceCents: number;
+  unreconciledAccountCount: number;
+  overdrawnBalanceCount: number;
+  compliancePosture: "operational_controls_only_not_jurisdiction_certified";
+}
+
+export interface JurisdictionalTrustReport {
+  summaries: JurisdictionalTrustReportSummary[];
+  compliancePosture: "operational_controls_only_not_jurisdiction_certified";
 }
 
 function netLiabilityBalance(
@@ -441,6 +464,95 @@ export function ledgerReconciliationReviewSummary(
   };
 }
 
+export function buildJurisdictionalTrustReport(input: {
+  matters: Array<Pick<Matter, "id" | "jurisdiction">>;
+  ledger: LedgerControlsLedgerSnapshot;
+  approvals: LedgerTransactionApprovalRecord[];
+  reconciliations: LedgerReconciliationRecord[];
+  diagnostics: LedgerControlsDiagnostics;
+  jurisdiction?: Province;
+}): JurisdictionalTrustReport {
+  const mattersById = new Map(input.matters.map((matter) => [matter.id, matter]));
+  const jurisdictions = input.jurisdiction
+    ? [input.jurisdiction]
+    : uniqueInOrder(input.matters.map((matter) => matter.jurisdiction)).sort();
+  const entriesByTransactionId = groupEntriesBy(
+    input.ledger.entries,
+    (entry) => entry.transactionId,
+  );
+  const entriesByAccountId = groupEntriesBy(input.ledger.entries, (entry) => entry.accountId);
+  const rejectedTransactionIds = new Set(input.diagnostics.rejectedApprovalTransactionIds);
+  for (const approval of input.approvals) {
+    if (approval.decision === "rejected") rejectedTransactionIds.add(approval.transactionId);
+  }
+  const exceptionReconciliationIds = new Set(input.diagnostics.exceptionReconciliationIds);
+  for (const reconciliation of input.reconciliations) {
+    if (reconciliation.status === "exception") exceptionReconciliationIds.add(reconciliation.id);
+  }
+
+  return {
+    compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+    summaries: jurisdictions.map((jurisdiction) => {
+      const matterIds = new Set(
+        input.matters
+          .filter((matter) => matter.jurisdiction === jurisdiction)
+          .map((matter) => matter.id),
+      );
+      const jurisdictionTransactionIds = transactionIdsForMatterSet(
+        input.ledger.entries,
+        matterIds,
+      );
+      const jurisdictionAccountIds = accountIdsForMatterSet(input.ledger.entries, matterIds);
+      const reconciliations = input.reconciliations.filter((reconciliation) =>
+        accountTouchesMatterSet(entriesByAccountId.get(reconciliation.accountId) ?? [], matterIds),
+      );
+      const reconciliationSummary = reconciliations.reduce(
+        (summary, reconciliation) => {
+          const current = ledgerReconciliationReviewSummary(reconciliation);
+          summary.importedStatementRowCount += current.importedStatementRowCount;
+          summary.matchedStatementRowCount += current.matchedStatementRowCount;
+          summary.unmatchedStatementRowCount += current.unmatchedStatementRowCount;
+          summary.totalVarianceCents += current.varianceCents;
+          return summary;
+        },
+        {
+          importedStatementRowCount: 0,
+          matchedStatementRowCount: 0,
+          unmatchedStatementRowCount: 0,
+          totalVarianceCents: 0,
+        },
+      );
+
+      return {
+        jurisdiction,
+        matterCount: matterIds.size,
+        trustBalanceCents: trustBalanceForMatterSet(input.ledger.trustBalances, matterIds),
+        pendingApprovalCount: input.diagnostics.pendingApprovalTransactionIds.filter(
+          (transactionId) => jurisdictionTransactionIds.has(transactionId),
+        ).length,
+        rejectedApprovalCount: [...rejectedTransactionIds].filter((transactionId) =>
+          accountTouchesMatterSet(entriesByTransactionId.get(transactionId) ?? [], matterIds),
+        ).length,
+        exceptionReconciliationCount: reconciliations.filter((reconciliation) =>
+          exceptionReconciliationIds.has(reconciliation.id),
+        ).length,
+        importedStatementRowCount: reconciliationSummary.importedStatementRowCount,
+        matchedStatementRowCount: reconciliationSummary.matchedStatementRowCount,
+        unmatchedStatementRowCount: reconciliationSummary.unmatchedStatementRowCount,
+        totalVarianceCents: reconciliationSummary.totalVarianceCents,
+        unreconciledAccountCount: input.diagnostics.unreconciledAccountIds.filter((accountId) =>
+          jurisdictionAccountIds.has(accountId),
+        ).length,
+        overdrawnBalanceCount: input.diagnostics.overdrawnBalanceKeys.filter((key) => {
+          const matterId = matterIdFromTrustBalanceKey(key, mattersById);
+          return matterId ? matterIds.has(matterId) : false;
+        }).length,
+        compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+      };
+    }),
+  };
+}
+
 export function validateLedgerReconciliationRecord(
   reconciliation: LedgerReconciliationRecord,
 ): void {
@@ -487,6 +599,52 @@ export function validateLedgerReconciliationRecord(
   }
 }
 
-function uniqueInOrder(values: string[]): string[] {
+function uniqueInOrder<T extends string>(values: T[]): T[] {
   return [...new Set(values)];
+}
+
+function groupEntriesBy(
+  entries: LedgerEntry[],
+  keyForEntry: (entry: LedgerEntry) => string,
+): Map<string, LedgerEntry[]> {
+  const grouped = new Map<string, LedgerEntry[]>();
+  for (const entry of entries) {
+    grouped.set(keyForEntry(entry), [...(grouped.get(keyForEntry(entry)) ?? []), entry]);
+  }
+  return grouped;
+}
+
+function accountTouchesMatterSet(entries: LedgerEntry[], matterIds: Set<string>): boolean {
+  return entries.some((entry) => matterIds.has(entry.matterId));
+}
+
+function transactionIdsForMatterSet(entries: LedgerEntry[], matterIds: Set<string>): Set<string> {
+  return new Set(
+    entries.filter((entry) => matterIds.has(entry.matterId)).map((entry) => entry.transactionId),
+  );
+}
+
+function accountIdsForMatterSet(entries: LedgerEntry[], matterIds: Set<string>): Set<string> {
+  return new Set(
+    entries.filter((entry) => matterIds.has(entry.matterId)).map((entry) => entry.accountId),
+  );
+}
+
+function trustBalanceForMatterSet(
+  trustBalances: Record<string, number>,
+  matterIds: Set<string>,
+): number {
+  return Object.entries(trustBalances)
+    .filter(([key]) => {
+      const keyParts = key.split(":");
+      return keyParts.some((part) => matterIds.has(part));
+    })
+    .reduce((total, [, balanceCents]) => total + balanceCents, 0);
+}
+
+function matterIdFromTrustBalanceKey(
+  key: string,
+  mattersById: Map<string, Pick<Matter, "id" | "jurisdiction">>,
+): string | undefined {
+  return key.split(":").find((part) => mattersById.has(part));
 }

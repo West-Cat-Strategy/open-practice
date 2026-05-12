@@ -26,6 +26,7 @@ import type {
   IntakeFormLinkRecord,
   IntakeFormItemActionRecord,
   IntakeTemplatePreviewResult,
+  JurisdictionalTrustReport,
   Matter,
   MatterParty,
   SignatureRequestRecord,
@@ -378,6 +379,24 @@ export interface LegalClinicProfileResponse {
 export interface LegalClinicDashboardResponse {
   programs: LegalClinicProgramSummary[];
   profilesByMatterId: Record<string, MatterLegalClinicProfileSummary[]>;
+}
+
+export interface FiscalHostProgramMetadataSummary {
+  hostName?: string;
+  programCode?: string;
+  reportingCadence?: string;
+}
+
+export interface FiscalHostRestrictedFundMetadataSummary {
+  fundCode?: string;
+  purpose?: string;
+  reviewStatus?: string;
+  nextReviewDate?: string;
+}
+
+export interface FiscalHostWorkflowSelectorSummary {
+  programMetadata: FiscalHostProgramMetadataSummary;
+  restrictedFundMetadata: FiscalHostRestrictedFundMetadataSummary;
 }
 
 export interface EmailDeliveryEventSummary {
@@ -750,6 +769,8 @@ export interface TrustControlsDashboardResponse {
     compliancePosture: string;
   };
 }
+
+export type JurisdictionalTrustReportResponse = JurisdictionalTrustReport;
 
 export interface QueueItem {
   id: string;

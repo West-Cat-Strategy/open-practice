@@ -247,6 +247,64 @@ describe("ledger routes", () => {
     });
   });
 
+  it("returns aggregate-only jurisdictional trust reports for firm-wide ledger users", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await seedMatterTwoLedgerControls(repository);
+    await repository.createLedgerReconciliation({
+      ...reconciliationRecord({
+        id: "reconciliation-exception",
+        expectedBalanceCents: 152500,
+        status: "exception",
+        varianceExplanation: "Synthetic statement is short one manual review item.",
+      }),
+    });
+
+    const response = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/ledger/reports/jurisdictional-trust?jurisdiction=BC",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+      summaries: [
+        {
+          jurisdiction: "BC",
+          matterCount: 2,
+          trustBalanceCents: 152500,
+          pendingApprovalCount: 1,
+          rejectedApprovalCount: 1,
+          exceptionReconciliationCount: 1,
+          importedStatementRowCount: 1,
+          matchedStatementRowCount: 1,
+          unmatchedStatementRowCount: 0,
+          totalVarianceCents: -2500,
+          unreconciledAccountCount: 1,
+          overdrawnBalanceCount: 0,
+          compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+        },
+      ],
+    });
+    expect(response.json()).not.toHaveProperty("reconciliations");
+    expect(JSON.stringify(response.json())).not.toContain("synthetic-april-trust.pdf");
+  });
+
+  it("denies jurisdictional trust reports to matter-scoped users", async () => {
+    const response = await testServer().inject({
+      method: "GET",
+      url: "/api/ledger/reports/jurisdictional-trust",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      message: "Trust ledger access required",
+    });
+  });
+
   it("filters matter-scoped ledger controls and hides reconciliation data", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await seedMatterTwoLedgerControls(repository);

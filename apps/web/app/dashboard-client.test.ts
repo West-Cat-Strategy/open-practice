@@ -10,6 +10,8 @@ import type {
 import { sampleResidentialTenancyIntakeDefinition } from "@open-practice/domain/sample-data";
 import { buildSidebarNavigationSections } from "../routes/routeCatalog";
 import {
+  applySavedQueueFocus,
+  describeSavedQueueFocus,
   describeDisabledNavigationReason,
   filterMatters,
   summarizeQueues,
@@ -96,7 +98,10 @@ import {
   summarizeContactDossier,
 } from "./contact-dossiers-dashboard";
 import {
+  activeJurisdictionTrustReportSummary,
+  buildJurisdictionalTrustReportPath,
   buildTrustControlsPath,
+  emptyJurisdictionalTrustReport,
   loadTrustControlsDashboardData,
   matterTrustBalanceCents,
   recentTrustPostings,
@@ -147,17 +152,23 @@ import {
   buildIntakeVariableProposalListPath,
   getIntakeFormLinkState,
   loadIntakeFormsDashboardData,
+  pendingSubmittedIntakeReviewLinks,
   previewStatusClass,
+  summarizeAnswerValue,
   summarizeIntakeItemAction,
+  summarizeIntakeReview,
   upsertIntakeFormLink,
   upsertIntakeVariableProposal,
 } from "./intake-forms-dashboard";
 import {
   buildLegalClinicMatterProfilePath,
   coerceLegalClinicProfilesResponse,
+  describeFiscalHostProgramMetadata,
   describeLegalClinicProfileStatus,
   describeLegalClinicProgram,
+  describeRestrictedFundMetadata,
   findLegalClinicProgram,
+  fiscalHostWorkflowMetadata,
   legalClinicProgramsPath,
   loadLegalClinicDashboardData,
 } from "./legal-clinic-dashboard";
@@ -197,6 +208,7 @@ import type {
   MatterSummary,
   ProvidersStatusResponse,
   QueuesResponse,
+  SavedOperationalViewDefinition,
   ShareLinkRecord,
   TaskDeadlineWorkbenchResponse,
   TrustControlsDashboardResponse,
@@ -1290,6 +1302,13 @@ describe("dashboard client behavior", () => {
     });
 
     expect(buildTrustControlsPath("matter 001")).toBe("/api/ledger/controls?matterId=matter%20001");
+    expect(buildJurisdictionalTrustReportPath("BC")).toBe(
+      "/api/ledger/reports/jurisdictional-trust?jurisdiction=BC",
+    );
+    expect(emptyJurisdictionalTrustReport()).toEqual({
+      summaries: [],
+      compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+    });
     expect(loaded).toBe(controls);
     expect(matterTrustBalanceCents(controls, "matter-001", 0)).toBe(150000);
     expect(recentTrustPostings(controls, "matter-001")).toEqual([
@@ -1316,6 +1335,35 @@ describe("dashboard client behavior", () => {
     });
     expect(trustControlsForMatter({}, "matter-001", controls)).toEqual({
       "matter-001": controls,
+    });
+    expect(
+      activeJurisdictionTrustReportSummary({
+        matter: matter({ id: "matter-001", jurisdiction: "BC" }),
+        report: {
+          compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+          summaries: [
+            {
+              jurisdiction: "BC",
+              matterCount: 2,
+              trustBalanceCents: 149000,
+              pendingApprovalCount: 1,
+              rejectedApprovalCount: 0,
+              exceptionReconciliationCount: 1,
+              importedStatementRowCount: 1,
+              matchedStatementRowCount: 0,
+              unmatchedStatementRowCount: 1,
+              totalVarianceCents: -1000,
+              unreconciledAccountCount: 1,
+              overdrawnBalanceCount: 0,
+              compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({
+      jurisdiction: "BC",
+      trustBalanceCents: 149000,
+      compliancePosture: "operational_controls_only_not_jurisdiction_certified",
     });
   });
 
@@ -1356,6 +1404,77 @@ describe("dashboard client behavior", () => {
       }),
     ).toBe("2 queue items need attention. 1 high priority item.");
     expect(summarizeQueues({ sections: [] })).toBe("No queue items need attention.");
+  });
+
+  it("applies saved queue focuses to authorized queue data without fetching archive rows", () => {
+    const queues: QueuesResponse = {
+      sections: [
+        {
+          key: "review",
+          label: "Review",
+          items: [
+            {
+              id: "queue-001",
+              matterId: "matter-001",
+              title: "Review draft",
+              status: "ready",
+              priority: "high",
+            },
+            {
+              id: "queue-002",
+              matterId: "matter-002",
+              title: "Review intake",
+              status: "waiting",
+              priority: "medium",
+            },
+          ],
+        },
+        {
+          key: "worker",
+          label: "Worker review",
+          items: [
+            {
+              id: "queue-003",
+              title: "Check worker result",
+              status: "needs_review",
+              priority: "medium",
+            },
+          ],
+        },
+      ],
+    };
+    const savedFocus: SavedOperationalViewDefinition = {
+      id: "saved-review-focus",
+      firmId: "firm-west-legal",
+      ownerUserId: "user-001",
+      surface: "queues",
+      name: "Review queue",
+      filters: {
+        source: "dashboard-queues",
+        queueSections: ["review"],
+      },
+      columns: ["title", "status", "priority"],
+      sort: { priority: "desc" },
+      rowLimit: 1,
+      dashboardBehavior: { pinToFocus: true },
+      permissionScope: ["matter:read"],
+      status: "active",
+      createdAt: "2026-05-10T12:00:00.000Z",
+      updatedAt: "2026-05-10T12:00:00.000Z",
+    };
+
+    expect(applySavedQueueFocus(queues, savedFocus)).toEqual({
+      sections: [
+        {
+          key: "review",
+          label: "Review",
+          items: [queues.sections[0]!.items[0]],
+        },
+      ],
+    });
+    expect(describeSavedQueueFocus(savedFocus, queues)).toBe(
+      "Review queue applies 1 item across 1 section.",
+    );
   });
 
   it("loads document-processing workbenches and preserves sanitized document fallbacks", async () => {
@@ -2564,6 +2683,63 @@ describe("dashboard client behavior", () => {
         },
       }),
     ).toBe("Follow-up intake link created. One-time token remains available below.");
+    expect(summarizeAnswerValue("x".repeat(130))).toBe(`${"x".repeat(117)}...`);
+    expect(
+      summarizeIntakeReview({
+        id: "review-001",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        intakeSessionId: "intake-session-001",
+        formLinkId: "intake-form-link-001",
+        answerSnapshotId: "snapshot-001",
+        decision: "request_more_info",
+        decidedByUserId: "user-admin",
+        decidedAt: "2026-04-30T13:00:00.000Z",
+        reason: "Synthetic clarification needed.",
+        followUpFormLinkId: "intake-form-link-child",
+      }),
+    ).toBe(
+      "request more info · 2026-04-30T13:00:00.000Z · Synthetic clarification needed. · follow-up intake-form-link-child",
+    );
+    expect(pendingSubmittedIntakeReviewLinks([link, submittedLink])).toEqual([submittedLink]);
+    expect(
+      pendingSubmittedIntakeReviewLinks([submittedLink], {
+        [submittedLink.id]: {
+          link: submittedLink,
+          snapshot: {
+            id: "snapshot-001",
+            firmId: "firm-west-legal",
+            intakeSessionId: "intake-session-001",
+            capturedAt: "2026-04-30T12:00:00.000Z",
+            answers: { matter_title: "Synthetic title" },
+            resolution: {
+              templateId: "intake-template-001",
+              templateVersion: 1,
+              visibleQuestionIds: ["matter_title"],
+              matchedBranchRuleIds: [],
+              eligiblePackageIds: [],
+              selectedPackageIds: [],
+              packageSummaries: [],
+              packageDocuments: [],
+            },
+          },
+          actions: [],
+          reviews: [
+            {
+              id: "review-001",
+              firmId: "firm-west-legal",
+              matterId: "matter-001",
+              intakeSessionId: "intake-session-001",
+              formLinkId: submittedLink.id,
+              answerSnapshotId: "snapshot-001",
+              decision: "accepted",
+              decidedByUserId: "user-admin",
+              decidedAt: "2026-04-30T13:00:00.000Z",
+            },
+          ],
+        },
+      }),
+    ).toEqual([]);
     expect(
       buildIntakeTemplatePreviewPayload({
         definition: sampleResidentialTenancyIntakeDefinition,
@@ -2800,7 +2976,14 @@ describe("dashboard client behavior", () => {
       defaultReferralStatus: "referral_needed" as const,
       createdAt: "2026-05-01T12:00:00.000Z",
       updatedAt: "2026-05-01T12:00:00.000Z",
-      metadata: {},
+      metadata: {
+        fiscalHost: {
+          hostName: "Synthetic Community Host",
+          programCode: "TEN-STAB",
+          reportingCadence: "monthly",
+          bankAccount: "Private notes",
+        },
+      },
     };
     const profile = {
       id: "clinic-profile-001",
@@ -2817,7 +3000,15 @@ describe("dashboard client behavior", () => {
       createdAt: "2026-05-01T12:00:00.000Z",
       updatedAt: "2026-05-01T12:00:00.000Z",
       updatedByUserId: "user-licensee",
-      metadata: {},
+      metadata: {
+        restrictedFund: {
+          fundCode: "RF-HOUSING-01",
+          purpose: "Synthetic housing stability grant",
+          reviewStatus: "staff_review_ready",
+          nextReviewDate: "2026-05-20",
+          privateReviewerNote: "raw private facts",
+        },
+      },
     };
     const profileCalls: string[] = [];
 
@@ -2844,5 +3035,29 @@ describe("dashboard client behavior", () => {
     expect(findLegalClinicProgram(data.programs, profile)).toEqual(program);
     expect(describeLegalClinicProgram(program, profile)).toBe("Tenancy Clinic");
     expect(describeLegalClinicProfileStatus(profile)).toBe("likely eligible / referred");
+    const fiscalHost = fiscalHostWorkflowMetadata(program, profile);
+    expect(fiscalHost).toEqual({
+      programMetadata: {
+        hostName: "Synthetic Community Host",
+        programCode: "TEN-STAB",
+        reportingCadence: "monthly",
+      },
+      restrictedFundMetadata: {
+        fundCode: "RF-HOUSING-01",
+        purpose: "Synthetic housing stability grant",
+        reviewStatus: "staff_review_ready",
+        nextReviewDate: "2026-05-20",
+      },
+    });
+    expect(describeFiscalHostProgramMetadata(fiscalHost.programMetadata)).toBe(
+      "Synthetic Community Host / TEN-STAB",
+    );
+    expect(describeRestrictedFundMetadata(fiscalHost.restrictedFundMetadata)).toBe(
+      "RF-HOUSING-01 / staff_review_ready",
+    );
+    expect(JSON.stringify(fiscalHost)).not.toContain("Private notes");
+    expect(JSON.stringify(fiscalHost)).not.toContain("raw private facts");
+    expect(describeFiscalHostProgramMetadata({})).toBe("Fiscal-host metadata needs staff review.");
+    expect(describeRestrictedFundMetadata({})).toBe("Restricted-fund metadata needs staff review.");
   });
 });

@@ -7,6 +7,7 @@ import type {
   LedgerTransactionApprovalRecord,
 } from "@open-practice/domain";
 import {
+  buildJurisdictionalTrustReport,
   ledgerControlsDiagnostics,
   ledgerReconciliationReviewSummary,
 } from "@open-practice/domain";
@@ -39,6 +40,10 @@ const ledgerPostBodySchema = z.object({
 
 const ledgerQuerySchema = z.object({
   matterId: z.string().min(1).optional(),
+});
+
+const jurisdictionalTrustReportQuerySchema = z.object({
+  jurisdiction: z.enum(["BC", "ON", "CANADA", "OTHER"]).optional(),
 });
 
 const ledgerApprovalBodySchema = z.object({
@@ -173,6 +178,39 @@ export function registerLedgerRoutes(
         compliancePosture: "operational_controls_only_not_jurisdiction_certified",
       },
     };
+  });
+
+  server.get("/api/ledger/reports/jurisdictional-trust", async (request) => {
+    const query = parseRequestPart(jurisdictionalTrustReportQuerySchema, request.query, "query");
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "read",
+    });
+    if (!hasFirmWideLedgerAccess(request.auth.user)) {
+      throw new ApiHttpError(403, "TRUST_LEDGER_ACCESS_REQUIRED", "Trust ledger access required");
+    }
+
+    const [ledger, approvals, reconciliations, matters] = await Promise.all([
+      repository.getLedger(request.auth.firmId),
+      repository.listLedgerTransactionApprovals(request.auth.firmId),
+      repository.listLedgerReconciliations(request.auth.firmId),
+      repository.listMattersForUser(request.auth.user),
+    ]);
+    const diagnostics = ledgerControlsDiagnostics({
+      ledger,
+      approvals,
+      reconciliations,
+      includeReconciliationDiagnostics: true,
+    });
+
+    return buildJurisdictionalTrustReport({
+      matters,
+      ledger,
+      approvals,
+      reconciliations,
+      diagnostics,
+      jurisdiction: query.jurisdiction,
+    });
   });
 
   server.post("/api/ledger/transactions", async (request) => {
