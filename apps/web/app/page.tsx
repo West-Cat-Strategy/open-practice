@@ -66,6 +66,7 @@ import type {
   CommunicationsInboxDashboardResponse,
   CommunicationsInboxMatterResponse,
   ContactDossiersResponse,
+  ContactReviewQueueResponse,
   DocumentProcessingDashboardResponse,
   DocumentProcessingWorkbenchResponse,
   DraftingDashboardResponse,
@@ -276,6 +277,30 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     }
     throw error;
   }
+  const contactReviewQueue = await apiGetOptional<ContactReviewQueueResponse>(
+    "/api/contacts/review-queue",
+    {
+      summary: {
+        totalContacts: contactDossiers.length,
+        reviewItemCount: 0,
+        duplicateCandidateCount: 0,
+        sensitivePartyCueCount: 0,
+        revalidationPromptCount: 0,
+      },
+      items: [],
+    },
+    headers,
+    {
+      summary: {
+        totalContacts: contactDossiers.length,
+        reviewItemCount: 0,
+        duplicateCandidateCount: 0,
+        sensitivePartyCueCount: 0,
+        revalidationPromptCount: 0,
+      },
+      items: [],
+    },
+  );
   const billingFallback = buildBillingFallback(matters, session);
   const taskWorkbench = await apiGetOptional<TaskDeadlineWorkbenchResponse>(
     "/api/tasks/workbench",
@@ -544,6 +569,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       capabilities={capabilities}
       communicationsInbox={communicationsInbox}
       contactDossiers={contactDossiers}
+      contactReviewQueue={contactReviewQueue}
       devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}
       documentProcessing={documentProcessing}
       drafting={drafting}

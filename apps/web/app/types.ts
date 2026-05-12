@@ -73,6 +73,38 @@ export interface CapabilitiesResponse {
 
 export type ContactDossiersResponse = ContactDossier[];
 
+export type ContactReviewQueueSignal = Omit<
+  ContactDossier["qualityReview"]["signals"][number],
+  "matchedValue"
+> & {
+  matchedValueRedacted: boolean;
+};
+
+export interface ContactReviewQueueItem {
+  contact: {
+    id: string;
+    kind: Contact["kind"];
+    displayName: string;
+    aliasCount: number;
+    identifierCount: number;
+  };
+  matters: ContactDossier["matters"];
+  summary: ContactDossier["qualityReview"]["summary"];
+  signals: ContactReviewQueueSignal[];
+  auditSafe: true;
+}
+
+export interface ContactReviewQueueResponse {
+  summary: {
+    totalContacts: number;
+    reviewItemCount: number;
+    duplicateCandidateCount: number;
+    sensitivePartyCueCount: number;
+    revalidationPromptCount: number;
+  };
+  items: ContactReviewQueueItem[];
+}
+
 export interface IntakeSessionsResponse {
   templates: IntakeTemplateRecord[];
   sessions: IntakeSessionRecord[];

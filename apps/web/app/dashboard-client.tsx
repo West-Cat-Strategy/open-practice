@@ -17,7 +17,6 @@ import {
   Link2,
   LockKeyhole,
   Plus,
-  RotateCcw,
   Save,
   ShieldCheck,
   Sparkles,
@@ -206,6 +205,7 @@ import {
 } from "./dashboard/dashboard-shell";
 import { ContactsSection } from "./dashboard/contacts-section";
 import { MatterOverviewSection } from "./dashboard/matter-overview-section";
+import { QueuesSection } from "./dashboard/queues-section";
 import {
   DeliveryConfirmationPanel,
   OneTimeSecretPanel,
@@ -227,6 +227,7 @@ import type {
   CommunicationsInboxDashboardResponse,
   ConflictResponse,
   ContactDossiersResponse,
+  ContactReviewQueueResponse,
   DocumentProcessingDashboardResponse,
   DocumentProcessingWorkbenchResponse,
   DraftingDashboardResponse,
@@ -277,6 +278,7 @@ interface DashboardClientProps {
   capabilities: CapabilitiesResponse;
   communicationsInbox: CommunicationsInboxDashboardResponse;
   contactDossiers: ContactDossiersResponse;
+  contactReviewQueue: ContactReviewQueueResponse;
   devHeaders: Record<string, string>;
   documentProcessing: DocumentProcessingDashboardResponse;
   drafting: DraftingDashboardResponse;
@@ -362,6 +364,7 @@ export default function DashboardClient({
   capabilities,
   communicationsInbox,
   contactDossiers,
+  contactReviewQueue,
   devHeaders,
   documentProcessing,
   drafting,
@@ -1660,34 +1663,60 @@ export default function DashboardClient({
     setRemovingCalendarAttendeeId("");
   }
 
-  function calendarInvitationProviderState(event: DashboardCalendarEvent): string {
+  function calendarInvitationProviderState(
+    event: DashboardCalendarEvent,
+    includeMeetingLink = false,
+  ): string {
     const emailBoundary = event.meetingInvitationBoundary?.invitationEmail;
+    const meetingBoundary = event.meetingInvitationBoundary?.meetingLinks;
+    const meetingDetail = includeMeetingLink
+      ? meetingBoundary?.status === "configured"
+        ? ` Meeting provider ${meetingBoundary.provider ?? "configured"} will be requested.`
+        : " No meeting provider is configured; the link request will stay unavailable."
+      : "";
     if (emailBoundary?.status === "configured") {
-      return `SMTP provider ${emailBoundary.provider ?? "configured"} will queue eligible invitations.`;
+      return `SMTP provider ${emailBoundary.provider ?? "configured"} will queue eligible invitations.${meetingDetail}`;
     }
-    return "SMTP is not configured; the API will mark invitation email skipped.";
+    return `SMTP is not configured; the API will mark invitation email skipped.${meetingDetail}`;
   }
 
-  function openCalendarInvitationConfirmation(event: DashboardCalendarEvent): void {
+  function openCalendarInvitationConfirmation(
+    event: DashboardCalendarEvent,
+    options: { includeMeetingLink?: boolean } = {},
+  ): void {
     if (!activeMatter) return;
+    const includeMeetingLink =
+      options.includeMeetingLink === true &&
+      event.meetingInvitationBoundary?.meetingLinks.status === "configured";
     const recipients = (event.attendees ?? []).map((attendee) => attendee.email);
     setPendingDeliveryConfirmation({
       kind: "calendar-invitations",
-      key: event.id,
+      key: `${event.id}:${includeMeetingLink ? "meeting-link" : "plain"}`,
       eventId: event.id,
-      actionLabel: "Send calendar invitations",
+      includeMeetingLink,
+      actionLabel: includeMeetingLink
+        ? "Send meeting-link invitations"
+        : "Send calendar invitations",
       matterLabel: activeMatter.number,
-      summary: `Calendar invitation: ${event.title}`,
-      providerState: calendarInvitationProviderState(event),
+      summary: `${includeMeetingLink ? "Meeting-link invitation" : "Calendar invitation"}: ${
+        event.title
+      }`,
+      providerState: calendarInvitationProviderState(event, includeMeetingLink),
       recipients,
     });
   }
 
-  async function sendCalendarInvitations(eventId: string, recipientCount: number): Promise<void> {
+  async function sendCalendarInvitations(
+    eventId: string,
+    recipientCount: number,
+    includeMeetingLink = false,
+  ): Promise<void> {
     if (!activeMatter) return;
     setSendingCalendarInvitationsEventId(eventId);
     setPendingDeliveryConfirmation(null);
-    setCalendarMeetingStatus("Sending invitations...");
+    setCalendarMeetingStatus(
+      includeMeetingLink ? "Sending meeting-link invitations..." : "Sending invitations...",
+    );
     const response = await fetch(
       `${apiBaseUrl}/api/calendar/events/${encodeURIComponent(eventId)}/invitations`,
       {
@@ -1701,6 +1730,7 @@ export default function DashboardClient({
           buildCalendarInvitationPayload({
             matterId: activeMatter.id,
             recipientCount,
+            includeMeetingLink,
           }),
         ),
       },
@@ -1713,20 +1743,32 @@ export default function DashboardClient({
     }
 
     const payload = (await response.json()) as CalendarInvitationResponse;
-    setCalendarEventsByMatterId((current) =>
-      payload.results.reduce(
+    const meetingInvitationBoundary = payload.meetingInvitationBoundary;
+    setCalendarEventsByMatterId((current) => {
+      const next = payload.results.reduce(
         (next, result) =>
           upsertCalendarEventAttendee(next, activeMatter.id, eventId, result.attendee),
         current,
-      ),
-    );
+      );
+      if (!meetingInvitationBoundary) return next;
+      return {
+        ...next,
+        [activeMatter.id]: (next[activeMatter.id] ?? []).map((event) =>
+          event.id === eventId ? { ...event, meetingInvitationBoundary } : event,
+        ),
+      };
+    });
     const queued = payload.results.filter(
       (result) => result.attendee.invitationStatus === "queued",
     ).length;
     const skipped = payload.results.filter(
       (result) => result.attendee.invitationStatus === "skipped",
     ).length;
-    setCalendarMeetingStatus(`${queued} invitation queued; ${skipped} skipped.`);
+    setCalendarMeetingStatus(
+      includeMeetingLink
+        ? `${queued} meeting-link invitation queued; ${skipped} skipped.`
+        : `${queued} invitation queued; ${skipped} skipped.`,
+    );
     setSendingCalendarInvitationsEventId("");
   }
 
@@ -1749,6 +1791,7 @@ export default function DashboardClient({
       void sendCalendarInvitations(
         pendingDeliveryConfirmation.eventId,
         pendingDeliveryConfirmation.recipients.length,
+        pendingDeliveryConfirmation.includeMeetingLink === true,
       );
       return;
     }
@@ -2353,6 +2396,7 @@ export default function DashboardClient({
                 activeContactDossier={activeContactDossier}
                 compactStatus={compactStatus}
                 contactDossiers={contactDossiers}
+                contactReviewQueue={contactReviewQueue}
                 contactSearch={contactSearch}
                 filteredContactDossiers={filteredContactDossiers}
                 onContactSearchChange={setContactSearch}
@@ -3357,14 +3401,27 @@ export default function DashboardClient({
                             >
                               {event.status === "cancelled" ? "cancelled" : timing}
                             </em>
-                            <span
+                            <button
                               aria-label={meetingLinkAvailability.detail}
-                              className={`calendar-meeting-link-status ${meetingLinkAvailability.status}`}
+                              className={`secondary-button compact-button row-button calendar-meeting-link-status ${meetingLinkAvailability.status}`}
+                              disabled={
+                                !meetingLinkAvailability.actionable ||
+                                attendees.length === 0 ||
+                                sendingCalendarInvitationsEventId === event.id
+                              }
+                              onClick={() =>
+                                openCalendarInvitationConfirmation(event, {
+                                  includeMeetingLink: true,
+                                })
+                              }
                               title={meetingLinkAvailability.detail}
+                              type="button"
                             >
                               <Link2 size={14} />
-                              {meetingLinkAvailability.label}
-                            </span>
+                              {sendingCalendarInvitationsEventId === event.id
+                                ? "Sending..."
+                                : meetingLinkAvailability.label}
+                            </button>
                             <button
                               className="secondary-button compact-button row-button"
                               disabled={
@@ -4455,293 +4512,42 @@ export default function DashboardClient({
             ) : null}
 
             {activeSection === "queues" ? (
-              <>
-                <div className="detail-grid queue-summary-grid">
-                  <div>
-                    <span className="field-label">Queue sections</span>
-                    <strong>{displayedQueues.sections.length}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Open items</span>
-                    <strong>
-                      {displayedQueues.sections.reduce(
-                        (sum, section) => sum + section.items.length,
-                        0,
-                      )}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="field-label">High priority</span>
-                    <strong>
-                      {
-                        displayedQueues.sections
-                          .flatMap((section) => section.items)
-                          .filter((item) => item.priority === "high").length
-                      }
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="field-label">My deadlines</span>
-                    <strong>
-                      {taskWorkbench.counters.my.overdue + taskWorkbench.counters.my.today}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Hydration</span>
-                    <strong>Route-backed</strong>
-                  </div>
-                </div>
-                <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-                  {queueSummary}
-                </p>
-                <p className="inline-empty">{taskDeadlineSummary}</p>
-                <div className="section-title">
-                  <h3>Saved views</h3>
-                  <span className="row-actions">
-                    {activeSavedOperationalViewDefinition ? (
-                      <button
-                        className="secondary-button compact-button row-button"
-                        onClick={clearQueueOperationalViewDefinition}
-                        type="button"
-                      >
-                        <RotateCcw aria-hidden="true" size={16} />
-                        Clear focus
-                      </button>
-                    ) : null}
-                    <button
-                      className="secondary-button compact-button row-button"
-                      disabled={savingOperationalView}
-                      onClick={saveQueueOperationalViewDefinition}
-                      type="button"
-                    >
-                      <Save aria-hidden="true" size={16} />
-                      {savingOperationalView ? "Saving" : "Save current focus"}
-                    </button>
-                  </span>
-                </div>
-                {activeSavedOperationalViewDefinition ? (
-                  <p className="inline-empty">
-                    Applied saved focus: {activeSavedOperationalViewDefinition.name}
-                  </p>
-                ) : null}
-                <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-                  {savedOperationalViewStatus}
-                </p>
-                <div className="party-list queue-section-list">
-                  {savedOperationalViewDefinitions.map((definition) => (
-                    <div className="party-row" key={definition.id}>
-                      <span>
-                        <strong>{definition.name}</strong>
-                        <small>{formatSavedOperationalViewDefinition(definition)}</small>
-                        <small>updated {compactDate(definition.updatedAt)}</small>
-                      </span>
-                      <span className="row-actions">
-                        <button
-                          aria-label={`Apply ${definition.name}`}
-                          className="secondary-button compact-button row-button"
-                          disabled={activeSavedOperationalViewId === definition.id}
-                          onClick={() => applyQueueOperationalViewDefinition(definition)}
-                          type="button"
-                        >
-                          <Clock3 aria-hidden="true" size={16} />
-                          {activeSavedOperationalViewId === definition.id ? "Applied" : "Apply"}
-                        </button>
-                        <button
-                          aria-label={`Archive ${definition.name}`}
-                          className="secondary-button compact-button row-button"
-                          disabled={archivingOperationalViewId === definition.id}
-                          onClick={() => archiveQueueOperationalViewDefinition(definition)}
-                          type="button"
-                        >
-                          <X aria-hidden="true" size={16} />
-                          {archivingOperationalViewId === definition.id ? "Archiving" : "Archive"}
-                        </button>
-                      </span>
-                    </div>
-                  ))}
-                  {savedOperationalViewDefinitions.length === 0 ? (
-                    <p className="inline-empty">No saved queue views are active.</p>
-                  ) : null}
-                </div>
-                <div className="section-title">
-                  <h3>Provider posture</h3>
-                  <span>{compactProviderStatus(providerStatus.liveHealth.status)}</span>
-                </div>
-                <p className="inline-empty">{providerStatusSummary}</p>
-                <div className="detail-grid queue-summary-grid">
-                  <div>
-                    <span className="field-label">Object storage</span>
-                    <strong>{compactProviderStatus(providerStatus.objectStorage.status)}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Producer queues</span>
-                    <strong>
-                      {
-                        providerStatus.bullmq.producerQueues.filter(
-                          (queue) => queue.status === "configured",
-                        ).length
-                      }
-                      /{providerStatus.bullmq.producerQueues.length}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Worker queues</span>
-                    <strong>
-                      {
-                        providerStatus.bullmq.workerQueues.filter(
-                          (queue) => queue.status === "configured",
-                        ).length
-                      }
-                      /{providerStatus.bullmq.workerQueues.length}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Reserved workers</span>
-                    <strong>{providerStatus.bullmq.reservedWorkerQueues?.length ?? 0}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Latest runs</span>
-                    <strong>{providerStatus.jobs.latestRuns.length}</strong>
-                  </div>
-                </div>
-                <div className="party-list queue-section-list">
-                  {providerRows.map((row) => (
-                    <div className="party-row" key={row.key}>
-                      <span>
-                        <strong>{row.label}</strong>
-                        <small>{row.detail}</small>
-                      </span>
-                      <em className={row.tone === "risk" ? "risk" : undefined}>{row.status}</em>
-                    </div>
-                  ))}
-                </div>
-                <div className="section-title">
-                  <h3>Worker health</h3>
-                  <span className={workerHealthStateTone === "risk" ? "risk" : undefined}>
-                    {compactStatus(workerHealth.status)}
-                  </span>
-                </div>
-                <p className="inline-empty">{workerHealthSummary}</p>
-                <div className="detail-grid queue-summary-grid">
-                  <div>
-                    <span className="field-label">Configured</span>
-                    <strong>{workerHealth.configuredQueues}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Active or queued</span>
-                    <strong>{workerHealth.activeOrQueued}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Failed</span>
-                    <strong>{workerHealth.failed}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Stalled</span>
-                    <strong>{workerHealth.stalled}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Observed</span>
-                    <strong>{compactDate(workerHealth.lastObservedAt)}</strong>
-                  </div>
-                </div>
-                <div className="party-list queue-section-list">
-                  {workerHealth.queues.map((queue) => (
-                    <div className="party-row" key={queue.queueName}>
-                      <span>
-                        <strong>{queue.queueName}</strong>
-                        <small>
-                          {queue.status} · {queue.total} runs · {queue.active} active ·{" "}
-                          {queue.queued} queued · {queue.failed} failed · {queue.stalled} stalled
-                        </small>
-                        {queue.lastObservedAt ? (
-                          <small>last observed {compactDate(queue.lastObservedAt)}</small>
-                        ) : null}
-                      </span>
-                      <em className={queue.health === "degraded" ? "risk" : undefined}>
-                        {compactStatus(queue.health)}
-                      </em>
-                    </div>
-                  ))}
-                  {workerHealth.queues.length === 0 ? (
-                    <p className="inline-empty">Worker health has not been observed yet.</p>
-                  ) : null}
-                </div>
-                <div className="section-title">
-                  <h3>Worker runs</h3>
-                  <span>{activeWorkerRuns.jobs.length} runs</span>
-                </div>
-                <div className="row-actions" aria-label="Worker run filters">
-                  {workerRunFilters.map((filter) => (
-                    <button
-                      aria-pressed={workerRunFilter === filter.key}
-                      className="secondary-button compact-button row-button"
-                      key={filter.key}
-                      onClick={() => setWorkerRunFilter(filter.key)}
-                      type="button"
-                    >
-                      {filter.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="inline-empty">{workerRunSummary}</p>
-                <div className="party-list queue-section-list">
-                  {activeWorkerRuns.jobs.map((job) => {
-                    const state = describeWorkerRunStatus(job);
-                    return (
-                      <div className="party-row" key={job.id}>
-                        <span>
-                          <strong>
-                            {job.queueName} · {job.jobName ?? job.id}
-                          </strong>
-                          <small>
-                            {formatWorkerRunAttempts(job)} · {formatWorkerRunTiming(job)} ·{" "}
-                            {workerRunSafeContext(job)}
-                          </small>
-                          {job.errorSummary ? <small>{job.errorSummary}</small> : null}
-                        </span>
-                        <em className={state.tone === "risk" ? "risk" : undefined}>
-                          {state.label}
-                        </em>
-                      </div>
-                    );
-                  })}
-                  {activeWorkerRuns.jobs.length === 0 ? (
-                    <p className="inline-empty">No worker runs match this filter.</p>
-                  ) : null}
-                </div>
-                <div className="party-list queue-section-list">
-                  {displayedQueues.sections.map((section) => (
-                    <section className="queue-section" key={section.key}>
-                      <div className="section-title">
-                        <h3>{section.label}</h3>
-                        <span>{section.items.length} items</span>
-                      </div>
-                      {section.items.map((item) => (
-                        <button
-                          className="party-row queue-item-row"
-                          key={item.id}
-                          onClick={() => item.matterId && selectMatter(item.matterId)}
-                          type="button"
-                        >
-                          <span>
-                            <strong>{item.title}</strong>
-                            <small>{item.status}</small>
-                          </span>
-                          <em className={item.priority === "high" ? "risk" : undefined}>
-                            {item.priority}
-                          </em>
-                        </button>
-                      ))}
-                      {section.items.length === 0 ? (
-                        <p className="inline-empty">No items in this queue.</p>
-                      ) : null}
-                    </section>
-                  ))}
-                  {displayedQueues.sections.length === 0 ? (
-                    <p className="inline-empty">No operational queues were returned.</p>
-                  ) : null}
-                </div>
-              </>
+              <QueuesSection
+                activeSavedOperationalViewDefinition={activeSavedOperationalViewDefinition}
+                activeSavedOperationalViewId={activeSavedOperationalViewId}
+                activeWorkerRuns={activeWorkerRuns}
+                archivingOperationalViewId={archivingOperationalViewId}
+                compactDate={compactDate}
+                compactProviderStatus={compactProviderStatus}
+                compactStatus={compactStatus}
+                displayedQueues={displayedQueues}
+                formatSavedOperationalViewDefinition={formatSavedOperationalViewDefinition}
+                formatWorkerRunAttempts={formatWorkerRunAttempts}
+                formatWorkerRunTiming={formatWorkerRunTiming}
+                onApplyQueueOperationalViewDefinition={applyQueueOperationalViewDefinition}
+                onArchiveQueueOperationalViewDefinition={archiveQueueOperationalViewDefinition}
+                onClearQueueOperationalViewDefinition={clearQueueOperationalViewDefinition}
+                onSaveQueueOperationalViewDefinition={saveQueueOperationalViewDefinition}
+                onSelectMatter={selectMatter}
+                onWorkerRunFilterChange={setWorkerRunFilter}
+                providerRows={providerRows}
+                providerStatus={providerStatus}
+                providerStatusSummary={providerStatusSummary}
+                queueSummary={queueSummary}
+                savedOperationalViewDefinitions={savedOperationalViewDefinitions}
+                savedOperationalViewStatus={savedOperationalViewStatus}
+                savingOperationalView={savingOperationalView}
+                taskDeadlineSummary={taskDeadlineSummary}
+                taskWorkbench={taskWorkbench}
+                workerHealth={workerHealth}
+                workerHealthStateTone={workerHealthStateTone}
+                workerHealthSummary={workerHealthSummary}
+                workerRunFilter={workerRunFilter}
+                workerRunFilterOptions={workerRunFilters}
+                workerRunSafeContext={workerRunSafeContext}
+                workerRunStatus={describeWorkerRunStatus}
+                workerRunSummary={workerRunSummary}
+              />
             ) : null}
           </MatterDetailShell>
 

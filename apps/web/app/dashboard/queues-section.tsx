@@ -1,0 +1,517 @@
+import { Clock3, RotateCcw, Save, X } from "lucide-react";
+import type {
+  ProvidersStatusResponse,
+  QueuesResponse,
+  SavedOperationalViewDefinition,
+  TaskDeadlineWorkbenchResponse,
+  WorkerHealthResponse,
+  WorkerRunQueueFilter,
+  WorkerRunSummaryItem,
+} from "../types";
+
+export interface ProviderPostureRow {
+  key: string;
+  label: string;
+  status: string;
+  detail: string;
+  tone: "neutral" | "ready" | "risk";
+}
+
+export interface WorkerRunStatusSummary {
+  label: string;
+  tone: "neutral" | "ready" | "risk";
+}
+
+export interface QueuesSectionProps {
+  activeSavedOperationalViewDefinition?: SavedOperationalViewDefinition | null;
+  activeSavedOperationalViewId?: string;
+  activeWorkerRuns: {
+    jobs: WorkerRunSummaryItem[];
+  };
+  archivingOperationalViewId?: string;
+  compactDate: (value?: string) => string;
+  compactProviderStatus: (value?: string) => string;
+  compactStatus: (value?: string) => string;
+  displayedQueues: QueuesResponse;
+  formatSavedOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => string;
+  formatWorkerRunAttempts: (job: WorkerRunSummaryItem) => string;
+  formatWorkerRunTiming: (job: WorkerRunSummaryItem) => string;
+  onApplyQueueOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => void;
+  onArchiveQueueOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => void;
+  onClearQueueOperationalViewDefinition: () => void;
+  onSaveQueueOperationalViewDefinition: () => void;
+  onSelectMatter: (matterId: string) => void;
+  onWorkerRunFilterChange: (filter: WorkerRunQueueFilter) => void;
+  providerRows: ProviderPostureRow[];
+  providerStatus: ProvidersStatusResponse;
+  providerStatusSummary: string;
+  queueSummary: string;
+  savedOperationalViewDefinitions: SavedOperationalViewDefinition[];
+  savedOperationalViewStatus: string;
+  savingOperationalView: boolean;
+  taskDeadlineSummary: string;
+  taskWorkbench: TaskDeadlineWorkbenchResponse;
+  workerHealth: WorkerHealthResponse;
+  workerHealthStateTone: "neutral" | "ready" | "risk";
+  workerHealthSummary: string;
+  workerRunFilter: WorkerRunQueueFilter;
+  workerRunFilterOptions: Array<{ key: WorkerRunQueueFilter; label: string }>;
+  workerRunSafeContext: (job: WorkerRunSummaryItem) => string;
+  workerRunStatus: (job: WorkerRunSummaryItem) => WorkerRunStatusSummary;
+  workerRunSummary: string;
+}
+
+export function QueuesSection({
+  activeSavedOperationalViewDefinition,
+  activeSavedOperationalViewId,
+  activeWorkerRuns,
+  archivingOperationalViewId,
+  compactDate,
+  compactProviderStatus,
+  compactStatus,
+  displayedQueues,
+  formatSavedOperationalViewDefinition,
+  formatWorkerRunAttempts,
+  formatWorkerRunTiming,
+  onApplyQueueOperationalViewDefinition,
+  onArchiveQueueOperationalViewDefinition,
+  onClearQueueOperationalViewDefinition,
+  onSaveQueueOperationalViewDefinition,
+  onSelectMatter,
+  onWorkerRunFilterChange,
+  providerRows,
+  providerStatus,
+  providerStatusSummary,
+  queueSummary,
+  savedOperationalViewDefinitions,
+  savedOperationalViewStatus,
+  savingOperationalView,
+  taskDeadlineSummary,
+  taskWorkbench,
+  workerHealth,
+  workerHealthStateTone,
+  workerHealthSummary,
+  workerRunFilter,
+  workerRunFilterOptions,
+  workerRunSafeContext,
+  workerRunStatus,
+  workerRunSummary,
+}: QueuesSectionProps) {
+  const displayedQueueItems = displayedQueues.sections.flatMap((section) => section.items);
+
+  return (
+    <>
+      <div className="detail-grid queue-summary-grid">
+        <div>
+          <span className="field-label">Queue sections</span>
+          <strong>{displayedQueues.sections.length}</strong>
+        </div>
+        <div>
+          <span className="field-label">Open items</span>
+          <strong>{displayedQueueItems.length}</strong>
+        </div>
+        <div>
+          <span className="field-label">High priority</span>
+          <strong>{displayedQueueItems.filter((item) => item.priority === "high").length}</strong>
+        </div>
+        <div>
+          <span className="field-label">My deadlines</span>
+          <strong>{taskWorkbench.counters.my.overdue + taskWorkbench.counters.my.today}</strong>
+        </div>
+        <div>
+          <span className="field-label">Hydration</span>
+          <strong>Route-backed</strong>
+        </div>
+      </div>
+      <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+        {queueSummary}
+      </p>
+      <p className="inline-empty">{taskDeadlineSummary}</p>
+
+      <SavedQueueViewsBlock
+        activeSavedOperationalViewDefinition={activeSavedOperationalViewDefinition}
+        activeSavedOperationalViewId={activeSavedOperationalViewId}
+        archivingOperationalViewId={archivingOperationalViewId}
+        compactDate={compactDate}
+        formatSavedOperationalViewDefinition={formatSavedOperationalViewDefinition}
+        onApplyQueueOperationalViewDefinition={onApplyQueueOperationalViewDefinition}
+        onArchiveQueueOperationalViewDefinition={onArchiveQueueOperationalViewDefinition}
+        onClearQueueOperationalViewDefinition={onClearQueueOperationalViewDefinition}
+        onSaveQueueOperationalViewDefinition={onSaveQueueOperationalViewDefinition}
+        savedOperationalViewDefinitions={savedOperationalViewDefinitions}
+        savedOperationalViewStatus={savedOperationalViewStatus}
+        savingOperationalView={savingOperationalView}
+      />
+
+      <ProviderPostureBlock
+        compactProviderStatus={compactProviderStatus}
+        providerRows={providerRows}
+        providerStatus={providerStatus}
+        providerStatusSummary={providerStatusSummary}
+      />
+
+      <WorkerHealthBlock
+        compactDate={compactDate}
+        compactStatus={compactStatus}
+        workerHealth={workerHealth}
+        workerHealthStateTone={workerHealthStateTone}
+        workerHealthSummary={workerHealthSummary}
+      />
+
+      <WorkerRunsBlock
+        activeWorkerRuns={activeWorkerRuns}
+        formatWorkerRunAttempts={formatWorkerRunAttempts}
+        formatWorkerRunTiming={formatWorkerRunTiming}
+        onWorkerRunFilterChange={onWorkerRunFilterChange}
+        workerRunFilter={workerRunFilter}
+        workerRunFilterOptions={workerRunFilterOptions}
+        workerRunSafeContext={workerRunSafeContext}
+        workerRunStatus={workerRunStatus}
+        workerRunSummary={workerRunSummary}
+      />
+
+      <QueueRowsBlock displayedQueues={displayedQueues} onSelectMatter={onSelectMatter} />
+    </>
+  );
+}
+
+function SavedQueueViewsBlock({
+  activeSavedOperationalViewDefinition,
+  activeSavedOperationalViewId,
+  archivingOperationalViewId,
+  compactDate,
+  formatSavedOperationalViewDefinition,
+  onApplyQueueOperationalViewDefinition,
+  onArchiveQueueOperationalViewDefinition,
+  onClearQueueOperationalViewDefinition,
+  onSaveQueueOperationalViewDefinition,
+  savedOperationalViewDefinitions,
+  savedOperationalViewStatus,
+  savingOperationalView,
+}: Pick<
+  QueuesSectionProps,
+  | "activeSavedOperationalViewDefinition"
+  | "activeSavedOperationalViewId"
+  | "archivingOperationalViewId"
+  | "compactDate"
+  | "formatSavedOperationalViewDefinition"
+  | "onApplyQueueOperationalViewDefinition"
+  | "onArchiveQueueOperationalViewDefinition"
+  | "onClearQueueOperationalViewDefinition"
+  | "onSaveQueueOperationalViewDefinition"
+  | "savedOperationalViewDefinitions"
+  | "savedOperationalViewStatus"
+  | "savingOperationalView"
+>) {
+  return (
+    <>
+      <div className="section-title">
+        <h3>Saved views</h3>
+        <span className="row-actions">
+          {activeSavedOperationalViewDefinition ? (
+            <button
+              className="secondary-button compact-button row-button"
+              onClick={onClearQueueOperationalViewDefinition}
+              type="button"
+            >
+              <RotateCcw aria-hidden="true" size={16} />
+              Clear focus
+            </button>
+          ) : null}
+          <button
+            className="secondary-button compact-button row-button"
+            disabled={savingOperationalView}
+            onClick={onSaveQueueOperationalViewDefinition}
+            type="button"
+          >
+            <Save aria-hidden="true" size={16} />
+            {savingOperationalView ? "Saving" : "Save current focus"}
+          </button>
+        </span>
+      </div>
+      {activeSavedOperationalViewDefinition ? (
+        <p className="inline-empty">
+          Applied saved focus: {activeSavedOperationalViewDefinition.name}
+        </p>
+      ) : null}
+      <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+        {savedOperationalViewStatus}
+      </p>
+      <div className="party-list queue-section-list">
+        {savedOperationalViewDefinitions.map((definition) => (
+          <div className="party-row" key={definition.id}>
+            <span>
+              <strong>{definition.name}</strong>
+              <small>{formatSavedOperationalViewDefinition(definition)}</small>
+              <small>updated {compactDate(definition.updatedAt)}</small>
+            </span>
+            <span className="row-actions">
+              <button
+                aria-label={`Apply ${definition.name}`}
+                className="secondary-button compact-button row-button"
+                disabled={activeSavedOperationalViewId === definition.id}
+                onClick={() => onApplyQueueOperationalViewDefinition(definition)}
+                type="button"
+              >
+                <Clock3 aria-hidden="true" size={16} />
+                {activeSavedOperationalViewId === definition.id ? "Applied" : "Apply"}
+              </button>
+              <button
+                aria-label={`Archive ${definition.name}`}
+                className="secondary-button compact-button row-button"
+                disabled={archivingOperationalViewId === definition.id}
+                onClick={() => onArchiveQueueOperationalViewDefinition(definition)}
+                type="button"
+              >
+                <X aria-hidden="true" size={16} />
+                {archivingOperationalViewId === definition.id ? "Archiving" : "Archive"}
+              </button>
+            </span>
+          </div>
+        ))}
+        {savedOperationalViewDefinitions.length === 0 ? (
+          <p className="inline-empty">No saved queue views are active.</p>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function ProviderPostureBlock({
+  compactProviderStatus,
+  providerRows,
+  providerStatus,
+  providerStatusSummary,
+}: Pick<
+  QueuesSectionProps,
+  "compactProviderStatus" | "providerRows" | "providerStatus" | "providerStatusSummary"
+>) {
+  return (
+    <>
+      <div className="section-title">
+        <h3>Provider posture</h3>
+        <span>{compactProviderStatus(providerStatus.liveHealth.status)}</span>
+      </div>
+      <p className="inline-empty">{providerStatusSummary}</p>
+      <div className="detail-grid queue-summary-grid">
+        <div>
+          <span className="field-label">Object storage</span>
+          <strong>{compactProviderStatus(providerStatus.objectStorage.status)}</strong>
+        </div>
+        <div>
+          <span className="field-label">Producer queues</span>
+          <strong>
+            {
+              providerStatus.bullmq.producerQueues.filter((queue) => queue.status === "configured")
+                .length
+            }
+            /{providerStatus.bullmq.producerQueues.length}
+          </strong>
+        </div>
+        <div>
+          <span className="field-label">Worker queues</span>
+          <strong>
+            {
+              providerStatus.bullmq.workerQueues.filter((queue) => queue.status === "configured")
+                .length
+            }
+            /{providerStatus.bullmq.workerQueues.length}
+          </strong>
+        </div>
+        <div>
+          <span className="field-label">Reserved workers</span>
+          <strong>{providerStatus.bullmq.reservedWorkerQueues?.length ?? 0}</strong>
+        </div>
+        <div>
+          <span className="field-label">Latest runs</span>
+          <strong>{providerStatus.jobs.latestRuns.length}</strong>
+        </div>
+      </div>
+      <div className="party-list queue-section-list">
+        {providerRows.map((row) => (
+          <div className="party-row" key={row.key}>
+            <span>
+              <strong>{row.label}</strong>
+              <small>{row.detail}</small>
+            </span>
+            <em className={row.tone === "risk" ? "risk" : undefined}>{row.status}</em>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function WorkerHealthBlock({
+  compactDate,
+  compactStatus,
+  workerHealth,
+  workerHealthStateTone,
+  workerHealthSummary,
+}: Pick<
+  QueuesSectionProps,
+  "compactDate" | "compactStatus" | "workerHealth" | "workerHealthStateTone" | "workerHealthSummary"
+>) {
+  return (
+    <>
+      <div className="section-title">
+        <h3>Worker health</h3>
+        <span className={workerHealthStateTone === "risk" ? "risk" : undefined}>
+          {compactStatus(workerHealth.status)}
+        </span>
+      </div>
+      <p className="inline-empty">{workerHealthSummary}</p>
+      <div className="detail-grid queue-summary-grid">
+        <div>
+          <span className="field-label">Configured</span>
+          <strong>{workerHealth.configuredQueues}</strong>
+        </div>
+        <div>
+          <span className="field-label">Active or queued</span>
+          <strong>{workerHealth.activeOrQueued}</strong>
+        </div>
+        <div>
+          <span className="field-label">Failed</span>
+          <strong>{workerHealth.failed}</strong>
+        </div>
+        <div>
+          <span className="field-label">Stalled</span>
+          <strong>{workerHealth.stalled}</strong>
+        </div>
+        <div>
+          <span className="field-label">Observed</span>
+          <strong>{compactDate(workerHealth.lastObservedAt)}</strong>
+        </div>
+      </div>
+      <div className="party-list queue-section-list">
+        {workerHealth.queues.map((queue) => (
+          <div className="party-row" key={queue.queueName}>
+            <span>
+              <strong>{queue.queueName}</strong>
+              <small>
+                {queue.status} · {queue.total} runs · {queue.active} active · {queue.queued} queued
+                · {queue.failed} failed · {queue.stalled} stalled
+              </small>
+              {queue.lastObservedAt ? (
+                <small>last observed {compactDate(queue.lastObservedAt)}</small>
+              ) : null}
+            </span>
+            <em className={queue.health === "degraded" ? "risk" : undefined}>
+              {compactStatus(queue.health)}
+            </em>
+          </div>
+        ))}
+        {workerHealth.queues.length === 0 ? (
+          <p className="inline-empty">Worker health has not been observed yet.</p>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function WorkerRunsBlock({
+  activeWorkerRuns,
+  formatWorkerRunAttempts,
+  formatWorkerRunTiming,
+  onWorkerRunFilterChange,
+  workerRunFilter,
+  workerRunFilterOptions,
+  workerRunSafeContext,
+  workerRunStatus,
+  workerRunSummary,
+}: Pick<
+  QueuesSectionProps,
+  | "activeWorkerRuns"
+  | "formatWorkerRunAttempts"
+  | "formatWorkerRunTiming"
+  | "onWorkerRunFilterChange"
+  | "workerRunFilter"
+  | "workerRunFilterOptions"
+  | "workerRunSafeContext"
+  | "workerRunStatus"
+  | "workerRunSummary"
+>) {
+  return (
+    <>
+      <div className="section-title">
+        <h3>Worker runs</h3>
+        <span>{activeWorkerRuns.jobs.length} runs</span>
+      </div>
+      <div className="row-actions" aria-label="Worker run filters">
+        {workerRunFilterOptions.map((filter) => (
+          <button
+            aria-pressed={workerRunFilter === filter.key}
+            className="secondary-button compact-button row-button"
+            key={filter.key}
+            onClick={() => onWorkerRunFilterChange(filter.key)}
+            type="button"
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+      <p className="inline-empty">{workerRunSummary}</p>
+      <div className="party-list queue-section-list">
+        {activeWorkerRuns.jobs.map((job) => {
+          const state = workerRunStatus(job);
+          return (
+            <div className="party-row" key={job.id}>
+              <span>
+                <strong>
+                  {job.queueName} · {job.jobName ?? job.id}
+                </strong>
+                <small>
+                  {formatWorkerRunAttempts(job)} · {formatWorkerRunTiming(job)} ·{" "}
+                  {workerRunSafeContext(job)}
+                </small>
+                {job.errorSummary ? <small>{job.errorSummary}</small> : null}
+              </span>
+              <em className={state.tone === "risk" ? "risk" : undefined}>{state.label}</em>
+            </div>
+          );
+        })}
+        {activeWorkerRuns.jobs.length === 0 ? (
+          <p className="inline-empty">No worker runs match this filter.</p>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function QueueRowsBlock({
+  displayedQueues,
+  onSelectMatter,
+}: Pick<QueuesSectionProps, "displayedQueues" | "onSelectMatter">) {
+  return (
+    <div className="party-list queue-section-list">
+      {displayedQueues.sections.map((section) => (
+        <section className="queue-section" key={section.key}>
+          <div className="section-title">
+            <h3>{section.label}</h3>
+            <span>{section.items.length} items</span>
+          </div>
+          {section.items.map((item) => (
+            <button
+              className="party-row queue-item-row"
+              key={item.id}
+              onClick={() => item.matterId && onSelectMatter(item.matterId)}
+              type="button"
+            >
+              <span>
+                <strong>{item.title}</strong>
+                <small>{item.status}</small>
+              </span>
+              <em className={item.priority === "high" ? "risk" : undefined}>{item.priority}</em>
+            </button>
+          ))}
+          {section.items.length === 0 ? (
+            <p className="inline-empty">No items in this queue.</p>
+          ) : null}
+        </section>
+      ))}
+      {displayedQueues.sections.length === 0 ? (
+        <p className="inline-empty">No operational queues were returned.</p>
+      ) : null}
+    </div>
+  );
+}

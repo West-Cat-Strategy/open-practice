@@ -3,6 +3,7 @@ export type PendingDeliveryConfirmation =
       kind: "calendar-invitations";
       key: string;
       eventId: string;
+      includeMeetingLink?: boolean;
       actionLabel: string;
       matterLabel: string;
       summary: string;

@@ -1,12 +1,19 @@
 import { Search } from "lucide-react";
-import { contactDossierRiskClass, summarizeContactDossier } from "../contact-dossiers-dashboard";
+import {
+  contactDossierRiskClass,
+  contactReviewQueueRiskClass,
+  formatContactReviewSignalKind,
+  summarizeContactDossier,
+  summarizeContactReviewQueueItem,
+} from "../contact-dossiers-dashboard";
 import { formatMatterPartyRoleLabel } from "../participant-role-labels";
-import type { ContactDossier, ContactDossiersResponse } from "../types";
+import type { ContactDossier, ContactDossiersResponse, ContactReviewQueueResponse } from "../types";
 
 export function ContactsSection({
   activeContactDossier,
   compactStatus,
   contactDossiers,
+  contactReviewQueue,
   contactSearch,
   filteredContactDossiers,
   onContactSearchChange,
@@ -17,6 +24,7 @@ export function ContactsSection({
   activeContactDossier?: ContactDossier;
   compactStatus: (value?: string) => string;
   contactDossiers: ContactDossiersResponse;
+  contactReviewQueue?: ContactReviewQueueResponse;
   contactSearch: string;
   filteredContactDossiers: ContactDossiersResponse;
   onContactSearchChange: (value: string) => void;
@@ -56,6 +64,73 @@ export function ContactsSection({
           </strong>
         </div>
       </div>
+
+      <div className="section-title">
+        <h3>Review queue</h3>
+        <span>{contactReviewQueue?.summary.reviewItemCount ?? 0} pending</span>
+      </div>
+      {contactReviewQueue ? (
+        <>
+          <div className="detail-grid compact-detail-grid contact-summary-grid">
+            <div>
+              <span className="field-label">Review items</span>
+              <strong>{contactReviewQueue.summary.reviewItemCount}</strong>
+            </div>
+            <div>
+              <span className="field-label">Duplicate cues</span>
+              <strong>{contactReviewQueue.summary.duplicateCandidateCount}</strong>
+            </div>
+            <div>
+              <span className="field-label">Protected-party cues</span>
+              <strong>{contactReviewQueue.summary.sensitivePartyCueCount}</strong>
+            </div>
+            <div>
+              <span className="field-label">Conflict rechecks</span>
+              <strong>{contactReviewQueue.summary.revalidationPromptCount}</strong>
+            </div>
+          </div>
+          <div className="party-list contact-dossier-list">
+            {contactReviewQueue.items.map((item) => (
+              <div className="party-row" key={item.contact.id}>
+                <span>
+                  <strong>{item.contact.displayName}</strong>
+                  <small>
+                    {item.contact.kind} · {item.matters.length} matter
+                    {item.matters.length === 1 ? "" : "s"} · {item.signals.length} redacted cue
+                    {item.signals.length === 1 ? "" : "s"}
+                  </small>
+                  <small>
+                    {item.contact.aliasCount} alias ref
+                    {item.contact.aliasCount === 1 ? "" : "s"} · {item.contact.identifierCount}{" "}
+                    identifier ref
+                    {item.contact.identifierCount === 1 ? "" : "s"}
+                  </small>
+                  {item.signals.slice(0, 2).map((signal, index) => (
+                    <small key={`${item.contact.id}-review-signal-${index}`}>
+                      {formatContactReviewSignalKind(signal.kind)}: {signal.reason}
+                      {signal.matchedValueRedacted ? " · value redacted" : ""}
+                    </small>
+                  ))}
+                  {item.signals.length > 2 ? (
+                    <small>
+                      +{item.signals.length - 2} more redacted cue
+                      {item.signals.length - 2 === 1 ? "" : "s"}
+                    </small>
+                  ) : null}
+                </span>
+                <em className={contactReviewQueueRiskClass(item)}>
+                  {summarizeContactReviewQueueItem(item)}
+                </em>
+              </div>
+            ))}
+            {contactReviewQueue.items.length === 0 ? (
+              <p className="inline-empty">No contacts need review.</p>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <p className="inline-empty">Contact review queue is not loaded.</p>
+      )}
 
       <div className="section-title">
         <h3>Contact dossiers</h3>

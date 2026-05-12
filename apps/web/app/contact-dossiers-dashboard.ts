@@ -1,4 +1,4 @@
-import type { ContactDossier } from "./types";
+import type { ContactDossier, ContactReviewQueueItem } from "./types";
 
 export interface ContactDossierConflictCheckPrefill {
   prospectiveName: string;
@@ -93,4 +93,21 @@ export function contactDossierRiskClass(dossier: ContactDossier): "risk" | undef
     dossier.qualityReview.signals.some((signal) => signal.severity === "blocker")
     ? "risk"
     : undefined;
+}
+
+export function summarizeContactReviewQueueItem(item: ContactReviewQueueItem): string {
+  const flags = [
+    item.summary.duplicateCandidateCount > 0 ? "duplicate review" : null,
+    item.summary.sensitivePartyCueCount > 0 ? "protected-party cue" : null,
+    item.summary.revalidationPromptCount > 0 ? "conflict recheck" : null,
+  ].filter(Boolean);
+  return flags.length > 0 ? flags.join(" / ") : "review";
+}
+
+export function contactReviewQueueRiskClass(item: ContactReviewQueueItem): "risk" | undefined {
+  return item.signals.some((signal) => signal.severity === "blocker") ? "risk" : undefined;
+}
+
+export function formatContactReviewSignalKind(kind: string): string {
+  return kind.replaceAll("_", " ");
 }

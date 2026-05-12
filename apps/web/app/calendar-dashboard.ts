@@ -84,6 +84,7 @@ export interface MeetingLinkAvailability {
   label: string;
   detail: string;
   status: "configured" | "disabled";
+  actionable: boolean;
 }
 
 export function describeMeetingLinkAvailability(
@@ -94,25 +95,33 @@ export function describeMeetingLinkAvailability(
       ? `${boundary.meetingLinks.provider} is configured`
       : "A meeting provider is configured";
     return {
-      label: "Link action deferred",
-      detail: `${providerDetail}, but link issuance and preview remain deferred in this dashboard.`,
+      label: "Send link invite",
+      detail: `${providerDetail}; the invitation action can request a meeting link through the calendar API boundary.`,
       status: "configured",
+      actionable: true,
     };
   }
 
   return {
-    label: "Meeting links deferred",
-    detail: "No meeting provider is configured for link issuance or preview.",
+    label: "No meeting provider",
+    detail: "No meeting provider is configured for meeting-link invitation requests.",
     status: "disabled",
+    actionable: false,
   };
 }
 
 export function buildCalendarInvitationPayload(input: {
   matterId: string;
   recipientCount: number;
-}): { matterId: string; deliveryConfirmation: DeliveryConfirmationPayload } {
+  includeMeetingLink?: boolean;
+}): {
+  matterId: string;
+  includeMeetingLink?: true;
+  deliveryConfirmation: DeliveryConfirmationPayload;
+} {
   return {
     matterId: input.matterId,
+    ...(input.includeMeetingLink ? { includeMeetingLink: true as const } : {}),
     deliveryConfirmation: buildEmailDeliveryConfirmation(input.recipientCount),
   };
 }

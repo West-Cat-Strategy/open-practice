@@ -94,8 +94,11 @@ import {
 import {
   buildContactDossierConflictCheckPrefill,
   contactDossierRiskClass,
+  contactReviewQueueRiskClass,
   filterContactDossiers,
+  formatContactReviewSignalKind,
   summarizeContactDossier,
+  summarizeContactReviewQueueItem,
 } from "./contact-dossiers-dashboard";
 import {
   activeJurisdictionTrustReportSummary,
@@ -966,6 +969,62 @@ describe("dashboard client behavior", () => {
       identifiersText: "email: ada@example.test",
       prospectiveRole: "client",
     });
+  });
+
+  it("summarizes redacted contact review queue items without merge decisions", () => {
+    const item = {
+      contact: {
+        id: "contact-river",
+        kind: "organization" as const,
+        displayName: "River City Rentals Inc.",
+        aliasCount: 0,
+        identifierCount: 1,
+      },
+      matters: [
+        {
+          matterId: "matter-001",
+          matterNumber: "2026-0001",
+          matterTitle: "Morgan tenancy dispute",
+          matterStatus: "open" as const,
+          practiceArea: "Residential tenancy",
+          role: "opposing_party" as const,
+          adverse: true,
+          confidential: false,
+          portalActive: false,
+          portalPermissions: [],
+        },
+      ],
+      summary: {
+        duplicateCandidateCount: 1,
+        sensitivePartyCueCount: 1,
+        revalidationPromptCount: 1,
+      },
+      signals: [
+        {
+          kind: "duplicate_candidate" as const,
+          severity: "review" as const,
+          reason: "Possible duplicate contact identifier",
+          relatedContactIds: ["contact-river-duplicate"],
+          matchedOn: "identifier" as const,
+          matchedValueRedacted: true,
+        },
+        {
+          kind: "protected_party_cue" as const,
+          severity: "blocker" as const,
+          reason: "Adverse party link requires sensitive-party caution",
+          matterId: "matter-001",
+          matchedValueRedacted: false,
+        },
+      ],
+      auditSafe: true as const,
+    };
+
+    expect(summarizeContactReviewQueueItem(item)).toBe(
+      "duplicate review / protected-party cue / conflict recheck",
+    );
+    expect(contactReviewQueueRiskClass(item)).toBe("risk");
+    expect(formatContactReviewSignalKind("conflict_revalidation")).toBe("conflict revalidation");
+    expect(JSON.stringify(item)).not.toContain("legal@rivercity.example");
   });
 
   it("filters matters by API-backed matter fields", () => {
@@ -2482,6 +2541,17 @@ describe("dashboard client behavior", () => {
       matterId: "matter-001",
       deliveryConfirmation: { confirmed: true, channel: "email", recipientCount: 2 },
     });
+    expect(
+      buildCalendarInvitationPayload({
+        matterId: "matter-001",
+        recipientCount: 1,
+        includeMeetingLink: true,
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      includeMeetingLink: true,
+      deliveryConfirmation: { confirmed: true, channel: "email", recipientCount: 1 },
+    });
   });
 
   it("loads calendar dashboard events, links, and credentials for first render", async () => {
@@ -2562,9 +2632,10 @@ describe("dashboard client behavior", () => {
   it("describes meeting invitation boundaries without exposing links or tokens", () => {
     expect(describeMeetingInvitationBoundary(undefined)).toBe("Meeting links disabled.");
     expect(describeMeetingLinkAvailability(undefined)).toEqual({
-      label: "Meeting links deferred",
-      detail: "No meeting provider is configured for link issuance or preview.",
+      label: "No meeting provider",
+      detail: "No meeting provider is configured for meeting-link invitation requests.",
       status: "disabled",
+      actionable: false,
     });
     expect(
       describeMeetingInvitationBoundary({
@@ -2580,9 +2651,10 @@ describe("dashboard client behavior", () => {
         invitationEmail: { status: "disabled", reason: "smtp_not_configured" },
       }),
     ).toEqual({
-      label: "Meeting links deferred",
-      detail: "No meeting provider is configured for link issuance or preview.",
+      label: "No meeting provider",
+      detail: "No meeting provider is configured for meeting-link invitation requests.",
       status: "disabled",
+      actionable: false,
     });
     expect(
       describeMeetingInvitationBoundary({
@@ -2598,10 +2670,11 @@ describe("dashboard client behavior", () => {
         invitationEmail: { status: "configured", provider: "mailpit" },
       }),
     ).toEqual({
-      label: "Link action deferred",
+      label: "Send link invite",
       detail:
-        "synthetic-meeting is configured, but link issuance and preview remain deferred in this dashboard.",
+        "synthetic-meeting is configured; the invitation action can request a meeting link through the calendar API boundary.",
       status: "configured",
+      actionable: true,
     });
   });
 
