@@ -48,11 +48,13 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/contacts/review-queue`                                                  | Audit-safe contact review queue over visible dossiers, with duplicate, protected-party, and conflict-revalidation counts but no merge automation.                                                                                                           |
 | `GET /api/legal-clinic/programs`                                                  | Firm-scoped clinic programs with provider-neutral eligibility/referral defaults.                                                                                                                                                                            |
 | `POST /api/legal-clinic/programs`                                                 | Creates a firm-scoped clinic program and records redacted program audit metadata.                                                                                                                                                                           |
+| `GET /api/legal-clinic/fiscal-host-workflow?matterId=`                            | Matter-scoped fiscal-host workflow selector over existing clinic program/profile context, sanitized fiscal-host/restricted-fund metadata, restricted-fund review prompts, cautious reporting surfaces, and reuse points. It does not create accounting records, reports, or trust ledger postings. |
 | `GET /api/legal-clinic/profiles?matterId=`                                        | Lists the authorized matter's clinic profile as an empty or single-item profile array.                                                                                                                                                                      |
 | `PUT /api/legal-clinic/profiles/:matterId`                                        | Upserts the authorized matter's clinic profile and records redacted eligibility/referral audit metadata.                                                                                                                                                    |
 | `POST /api/conflicts/check`                                                       | Conflict search with audit recording for prospective names, aliases, identifiers, and party role.                                                                                                                                                           |
 | `GET /api/ledger?matterId=`                                                       | Trust ledger accounts, entries, posted transactions, and balances. Matter-scoped users must provide matter ID.                                                                                                                                              |
 | `GET /api/ledger/controls?matterId=`                                              | Read-only trust controls workbench payload with ledger balances, approvals, reconciliations, diagnostics, and cautious trust-control policy. Matter-scoped users must provide matter ID.                                                                    |
+| `GET /api/ledger/reports/jurisdictional-trust?jurisdiction=`                      | Firm-wide, read-only aggregate trust report grouped by matter jurisdiction. It exposes counts and totals only, has no export package, and is explicitly not jurisdiction-certified.                                                                         |
 | `POST /api/ledger/transactions`                                                   | Balanced, idempotent trust transaction posting.                                                                                                                                                                                                             |
 | `GET /api/audit`                                                                  | Firm audit events, hash-chain validity, and additive taxonomy summary counts without metadata values.                                                                                                                                                       |
 | `GET /api/documents/presign-upload`                                               | S3 PUT upload intent, storage key, document intent record, and required scan marker.                                                                                                                                                                        |
@@ -266,6 +268,18 @@ Matters section may show a `Clinic workflow` summary and the Intake section may 
 navigation, provider claims, and automatic intake/referral actions remain out of scope for this
 foundation slice.
 
+The first fiscal-host workflow slice reuses that legal-clinic context through
+`GET /api/legal-clinic/fiscal-host-workflow?matterId=`. The selector is intentionally narrow: it
+returns the authorized matter's program relationship posture, a whitelisted fiscal-host summary from
+program metadata (`hostName`, `programCode`, `reportingCadence`), a whitelisted restricted-fund
+summary from matter-profile metadata (`fundCode`, `purpose`, `reviewStatus`, `nextReviewDate`),
+restricted-fund prompts for staff review, cautious operational reporting surfaces, and reuse points
+across intake, documents, email, calendar, billing, and trust controls. Malformed or extra metadata
+is dropped instead of echoed. It does not persist fiscal-host records, certify restricted fund use,
+produce accounting/tax advice, publish client-facing reports, or automatically post trust ledger
+entries. Future slices should add persistence, database/API/web tests, and report exports only after
+the specific fiscal-host workflow and review boundary are selected.
+
 Dashboard queues are a first-class `/?section=queues` surface. The web shell also exposes active
 section state, live workflow status text, skip/focus handling, disabled-section reasons, and a matter
 action strip for existing matter-scoped features. These are UI affordances only; API authorization
@@ -461,6 +475,13 @@ reconciliation exceptions, unreconciled accounts, statement-row counts, variance
 postings, and invariant diagnostics for operator review. It does not post ledger entries, approve
 transactions, create reconciliations, place holds, add accounting dimensions, or claim
 compliance-pack coverage.
+
+The jurisdictional trust report is a firm-wide, read-only aggregate over the same trust controls
+data. It groups accessible matter balances, approval counts, reconciliation exception counts,
+statement-row counts, variance totals, unreconciled-account counts, and overdrawn diagnostics by
+matter jurisdiction. The response intentionally omits statement evidence, row descriptions, private
+matter details, and export files; its posture is
+`operational_controls_only_not_jurisdiction_certified`.
 
 Billing work treats time and expense capture as pre-invoice operational records. The billing status
 is `draft`, `submitted`, `approved`, `billed`, or `written_off`. Draft entries can be edited,

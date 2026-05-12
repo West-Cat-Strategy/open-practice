@@ -1,6 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { LegalClinicMatterProfile, LegalClinicProgram } from "@open-practice/domain";
+import {
+  buildFiscalHostWorkflowSelector,
+  type LegalClinicMatterProfile,
+  type LegalClinicProgram,
+} from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -102,6 +106,28 @@ export function registerLegalClinicRoutes(
   server.get("/api/legal-clinic/programs", async (request) => {
     assertLegalClinicAccess(request.auth, "read");
     return { programs: await repository.listLegalClinicPrograms(request.auth.firmId) };
+  });
+
+  server.get("/api/legal-clinic/fiscal-host-workflow", async (request) => {
+    const query = parseRequestPart(matterProfileQuerySchema, request.query, "query");
+    assertLegalClinicAccess(request.auth, "read", query.matterId);
+    const profile = await repository.getLegalClinicMatterProfile(
+      request.auth.firmId,
+      query.matterId,
+    );
+    const program = profile
+      ? (await repository.listLegalClinicPrograms(request.auth.firmId)).find(
+          (candidate) => candidate.id === profile.programId,
+        )
+      : undefined;
+
+    return {
+      selector: buildFiscalHostWorkflowSelector({
+        matterId: query.matterId,
+        profile,
+        program,
+      }),
+    };
   });
 
   server.post("/api/legal-clinic/programs", async (request, reply) => {

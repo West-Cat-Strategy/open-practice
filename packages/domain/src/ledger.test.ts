@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildJurisdictionalTrustReport,
   ledgerControlsDiagnostics,
   ledgerReconciliationReviewSummary,
   validateLedgerReconciliationRecord,
@@ -145,6 +146,110 @@ describe("ledger controls diagnostics", () => {
     expect(diagnostics.exceptionReconciliationIds).toEqual([]);
     expect(diagnostics.pendingApprovalTransactionIds).toEqual(["tx-pending"]);
     expect(diagnostics.rejectedApprovalTransactionIds).toEqual(["tx-rejected"]);
+  });
+
+  it("builds cautious jurisdictional trust report summaries from existing controls", () => {
+    const report = buildJurisdictionalTrustReport({
+      matters: [
+        { id: "matter-001", jurisdiction: "BC" },
+        { id: "matter-002", jurisdiction: "ON" },
+      ],
+      ledger: {
+        accounts,
+        entries,
+        trustBalances: {
+          "contact-ada:matter-001": 5000,
+          "contact-northstar:matter-002": -1000,
+        },
+      },
+      approvals,
+      reconciliations,
+      diagnostics: ledgerControlsDiagnostics({
+        ledger: {
+          accounts,
+          entries,
+          trustBalances: {
+            "contact-ada:matter-001": 5000,
+            "contact-northstar:matter-002": -1000,
+          },
+        },
+        approvals,
+        reconciliations,
+      }),
+    });
+
+    expect(report.compliancePosture).toBe("operational_controls_only_not_jurisdiction_certified");
+    expect(report.summaries).toEqual([
+      {
+        jurisdiction: "BC",
+        matterCount: 1,
+        trustBalanceCents: 5000,
+        pendingApprovalCount: 1,
+        rejectedApprovalCount: 0,
+        exceptionReconciliationCount: 1,
+        importedStatementRowCount: 1,
+        matchedStatementRowCount: 0,
+        unmatchedStatementRowCount: 1,
+        totalVarianceCents: -1000,
+        unreconciledAccountCount: 1,
+        overdrawnBalanceCount: 0,
+        compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+      },
+      {
+        jurisdiction: "ON",
+        matterCount: 1,
+        trustBalanceCents: -1000,
+        pendingApprovalCount: 0,
+        rejectedApprovalCount: 1,
+        exceptionReconciliationCount: 0,
+        importedStatementRowCount: 0,
+        matchedStatementRowCount: 0,
+        unmatchedStatementRowCount: 0,
+        totalVarianceCents: 0,
+        unreconciledAccountCount: 0,
+        overdrawnBalanceCount: 1,
+        compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+      },
+    ]);
+  });
+
+  it("keeps jurisdiction filters explicit even when no matter has matching trust activity", () => {
+    const report = buildJurisdictionalTrustReport({
+      matters: [{ id: "matter-001", jurisdiction: "BC" }],
+      ledger: {
+        accounts,
+        entries,
+        trustBalances: { "contact-ada:matter-001": 5000 },
+      },
+      approvals: [],
+      reconciliations: [],
+      diagnostics: {
+        pendingApprovalTransactionIds: [],
+        rejectedApprovalTransactionIds: [],
+        unreconciledAccountIds: [],
+        exceptionReconciliationIds: [],
+        overdrawnBalanceKeys: [],
+      },
+      jurisdiction: "OTHER",
+    });
+
+    expect(report.summaries).toEqual([
+      {
+        jurisdiction: "OTHER",
+        matterCount: 0,
+        trustBalanceCents: 0,
+        pendingApprovalCount: 0,
+        rejectedApprovalCount: 0,
+        exceptionReconciliationCount: 0,
+        importedStatementRowCount: 0,
+        matchedStatementRowCount: 0,
+        unmatchedStatementRowCount: 0,
+        totalVarianceCents: 0,
+        unreconciledAccountCount: 0,
+        overdrawnBalanceCount: 0,
+        compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+      },
+    ]);
   });
 
   it("validates statement-row review decisions and variance explanations", () => {

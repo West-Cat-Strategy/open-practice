@@ -11,7 +11,7 @@ services:
       POSTGRES_USER: open_practice
       POSTGRES_PASSWORD: open_practice
     ports:
-      - "5432:5432"
+      - "35432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +23,7 @@ services:
   redis:
     image: redis:8-alpine
     ports:
-      - "6379:6379"
+      - "36379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -39,16 +39,16 @@ services:
       MINIO_ROOT_USER: open_practice
       MINIO_ROOT_PASSWORD: open_practice_secret
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "39000:9000"
+      - "39001:9001"
     volumes:
       - minio-data:/data
 
   mailpit:
     image: axllent/mailpit:v1.29.7
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "31025:1025"
+      - "38025:8025"
 
   api:
     build:
@@ -67,8 +67,10 @@ services:
       - S3_SECRET_KEY=open_practice_secret
       - SMTP_HOST=mailpit
       - AUTH_JWT_SECRET=dev-only-change-me-at-least-16-chars
+      - WEBAUTHN_ORIGIN=http://localhost:33000
+      - PUBLIC_WEB_BASE_URL=http://localhost:33000
     ports:
-      - "4000:4000"
+      - "34000:4000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,7 +99,7 @@ services:
       - API_BASE_URL=http://api:4000
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
     ports:
-      - "3000:3000"
+      - "33000:3000"
     depends_on:
       api:
         condition: service_healthy

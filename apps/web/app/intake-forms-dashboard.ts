@@ -1,7 +1,9 @@
 import type {
+  AnswerSnapshotRecord,
   EmbeddedIntakeFormItem,
   EmbeddedIntakeTemplateDefinitionV2,
   IntakeFormItemActionRecord,
+  IntakeFormReviewRecord,
   IntakeVariableMapping,
   IntakeVariableTargetScope,
   IntakeTemplateRecord,
@@ -115,6 +117,38 @@ export function describeRequestMoreInfoResult(payload: IntakeFormReviewResponse)
     return "Follow-up intake link created. One-time token remains available below.";
   }
   return "Follow-up intake link created; token unavailable.";
+}
+
+export interface IntakeFormReviewLoadResponse {
+  link: IntakeFormLinkSummary;
+  snapshot: AnswerSnapshotRecord;
+  actions: IntakeFormItemActionRecord[];
+  reviews: IntakeFormReviewRecord[];
+}
+
+export function pendingSubmittedIntakeReviewLinks(
+  links: IntakeFormLinkSummary[],
+  loadedReviews: Record<string, IntakeFormReviewLoadResponse | undefined> = {},
+): IntakeFormLinkSummary[] {
+  return links.filter((link) => {
+    if (!link.submittedAt && link.status !== "submitted") return false;
+    const loaded = loadedReviews[link.id];
+    return !loaded || loaded.reviews.length === 0;
+  });
+}
+
+export function summarizeIntakeReview(review: IntakeFormReviewRecord): string {
+  const reason = review.reason ? ` · ${review.reason}` : "";
+  const followUp = review.followUpFormLinkId ? ` · follow-up ${review.followUpFormLinkId}` : "";
+  return `${review.decision.replaceAll("_", " ")} · ${review.decidedAt}${reason}${followUp}`;
+}
+
+export function summarizeAnswerValue(value: unknown): string {
+  if (value === null || value === undefined) return "blank";
+  const normalized =
+    typeof value === "string" ? value : JSON.stringify(value, (_key, nested) => nested);
+  if (!normalized) return "blank";
+  return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized;
 }
 
 export function buildIntakeTemplatePreviewPayload(input: {

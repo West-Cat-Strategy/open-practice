@@ -24,9 +24,12 @@ import {
 import { describeCommunicationsDeliveryState } from "../communications-inbox-dashboard";
 import { describeEmailDeliveryState } from "../email-delivery-dashboard";
 import {
+  describeFiscalHostProgramMetadata,
   describeLegalClinicProfileStatus,
   describeLegalClinicProgram,
+  describeRestrictedFundMetadata,
   findLegalClinicProgram,
+  fiscalHostWorkflowMetadata,
 } from "../legal-clinic-dashboard";
 import { formatMatterPartyRoleLabel } from "../participant-role-labels";
 import type {
@@ -80,6 +83,11 @@ export function MatterOverviewSection({
   onActivityStatusFilterChange: (value: MatterActivityStatusFilter) => void;
   onSelectSection: (section: LocalDashboardSectionKey) => void;
 }) {
+  const fiscalHostMetadata = fiscalHostWorkflowMetadata(
+    activeLegalClinicProgram,
+    activeLegalClinicProfile,
+  );
+
   return (
     <>
       <div className="detail-grid">
@@ -307,6 +315,31 @@ export function MatterOverviewSection({
                 </small>
               </span>
               <em>{activeLegalClinicProfile.nextReviewDate ? "review set" : "no review"}</em>
+            </div>
+            <div className="party-row">
+              <span>
+                <strong>
+                  {describeFiscalHostProgramMetadata(fiscalHostMetadata.programMetadata)}
+                </strong>
+                <small>
+                  {fiscalHostMetadata.programMetadata.reportingCadence
+                    ? `Reporting cadence ${fiscalHostMetadata.programMetadata.reportingCadence}.`
+                    : "Program host metadata is read-only until staff review confirms it."}
+                </small>
+              </span>
+              <em>fiscal host</em>
+            </div>
+            <div className="party-row">
+              <span>
+                <strong>
+                  {describeRestrictedFundMetadata(fiscalHostMetadata.restrictedFundMetadata)}
+                </strong>
+                <small>
+                  {fiscalHostMetadata.restrictedFundMetadata.purpose ??
+                    "Restricted-fund purpose is deferred until staff review."}
+                </small>
+              </span>
+              <em>{fiscalHostMetadata.restrictedFundMetadata.nextReviewDate ?? "review needed"}</em>
             </div>
           </div>
         </>

@@ -23,7 +23,7 @@ pnpm install
 docker compose up -d
 ```
 
-Access the application at `http://localhost:3000`. The stack is fully containerized and coordinates automatically.
+Access the application at `http://localhost:33000`. The stack is fully containerized and coordinates automatically.
 
 If you prefer to run services locally for development:
 
@@ -41,8 +41,8 @@ pnpm --filter @open-practice/web dev
 
 ## Runtime Modes
 
-- API defaults to `API_PORT=4000`.
-- Web defaults to `WEB_PORT=3000`.
+- API defaults to `API_PORT=34000` for host-local development; the Compose API container still listens on `4000`.
+- Web defaults to `WEB_PORT=33000` for host-local development; the Compose web container still listens on `3000`.
 - PostgreSQL is selected when `DATABASE_URL` is set.
 - In-memory persistence is available through `OPEN_PRACTICE_USE_MEMORY_REPO=true` or when no database URL is provided.
 - Development seed data is enabled with `OPEN_PRACTICE_DEV_SEED=true`.
@@ -64,6 +64,10 @@ pnpm --filter @open-practice/web dev
 - **minio**: MinIO for S3-compatible document-object storage.
 - **mailpit**: Local email capture for mail workflows.
 - **redis**: Redis for BullMQ execution state.
+
+Default local host ports are intentionally uncommon to avoid collisions with other developer tools:
+web `33000`, API `34000`, PostgreSQL `35432`, Redis `36379`, MinIO `39000`, MinIO console
+`39001`, Mailpit SMTP `31025`, and Mailpit UI `38025`.
 
 Redis should stay private to API and worker containers in production and should hold job metadata only.
 PostgreSQL remains the source of truth for legal and audit-relevant job lifecycle state.

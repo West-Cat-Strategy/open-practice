@@ -60,20 +60,21 @@ documentation; dependency admission and service reuse still follow
 
 ## Configuration Defaults
 
-Current development defaults live in `.env.example`: `NODE_ENV=development`, `WEB_PORT=3000`,
-`API_PORT=4000`, `API_BASE_URL=http://localhost:4000`, PostgreSQL `DATABASE_URL`,
+Current development defaults live in `.env.example`: `NODE_ENV=development`, `WEB_PORT=33000`,
+`API_PORT=34000`, `API_BASE_URL=http://localhost:34000`, PostgreSQL `DATABASE_URL`,
 `OPEN_PRACTICE_USE_MEMORY_REPO=false`, `OPEN_PRACTICE_DEV_SEED=true`,
 `AUTH_JWT_SECRET=dev-only-change-me-at-least-16-chars`, `SESSION_TTL_HOURS=12`, empty
-`OPEN_PRACTICE_SETUP_KEY`, and local S3-compatible storage at `http://localhost:9000`.
+`OPEN_PRACTICE_SETUP_KEY`, browser-facing local origin `http://localhost:33000`, and local
+S3-compatible storage at `http://localhost:39000`.
 
 Worker/provider defaults:
 
 | Variable                              | Default                                                 | Purpose                                                           |
 | ------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------- |
-| `REDIS_URL`                           | API: empty; worker: `redis://localhost:6379/0`          | Queue broker for BullMQ email enqueueing and workers.             |
+| `REDIS_URL`                           | API: empty; worker: `redis://localhost:36379/0`         | Queue broker for BullMQ email enqueueing and workers.             |
 | `WORKER_QUEUES`                       | `email,inbound_email,ai_triage,ocr,transcription,media` | Queue allow-list for the worker runtime.                          |
 | `WORKER_CONCURRENCY`                  | `2`                                                     | Per-queue BullMQ worker concurrency.                              |
-| `SMTP_HOST` / `SMTP_PORT`             | `localhost` / `1025`                                    | Mailpit SMTP endpoint for local capture.                          |
+| `SMTP_HOST` / `SMTP_PORT`             | `localhost` / `31025`                                   | Mailpit SMTP endpoint for local capture.                          |
 | `SMTP_SECURE`                         | `false`                                                 | TLS toggle for SMTP delivery profiles.                            |
 | `SMTP_FROM`                           | `Open Practice <no-reply@open-practice.local>`          | Default outbound sender identity.                                 |
 | `SMTP_USERNAME` / `SMTP_PASSWORD`     | empty                                                   | Optional authenticated SMTP credentials.                          |

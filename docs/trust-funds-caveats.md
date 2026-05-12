@@ -19,6 +19,10 @@ trust accounting software, accounting software, or tax-advice tooling.
 - The trust controls workbench is a read-only operator review surface for existing balances,
   approvals, reconciliations, statement-row counts, variance notes, recent postings, and diagnostics.
   It does not post, approve, reconcile, certify, or move funds.
+- Jurisdictional trust reports are read-only aggregates over existing matter jurisdiction labels,
+  balances, approvals, reconciliation summaries, variance totals, and diagnostics. They do not expose
+  statement evidence or private matter detail, create export packages, or certify compliance in any
+  jurisdiction.
 - Billing, invoice, manual-payment, and trust-transfer-request workflows should be treated as
   operational controls around review, evidence, authorization, and reconciliation.
 - No live payment processor is currently part of the product contract.
