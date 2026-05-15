@@ -94,6 +94,7 @@ export const jobQueueName = pgEnum("job_queue_name", [
   "email",
   "connectors",
   "inbound_email",
+  "reports",
   "ai_triage",
   "ocr",
   "transcription",

@@ -12,6 +12,7 @@ export const openPracticeQueueNames = [
   "email",
   "connectors",
   "inbound_email",
+  "reports",
   "ai_triage",
   "ocr",
   "transcription",

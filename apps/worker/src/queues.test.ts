@@ -14,6 +14,7 @@ describe("worker queue foundation", () => {
       "email",
       "connectors",
       "inbound_email",
+      "reports",
       "ai_triage",
       "ocr",
       "transcription",

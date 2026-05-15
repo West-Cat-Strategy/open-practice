@@ -6,6 +6,7 @@ import type {
   ConnectorRecord,
   ConnectorSecretReference,
 } from "@open-practice/domain";
+import { outboundWebhookEventAllowlist } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -116,6 +117,17 @@ function assertRedactedSummary(summary: Record<string, unknown>, field: string):
   );
 }
 
+const allowedConnectorEvents = new Set<string>(outboundWebhookEventAllowlist);
+
+function assertAllowlistedConnectorEvent(eventType: string): void {
+  if (allowedConnectorEvents.has(eventType)) return;
+  throw new ApiHttpError(
+    400,
+    "CONNECTOR_EVENT_NOT_ALLOWLISTED",
+    "Connector outbox event type is not allowlisted for delivery",
+  );
+}
+
 function serializeSecretReference(reference: ConnectorSecretReference | undefined) {
   if (!reference) return undefined;
   return {
@@ -220,6 +232,7 @@ export function registerConnectorRoutes(
     const body = parseRequestPart(connectorOutboxCreateBodySchema, request.body, "body");
     assertConnectorAccess(request.auth, { resource: "connector", action: "create" });
     assertRedactedSummary(body.payloadSummary, "payloadSummary");
+    assertAllowlistedConnectorEvent(body.eventType);
     const connector = await repository.getConnector(request.auth.firmId, body.connectorId);
     if (!connector) {
       throw new ApiHttpError(404, "CONNECTOR_NOT_FOUND", "Connector was not found");

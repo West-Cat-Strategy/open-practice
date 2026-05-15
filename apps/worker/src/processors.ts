@@ -49,6 +49,7 @@ const disabledReasons: Record<OpenPracticeQueueName, string> = {
   email: "SMTP email delivery is not configured",
   connectors: "Connector delivery is not configured",
   inbound_email: "Inbound email parsing is not configured",
+  reports: "Report export processing is not configured",
   ai_triage: "AI triage is reserved/deferred and has no worker processor",
   ocr: "OCR worker dependencies are not configured",
   transcription: "Transcription is reserved/deferred and has no worker processor",
@@ -127,6 +128,7 @@ async function processOpenPracticeJobBody(input: {
   if (queueName === "email") return processEmailJob(input);
   if (queueName === "connectors") return processConnectorJob(input);
   if (queueName === "inbound_email") return processInboundEmailJob(input);
+  if (queueName === "reports") return processReportJob(input);
 
   return {
     status: "skipped",
@@ -138,6 +140,41 @@ async function processOpenPracticeJobBody(input: {
       queueStatus: reservedQueueNames.has(queueName) ? "reserved" : "disabled",
       reason: reservedQueueNames.has(queueName) ? "deferred_worker" : "not_configured",
       providerConfigured: false,
+    },
+  };
+}
+
+async function processReportJob(input: {
+  jobName: string;
+  data: WorkerJobEnvelope;
+  repository: OpenPracticeRepository;
+}): Promise<WorkerJobResult> {
+  const { data, repository } = input;
+
+  if (input.jobName !== "audit_export" || data.resourceType !== "audit_export") {
+    return {
+      status: "skipped",
+      reason: "Unsupported report export job",
+      metadata: {
+        firmId: data.firmId,
+        resourceType: data.resourceType,
+        resourceId: data.resourceId,
+        reportStatus: "unsupported",
+      },
+    };
+  }
+
+  const audit = await repository.listAuditEvents(data.firmId);
+  return {
+    status: "completed",
+    metadata: {
+      firmId: data.firmId,
+      resourceType: "audit_export",
+      resourceId: data.resourceId,
+      reportType: "audit_log",
+      reportScope: "firm",
+      eventCount: audit.events.length,
+      generatedAt: new Date().toISOString(),
     },
   };
 }

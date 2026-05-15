@@ -135,6 +135,7 @@ interface ApiOptions {
   automationProvider?: DocumentAutomationProvider;
   draftAssistProvider?: DraftAssistProvider;
   emailJobQueue?: ApiJobQueue;
+  reportJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
   sessionTtlHours?: number;
   publicWebBaseUrl?: string;
@@ -381,6 +382,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerJobsRoutes(server, {
     repository: options.repository,
     emailJobQueue: options.emailJobQueue,
+    reportJobQueue: options.reportJobQueue,
     ocrJobQueue: options.ocrJobQueue,
   });
   registerProviderStatusRoutes(server, {
@@ -422,7 +424,10 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
       origin: options.webAuthn.origin,
     },
   });
-  registerAuditRoutes(server, { repository: options.repository });
+  registerAuditRoutes(server, {
+    repository: options.repository,
+    reportJobQueue: options.reportJobQueue,
+  });
   registerSignatureRoutes(server, {
     repository: options.repository,
     signatureProvider: options.signatureProvider ?? new EmbeddedSignatureProvider(),
@@ -567,11 +572,25 @@ function createOcrJobQueueFromEnv(env: ApiEnv): Queue | undefined {
   });
 }
 
+function createReportJobQueueFromEnv(env: ApiEnv): Queue | undefined {
+  if (!env.REDIS_URL) return undefined;
+  return new Queue("reports", {
+    connection: redisConnectionFromUrl(env.REDIS_URL),
+    defaultJobOptions: {
+      attempts: 2,
+      backoff: { type: "exponential", delay: 60_000 },
+      removeOnComplete: 500,
+      removeOnFail: false,
+    },
+  });
+}
+
 if (process.env.NODE_ENV !== "test") {
   const env = envSchema.parse(process.env);
   validateProductionReadiness(env);
   const { repository, close } = await createRepositoryFromEnv(env);
   const emailJobQueue = createEmailJobQueueFromEnv(env);
+  const reportJobQueue = createReportJobQueueFromEnv(env);
   const ocrJobQueue = createOcrJobQueueFromEnv(env);
   const server = createApiServer({
     repository,
@@ -582,6 +601,7 @@ if (process.env.NODE_ENV !== "test") {
     signatureProvider: new EmbeddedSignatureProvider(),
     automationProvider: new EmbeddedAutomationProvider(),
     emailJobQueue,
+    reportJobQueue,
     ocrJobQueue,
     sessionTtlHours: env.SESSION_TTL_HOURS,
     publicWebBaseUrl: env.PUBLIC_WEB_BASE_URL ?? env.WEBAUTHN_ORIGIN,
@@ -595,9 +615,12 @@ if (process.env.NODE_ENV !== "test") {
     },
   });
   process.once("SIGTERM", () => {
-    void Promise.all([emailJobQueue?.close(), ocrJobQueue?.close(), close?.()]).then(() =>
-      process.exit(0),
-    );
+    void Promise.all([
+      emailJobQueue?.close(),
+      reportJobQueue?.close(),
+      ocrJobQueue?.close(),
+      close?.(),
+    ]).then(() => process.exit(0));
   });
   await server.listen({ host: "0.0.0.0", port: env.API_PORT });
 }

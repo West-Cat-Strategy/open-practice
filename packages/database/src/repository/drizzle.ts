@@ -82,7 +82,7 @@ import {
   type WebAuthnChallengeRecord,
   type WebAuthnCredentialRecord,
 } from "@open-practice/domain";
-import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../runtime.js";
 import * as schema from "../schema.js";
 
@@ -1100,17 +1100,24 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     options: {
       status?: JobLifecycleRecord["status"];
       queueName?: JobLifecycleRecord["queueName"];
+      queuedBefore?: string;
+      limit?: number;
     } = {},
   ): Promise<JobLifecycleRecord[]> {
     const conditions = [eq(schema.jobLifecycleRecords.firmId, firmId)];
     if (options.status) conditions.push(eq(schema.jobLifecycleRecords.status, options.status));
     if (options.queueName)
       conditions.push(eq(schema.jobLifecycleRecords.queueName, options.queueName));
-    const rows = await this.db
+    if (options.queuedBefore)
+      conditions.push(lt(schema.jobLifecycleRecords.queuedAt, new Date(options.queuedBefore)));
+    let query = this.db
       .select()
       .from(schema.jobLifecycleRecords)
       .where(and(...conditions))
-      .orderBy(asc(schema.jobLifecycleRecords.queuedAt));
+      .orderBy(desc(schema.jobLifecycleRecords.queuedAt))
+      .$dynamic();
+    if (options.limit && options.limit > 0) query = query.limit(options.limit);
+    const rows = await query;
     return rows.map(mapJobLifecycleRow);
   }
 

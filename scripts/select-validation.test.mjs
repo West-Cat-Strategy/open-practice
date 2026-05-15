@@ -52,6 +52,10 @@ describe("select-validation contract", () => {
     ]);
   });
 
+  it("maps the scripts directory shorthand to script validation", () => {
+    assert.deepEqual(selectCommands(["scripts"]), [COMMANDS.policyCheck, COMMANDS.test]);
+  });
+
   it("parses dirty and strict modes", () => {
     assert.deepEqual(parseArgs(["--strict", "--dirty"]), {
       mode: "dirty",

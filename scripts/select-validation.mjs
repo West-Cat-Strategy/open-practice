@@ -264,7 +264,7 @@ export function classifyPath(path) {
     commands.add(COMMANDS.policyCheck);
   }
 
-  if (path.startsWith("scripts/")) {
+  if (path === "scripts" || path.startsWith("scripts/")) {
     commands.add(COMMANDS.policyCheck);
     commands.add(COMMANDS.test);
   }

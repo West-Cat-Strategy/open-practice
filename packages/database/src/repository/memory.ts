@@ -870,15 +870,22 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     options: {
       status?: JobLifecycleRecord["status"];
       queueName?: JobLifecycleRecord["queueName"];
+      queuedBefore?: string;
+      limit?: number;
     } = {},
   ): Promise<JobLifecycleRecord[]> {
+    const limit = options.limit && options.limit > 0 ? options.limit : undefined;
     return clone(
-      this.jobLifecycleRecords.filter(
-        (record) =>
-          record.firmId === firmId &&
-          (!options.status || record.status === options.status) &&
-          (!options.queueName || record.queueName === options.queueName),
-      ),
+      this.jobLifecycleRecords
+        .filter(
+          (record) =>
+            record.firmId === firmId &&
+            (!options.status || record.status === options.status) &&
+            (!options.queueName || record.queueName === options.queueName) &&
+            (!options.queuedBefore || record.queuedAt < options.queuedBefore),
+        )
+        .sort((left, right) => right.queuedAt.localeCompare(left.queuedAt))
+        .slice(0, limit),
     );
   }
 

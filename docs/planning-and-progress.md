@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-05-12
+**Last Updated:** 2026-05-15
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,10 +10,10 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | OP-T89 is in review with local proof recorded.                       |
-| Next recommended pick | OP-T90 worker-owned async report/export requests.                    |
+| Current focus         | OP-T90 async audit export request slice is review-ready.             |
+| Next recommended pick | OP-T91 dashboard lane freshness and error-state controls.            |
 | Ready rows            | 0                                                                    |
-| Candidate rows        | 6                                                                    |
+| Candidate rows        | 5                                                                    |
 | In progress rows      | 0                                                                    |
 | Review rows           | 1                                                                    |
 | Blocked rows          | 0                                                                    |
@@ -24,8 +24,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Status    | ID     | Task                                              | Immediate Next Move                                                                                                                                                                                                        | Validation Plan                                                                                                                                                                                  |
 | --------- | ------ | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Review    | OP-T89 | Validation proof index and client action hub      | Review the completed validation proof index, linked docs map, candidate harvest rows, token `Needs attention` summaries, unsupported intake schema lockout, and selector runtime-config coverage.                          | Proof recorded in [OP-T89 validation note](validation/OP-T89_NONPROFIT_HARVEST_CLIENT_ACTION_HUB_PROOF_2026-05-12.md).                                                                           |
-| Candidate | OP-T90 | Worker-owned async report/export requests         | Move large audit, billing, or trust exports toward queued create/poll/download semantics using job metadata that excludes report bodies and sensitive client data.                                                         | Start with `pnpm verify:select -- --files apps/api/src/routes apps/worker/src packages/domain/src packages/database/src docs/improvement-opportunities.md`.                                      |
+| Done      | OP-T89 | Validation proof index and client action hub      | Browser review confirmed the secure-share, external-upload, and intake public-token `Needs attention` summaries render cleanly at desktop and mobile widths with synthetic token data.                                     | 2026-05-15 proof recorded in [OP-T89 validation note](validation/OP-T89_NONPROFIT_HARVEST_CLIENT_ACTION_HUB_PROOF_2026-05-12.md).                                                                |
+| Review    | OP-T90 | Worker-owned async report/export requests         | Review the queued audit export request slice: create/poll/download semantics, report queue lifecycle records, no report bodies in job metadata, redacted downloads, and bounded job listing.                               | Proof recorded in [OP-T90 validation note](validation/OP-T90_ASYNC_AUDIT_EXPORT_REQUESTS_PROOF_2026-05-15.md).                                                                                   |
 | Candidate | OP-T91 | Dashboard lane freshness and error-state controls | Add explicit refresh/cache/error-state cues for dashboard lanes so staff can refresh queues/provider/audit data without reloading a sensitive workspace.                                                                   | Start with `pnpm verify:select -- --files apps/web/app/dashboard-client.tsx apps/web/app/dashboard apps/web/app/operational-focus-panel.ts`.                                                     |
 | Candidate | OP-T92 | Intake/form authoring diagnostics                 | Add non-persistent diagnostics for duplicate keys, broken conditions, and missing mapping targets in the structured intake builder before staff publish client-facing flows.                                               | Start with `pnpm verify:select -- --files apps/web/app/intake-forms/StructuredIntakeBuilder.tsx apps/web/app/intake-forms`.                                                                      |
 | Candidate | OP-T93 | Connector secret masking and redaction hardening  | Ensure connector/webhook secret reads return only masked sentinels, unchanged-secret writes preserve stored values, and retry/backup/export paths stay redacted.                                                           | Start with `pnpm verify:select -- --files apps/api/src/routes/connectors.ts apps/worker/src packages/database/src`.                                                                              |
