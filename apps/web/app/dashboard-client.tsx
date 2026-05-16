@@ -17,6 +17,7 @@ import {
   Link2,
   LockKeyhole,
   Plus,
+  RotateCcw,
   Save,
   ShieldCheck,
   Sparkles,
@@ -99,9 +100,11 @@ import {
 import DraftEditor from "./drafting/DraftEditor";
 import {
   applySavedQueueFocus,
+  dashboardLaneFreshnessCue,
   describeSavedQueueFocus,
   filterMatters,
   summarizeQueues,
+  type DashboardLaneRefreshState,
 } from "./dashboard-utils";
 import {
   buildConflictCheckPayload,
@@ -190,6 +193,7 @@ import {
   workerRunSafeContext,
 } from "./worker-runs-dashboard";
 import {
+  buildProvidersStatusPath,
   compactProviderStatus,
   providerPostureRows,
   summarizeProvidersStatus,
@@ -333,6 +337,7 @@ const currency = new Intl.NumberFormat("en-CA", {
   style: "currency",
   currency: "CAD",
 });
+const dashboardLaneStaleAfterMs = 5 * 60 * 1000;
 
 const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   matters: Gavel,
@@ -397,14 +402,14 @@ export default function DashboardClient({
   initialSection,
   overview,
   operationalViewDefinitions = [],
-  operationalViews,
-  providerStatus,
-  matters,
+  operationalViews: initialOperationalViews,
+  providerStatus: initialProviderStatus,
+  matters: initialMatters,
   session,
   signatures,
   taskWorkbench,
   trustControls,
-  queues,
+  queues: initialQueues,
   workerHealth,
   workerRuns,
   shareLinksStatus,
@@ -412,7 +417,22 @@ export default function DashboardClient({
   const detailPanelRef = useRef<HTMLElement>(null);
   const shouldFocusDetailRef = useRef(false);
   const hasAppliedUrlSectionRef = useRef(false);
-  const [activeMatterId, setActiveMatterId] = useState(matters[0]?.id ?? "");
+  const [matters, setMatters] = useState(initialMatters);
+  const [queues, setQueues] = useState(initialQueues);
+  const [providerStatus, setProviderStatus] = useState(initialProviderStatus);
+  const [operationalViews, setOperationalViews] = useState(initialOperationalViews);
+  const [freshnessNow, setFreshnessNow] = useState(() => new Date());
+  const [dashboardLoadedAt, setDashboardLoadedAt] = useState("");
+  const [queueRefreshState, setQueueRefreshState] = useState<DashboardLaneRefreshState>({
+    refreshing: false,
+  });
+  const [providerRefreshState, setProviderRefreshState] = useState<DashboardLaneRefreshState>({
+    refreshing: false,
+  });
+  const [auditRefreshState, setAuditRefreshState] = useState<DashboardLaneRefreshState>({
+    refreshing: false,
+  });
+  const [activeMatterId, setActiveMatterId] = useState(initialMatters[0]?.id ?? "");
   const [activeSection, setActiveSection] = useState<LocalDashboardSectionKey>(initialSection);
   const [workerRunFilter, setWorkerRunFilter] = useState<WorkerRunQueueFilter>("all");
   const [savedOperationalViewDefinitions, setSavedOperationalViewDefinitions] = useState(
@@ -888,6 +908,59 @@ export default function DashboardClient({
     ],
   );
   const operationalFocusEmpty = operationalFocusEmptyMessage(operationalFocus);
+  const queueFreshnessCue = dashboardLaneFreshnessCue(
+    {
+      loadedAt: queueRefreshState.loadedAt ?? dashboardLoadedAt,
+      refreshing: queueRefreshState.refreshing,
+      error: queueRefreshState.error,
+    },
+    {
+      now: freshnessNow,
+      staleAfterMs: dashboardLaneStaleAfterMs,
+      loadedAtLabel:
+        queueRefreshState.loadedAt || dashboardLoadedAt
+          ? compactDate(queueRefreshState.loadedAt ?? dashboardLoadedAt)
+          : undefined,
+    },
+  );
+  const providerFreshnessCue = dashboardLaneFreshnessCue(
+    {
+      loadedAt: providerRefreshState.loadedAt ?? dashboardLoadedAt,
+      refreshing: providerRefreshState.refreshing,
+      error: providerRefreshState.error,
+    },
+    {
+      now: freshnessNow,
+      staleAfterMs: dashboardLaneStaleAfterMs,
+      loadedAtLabel:
+        providerRefreshState.loadedAt || dashboardLoadedAt
+          ? compactDate(providerRefreshState.loadedAt ?? dashboardLoadedAt)
+          : undefined,
+    },
+  );
+  const auditFreshnessCue = dashboardLaneFreshnessCue(
+    {
+      loadedAt: auditRefreshState.loadedAt ?? dashboardLoadedAt,
+      refreshing: auditRefreshState.refreshing,
+      error: auditRefreshState.error,
+    },
+    {
+      now: freshnessNow,
+      staleAfterMs: dashboardLaneStaleAfterMs,
+      loadedAtLabel:
+        auditRefreshState.loadedAt || dashboardLoadedAt
+          ? compactDate(auditRefreshState.loadedAt ?? dashboardLoadedAt)
+          : undefined,
+    },
+  );
+
+  useEffect(() => {
+    const loadedAt = new Date().toISOString();
+    setDashboardLoadedAt(loadedAt);
+    setFreshnessNow(new Date(loadedAt));
+    const timer = window.setInterval(() => setFreshnessNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!activeMatter) return;
@@ -1078,6 +1151,69 @@ export default function DashboardClient({
       taskWorkbench.counters.my.overdue,
     ],
   );
+
+  async function refreshQueueLane(): Promise<void> {
+    setQueueRefreshState((current) => ({ ...current, refreshing: true, error: undefined }));
+    try {
+      const payload = await requestDashboardJson<QueuesResponse>(apiBaseUrl, "/api/queues", {
+        headers: devHeaders,
+      });
+      setQueues(payload);
+      setQueueRefreshState({ loadedAt: new Date().toISOString(), refreshing: false });
+      setFreshnessNow(new Date());
+    } catch (error) {
+      setQueueRefreshState((current) => ({
+        ...current,
+        refreshing: false,
+        error: String(dashboardApiStatus(error)),
+      }));
+      setFreshnessNow(new Date());
+    }
+  }
+
+  async function refreshProviderLane(): Promise<void> {
+    setProviderRefreshState((current) => ({ ...current, refreshing: true, error: undefined }));
+    try {
+      const payload = await requestDashboardJson<ProvidersStatusResponse>(
+        apiBaseUrl,
+        buildProvidersStatusPath(),
+        { headers: devHeaders },
+      );
+      setProviderStatus(payload);
+      setProviderRefreshState({ loadedAt: new Date().toISOString(), refreshing: false });
+      setFreshnessNow(new Date());
+    } catch (error) {
+      setProviderRefreshState((current) => ({
+        ...current,
+        refreshing: false,
+        error: String(dashboardApiStatus(error)),
+      }));
+      setFreshnessNow(new Date());
+    }
+  }
+
+  async function refreshAuditLane(): Promise<void> {
+    setAuditRefreshState((current) => ({ ...current, refreshing: true, error: undefined }));
+    try {
+      const [refreshedMatters, refreshedOperationalViews] = await Promise.all([
+        requestDashboardJson<MatterSummary[]>(apiBaseUrl, "/api/matters", { headers: devHeaders }),
+        requestDashboardJson<OperationalViewsResponse>(apiBaseUrl, "/api/operational-views", {
+          headers: devHeaders,
+        }),
+      ]);
+      setMatters(refreshedMatters);
+      setOperationalViews(refreshedOperationalViews);
+      setAuditRefreshState({ loadedAt: new Date().toISOString(), refreshing: false });
+      setFreshnessNow(new Date());
+    } catch (error) {
+      setAuditRefreshState((current) => ({
+        ...current,
+        refreshing: false,
+        error: String(dashboardApiStatus(error)),
+      }));
+      setFreshnessNow(new Date());
+    }
+  }
 
   async function createDraftInvoice(): Promise<void> {
     if (!activeMatter) return;
@@ -5135,20 +5271,41 @@ export default function DashboardClient({
             ) : null}
 
             {activeSection === "audit" ? (
-              <div className="party-list">
-                {activeMatter.activity.map((entry) => (
-                  <div className="party-row" key={entry.id}>
-                    <span>
-                      <strong>{entry.title}</strong>
-                      <small>{new Date(entry.occurredAt).toLocaleString("en-CA")}</small>
-                    </span>
-                    <em>{entry.kind}</em>
-                  </div>
-                ))}
-                {activeMatter.activity.length === 0 ? (
-                  <p className="inline-empty">No activity has been recorded for this matter.</p>
-                ) : null}
-              </div>
+              <>
+                <div
+                  className={`lane-refresh-panel ${auditFreshnessCue.tone}`}
+                  data-stale={auditFreshnessCue.stale ? "true" : "false"}
+                >
+                  <span>
+                    <strong>Audit activity</strong>
+                    <small>{auditFreshnessCue.detail}</small>
+                  </span>
+                  <button
+                    aria-label="Refresh audit activity"
+                    className="secondary-button compact-button lane-refresh-button"
+                    disabled={auditRefreshState.refreshing}
+                    onClick={() => void refreshAuditLane()}
+                    type="button"
+                  >
+                    <RotateCcw aria-hidden="true" size={16} />
+                    {auditRefreshState.refreshing ? "Refreshing" : auditFreshnessCue.label}
+                  </button>
+                </div>
+                <div className="party-list">
+                  {activeMatter.activity.map((entry) => (
+                    <div className="party-row" key={entry.id}>
+                      <span>
+                        <strong>{entry.title}</strong>
+                        <small>{new Date(entry.occurredAt).toLocaleString("en-CA")}</small>
+                      </span>
+                      <em>{entry.kind}</em>
+                    </div>
+                  ))}
+                  {activeMatter.activity.length === 0 ? (
+                    <p className="inline-empty">No activity has been recorded for this matter.</p>
+                  ) : null}
+                </div>
+              </>
             ) : null}
 
             {activeSection === "queues" ? (
@@ -5169,13 +5326,19 @@ export default function DashboardClient({
                 onApplyQueueOperationalViewDefinition={applyQueueOperationalViewDefinition}
                 onArchiveQueueOperationalViewDefinition={archiveQueueOperationalViewDefinition}
                 onClearQueueOperationalViewDefinition={clearQueueOperationalViewDefinition}
+                onRefreshProviders={() => void refreshProviderLane()}
+                onRefreshQueues={() => void refreshQueueLane()}
                 onSaveQueueOperationalViewDefinition={saveQueueOperationalViewDefinition}
                 onSelectMatter={selectMatter}
                 onWorkerRunFilterChange={setWorkerRunFilter}
+                providerFreshnessCue={providerFreshnessCue}
                 providerRows={providerRows}
                 providerStatus={providerStatus}
                 providerStatusSummary={providerStatusSummary}
+                providerRefreshing={providerRefreshState.refreshing}
+                queueFreshnessCue={queueFreshnessCue}
                 queueSummary={queueSummary}
+                queueRefreshing={queueRefreshState.refreshing}
                 savedOperationalViewDefinitions={savedOperationalViewDefinitions}
                 savedOperationalViewStatus={savedOperationalViewStatus}
                 savingOperationalView={savingOperationalView}

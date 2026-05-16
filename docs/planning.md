@@ -66,8 +66,9 @@ Next operational scale priorities:
     records, communications ownership, private staff notes, and consent/channel follow-up state
     without adding realtime chat or duplicating existing inbox triage.
 5.  **Resolution And Reporting Surfaces**: Add contact data-quality decision records, audit
-    projection summaries, async report export requests, delivery receipt tokens, and saved
-    operational-view expansion beyond the current queue-dashboard surface.
+    projection summaries, async report export requests, delivery receipt tokens, dashboard lane
+    freshness controls, and saved operational-view expansion beyond the current queue-dashboard
+    surface.
 
 ## Reuse Guardrails
 

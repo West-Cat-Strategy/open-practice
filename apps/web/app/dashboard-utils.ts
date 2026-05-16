@@ -1,6 +1,73 @@
 import type { OpenPracticeSidebarNavigationSection } from "../routes/routeCatalog";
 import type { MatterSummary, QueuesResponse, SavedOperationalViewDefinition } from "./types";
 
+export type DashboardRefreshLane = "queues" | "providers" | "audit";
+export type DashboardLaneFreshnessTone = "neutral" | "ready" | "risk";
+
+export interface DashboardLaneRefreshState {
+  loadedAt?: string;
+  refreshing: boolean;
+  error?: string;
+}
+
+export interface DashboardLaneFreshnessCue {
+  label: string;
+  detail: string;
+  tone: DashboardLaneFreshnessTone;
+  stale: boolean;
+}
+
+export function dashboardLaneFreshnessCue(
+  state: DashboardLaneRefreshState,
+  input: {
+    now: Date;
+    staleAfterMs: number;
+    loadedAtLabel?: string;
+  },
+): DashboardLaneFreshnessCue {
+  const loadedAt = state.loadedAt ? new Date(state.loadedAt) : null;
+  const validLoadedAt = loadedAt && !Number.isNaN(loadedAt.getTime()) ? loadedAt : null;
+  const ageMs = validLoadedAt ? input.now.getTime() - validLoadedAt.getTime() : 0;
+  const stale = Boolean(validLoadedAt && ageMs > input.staleAfterMs);
+  const loadedDetail = input.loadedAtLabel
+    ? `Last refreshed ${input.loadedAtLabel}.`
+    : "Loaded with the dashboard response.";
+
+  if (state.refreshing) {
+    return {
+      label: "Refreshing",
+      detail: "Refreshing authorized dashboard data.",
+      tone: "ready",
+      stale: false,
+    };
+  }
+
+  if (state.error) {
+    return {
+      label: "Refresh failed",
+      detail: `${loadedDetail} Latest refresh failed: ${state.error}.`,
+      tone: "risk",
+      stale: true,
+    };
+  }
+
+  if (stale) {
+    return {
+      label: "Stale",
+      detail: `${loadedDetail} Refresh before acting on this lane.`,
+      tone: "risk",
+      stale: true,
+    };
+  }
+
+  return {
+    label: "Fresh",
+    detail: loadedDetail,
+    tone: "ready",
+    stale: false,
+  };
+}
+
 export function filterMatters(matters: MatterSummary[], query: string): MatterSummary[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return matters;

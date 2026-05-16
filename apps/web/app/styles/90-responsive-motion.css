@@ -288,6 +288,7 @@
   }
 
   .section-title,
+  .lane-refresh-panel,
   .party-row,
   .matter-row,
   .review-row,
@@ -298,6 +299,10 @@
 
   .section-title span {
     text-align: left;
+  }
+
+  .lane-refresh-button {
+    width: 100%;
   }
 
   .app-shell {
