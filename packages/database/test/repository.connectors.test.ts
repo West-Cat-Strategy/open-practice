@@ -29,6 +29,23 @@ describe("repository connectors", () => {
       },
     ]);
 
+    await expect(
+      repository.updateConnector("firm-west-legal", connector.id, {
+        displayName: "Synthetic Registry Updated",
+        status: "paused",
+        updatedAt: "2026-05-02T12:05:00.000Z",
+      }),
+    ).resolves.toMatchObject({
+      displayName: "Synthetic Registry Updated",
+      status: "paused",
+      secretReference: { id: "secret-ref/synthetic-registry" },
+      updatedAt: "2026-05-02T12:05:00.000Z",
+    });
+    await repository.updateConnector("firm-west-legal", connector.id, {
+      status: "enabled",
+      updatedAt: "2026-05-02T12:06:00.000Z",
+    });
+
     const outboxInput = {
       id: "connector-outbox-1",
       firmId: "firm-west-legal",
@@ -267,21 +284,28 @@ describe("repository connectors", () => {
       status: "failed",
       occurredAt: "2026-05-12T12:10:30.000Z",
       terminal: true,
-      errorSummary: "Connector destination failed HTTPS guardrail validation",
-      metadata: { reason: "localhost_or_loopback_denied" },
+      errorSummary:
+        "Connector destination failed for token=private-token client@example.test secret://hidden",
+      metadata: {
+        reason: "localhost_or_loopback_denied",
+        secret: "private-token",
+        backupExportPath: "generated/private-export.json",
+      },
     });
 
     expect(failed.outbox).toMatchObject({
       status: "dead_letter",
       deadLetteredAt: "2026-05-12T12:10:30.000Z",
-      lastErrorSummary: "Connector destination failed HTTPS guardrail validation",
+      lastErrorSummary: "Connector destination failed for [redacted] [redacted-email] [redacted]",
       leaseId: undefined,
     });
     expect(failed.attempt).toMatchObject({
       status: "failed",
-      errorSummary: "Connector destination failed HTTPS guardrail validation",
+      errorSummary: "Connector destination failed for [redacted] [redacted-email] [redacted]",
       metadata: expect.objectContaining({
         reason: "localhost_or_loopback_denied",
+        secret: "[redacted]",
+        backupExportPath: "[redacted]",
         terminal: true,
       }),
     });

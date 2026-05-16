@@ -142,6 +142,8 @@ import {
   assertSameIdempotencyFingerprint,
   canonicalizeForIdempotency,
   clone,
+  sanitizeConnectorDeliveryMetadata,
+  sanitizeConnectorDeliverySummary,
   type ConversationThreadLifecycleAction,
 } from "./contracts.js";
 
@@ -346,6 +348,30 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     if (duplicate) throw new Error(`Connector key ${connector.key} already exists`);
     this.connectors.push(clone(connector));
     return clone(connector);
+  }
+
+  async updateConnector(
+    firmId: string,
+    connectorId: string,
+    updates: Partial<
+      Pick<ConnectorRecord, "displayName" | "status" | "secretReference" | "configSummary">
+    > & { updatedAt: string },
+  ): Promise<ConnectorRecord | undefined> {
+    const index = this.connectors.findIndex(
+      (connector) => connector.firmId === firmId && connector.id === connectorId,
+    );
+    if (index < 0) return undefined;
+    const current = this.connectors[index];
+    const next: ConnectorRecord = {
+      ...current,
+      ...updates,
+      secretReference:
+        "secretReference" in updates ? updates.secretReference : current.secretReference,
+      configSummary: updates.configSummary ?? current.configSummary,
+      updatedAt: updates.updatedAt,
+    };
+    this.connectors[index] = clone(next);
+    return clone(next);
   }
 
   async listConnectors(
@@ -555,6 +581,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         candidate.leaseId === input.leaseId,
     );
     if (attemptIndex < 0) throw new Error(`Connector attempt ${input.attemptId} was not found`);
+    const failureSummary = sanitizeConnectorDeliverySummary(input.errorSummary);
     const updatedOutbox: ConnectorOutboxRecord =
       input.status === "delivered"
         ? {
@@ -574,17 +601,17 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
             leasedUntil: undefined,
             nextAttemptAt: input.terminal ? undefined : input.nextAttemptAt,
             deadLetteredAt: input.terminal ? input.occurredAt : outbox.deadLetteredAt,
-            lastErrorSummary: input.errorSummary,
+            lastErrorSummary: failureSummary,
             updatedAt: input.occurredAt,
           };
     const attempt: ConnectorDeliveryAttemptRecord = {
       ...this.connectorDeliveryAttempts[attemptIndex],
       status: input.status,
       finishedAt: input.occurredAt,
-      errorSummary: input.errorSummary,
+      errorSummary: failureSummary,
       metadata: {
         ...this.connectorDeliveryAttempts[attemptIndex].metadata,
-        ...(input.metadata ?? {}),
+        ...sanitizeConnectorDeliveryMetadata(input.metadata),
         terminal: input.status === "failed" ? Boolean(input.terminal) : true,
       },
     };

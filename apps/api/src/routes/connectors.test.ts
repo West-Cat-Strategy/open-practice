@@ -77,6 +77,7 @@ describe("connector routes", () => {
         key: "synthetic.case-status",
         status: "enabled",
         secretReference: {
+          id: "__open_practice_connector_secret_unchanged__",
           label: "Synthetic API credential",
           version: "v1",
           redacted: true,
@@ -91,6 +92,7 @@ describe("connector routes", () => {
     const listed = await server.inject({ method: "GET", url: "/api/connectors?type=generic" });
     expect(listed.statusCode).toBe(200);
     expect(listed.json().connectors).toHaveLength(1);
+    expect(JSON.stringify(listed.json())).not.toContain("secret-ref/synthetic-case-status");
 
     const audit = await repository.listAuditEvents(firmId);
     expect(audit.events).toEqual(
@@ -105,6 +107,66 @@ describe("connector routes", () => {
         }),
       ]),
     );
+  });
+
+  it("preserves stored connector secrets when clients write the masked sentinel", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const connector = await repository.createConnector({
+      id: "connector-secret-preserve",
+      firmId,
+      type: "generic",
+      key: "synthetic.secret-preserve",
+      displayName: "Synthetic Secret Preserve",
+      status: "enabled",
+      secretReference: {
+        id: "secret-ref/raw-stored-value",
+        label: "Synthetic stored secret",
+        version: "v1",
+      },
+      configSummary: { deliveryUrl: "https://webhooks.example.test/open-practice" },
+      createdAt: "2026-05-14T12:00:00.000Z",
+      updatedAt: "2026-05-14T12:00:00.000Z",
+    });
+
+    const listed = await server.inject({ method: "GET", url: "/api/connectors" });
+    const maskedSecret = listed.json().connectors[0].secretReference;
+    expect(maskedSecret).toMatchObject({
+      id: "__open_practice_connector_secret_unchanged__",
+      label: "Synthetic stored secret",
+      redacted: true,
+    });
+
+    const updated = await server.inject({
+      method: "PATCH",
+      url: `/api/connectors/${connector.id}`,
+      payload: {
+        displayName: "Synthetic Secret Preserve Updated",
+        secretReference: maskedSecret,
+        configSummary: { deliveryUrl: "https://webhooks.example.test/open-practice", retry: true },
+      },
+    });
+
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json()).toMatchObject({
+      connector: {
+        displayName: "Synthetic Secret Preserve Updated",
+        secretReference: {
+          id: "__open_practice_connector_secret_unchanged__",
+          label: "Synthetic stored secret",
+          version: "v1",
+          redacted: true,
+        },
+      },
+    });
+    expect(JSON.stringify(updated.json())).not.toContain("secret-ref/raw-stored-value");
+    await expect(repository.getConnector(firmId, connector.id)).resolves.toMatchObject({
+      secretReference: {
+        id: "secret-ref/raw-stored-value",
+        label: "Synthetic stored secret",
+        version: "v1",
+      },
+    });
   });
 
   it("rejects raw credential-looking config summaries", async () => {

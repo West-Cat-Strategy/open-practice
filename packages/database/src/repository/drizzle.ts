@@ -117,6 +117,8 @@ import {
   clone,
   dateToIso,
   isPostgresUniqueViolation,
+  sanitizeConnectorDeliveryMetadata,
+  sanitizeConnectorDeliverySummary,
   type ConversationThreadLifecycleAction,
 } from "./contracts.js";
 
@@ -381,6 +383,28 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return mapConnectorRow(row);
   }
 
+  async updateConnector(
+    firmId: string,
+    connectorId: string,
+    updates: Partial<
+      Pick<ConnectorRecord, "displayName" | "status" | "secretReference" | "configSummary">
+    > & { updatedAt: string },
+  ): Promise<ConnectorRecord | undefined> {
+    const set: Partial<typeof schema.connectors.$inferInsert> = {
+      updatedAt: new Date(updates.updatedAt),
+    };
+    if (updates.displayName !== undefined) set.displayName = updates.displayName;
+    if (updates.status !== undefined) set.status = updates.status;
+    if ("secretReference" in updates) set.secretReference = updates.secretReference ?? null;
+    if (updates.configSummary !== undefined) set.configSummary = updates.configSummary;
+    const [row] = await this.db
+      .update(schema.connectors)
+      .set(set)
+      .where(and(eq(schema.connectors.firmId, firmId), eq(schema.connectors.id, connectorId)))
+      .returning();
+    return row ? mapConnectorRow(row) : undefined;
+  }
+
   async listConnectors(
     firmId: string,
     options: { type?: ConnectorRecord["type"]; status?: ConnectorRecord["status"] } = {},
@@ -628,6 +652,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     attempt: ConnectorDeliveryAttemptRecord;
   }> {
     const occurredAt = new Date(input.occurredAt);
+    const failureSummary = sanitizeConnectorDeliverySummary(input.errorSummary);
     return this.db.transaction(async (tx) => {
       const [outboxRow] = await tx
         .update(schema.connectorOutbox)
@@ -649,7 +674,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
                 nextAttemptAt:
                   input.terminal || !input.nextAttemptAt ? null : new Date(input.nextAttemptAt),
                 deadLetteredAt: input.terminal ? occurredAt : null,
-                lastErrorSummary: input.errorSummary ?? null,
+                lastErrorSummary: failureSummary ?? null,
                 updatedAt: occurredAt,
               },
         )
@@ -682,10 +707,10 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         .set({
           status: input.status,
           finishedAt: occurredAt,
-          errorSummary: input.errorSummary ?? null,
+          errorSummary: failureSummary ?? null,
           metadata: {
             ...existingAttempt.metadata,
-            ...(input.metadata ?? {}),
+            ...sanitizeConnectorDeliveryMetadata(input.metadata),
             terminal: input.status === "failed" ? Boolean(input.terminal) : true,
           },
         })

@@ -140,8 +140,9 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/jobs?queueName=`                                                        | Firm-scoped PostgreSQL job lifecycle projection, optionally filtered by queue name including `connectors`, with redacted run summaries, queue status, and queue names; Redis internals are not exposed.                                                                                            |
 | `GET /api/jobs/health`                                                            | Compact read-only worker health summary over configured, reserved, and not-configured queues, last observed job activity, failed/stalled counts, and degraded/healthy/unknown state without job bodies or sensitive payloads.                                                                      |
 | `GET /api/jobs/:jobId`                                                            | Firm-scoped redacted job-run detail with terminal/retryable state, retry timing, generic error summary, target resource IDs, and safe metadata only.                                                                                                                                               |
-| `GET /api/connectors?type=&status=`                                               | Owner/auditor-visible connector registry records with type, key, status, redacted secret-reference metadata, and operational config summaries only.                                                                                                                                                |
+| `GET /api/connectors?type=&status=`                                               | Owner/auditor-visible connector registry records with type, key, status, masked secret-reference sentinel metadata, and operational config summaries only.                                                                                                                                         |
 | `POST /api/connectors`                                                            | Creates a firm-scoped provider-neutral connector registry record without accepting raw credential fields.                                                                                                                                                                                          |
+| `PATCH /api/connectors/:connectorId`                                              | Updates firm-scoped connector display/status/config fields and preserves stored secret references when clients echo the masked unchanged-secret sentinel.                                                                                                                                          |
 | `GET /api/connectors/outbox?connectorId=&status=`                                 | Firm-scoped connector outbox summaries with idempotency-key presence, retry counters, next-attempt timestamps, lease presence, redacted payload summaries, and redacted delivered/dead-letter outcomes.                                                                                            |
 | `POST /api/connectors/outbox`                                                     | Creates or returns an idempotent provider-neutral connector outbox row for a registered connector without emitting provider-specific webhooks.                                                                                                                                                     |
 | `GET /api/email/status`                                                           | SMTP provider status from firm provider settings.                                                                                                                                                                                                                                                  |
@@ -582,9 +583,12 @@ changing classification, or writing metadata remains outside this surface.
 Failed or skipped OCR, transcription, email, connector, AI-assist, or media jobs must not change
 portal-share, billing, signature, trust, or audit state without an explicit reviewed transition.
 
-Connectors are firm-scoped, provider-neutral registry records. The first slice stores connector
-type, key, display name, status, optional secret-reference metadata, and redacted operational config
-summaries; it never stores or returns raw credentials. Connector outbox rows are durable records with
+Connectors are firm-scoped, provider-neutral registry records. The registry stores connector type,
+key, display name, status, optional worker-resolved secret-reference metadata, and redacted
+operational config summaries; route reads never return the stored secret-reference ID. They return
+only `__open_practice_connector_secret_unchanged__` as the masked sentinel plus non-secret labels,
+versions, and rotation timestamps so update clients can preserve existing stored values without
+learning them. Connector outbox rows are durable records with
 an idempotency key, payload summary, status, max attempts, attempt count, next-attempt timestamp,
 and optional lease/error summary fields, but route responses expose idempotency-key and lease
 presence rather than raw values. Creating an outbox row is idempotent by firm and idempotency key.
@@ -601,9 +605,11 @@ enabled connectors, validate allowlisted event keys and HTTPS destinations from 
 configuration, resolve signing material from worker-only secret configuration by secret-reference
 ID, send signed JSON summary envelopes built from safe outbox fields and `payloadSummary`, and
 record delivered, retryable failed, or dead-letter outcomes through connector outbox and delivery
-attempt rows. It does not persist raw webhook bodies, expose raw idempotency keys, return signing
-material, log secrets in job metadata, add manual retry controls, or implement provider-specific
-webhook integrations.
+attempt rows. Retry error summaries and delivery attempt metadata are sanitized at the repository
+boundary so API reads, backup-style repository exports, and later operational exports do not carry
+raw tokens, signatures, secret references, private storage paths, or email addresses. It does not
+persist raw webhook bodies, expose raw idempotency keys, return signing material, log secrets in job
+metadata, add manual retry controls, or implement provider-specific webhook integrations.
 
 Email outbox records and retry jobs store firm-scoped idempotency keys. Replaying a matching
 outbox or retry request returns the existing email/job projection without requeueing; changed safe

@@ -40,6 +40,15 @@ const secretReferenceSchema = z
   })
   .strict();
 
+const maskedSecretReferenceId = "__open_practice_connector_secret_unchanged__";
+
+const maskedSecretReferenceSchema = secretReferenceSchema
+  .extend({
+    id: z.literal(maskedSecretReferenceId),
+    redacted: z.literal(true),
+  })
+  .strict();
+
 const connectorCreateBodySchema = z
   .object({
     type: connectorTypeSchema,
@@ -54,6 +63,20 @@ const connectorCreateBodySchema = z
     configSummary: z.record(z.string(), z.unknown()).default({}),
   })
   .strict();
+
+const connectorPatchBodySchema = z
+  .object({
+    displayName: z.string().min(1).max(160).optional(),
+    status: connectorStatusSchema.optional(),
+    secretReference: z
+      .union([secretReferenceSchema, maskedSecretReferenceSchema, z.null()])
+      .optional(),
+    configSummary: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict()
+  .refine((body) => Object.keys(body).length > 0, {
+    message: "At least one connector field is required",
+  });
 
 const connectorListQuerySchema = z.object({
   type: connectorTypeSchema.optional(),
@@ -78,6 +101,10 @@ const connectorOutboxCreateBodySchema = z
     nextAttemptAt: z.string().datetime().optional(),
   })
   .strict();
+
+const connectorParamsSchema = z.object({
+  connectorId: z.string().min(1),
+});
 
 const sensitiveKeyPattern =
   /(api[_-]?key|authorization|bearer|credential|password|private[_-]?key|secret|token)/i;
@@ -119,6 +146,7 @@ function assertRedactedSummary(summary: Record<string, unknown>, field: string):
 function serializeSecretReference(reference: ConnectorSecretReference | undefined) {
   if (!reference) return undefined;
   return {
+    id: maskedSecretReferenceId,
     label: reference.label,
     version: reference.version,
     lastRotatedAt: reference.lastRotatedAt,
@@ -172,6 +200,52 @@ export function registerConnectorRoutes(
     assertConnectorAccess(request.auth, { resource: "connector", action: "read" });
     const connectors = await repository.listConnectors(request.auth.firmId, query);
     return { connectors: connectors.map(serializeConnector) };
+  });
+
+  server.patch("/api/connectors/:connectorId", async (request) => {
+    const params = parseRequestPart(connectorParamsSchema, request.params, "params");
+    const body = parseRequestPart(connectorPatchBodySchema, request.body, "body");
+    assertConnectorAccess(request.auth, { resource: "connector", action: "update" });
+    if (body.configSummary) assertRedactedSummary(body.configSummary, "configSummary");
+    const existing = await repository.getConnector(request.auth.firmId, params.connectorId);
+    if (!existing) {
+      throw new ApiHttpError(404, "CONNECTOR_NOT_FOUND", "Connector was not found");
+    }
+    const now = new Date().toISOString();
+    const secretReference =
+      body.secretReference && body.secretReference.id === maskedSecretReferenceId
+        ? existing.secretReference
+        : body.secretReference === null
+          ? undefined
+          : body.secretReference;
+    const connector = await repository.updateConnector(request.auth.firmId, existing.id, {
+      displayName: body.displayName,
+      status: body.status,
+      ...(body.secretReference !== undefined ? { secretReference } : {}),
+      configSummary: body.configSummary,
+      updatedAt: now,
+    });
+    if (!connector) {
+      throw new ApiHttpError(404, "CONNECTOR_NOT_FOUND", "Connector was not found");
+    }
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "connector.updated",
+      resourceType: "connector",
+      resourceId: connector.id,
+      occurredAt: now,
+      metadata: {
+        connectorId: connector.id,
+        connectorType: connector.type,
+        connectorKey: connector.key,
+        status: connector.status,
+        secretReferencePresent: Boolean(connector.secretReference),
+        secretReferenceChanged:
+          body.secretReference !== undefined &&
+          !(body.secretReference && body.secretReference.id === maskedSecretReferenceId),
+      },
+    });
+
+    return { connector: serializeConnector(connector) };
   });
 
   server.post("/api/connectors", async (request, reply) => {
