@@ -145,6 +145,26 @@ function assertRedactedSummary(summary: Record<string, unknown>, field: string):
 }
 
 const allowedConnectorEvents = new Set<string>(outboundWebhookEventAllowlist);
+const allowedPayloadSummaryKeys = new Set([
+  "actionCount",
+  "attemptCount",
+  "checksumStatus",
+  "completedAt",
+  "documentId",
+  "emailId",
+  "eventCount",
+  "fieldCount",
+  "invoiceId",
+  "itemCount",
+  "linkId",
+  "matterId",
+  "recipientCount",
+  "resourceId",
+  "resourceType",
+  "signatureRequestId",
+  "status",
+  "templateId",
+]);
 
 function assertAllowlistedConnectorEvent(eventType: string): void {
   if (allowedConnectorEvents.has(eventType)) return;
@@ -153,6 +173,38 @@ function assertAllowlistedConnectorEvent(eventType: string): void {
     "CONNECTOR_EVENT_NOT_ALLOWLISTED",
     "Connector outbox event type is not allowlisted for delivery",
   );
+}
+
+function safePayloadSummaryValue(value: unknown): string | number | boolean | undefined {
+  if (typeof value === "string") return value.length <= 160 ? value : undefined;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "boolean") return value;
+  return undefined;
+}
+
+function normalizePayloadSummary(summary: Record<string, unknown>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+  const rejectedKeys: string[] = [];
+  for (const [key, value] of Object.entries(summary)) {
+    if (!allowedPayloadSummaryKeys.has(key)) {
+      rejectedKeys.push(key);
+      continue;
+    }
+    const safeValue = safePayloadSummaryValue(value);
+    if (safeValue === undefined) {
+      rejectedKeys.push(key);
+      continue;
+    }
+    normalized[key] = safeValue;
+  }
+  if (rejectedKeys.length > 0) {
+    throw new ApiHttpError(
+      400,
+      "CONNECTOR_PAYLOAD_SUMMARY_REJECTED",
+      `payloadSummary contains unsupported delivery fields: ${rejectedKeys.sort().join(", ")}`,
+    );
+  }
+  return normalized;
 }
 
 function serializeSecretReference(reference: ConnectorSecretReference | undefined) {
@@ -307,6 +359,7 @@ export function registerConnectorRoutes(
     assertConnectorAccess(request.auth, { resource: "connector", action: "create" });
     assertRedactedSummary(body.payloadSummary, "payloadSummary");
     assertAllowlistedConnectorEvent(body.eventType);
+    const payloadSummary = normalizePayloadSummary(body.payloadSummary);
     const connector = await repository.getConnector(request.auth.firmId, body.connectorId);
     if (!connector) {
       throw new ApiHttpError(404, "CONNECTOR_NOT_FOUND", "Connector was not found");
@@ -323,7 +376,7 @@ export function registerConnectorRoutes(
         resourceId: body.resourceId,
         idempotencyKey: body.idempotencyKey,
         status: "pending",
-        payloadSummary: body.payloadSummary,
+        payloadSummary,
         attemptCount: 0,
         maxAttempts: body.maxAttempts,
         nextAttemptAt: body.nextAttemptAt ?? now,

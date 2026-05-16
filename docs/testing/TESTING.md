@@ -5,21 +5,21 @@ API contracts, database schema changes, auth changes, or release handoff.
 
 ## Default Commands
 
-| Need                   | Command                                          | Notes                                                                                                 |
-| ---------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| Full local gate        | `pnpm ci:local`                                  | Runs the full local verification lane and `git diff --check`.                                         |
-| Release readiness      | `pnpm release:local`                             | Runs dependency audits, the full local gate, and diff whitespace.                                     |
-| Dependency audit       | `pnpm deps:audit`                                | Runs local production and development dependency audits.                                              |
-| License evidence       | `pnpm deps:licenses`                             | Summarizes dependency license groups and fails only on unknown or unlicensed groups.                  |
-| Selective validation   | `pnpm verify:select -- --base <git-ref>`         | Prints recommended commands for changed files without running them.                                   |
-| Dirty-tree selection   | `pnpm verify:select -- --dirty`                  | Prints recommended commands for staged, unstaged, and untracked working-tree files.                   |
-| Formatting             | `pnpm format:check`                              | Required before handoff.                                                                              |
-| Static lint            | `pnpm lint`                                      | Runs Turbo package lint tasks.                                                                        |
-| Type checking          | `pnpm typecheck`                                 | Runs Turbo package type checks.                                                                       |
-| Tests                  | `pnpm test`                                      | Runs package test suites.                                                                             |
-| Database schema check  | `pnpm --filter @open-practice/database db:check` | Required for schema or migration changes.                                                             |
-| Policy and docs checks | `pnpm policy:check`                              | Runs tracked-secret, package manifest, OSS reuse, docs link, and architecture-boundary policy checks. |
-| Build                  | `pnpm build`                                     | Required for release or app shell changes.                                                            |
+| Need                   | Command                                          | Notes                                                                                                                       |
+| ---------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Full local gate        | `pnpm ci:local`                                  | Runs the full local verification lane and `git diff --check`.                                                               |
+| Release readiness      | `pnpm release:local`                             | Creates a local release proof artifact with dependency audit, license, SBOM, full local gate, and diff whitespace evidence. |
+| Dependency audit       | `pnpm deps:audit`                                | Runs local production and development dependency audits.                                                                    |
+| License evidence       | `pnpm deps:licenses`                             | Summarizes dependency license groups and fails only on unknown or unlicensed groups.                                        |
+| Selective validation   | `pnpm verify:select -- --base <git-ref>`         | Prints recommended commands for changed files without running them.                                                         |
+| Dirty-tree selection   | `pnpm verify:select -- --dirty`                  | Prints recommended commands for staged, unstaged, and untracked working-tree files.                                         |
+| Formatting             | `pnpm format:check`                              | Required before handoff.                                                                                                    |
+| Static lint            | `pnpm lint`                                      | Runs Turbo package lint tasks.                                                                                              |
+| Type checking          | `pnpm typecheck`                                 | Runs Turbo package type checks.                                                                                             |
+| Tests                  | `pnpm test`                                      | Runs package test suites.                                                                                                   |
+| Database schema check  | `pnpm --filter @open-practice/database db:check` | Required for schema or migration changes.                                                                                   |
+| Policy and docs checks | `pnpm policy:check`                              | Runs tracked-secret, package manifest, OSS reuse, docs link, and architecture-boundary policy checks.                       |
+| Build                  | `pnpm build`                                     | Required for release or app shell changes.                                                                                  |
 
 ## Selective Validation
 
@@ -124,3 +124,10 @@ pnpm --filter @open-practice/worker typecheck
 ## Current Gaps
 
 Open Practice does not yet have a Playwright smoke suite, Docker-backed browser matrix, dependency/dead-code review, or disposable database migration replay lane. Add those only after the current policy and docs control plane stays stable.
+
+## Local Release Proof
+
+`pnpm release:local` writes ignored local artifacts under `artifacts/release-local/<timestamp>/`.
+Each run records git metadata, command logs, dependency audit status, dependency license evidence, a
+CycloneDX SBOM, and the `pnpm ci:local` result. Failed required commands still leave partial proof
+behind for diagnosis, and the command exits nonzero when any required release check fails.

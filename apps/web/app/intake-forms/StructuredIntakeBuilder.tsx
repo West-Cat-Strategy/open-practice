@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
   EmbeddedIntakeFormItem,
@@ -10,6 +10,7 @@ import type {
 } from "@open-practice/domain";
 import {
   buildVariableMapping,
+  buildIntakeBuilderDiagnostics,
   itemKinds,
   makeIntakeItem,
   questionTypes,
@@ -66,6 +67,10 @@ export default function StructuredIntakeBuilder({
   const [jsonOpen, setJsonOpen] = useState(false);
   const [jsonValue, setJsonValue] = useState(JSON.stringify(definition, null, 2));
   const [jsonStatus, setJsonStatus] = useState("Advanced JSON ready.");
+  const diagnostics = buildIntakeBuilderDiagnostics(definition);
+  const blockingDiagnostics = diagnostics.filter(
+    (diagnostic) => diagnostic.severity === "blocking",
+  );
 
   useEffect(() => {
     if (!jsonOpen) setJsonValue(JSON.stringify(definition, null, 2));
@@ -268,12 +273,18 @@ export default function StructuredIntakeBuilder({
                     </label>
                   ) : null}
                   {item.kind === "question" ? (
-                    <QuestionItemEditor
-                      question={
-                        definition.questions.find((question) => question.id === item.questionId)!
-                      }
-                      updateQuestion={updateQuestion}
-                    />
+                    definition.questions.find((question) => question.id === item.questionId) ? (
+                      <QuestionItemEditor
+                        question={
+                          definition.questions.find((question) => question.id === item.questionId)!
+                        }
+                        updateQuestion={updateQuestion}
+                      />
+                    ) : (
+                      <div className="inline-empty warning">
+                        Missing question definition for {item.questionId}.
+                      </div>
+                    )
                   ) : null}
                   {item.kind === "upload" ? (
                     <UploadItemEditor
@@ -327,6 +338,32 @@ export default function StructuredIntakeBuilder({
           {saving ? "Saving..." : "Save form"}
         </button>
         <p className="inline-empty">{status}</p>
+      </div>
+
+      <div className="intake-authoring-diagnostics">
+        <div className="section-title">
+          <h3>Authoring diagnostics</h3>
+          <span className={blockingDiagnostics.length > 0 ? "warning" : "success"}>
+            {blockingDiagnostics.length > 0
+              ? `${blockingDiagnostics.length} blocking`
+              : "no blocking issues"}
+          </span>
+        </div>
+        {diagnostics.length > 0 ? (
+          <ul className="intake-diagnostic-list">
+            {diagnostics.map((diagnostic, index) => (
+              <li
+                className={`intake-diagnostic ${diagnostic.severity}`}
+                key={`${diagnostic.code}-${index}`}
+              >
+                <AlertTriangle size={14} />
+                <span>{diagnostic.message}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="inline-empty">No local authoring diagnostics found.</p>
+        )}
       </div>
     </div>
   );

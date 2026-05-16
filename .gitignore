@@ -50,6 +50,7 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+artifacts/release-local/
 
 # Local service state, uploads, and data snapshots
 .data/

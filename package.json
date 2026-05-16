@@ -22,7 +22,7 @@
     "format:check": "prettier --check .",
     "lint": "turbo lint",
     "policy:check": "pnpm security:scan && node scripts/validate-package-manifests.mjs && node scripts/validate-oss-reuse.mjs && node scripts/validate-doc-links.mjs && node scripts/validate-open-practice-boundaries.mjs",
-    "release:local": "pnpm deps:audit && pnpm ci:local",
+    "release:local": "node scripts/create-release-proof.mjs",
     "refs:clone": "node scripts/clone-oss-references.mjs",
     "security:scan": "node scripts/scan-tracked-secrets.mjs",
     "test": "turbo test && node --test scripts/*.test.mjs",
@@ -31,6 +31,7 @@
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm --filter @open-practice/database db:check && pnpm policy:check && pnpm build"
   },
   "devDependencies": {
+    "@cyclonedx/cyclonedx-npm": "4.2.1",
     "@playwright/test": "1.60.0",
     "@types/node": "25.8.0",
     "eslint": "10.4.0",

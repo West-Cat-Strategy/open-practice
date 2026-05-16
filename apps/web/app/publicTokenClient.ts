@@ -38,3 +38,8 @@ export async function readPublicTokenError(response: Response): Promise<PublicTo
 export function publicTokenErrorMessage(body: PublicTokenErrorBody, fallback: string): string {
   return body.message ?? body.error?.message ?? fallback;
 }
+
+export function publicTokenNetworkErrorMessage(action: string, error: unknown): string {
+  const detail = error instanceof Error && error.message.trim() ? ` ${error.message}` : "";
+  return `${action} could not reach the secure link service.${detail}`;
+}

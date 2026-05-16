@@ -1,0 +1,94 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { describe, it } from "node:test";
+
+import {
+  buildReleaseArtifactDir,
+  createReleaseProof,
+  releaseProofCommands,
+  releaseTimestamp,
+} from "./create-release-proof.mjs";
+
+describe("create-release-proof contract", () => {
+  it("builds stable local artifact paths", () => {
+    const now = new Date("2026-05-16T12:34:56.000Z");
+    assert.equal(releaseTimestamp(now), "2026-05-16T12-34-56Z");
+    assert.equal(
+      buildReleaseArtifactDir({
+        cwd: "/repo",
+        artifactRoot: "artifacts/release-local",
+        now,
+      }),
+      "/repo/artifacts/release-local/2026-05-16T12-34-56Z",
+    );
+  });
+
+  it("keeps the SBOM command pinned to the local CycloneDX executable", () => {
+    const sbomPath = "/repo/artifacts/release-local/run/sbom.cdx.json";
+    assert.deepEqual(
+      releaseProofCommands({ sbomPath }).find((command) => command.id === "cyclonedx-sbom"),
+      {
+        id: "cyclonedx-sbom",
+        command: "pnpm",
+        args: [
+          "exec",
+          "cyclonedx-npm",
+          "--ignore-npm-errors",
+          "--output-format",
+          "JSON",
+          "--output-file",
+          sbomPath,
+        ],
+        env: {
+          npm_config_user_agent: "npm/11.0.0 node/v26.0.0 open-practice-release-proof",
+          npm_execpath: "",
+        },
+        required: true,
+      },
+    );
+  });
+
+  it("writes partial proof and fails when a required command fails", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "open-practice-release-proof-"));
+    const calls = [];
+    const spawn = (command, args) => {
+      calls.push([command, args]);
+      if (command === "git") {
+        if (args[0] === "rev-parse") return { status: 0, stdout: "abc123\n", stderr: "" };
+        if (args[0] === "branch") return { status: 0, stdout: "codex/test\n", stderr: "" };
+        if (args[0] === "status") return { status: 0, stdout: " M package.json\n", stderr: "" };
+      }
+      const id = args.includes("ci:local") ? "local-ci-gate" : args.at(-1);
+      return {
+        status: args.includes("deps:audit") ? 1 : 0,
+        stdout: `stdout for ${id}\n`,
+        stderr: args.includes("deps:audit") ? "audit failed\n" : "",
+      };
+    };
+
+    const metadata = createReleaseProof({
+      cwd,
+      now: new Date("2026-05-16T12:34:56.000Z"),
+      spawn,
+    });
+
+    assert.equal(metadata.status, "failed");
+    assert.deepEqual(metadata.failedRequiredCommandIds, ["dependency-audit"]);
+    assert.deepEqual(calls[0], ["git", ["rev-parse", "HEAD"]]);
+
+    const proof = JSON.parse(
+      readFileSync(path.join(metadata.artifactDir, "release-proof.json"), "utf8"),
+    );
+    assert.equal(proof.git.branch, "codex/test");
+    assert.equal(proof.commands.length, 5);
+    assert.match(
+      readFileSync(
+        path.join(metadata.artifactDir, "commands", "dependency-audit.stderr.log"),
+        "utf8",
+      ),
+      /audit failed/,
+    );
+  });
+});
