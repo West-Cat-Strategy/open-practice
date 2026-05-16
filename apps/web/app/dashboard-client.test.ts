@@ -11,6 +11,7 @@ import { sampleResidentialTenancyIntakeDefinition } from "@open-practice/domain/
 import { buildSidebarNavigationSections } from "../routes/routeCatalog";
 import {
   applySavedQueueFocus,
+  dashboardLaneFreshnessCue,
   describeSavedQueueFocus,
   describeDisabledNavigationReason,
   filterMatters,
@@ -1577,6 +1578,62 @@ describe("dashboard client behavior", () => {
       }),
     ).toBe("2 queue items need attention. 1 high priority item.");
     expect(summarizeQueues({ sections: [] })).toBe("No queue items need attention.");
+  });
+
+  it("labels dashboard lane freshness without exposing response bodies", () => {
+    const now = new Date("2026-05-16T12:06:00.000Z");
+    expect(
+      dashboardLaneFreshnessCue(
+        {
+          loadedAt: "2026-05-16T12:04:00.000Z",
+          refreshing: false,
+        },
+        {
+          now,
+          staleAfterMs: 5 * 60 * 1000,
+          loadedAtLabel: "2026-05-16 12:04",
+        },
+      ),
+    ).toMatchObject({
+      label: "Fresh",
+      tone: "ready",
+      stale: false,
+    });
+    expect(
+      dashboardLaneFreshnessCue(
+        {
+          loadedAt: "2026-05-16T12:00:00.000Z",
+          refreshing: false,
+        },
+        {
+          now,
+          staleAfterMs: 5 * 60 * 1000,
+          loadedAtLabel: "2026-05-16 12:00",
+        },
+      ),
+    ).toMatchObject({
+      label: "Stale",
+      tone: "risk",
+      stale: true,
+    });
+    expect(
+      dashboardLaneFreshnessCue(
+        {
+          loadedAt: "2026-05-16T12:04:00.000Z",
+          refreshing: false,
+          error: "network",
+        },
+        {
+          now,
+          staleAfterMs: 5 * 60 * 1000,
+          loadedAtLabel: "2026-05-16 12:04",
+        },
+      ),
+    ).toMatchObject({
+      label: "Refresh failed",
+      tone: "risk",
+      stale: true,
+    });
   });
 
   it("applies saved queue focuses to authorized queue data without fetching archive rows", () => {

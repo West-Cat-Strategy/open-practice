@@ -1,4 +1,5 @@
 import { Clock3, RotateCcw, Save, X } from "lucide-react";
+import type { DashboardLaneFreshnessCue } from "../dashboard-utils";
 import type {
   ConnectorOperationsResponse,
   ProvidersStatusResponse,
@@ -47,13 +48,19 @@ export interface QueuesSectionProps {
   onApplyQueueOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => void;
   onArchiveQueueOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => void;
   onClearQueueOperationalViewDefinition: () => void;
+  onRefreshProviders: () => void;
+  onRefreshQueues: () => void;
   onSaveQueueOperationalViewDefinition: () => void;
   onSelectMatter: (matterId: string) => void;
   onWorkerRunFilterChange: (filter: WorkerRunQueueFilter) => void;
+  providerFreshnessCue: DashboardLaneFreshnessCue;
   providerRows: ProviderPostureRow[];
   providerStatus: ProvidersStatusResponse;
   providerStatusSummary: string;
+  providerRefreshing: boolean;
+  queueFreshnessCue: DashboardLaneFreshnessCue;
   queueSummary: string;
+  queueRefreshing: boolean;
   savedOperationalViewDefinitions: SavedOperationalViewDefinition[];
   savedOperationalViewStatus: string;
   savingOperationalView: boolean;
@@ -86,13 +93,19 @@ export function QueuesSection({
   onApplyQueueOperationalViewDefinition,
   onArchiveQueueOperationalViewDefinition,
   onClearQueueOperationalViewDefinition,
+  onRefreshProviders,
+  onRefreshQueues,
   onSaveQueueOperationalViewDefinition,
   onSelectMatter,
   onWorkerRunFilterChange,
+  providerFreshnessCue,
   providerRows,
   providerStatus,
   providerStatusSummary,
+  providerRefreshing,
+  queueFreshnessCue,
   queueSummary,
+  queueRefreshing,
   savedOperationalViewDefinitions,
   savedOperationalViewStatus,
   savingOperationalView,
@@ -111,6 +124,12 @@ export function QueuesSection({
 
   return (
     <>
+      <DashboardLaneRefreshPanel
+        cue={queueFreshnessCue}
+        label="Queue data"
+        onRefresh={onRefreshQueues}
+        refreshing={queueRefreshing}
+      />
       <div className="detail-grid queue-summary-grid">
         <div>
           <span className="field-label">Queue sections</span>
@@ -155,9 +174,12 @@ export function QueuesSection({
 
       <ProviderPostureBlock
         compactProviderStatus={compactProviderStatus}
+        providerFreshnessCue={providerFreshnessCue}
+        onRefreshProviders={onRefreshProviders}
         providerRows={providerRows}
         providerStatus={providerStatus}
         providerStatusSummary={providerStatusSummary}
+        providerRefreshing={providerRefreshing}
       />
 
       <WorkerHealthBlock
@@ -189,6 +211,37 @@ export function QueuesSection({
 
       <QueueRowsBlock displayedQueues={displayedQueues} onSelectMatter={onSelectMatter} />
     </>
+  );
+}
+
+function DashboardLaneRefreshPanel({
+  cue,
+  label,
+  onRefresh,
+  refreshing,
+}: {
+  cue: DashboardLaneFreshnessCue;
+  label: string;
+  onRefresh: () => void;
+  refreshing: boolean;
+}) {
+  return (
+    <div className={`lane-refresh-panel ${cue.tone}`} data-stale={cue.stale ? "true" : "false"}>
+      <span>
+        <strong>{label}</strong>
+        <small>{cue.detail}</small>
+      </span>
+      <button
+        aria-label={`Refresh ${label.toLowerCase()}`}
+        className="secondary-button compact-button lane-refresh-button"
+        disabled={refreshing}
+        onClick={onRefresh}
+        type="button"
+      >
+        <RotateCcw aria-hidden="true" size={16} />
+        {refreshing ? "Refreshing" : cue.label}
+      </button>
+    </div>
   );
 }
 
@@ -395,15 +448,30 @@ function SavedQueueViewsBlock({
 
 function ProviderPostureBlock({
   compactProviderStatus,
+  providerFreshnessCue: freshnessCue,
+  onRefreshProviders: onRefresh,
   providerRows,
   providerStatus,
   providerStatusSummary,
+  providerRefreshing: refreshing,
 }: Pick<
   QueuesSectionProps,
-  "compactProviderStatus" | "providerRows" | "providerStatus" | "providerStatusSummary"
+  | "compactProviderStatus"
+  | "providerFreshnessCue"
+  | "onRefreshProviders"
+  | "providerRows"
+  | "providerStatus"
+  | "providerStatusSummary"
+  | "providerRefreshing"
 >) {
   return (
     <>
+      <DashboardLaneRefreshPanel
+        cue={freshnessCue}
+        label="Provider posture"
+        onRefresh={onRefresh}
+        refreshing={refreshing}
+      />
       <div className="section-title">
         <h3>Provider posture</h3>
         <span>{compactProviderStatus(providerStatus.liveHealth.status)}</span>

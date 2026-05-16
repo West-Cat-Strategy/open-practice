@@ -268,6 +268,47 @@
   text-align: right;
 }
 
+.lane-refresh-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(39, 40, 35, 0.62);
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  min-width: 0;
+}
+
+.lane-refresh-panel.ready {
+  border-color: rgba(145, 214, 172, 0.28);
+}
+
+.lane-refresh-panel.risk {
+  border-color: rgba(239, 184, 121, 0.4);
+}
+
+.lane-refresh-panel span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lane-refresh-panel small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.lane-refresh-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 122px;
+  white-space: nowrap;
+}
+
 .party-list {
   display: grid;
   gap: 8px;
