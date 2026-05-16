@@ -603,6 +603,21 @@ export const auditEventTaxonomyDefinitions = [
     ],
   }),
   define({
+    action: "connector.updated",
+    category: "operations",
+    resourceType: "connector",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "connectorId",
+      "connectorType",
+      "connectorKey",
+      "status",
+      "secretReferencePresent",
+      "secretReferenceChanged",
+    ],
+  }),
+  define({
     action: "connector_outbox.queued",
     category: "operations",
     resourceType: "connector_outbox",

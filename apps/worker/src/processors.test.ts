@@ -657,6 +657,43 @@ describe("worker processors", () => {
     ]);
   });
 
+  it("redacts connector retry error details before storing repository attempts", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createConnectorOutboxFixture(repository, {
+      connectorId: "connector-retry-secret",
+      outboxId: "connector-outbox-retry-secret",
+      maxAttempts: 3,
+    });
+
+    const result = await processOpenPracticeJob({
+      ...connectorJobDefaults(repository),
+      connectorSecretResolver: () => "synthetic-signing-secret",
+      async connectorHttpDeliverer() {
+        throw new Error(
+          "Retry failed for token=private-token client@example.test secret://connector/hidden",
+        );
+      },
+    });
+
+    expect(result.metadata).toMatchObject({ failedCount: 1, deadLetterCount: 0 });
+    const [outbox] = await repository.listConnectorOutbox("firm-west-legal", {
+      connectorId: "connector-retry-secret",
+    });
+    expect(outbox).toMatchObject({
+      status: "failed",
+      lastErrorSummary: "Retry failed for [redacted] [redacted-email] [redacted]",
+      nextAttemptAt: expect.any(String),
+    });
+    const attempts = await repository.listConnectorDeliveryAttempts("firm-west-legal", {
+      outboxId: "connector-outbox-retry-secret",
+    });
+    const serialized = JSON.stringify(attempts);
+    expect(serialized).not.toContain("private-token");
+    expect(serialized).not.toContain("client@example.test");
+    expect(serialized).not.toContain("secret://connector/hidden");
+    expect(serialized).not.toContain("synthetic-signing-secret");
+  });
+
   it("skips reserved document-processing queues with redacted deferred metadata", async () => {
     for (const queueName of ["ai_triage", "transcription", "media"] as const) {
       const result = await processOpenPracticeJob({

@@ -79,6 +79,57 @@ export function dateToIso(value: Date | string | null | undefined): string | und
   return value instanceof Date ? value.toISOString() : value;
 }
 
+const connectorSensitiveKeyPattern =
+  /(api[_-]?key|authorization|bearer|credential|password|private[_-]?key|secret|signature|token)/i;
+const connectorSensitiveValuePattern =
+  /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|bearer\s+[a-z0-9._~+/=-]+|secret:\/\/\S+|token=\S+|api[_-]?key=\S+|credential=\S+|password=\S+|private[_-]?key=\S+|signature=\S+|storage[_-]?key=\S+|matters\/\S+|generated\/\S+)/gi;
+
+export function sanitizeConnectorDeliverySummary(message: string | undefined): string | undefined {
+  if (!message) return undefined;
+  const redacted = message
+    .replace(connectorSensitiveValuePattern, (match) =>
+      match.includes("@") ? "[redacted-email]" : "[redacted]",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  return redacted ? redacted.slice(0, 180) : undefined;
+}
+
+export function sanitizeConnectorDeliveryMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!metadata) return {};
+  const redacted: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (connectorSensitiveKeyPattern.test(key)) {
+      redacted[key] = "[redacted]";
+      continue;
+    }
+    if (typeof value === "string") {
+      redacted[key] = sanitizeConnectorDeliverySummary(value) ?? "";
+      continue;
+    }
+    if (typeof value === "number" || typeof value === "boolean" || value === null) {
+      redacted[key] = value;
+      continue;
+    }
+    if (Array.isArray(value)) {
+      redacted[key] = value.map((item) =>
+        typeof item === "string"
+          ? (sanitizeConnectorDeliverySummary(item) ?? "")
+          : item && typeof item === "object"
+            ? sanitizeConnectorDeliveryMetadata(item as Record<string, unknown>)
+            : item,
+      );
+      continue;
+    }
+    if (value && typeof value === "object") {
+      redacted[key] = sanitizeConnectorDeliveryMetadata(value as Record<string, unknown>);
+    }
+  }
+  return redacted;
+}
+
 export interface MatterSummary extends Matter {
   parties: Array<MatterParty & { contact: Contact }>;
   documents: DocumentRecord[];
@@ -322,6 +373,13 @@ export interface OpenPracticeRepository {
   ): Promise<ProviderSettingRecord[]>;
   upsertProviderSetting(setting: ProviderSettingRecord): Promise<ProviderSettingRecord>;
   createConnector(connector: ConnectorRecord): Promise<ConnectorRecord>;
+  updateConnector(
+    firmId: string,
+    connectorId: string,
+    updates: Partial<
+      Pick<ConnectorRecord, "displayName" | "status" | "secretReference" | "configSummary">
+    > & { updatedAt: string },
+  ): Promise<ConnectorRecord | undefined>;
   listConnectors(
     firmId: string,
     options?: { type?: ConnectorRecord["type"]; status?: ConnectorRecord["status"] },
