@@ -13,12 +13,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1045.0",
+    "@aws-sdk/client-s3": "^3.1048.0",
     "@open-practice/database": "workspace:^",
     "@open-practice/domain": "workspace:*",
     "@open-practice/providers": "workspace:*",
-    "bullmq": "^5.76.7",
-    "tsx": "4.21.0",
+    "bullmq": "^5.76.8",
+    "tsx": "4.22.0",
     "zod": "4.4.3"
   },
   "devDependencies": {

@@ -1,7 +1,7 @@
 # OP-T90 Async Audit Export Requests Proof
 
 **Date:** 2026-05-15
-**Status:** Review-ready
+**Status:** Done
 
 ## Scope
 
@@ -30,7 +30,18 @@ Implemented the first worker-owned report/export slice for audit exports.
 
 ## Validation
 
-Current narrow re-proof after queue/download tightening:
+Final end-to-end review proof:
+
+- `NODE_ENV=test pnpm exec tsx <<'TS' ... TS`
+  - Created an audit export request through `createApiServer` with a synthetic reports queue.
+  - Confirmed the queued download returned `AUDIT_EXPORT_NOT_READY`.
+  - Passed the captured queue payload to the real `processOpenPracticeJob()` reports worker.
+  - Confirmed `/api/jobs/:jobId` returned `completed`.
+  - Downloaded the export and confirmed the response contained hash fields and metadata keys, not raw
+    audit metadata values.
+  - Result: `{"ok":true,"status":"completed","events":3}`.
+
+Narrow re-proof after queue/download tightening:
 
 - `pnpm verify:select -- --files apps/api/src/routes/audit.ts apps/api/src/routes/audit.test.ts apps/worker/src/processors.ts apps/worker/src/processors.test.ts docs/planning-and-progress.md docs/validation/OP-T90_ASYNC_AUDIT_EXPORT_REQUESTS_PROOF_2026-05-15.md`
 - `pnpm --filter @open-practice/api exec vitest run src/routes/audit.test.ts src/routes/jobs.test.ts`
