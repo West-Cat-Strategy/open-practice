@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { canReadJobLifecycleRecord } from "@open-practice/domain";
+import { canReadJobLifecycleRecord, type User } from "@open-practice/domain";
 import { z } from "zod";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -22,6 +22,46 @@ const jobQuerySchema = z.object({
     z.string().datetime().optional(),
   ),
 });
+
+async function visibleJobPage(input: {
+  repository: ApiRouteDependencies["repository"];
+  firmId: string;
+  user: User;
+  queueName?: (typeof openPracticeQueueNames)[number];
+  status?: "queued" | "active" | "completed" | "failed" | "dead_letter" | "skipped";
+  cursor?: string;
+  limit: number;
+}) {
+  const visible = [];
+  let cursor = input.cursor;
+  const batchLimit = Math.min(Math.max(input.limit + 1, 25), 100);
+
+  while (visible.length <= input.limit) {
+    const batch = await input.repository.listJobLifecycleRecords(input.firmId, {
+      queueName: input.queueName,
+      status: input.status,
+      queuedBefore: cursor,
+      limit: batchLimit,
+    });
+    for (const record of batch) {
+      if (
+        canReadJobLifecycleRecord({
+          user: input.user,
+          firmId: input.firmId,
+          record,
+        })
+      ) {
+        visible.push(record);
+      }
+      if (visible.length > input.limit) break;
+    }
+    if (batch.length < batchLimit || visible.length > input.limit) break;
+    cursor = batch.at(-1)?.queuedAt;
+    if (!cursor) break;
+  }
+
+  return visible;
+}
 
 export function registerJobsRoutes(
   server: FastifyInstance,
@@ -47,19 +87,15 @@ export function registerJobsRoutes(
     if (!access.ok) throw access.error;
     const query = parseRequestPart(jobQuerySchema, request.query, "query");
 
-    const jobs = await repository.listJobLifecycleRecords(request.auth.firmId, {
+    const visibleJobs = await visibleJobPage({
+      repository,
+      firmId: request.auth.firmId,
+      user: request.auth.user,
       queueName: query.queueName,
       status: query.status,
-      queuedBefore: query.cursor,
-      limit: query.limit + 1,
+      cursor: query.cursor,
+      limit: query.limit,
     });
-    const visibleJobs = jobs.filter((record) =>
-      canReadJobLifecycleRecord({
-        user: request.auth.user,
-        firmId: request.auth.firmId,
-        record,
-      }),
-    );
     const pageJobs = visibleJobs.slice(0, query.limit);
     const queueSummaries = workerQueues();
     return {

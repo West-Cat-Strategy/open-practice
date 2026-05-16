@@ -10,6 +10,7 @@ import type {
 import {
   buildPublicTokenPath,
   publicTokenErrorMessage,
+  publicTokenNetworkErrorMessage,
   readPublicTokenError,
 } from "../publicTokenClient";
 import { PublicTokenNeedsAttention } from "../publicTokenActions";
@@ -54,34 +55,38 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
   useEffect(() => {
     let cancelled = false;
     async function loadForm(): Promise<void> {
-      const response = await fetch(
-        `${apiBaseUrl}${buildPublicTokenPath("/api/portal/intake-forms", token)}`,
-      );
-      if (cancelled) return;
-      if (!response.ok) {
-        const body = await readPublicTokenError(response);
-        setStatus(
-          response.status === 403
-            ? "This form link is not available."
-            : publicTokenErrorMessage(body, `Load failed: ${response.status}`),
+      try {
+        const response = await fetch(
+          `${apiBaseUrl}${buildPublicTokenPath("/api/portal/intake-forms", token)}`,
         );
-        return;
+        if (cancelled) return;
+        if (!response.ok) {
+          const body = await readPublicTokenError(response);
+          setStatus(
+            response.status === 403
+              ? "This form link is not available."
+              : publicTokenErrorMessage(body, `Load failed: ${response.status}`),
+          );
+          return;
+        }
+        const nextPayload = (await response.json()) as PublicIntakeFormPayload;
+        const draftAnswers = answersFromDraft(
+          nextPayload.template.definition,
+          nextPayload.draft?.answers,
+        );
+        setPayload(nextPayload);
+        setAnswers(draftAnswers);
+        draftSnapshotRef.current = JSON.stringify(draftAnswers);
+        loadedDraftRef.current = true;
+        setDraftStatus(
+          nextPayload.draft?.updatedAt
+            ? `Draft saved ${new Date(nextPayload.draft.updatedAt).toLocaleString()}.`
+            : "Draft not saved yet.",
+        );
+        setStatus(intakeLifecycleMessage(nextPayload));
+      } catch (error) {
+        if (!cancelled) setStatus(publicTokenNetworkErrorMessage("Load", error));
       }
-      const nextPayload = (await response.json()) as PublicIntakeFormPayload;
-      const draftAnswers = answersFromDraft(
-        nextPayload.template.definition,
-        nextPayload.draft?.answers,
-      );
-      setPayload(nextPayload);
-      setAnswers(draftAnswers);
-      draftSnapshotRef.current = JSON.stringify(draftAnswers);
-      loadedDraftRef.current = true;
-      setDraftStatus(
-        nextPayload.draft?.updatedAt
-          ? `Draft saved ${new Date(nextPayload.draft.updatedAt).toLocaleString()}.`
-          : "Draft not saved yet.",
-      );
-      setStatus(intakeLifecycleMessage(nextPayload));
     }
     void loadForm();
     return () => {
@@ -103,32 +108,36 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
     if (!manual && snapshot === draftSnapshotRef.current) return;
     setDraftSaving(true);
     setDraftStatus("Saving draft...");
-    const response = await fetch(
-      `${apiBaseUrl}${buildPublicTokenPath("/api/portal/intake-forms", token, "draft")}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answers }),
-      },
-    );
-    if (!response.ok) {
-      const body = await readPublicTokenError(response);
-      setDraftStatus(publicTokenErrorMessage(body, `Draft save failed: ${response.status}`));
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}${buildPublicTokenPath("/api/portal/intake-forms", token, "draft")}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ answers }),
+        },
+      );
+      if (!response.ok) {
+        const body = await readPublicTokenError(response);
+        setDraftStatus(publicTokenErrorMessage(body, `Draft save failed: ${response.status}`));
+        return;
+      }
+      const saved = (await response.json()) as { status: "draft_saved"; draftUpdatedAt: string };
+      draftSnapshotRef.current = snapshot;
+      setPayload((current) =>
+        current
+          ? {
+              ...current,
+              draft: { answers, updatedAt: saved.draftUpdatedAt },
+            }
+          : current,
+      );
+      setDraftStatus(`Draft saved ${new Date(saved.draftUpdatedAt).toLocaleTimeString()}.`);
+    } catch (error) {
+      setDraftStatus(publicTokenNetworkErrorMessage("Draft save", error));
+    } finally {
       setDraftSaving(false);
-      return;
     }
-    const saved = (await response.json()) as { status: "draft_saved"; draftUpdatedAt: string };
-    draftSnapshotRef.current = snapshot;
-    setPayload((current) =>
-      current
-        ? {
-            ...current,
-            draft: { answers, updatedAt: saved.draftUpdatedAt },
-          }
-        : current,
-    );
-    setDraftStatus(`Draft saved ${new Date(saved.draftUpdatedAt).toLocaleTimeString()}.`);
-    setDraftSaving(false);
   }
 
   useEffect(() => {
@@ -143,155 +152,165 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
     if (!payload) return;
     setBusyItemId(item.id);
     setStatus(`Uploading ${file.name}...`);
-    const checksumSha256 = await sha256Hex(file);
-    const contentType = file.type || "application/octet-stream";
-    const intent = await fetch(
-      `${apiBaseUrl}${buildPublicTokenPath(
-        "/api/portal/intake-forms",
-        token,
-        "items",
-        item.id,
-        "uploads",
-      )}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, checksumSha256, contentType }),
-      },
-    );
-    if (!intent.ok) {
-      const body = await readPublicTokenError(intent);
-      setStatus(publicTokenErrorMessage(body, `Upload intent failed: ${intent.status}`));
+    try {
+      const checksumSha256 = await sha256Hex(file);
+      const contentType = file.type || "application/octet-stream";
+      const intent = await fetch(
+        `${apiBaseUrl}${buildPublicTokenPath(
+          "/api/portal/intake-forms",
+          token,
+          "items",
+          item.id,
+          "uploads",
+        )}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name, checksumSha256, contentType }),
+        },
+      );
+      if (!intent.ok) {
+        const body = await readPublicTokenError(intent);
+        setStatus(publicTokenErrorMessage(body, `Upload intent failed: ${intent.status}`));
+        return;
+      }
+      const intentPayload = (await intent.json()) as {
+        uploadUrl: string;
+        document: { id: string };
+      };
+      const put = await fetch(intentPayload.uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": contentType,
+          "x-amz-checksum-sha256": checksumSha256,
+        },
+        body: file,
+      });
+      if (!put.ok) {
+        setStatus(`Upload failed: ${put.status}`);
+        return;
+      }
+      const completed = await fetch(
+        `${apiBaseUrl}${buildPublicTokenPath(
+          "/api/portal/intake-forms",
+          token,
+          "items",
+          item.id,
+          "documents",
+          intentPayload.document.id,
+          "complete",
+        )}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ checksumSha256 }),
+        },
+      );
+      if (!completed.ok) {
+        const body = await readPublicTokenError(completed);
+        setStatus(publicTokenErrorMessage(body, `Upload completion failed: ${completed.status}`));
+        return;
+      }
+      const completedPayload = (await completed.json()) as { action: IntakeFormItemActionRecord };
+      setPayload((current) =>
+        current
+          ? {
+              ...current,
+              actions: [
+                completedPayload.action,
+                ...current.actions.filter((action) => action.id !== completedPayload.action.id),
+              ],
+            }
+          : current,
+      );
+      setStatus(`${file.name} uploaded.`);
+    } catch (error) {
+      setStatus(publicTokenNetworkErrorMessage("Upload", error));
+    } finally {
       setBusyItemId("");
-      return;
     }
-    const intentPayload = (await intent.json()) as {
-      uploadUrl: string;
-      document: { id: string };
-    };
-    const put = await fetch(intentPayload.uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": contentType,
-        "x-amz-checksum-sha256": checksumSha256,
-      },
-      body: file,
-    });
-    if (!put.ok) {
-      setStatus(`Upload failed: ${put.status}`);
-      setBusyItemId("");
-      return;
-    }
-    const completed = await fetch(
-      `${apiBaseUrl}${buildPublicTokenPath(
-        "/api/portal/intake-forms",
-        token,
-        "items",
-        item.id,
-        "documents",
-        intentPayload.document.id,
-        "complete",
-      )}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ checksumSha256 }),
-      },
-    );
-    if (!completed.ok) {
-      const body = await readPublicTokenError(completed);
-      setStatus(publicTokenErrorMessage(body, `Upload completion failed: ${completed.status}`));
-      setBusyItemId("");
-      return;
-    }
-    const completedPayload = (await completed.json()) as { action: IntakeFormItemActionRecord };
-    setPayload((current) =>
-      current
-        ? {
-            ...current,
-            actions: [
-              completedPayload.action,
-              ...current.actions.filter((action) => action.id !== completedPayload.action.id),
-            ],
-          }
-        : current,
-    );
-    setStatus(`${file.name} uploaded.`);
-    setBusyItemId("");
   }
 
   async function recordSignature(item: Extract<EmbeddedIntakeFormItem, { kind: "signature" }>) {
     setBusyItemId(item.id);
     setStatus(item.documentId ? "Creating signature request..." : "Recording attestation...");
-    const response = await fetch(
-      `${apiBaseUrl}${buildPublicTokenPath(
-        "/api/portal/intake-forms",
-        token,
-        "items",
-        item.id,
-        "signature",
-      )}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "completed",
-          consentText: item.consentText,
-          evidence: { acceptedInBrowser: true },
-        }),
-      },
-    );
-    if (!response.ok) {
-      const body = await readPublicTokenError(response);
-      setStatus(publicTokenErrorMessage(body, `Signature failed: ${response.status}`));
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}${buildPublicTokenPath(
+          "/api/portal/intake-forms",
+          token,
+          "items",
+          item.id,
+          "signature",
+        )}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "completed",
+            consentText: item.consentText,
+            evidence: { acceptedInBrowser: true },
+          }),
+        },
+      );
+      if (!response.ok) {
+        const body = await readPublicTokenError(response);
+        setStatus(publicTokenErrorMessage(body, `Signature failed: ${response.status}`));
+        return;
+      }
+      const signaturePayload = (await response.json()) as { action: IntakeFormItemActionRecord };
+      setPayload((current) =>
+        current
+          ? {
+              ...current,
+              actions: [
+                signaturePayload.action,
+                ...current.actions.filter((action) => action.id !== signaturePayload.action.id),
+              ],
+            }
+          : current,
+      );
+      setStatus(item.documentId ? "Signature request completed." : "Attestation recorded.");
+    } catch (error) {
+      setStatus(publicTokenNetworkErrorMessage("Signature", error));
+    } finally {
       setBusyItemId("");
-      return;
     }
-    const signaturePayload = (await response.json()) as { action: IntakeFormItemActionRecord };
-    setPayload((current) =>
-      current
-        ? {
-            ...current,
-            actions: [
-              signaturePayload.action,
-              ...current.actions.filter((action) => action.id !== signaturePayload.action.id),
-            ],
-          }
-        : current,
-    );
-    setStatus(item.documentId ? "Signature request completed." : "Attestation recorded.");
-    setBusyItemId("");
   }
 
   async function submitForm() {
     setSubmitting(true);
     setStatus("Submitting form...");
-    const response = await fetch(
-      `${apiBaseUrl}${buildPublicTokenPath("/api/portal/intake-forms", token, "submit")}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answers, clientSubmissionId }),
-      },
-    );
-    if (!response.ok) {
-      const body = await readPublicTokenError(response);
-      const missing = requiredIncompleteItemIds(body);
-      setStatus(
-        missing?.length
-          ? `Submit blocked: complete ${missing.join(", ")}.`
-          : `Submit failed: ${response.status}`,
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}${buildPublicTokenPath("/api/portal/intake-forms", token, "submit")}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ answers, clientSubmissionId }),
+        },
       );
+      if (!response.ok) {
+        const body = await readPublicTokenError(response);
+        const missing = requiredIncompleteItemIds(body);
+        setStatus(
+          missing?.length
+            ? `Submit blocked: complete ${missing.join(", ")}.`
+            : publicTokenErrorMessage(body, `Submit failed: ${response.status}`),
+        );
+        return;
+      }
+      const submitted = (await response.json()) as Pick<PublicIntakeFormPayload, "link">;
+      setPayload((current) =>
+        current ? { ...current, draft: null, link: submitted.link } : current,
+      );
+      setStatus("Submitted. Your information is ready for staff review.");
+      setDraftStatus("Draft closed after submission.");
+    } catch (error) {
+      setStatus(publicTokenNetworkErrorMessage("Submit", error));
+    } finally {
       setSubmitting(false);
-      return;
     }
-    const submitted = (await response.json()) as Pick<PublicIntakeFormPayload, "link">;
-    setPayload((current) =>
-      current ? { ...current, draft: null, link: submitted.link } : current,
-    );
-    setStatus("Submitted. Your information is ready for staff review.");
-    setDraftStatus("Draft closed after submission.");
-    setSubmitting(false);
   }
 
   return (

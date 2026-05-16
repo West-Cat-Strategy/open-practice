@@ -1,6 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { AccessRequest, InboundEmailMessageRecord } from "@open-practice/domain";
+import {
+  canAccess,
+  type AccessRequest,
+  type InboundEmailMessageRecord,
+} from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
@@ -100,6 +104,7 @@ function buildInboundEmailTriageUpdates(
 export async function buildInboundEmailStatus(input: {
   repository: ApiRouteDependencies["repository"];
   firmId: string;
+  auth?: ApiAuthContext;
 }) {
   const [providers, addresses] = await Promise.all([
     input.repository.listProviderSettings(input.firmId, {
@@ -108,11 +113,33 @@ export async function buildInboundEmailStatus(input: {
     input.repository.listInboundEmailAddresses(input.firmId),
   ]);
   const enabled = providers.find((provider) => provider.enabled);
+  const auth = input.auth;
+  const addressesForUser = auth
+    ? addresses.filter((address) => {
+        if (auth.user.role === "owner_admin" || auth.user.role === "auditor") {
+          return true;
+        }
+        return Boolean(
+          address.matterId &&
+          canAccess({
+            user: auth.user,
+            firmId: auth.firmId,
+            resource: "inbound_email",
+            action: "read",
+            matterId: address.matterId,
+          }),
+        );
+      })
+    : addresses;
+
   return {
     status: enabled ? "configured" : "disabled",
     reason: enabled ? undefined : "not_configured",
-    provider: enabled?.key,
-    addresses: addresses.map(({ id, address, matterId, enabled, createdAt }) => ({
+    provider:
+      !input.auth || input.auth.user.role === "owner_admin" || input.auth.user.role === "auditor"
+        ? enabled?.key
+        : undefined,
+    addresses: addressesForUser.map(({ id, address, matterId, enabled, createdAt }) => ({
       id,
       address,
       matterId,
@@ -127,7 +154,7 @@ export function registerInboundEmailRoutes(
   { repository, ocrJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/inbound-email/status", async (request) => {
-    return buildInboundEmailStatus({ repository, firmId: request.auth.firmId });
+    return buildInboundEmailStatus({ repository, firmId: request.auth.firmId, auth: request.auth });
   });
 
   server.get("/api/inbound-email/messages", async (request) => {

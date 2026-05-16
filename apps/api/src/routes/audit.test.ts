@@ -48,6 +48,24 @@ afterEach(async () => {
 });
 
 describe("audit routes", () => {
+  it("returns audit events without raw metadata values", async () => {
+    const response = await testServer({ repository: new InMemoryOpenPracticeRepository() }).inject({
+      method: "GET",
+      url: "/api/audit",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      valid: true,
+      taxonomySummary: expect.objectContaining({ total: expect.any(Number) }),
+      events: expect.any(Array),
+    });
+    const event = response.json().events[0];
+    expect(event).toHaveProperty("metadataKeys");
+    expect(event).not.toHaveProperty("metadata");
+    expect(JSON.stringify(response.json())).not.toContain("Synthetic billing audit time entry");
+  });
+
   it("creates a redacted audit export request with poll and download links", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const queuedReports: Array<{ name: string; data: unknown; jobId?: string }> = [];

@@ -40,7 +40,7 @@ async function findAuditExportJob(
   );
 }
 
-function serializeAuditExport(
+function serializeAuditEvents(
   events: Awaited<ReturnType<OpenPracticeRepository["listAuditEvents"]>>,
 ) {
   return {
@@ -68,11 +68,7 @@ export function registerAuditRoutes(
   server.get("/api/audit", async (request) => {
     const access = requireAccess(request.auth, { resource: "audit_log", action: "read" });
     if (!access.ok) throw access.error;
-    const audit = await options.repository.listAuditEvents(request.auth.firmId);
-    return {
-      ...audit,
-      taxonomySummary: summarizeAuditEventTaxonomy(audit.events),
-    };
+    return serializeAuditEvents(await options.repository.listAuditEvents(request.auth.firmId));
   });
 
   server.post("/api/audit/export-requests", async (request, reply) => {
@@ -215,7 +211,7 @@ export function registerAuditRoutes(
         queuedAt: job.queuedAt,
         finishedAt: job.finishedAt,
       },
-      export: serializeAuditExport(await options.repository.listAuditEvents(request.auth.firmId)),
+      export: serializeAuditEvents(await options.repository.listAuditEvents(request.auth.firmId)),
     };
   });
 }

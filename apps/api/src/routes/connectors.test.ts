@@ -318,6 +318,72 @@ describe("connector routes", () => {
     expect(response.json()).toMatchObject({ code: "CONNECTOR_EVENT_NOT_ALLOWLISTED" });
   });
 
+  it("rejects non-allowlisted connector payload summary fields before delivery", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const connectorResponse = await server.inject({
+      method: "POST",
+      url: "/api/connectors",
+      payload: {
+        type: "generic",
+        key: "synthetic.review",
+        displayName: "Synthetic Review Connector",
+      },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox",
+      payload: {
+        connectorId: connectorResponse.json().connector.id,
+        eventType: "matter.created",
+        resourceType: "matter",
+        resourceId: "matter-001",
+        idempotencyKey: "matter-001:private-narrative:v1",
+        payloadSummary: {
+          matterId: "matter-001",
+          narrative: "Synthetic client facts should not leave the system.",
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "CONNECTOR_PAYLOAD_SUMMARY_REJECTED" });
+  });
+
+  it("rejects nested connector payload summary values", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const connectorResponse = await server.inject({
+      method: "POST",
+      url: "/api/connectors",
+      payload: {
+        type: "generic",
+        key: "synthetic.nested",
+        displayName: "Synthetic Nested Connector",
+      },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox",
+      payload: {
+        connectorId: connectorResponse.json().connector.id,
+        eventType: "document.verified",
+        resourceType: "document",
+        resourceId: "doc-001",
+        idempotencyKey: "doc-001:nested:v1",
+        payloadSummary: {
+          documentId: "doc-001",
+          status: { reviewed: true },
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "CONNECTOR_PAYLOAD_SUMMARY_REJECTED" });
+  });
+
   it("returns redacted connector delivery and dead-letter status", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository });

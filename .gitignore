@@ -55,6 +55,7 @@ yarn-error.log*
 .data/
 uploads/
 tmp/
+.tmp/
 temp/
 *.sqlite
 *.sqlite3

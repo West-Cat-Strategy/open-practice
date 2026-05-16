@@ -171,6 +171,55 @@ describe("jobs routes", () => {
     expect(response.json().jobs[0].errorSummary).not.toContain("synthetic fixture body");
   });
 
+  it("scans past invisible newer jobs when paginating matter-scoped job runs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    for (let index = 0; index < 3; index += 1) {
+      await repository.createJobLifecycleRecord({
+        id: `job-hidden-${index}`,
+        firmId,
+        queueName: "reports",
+        jobName: "audit_export",
+        status: "completed",
+        targetResourceType: "audit_export",
+        targetResourceId: `audit-export-${index}`,
+        attemptsMade: 1,
+        maxAttempts: 1,
+        queuedAt: `2026-05-02T10:0${index}:00.000Z`,
+        finishedAt: `2026-05-02T10:0${index}:10.000Z`,
+        metadata: { reportType: "audit_log", reportScope: "firm" },
+      });
+    }
+    await repository.createJobLifecycleRecord({
+      id: "job-visible-older",
+      firmId,
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "completed",
+      targetResourceType: "document",
+      targetResourceId: "doc-001",
+      attemptsMade: 1,
+      maxAttempts: 1,
+      queuedAt: "2026-05-02T09:00:00.000Z",
+      finishedAt: "2026-05-02T09:01:00.000Z",
+      metadata: { matterId: "matter-001", documentId: "doc-001", task: "ocr" },
+    });
+
+    const response = await testServer({ repository, role: "licensee" }).inject({
+      method: "GET",
+      url: "/api/jobs?limit=1",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "available",
+      jobs: [expect.objectContaining({ id: "job-visible-older" })],
+      pagination: {
+        limit: 1,
+        hasMore: false,
+      },
+    });
+  });
+
   it("returns compact worker health without job bodies or credentials", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createJobLifecycleRecord({

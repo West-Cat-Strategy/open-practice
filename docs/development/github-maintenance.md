@@ -94,5 +94,6 @@ the PR, issue, or release notes when settings change.
 - Make commit messages describe the user-facing or maintenance outcome, not just the files touched.
 - After a squash merge or manual merge, refresh local `main` from `origin/main` before starting the
   next branch.
-- For release maintenance, collect changed scope, `pnpm release:local` output, migration notes,
-  deployment notes, and any known operational caveats before drafting notes.
+- For release maintenance, collect changed scope, `pnpm release:local` output, the generated
+  `.tmp/open-practice-release/release-evidence.json` path, migration notes, deployment notes, and
+  any known operational caveats before drafting notes.
