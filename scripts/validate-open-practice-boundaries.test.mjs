@@ -5,6 +5,8 @@ import {
   REQUIRED_ROUTE_CATALOG_IDS,
   ROUTE_REGISTRARS,
   collectForbiddenRouteFailures,
+  collectRegistrarTestFailures,
+  collectUntrackedRegistrarFailures,
   evaluateBoundaryPolicy,
 } from "./validate-open-practice-boundaries.mjs";
 
@@ -62,15 +64,42 @@ describe("validate-open-practice-boundaries contract", () => {
     assert.ok(failures.includes("route catalog is missing queues."));
   });
 
+  it("requires every server route import to be tracked by the boundary registry", () => {
+    const failures = collectUntrackedRegistrarFailures(`
+      import { registerCommunicationsRoutes } from "./routes/communications.js";
+      import { registerUnreviewedRoutes } from "./routes/unreviewed.js";
+    `);
+
+    assert.deepEqual(failures, [
+      "registerUnreviewedRoutes from ./routes/unreviewed.js must be represented in ROUTE_REGISTRARS so the boundary gate owns its route family.",
+    ]);
+  });
+
+  it("requires tracked route families to keep at least one route test file", () => {
+    const failures = collectRegistrarTestFailures(
+      (path) => path !== "apps/api/src/routes/providers-status.test.ts",
+    );
+
+    assert.deepEqual(failures, [
+      "registerProviderStatusRoutes must keep at least one route test file for provider status: apps/api/src/routes/providers-status.test.ts.",
+    ]);
+  });
+
   it("keeps route family literals out of server.ts", () => {
     const failures = collectForbiddenRouteFailures(`
       server.get("/api/invoices", handler);
+      server.get("/api/providers/status", handler);
       server.post("/api/tasks/assignments", handler);
     `);
 
     assert.ok(
       failures.includes(
         "apps/api/src/server.ts still contains route literal /api/invoices; keep billing endpoints in apps/api/src/routes/billing.ts.",
+      ),
+    );
+    assert.ok(
+      failures.includes(
+        "apps/api/src/server.ts still contains route literal /api/providers/status; keep provider status endpoints in apps/api/src/routes/providers-status.ts.",
       ),
     );
     assert.ok(

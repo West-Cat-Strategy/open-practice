@@ -55,13 +55,22 @@ export const REQUIRED_SCAFFOLD = [
 export const ROUTE_REGISTRARS = [
   ["setup", "apps/api/src/routes/setup.ts", "./routes/setup.js", "registerSetupRoutes"],
   ["WebAuthn", "apps/api/src/routes/webauthn.ts", "./routes/webauthn.js", "registerWebAuthnRoutes"],
+  ["auth", "apps/api/src/routes/auth.ts", "./routes/auth.js", "registerAuthRoutes"],
   ["recovery", "apps/api/src/routes/recovery.ts", "./routes/recovery.js", "registerRecoveryRoutes"],
+  ["session", "apps/api/src/routes/session.ts", "./routes/session.js", "registerSessionRoutes"],
+  ["matters", "apps/api/src/routes/matters.ts", "./routes/matters.js", "registerMatterRoutes"],
   ["contacts", "apps/api/src/routes/contacts.ts", "./routes/contacts.js", "registerContactRoutes"],
   [
     "connectors",
     "apps/api/src/routes/connectors.ts",
     "./routes/connectors.js",
     "registerConnectorRoutes",
+  ],
+  [
+    "communications",
+    "apps/api/src/routes/communications.ts",
+    "./routes/communications.js",
+    "registerCommunicationsRoutes",
   ],
   [
     "conversation threads",
@@ -75,14 +84,23 @@ export const ROUTE_REGISTRARS = [
     "./routes/legal-clinics.js",
     "registerLegalClinicRoutes",
   ],
+  ["ledger", "apps/api/src/routes/ledger.ts", "./routes/ledger.js", "registerLedgerRoutes"],
+  ["billing", "apps/api/src/routes/billing.ts", "./routes/billing.js", "registerBillingRoutes"],
   ["CalDAV", "apps/api/src/routes/caldav.ts", "./routes/caldav.js", "registerCalDavRoutes"],
   ["calendar", "apps/api/src/routes/calendar.ts", "./routes/calendar.js", "registerCalendarRoutes"],
+  [
+    "documents",
+    "apps/api/src/routes/documents.ts",
+    "./routes/documents.js",
+    "registerDocumentRoutes",
+  ],
   [
     "document processing",
     "apps/api/src/routes/document-processing.ts",
     "./routes/document-processing.js",
     "registerDocumentProcessingRoutes",
   ],
+  ["drafts", "apps/api/src/routes/drafts.ts", "./routes/drafts.js", "registerDraftRoutes"],
   [
     "draft assist",
     "apps/api/src/routes/draft-assist.ts",
@@ -110,6 +128,14 @@ export const ROUTE_REGISTRARS = [
     "./routes/auth-extensions.js",
     "registerAuthExtensionRoutes",
   ],
+  ["audit", "apps/api/src/routes/audit.ts", "./routes/audit.js", "registerAuditRoutes"],
+  [
+    "signatures",
+    "apps/api/src/routes/signatures.ts",
+    "./routes/signatures.js",
+    "registerSignatureRoutes",
+  ],
+  ["intake", "apps/api/src/routes/intake.ts", "./routes/intake.js", "registerIntakeRoutes"],
   [
     "intake forms",
     "apps/api/src/routes/intake-forms.ts",
@@ -128,8 +154,52 @@ export const ROUTE_REGISTRARS = [
     "./routes/outbound-webhooks.js",
     "registerOutboundWebhookRoutes",
   ],
+  [
+    "provider status",
+    "apps/api/src/routes/providers-status.ts",
+    "./routes/providers-status.js",
+    "registerProviderStatusRoutes",
+  ],
   ["tasks", "apps/api/src/routes/tasks.ts", "./routes/tasks.js", "registerTaskRoutes"],
+  ["queues", "apps/api/src/routes/queues.ts", "./routes/queues.js", "registerQueuesRoutes"],
 ].map(([family, file, importPath, registrar]) => ({ family, file, importPath, registrar }));
+
+export const ROUTE_REGISTRAR_TEST_FILES = {
+  registerAuditRoutes: ["apps/api/src/routes/audit.test.ts"],
+  registerAuthExtensionRoutes: ["apps/api/src/routes/auth-extensions.test.ts"],
+  registerAuthRoutes: ["apps/api/src/server.test.ts", "apps/api/src/routes/mfa.test.ts"],
+  registerBillingRoutes: ["apps/api/src/routes/billing.test.ts"],
+  registerCalDavRoutes: ["apps/api/src/routes/caldav.test.ts"],
+  registerCalendarRoutes: ["apps/api/src/routes/calendar.test.ts"],
+  registerCommunicationsRoutes: ["apps/api/src/routes/communications.test.ts"],
+  registerConnectorRoutes: ["apps/api/src/routes/connectors.test.ts"],
+  registerContactRoutes: ["apps/api/src/routes/contacts.test.ts"],
+  registerConversationThreadRoutes: ["apps/api/src/routes/conversation-threads.test.ts"],
+  registerDocumentProcessingRoutes: ["apps/api/src/routes/document-processing.test.ts"],
+  registerDocumentRoutes: ["apps/api/src/routes/documents.test.ts"],
+  registerDraftAssistRoutes: ["apps/api/src/routes/draft-assist.test.ts"],
+  registerDraftRoutes: ["apps/api/src/routes/drafts.test.ts"],
+  registerEmailRoutes: ["apps/api/src/routes/email.test.ts"],
+  registerExternalUploadRoutes: ["apps/api/src/routes/external-uploads.test.ts"],
+  registerInboundEmailRoutes: ["apps/api/src/routes/inbound-email.test.ts"],
+  registerIntakeFormRoutes: ["apps/api/src/routes/intake-forms.test.ts"],
+  registerIntakeRoutes: ["apps/api/src/routes/intake.test.ts"],
+  registerJobsRoutes: ["apps/api/src/routes/jobs.test.ts"],
+  registerLedgerRoutes: ["apps/api/src/routes/ledger.test.ts"],
+  registerLegalClinicRoutes: ["apps/api/src/routes/legal-clinics.test.ts"],
+  registerMatterRoutes: ["apps/api/src/server.test.ts"],
+  registerOperationalViewRoutes: ["apps/api/src/routes/operational-views.test.ts"],
+  registerOutboundWebhookRoutes: ["apps/api/src/routes/outbound-webhooks.test.ts"],
+  registerProviderStatusRoutes: ["apps/api/src/routes/providers-status.test.ts"],
+  registerQueuesRoutes: ["apps/api/src/routes/queues.test.ts"],
+  registerRecoveryRoutes: ["apps/api/src/routes/mfa.test.ts"],
+  registerSessionRoutes: ["apps/api/src/server.test.ts"],
+  registerSetupRoutes: ["apps/api/src/server.test.ts"],
+  registerShareRoutes: ["apps/api/src/routes/shares.test.ts"],
+  registerSignatureRoutes: ["apps/api/src/routes/signatures.test.ts"],
+  registerTaskRoutes: ["apps/api/src/routes/tasks.test.ts"],
+  registerWebAuthnRoutes: ["apps/api/src/routes/webauthn.test.ts"],
+};
 
 export const FORBIDDEN_SERVER_ROUTE_GROUPS = [
   {
@@ -200,6 +270,14 @@ export const FORBIDDEN_SERVER_ROUTE_GROUPS = [
   {
     owner: "draft endpoints in apps/api/src/routes/drafts.ts",
     routeLiterals: ["/api/drafts", "/api/drafts/:id", "/api/draft-templates"],
+  },
+  {
+    owner: "communications endpoints in apps/api/src/routes/communications.ts",
+    routeLiterals: ["/api/communications/inbox"],
+  },
+  {
+    owner: "provider status endpoints in apps/api/src/routes/providers-status.ts",
+    routeLiterals: ["/api/providers/status"],
   },
 ];
 
@@ -317,6 +395,40 @@ export function collectRegistrarFailures(server, exists) {
   });
 }
 
+export function collectRegistrarTestFailures(exists) {
+  return ROUTE_REGISTRARS.flatMap(({ family, registrar }) => {
+    const testFiles = ROUTE_REGISTRAR_TEST_FILES[registrar] ?? [];
+
+    if (testFiles.length === 0) {
+      return [`${registrar} must declare at least one test file for the ${family} route family.`];
+    }
+
+    const existingTestFiles = testFiles.filter((testFile) => exists(testFile));
+    if (existingTestFiles.length > 0) return [];
+
+    return [
+      `${registrar} must keep at least one route test file for ${family}: ${testFiles.join(", ")}.`,
+    ];
+  });
+}
+
+export function collectUntrackedRegistrarFailures(server) {
+  const tracked = new Set(ROUTE_REGISTRARS.map(({ registrar }) => registrar));
+  const importedRegistrars = [
+    ...server.matchAll(
+      /import \{\s*(register[A-Za-z0-9]+Routes)\s*\} from "(\.\/routes\/[^"]+)";/g,
+    ),
+  ].map((match) => ({ registrar: match[1], importPath: match[2] }));
+
+  return importedRegistrars.flatMap(({ registrar, importPath }) =>
+    tracked.has(registrar)
+      ? []
+      : [
+          `${registrar} from ${importPath} must be represented in ROUTE_REGISTRARS so the boundary gate owns its route family.`,
+        ],
+  );
+}
+
 export function collectForbiddenRouteFailures(server) {
   const exactFailures = FORBIDDEN_SERVER_ROUTE_GROUPS.flatMap(({ owner, routeLiterals }) =>
     routeLiterals.flatMap((routeLiteral) =>
@@ -357,6 +469,8 @@ export function evaluateBoundaryPolicy({
     ...collectServerRatchetFailures(server),
     ...collectScaffoldFailures(pathExists),
     ...collectRegistrarFailures(server, pathExists),
+    ...collectRegistrarTestFailures(pathExists),
+    ...collectUntrackedRegistrarFailures(server),
     ...collectForbiddenRouteFailures(server),
     ...collectRouteCatalogFailures(routeCatalog),
   ];

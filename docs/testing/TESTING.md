@@ -73,6 +73,22 @@ Use `pnpm deps:licenses` when adding or upgrading dependencies to keep a reviewa
 summary. The command highlights copyleft, public-license, and unusual groups for review but only
 fails the local run when a dependency reports an unknown, unlicensed, or empty license group.
 
+## Test Coverage Ratchets
+
+`pnpm policy:check` includes `scripts/validate-open-practice-boundaries.mjs`. That gate now treats
+route ownership and route test coverage as one contract:
+
+- Every API route registrar imported by `apps/api/src/server.ts` must be represented in the
+  boundary registry.
+- Every represented API route family must keep at least one route test file, either a direct
+  `apps/api/src/routes/*.test.ts` file or the current `apps/api/src/server.test.ts` integration
+  coverage for setup, session, and matter bootstrap flows.
+- New route families should add or update the route test before the boundary registry is expanded.
+
+When route ownership changes, update the route source, the route test, and
+`scripts/validate-open-practice-boundaries.mjs` together. Use `pnpm verify:select -- --files` with
+all changed paths before picking the final proof commands.
+
 ## Package-Scoped Commands
 
 Use these for focused work before the full lane:
