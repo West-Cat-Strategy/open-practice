@@ -42,7 +42,7 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
   of installing `curl`. Final local app images, not only the upstream base, are the validation target;
   the upstream Node base still reported the npm `picomatch` high finding in the planning scan.
 - The local Postgres service now builds `open-practice-postgres:17-alpine-su-exec` from the pinned
-  `postgres:17-alpine` digest and replaces the vulnerable bundled `gosu` helper with Alpine
+  `postgres:17-alpine` 17.10 digest and replaces the vulnerable bundled `gosu` helper with Alpine
   `su-exec` while preserving the standard Postgres 17 entrypoint and health-check contract. The
   2026-05-12 local Scout proof reported no critical/high findings for the rebuilt image.
 - `redis:8-alpine` replaced `redis:7-alpine` in the local Docker stack because the Scout result
@@ -51,11 +51,11 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
   and common S3-compatible substitute scans still carried critical/high findings or changed the
   service shape, so MinIO stays product-compatible with residual upstream MinIO/Go CVEs documented
   until a cleaner compatible deterministic release is available.
-- The local Mailpit service now builds `open-practice-mailpit:v1.29.7-go1.26.3` from the checked
-  v1.29.7 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
-  `8025`. The 2026-05-12 local Scout proof reduced Mailpit to one high finding in the upstream
-  `github.com/gomarkdown/markdown` dependency that is still present in v1.29.7, not the older bundled
-  Go standard library.
+- The local Mailpit service now builds `open-practice-mailpit:v1.30.0-go1.26.3` from the checked
+  v1.30.0 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
+  `8025`. The 2026-05-16 dependency refresh verified the upstream Golang and Alpine base images from
+  registry attestations; rerun local Mailpit image build and Scout proof when Docker Engine is
+  available.
 
 ## GitHub Settings Cutover
 

@@ -9,6 +9,7 @@ import {
   describeExternalUploadDocumentStatus,
   describeExternalUploadCompletion,
   describeExternalUploadPutFailure,
+  externalUploadAttentionItems,
   externalUploadLifecycleMessage,
   publicExternalUploadErrorMessage,
   remainingUploadCount,
@@ -92,6 +93,52 @@ describe("public external upload runner helpers", () => {
         document({ reviewStatus: "retry_requested" }),
       ),
     ).toBe(false);
+  });
+
+  it("summarizes upload actions without exposing matter details", () => {
+    expect(externalUploadAttentionItems(payload())).toEqual([
+      {
+        id: "external-upload-open",
+        title: "Upload requested documents",
+        detail: "2 uploads remain on this secure link.",
+        status: "open",
+      },
+    ]);
+
+    expect(
+      externalUploadAttentionItems({
+        ...payload({ usedUploads: 1 }),
+        documents: [
+          document({ id: "retry-doc", title: "blurry scan.pdf", reviewStatus: "retry_requested" }),
+          document({
+            id: "metadata-doc",
+            title: "bank statement.pdf",
+            reviewStatus: "needs_metadata",
+          }),
+        ],
+      }),
+    ).toEqual([
+      {
+        id: "external-upload-open",
+        title: "Upload requested document",
+        detail: "One upload remains on this secure link.",
+        status: "open",
+      },
+      {
+        id: "external-upload-retry-retry-doc",
+        title: "Replace blurry scan.pdf",
+        detail: "Staff requested a replacement upload for this document.",
+        status: "retry",
+        tone: "risk",
+      },
+      {
+        id: "external-upload-metadata-metadata-doc",
+        title: "Follow up on bank statement.pdf",
+        detail: "Staff needs more information and will follow up outside this page.",
+        status: "follow up",
+        tone: "risk",
+      },
+    ]);
   });
 
   it("builds intent payloads and describes completion, review, or failed PUT states", () => {

@@ -15,17 +15,29 @@ import type { ApiRouteDependencies } from "./types.js";
 const jobParamsSchema = z.object({ jobId: z.string().min(1) });
 const jobQuerySchema = z.object({
   queueName: z.enum(openPracticeQueueNames).optional(),
+  status: z.enum(["queued", "active", "completed", "failed", "dead_letter", "skipped"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.preprocess(
+    (value) => (typeof value === "string" ? decodeURIComponent(value) : value),
+    z.string().datetime().optional(),
+  ),
 });
 
 export function registerJobsRoutes(
   server: FastifyInstance,
-  { repository, emailJobQueue, ocrJobQueue }: ApiRouteDependencies,
+  { repository, emailJobQueue, reportJobQueue, ocrJobQueue }: ApiRouteDependencies,
 ): void {
   function workerQueues() {
     return openPracticeQueueNames.map((queueName) =>
       queueStatus(
         queueName,
-        queueName === "email" ? emailJobQueue : queueName === "ocr" ? ocrJobQueue : undefined,
+        queueName === "email"
+          ? emailJobQueue
+          : queueName === "reports"
+            ? reportJobQueue
+            : queueName === "ocr"
+              ? ocrJobQueue
+              : undefined,
       ),
     );
   }
@@ -37,6 +49,9 @@ export function registerJobsRoutes(
 
     const jobs = await repository.listJobLifecycleRecords(request.auth.firmId, {
       queueName: query.queueName,
+      status: query.status,
+      queuedBefore: query.cursor,
+      limit: query.limit + 1,
     });
     const visibleJobs = jobs.filter((record) =>
       canReadJobLifecycleRecord({
@@ -45,15 +60,21 @@ export function registerJobsRoutes(
         record,
       }),
     );
+    const pageJobs = visibleJobs.slice(0, query.limit);
     const queueSummaries = workerQueues();
     return {
-      status: visibleJobs.length > 0 ? "available" : "default",
+      status: pageJobs.length > 0 ? "available" : "default",
       queues: openPracticeQueueNames,
       workers: queueSummaries.filter((queue) => queue.status === "configured"),
       workerQueues: queueSummaries,
       reservedQueues: queueSummaries.filter((queue) => queue.status === "reserved"),
-      summary: summarizeJobRuns(visibleJobs),
-      jobs: visibleJobs.map(serializeJobRun),
+      summary: summarizeJobRuns(pageJobs),
+      pagination: {
+        limit: query.limit,
+        nextCursor: visibleJobs.length > query.limit ? pageJobs.at(-1)?.queuedAt : undefined,
+        hasMore: visibleJobs.length > query.limit,
+      },
+      jobs: pageJobs.map(serializeJobRun),
     };
   });
 

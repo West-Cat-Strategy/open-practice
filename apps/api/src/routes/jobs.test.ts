@@ -59,6 +59,7 @@ describe("jobs routes", () => {
         "email",
         "connectors",
         "inbound_email",
+        "reports",
         "ai_triage",
         "ocr",
         "transcription",
@@ -398,6 +399,64 @@ describe("jobs routes", () => {
     });
     expect(ocrResponse.json().jobs[0].metadata).not.toHaveProperty("storageKey");
     expect(ocrResponse.json().jobs[0].errorSummary).not.toContain("provider details");
+  });
+
+  it("returns bounded lifecycle pages with stable cursors", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    for (const [index, queuedAt] of [
+      "2026-05-02T12:00:00.000Z",
+      "2026-05-02T11:00:00.000Z",
+      "2026-05-02T10:00:00.000Z",
+    ].entries()) {
+      await repository.createJobLifecycleRecord({
+        id: `job-report-${index}`,
+        firmId,
+        queueName: "reports",
+        jobName: "audit_export",
+        status: "completed",
+        targetResourceType: "audit_export",
+        targetResourceId: `audit-export-${index}`,
+        attemptsMade: 1,
+        maxAttempts: 1,
+        queuedAt,
+        finishedAt: queuedAt,
+        metadata: {
+          reportType: "audit_log",
+          reportScope: "firm",
+          requestedByUserId: "user-owner_admin",
+          eventCount: 3,
+        },
+      });
+    }
+
+    const firstPage = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/jobs?queueName=reports&limit=2",
+    });
+
+    expect(firstPage.statusCode).toBe(200);
+    expect(firstPage.json()).toMatchObject({
+      pagination: {
+        limit: 2,
+        hasMore: true,
+        nextCursor: "2026-05-02T11:00:00.000Z",
+      },
+      jobs: [
+        expect.objectContaining({ id: "job-report-0" }),
+        expect.objectContaining({ id: "job-report-1" }),
+      ],
+    });
+
+    const secondPage = await testServer({ repository }).inject({
+      method: "GET",
+      url: `/api/jobs?queueName=reports&limit=2&cursor=${encodeURIComponent(
+        firstPage.json().pagination.nextCursor,
+      )}`,
+    });
+    expect(secondPage.json()).toMatchObject({
+      pagination: { hasMore: false },
+      jobs: [expect.objectContaining({ id: "job-report-2" })],
+    });
   });
 
   it("accepts connector queue filters as a worker status surface", async () => {

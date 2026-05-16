@@ -162,10 +162,10 @@ describe("connector routes", () => {
     const connectorId = connectorResponse.json().connector.id;
     const payload = {
       connectorId,
-      eventType: "matter.summary.ready",
+      eventType: "matter.created",
       resourceType: "matter",
       resourceId: "matter-001",
-      idempotencyKey: "matter-001:summary-ready:v1",
+      idempotencyKey: "matter-001:matter-created:v1",
       payloadSummary: {
         matterId: "matter-001",
         fieldCount: 3,
@@ -190,7 +190,7 @@ describe("connector routes", () => {
       created: true,
       outbox: {
         connectorId,
-        eventType: "matter.summary.ready",
+        eventType: "matter.created",
         idempotencyKeyPresent: true,
         status: "pending",
         attemptCount: 0,
@@ -224,6 +224,36 @@ describe("connector routes", () => {
     });
     expect(conflict.statusCode).toBe(409);
     expect(conflict.json()).toMatchObject({ code: "IDEMPOTENCY_KEY_CONFLICT" });
+  });
+
+  it("rejects connector outbox events outside the delivery allowlist", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const connectorResponse = await server.inject({
+      method: "POST",
+      url: "/api/connectors",
+      payload: {
+        type: "generic",
+        key: "synthetic.review",
+        displayName: "Synthetic Review Connector",
+      },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox",
+      payload: {
+        connectorId: connectorResponse.json().connector.id,
+        eventType: "matter.summary.ready",
+        resourceType: "matter",
+        resourceId: "matter-001",
+        idempotencyKey: "matter-001:summary-ready:v1",
+        payloadSummary: { matterId: "matter-001", fieldCount: 3 },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "CONNECTOR_EVENT_NOT_ALLOWLISTED" });
   });
 
   it("returns redacted connector delivery and dead-letter status", async () => {

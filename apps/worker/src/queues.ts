@@ -10,6 +10,7 @@ export const openPracticeQueues = [
   "email",
   "connectors",
   "inbound_email",
+  "reports",
   "ai_triage",
   "ocr",
   "transcription",
@@ -42,6 +43,12 @@ export const defaultJobOptionsByQueue: Record<OpenPracticeQueueName, JobsOptions
     attempts: 4,
     backoff: { type: "exponential", delay: 15_000 },
     removeOnComplete: 1_000,
+    removeOnFail: false,
+  },
+  reports: {
+    attempts: 2,
+    backoff: { type: "exponential", delay: 60_000 },
+    removeOnComplete: 500,
     removeOnFail: false,
   },
   ai_triage: {

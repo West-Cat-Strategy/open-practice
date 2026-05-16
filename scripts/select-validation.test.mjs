@@ -43,6 +43,19 @@ describe("select-validation contract", () => {
     );
   });
 
+  it("routes runtime configuration changes through docs, policy, and build checks", () => {
+    assert.deepEqual(selectCommands(["docker-compose.yml", "docker/prod/Caddyfile"]), [
+      COMMANDS.formatCheck,
+      COMMANDS.docsCheck,
+      COMMANDS.policyCheck,
+      COMMANDS.build,
+    ]);
+  });
+
+  it("maps the scripts directory shorthand to script validation", () => {
+    assert.deepEqual(selectCommands(["scripts"]), [COMMANDS.policyCheck, COMMANDS.test]);
+  });
+
   it("parses dirty and strict modes", () => {
     assert.deepEqual(parseArgs(["--strict", "--dirty"]), {
       mode: "dirty",

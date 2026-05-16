@@ -12,11 +12,14 @@ import {
   publicTokenErrorMessage,
   readPublicTokenError,
 } from "../publicTokenClient";
+import { PublicTokenNeedsAttention } from "../publicTokenActions";
 import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
 import IntakeFormRenderer from "./IntakeFormRenderer";
 import {
   coerceAnswer,
   answersFromDraft,
+  canSubmitPublicIntakeForm,
+  intakeFormAttentionItems,
   intakeLifecycleMessage,
   requiredIncompleteItemIds,
   visibleSections,
@@ -87,7 +90,8 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
   }, [apiBaseUrl, token]);
 
   const sections = useMemo(() => visibleSections(payload, answers), [answers, payload]);
-  const disabled = payload?.link.status !== "active";
+  const disabled = !canSubmitPublicIntakeForm(payload);
+  const attentionItems = intakeFormAttentionItems(payload);
 
   function updateAnswer(question: EmbeddedIntakeQuestion, value: string | boolean): void {
     setAnswers((current) => ({ ...current, [question.id]: coerceAnswer(question, value) }));
@@ -298,6 +302,13 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
       title={payload?.template.name ?? "Intake form"}
     >
       <PublicStatusMessage>{status}</PublicStatusMessage>
+
+      {payload ? (
+        <PublicTokenNeedsAttention
+          emptyLabel="No action is needed on this intake link right now."
+          items={attentionItems}
+        />
+      ) : null}
 
       {payload?.template.definition.schemaVersion !== 2 && payload ? (
         <PublicStatusMessage>

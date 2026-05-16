@@ -47,7 +47,16 @@ export function buildWorkerHealthPath(): string {
 export function emptyWorkerRunsResponse(status = "default"): WorkerRunsResponse {
   return {
     status,
-    queues: ["email", "inbound_email", "ai_triage", "ocr", "transcription", "media"],
+    queues: [
+      "email",
+      "connectors",
+      "inbound_email",
+      "reports",
+      "ai_triage",
+      "ocr",
+      "transcription",
+      "media",
+    ],
     workers: [],
     workerQueues: [],
     reservedQueues: reservedWorkerQueues,

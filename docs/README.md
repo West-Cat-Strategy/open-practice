@@ -12,8 +12,12 @@ Use this index as the first stop for repo orientation. Open Practice is a legal-
 5. [Repository Guide](development/repo-guide.md) maps workspace ownership, boundaries, and common edit paths.
 6. [GitHub Maintenance](development/github-maintenance.md) covers local-only repository gates,
    GitHub settings cutover, dependency audits, and branch cleanup.
-7. [Testing](testing/TESTING.md) maps change types to validation commands.
-8. [API and State Machines](api-and-state-machines.md) records the current API and lifecycle contracts.
+7. [Application Strengthening Plan](development/application-strengthening-plan.md) records the
+   ordered hardening wave and clean-room reference map.
+8. [Testing](testing/TESTING.md) maps change types to validation commands.
+9. [Validation Proof Index](validation/README.md) tracks active validation notes and skipped-check
+   context.
+10. [API and State Machines](api-and-state-machines.md) records the current API and lifecycle contracts.
 
 ## Governance
 

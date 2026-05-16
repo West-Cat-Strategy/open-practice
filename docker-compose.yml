@@ -47,7 +47,7 @@ services:
       - minio-data:/data
 
   mailpit:
-    image: open-practice-mailpit:v1.29.7-go1.26.3
+    image: open-practice-mailpit:v1.30.0-go1.26.3
     build:
       context: ./docker/mailpit
     ports:

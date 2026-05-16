@@ -30,6 +30,7 @@ export interface ApiRouteDependencies {
     guestAccessTokenSigningConfigured?: boolean;
   };
   emailJobQueue?: ApiJobQueue;
+  reportJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
   s3?: {
     client: S3Client;

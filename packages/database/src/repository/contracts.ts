@@ -434,6 +434,8 @@ export interface OpenPracticeRepository {
     options?: {
       status?: JobLifecycleRecord["status"];
       queueName?: JobLifecycleRecord["queueName"];
+      queuedBefore?: string;
+      limit?: number;
     },
   ): Promise<JobLifecycleRecord[]>;
   getUser(firmId: string, userId: string): Promise<User | undefined>;

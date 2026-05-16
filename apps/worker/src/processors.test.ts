@@ -691,6 +691,83 @@ describe("worker processors", () => {
     }
   });
 
+  it("completes audit report export jobs with bounded metadata only", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-audit-export-worker-test",
+      firmId: "firm-west-legal",
+      queueName: "reports",
+      jobName: "audit_export",
+      status: "queued",
+      targetResourceType: "audit_export",
+      targetResourceId: "audit-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-05-15T12:00:00.000Z",
+      metadata: {
+        reportType: "audit_log",
+        reportScope: "firm",
+        requestedByUserId: "user-admin",
+        rawBody: "Synthetic audit body must not survive job metadata",
+      },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "reports",
+      jobName: "audit_export",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "audit_export",
+        resourceId: "audit-export-worker-test",
+        metadata: {
+          reportType: "audit_log",
+          reportScope: "firm",
+          requestedByUserId: "user-admin",
+          rawBody: "Synthetic audit body must not survive job metadata",
+        },
+      },
+      jobLifecycleId: "job-audit-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      metadata: {
+        firmId: "firm-west-legal",
+        resourceType: "audit_export",
+        resourceId: "audit-export-worker-test",
+        reportType: "audit_log",
+        reportScope: "firm",
+        eventCount: expect.any(Number),
+      },
+    });
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "reports" }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "job-audit-export-worker-test",
+        status: "completed",
+        finishedAt: expect.any(String),
+        metadata: expect.objectContaining({
+          reportType: "audit_log",
+          reportScope: "firm",
+          eventCount: expect.any(Number),
+        }),
+      }),
+    ]);
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    expect(JSON.stringify(job.metadata)).not.toContain("Synthetic audit body");
+    expect(job.metadata).not.toHaveProperty("rawBody");
+  });
+
   it("runs OCR jobs from document storage and completes lifecycle records", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const requestedObjects: string[] = [];

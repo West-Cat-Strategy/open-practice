@@ -51,6 +51,7 @@ export type OpenPracticeQueueName =
   | "email"
   | "connectors"
   | "inbound_email"
+  | "reports"
   | "ai_triage"
   | "ocr"
   | "transcription"
