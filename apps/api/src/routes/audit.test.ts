@@ -66,6 +66,66 @@ describe("audit routes", () => {
     expect(JSON.stringify(response.json())).not.toContain("Synthetic billing audit time entry");
   });
 
+  it("returns read-only taxonomy projection summaries for audit operators", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    await repository.appendAuditEvent({
+      id: "audit-test-unknown",
+      firmId,
+      actorId: "user-owner_admin",
+      action: "custom.workflow.executed",
+      resourceType: "custom_resource",
+      resourceId: "custom-001",
+      occurredAt: "2026-05-17T10:00:00.000Z",
+      metadata: { matterId: "matter-sensitive", privateNote: "synthetic private note" },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-test-matter-gap",
+      firmId,
+      actorId: "user-owner_admin",
+      action: "signature_request.created",
+      resourceType: "signature_request",
+      resourceId: "signature-001",
+      occurredAt: "2026-05-17T10:01:00.000Z",
+      metadata: { signerCount: 1 },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-test-resource-mismatch",
+      firmId,
+      actorId: "user-owner_admin",
+      action: "signature_provider_event.recorded",
+      resourceType: "provider_event",
+      resourceId: "provider-event-001",
+      occurredAt: "2026-05-17T10:02:00.000Z",
+      metadata: { matterId: "matter-sensitive", provider: "embedded" },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/audit",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      valid: true,
+      taxonomySummary: {
+        unknown: 1,
+        matterScopedWithoutMatterId: 2,
+        unknownActions: ["custom.workflow.executed"],
+        resourceTypeMismatches: [
+          {
+            action: "signature_provider_event.recorded",
+            expectedResourceType: "signature_request",
+            observedResourceType: "provider_event",
+            count: 1,
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(response.json().taxonomySummary)).not.toContain("matter-sensitive");
+    expect(JSON.stringify(response.json().taxonomySummary)).not.toContain("synthetic private note");
+  });
+
   it("creates a redacted audit export request with poll and download links", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const queuedReports: Array<{ name: string; data: unknown; jobId?: string }> = [];

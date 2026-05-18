@@ -58,7 +58,12 @@ import {
   emptyProvidersStatusResponse,
 } from "./provider-status-dashboard";
 import { emptyConnectorOperationsResponse } from "./connector-outbox-dashboard";
+import {
+  emptyAuditProjectionDashboard,
+  type AuditProjectionDashboardResponse,
+} from "./audit-dashboard";
 import type {
+  AuditResponse,
   BillingDashboardResponse,
   CalendarCredentialsResponse,
   CalendarDashboardResponse,
@@ -207,6 +212,27 @@ async function loadConnectorOperations(
     connectors: connectorsResult.data.connectors,
     outbox: outboxResult.data.outbox,
   };
+}
+
+async function loadAuditProjection(
+  headers: Record<string, string>,
+): Promise<AuditProjectionDashboardResponse> {
+  try {
+    const audit = await apiGet<AuditResponse>("/api/audit", headers);
+    return {
+      status: "available",
+      valid: audit.valid,
+      taxonomySummary: audit.taxonomySummary,
+    };
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 403) {
+      return emptyAuditProjectionDashboard("access_denied");
+    }
+    if (error instanceof ApiRequestError && error.status === 404) {
+      return emptyAuditProjectionDashboard("unavailable");
+    }
+    throw error;
+  }
 }
 
 function canViewBilling(role: string): boolean {
@@ -413,6 +439,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     headers,
     { definitions: [] },
   );
+  const auditProjection = await loadAuditProjection(headers);
   const billing = await apiGetOptional<BillingDashboardResponse>(
     "/api/billing/dashboard",
     billingFallback,
@@ -612,6 +639,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   return (
     <DashboardClient
       apiBaseUrl={browserApiBaseUrl}
+      auditProjection={auditProjection}
       billing={billing}
       calendar={calendar}
       capabilities={capabilities}

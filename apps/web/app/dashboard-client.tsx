@@ -204,6 +204,12 @@ import {
   operationalFocusEmptyMessage,
 } from "./operational-focus-panel";
 import {
+  auditProjectionStatusLabel,
+  emptyAuditProjectionDashboard,
+  summarizeAuditProjectionIssues,
+  type AuditProjectionDashboardResponse,
+} from "./audit-dashboard";
+import {
   buildMatterFileCommandCenter,
   filterMatterActivity,
   summarizeMatterActivity,
@@ -235,6 +241,7 @@ import {
   upsertIntakeSession,
 } from "./types";
 import type {
+  AuditResponse,
   CalendarAttendeeMutationResponse,
   BillingDashboardResponse,
   CalendarCredentialCreateResponse,
@@ -295,6 +302,7 @@ import type {
 
 interface DashboardClientProps {
   apiBaseUrl: string;
+  auditProjection: AuditProjectionDashboardResponse;
   billing: BillingDashboardResponse;
   calendar: CalendarDashboardResponse;
   capabilities: CapabilitiesResponse;
@@ -383,6 +391,7 @@ function formatSavedOperationalViewDefinition(definition: SavedOperationalViewDe
 
 export default function DashboardClient({
   apiBaseUrl,
+  auditProjection: initialAuditProjection,
   billing,
   calendar,
   capabilities,
@@ -419,6 +428,7 @@ export default function DashboardClient({
   const hasAppliedUrlSectionRef = useRef(false);
   const [matters, setMatters] = useState(initialMatters);
   const [queues, setQueues] = useState(initialQueues);
+  const [auditProjection, setAuditProjection] = useState(initialAuditProjection);
   const [providerStatus, setProviderStatus] = useState(initialProviderStatus);
   const [operationalViews, setOperationalViews] = useState(initialOperationalViews);
   const [freshnessNow, setFreshnessNow] = useState(() => new Date());
@@ -953,6 +963,10 @@ export default function DashboardClient({
           : undefined,
     },
   );
+  const auditProjectionIssues = useMemo(
+    () => summarizeAuditProjectionIssues(auditProjection.taxonomySummary),
+    [auditProjection.taxonomySummary],
+  );
 
   useEffect(() => {
     const loadedAt = new Date().toISOString();
@@ -1195,17 +1209,24 @@ export default function DashboardClient({
   async function refreshAuditLane(): Promise<void> {
     setAuditRefreshState((current) => ({ ...current, refreshing: true, error: undefined }));
     try {
-      const [refreshedMatters, refreshedOperationalViews] = await Promise.all([
+      const [refreshedMatters, refreshedOperationalViews, refreshedAudit] = await Promise.all([
         requestDashboardJson<MatterSummary[]>(apiBaseUrl, "/api/matters", { headers: devHeaders }),
         requestDashboardJson<OperationalViewsResponse>(apiBaseUrl, "/api/operational-views", {
           headers: devHeaders,
         }),
+        requestDashboardJson<AuditResponse>(apiBaseUrl, "/api/audit", { headers: devHeaders }),
       ]);
       setMatters(refreshedMatters);
       setOperationalViews(refreshedOperationalViews);
+      setAuditProjection({
+        status: "available",
+        valid: refreshedAudit.valid,
+        taxonomySummary: refreshedAudit.taxonomySummary,
+      });
       setAuditRefreshState({ loadedAt: new Date().toISOString(), refreshing: false });
       setFreshnessNow(new Date());
     } catch (error) {
+      setAuditProjection(emptyAuditProjectionDashboard());
       setAuditRefreshState((current) => ({
         ...current,
         refreshing: false,
@@ -5292,6 +5313,53 @@ export default function DashboardClient({
                   </button>
                 </div>
                 <div className="party-list">
+                  <div className="audit-projection-summary">
+                    <div className="audit-projection-header">
+                      <span>
+                        <strong>Audit taxonomy projection</strong>
+                        <small>{auditProjectionStatusLabel(auditProjection.status)}</small>
+                      </span>
+                      <em>{auditProjection.valid === false ? "chain invalid" : "read-only"}</em>
+                    </div>
+                    <div className="audit-projection-grid">
+                      <span>
+                        <strong>{auditProjectionIssues.unknownActionCount}</strong>
+                        <small>Unknown actions</small>
+                      </span>
+                      <span>
+                        <strong>{auditProjectionIssues.matterScopeGapCount}</strong>
+                        <small>Matter-scope gaps</small>
+                      </span>
+                      <span>
+                        <strong>{auditProjectionIssues.resourceTypeMismatchCount}</strong>
+                        <small>Resource-type mismatches</small>
+                      </span>
+                    </div>
+                    <div className="audit-projection-details">
+                      <span>
+                        <strong>Unknown</strong>
+                        <small>
+                          {auditProjectionIssues.unknownActions.length > 0
+                            ? auditProjectionIssues.unknownActions.slice(0, 4).join(", ")
+                            : "No unknown actions in the loaded audit window."}
+                        </small>
+                      </span>
+                      <span>
+                        <strong>Mismatches</strong>
+                        <small>
+                          {auditProjectionIssues.resourceTypeMismatches.length > 0
+                            ? auditProjectionIssues.resourceTypeMismatches
+                                .slice(0, 3)
+                                .map(
+                                  (mismatch) =>
+                                    `${mismatch.action}: ${mismatch.observedResourceType} expected ${mismatch.expectedResourceType} (${mismatch.count})`,
+                                )
+                                .join("; ")
+                            : "No resource-type mismatches in the loaded audit window."}
+                        </small>
+                      </span>
+                    </div>
+                  </div>
                   {activeMatter.activity.map((entry) => (
                     <div className="party-row" key={entry.id}>
                       <span>

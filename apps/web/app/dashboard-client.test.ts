@@ -154,6 +154,7 @@ import {
   summarizeConnectorOperations,
   summarizeConnectorPayload,
 } from "./connector-outbox-dashboard";
+import { auditProjectionStatusLabel, summarizeAuditProjectionIssues } from "./audit-dashboard";
 import {
   buildOperationalFocusSummary,
   operationalFocusEmptyMessage,
@@ -680,6 +681,49 @@ function publicRunnerPayload(
 }
 
 describe("dashboard client behavior", () => {
+  it("summarizes audit projection issues without exposing metadata values", () => {
+    const summary = summarizeAuditProjectionIssues({
+      total: 4,
+      known: 2,
+      unknown: 2,
+      byCategory: { unknown: 2, signatures: 2 },
+      byMatterScope: { matter: 2, derived: 2 },
+      byActorHint: { authenticated_user: 2, unknown: 2 },
+      matterScopedWithoutMatterId: 1,
+      unknownActions: ["custom.workflow.executed", "legacy.event"],
+      resourceTypeMismatches: [
+        {
+          action: "signature_provider_event.recorded",
+          expectedResourceType: "signature_request",
+          observedResourceType: "provider_event",
+          count: 2,
+        },
+      ],
+    });
+
+    expect(summary).toEqual({
+      unknownActionCount: 2,
+      matterScopeGapCount: 1,
+      resourceTypeMismatchCount: 2,
+      unknownActions: ["custom.workflow.executed", "legacy.event"],
+      resourceTypeMismatches: [
+        {
+          action: "signature_provider_event.recorded",
+          expectedResourceType: "signature_request",
+          observedResourceType: "provider_event",
+          count: 2,
+        },
+      ],
+    });
+    expect(JSON.stringify(summary)).not.toContain("matter-sensitive");
+  });
+
+  it("labels audit projection availability states for operators", () => {
+    expect(auditProjectionStatusLabel("available")).toBe("Audit taxonomy loaded");
+    expect(auditProjectionStatusLabel("access_denied")).toBe("Audit taxonomy access denied");
+    expect(auditProjectionStatusLabel("unavailable")).toBe("Audit taxonomy unavailable");
+  });
+
   it("builds expanded conflict-check payloads for the existing API contract", () => {
     const result = buildConflictCheckPayload({
       prospectiveName: " Morgan Tenant ",
