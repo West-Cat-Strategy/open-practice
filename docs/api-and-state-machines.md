@@ -233,11 +233,11 @@ reserved worker queue posture, redacted job summaries, and current-user embedded
 posture without returning provider config, Redis URLs, storage endpoints, credentials, raw worker
 errors, storage keys, message bodies, generated text, or auth secrets.
 
-| Route                                             | Purpose                                                                                                                                                     |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/providers/status`                       | Operator-visible configuration posture for Redis/BullMQ producers, object storage, provider settings, reserved workers, redacted jobs, and auth extensions. |
-| `POST /api/media/:id/transcription-jobs`          | Enqueue FFmpeg normalization and Whisper transcription for authorized media.                                                                                |
-| `POST /api/documents/:id/assistive-drafting-jobs` | Future async Ollama/LM Studio drafting worker job after provider and queue governance land.                                                                 |
+| Surface                              | Purpose                                                                                                                                                     |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/providers/status`          | Operator-visible configuration posture for Redis/BullMQ producers, object storage, provider settings, reserved workers, redacted jobs, and auth extensions. |
+| Media transcription jobs             | Deferred route candidate for FFmpeg normalization and Whisper transcription after media authorization and worker governance land.                           |
+| Async assistive-drafting worker jobs | Deferred route candidate for Ollama/LM Studio drafting jobs after provider and queue governance land.                                                       |
 
 The authenticated and public SimpleWebAuthn routes are live embedded-auth routes in the main API
 surface above. They remain deployment-gated by the configured RP ID/origin and setup/session secrets;

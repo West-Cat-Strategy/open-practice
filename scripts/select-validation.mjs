@@ -12,6 +12,8 @@ export const COMMANDS = {
   databaseCheck: "pnpm --filter @open-practice/database db:check",
   databaseTest: "pnpm --filter @open-practice/database test",
   databaseTypecheck: "pnpm --filter @open-practice/database typecheck",
+  depsAudit: "pnpm deps:audit",
+  depsLicenses: "pnpm deps:licenses",
   docsCheck: "pnpm docs:check",
   domainTest: "pnpm --filter @open-practice/domain test",
   domainTypecheck: "pnpm --filter @open-practice/domain typecheck",
@@ -30,6 +32,8 @@ export const COMMANDS = {
 
 export const COMMAND_ORDER = [
   COMMANDS.ciLocal,
+  COMMANDS.depsAudit,
+  COMMANDS.depsLicenses,
   COMMANDS.formatCheck,
   COMMANDS.docsCheck,
   COMMANDS.policyCheck,
@@ -185,6 +189,10 @@ function isRootConfig(path) {
   );
 }
 
+function isDependencyManifest(path) {
+  return path === "package.json" || path.endsWith("/package.json") || path === "pnpm-lock.yaml";
+}
+
 function isRuntimeConfig(path) {
   return (
     path === "Dockerfile" ||
@@ -271,6 +279,11 @@ export function classifyPath(path) {
 
   if (isRootConfig(path)) {
     commands.add(COMMANDS.ciLocal);
+  }
+
+  if (isDependencyManifest(path)) {
+    commands.add(COMMANDS.depsAudit);
+    commands.add(COMMANDS.depsLicenses);
   }
 
   if (isRuntimeConfig(path)) {

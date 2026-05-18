@@ -19,10 +19,6 @@ surface it must not duplicate.
 - **Async Local AI Assist Jobs**: Move selected matter/document summary and drafting-assist requests
   behind disabled-by-default queue jobs with reviewed outputs and job status. Do not duplicate the
   shipped synchronous draft/document assist routes or make generated text authoritative.
-- **Connector/Webhook Delivery Worker V1**: Lease existing connector outbox rows, sign allowlisted
-  HTTPS payloads, attempt delivery, and record redacted delivery/dead-letter outcomes. Do not
-  duplicate shipped connector registry/outbox records, preview-only outbound webhook guardrails, or
-  the live OP-T88 read-only delivery-attempt visibility row.
 - **Conversation Message Records V1**: Add matter-scoped message records under existing
   conversation topics, with author metadata, retention/export boundaries, and safe read APIs. Do not
   duplicate shipped topic create/list/read or lifecycle state changes, and leave realtime delivery
@@ -37,9 +33,9 @@ surface it must not duplicate.
 - **Audit Projection Dashboard Summaries**: Add read-only operator summaries over the existing
   hash-chained audit taxonomy, including unknown actions, matter-scope gaps, and resource-type
   mismatches. Do not change stored audit events.
-- **Async Report Export Requests**: Move large audit, billing, or trust exports behind capped direct
-  responses and async job status when report size exceeds safe synchronous limits. Keep export bodies
-  out of job metadata.
+- **Async Billing And Trust Export Requests**: Move large billing or trust exports behind capped
+  direct responses and async job status when report size exceeds safe synchronous limits. Do not
+  duplicate shipped audit export requests, and keep export bodies out of job metadata.
 - **Trust Statement Import Preview**: Add a non-posting bank-statement import preview that dedupes
   rows, proposes matches to existing trust ledger entries, and requires staff review before creating
   reconciliation records. Do not auto-post ledger entries or certify accounting conclusions.

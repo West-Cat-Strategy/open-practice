@@ -16,6 +16,7 @@ import {
   questionTypes,
   variableTargetFields,
 } from "../intake-forms-dashboard";
+import { structuredIntakeDiagnostics } from "./structured-builder-diagnostics";
 
 interface StructuredIntakeBuilderProps {
   definition: EmbeddedIntakeTemplateDefinitionV2;
@@ -67,10 +68,12 @@ export default function StructuredIntakeBuilder({
   const [jsonOpen, setJsonOpen] = useState(false);
   const [jsonValue, setJsonValue] = useState(JSON.stringify(definition, null, 2));
   const [jsonStatus, setJsonStatus] = useState("Advanced JSON ready.");
-  const diagnostics = buildIntakeBuilderDiagnostics(definition);
-  const blockingDiagnostics = diagnostics.filter(
+  const authoringDiagnostics = buildIntakeBuilderDiagnostics(definition);
+  const blockingAuthoringDiagnostics = authoringDiagnostics.filter(
     (diagnostic) => diagnostic.severity === "blocking",
   );
+  const builderDiagnostics = structuredIntakeDiagnostics(definition);
+  const saveBlocked = builderDiagnostics.blocking.length > 0;
 
   useEffect(() => {
     if (!jsonOpen) setJsonValue(JSON.stringify(definition, null, 2));
@@ -169,6 +172,13 @@ export default function StructuredIntakeBuilder({
       const parsed = JSON.parse(jsonValue) as EmbeddedIntakeTemplateDefinitionV2;
       if (parsed.schemaVersion !== 2) {
         setJsonStatus("Only schema version 2 can be applied here.");
+        return;
+      }
+      const parsedDiagnostics = structuredIntakeDiagnostics(parsed);
+      if (parsedDiagnostics.blocking.length > 0) {
+        setJsonStatus(
+          `Advanced JSON has blocking issues: ${parsedDiagnostics.blocking[0]!.message}`,
+        );
         return;
       }
       onDefinitionChange(parsed);
@@ -272,20 +282,21 @@ export default function StructuredIntakeBuilder({
                       />
                     </label>
                   ) : null}
-                  {item.kind === "question" ? (
-                    definition.questions.find((question) => question.id === item.questionId) ? (
-                      <QuestionItemEditor
-                        question={
-                          definition.questions.find((question) => question.id === item.questionId)!
-                        }
-                        updateQuestion={updateQuestion}
-                      />
-                    ) : (
-                      <div className="inline-empty warning">
-                        Missing question definition for {item.questionId}.
-                      </div>
-                    )
-                  ) : null}
+                  {item.kind === "question"
+                    ? (() => {
+                        const question = definition.questions.find(
+                          (candidate) => candidate.id === item.questionId,
+                        );
+                        return question ? (
+                          <QuestionItemEditor question={question} updateQuestion={updateQuestion} />
+                        ) : (
+                          <p className="risk">
+                            Missing question definition for {item.questionId}; remove this item or
+                            repair advanced JSON.
+                          </p>
+                        );
+                      })()
+                    : null}
                   {item.kind === "upload" ? (
                     <UploadItemEditor
                       item={item}
@@ -327,10 +338,33 @@ export default function StructuredIntakeBuilder({
         </div>
       </details>
 
+      <div className="intake-diagnostics-panel" role="status">
+        <strong>Builder diagnostics</strong>
+        {saveBlocked ? (
+          <p className="risk">Save is blocked until definition errors are fixed.</p>
+        ) : builderDiagnostics.warnings.length > 0 ? (
+          <p>Review the warnings before sending this form to clients.</p>
+        ) : (
+          <p>No blocking definition issues found.</p>
+        )}
+        {[...builderDiagnostics.blocking, ...builderDiagnostics.warnings]
+          .slice(0, 6)
+          .map((check, index) => (
+            <p
+              className={check.severity === "blocking" ? "risk" : "inline-empty"}
+              key={`${check.code}-${index}`}
+            >
+              {check.severity}: {check.message}
+              {check.questionId ? ` (${check.questionId})` : ""}
+              {check.itemId ? ` (${check.itemId})` : ""}
+            </p>
+          ))}
+      </div>
+
       <div className="row-actions">
         <button
           className="secondary-button compact-button"
-          disabled={saving}
+          disabled={saving || saveBlocked}
           onClick={onSave}
           type="button"
         >
@@ -343,15 +377,15 @@ export default function StructuredIntakeBuilder({
       <div className="intake-authoring-diagnostics">
         <div className="section-title">
           <h3>Authoring diagnostics</h3>
-          <span className={blockingDiagnostics.length > 0 ? "warning" : "success"}>
-            {blockingDiagnostics.length > 0
-              ? `${blockingDiagnostics.length} blocking`
+          <span className={blockingAuthoringDiagnostics.length > 0 ? "warning" : "success"}>
+            {blockingAuthoringDiagnostics.length > 0
+              ? `${blockingAuthoringDiagnostics.length} blocking`
               : "no blocking issues"}
           </span>
         </div>
-        {diagnostics.length > 0 ? (
+        {authoringDiagnostics.length > 0 ? (
           <ul className="intake-diagnostic-list">
-            {diagnostics.map((diagnostic, index) => (
+            {authoringDiagnostics.map((diagnostic, index) => (
               <li
                 className={`intake-diagnostic ${diagnostic.severity}`}
                 key={`${diagnostic.code}-${index}`}

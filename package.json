@@ -22,6 +22,7 @@
     "format:check": "prettier --check .",
     "lint": "turbo lint",
     "policy:check": "pnpm security:scan && node scripts/validate-package-manifests.mjs && node scripts/validate-oss-reuse.mjs && node scripts/validate-doc-links.mjs && node scripts/validate-open-practice-boundaries.mjs",
+    "release:evidence": "node scripts/write-release-evidence.mjs",
     "release:local": "node scripts/create-release-proof.mjs",
     "refs:clone": "node scripts/clone-oss-references.mjs",
     "security:scan": "node scripts/scan-tracked-secrets.mjs",

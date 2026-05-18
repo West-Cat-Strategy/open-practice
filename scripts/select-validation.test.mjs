@@ -52,6 +52,14 @@ describe("select-validation contract", () => {
     ]);
   });
 
+  it("routes dependency manifests through audit and license evidence", () => {
+    assert.deepEqual(selectCommands(["package.json", "pnpm-lock.yaml"]), [
+      COMMANDS.ciLocal,
+      COMMANDS.depsAudit,
+      COMMANDS.depsLicenses,
+    ]);
+  });
+
   it("maps the scripts directory shorthand to script validation", () => {
     assert.deepEqual(selectCommands(["scripts"]), [COMMANDS.policyCheck, COMMANDS.test]);
   });
