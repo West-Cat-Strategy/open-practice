@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { MailSender, OcrProvider } from "@open-practice/domain";
+import { FakeDraftAssistProvider } from "@open-practice/providers";
 import { processOpenPracticeJob, type ConnectorDeliveryRequest } from "./processors.js";
 
 describe("worker processors", () => {
@@ -72,6 +73,19 @@ describe("worker processors", () => {
       mailSender: {} as never,
       inboundEmailParser: {} as never,
     };
+  }
+
+  async function enableAi(repository: InMemoryOpenPracticeRepository): Promise<void> {
+    await repository.upsertProviderSetting({
+      id: "provider-ai-worker-fake",
+      firmId: "firm-west-legal",
+      kind: "ai",
+      key: "fake-local-ai",
+      enabled: true,
+      encryptedConfig: "synthetic",
+      createdAt: "2026-05-18T10:00:00.000Z",
+      updatedAt: "2026-05-18T10:00:00.000Z",
+    });
   }
 
   it("loads outbound email content from the outbox record instead of job metadata", async () => {
@@ -726,6 +740,144 @@ describe("worker processors", () => {
       });
       expect(result.metadata).not.toHaveProperty("rawText");
     }
+  });
+
+  it("creates non-authoritative draft assist records from async ai_triage jobs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableAi(repository);
+    await repository.createDraft({
+      id: "draft-worker-async-assist",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      title: "Synthetic async draft",
+      editorJson: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Synthetic privileged draft text" }],
+          },
+        ],
+      },
+      version: 1,
+      createdByUserId: "user-admin",
+      updatedByUserId: "user-admin",
+      createdAt: "2026-05-18T10:00:00.000Z",
+      updatedAt: "2026-05-18T10:00:00.000Z",
+      metadata: {},
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-async-draft-assist-worker-test",
+      firmId: "firm-west-legal",
+      queueName: "ai_triage",
+      jobName: "draft_assist_suggestion",
+      status: "queued",
+      targetResourceType: "draft",
+      targetResourceId: "draft-worker-async-assist",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-05-18T10:00:00.000Z",
+      metadata: {
+        matterId: "matter-001",
+        sourceType: "draft",
+        draftId: "draft-worker-async-assist",
+        task: "continue_draft",
+        provider: "fake-local-ai",
+        requestedByUserId: "user-admin",
+        sourceTextLength: "Synthetic privileged draft text".length,
+        instructionLength: 44,
+        evidenceKeyCount: 2,
+        rawPromptContext: "Do not persist worker prompt context",
+      },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "ai_triage",
+      jobName: "draft_assist_suggestion",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "draft",
+        resourceId: "draft-worker-async-assist",
+        metadata: {
+          matterId: "matter-001",
+          sourceType: "draft",
+          draftId: "draft-worker-async-assist",
+          task: "continue_draft",
+          provider: "fake-local-ai",
+          requestedByUserId: "user-admin",
+          sourceTextLength: "Synthetic privileged draft text".length,
+          instructionLength: 44,
+          evidenceKeyCount: 2,
+          rawPromptContext: "Do not persist worker prompt context",
+        },
+      },
+      jobLifecycleId: "job-async-draft-assist-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      draftAssistProvider: new FakeDraftAssistProvider({ model: "fake-model" }),
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      metadata: {
+        matterId: "matter-001",
+        sourceType: "draft",
+        draftId: "draft-worker-async-assist",
+        task: "continue_draft",
+        provider: "fake-local-ai",
+        providerModel: "fake-model",
+        sourceTextLength: "Synthetic privileged draft text".length,
+        requestedByUserId: "user-admin",
+      },
+    });
+    const records = await repository.listDraftAssistRecords("firm-west-legal", {
+      draftId: "draft-worker-async-assist",
+    });
+    expect(records).toEqual([
+      expect.objectContaining({
+        sourceType: "draft",
+        draftId: "draft-worker-async-assist",
+        task: "continue_draft",
+        status: "suggested",
+        providerKey: "fake-local-ai",
+        providerModel: "fake-model",
+        createdByUserId: "user-admin",
+      }),
+    ]);
+    expect(records[0]?.suggestedText).toContain("[continue draft]");
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "ai_triage" }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "job-async-draft-assist-worker-test",
+        status: "completed",
+        metadata: expect.objectContaining({
+          draftAssistRecordId: records[0]?.id,
+          suggestedTextLength: records[0]?.suggestedText.length,
+          summaryLength: records[0]?.summary?.length,
+        }),
+      }),
+    ]);
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const created = audit.events.find((event) => event.action === "draft_assist.created");
+    expect(created?.metadata).toMatchObject({
+      draftAssistRecordId: records[0]?.id,
+      draftId: "draft-worker-async-assist",
+      task: "continue_draft",
+      suggestedTextLength: records[0]?.suggestedText.length,
+    });
+    const serialized = JSON.stringify({
+      result,
+      jobs: await repository.listJobLifecycleRecords("firm-west-legal"),
+      audit,
+    });
+    expect(serialized).not.toContain("Synthetic privileged draft text");
+    expect(serialized).not.toContain("Do not persist worker prompt context");
   });
 
   it("completes audit report export jobs with bounded metadata only", async () => {

@@ -33,6 +33,7 @@ const providerSettingKinds = [
 const bullMqProducerQueueNames = [
   "email",
   "connectors",
+  "ai_triage",
   "ocr",
 ] as const satisfies readonly OpenPracticeQueueName[];
 
@@ -48,11 +49,12 @@ function queueForName(
   queueName: OpenPracticeQueueName,
   queues: Pick<
     RegisterProviderStatusRouteOptions,
-    "emailJobQueue" | "connectorJobQueue" | "ocrJobQueue"
+    "emailJobQueue" | "connectorJobQueue" | "aiAssistJobQueue" | "ocrJobQueue"
   >,
 ): ApiJobQueue | undefined {
   if (queueName === "email") return queues.emailJobQueue;
   if (queueName === "connectors") return queues.connectorJobQueue;
+  if (queueName === "ai_triage") return queues.aiAssistJobQueue;
   if (queueName === "ocr") return queues.ocrJobQueue;
   return undefined;
 }
@@ -123,6 +125,7 @@ export function registerProviderStatusRoutes(
         repository: options.repository,
         firmId: request.auth.firmId,
         draftAssistProvider: options.draftAssistProvider,
+        aiAssistJobQueue: options.aiAssistJobQueue,
       }),
     ]);
     const visibleJobs = jobs.filter((record) =>

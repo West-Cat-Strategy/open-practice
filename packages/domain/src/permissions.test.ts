@@ -106,4 +106,37 @@ describe("job metadata redaction", () => {
       nextRetryAt: "2026-05-12T12:05:00.000Z",
     });
   });
+
+  it("allows async draft assist routing and length metadata without raw text", () => {
+    expect(
+      redactJobMetadata({
+        draftAssistRecordId: "assist-001",
+        draftId: "draft-001",
+        documentId: "doc-001",
+        sourceType: "draft",
+        sourceTextLength: 42,
+        instructionLength: 18,
+        evidenceKeyCount: 2,
+        provider: "fake-local-ai",
+        providerModel: "fake-model",
+        suggestedTextLength: 57,
+        summaryLength: 16,
+        generatedText: "Synthetic generated text",
+        sourceText: "Synthetic source text",
+        evidence: { private: "value" },
+      }),
+    ).toEqual({
+      draftAssistRecordId: "assist-001",
+      draftId: "draft-001",
+      documentId: "doc-001",
+      sourceType: "draft",
+      sourceTextLength: 42,
+      instructionLength: 18,
+      evidenceKeyCount: 2,
+      provider: "fake-local-ai",
+      providerModel: "fake-model",
+      suggestedTextLength: 57,
+      summaryLength: 16,
+    });
+  });
 });

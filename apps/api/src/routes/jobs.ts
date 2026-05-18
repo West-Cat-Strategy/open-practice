@@ -70,6 +70,7 @@ export function registerJobsRoutes(
     emailJobQueue,
     connectorJobQueue,
     reportJobQueue,
+    aiAssistJobQueue,
     ocrJobQueue,
   }: ApiRouteDependencies,
 ): void {
@@ -83,9 +84,11 @@ export function registerJobsRoutes(
             ? connectorJobQueue
             : queueName === "reports"
               ? reportJobQueue
-              : queueName === "ocr"
-                ? ocrJobQueue
-                : undefined,
+              : queueName === "ai_triage"
+                ? aiAssistJobQueue
+                : queueName === "ocr"
+                  ? ocrJobQueue
+                  : undefined,
       ),
     );
   }

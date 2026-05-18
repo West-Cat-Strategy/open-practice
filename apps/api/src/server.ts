@@ -137,6 +137,7 @@ interface ApiOptions {
   emailJobQueue?: ApiJobQueue;
   connectorJobQueue?: ApiJobQueue;
   reportJobQueue?: ApiJobQueue;
+  aiAssistJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
   sessionTtlHours?: number;
   publicWebBaseUrl?: string;
@@ -382,12 +383,14 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerDraftAssistRoutes(server, {
     repository: options.repository,
     draftAssistProvider: options.draftAssistProvider,
+    aiAssistJobQueue: options.aiAssistJobQueue,
   });
   registerJobsRoutes(server, {
     repository: options.repository,
     emailJobQueue: options.emailJobQueue,
     connectorJobQueue: options.connectorJobQueue,
     reportJobQueue: options.reportJobQueue,
+    aiAssistJobQueue: options.aiAssistJobQueue,
     ocrJobQueue: options.ocrJobQueue,
   });
   registerProviderStatusRoutes(server, {
@@ -395,6 +398,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     draftAssistProvider: options.draftAssistProvider,
     emailJobQueue: options.emailJobQueue,
     connectorJobQueue: options.connectorJobQueue,
+    aiAssistJobQueue: options.aiAssistJobQueue,
     ocrJobQueue: options.ocrJobQueue,
     s3: options.s3,
     jwtSecret: options.jwtSecret,
@@ -604,6 +608,19 @@ function createReportJobQueueFromEnv(env: ApiEnv): Queue | undefined {
   });
 }
 
+function createAiAssistJobQueueFromEnv(env: ApiEnv): Queue | undefined {
+  if (!env.REDIS_URL) return undefined;
+  return new Queue("ai_triage", {
+    connection: redisConnectionFromUrl(env.REDIS_URL),
+    defaultJobOptions: {
+      attempts: 2,
+      backoff: { type: "exponential", delay: 60_000 },
+      removeOnComplete: 500,
+      removeOnFail: false,
+    },
+  });
+}
+
 if (process.env.NODE_ENV !== "test") {
   const env = envSchema.parse(process.env);
   validateProductionReadiness(env);
@@ -611,6 +628,7 @@ if (process.env.NODE_ENV !== "test") {
   const emailJobQueue = createEmailJobQueueFromEnv(env);
   const connectorJobQueue = createConnectorJobQueueFromEnv(env);
   const reportJobQueue = createReportJobQueueFromEnv(env);
+  const aiAssistJobQueue = createAiAssistJobQueueFromEnv(env);
   const ocrJobQueue = createOcrJobQueueFromEnv(env);
   const server = createApiServer({
     repository,
@@ -623,6 +641,7 @@ if (process.env.NODE_ENV !== "test") {
     emailJobQueue,
     connectorJobQueue,
     reportJobQueue,
+    aiAssistJobQueue,
     ocrJobQueue,
     sessionTtlHours: env.SESSION_TTL_HOURS,
     publicWebBaseUrl: env.PUBLIC_WEB_BASE_URL ?? env.WEBAUTHN_ORIGIN,
@@ -640,6 +659,7 @@ if (process.env.NODE_ENV !== "test") {
       emailJobQueue?.close(),
       connectorJobQueue?.close(),
       reportJobQueue?.close(),
+      aiAssistJobQueue?.close(),
       ocrJobQueue?.close(),
       close?.(),
     ]).then(() => process.exit(0));
