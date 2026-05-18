@@ -8,17 +8,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                                             |
-| --------------------- | ------------------------------------------------------------------------------------------------- |
-| Current focus         | Consolidating OP-T98 through OP-T105 hardening lanes into `main` with local validation proof.     |
-| Next recommended pick | Shape OP-T102 into a Ready row from the remaining Candidate after consolidation validation lands. |
-| Ready rows            | 0                                                                                                 |
-| Candidate rows        | 1                                                                                                 |
-| In progress rows      | 0                                                                                                 |
-| Review rows           | 0                                                                                                 |
-| Blocked rows          | 0                                                                                                 |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                              |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                                  |
+| Snapshot              | Value                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------- |
+| Current focus         | OP-T98 through OP-T105 hardening lanes are consolidated with local validation proof recorded. |
+| Next recommended pick | Shape OP-T102 into a Ready row from the remaining Candidate after branch cleanup completes.   |
+| Ready rows            | 0                                                                                             |
+| Candidate rows        | 1                                                                                             |
+| In progress rows      | 0                                                                                             |
+| Review rows           | 0                                                                                             |
+| Blocked rows          | 0                                                                                             |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                          |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                              |
 
 ## Forward Development Plan
 
