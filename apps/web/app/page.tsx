@@ -408,7 +408,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     { views: [] },
   );
   const operationalViewDefinitions = await apiGetOptional<OperationalViewDefinitionsResponse>(
-    "/api/operational-views/definitions?surface=queues",
+    "/api/operational-views/definitions",
     { definitions: [] },
     headers,
     { definitions: [] },

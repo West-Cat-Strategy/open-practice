@@ -17,7 +17,7 @@ export type BuiltInOperationalViewKey =
   | "overdue_tasks_deadlines";
 
 export type OperationalViewPriority = "high" | "medium" | "low";
-export type SavedOperationalViewSurface = "queues";
+export type SavedOperationalViewSurface = "queues" | "matters";
 export type SavedOperationalViewStatus = "active" | "archived";
 export type SavedOperationalViewPermissionScope = `${ResourceKind}:${Action}`;
 

@@ -133,7 +133,10 @@ export const conversationThreadNotificationBoundary = pgEnum(
   "conversation_thread_notification_boundary",
   ["disabled", "internal_only"],
 );
-export const savedOperationalViewSurface = pgEnum("saved_operational_view_surface", ["queues"]);
+export const savedOperationalViewSurface = pgEnum("saved_operational_view_surface", [
+  "queues",
+  "matters",
+]);
 export const savedOperationalViewStatus = pgEnum("saved_operational_view_status", [
   "active",
   "archived",

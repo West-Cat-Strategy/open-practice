@@ -215,6 +215,33 @@ describe("operational view routes", () => {
       expect.objectContaining({ id: createdPayload.definition.id, name: "My queue focus" }),
     ]);
 
+    const createdMatterView = await ownerServer.inject({
+      method: "POST",
+      url: "/api/operational-views/definitions",
+      payload: {
+        surface: "matters",
+        name: "Matter follow-up",
+        filters: {
+          presetFamily: "matter_follow_up",
+          operationalViewKeys: ["stale_matters", "uncontacted_clients"],
+        },
+        columns: ["number", "practiceArea", "status"],
+        sort: { priority: "desc" },
+        rowLimit: 12,
+        dashboardBehavior: { pinToMatterContext: true },
+        permissionScope: ["matter:read"],
+      },
+    });
+    expect(createdMatterView.statusCode).toBe(200);
+
+    const listedMatterViews = await ownerServer.inject({
+      method: "GET",
+      url: "/api/operational-views/definitions?surface=matters",
+    });
+    expect(listedMatterViews.json<SavedOperationalViewDefinitionsResponse>().definitions).toEqual([
+      expect.objectContaining({ name: "Matter follow-up", surface: "matters" }),
+    ]);
+
     const otherUserServer = testServer({
       repository,
       authUser: {
