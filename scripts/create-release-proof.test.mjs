@@ -27,8 +27,22 @@ describe("create-release-proof contract", () => {
 
   it("keeps the SBOM command pinned to the local CycloneDX executable", () => {
     const sbomPath = "/repo/artifacts/release-local/run/sbom.cdx.json";
+    const licenseJsonPath = "/repo/artifacts/release-local/run/dependency-licenses.json";
     assert.deepEqual(
-      releaseProofCommands({ sbomPath }).find((command) => command.id === "cyclonedx-sbom"),
+      releaseProofCommands({ sbomPath, licenseJsonPath }).find(
+        (command) => command.id === "license-evidence",
+      ),
+      {
+        id: "license-evidence",
+        command: "pnpm",
+        args: ["--silent", "deps:licenses", "--json", "--output", licenseJsonPath],
+        required: true,
+      },
+    );
+    assert.deepEqual(
+      releaseProofCommands({ sbomPath, licenseJsonPath }).find(
+        (command) => command.id === "cyclonedx-sbom",
+      ),
       {
         id: "cyclonedx-sbom",
         command: "pnpm",
@@ -83,6 +97,7 @@ describe("create-release-proof contract", () => {
     );
     assert.equal(proof.git.branch, "codex/test");
     assert.equal(proof.commands.length, 5);
+    assert.equal(proof.artifactSecretScan.status, "passed");
     assert.match(
       readFileSync(
         path.join(metadata.artifactDir, "commands", "dependency-audit.stderr.log"),

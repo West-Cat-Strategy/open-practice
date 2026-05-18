@@ -1,8 +1,12 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const sourceFamily = "open-practice";
+const referenceIndexPath = resolve(
+  process.env.REFERENCE_REPOS_INDEX ?? join(root, "..", "reference-repos", "docs", "index.json"),
+);
 const failures = [];
 
 function read(path) {
@@ -17,6 +21,10 @@ const gitignore = read(".gitignore");
 const matrix = read("docs/oss-references.md");
 const policy = read("docs/reuse-decision-policy.md");
 const lock = JSON.parse(read("docs/oss-references.lock.json"));
+const referenceIndex = JSON.parse(readFileSync(referenceIndexPath, "utf8"));
+const sourceReferences = referenceIndex.repos
+  .filter((reference) => reference.sourceFamilies?.includes(sourceFamily))
+  .sort((left, right) => left.id.localeCompare(right.id));
 
 assert(gitignore.includes(".references/oss/"), ".references/oss/ must remain ignored");
 assert(
@@ -74,10 +82,60 @@ for (const required of ["Adopt", "Wrap", "Fork", "Reference-Only", "Avoid", "Def
   assert(policy.includes(`**${required}**`), `Reuse policy is missing ${required}`);
 }
 
-for (const reference of lock.references) {
+assert(lock.schemaVersion === 2, "OSS reference lockfile must use schemaVersion 2");
+assert(lock.sourceFamily === sourceFamily, `OSS reference lockfile must target ${sourceFamily}`);
+assert(
+  lock.sourceIndex?.schemaVersion === referenceIndex.schemaVersion,
+  "OSS reference lockfile must record the source index schema version",
+);
+assert(
+  lock.sourceIndex?.generatedAt === referenceIndex.generatedAt,
+  "OSS reference lockfile must record the source index generation timestamp",
+);
+assert(
+  lock.references.length === sourceReferences.length,
+  `OSS reference lockfile must include all ${sourceReferences.length} ${sourceFamily} index entries`,
+);
+
+const lockById = new Map(lock.references.map((reference) => [reference.id, reference]));
+
+for (const sourceReference of sourceReferences) {
+  const reference = lockById.get(sourceReference.id);
+  assert(reference, `OSS reference lockfile is missing ${sourceReference.id}`);
+  if (!reference) continue;
+
+  assert(reference.id, "Every lock entry needs id");
   assert(
-    reference.name && reference.url && reference.commit,
-    "Every lock entry needs name/url/commit",
+    reference.displayName && reference.url && reference.branch && reference.commit,
+    `${reference.id} needs displayName/url/branch/commit`,
+  );
+  assert(
+    reference.url === sourceReference.upstream.url,
+    `${reference.id} url must match the central reference index`,
+  );
+  assert(
+    reference.branch === sourceReference.upstream.branch,
+    `${reference.id} branch must match the central reference index`,
+  );
+  assert(
+    reference.commit === sourceReference.upstream.commit,
+    `${reference.id} commit must match the central reference index`,
+  );
+  assert(
+    reference.license === sourceReference.license,
+    `${reference.id} license must match the central reference index`,
+  );
+  assert(
+    reference.licenseRisk === sourceReference.licenseRisk,
+    `${reference.id} licenseRisk must match the central reference index`,
+  );
+  assert(
+    reference.reuseClass === sourceReference.reuseClass,
+    `${reference.id} reuseClass must match the central reference index`,
+  );
+  assert(
+    Array.isArray(reference.domains),
+    `${reference.id} domains must be an array from the central reference index`,
   );
   assert(
     reference.centralPath &&
@@ -87,7 +145,11 @@ for (const reference of lock.references) {
   );
   assert(
     reference.compatibilityPath?.startsWith(".references/oss/"),
-    `${reference.name} compatibilityPath must use .references/oss`,
+    `${reference.id} compatibilityPath must use .references/oss`,
+  );
+  assert(
+    matrix.includes(reference.displayName) || matrix.includes(reference.id),
+    `Matrix is missing ${reference.displayName}`,
   );
 }
 

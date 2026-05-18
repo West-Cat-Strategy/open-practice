@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 
 const BLOCKED_LICENSE_GROUPS = new Set(["", "UNKNOWN", "UNLICENSED"]);
 const REVIEW_REQUIRED_LICENSE_PATTERNS = [
@@ -54,26 +55,75 @@ function summarizeLicenseGroups(report) {
     });
 }
 
-try {
+function buildLicenseEvidence({ generatedAt = new Date().toISOString() } = {}) {
   const report = loadLicenseReport();
-  const summary = summarizeLicenseGroups(report);
+  const licenseGroups = summarizeLicenseGroups(report);
+  const blockedGroups = licenseGroups.filter((entry) => entry.blocked);
+  const reviewGroups = licenseGroups.filter((entry) => entry.reviewRequired && !entry.blocked);
+  return {
+    generatedAt,
+    command: "pnpm licenses list --json",
+    policy: {
+      blockedLicenseGroups: [...BLOCKED_LICENSE_GROUPS],
+      reviewRequiredPatterns: REVIEW_REQUIRED_LICENSE_PATTERNS.map((pattern) => pattern.source),
+    },
+    totals: {
+      packageGroups: licenseGroups.reduce((total, entry) => total + entry.packageCount, 0),
+      versions: licenseGroups.reduce((total, entry) => total + entry.versionCount, 0),
+      licenseGroups: licenseGroups.length,
+      blockedLicenseGroups: blockedGroups.length,
+      reviewRequiredLicenseGroups: reviewGroups.length,
+    },
+    licenseGroups,
+  };
+}
+
+function parseArgs(rawArgs) {
+  const options = { json: false, outputPath: null };
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index];
+    if (arg === "--json") {
+      options.json = true;
+      continue;
+    }
+    if (arg === "--output") {
+      options.outputPath = rawArgs[index + 1];
+      index += 1;
+      if (!options.outputPath) throw new Error("--output requires a path");
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+  return options;
+}
+
+try {
+  const options = parseArgs(process.argv.slice(2));
+  const evidence = buildLicenseEvidence();
+  const summary = evidence.licenseGroups;
   const blockedGroups = summary.filter((entry) => entry.blocked);
   const reviewGroups = summary.filter((entry) => entry.reviewRequired && !entry.blocked);
-  const totalPackages = summary.reduce((total, entry) => total + entry.packageCount, 0);
-  const totalVersions = summary.reduce((total, entry) => total + entry.versionCount, 0);
 
-  console.log(`Dependency license report: ${totalPackages} packages, ${totalVersions} versions.`);
-  console.log("License groups:");
-  for (const entry of summary) {
-    const marker = entry.blocked ? "blocked" : entry.reviewRequired ? "review" : "ok";
+  if (options.json || options.outputPath) {
+    const json = `${JSON.stringify(evidence, null, 2)}\n`;
+    if (options.outputPath) writeFileSync(options.outputPath, json);
+    if (options.json) process.stdout.write(json);
+  } else {
     console.log(
-      `- ${entry.licenseGroup}: ${entry.packageCount} packages, ${entry.versionCount} versions (${marker})`,
+      `Dependency license report: ${evidence.totals.packageGroups} packages, ${evidence.totals.versions} versions.`,
     );
-  }
+    console.log("License groups:");
+    for (const entry of summary) {
+      const marker = entry.blocked ? "blocked" : entry.reviewRequired ? "review" : "ok";
+      console.log(
+        `- ${entry.licenseGroup}: ${entry.packageCount} packages, ${entry.versionCount} versions (${marker})`,
+      );
+    }
 
-  if (reviewGroups.length > 0) {
-    console.log("Review-required license groups:");
-    for (const entry of reviewGroups) console.log(`- ${entry.licenseGroup}`);
+    if (reviewGroups.length > 0) {
+      console.log("Review-required license groups:");
+      for (const entry of reviewGroups) console.log(`- ${entry.licenseGroup}`);
+    }
   }
 
   if (blockedGroups.length > 0) {
