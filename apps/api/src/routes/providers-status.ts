@@ -32,6 +32,7 @@ const providerSettingKinds = [
 
 const bullMqProducerQueueNames = [
   "email",
+  "connectors",
   "ocr",
 ] as const satisfies readonly OpenPracticeQueueName[];
 
@@ -45,9 +46,13 @@ type RegisterProviderStatusRouteOptions = ApiRouteDependencies & {
 
 function queueForName(
   queueName: OpenPracticeQueueName,
-  queues: Pick<RegisterProviderStatusRouteOptions, "emailJobQueue" | "ocrJobQueue">,
+  queues: Pick<
+    RegisterProviderStatusRouteOptions,
+    "emailJobQueue" | "connectorJobQueue" | "ocrJobQueue"
+  >,
 ): ApiJobQueue | undefined {
   if (queueName === "email") return queues.emailJobQueue;
+  if (queueName === "connectors") return queues.connectorJobQueue;
   if (queueName === "ocr") return queues.ocrJobQueue;
   return undefined;
 }

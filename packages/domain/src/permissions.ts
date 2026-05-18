@@ -228,6 +228,8 @@ const safeJobMetadataKeys = new Set([
   "reportType",
   "resourceId",
   "resourceType",
+  "retryScheduleFailedCount",
+  "retryScheduledCount",
   "scanStatus",
   "source",
   "task",

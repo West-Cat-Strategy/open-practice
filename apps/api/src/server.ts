@@ -135,6 +135,7 @@ interface ApiOptions {
   automationProvider?: DocumentAutomationProvider;
   draftAssistProvider?: DraftAssistProvider;
   emailJobQueue?: ApiJobQueue;
+  connectorJobQueue?: ApiJobQueue;
   reportJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
   sessionTtlHours?: number;
@@ -356,7 +357,10 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerSessionRoutes(server);
   registerMatterRoutes(server, { repository: options.repository });
   registerContactRoutes(server, { repository: options.repository });
-  registerConnectorRoutes(server, { repository: options.repository });
+  registerConnectorRoutes(server, {
+    repository: options.repository,
+    connectorJobQueue: options.connectorJobQueue,
+  });
   registerCommunicationsRoutes(server, { repository: options.repository });
   registerConversationThreadRoutes(server, { repository: options.repository });
   registerLegalClinicRoutes(server, { repository: options.repository });
@@ -382,6 +386,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerJobsRoutes(server, {
     repository: options.repository,
     emailJobQueue: options.emailJobQueue,
+    connectorJobQueue: options.connectorJobQueue,
     reportJobQueue: options.reportJobQueue,
     ocrJobQueue: options.ocrJobQueue,
   });
@@ -389,6 +394,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     repository: options.repository,
     draftAssistProvider: options.draftAssistProvider,
     emailJobQueue: options.emailJobQueue,
+    connectorJobQueue: options.connectorJobQueue,
     ocrJobQueue: options.ocrJobQueue,
     s3: options.s3,
     jwtSecret: options.jwtSecret,
@@ -559,6 +565,19 @@ function createEmailJobQueueFromEnv(env: ApiEnv): Queue | undefined {
   });
 }
 
+function createConnectorJobQueueFromEnv(env: ApiEnv): Queue | undefined {
+  if (!env.REDIS_URL) return undefined;
+  return new Queue("connectors", {
+    connection: redisConnectionFromUrl(env.REDIS_URL),
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: { type: "exponential", delay: 30_000 },
+      removeOnComplete: 1_000,
+      removeOnFail: false,
+    },
+  });
+}
+
 function createOcrJobQueueFromEnv(env: ApiEnv): Queue | undefined {
   if (!env.REDIS_URL) return undefined;
   return new Queue("ocr", {
@@ -590,6 +609,7 @@ if (process.env.NODE_ENV !== "test") {
   validateProductionReadiness(env);
   const { repository, close } = await createRepositoryFromEnv(env);
   const emailJobQueue = createEmailJobQueueFromEnv(env);
+  const connectorJobQueue = createConnectorJobQueueFromEnv(env);
   const reportJobQueue = createReportJobQueueFromEnv(env);
   const ocrJobQueue = createOcrJobQueueFromEnv(env);
   const server = createApiServer({
@@ -601,6 +621,7 @@ if (process.env.NODE_ENV !== "test") {
     signatureProvider: new EmbeddedSignatureProvider(),
     automationProvider: new EmbeddedAutomationProvider(),
     emailJobQueue,
+    connectorJobQueue,
     reportJobQueue,
     ocrJobQueue,
     sessionTtlHours: env.SESSION_TTL_HOURS,
@@ -617,6 +638,7 @@ if (process.env.NODE_ENV !== "test") {
   process.once("SIGTERM", () => {
     void Promise.all([
       emailJobQueue?.close(),
+      connectorJobQueue?.close(),
       reportJobQueue?.close(),
       ocrJobQueue?.close(),
       close?.(),

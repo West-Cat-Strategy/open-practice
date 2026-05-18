@@ -86,6 +86,18 @@ describe("audit event taxonomy", () => {
       matterScope: "firm",
       resourceTypeMatches: true,
     });
+    expect(
+      classifyAuditEvent(
+        auditEvent({
+          action: "connector_outbox.queued",
+          resourceType: "connector_outbox",
+          resourceId: "connector-outbox-001",
+          metadata: { eventType: "document.verified", idempotencyKeyPresent: true },
+        }),
+      ).metadataHints.resource,
+    ).toEqual(
+      expect.arrayContaining(["eventType", "idempotencyKeyPresent", "resourceType", "resourceId"]),
+    );
   });
 
   it("classifies completed task events as matter-scoped operations", () => {

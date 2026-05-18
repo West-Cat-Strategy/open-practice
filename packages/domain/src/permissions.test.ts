@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DocumentRecord, PortalGrant } from "./models.js";
-import { canShareDocumentThroughPortal } from "./permissions.js";
+import { canShareDocumentThroughPortal, redactJobMetadata } from "./permissions.js";
 
 const baseDocument: DocumentRecord = {
   id: "doc-external-upload",
@@ -75,5 +75,35 @@ describe("portal document sharing permissions", () => {
         grant,
       }),
     ).toBe(true);
+  });
+});
+
+describe("job metadata redaction", () => {
+  it("keeps connector delivery retry counts while dropping raw delivery identifiers and payloads", () => {
+    expect(
+      redactJobMetadata({
+        resourceType: "connector_outbox",
+        resourceId: "connector-outbox-001",
+        eventCount: 1,
+        failedCount: 1,
+        deadLetterCount: 0,
+        retryScheduledCount: 1,
+        retryScheduleFailedCount: 0,
+        nextRetryAt: "2026-05-12T12:05:00.000Z",
+        connectorId: "connector-private",
+        failedIds: ["connector-outbox-001"],
+        rawBody: "Synthetic connector body must not be exposed",
+        token: "synthetic-token",
+      }),
+    ).toEqual({
+      resourceType: "connector_outbox",
+      resourceId: "connector-outbox-001",
+      eventCount: 1,
+      failedCount: 1,
+      deadLetterCount: 0,
+      retryScheduledCount: 1,
+      retryScheduleFailedCount: 0,
+      nextRetryAt: "2026-05-12T12:05:00.000Z",
+    });
   });
 });

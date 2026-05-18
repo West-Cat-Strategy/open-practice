@@ -23,6 +23,14 @@ export interface WorkerJobEnvelope {
   metadata?: Record<string, unknown>;
 }
 
+export interface WorkerJobQueue {
+  add(
+    name: string,
+    data: WorkerJobEnvelope,
+    options?: { jobId?: string; delay?: number },
+  ): Promise<{ id?: string | number }>;
+}
+
 export interface WorkerJobResult {
   status: "completed" | "skipped";
   reason?: string;
@@ -44,6 +52,9 @@ export type ConnectorSecretResolver = (secretReferenceId: string) => string | un
 export type ConnectorHttpDeliverer = (
   request: ConnectorDeliveryRequest,
 ) => Promise<ConnectorDeliveryResponse>;
+
+const CONNECTOR_DELIVERY_JOB_NAME = "deliver_connectors";
+const CONNECTOR_JOB_MAX_ATTEMPTS = 3;
 
 const disabledReasons: Record<OpenPracticeQueueName, string> = {
   email: "SMTP email delivery is not configured",
@@ -72,6 +83,7 @@ export async function processOpenPracticeJob(input: {
   inboundEmailParser: InboundEmailParser;
   connectorSecretResolver?: ConnectorSecretResolver;
   connectorHttpDeliverer?: ConnectorHttpDeliverer;
+  connectorJobQueue?: WorkerJobQueue;
 }): Promise<WorkerJobResult> {
   const { data } = input;
 
@@ -121,6 +133,7 @@ async function processOpenPracticeJobBody(input: {
   inboundEmailParser: InboundEmailParser;
   connectorSecretResolver?: ConnectorSecretResolver;
   connectorHttpDeliverer?: ConnectorHttpDeliverer;
+  connectorJobQueue?: WorkerJobQueue;
 }): Promise<WorkerJobResult> {
   const { queueName, data } = input;
 
@@ -252,6 +265,7 @@ async function processConnectorJob(input: {
   repository: OpenPracticeRepository;
   connectorSecretResolver?: ConnectorSecretResolver;
   connectorHttpDeliverer?: ConnectorHttpDeliverer;
+  connectorJobQueue?: WorkerJobQueue;
 }): Promise<WorkerJobResult> {
   const { data, repository } = input;
   const metadata = data.metadata ?? {};
@@ -268,6 +282,7 @@ async function processConnectorJob(input: {
   const deliveredIds: string[] = [];
   const failedIds: string[] = [];
   const deadLetterIds: string[] = [];
+  const retryableFailures: ConnectorOutboxRecord[] = [];
 
   for (const item of leased) {
     const settled = await deliverConnectorOutbox({
@@ -277,9 +292,19 @@ async function processConnectorJob(input: {
       deliverer: input.connectorHttpDeliverer ?? defaultConnectorDeliverer,
     });
     if (settled.status === "delivered") deliveredIds.push(item.outbox.id);
-    if (settled.status === "failed") failedIds.push(item.outbox.id);
+    if (settled.status === "failed") {
+      failedIds.push(item.outbox.id);
+      retryableFailures.push(settled.outbox);
+    }
     if (settled.status === "dead_letter") deadLetterIds.push(item.outbox.id);
   }
+  const retryScheduleResults = await scheduleConnectorRetryJobs({
+    repository,
+    connectorJobQueue: input.connectorJobQueue,
+    firmId: data.firmId,
+    retryableFailures,
+    now: new Date().toISOString(),
+  });
 
   return {
     status: "completed",
@@ -289,6 +314,8 @@ async function processConnectorJob(input: {
       deliveredCount: deliveredIds.length,
       failedCount: failedIds.length,
       deadLetterCount: deadLetterIds.length,
+      retryScheduledCount: retryScheduleResults.scheduled,
+      retryScheduleFailedCount: retryScheduleResults.failed,
       deliveredIds,
       failedIds,
       deadLetterIds,
@@ -305,7 +332,7 @@ async function deliverConnectorOutbox(input: {
   repository: OpenPracticeRepository;
   secretResolver?: ConnectorSecretResolver;
   deliverer: ConnectorHttpDeliverer;
-}): Promise<{ status: "delivered" | "failed" | "dead_letter" }> {
+}): Promise<{ status: "delivered" | "failed" | "dead_letter"; outbox: ConnectorOutboxRecord }> {
   const now = new Date().toISOString();
   const destinationUrl = connectorDestinationUrl(input.connector.configSummary);
   const destination = destinationUrl
@@ -319,7 +346,7 @@ async function deliverConnectorOutbox(input: {
   };
 
   if (!allowedConnectorEvents.has(input.outbox.eventType)) {
-    await input.repository.recordConnectorDeliveryResult({
+    const result = await input.repository.recordConnectorDeliveryResult({
       firmId: input.outbox.firmId,
       connectorId: input.outbox.connectorId,
       outboxId: input.outbox.id,
@@ -331,11 +358,11 @@ async function deliverConnectorOutbox(input: {
       errorSummary: "Connector event type is not allowlisted",
       metadata: { ...baseMetadata, reason: "event_not_allowlisted" },
     });
-    return { status: "dead_letter" };
+    return { status: "dead_letter", outbox: result.outbox };
   }
 
   if (!destination.ok) {
-    await input.repository.recordConnectorDeliveryResult({
+    const result = await input.repository.recordConnectorDeliveryResult({
       firmId: input.outbox.firmId,
       connectorId: input.outbox.connectorId,
       outboxId: input.outbox.id,
@@ -347,13 +374,13 @@ async function deliverConnectorOutbox(input: {
       errorSummary: "Connector destination failed HTTPS guardrail validation",
       metadata: { ...baseMetadata, reason: destination.reason },
     });
-    return { status: "dead_letter" };
+    return { status: "dead_letter", outbox: result.outbox };
   }
 
   const secretReferenceId = input.connector.secretReference?.id;
   const secret = secretReferenceId ? input.secretResolver?.(secretReferenceId) : undefined;
   if (!secret) {
-    await input.repository.recordConnectorDeliveryResult({
+    const result = await input.repository.recordConnectorDeliveryResult({
       firmId: input.outbox.firmId,
       connectorId: input.outbox.connectorId,
       outboxId: input.outbox.id,
@@ -372,7 +399,7 @@ async function deliverConnectorOutbox(input: {
         secretReferencePresent: Boolean(secretReferenceId),
       },
     });
-    return { status: "dead_letter" };
+    return { status: "dead_letter", outbox: result.outbox };
   }
 
   const envelope = connectorSummaryEnvelope({ outbox: input.outbox, createdAt: now });
@@ -400,7 +427,7 @@ async function deliverConnectorOutbox(input: {
       },
     });
     if (response.status >= 200 && response.status < 300) {
-      await input.repository.recordConnectorDeliveryResult({
+      const result = await input.repository.recordConnectorDeliveryResult({
         firmId: input.outbox.firmId,
         connectorId: input.outbox.connectorId,
         outboxId: input.outbox.id,
@@ -410,14 +437,14 @@ async function deliverConnectorOutbox(input: {
         occurredAt: now,
         metadata: { ...deliveryMetadata, httpStatus: response.status, responseClass: "2xx" },
       });
-      return { status: "delivered" };
+      return { status: "delivered", outbox: result.outbox };
     }
 
     const terminal =
       response.status >= 400 && response.status < 500
         ? true
         : input.attempt.attemptNumber >= input.outbox.maxAttempts;
-    await input.repository.recordConnectorDeliveryResult({
+    const result = await input.repository.recordConnectorDeliveryResult({
       firmId: input.outbox.firmId,
       connectorId: input.outbox.connectorId,
       outboxId: input.outbox.id,
@@ -434,10 +461,10 @@ async function deliverConnectorOutbox(input: {
         responseClass: responseClass(response.status),
       },
     });
-    return { status: terminal ? "dead_letter" : "failed" };
+    return { status: terminal ? "dead_letter" : "failed", outbox: result.outbox };
   } catch (error) {
     const terminal = input.attempt.attemptNumber >= input.outbox.maxAttempts;
-    await input.repository.recordConnectorDeliveryResult({
+    const result = await input.repository.recordConnectorDeliveryResult({
       firmId: input.outbox.firmId,
       connectorId: input.outbox.connectorId,
       outboxId: input.outbox.id,
@@ -452,8 +479,91 @@ async function deliverConnectorOutbox(input: {
       ),
       metadata: { ...deliveryMetadata, reason: "network_or_provider_error" },
     });
-    return { status: terminal ? "dead_letter" : "failed" };
+    return { status: terminal ? "dead_letter" : "failed", outbox: result.outbox };
   }
+}
+
+function connectorRetryDelay(nextAttemptAt: string | undefined, now: string): number | undefined {
+  if (!nextAttemptAt) return undefined;
+  const delay = Date.parse(nextAttemptAt) - Date.parse(now);
+  return Number.isFinite(delay) && delay > 0 ? delay : undefined;
+}
+
+async function scheduleConnectorRetryJobs(input: {
+  repository: OpenPracticeRepository;
+  connectorJobQueue?: WorkerJobQueue;
+  firmId: string;
+  retryableFailures: ConnectorOutboxRecord[];
+  now: string;
+}): Promise<{ scheduled: number; failed: number }> {
+  if (!input.connectorJobQueue || input.retryableFailures.length === 0) {
+    return { scheduled: 0, failed: 0 };
+  }
+
+  let scheduled = 0;
+  let failed = 0;
+  for (const outbox of input.retryableFailures) {
+    if (!outbox.nextAttemptAt) continue;
+    const jobId = crypto.randomUUID();
+    const metadata = {
+      resourceType: "connector_outbox",
+      resourceId: outbox.id,
+      eventCount: 1,
+      attemptNumber: outbox.attemptCount,
+      maxAttempts: outbox.maxAttempts,
+      nextRetryAt: outbox.nextAttemptAt,
+      idempotencyKeyPresent: Boolean(outbox.idempotencyKey),
+    };
+    const job = await input.repository.createJobLifecycleRecord({
+      id: jobId,
+      firmId: input.firmId,
+      queueName: "connectors",
+      jobName: CONNECTOR_DELIVERY_JOB_NAME,
+      status: "queued",
+      targetResourceType: "connector_outbox",
+      targetResourceId: outbox.id,
+      idempotencyKey: [
+        "job",
+        input.firmId,
+        "connector_outbox",
+        outbox.id,
+        "connectors.retry",
+        outbox.attemptCount,
+      ].join(":"),
+      attemptsMade: 0,
+      maxAttempts: CONNECTOR_JOB_MAX_ATTEMPTS,
+      queuedAt: input.now,
+      metadata,
+    });
+    if (job.id !== jobId) continue;
+    try {
+      const delay = connectorRetryDelay(outbox.nextAttemptAt, input.now);
+      const bullJob = await input.connectorJobQueue.add(
+        CONNECTOR_DELIVERY_JOB_NAME,
+        {
+          firmId: input.firmId,
+          resourceType: "connector_outbox",
+          resourceId: outbox.id,
+          metadata,
+        },
+        delay === undefined ? { jobId } : { jobId, delay },
+      );
+      await input.repository.updateJobLifecycleRecord(input.firmId, job.id, {
+        bullJobId: bullJob.id === undefined ? undefined : String(bullJob.id),
+      });
+      scheduled += 1;
+    } catch (error) {
+      failed += 1;
+      await input.repository.updateJobLifecycleRecord(input.firmId, job.id, {
+        status: "failed",
+        attemptsMade: 1,
+        failedAt: input.now,
+        errorMessage: error instanceof Error ? error.message : "Connector retry enqueue failed",
+        metadata: { ...metadata, enqueueStatus: "failed" },
+      });
+    }
+  }
+  return { scheduled, failed };
 }
 
 async function updateJobLifecycle(

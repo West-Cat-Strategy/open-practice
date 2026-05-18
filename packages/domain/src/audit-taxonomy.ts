@@ -627,7 +627,7 @@ export const auditEventTaxonomyDefinitions = [
       "connectorId",
       "connectorType",
       "eventType",
-      "idempotencyKey",
+      "idempotencyKeyPresent",
       "resourceType",
       "resourceId",
     ],

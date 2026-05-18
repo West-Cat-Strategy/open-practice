@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
 import { registerConnectorRoutes } from "./connectors.js";
+import type { ApiJobQueue } from "./types.js";
 
 const firmId = "firm-west-legal";
 const servers: FastifyInstance[] = [];
@@ -22,13 +23,17 @@ function user(role: ProfessionalRole): User {
 function testServer(input: {
   repository: InMemoryOpenPracticeRepository;
   authUser?: User;
+  connectorJobQueue?: ApiJobQueue;
 }): FastifyInstance {
   const server = Fastify({ logger: false });
   const authUser = input.authUser ?? user("owner_admin");
   server.addHook("preHandler", async (request) => {
     request.auth = { firmId: authUser.firmId, user: authUser };
   });
-  registerConnectorRoutes(server, { repository: input.repository });
+  registerConnectorRoutes(server, {
+    repository: input.repository,
+    connectorJobQueue: input.connectorJobQueue,
+  });
   server.setErrorHandler((error, _request, reply) => {
     const normalizedError = error as Error & { statusCode?: number; code?: string };
     reply.status(normalizedError.statusCode ?? 400).send({
@@ -39,6 +44,30 @@ function testServer(input: {
   });
   servers.push(server);
   return server;
+}
+
+function fakeConnectorQueue(): {
+  queue: ApiJobQueue;
+  jobs: Array<{
+    name: string;
+    data: Parameters<ApiJobQueue["add"]>[1];
+    options: Parameters<ApiJobQueue["add"]>[2];
+  }>;
+} {
+  const jobs: Array<{
+    name: string;
+    data: Parameters<ApiJobQueue["add"]>[1];
+    options: Parameters<ApiJobQueue["add"]>[2];
+  }> = [];
+  return {
+    jobs,
+    queue: {
+      async add(name, data, options) {
+        jobs.push({ name, data, options });
+        return { id: options?.jobId ?? `connector-bull-job-${jobs.length}` };
+      },
+    },
+  };
 }
 
 afterEach(async () => {
@@ -211,7 +240,8 @@ describe("connector routes", () => {
 
   it("queues provider-neutral outbox rows idempotently without payload secrets", async () => {
     const repository = new InMemoryOpenPracticeRepository();
-    const server = testServer({ repository });
+    const connectorQueue = fakeConnectorQueue();
+    const server = testServer({ repository, connectorJobQueue: connectorQueue.queue });
     const connectorResponse = await server.inject({
       method: "POST",
       url: "/api/connectors",
@@ -268,6 +298,52 @@ describe("connector routes", () => {
     });
     expect(first.json().outbox).not.toHaveProperty("idempotencyKey");
     expect(first.json().outbox).not.toHaveProperty("leaseId");
+    expect(first.json().deliveryJob).toMatchObject({
+      queueName: "connectors",
+      jobName: "deliver_connectors",
+      status: "queued",
+      targetResourceType: "connector_outbox",
+      targetResourceId: first.json().outbox.id,
+      idempotencyKeyPresent: true,
+    });
+    expect(second.json().deliveryJob).toBeUndefined();
+    expect(connectorQueue.jobs).toEqual([
+      expect.objectContaining({
+        name: "deliver_connectors",
+        data: {
+          firmId,
+          resourceType: "connector_outbox",
+          resourceId: first.json().outbox.id,
+          metadata: {
+            resourceType: "connector_outbox",
+            resourceId: first.json().outbox.id,
+            eventCount: 1,
+            maxAttempts: 4,
+            idempotencyKeyPresent: true,
+          },
+        },
+        options: expect.objectContaining({ jobId: expect.any(String) }),
+      }),
+    ]);
+    expect(connectorQueue.jobs[0]?.options).not.toHaveProperty("delay");
+    await expect(repository.listJobLifecycleRecords(firmId, { queueName: "connectors" })).resolves
+      .toEqual([
+        expect.objectContaining({
+          queueName: "connectors",
+          jobName: "deliver_connectors",
+          bullJobId: connectorQueue.jobs[0]?.options?.jobId,
+          status: "queued",
+          targetResourceType: "connector_outbox",
+          targetResourceId: first.json().outbox.id,
+          metadata: expect.objectContaining({
+            resourceType: "connector_outbox",
+            resourceId: first.json().outbox.id,
+            eventCount: 1,
+            maxAttempts: 4,
+            idempotencyKeyPresent: true,
+          }),
+        }),
+      ]);
 
     const listed = await server.inject({
       method: "GET",
@@ -286,6 +362,82 @@ describe("connector routes", () => {
     });
     expect(conflict.statusCode).toBe(409);
     expect(conflict.json()).toMatchObject({ code: "IDEMPOTENCY_KEY_CONFLICT" });
+  });
+
+  it("keeps connector outbox durable without scheduling when the connector queue is absent", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const connectorResponse = await server.inject({
+      method: "POST",
+      url: "/api/connectors",
+      payload: {
+        type: "generic",
+        key: "synthetic.durable",
+        displayName: "Synthetic Durable Connector",
+      },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox",
+      payload: {
+        connectorId: connectorResponse.json().connector.id,
+        eventType: "document.verified",
+        resourceType: "document",
+        resourceId: "doc-001",
+        idempotencyKey: "doc-001:durable:v1",
+        payloadSummary: { documentId: "doc-001" },
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      created: true,
+      outbox: { status: "pending", idempotencyKeyPresent: true },
+    });
+    expect(response.json().deliveryJob).toBeUndefined();
+    await expect(repository.listConnectorOutbox(firmId)).resolves.toHaveLength(1);
+    await expect(repository.listJobLifecycleRecords(firmId, { queueName: "connectors" })).resolves
+      .toEqual([]);
+  });
+
+  it("uses delayed BullMQ options for future connector outbox attempts", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const connectorQueue = fakeConnectorQueue();
+    const server = testServer({ repository, connectorJobQueue: connectorQueue.queue });
+    const connectorResponse = await server.inject({
+      method: "POST",
+      url: "/api/connectors",
+      payload: {
+        type: "generic",
+        key: "synthetic.delayed",
+        displayName: "Synthetic Delayed Connector",
+      },
+    });
+    const nextAttemptAt = new Date(Date.now() + 120_000).toISOString();
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox",
+      payload: {
+        connectorId: connectorResponse.json().connector.id,
+        eventType: "document.verified",
+        resourceType: "document",
+        resourceId: "doc-001",
+        idempotencyKey: "doc-001:delayed:v1",
+        payloadSummary: { documentId: "doc-001" },
+        nextAttemptAt,
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(connectorQueue.jobs).toHaveLength(1);
+    expect(connectorQueue.jobs[0]?.options?.delay).toBeGreaterThan(0);
+    expect(connectorQueue.jobs[0]?.options?.delay).toBeLessThanOrEqual(120_000);
+    const [job] = await repository.listJobLifecycleRecords(firmId, { queueName: "connectors" });
+    expect(job).toMatchObject({
+      metadata: expect.objectContaining({ nextRetryAt: nextAttemptAt }),
+    });
   });
 
   it("rejects connector outbox events outside the delivery allowlist", async () => {

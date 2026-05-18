@@ -14,10 +14,11 @@ import {
   DisabledMailSender,
   MailParserProvider,
 } from "@open-practice/providers";
-import { openPracticeQueues, redisConnectionFromUrl } from "./queues.js";
+import { createOpenPracticeQueue, openPracticeQueues, redisConnectionFromUrl } from "./queues.js";
 import {
   processOpenPracticeJob,
   type ConnectorSecretResolver,
+  type WorkerJobQueue,
   type WorkerJobEnvelope,
 } from "./processors.js";
 
@@ -75,6 +76,7 @@ export function createWorkers(input: {
   mailSender: SmtpMailSender | DisabledMailSender;
   inboundEmailParser: MailParserProvider;
   connectorSecretResolver?: ConnectorSecretResolver;
+  connectorJobQueue?: WorkerJobQueue;
 }): Worker[] {
   const connection = redisConnectionFromUrl(input.redisUrl);
   return input.queues.map(
@@ -98,6 +100,7 @@ export function createWorkers(input: {
             mailSender: input.mailSender,
             inboundEmailParser: input.inboundEmailParser,
             connectorSecretResolver: input.connectorSecretResolver,
+            connectorJobQueue: input.connectorJobQueue,
           }),
         { connection, concurrency: input.concurrency },
       ),
@@ -142,9 +145,14 @@ if (process.env.NODE_ENV !== "test") {
     ? (JSON.parse(env.CONNECTOR_WEBHOOK_SECRETS) as Record<string, string>)
     : {};
 
+  const queues = selectedQueues(env.WORKER_QUEUES);
+  const connectorJobQueue = queues.includes("connectors")
+    ? createOpenPracticeQueue("connectors", env.REDIS_URL)
+    : undefined;
+
   const workers = createWorkers({
     redisUrl: env.REDIS_URL,
-    queues: selectedQueues(env.WORKER_QUEUES),
+    queues,
     concurrency: env.WORKER_CONCURRENCY,
     repository,
     s3: { client: s3Client, bucket: env.S3_BUCKET },
@@ -152,6 +160,7 @@ if (process.env.NODE_ENV !== "test") {
     mailSender,
     inboundEmailParser: new MailParserProvider(),
     connectorSecretResolver: (secretReferenceId) => connectorSecrets[secretReferenceId],
+    connectorJobQueue,
   });
 
   for (const worker of workers) {
@@ -167,6 +176,9 @@ if (process.env.NODE_ENV !== "test") {
   }
 
   process.once("SIGTERM", () => {
-    void Promise.all(workers.map((worker) => worker.close())).then(() => process.exit(0));
+    void Promise.all([
+      ...workers.map((worker) => worker.close()),
+      connectorJobQueue?.close(),
+    ]).then(() => process.exit(0));
   });
 }
