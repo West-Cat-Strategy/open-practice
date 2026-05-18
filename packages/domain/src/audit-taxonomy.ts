@@ -424,6 +424,14 @@ export const auditEventTaxonomyDefinitions = [
     resourceMetadataKeys: ["draftId", "documentId", "task", "provider", "model", "status"],
   }),
   define({
+    action: "draft_assist.async_queued",
+    category: "drafting",
+    resourceType: "draft_assist",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["draftId", "documentId", "task", "provider", "jobId"],
+  }),
+  define({
     action: "draft_assist.reviewed",
     category: "drafting",
     resourceType: "draft_assist",

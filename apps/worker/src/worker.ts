@@ -1,7 +1,7 @@
 import { Worker } from "bullmq";
 import { S3Client } from "@aws-sdk/client-s3";
 import { z } from "zod";
-import type { OpenPracticeQueueName } from "@open-practice/domain";
+import type { DraftAssistProvider, OpenPracticeQueueName } from "@open-practice/domain";
 import {
   createDatabaseRuntime,
   DrizzleOpenPracticeRepository,
@@ -72,6 +72,7 @@ export function createWorkers(input: {
   repository: OpenPracticeRepository;
   s3: { client: S3Client; bucket: string };
   ocrProvider: TesseractOcrProvider;
+  draftAssistProvider?: DraftAssistProvider;
   mailSender: SmtpMailSender | DisabledMailSender;
   inboundEmailParser: MailParserProvider;
   connectorSecretResolver?: ConnectorSecretResolver;
@@ -95,6 +96,7 @@ export function createWorkers(input: {
             repository: input.repository,
             s3: input.s3,
             ocrProvider: input.ocrProvider,
+            draftAssistProvider: input.draftAssistProvider,
             mailSender: input.mailSender,
             inboundEmailParser: input.inboundEmailParser,
             connectorSecretResolver: input.connectorSecretResolver,

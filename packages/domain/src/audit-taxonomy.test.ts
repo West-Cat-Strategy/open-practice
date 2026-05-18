@@ -88,6 +88,36 @@ describe("audit event taxonomy", () => {
     });
   });
 
+  it("classifies async draft assist queue events as matter-scoped drafting", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "draft_assist.async_queued",
+        resourceType: "draft_assist",
+        resourceId: "job-001",
+        metadata: {
+          matterId: "matter-001",
+          draftId: "draft-001",
+          task: "continue_draft",
+          provider: "fake-local-ai",
+          jobId: "job-001",
+          sourceTextLength: 42,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "drafting",
+      known: true,
+      matterScope: "matter",
+      actorHint: "authenticated_user",
+      hasMatterId: true,
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining(["draftId", "task", "provider", "jobId"]),
+    );
+  });
+
   it("classifies completed task events as matter-scoped operations", () => {
     expect(
       classifyAuditEvent(

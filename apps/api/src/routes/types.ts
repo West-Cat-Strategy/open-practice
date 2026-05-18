@@ -31,6 +31,7 @@ export interface ApiRouteDependencies {
   };
   emailJobQueue?: ApiJobQueue;
   reportJobQueue?: ApiJobQueue;
+  aiAssistJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
   s3?: {
     client: S3Client;

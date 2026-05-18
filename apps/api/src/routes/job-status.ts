@@ -285,6 +285,7 @@ export function queueStatus(
   queueName: OpenPracticeQueueName,
   queue: ApiJobQueue | undefined,
 ): WorkerQueueStatus {
+  if (queue) return { queueName, status: "configured" };
   const reserved = reservedDocumentProcessingTasks.find((task) => task.queueName === queueName);
   if (reservedWorkerQueueNames.has(queueName) && reserved) {
     return {
@@ -295,9 +296,7 @@ export function queueStatus(
       actionable: false,
     };
   }
-  return queue
-    ? { queueName, status: "configured" }
-    : { queueName, status: "not_configured", reason: "queue_not_configured" };
+  return { queueName, status: "not_configured", reason: "queue_not_configured" };
 }
 
 export function providerStatus(kind: ProviderSettingKind, providers: ProviderSettingRecord[]) {

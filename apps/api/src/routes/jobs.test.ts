@@ -29,6 +29,7 @@ const fakeQueue: ApiJobQueue = {
 function testServer(input: {
   repository: InMemoryOpenPracticeRepository;
   emailJobQueue?: ApiJobQueue;
+  aiAssistJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
   role?: ProfessionalRole;
 }): FastifyInstance {
@@ -72,6 +73,25 @@ describe("jobs routes", () => {
       ]),
       jobs: [],
     });
+  });
+
+  it("reports ai_triage as configured when async assist queue injection is present", async () => {
+    const response = await testServer({
+      repository: new InMemoryOpenPracticeRepository(),
+      aiAssistJobQueue: fakeQueue,
+    }).inject({
+      method: "GET",
+      url: "/api/jobs",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      workers: expect.arrayContaining([{ queueName: "ai_triage", status: "configured" }]),
+      workerQueues: expect.arrayContaining([{ queueName: "ai_triage", status: "configured" }]),
+    });
+    expect(response.json().reservedQueues).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ queueName: "ai_triage" })]),
+    );
   });
 
   it("returns queue status and redacted lifecycle run summaries", async () => {

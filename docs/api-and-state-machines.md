@@ -197,7 +197,9 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/draft-assist/status`                                                    | Disabled-by-default drafting assist status from firm AI provider settings and injected provider availability.                                                                                                                                                                                      |
 | `GET /api/draft-assist/records?matterId=&draftId=&documentId=`                    | Matter-scoped non-authoritative assist records filtered by matter, draft, or document.                                                                                                                                                                                                             |
 | `POST /api/drafts/:id/assist`                                                     | Synchronous review-first draft assist suggestion from structured draft text; does not mutate the draft.                                                                                                                                                                                            |
+| `POST /api/drafts/:id/assist/jobs`                                                | Queues a review-first async draft assist job on `ai_triage` when AI provider settings, provider injection, and the async assist queue are configured; returns `202` with redacted job metadata only and does not mutate the draft.                                                                 |
 | `POST /api/documents/:id/assist`                                                  | Synchronous document summary assist from completed text extraction; missing extraction returns `409`.                                                                                                                                                                                              |
+| `POST /api/documents/:id/assist/jobs`                                             | Queues a review-first async document summary assist job from the latest completed text extraction; missing extraction returns `409`, generated suggestions become normal non-authoritative assist records, and source documents are not mutated.                                                   |
 | `PATCH /api/draft-assist/records/:id/review`                                      | Mark an assist suggestion reviewed or rejected without changing source draft or document records.                                                                                                                                                                                                  |
 | `GET /api/draft-templates?category=&activeOnly=`                                  | List active firm-scoped drafting templates, including seeded operational basics.                                                                                                                                                                                                                   |
 | `POST /api/draft-templates`                                                       | Create a firm-scoped drafting template from structured TipTap/ProseMirror JSON.                                                                                                                                                                                                                    |
@@ -229,21 +231,23 @@ land behind the scaffolded provider settings and job lifecycle records. Inbound 
 persists parsed messages and attachment records, inbound status filters recipient addresses by
 authorization, staff can explicitly promote matter-scoped inbound attachments to documents, and
 verified documents can be handed to the OCR queue. OCR is the only actionable document-processing
-queue in the current API; AI triage, transcription, and media queues are reported as
-reserved/deferred metadata rather than configurable work. Webhook ingestion, provider delivery
-setup, automatic document promotion, transcription, media processing, and async AI drafting remain
-deferred.
+queue in the current API; document classification on AI triage, transcription, and media queues are
+reported as reserved/deferred metadata rather than configurable work. A narrow async draft/document
+assist slice may use `ai_triage` for `draft_assist_suggestion` only when an enabled AI provider
+setting, an injected `DraftAssistProvider`, and the async assist queue are all configured. Webhook
+ingestion, provider delivery setup, automatic document promotion, document classification,
+transcription, media processing, and live Ollama/LM Studio adapter work remain deferred.
 `GET /api/providers/status` is read-only configuration posture, not a live health probe: it reports
 safe provider-setting keys, object-storage configured/not-configured state, BullMQ producer and
 reserved worker queue posture, redacted job summaries, and current-user embedded-auth extension
 posture without returning provider config, Redis URLs, storage endpoints, credentials, raw worker
 errors, storage keys, message bodies, generated text, or auth secrets.
 
-| Surface                              | Purpose                                                                                                                                                     |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/providers/status`          | Operator-visible configuration posture for Redis/BullMQ producers, object storage, provider settings, reserved workers, redacted jobs, and auth extensions. |
-| Media transcription jobs             | Deferred route candidate for FFmpeg normalization and Whisper transcription after media authorization and worker governance land.                           |
-| Async assistive-drafting worker jobs | Deferred route candidate for Ollama/LM Studio drafting jobs after provider and queue governance land.                                                       |
+| Surface                              | Purpose                                                                                                                                                       |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/providers/status`          | Operator-visible configuration posture for Redis/BullMQ producers, object storage, provider settings, reserved workers, redacted jobs, and auth extensions.   |
+| Media transcription jobs             | Deferred route candidate for FFmpeg normalization and Whisper transcription after media authorization and worker governance land.                             |
+| Async assistive-drafting worker jobs | Queue-first `draft_assist_suggestion` jobs create existing review-first assist records when locally configured; live Ollama/LM Studio adapters stay deferred. |
 
 The authenticated and public SimpleWebAuthn routes are live embedded-auth routes in the main API
 surface above. They remain deployment-gated by the configured RP ID/origin and setup/session secrets;
@@ -587,8 +591,11 @@ the same redacted summaries for OCR/document-processing workbench state, includi
 queue-unconfigured, and reserved/deferred cases. The document-processing projection keeps the broad
 `supportedTasks` list for compatibility, adds `actionableTasks: ["ocr"]`, and reports AI triage,
 transcription, and media through reserved/deferred queue and task metadata until their provider
-governance and enqueue surfaces are implemented. Job metadata must not carry email bodies, portal
-tokens, generated content, storage keys, raw evidence, or private secrets.
+governance and enqueue surfaces are implemented. Async assist status and job endpoints are separate
+from document-processing classification: `ai_triage` can report configured for
+`draft_assist_suggestion` when the async assist queue is injected, while classification remains
+reserved/deferred. Job metadata must not carry email bodies, portal tokens, generated content,
+storage keys, raw evidence, source text, or private secrets.
 The workbench also returns reviewer-only `reviewSuggestions` per visible document. These suggestions
 are non-mutating cues for classification review, duplicate/supersession checks, matter/contact
 context, and missing metadata. They are derived from authorized same-matter document state and
@@ -655,16 +662,20 @@ metadata, or delivery attempts. Calendar audit metadata records event, reminder,
 job, meeting-boundary status, and count identifiers only; invitation message bodies remain in the
 outbox record and reminder notes are not copied into audit metadata.
 
-Draft assist is a disabled-by-default synchronous scaffold for non-authoritative suggestions.
+Draft assist is a disabled-by-default scaffold for non-authoritative suggestions.
 `GET /api/draft-assist/status` reports disabled when no enabled `ai` provider setting exists or no
-provider is injected. Configured draft/document assist creates `draft_assist_records` with provider
-and model provenance, suggested plain text, optional summary, review state, source references, and
-redacted metadata. Draft assist reads structured TipTap text and never saves draft changes; the
-dashboard can insert a suggestion into local editor state, and the existing draft save route remains
-the only persistence path. Document assist is limited to `summarize` and requires completed text
-extraction. Audit events record only IDs, task/status, provider/model, length/count metadata, and
-review decisions; raw draft text, document text, prompts, instructions, generated text, storage keys,
-checksums, and evidence bodies stay out of audit metadata.
+provider is injected. Async jobs additionally require the `ai_triage` async assist queue. Configured
+draft/document assist creates `draft_assist_records` with provider and model provenance, suggested
+plain text, optional summary, review state, source references, and redacted metadata. Draft assist
+reads structured TipTap text and never saves draft changes; the dashboard can insert a suggestion
+into local editor state, and the existing draft save route remains the only persistence path.
+Document assist is limited to `summarize` and requires completed text extraction. Async draft and
+document job create routes accept the existing assist body shape plus optional `clientRequestId`, but
+this queue-first slice stores only IDs, provider/task provenance, and length/key-count metadata in
+PostgreSQL and BullMQ. Workers reload draft text or the latest completed extraction by ID before
+calling the injected `DraftAssistProvider`; raw source text, prompt/evidence values, generated text,
+storage keys, checksums, and private payloads stay out of job metadata and audit metadata. Generated
+text is stored only on the resulting suggested assist record for the existing review flow.
 
 Provider/bootstrap selection is local-first. `DATABASE_URL` selects PostgreSQL unless
 `OPEN_PRACTICE_USE_MEMORY_REPO=true` or the database URL is absent. `OPEN_PRACTICE_DEV_SEED=true`
@@ -676,7 +687,8 @@ Signature and intake providers default to embedded
 implementations. S3 upload signing is enabled only when endpoint and credentials are configured.
 Redis/BullMQ queues, firm provider settings, job lifecycle records, and disabled-by-default API
 scaffolds are implemented for email, AI triage, OCR, transcription, media, draft assist, and auth
-extensions. Email, inbound email, and OCR are actionable queue families when configured; AI triage,
+extensions. Email, inbound email, OCR, and queue-first async draft assist are actionable queue
+families when their providers and queues are configured. AI triage document classification,
 transcription, and media remain reserved/deferred queue names until explicit provider governance and
 enqueue surfaces are added. Provider-status posture is an operator read surface over configuration
 and redacted job lifecycle records; it must not be treated as provider connectivity, credential, or
