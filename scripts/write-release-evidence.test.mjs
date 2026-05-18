@@ -16,6 +16,7 @@ describe("release evidence artifact", () => {
       "pnpm deps:audit",
       "pnpm deps:licenses",
       "pnpm ci:local",
+      "pnpm migrations:replay",
       "git diff --check",
     ]);
     assert.match(evidence.dependencyEvidence.lockfile.sha256, /^[a-f0-9]{64}$/);

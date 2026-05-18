@@ -51,6 +51,7 @@ export function releaseProofCommands({ sbomPath } = {}) {
       required: true,
     },
     { id: "local-ci-gate", command: "pnpm", args: ["ci:local"], required: true },
+    { id: "migration-replay", command: "pnpm", args: ["migrations:replay"], required: true },
   ];
 }
 

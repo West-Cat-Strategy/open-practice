@@ -60,7 +60,11 @@ describe("create-release-proof contract", () => {
         if (args[0] === "branch") return { status: 0, stdout: "codex/test\n", stderr: "" };
         if (args[0] === "status") return { status: 0, stdout: " M package.json\n", stderr: "" };
       }
-      const id = args.includes("ci:local") ? "local-ci-gate" : args.at(-1);
+      const id = args.includes("ci:local")
+        ? "local-ci-gate"
+        : args.includes("migrations:replay")
+          ? "migration-replay"
+          : args.at(-1);
       return {
         status: args.includes("deps:audit") ? 1 : 0,
         stdout: `stdout for ${id}\n`,
@@ -82,7 +86,7 @@ describe("create-release-proof contract", () => {
       readFileSync(path.join(metadata.artifactDir, "release-proof.json"), "utf8"),
     );
     assert.equal(proof.git.branch, "codex/test");
-    assert.equal(proof.commands.length, 5);
+    assert.equal(proof.commands.length, 6);
     assert.match(
       readFileSync(
         path.join(metadata.artifactDir, "commands", "dependency-audit.stderr.log"),

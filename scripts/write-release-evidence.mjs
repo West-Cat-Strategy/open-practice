@@ -52,6 +52,7 @@ export function buildReleaseEvidence(input = {}) {
       "pnpm deps:audit",
       "pnpm deps:licenses",
       "pnpm ci:local",
+      "pnpm migrations:replay",
       "git diff --check",
     ],
     dependencyEvidence: {

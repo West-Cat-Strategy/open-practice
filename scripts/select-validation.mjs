@@ -18,6 +18,7 @@ export const COMMANDS = {
   domainTest: "pnpm --filter @open-practice/domain test",
   domainTypecheck: "pnpm --filter @open-practice/domain typecheck",
   formatCheck: "pnpm format:check",
+  migrationsCheck: "pnpm migrations:check",
   policyCheck: "pnpm policy:check",
   providersBuild: "pnpm --filter @open-practice/providers build",
   providersTest: "pnpm --filter @open-practice/providers test",
@@ -42,6 +43,7 @@ export const COMMAND_ORDER = [
   COMMANDS.domainTypecheck,
   COMMANDS.databaseTest,
   COMMANDS.databaseCheck,
+  COMMANDS.migrationsCheck,
   COMMANDS.databaseTypecheck,
   COMMANDS.apiTest,
   COMMANDS.apiTypecheck,
@@ -247,6 +249,7 @@ export function classifyPath(path) {
   if (path.startsWith("packages/database/") || isMigration(path)) {
     commands.add(COMMANDS.databaseTest);
     commands.add(COMMANDS.databaseCheck);
+    commands.add(COMMANDS.migrationsCheck);
     commands.add(COMMANDS.databaseTypecheck);
     commands.add(COMMANDS.apiTest);
   }
