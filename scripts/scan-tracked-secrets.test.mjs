@@ -6,11 +6,14 @@ import { describe, it } from "node:test";
 
 import { scanSecretPaths, scanTextForSecrets } from "./scan-tracked-secrets.mjs";
 
+const openAiKeyFixture = `sk-proj-${"1234567890abcdefghijklmnopqrstuvwxyz"}`;
+const stripeLiveRestrictedKeyFixture = `rk_${"live"}_${"1234567890abcdef"}`;
+
 describe("secret scanner", () => {
   it("reports high-confidence secret patterns with line and column", () => {
     const findings = scanTextForSecrets(
       "artifact.log",
-      "safe\nOPENAI_API_KEY=sk-proj-1234567890abcdefghijklmnopqrstuvwxyz\n",
+      `safe\nOPENAI_API_KEY=${openAiKeyFixture}\n`,
     );
 
     assert.deepEqual(findings, [
@@ -28,7 +31,10 @@ describe("secret scanner", () => {
     const artifactDir = path.join(dir, "release");
     mkdirSync(artifactDir);
     writeFileSync(path.join(artifactDir, "safe.log"), "no secret here\n");
-    writeFileSync(path.join(artifactDir, "unsafe.log"), "stripe=rk_live_1234567890abcdef\n");
+    writeFileSync(
+      path.join(artifactDir, "unsafe.log"),
+      `stripe=${stripeLiveRestrictedKeyFixture}\n`,
+    );
 
     assert.deepEqual(scanSecretPaths([artifactDir]), [
       {
