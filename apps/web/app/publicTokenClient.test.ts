@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildPublicTokenPath,
   publicTokenErrorMessage,
+  publicTokenNetworkErrorMessage,
   readPublicTokenError,
 } from "./publicTokenClient";
 
@@ -22,5 +23,14 @@ describe("public token helpers", () => {
 
     expect(publicTokenErrorMessage(body, "Fallback")).toBe("Link unavailable");
     expect(publicTokenErrorMessage({}, "Fallback")).toBe("Fallback");
+  });
+
+  it("keeps network failures tied to the public-token action", () => {
+    expect(publicTokenNetworkErrorMessage("Draft save", new Error("offline"))).toBe(
+      "Draft save could not reach the secure link service. offline",
+    );
+    expect(publicTokenNetworkErrorMessage("Submit", "unknown")).toBe(
+      "Submit could not reach the secure link service.",
+    );
   });
 });

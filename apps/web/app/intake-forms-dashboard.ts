@@ -2,6 +2,7 @@ import type {
   AnswerSnapshotRecord,
   EmbeddedIntakeFormItem,
   EmbeddedIntakeTemplateDefinitionV2,
+  IntakeTemplatePreviewCheckSeverity,
   IntakeFormItemActionRecord,
   IntakeFormReviewRecord,
   IntakeVariableMapping,
@@ -28,6 +29,28 @@ export const clientVariableFields = ["displayName", "notes"] as const;
 export const matterVariableFields = ["title", "practiceArea", "jurisdiction"] as const;
 export const questionTypes = ["text", "textarea", "select", "boolean", "date"] as const;
 export const itemKinds = ["display", "question", "upload", "signature"] as const;
+
+export interface IntakeBuilderDiagnostic {
+  id: string;
+  code:
+    | "duplicate_id"
+    | "missing_question_reference"
+    | "unsupported_mapping_target"
+    | "broken_branch_reference"
+    | "broken_package_reference"
+    | "broken_document_reference"
+    | "branch_value_mismatch"
+    | "empty_section"
+    | "signature_document_unverified";
+  severity: IntakeTemplatePreviewCheckSeverity;
+  message: string;
+  sectionId?: string;
+  itemId?: string;
+  questionId?: string;
+  branchRuleId?: string;
+  packageId?: string;
+  documentId?: string;
+}
 
 export const blankIntakeFormDefinition: EmbeddedIntakeTemplateDefinitionV2 = {
   schemaVersion: 2,
@@ -269,6 +292,236 @@ export function buildVariableMapping(
   if (field.length === 0) return undefined;
   if (!variableTargetFields(scope).includes(field)) return undefined;
   return { targetScope: scope, targetField: field as IntakeVariableMapping["targetField"] };
+}
+
+function duplicateValues(values: string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return [...counts.entries()].filter(([, count]) => count > 1).map(([value]) => value);
+}
+
+function pushDuplicateDiagnostics(input: {
+  diagnostics: IntakeBuilderDiagnostic[];
+  label: string;
+  values: string[];
+  scopeId: string;
+  makeDiagnostic: (id: string) => IntakeBuilderDiagnostic;
+}): void {
+  for (const id of duplicateValues(input.values)) {
+    input.diagnostics.push({
+      ...input.makeDiagnostic(id),
+      id: `duplicate-${input.scopeId}-${id}`,
+      code: "duplicate_id",
+      severity: "blocking",
+      message: `Duplicate ${input.label} ID "${id}".`,
+    });
+  }
+}
+
+export function buildIntakeBuilderDiagnostics(
+  definition: EmbeddedIntakeTemplateDefinitionV2,
+): IntakeBuilderDiagnostic[] {
+  const diagnostics: IntakeBuilderDiagnostic[] = [];
+  const questionIds = definition.questions.map((question) => question.id);
+  const questionIdSet = new Set(questionIds);
+  const packageIds = definition.packages.map((intakePackage) => intakePackage.id);
+  const packageIdSet = new Set(packageIds);
+  const packageDocumentIdSet = new Set(
+    definition.packages.flatMap((intakePackage) =>
+      intakePackage.documents.map((document) => document.id),
+    ),
+  );
+  const sectionIds = definition.sections.map((section) => section.id);
+  const itemIds = definition.sections.flatMap((section) => section.items.map((item) => item.id));
+  const branchRuleIds = definition.branchRules.map((rule) => rule.id);
+
+  pushDuplicateDiagnostics({
+    diagnostics,
+    label: "question",
+    values: questionIds,
+    scopeId: "questions",
+    makeDiagnostic: (questionId) => ({ questionId }) as IntakeBuilderDiagnostic,
+  });
+  pushDuplicateDiagnostics({
+    diagnostics,
+    label: "section",
+    values: sectionIds,
+    scopeId: "sections",
+    makeDiagnostic: (sectionId) => ({ sectionId }) as IntakeBuilderDiagnostic,
+  });
+  pushDuplicateDiagnostics({
+    diagnostics,
+    label: "form item",
+    values: itemIds,
+    scopeId: "items",
+    makeDiagnostic: (itemId) => ({ itemId }) as IntakeBuilderDiagnostic,
+  });
+  pushDuplicateDiagnostics({
+    diagnostics,
+    label: "branch rule",
+    values: branchRuleIds,
+    scopeId: "branch-rules",
+    makeDiagnostic: (branchRuleId) => ({ branchRuleId }) as IntakeBuilderDiagnostic,
+  });
+  pushDuplicateDiagnostics({
+    diagnostics,
+    label: "package",
+    values: packageIds,
+    scopeId: "packages",
+    makeDiagnostic: (packageId) => ({ packageId }) as IntakeBuilderDiagnostic,
+  });
+
+  for (const question of definition.questions) {
+    const mapping = question.variableMapping;
+    if (!mapping) continue;
+    const fields =
+      mapping.targetScope === "client" || mapping.targetScope === "matter"
+        ? variableTargetFields(mapping.targetScope)
+        : [];
+    if (!fields.includes(mapping.targetField)) {
+      diagnostics.push({
+        id: `mapping-${question.id}`,
+        code: "unsupported_mapping_target",
+        severity: "blocking",
+        message: `Question "${question.id}" maps to unsupported target "${mapping.targetScope}.${mapping.targetField}".`,
+        questionId: question.id,
+      });
+    }
+  }
+
+  for (const section of definition.sections) {
+    if (section.items.length === 0) {
+      diagnostics.push({
+        id: `empty-section-${section.id}`,
+        code: "empty_section",
+        severity: "blocking",
+        message: `Section "${section.id}" has no form items.`,
+        sectionId: section.id,
+      });
+    }
+
+    for (const item of section.items) {
+      if (item.kind === "question" && !questionIdSet.has(item.questionId)) {
+        diagnostics.push({
+          id: `missing-question-${section.id}-${item.id}-${item.questionId}`,
+          code: "missing_question_reference",
+          severity: "blocking",
+          message: `Form item "${item.id}" references missing question "${item.questionId}".`,
+          sectionId: section.id,
+          itemId: item.id,
+          questionId: item.questionId,
+        });
+      }
+      if (item.kind === "signature" && item.documentId) {
+        if (!packageDocumentIdSet.has(item.documentId)) {
+          diagnostics.push({
+            id: `signature-document-missing-${section.id}-${item.id}-${item.documentId}`,
+            code: "broken_document_reference",
+            severity: "blocking",
+            message: `Signature item "${item.id}" references missing package document "${item.documentId}".`,
+            sectionId: section.id,
+            itemId: item.id,
+            documentId: item.documentId,
+          });
+        } else {
+          diagnostics.push({
+            id: `signature-document-${section.id}-${item.id}-${item.documentId}`,
+            code: "signature_document_unverified",
+            severity: "warning",
+            message: `Signature item "${item.id}" references document "${item.documentId}", which needs matter-scoped verification before client use.`,
+            sectionId: section.id,
+            itemId: item.id,
+            documentId: item.documentId,
+          });
+        }
+      }
+    }
+  }
+
+  for (const rule of definition.branchRules) {
+    const sourceQuestion = definition.questions.find((question) => question.id === rule.questionId);
+    if (!sourceQuestion) {
+      diagnostics.push({
+        id: `branch-question-${rule.id}-${rule.questionId}`,
+        code: "broken_branch_reference",
+        severity: "blocking",
+        message: `Branch rule "${rule.id}" depends on missing question "${rule.questionId}".`,
+        branchRuleId: rule.id,
+        questionId: rule.questionId,
+      });
+    } else if (
+      rule.value !== undefined &&
+      (rule.operator === "equals" || rule.operator === "not_equals" || rule.operator === "includes")
+    ) {
+      const allowedValues =
+        sourceQuestion.type === "select"
+          ? (sourceQuestion.options ?? []).map((option) => option.value)
+          : [];
+      const mismatched =
+        sourceQuestion.type === "boolean"
+          ? typeof rule.value !== "boolean"
+          : sourceQuestion.type === "select" && !allowedValues.includes(String(rule.value));
+      if (mismatched) {
+        diagnostics.push({
+          id: `branch-value-${rule.id}-${rule.questionId}`,
+          code: "branch_value_mismatch",
+          severity: "warning",
+          message: `Branch rule "${rule.id}" uses a value that does not match question "${rule.questionId}".`,
+          branchRuleId: rule.id,
+          questionId: rule.questionId,
+        });
+      }
+    }
+    for (const questionId of rule.showQuestionIds ?? []) {
+      if (!questionIdSet.has(questionId)) {
+        diagnostics.push({
+          id: `branch-show-question-${rule.id}-${questionId}`,
+          code: "broken_branch_reference",
+          severity: "blocking",
+          message: `Branch rule "${rule.id}" shows missing question "${questionId}".`,
+          branchRuleId: rule.id,
+          questionId,
+        });
+      }
+    }
+    for (const packageId of rule.eligiblePackageIds ?? []) {
+      if (!packageIdSet.has(packageId)) {
+        diagnostics.push({
+          id: `branch-package-${rule.id}-${packageId}`,
+          code: "broken_package_reference",
+          severity: "blocking",
+          message: `Branch rule "${rule.id}" references missing package "${packageId}".`,
+          branchRuleId: rule.id,
+          packageId,
+        });
+      }
+    }
+  }
+
+  for (const intakePackage of definition.packages) {
+    if (intakePackage.documents.length === 0) {
+      diagnostics.push({
+        id: `package-documents-empty-${intakePackage.id}`,
+        code: "broken_document_reference",
+        severity: "blocking",
+        message: `Package "${intakePackage.id}" has no document definitions.`,
+        packageId: intakePackage.id,
+      });
+    }
+    pushDuplicateDiagnostics({
+      diagnostics,
+      label: `document for package ${intakePackage.id}`,
+      values: intakePackage.documents.map((document) => document.id),
+      scopeId: `package-${intakePackage.id}-documents`,
+      makeDiagnostic: (documentId) =>
+        ({
+          packageId: intakePackage.id,
+          documentId,
+        }) as IntakeBuilderDiagnostic,
+    });
+  }
+
+  return diagnostics;
 }
 
 export function summarizeIntakeItemAction(action: IntakeFormItemActionRecord): string {

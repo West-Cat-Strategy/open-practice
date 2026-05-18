@@ -169,6 +169,63 @@ describe("inbound email routes", () => {
     expect(JSON.stringify(response.json())).not.toContain("sealed:provider-secret");
   });
 
+  it("filters inbound address status for matter-scoped users", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-inbound-default",
+      firmId,
+      kind: "inbound_email",
+      key: "mailgun",
+      enabled: true,
+      encryptedConfig: "sealed:provider-secret",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await repository.createInboundEmailAddress({
+      id: "inbound-address-001",
+      firmId,
+      address: "matter-001@open-practice.test",
+      matterId: "matter-001",
+      enabled: true,
+      createdAt: now,
+    });
+    await repository.createInboundEmailAddress({
+      id: "inbound-address-002",
+      firmId,
+      address: "matter-002@open-practice.test",
+      matterId: "matter-002",
+      enabled: true,
+      createdAt: now,
+    });
+    await repository.createInboundEmailAddress({
+      id: "inbound-address-general",
+      firmId,
+      address: "general@open-practice.test",
+      enabled: true,
+      createdAt: now,
+    });
+
+    const response = await testServer(repository, user("firm_member", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/inbound-email/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "configured",
+      addresses: [
+        {
+          id: "inbound-address-001",
+          address: "matter-001@open-practice.test",
+          matterId: "matter-001",
+        },
+      ],
+    });
+    expect(response.json()).not.toHaveProperty("provider");
+    expect(JSON.stringify(response.json())).not.toContain("matter-002@open-practice.test");
+    expect(JSON.stringify(response.json())).not.toContain("general@open-practice.test");
+  });
+
   it("returns one parsed message with only that message's inbound attachments", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createInboundEmailMessage(message());

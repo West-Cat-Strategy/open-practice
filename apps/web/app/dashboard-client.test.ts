@@ -172,6 +172,7 @@ import {
   describeIntakeTemplatePreview,
   buildIntakeVariableProposalListPath,
   getIntakeFormLinkState,
+  buildIntakeBuilderDiagnostics,
   loadIntakeFormsDashboardData,
   pendingSubmittedIntakeReviewLinks,
   previewStatusClass,
@@ -3222,6 +3223,69 @@ describe("dashboard client behavior", () => {
       targetField: "displayName",
     });
     expect(buildVariableMapping("matter", "unsupported")).toBeUndefined();
+    expect(
+      buildIntakeBuilderDiagnostics({
+        schemaVersion: 2,
+        questions: [
+          {
+            id: "client_name",
+            label: "Client name",
+            type: "text",
+            variableMapping: { targetScope: "client", targetField: "displayName" },
+          },
+          {
+            id: "client_name",
+            label: "Duplicate client name",
+            type: "select",
+            options: [{ value: "yes", label: "Yes" }],
+            variableMapping: { targetScope: "matter", targetField: "unsupported" as never },
+          },
+        ],
+        branchRules: [
+          {
+            id: "branch-1",
+            questionId: "missing-source",
+            operator: "equals",
+            value: "no",
+            showQuestionIds: ["missing-follow-up"],
+            eligiblePackageIds: ["missing-package"],
+          },
+        ],
+        packages: [
+          {
+            id: "package-1",
+            title: "Synthetic package",
+            documents: [{ id: "doc-1", title: "Synthetic document" }],
+          },
+        ],
+        sections: [
+          { id: "empty-section", title: "Empty section", items: [] },
+          {
+            id: "section-1",
+            title: "Section",
+            items: [
+              { id: "question-item", kind: "question", questionId: "missing-question" },
+              {
+                id: "signature-item",
+                kind: "signature",
+                label: "Sign",
+                consentText: "Synthetic consent.",
+                documentId: "missing-document",
+              },
+            ],
+          },
+        ],
+      }).map((diagnostic) => diagnostic.code),
+    ).toEqual([
+      "duplicate_id",
+      "unsupported_mapping_target",
+      "empty_section",
+      "missing_question_reference",
+      "broken_document_reference",
+      "broken_branch_reference",
+      "broken_branch_reference",
+      "broken_package_reference",
+    ]);
     expect(
       summarizeIntakeItemAction({
         id: "action-001",

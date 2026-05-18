@@ -422,6 +422,35 @@
   line-height: 1.55;
 }
 
+.intake-authoring-diagnostics {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.intake-diagnostic-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.intake-diagnostic {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.intake-diagnostic.blocking {
+  color: var(--warning);
+}
+
 .rejection-field {
   min-width: 180px;
 }
