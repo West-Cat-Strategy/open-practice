@@ -672,6 +672,11 @@ export const auditEventTaxonomyDefinitions = [
       "staffTriageStatus",
       "assignedToUserId",
       "contactIds",
+      "privateNoteAdded",
+      "privateNoteCount",
+      "followUpChannel",
+      "followUpConsentStatus",
+      "followUpDueAt",
     ],
   }),
   define({

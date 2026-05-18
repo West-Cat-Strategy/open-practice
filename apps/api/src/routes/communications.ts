@@ -138,6 +138,29 @@ function sanitizeStaffTriage(value: unknown): Record<string, unknown> | undefine
   if (Array.isArray(input.contactIds)) {
     output.contactIds = input.contactIds.filter((id): id is string => typeof id === "string");
   }
+  const privateNotes = Array.isArray(input.privateNotes)
+    ? input.privateNotes.filter(
+        (note): note is { createdAt: string } =>
+          Boolean(note) &&
+          typeof note === "object" &&
+          !Array.isArray(note) &&
+          typeof (note as Record<string, unknown>).createdAt === "string",
+      )
+    : [];
+  if (privateNotes.length > 0) {
+    output.privateNoteCount = privateNotes.length;
+    output.latestPrivateNoteAt = privateNotes.at(-1)?.createdAt;
+  }
+  if (input.followUp && typeof input.followUp === "object" && !Array.isArray(input.followUp)) {
+    const followUp = input.followUp as Record<string, unknown>;
+    const safeFollowUp: Record<string, unknown> = {};
+    if (typeof followUp.channel === "string") safeFollowUp.channel = followUp.channel;
+    if (typeof followUp.consentStatus === "string") {
+      safeFollowUp.consentStatus = followUp.consentStatus;
+    }
+    if (typeof followUp.dueAt === "string") safeFollowUp.dueAt = followUp.dueAt;
+    if (Object.keys(safeFollowUp).length > 0) output.followUp = safeFollowUp;
+  }
   if (typeof input.updatedAt === "string") output.updatedAt = input.updatedAt;
   if (typeof input.updatedByUserId === "string") output.updatedByUserId = input.updatedByUserId;
   return Object.keys(output).length > 0 ? output : undefined;

@@ -88,6 +88,43 @@ describe("audit event taxonomy", () => {
     });
   });
 
+  it("classifies communications triage note and follow-up metadata as safe resource hints", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "inbound_email.triage_updated",
+        resourceType: "inbound_email",
+        resourceId: "inbound-message-001",
+        metadata: {
+          matterId: "matter-001",
+          status: "triaged",
+          labelCount: 2,
+          staffTriageStatus: "routed",
+          privateNoteAdded: true,
+          privateNoteCount: 1,
+          followUpChannel: "phone",
+          followUpConsentStatus: "consented",
+          followUpDueAt: "2026-05-01T18:00:00.000Z",
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "communications",
+      known: true,
+      matterScope: "optional_matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "privateNoteAdded",
+        "privateNoteCount",
+        "followUpChannel",
+        "followUpConsentStatus",
+        "followUpDueAt",
+      ]),
+    );
+  });
+
   it("classifies completed task events as matter-scoped operations", () => {
     expect(
       classifyAuditEvent(

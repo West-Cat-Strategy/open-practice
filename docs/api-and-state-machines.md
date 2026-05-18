@@ -560,12 +560,13 @@ notes, or privileged document content.
 
 The communications inbox is a matter-view aggregate, not a new navigation route. It combines
 matter-scoped inbound email summaries, redacted outbound delivery history, conversation topic
-summaries with message counts/latest-message timestamps, contact dossier cues without notes, and
-channel state. It does not expose email bodies,
-parsed text, raw storage keys, checksums, provider IDs/tokens, contact notes, conversation messages,
-composers, realtime chat, retry controls, or new provider setup. Triage updates stay on existing
-inbound email rows and accept only status, labels, matter scope, and constrained
-`metadata.staffTriage` fields for staff routing.
+summaries with message counts/latest-message timestamps, contact dossier cues without notes,
+derived staff-triage note counts/latest-note timestamps, consent/channel follow-up state, and
+channel state. It does not expose email bodies, parsed text, raw storage keys, checksums, provider
+IDs/tokens, contact notes, private staff-note text, conversation messages, composers, realtime chat,
+retry controls, or new provider setup. Triage updates stay on existing inbound email rows and accept
+only status, labels, matter scope, one internal staff note per update, consent/channel follow-up
+fields, and constrained `metadata.staffTriage` fields for staff routing.
 
 `@open-practice/domain` exports the audit event taxonomy used to classify known action names,
 expected resource types, matter-scope hints, actor-source hints, and safe metadata keys for operator

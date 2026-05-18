@@ -64,6 +64,18 @@ function inboundMessage(
         note: "Private staff note must not appear.",
         assignedToUserId: "user-staff",
         contactIds: ["contact-ada"],
+        privateNotes: [
+          {
+            authorUserId: "user-licensee",
+            createdAt: "2026-05-05T12:15:00.000Z",
+            text: "Internal call-back context must not appear.",
+          },
+        ],
+        followUp: {
+          channel: "phone",
+          consentStatus: "consented",
+          dueAt: "2026-05-06T18:00:00.000Z",
+        },
       },
       providerId: "provider-private-id",
     },
@@ -247,6 +259,13 @@ describe("communications inbox routes", () => {
             status: "needs_review",
             assignedToUserId: "user-staff",
             contactIds: ["contact-ada"],
+            privateNoteCount: 1,
+            latestPrivateNoteAt: "2026-05-05T12:15:00.000Z",
+            followUp: {
+              channel: "phone",
+              consentStatus: "consented",
+              dueAt: "2026-05-06T18:00:00.000Z",
+            },
           },
         },
       ],
@@ -288,6 +307,7 @@ describe("communications inbox routes", () => {
     expect(serialized).not.toContain("email-job-private");
     expect(serialized).not.toContain("private-smtp-config");
     expect(serialized).not.toContain("Private staff note");
+    expect(serialized).not.toContain("Internal call-back context");
     expect(serialized).not.toContain("Private conversation note");
     expect(serialized).not.toContain("Private conversation message body");
     expect(serialized).not.toContain("Private message routing note");
