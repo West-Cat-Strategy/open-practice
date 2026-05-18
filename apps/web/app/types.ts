@@ -936,7 +936,7 @@ export interface SavedOperationalViewDefinition {
   id: string;
   firmId: string;
   ownerUserId: string;
-  surface: "queues";
+  surface: "queues" | "matters";
   name: string;
   filters: Record<string, unknown>;
   columns: unknown[];

@@ -100,7 +100,9 @@ import {
 import DraftEditor from "./drafting/DraftEditor";
 import {
   applySavedQueueFocus,
+  applySavedMatterFocus,
   dashboardLaneFreshnessCue,
+  describeSavedMatterFocus,
   describeSavedQueueFocus,
   filterMatters,
   summarizeQueues,
@@ -389,6 +391,12 @@ function formatSavedOperationalViewDefinition(definition: SavedOperationalViewDe
   return `${definition.rowLimit} rows · ${definition.columns.length} columns · ${scope}`;
 }
 
+function formatSavedMatterViewDefinition(definition: SavedOperationalViewDefinition): string {
+  const preset =
+    definition.filters.presetFamily === "matter_follow_up" ? "follow-up" : "matter command centre";
+  return `${preset} · ${definition.rowLimit} matters · ${definition.permissionScope.join(", ")}`;
+}
+
 export default function DashboardClient({
   apiBaseUrl,
   auditProjection: initialAuditProjection,
@@ -448,14 +456,28 @@ export default function DashboardClient({
   const [savedOperationalViewDefinitions, setSavedOperationalViewDefinitions] = useState(
     operationalViewDefinitions,
   );
+  const queueOperationalViewDefinitions = savedOperationalViewDefinitions.filter(
+    (definition) => definition.surface === "queues",
+  );
+  const matterOperationalViewDefinitions = savedOperationalViewDefinitions.filter(
+    (definition) => definition.surface === "matters",
+  );
   const [savedOperationalViewStatus, setSavedOperationalViewStatus] = useState(
-    operationalViewDefinitions.length > 0
-      ? `${operationalViewDefinitions.length} saved queue view${operationalViewDefinitions.length === 1 ? "" : "s"} loaded.`
+    queueOperationalViewDefinitions.length > 0
+      ? `${queueOperationalViewDefinitions.length} saved queue view${queueOperationalViewDefinitions.length === 1 ? "" : "s"} loaded.`
       : "No saved queue views yet.",
   );
+  const [savedMatterViewStatus, setSavedMatterViewStatus] = useState(
+    matterOperationalViewDefinitions.length > 0
+      ? `${matterOperationalViewDefinitions.length} saved matter view${matterOperationalViewDefinitions.length === 1 ? "" : "s"} loaded.`
+      : "No saved matter views yet.",
+  );
   const [savingOperationalView, setSavingOperationalView] = useState(false);
+  const [savingMatterView, setSavingMatterView] = useState(false);
   const [archivingOperationalViewId, setArchivingOperationalViewId] = useState("");
+  const [archivingMatterViewId, setArchivingMatterViewId] = useState("");
   const [activeSavedOperationalViewId, setActiveSavedOperationalViewId] = useState("");
+  const [activeSavedMatterViewId, setActiveSavedMatterViewId] = useState("");
   const [matterSearch, setMatterSearch] = useState("");
   const [activityKindFilter, setActivityKindFilter] = useState<MatterActivityKindFilter>("all");
   const [activityStatusFilter, setActivityStatusFilter] =
@@ -651,9 +673,20 @@ export default function DashboardClient({
   const [savingIntakeTemplate, setSavingIntakeTemplate] = useState(false);
   const [startingIntakeSession, setStartingIntakeSession] = useState(false);
 
+  const activeSavedMatterViewDefinition = useMemo(
+    () =>
+      matterOperationalViewDefinitions.find(
+        (definition) => definition.id === activeSavedMatterViewId,
+      ) ?? null,
+    [activeSavedMatterViewId, matterOperationalViewDefinitions],
+  );
+  const savedMatterFocusedMatters = useMemo(
+    () => applySavedMatterFocus(matters, activeSavedMatterViewDefinition, operationalViews),
+    [activeSavedMatterViewDefinition, matters, operationalViews],
+  );
   const filteredMatters = useMemo(
-    () => filterMatters(matters, matterSearch),
-    [matters, matterSearch],
+    () => filterMatters(savedMatterFocusedMatters, matterSearch),
+    [savedMatterFocusedMatters, matterSearch],
   );
   const filteredContactDossiers = useMemo(
     () => filterContactDossiers(contactDossiers, contactSearch),
@@ -866,10 +899,10 @@ export default function DashboardClient({
   );
   const activeSavedOperationalViewDefinition = useMemo(
     () =>
-      savedOperationalViewDefinitions.find(
+      queueOperationalViewDefinitions.find(
         (definition) => definition.id === activeSavedOperationalViewId,
       ) ?? null,
-    [activeSavedOperationalViewId, savedOperationalViewDefinitions],
+    [activeSavedOperationalViewId, queueOperationalViewDefinitions],
   );
   const displayedQueues = useMemo(
     () => applySavedQueueFocus(queues, activeSavedOperationalViewDefinition),
@@ -2725,7 +2758,7 @@ export default function DashboardClient({
           headers: devHeaders,
           payload: {
             surface: "queues",
-            name: `Queue focus ${savedOperationalViewDefinitions.length + 1}`,
+            name: `Queue focus ${queueOperationalViewDefinitions.length + 1}`,
             filters: {
               source: "dashboard-queues",
               queueSections: displayedQueues.sections.map((section) => section.key),
@@ -2745,6 +2778,47 @@ export default function DashboardClient({
       setSavedOperationalViewStatus(`Queue view save failed: ${dashboardApiStatus(error)}`);
     } finally {
       setSavingOperationalView(false);
+    }
+  }
+
+  async function saveMatterFollowUpViewDefinition(): Promise<void> {
+    setSavingMatterView(true);
+    setSavedMatterViewStatus("Saving matter follow-up view...");
+    try {
+      const payload = await requestDashboardJson<{ definition: SavedOperationalViewDefinition }>(
+        apiBaseUrl,
+        "/api/operational-views/definitions",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: {
+            surface: "matters",
+            name: `Matter follow-up ${matterOperationalViewDefinitions.length + 1}`,
+            filters: {
+              source: "dashboard-matters",
+              presetFamily: "matter_follow_up",
+              operationalViewKeys: ["stale_matters", "uncontacted_clients"],
+              statuses: ["intake", "open", "paused"],
+            },
+            columns: ["number", "practiceArea", "status"],
+            sort: { priority: "desc", lastActivityAt: "asc" },
+            rowLimit: 12,
+            dashboardBehavior: { pinToMatterContext: true },
+            permissionScope: ["matter:read"],
+          },
+        },
+      );
+      setSavedOperationalViewDefinitions((current) => [payload.definition, ...current]);
+      setActiveSavedMatterViewId(payload.definition.id);
+      const focusedMatters = applySavedMatterFocus(matters, payload.definition, operationalViews);
+      if (focusedMatters[0]) setActiveMatterId(focusedMatters[0].id);
+      setSavedMatterViewStatus(
+        describeSavedMatterFocus(payload.definition, matters, operationalViews),
+      );
+    } catch (error) {
+      setSavedMatterViewStatus(`Matter view save failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setSavingMatterView(false);
     }
   }
 
@@ -2784,6 +2858,41 @@ export default function DashboardClient({
   function clearQueueOperationalViewDefinition(): void {
     setActiveSavedOperationalViewId("");
     setSavedOperationalViewStatus("Showing all authorized queue sections.");
+  }
+
+  async function archiveMatterOperationalViewDefinition(
+    definition: SavedOperationalViewDefinition,
+  ): Promise<void> {
+    setArchivingMatterViewId(definition.id);
+    setSavedMatterViewStatus(`Archiving ${definition.name}...`);
+    try {
+      const payload = await requestDashboardJson<{ definition: SavedOperationalViewDefinition }>(
+        apiBaseUrl,
+        `/api/operational-views/definitions/${encodeURIComponent(definition.id)}/archive`,
+        {
+          method: "POST",
+          headers: devHeaders,
+        },
+      );
+      setSavedOperationalViewDefinitions((current) =>
+        current.filter((candidate) => candidate.id !== payload.definition.id),
+      );
+      if (activeSavedMatterViewId === payload.definition.id) {
+        setActiveSavedMatterViewId("");
+      }
+      setSavedMatterViewStatus("Matter view archived.");
+    } catch (error) {
+      setSavedMatterViewStatus(`Matter view archive failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setArchivingMatterViewId("");
+    }
+  }
+
+  function applyMatterOperationalViewDefinition(definition: SavedOperationalViewDefinition): void {
+    setActiveSavedMatterViewId(definition.id);
+    const focusedMatters = applySavedMatterFocus(matters, definition, operationalViews);
+    if (focusedMatters[0]) setActiveMatterId(focusedMatters[0].id);
+    setSavedMatterViewStatus(describeSavedMatterFocus(definition, matters, operationalViews));
   }
 
   function selectDashboardSection(sectionKey: LocalDashboardSectionKey): void {
@@ -2834,10 +2943,19 @@ export default function DashboardClient({
 
         <MatterContextPanel
           activeMatter={activeMatter}
+          activeSavedMatterViewId={activeSavedMatterViewId}
+          archivingSavedMatterViewId={archivingMatterViewId}
           filteredMatters={filteredMatters}
+          formatSavedMatterViewDefinition={formatSavedMatterViewDefinition}
           matterSearch={matterSearch}
+          onArchiveSavedMatterView={archiveMatterOperationalViewDefinition}
+          onApplySavedMatterView={applyMatterOperationalViewDefinition}
           onMatterSearchChange={setMatterSearch}
           onSelectMatter={selectMatter}
+          onSaveMatterFollowUpView={saveMatterFollowUpViewDefinition}
+          savedMatterViewDefinitions={matterOperationalViewDefinitions}
+          savedMatterViewStatus={savedMatterViewStatus}
+          savingMatterView={savingMatterView}
         />
 
         <section className="main-grid matter-workspace-grid">
@@ -5407,7 +5525,7 @@ export default function DashboardClient({
                 queueFreshnessCue={queueFreshnessCue}
                 queueSummary={queueSummary}
                 queueRefreshing={queueRefreshState.refreshing}
-                savedOperationalViewDefinitions={savedOperationalViewDefinitions}
+                savedOperationalViewDefinitions={queueOperationalViewDefinitions}
                 savedOperationalViewStatus={savedOperationalViewStatus}
                 savingOperationalView={savingOperationalView}
                 taskDeadlineSummary={taskDeadlineSummary}

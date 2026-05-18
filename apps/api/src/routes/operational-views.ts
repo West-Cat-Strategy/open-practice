@@ -16,7 +16,7 @@ import type { ApiRouteDependencies } from "./types.js";
 const operationalViewsQuerySchema = z.object({
   now: z.string().datetime().optional(),
 });
-const savedOperationalViewSurfaceSchema = z.enum(["queues"]);
+const savedOperationalViewSurfaceSchema = z.enum(["queues", "matters"]);
 const permissionScopeSchema = z
   .string()
   .regex(/^[a-z_]+:(create|read|update|delete|approve|export)$/)

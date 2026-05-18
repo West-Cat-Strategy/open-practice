@@ -139,7 +139,10 @@ export const conversationMessageKind = pgEnum("conversation_message_kind", [
   "client_message",
   "imported_email",
 ]);
-export const savedOperationalViewSurface = pgEnum("saved_operational_view_surface", ["queues"]);
+export const savedOperationalViewSurface = pgEnum("saved_operational_view_surface", [
+  "queues",
+  "matters",
+]);
 export const savedOperationalViewStatus = pgEnum("saved_operational_view_status", [
   "active",
   "archived",

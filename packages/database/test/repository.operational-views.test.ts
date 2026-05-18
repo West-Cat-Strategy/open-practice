@@ -26,6 +26,30 @@ describe("repository saved operational view definitions", () => {
         ownerUserId: "user-admin",
       }),
     ).resolves.toEqual([created]);
+    const matterFollowUp = await repository.createSavedOperationalViewDefinition({
+      id: "saved-matter-view-1",
+      firmId: "firm-west-legal",
+      ownerUserId: "user-admin",
+      surface: "matters",
+      name: "Matter follow-up",
+      filters: {
+        presetFamily: "matter_follow_up",
+        operationalViewKeys: ["stale_matters", "uncontacted_clients"],
+      },
+      columns: ["number", "practiceArea", "status"],
+      sort: { priority: "desc" },
+      rowLimit: 12,
+      dashboardBehavior: { pinToMatterContext: true },
+      permissionScope: ["matter:read"],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await expect(
+      repository.listSavedOperationalViewDefinitions("firm-west-legal", {
+        ownerUserId: "user-admin",
+        surface: "matters",
+      }),
+    ).resolves.toEqual([matterFollowUp]);
     await expect(
       repository.listSavedOperationalViewDefinitions("firm-west-legal", {
         ownerUserId: "user-other",
@@ -56,11 +80,13 @@ describe("repository saved operational view definitions", () => {
     await expect(
       repository.listSavedOperationalViewDefinitions("firm-west-legal", {
         ownerUserId: "user-admin",
+        surface: "queues",
       }),
     ).resolves.toEqual([]);
     await expect(
       repository.listSavedOperationalViewDefinitions("firm-west-legal", {
         ownerUserId: "user-admin",
+        surface: "queues",
         includeArchived: true,
       }),
     ).resolves.toEqual([

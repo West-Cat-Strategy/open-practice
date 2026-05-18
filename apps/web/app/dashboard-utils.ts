@@ -1,5 +1,10 @@
 import type { OpenPracticeSidebarNavigationSection } from "../routes/routeCatalog";
-import type { MatterSummary, QueuesResponse, SavedOperationalViewDefinition } from "./types";
+import type {
+  MatterSummary,
+  OperationalViewsResponse,
+  QueuesResponse,
+  SavedOperationalViewDefinition,
+} from "./types";
 
 export type DashboardRefreshLane = "queues" | "providers" | "audit";
 export type DashboardLaneFreshnessTone = "neutral" | "ready" | "risk";
@@ -144,4 +149,74 @@ export function describeSavedQueueFocus(
   const itemCount = scopedQueues.sections.flatMap((section) => section.items).length;
   const sectionCount = scopedQueues.sections.length;
   return `${definition.name} applies ${itemCount} ${itemCount === 1 ? "item" : "items"} across ${sectionCount} ${sectionCount === 1 ? "section" : "sections"}.`;
+}
+
+const matterFollowUpViewKeys = new Set(["stale_matters", "uncontacted_clients"]);
+
+function savedMatterViewKeys(definition: SavedOperationalViewDefinition): Set<string> {
+  const rawKeys = definition.filters.operationalViewKeys;
+  if (Array.isArray(rawKeys)) {
+    return new Set(
+      rawKeys.filter((key): key is string => typeof key === "string" && key.length > 0),
+    );
+  }
+  return definition.filters.presetFamily === "matter_follow_up"
+    ? new Set(matterFollowUpViewKeys)
+    : new Set();
+}
+
+function savedMatterStatuses(definition: SavedOperationalViewDefinition): Set<string> {
+  const rawStatuses = definition.filters.statuses;
+  if (!Array.isArray(rawStatuses)) return new Set();
+  return new Set(
+    rawStatuses.filter(
+      (status): status is string => typeof status === "string" && status.length > 0,
+    ),
+  );
+}
+
+function matterIdsForSavedFocus(
+  definition: SavedOperationalViewDefinition,
+  operationalViews: OperationalViewsResponse,
+): Set<string> {
+  const viewKeys = savedMatterViewKeys(definition);
+  if (viewKeys.size === 0) return new Set();
+  const matterIds = operationalViews.views
+    .filter((view) => viewKeys.has(view.definition.key))
+    .flatMap((view) => view.results ?? [])
+    .flatMap((result) => {
+      const matterId =
+        result && typeof result === "object" && "matterId" in result ? result.matterId : undefined;
+      return typeof matterId === "string" && matterId.length > 0 ? [matterId] : [];
+    });
+  return new Set(matterIds);
+}
+
+export function applySavedMatterFocus(
+  matters: MatterSummary[],
+  definition: SavedOperationalViewDefinition | null | undefined,
+  operationalViews: OperationalViewsResponse,
+): MatterSummary[] {
+  if (!definition || definition.surface !== "matters") return matters;
+  const viewKeys = savedMatterViewKeys(definition);
+  const scopedMatterIds = matterIdsForSavedFocus(definition, operationalViews);
+  const statuses = savedMatterStatuses(definition);
+  const rowLimit = Math.max(0, definition.rowLimit);
+
+  return matters
+    .filter((matter) => {
+      if (viewKeys.size > 0 && !scopedMatterIds.has(matter.id)) return false;
+      if (statuses.size > 0 && !statuses.has(matter.status)) return false;
+      return true;
+    })
+    .slice(0, rowLimit);
+}
+
+export function describeSavedMatterFocus(
+  definition: SavedOperationalViewDefinition,
+  matters: MatterSummary[],
+  operationalViews: OperationalViewsResponse,
+): string {
+  const scopedMatters = applySavedMatterFocus(matters, definition, operationalViews);
+  return `${definition.name} applies ${scopedMatters.length} ${scopedMatters.length === 1 ? "matter" : "matters"} to the matter command centre.`;
 }

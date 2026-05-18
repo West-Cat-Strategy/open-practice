@@ -10,8 +10,10 @@ import type {
 import { sampleResidentialTenancyIntakeDefinition } from "@open-practice/domain/sample-data";
 import { buildSidebarNavigationSections } from "../routes/routeCatalog";
 import {
+  applySavedMatterFocus,
   applySavedQueueFocus,
   dashboardLaneFreshnessCue,
+  describeSavedMatterFocus,
   describeSavedQueueFocus,
   describeDisabledNavigationReason,
   filterMatters,
@@ -230,6 +232,7 @@ import type {
   ConnectorOperationsResponse,
   IntakeFormLinkSummary,
   MatterSummary,
+  OperationalViewsResponse,
   ProvidersStatusResponse,
   QueuesResponse,
   SavedOperationalViewDefinition,
@@ -1749,6 +1752,68 @@ describe("dashboard client behavior", () => {
     });
     expect(describeSavedQueueFocus(savedFocus, queues)).toBe(
       "Review queue applies 1 item across 1 section.",
+    );
+  });
+
+  it("applies saved matter follow-up focuses from operational view results", () => {
+    const matters = [
+      matter({ id: "matter-001", status: "open" }),
+      matter({ id: "matter-002", status: "paused" }),
+      matter({ id: "matter-003", status: "closed" }),
+    ];
+    const savedFocus: SavedOperationalViewDefinition = {
+      id: "saved-matter-follow-up",
+      firmId: "firm-west-legal",
+      ownerUserId: "user-001",
+      surface: "matters",
+      name: "Matter follow-up",
+      filters: {
+        source: "dashboard-matters",
+        presetFamily: "matter_follow_up",
+        operationalViewKeys: ["stale_matters", "uncontacted_clients"],
+        statuses: ["intake", "open", "paused"],
+      },
+      columns: ["number", "practiceArea", "status"],
+      sort: { priority: "desc", lastActivityAt: "asc" },
+      rowLimit: 2,
+      dashboardBehavior: { pinToMatterContext: true },
+      permissionScope: ["matter:read"],
+      status: "active",
+      createdAt: "2026-05-17T12:00:00.000Z",
+      updatedAt: "2026-05-17T12:00:00.000Z",
+    };
+    const operationalViews: OperationalViewsResponse = {
+      views: [
+        {
+          definition: {
+            key: "stale_matters",
+            label: "Stale matters",
+            defaultPriority: "medium",
+          },
+          resultCount: 2,
+          results: [
+            { matterId: "matter-001", priority: "high" },
+            { matterId: "matter-003", priority: "medium" },
+          ],
+        },
+        {
+          definition: {
+            key: "uncontacted_clients",
+            label: "Uncontacted clients",
+            defaultPriority: "medium",
+          },
+          resultCount: 1,
+          results: [{ matterId: "matter-002", priority: "medium" }],
+        },
+      ],
+    };
+
+    expect(applySavedMatterFocus(matters, savedFocus, operationalViews)).toEqual([
+      matters[0],
+      matters[1],
+    ]);
+    expect(describeSavedMatterFocus(savedFocus, matters, operationalViews)).toBe(
+      "Matter follow-up applies 2 matters to the matter command centre.",
     );
   });
 

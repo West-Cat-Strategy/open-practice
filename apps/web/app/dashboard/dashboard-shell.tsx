@@ -3,8 +3,10 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock3,
+  Save,
   Search,
   ShieldCheck,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import type { ConflictCandidate } from "@open-practice/domain";
@@ -16,7 +18,12 @@ import {
   formatConflictProspectiveRole,
   type ConflictProspectiveRole,
 } from "../conflict-check-dashboard";
-import type { MatterSummary, QueuesResponse, SessionResponse } from "../types";
+import type {
+  MatterSummary,
+  QueuesResponse,
+  SavedOperationalViewDefinition,
+  SessionResponse,
+} from "../types";
 
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 
@@ -185,16 +192,34 @@ export function OperationalFocusPanel({
 
 export function MatterContextPanel({
   activeMatter,
+  activeSavedMatterViewId,
+  archivingSavedMatterViewId,
   filteredMatters,
+  formatSavedMatterViewDefinition,
   matterSearch,
+  onArchiveSavedMatterView,
+  onApplySavedMatterView,
   onMatterSearchChange,
   onSelectMatter,
+  onSaveMatterFollowUpView,
+  savedMatterViewDefinitions,
+  savedMatterViewStatus,
+  savingMatterView,
 }: {
   activeMatter: MatterSummary;
+  activeSavedMatterViewId?: string;
+  archivingSavedMatterViewId?: string;
   filteredMatters: MatterSummary[];
+  formatSavedMatterViewDefinition: (definition: SavedOperationalViewDefinition) => string;
   matterSearch: string;
+  onArchiveSavedMatterView: (definition: SavedOperationalViewDefinition) => void;
+  onApplySavedMatterView: (definition: SavedOperationalViewDefinition) => void;
   onMatterSearchChange: (value: string) => void;
   onSelectMatter: (matterId: string) => void;
+  onSaveMatterFollowUpView: () => void;
+  savedMatterViewDefinitions: SavedOperationalViewDefinition[];
+  savedMatterViewStatus: string;
+  savingMatterView: boolean;
 }) {
   return (
     <section
@@ -234,6 +259,56 @@ export function MatterContextPanel({
           </button>
         ))}
         {filteredMatters.length === 0 ? <p className="inline-empty">No matters match.</p> : null}
+      </div>
+      <div className="section-title">
+        <h3>Saved matter views</h3>
+        <button
+          className="secondary-button compact-button row-button"
+          disabled={savingMatterView}
+          onClick={onSaveMatterFollowUpView}
+          type="button"
+        >
+          <Save aria-hidden="true" size={16} />
+          {savingMatterView ? "Saving" : "Save follow-up"}
+        </button>
+      </div>
+      <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+        {savedMatterViewStatus}
+      </p>
+      <div className="party-list matter-saved-view-list">
+        {savedMatterViewDefinitions.map((definition) => (
+          <div className="party-row" key={definition.id}>
+            <span>
+              <strong>{definition.name}</strong>
+              <small>{formatSavedMatterViewDefinition(definition)}</small>
+            </span>
+            <span className="row-actions">
+              <button
+                aria-label={`Apply ${definition.name}`}
+                className="secondary-button compact-button row-button"
+                disabled={activeSavedMatterViewId === definition.id}
+                onClick={() => onApplySavedMatterView(definition)}
+                type="button"
+              >
+                <Clock3 aria-hidden="true" size={16} />
+                {activeSavedMatterViewId === definition.id ? "Applied" : "Apply"}
+              </button>
+              <button
+                aria-label={`Archive ${definition.name}`}
+                className="secondary-button compact-button row-button"
+                disabled={archivingSavedMatterViewId === definition.id}
+                onClick={() => onArchiveSavedMatterView(definition)}
+                type="button"
+              >
+                <X aria-hidden="true" size={16} />
+                {archivingSavedMatterViewId === definition.id ? "Archiving" : "Archive"}
+              </button>
+            </span>
+          </div>
+        ))}
+        {savedMatterViewDefinitions.length === 0 ? (
+          <p className="inline-empty">No saved matter views are active.</p>
+        ) : null}
       </div>
     </section>
   );
