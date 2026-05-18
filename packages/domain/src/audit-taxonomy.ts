@@ -884,6 +884,20 @@ export const auditEventTaxonomyDefinitions = [
     ],
   }),
   define({
+    action: "conversation_message.created",
+    category: "communications",
+    resourceType: "conversation_message",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "messageId",
+      "threadId",
+      "kind",
+      "bodyLength",
+      "authoredByUserIdPresent",
+    ],
+  }),
+  define({
     action: "legal_clinic.program.created",
     category: "legal_clinic",
     resourceType: "legal_clinic_program",

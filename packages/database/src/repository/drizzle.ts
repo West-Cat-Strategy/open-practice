@@ -37,6 +37,7 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDossier,
+  type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
   type DraftAssistRecord,
@@ -153,6 +154,7 @@ import {
   mapConnectorOutboxRow,
   mapConnectorRow,
   mapContactRow,
+  mapConversationMessageRow,
   mapConversationThreadRow,
   mapDocumentRow,
   mapDocumentTextExtractionRow,
@@ -1786,6 +1788,50 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       )
       .returning();
     return row ? mapConversationThreadRow(row) : undefined;
+  }
+
+  async listConversationMessages(
+    firmId: string,
+    options: { threadId?: string; matterId?: string } = {},
+  ): Promise<ConversationMessageRecord[]> {
+    const filters = [eq(schema.conversationMessages.firmId, firmId)];
+    if (options.threadId) filters.push(eq(schema.conversationMessages.threadId, options.threadId));
+    if (options.matterId) filters.push(eq(schema.conversationMessages.matterId, options.matterId));
+    const rows = await this.db
+      .select()
+      .from(schema.conversationMessages)
+      .where(and(...filters))
+      .orderBy(asc(schema.conversationMessages.authoredAt), asc(schema.conversationMessages.id));
+    return rows.map(mapConversationMessageRow);
+  }
+
+  async createConversationMessage(
+    message: ConversationMessageRecord,
+  ): Promise<ConversationMessageRecord> {
+    const [row] = await this.db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(schema.conversationMessages)
+        .values({
+          ...message,
+          authoredAt: new Date(message.authoredAt),
+          createdAt: new Date(message.createdAt),
+        })
+        .returning();
+      await tx
+        .update(schema.conversationThreads)
+        .set({
+          updatedAt: new Date(message.authoredAt),
+          updatedByUserId: message.createdByUserId,
+        })
+        .where(
+          and(
+            eq(schema.conversationThreads.firmId, message.firmId),
+            eq(schema.conversationThreads.id, message.threadId),
+          ),
+        );
+      return inserted;
+    });
+    return mapConversationMessageRow(row!);
   }
 
   async listLegalClinicPrograms(

@@ -82,7 +82,10 @@ function serializeOutboundEmail(email: EmailOutboxRecord, events: EmailEventReco
   };
 }
 
-function serializeConversationThread(thread: ConversationThreadRecord) {
+function serializeConversationThread(
+  thread: ConversationThreadRecord,
+  messageAuthoredAts: string[],
+) {
   return {
     id: thread.id,
     matterId: thread.matterId,
@@ -93,6 +96,8 @@ function serializeConversationThread(thread: ConversationThreadRecord) {
     retentionUntil: thread.retentionUntil,
     accessRevokedAt: thread.accessRevokedAt,
     updatedAt: thread.updatedAt,
+    messageCount: messageAuthoredAts.length,
+    latestMessageAt: messageAuthoredAts.at(-1),
   };
 }
 
@@ -190,6 +195,14 @@ export function registerCommunicationsRoutes(
         events: await repository.listEmailEvents(request.auth.firmId, { emailId: email.id }),
       })),
     );
+    const conversationMessageSummaries = await Promise.all(
+      conversationThreads.map(async (thread) => ({
+        thread,
+        messages: await repository.listConversationMessages(request.auth.firmId, {
+          threadId: thread.id,
+        }),
+      })),
+    );
     const contactCues = contactDossiers
       .filter((dossier) => dossier.matters.some((matter) => matter.matterId === query.matterId))
       .map((dossier) => serializeContactCue(dossier, query.matterId));
@@ -215,7 +228,12 @@ export function registerCommunicationsRoutes(
       outboundDeliveryHistory: outboundEvents.map(({ email, events }) =>
         serializeOutboundEmail(email, events),
       ),
-      conversations: conversationThreads.map(serializeConversationThread),
+      conversations: conversationMessageSummaries.map(({ thread, messages }) =>
+        serializeConversationThread(
+          thread,
+          messages.map((message) => message.authoredAt),
+        ),
+      ),
       contactCues,
     };
   });

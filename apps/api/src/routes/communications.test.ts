@@ -206,6 +206,19 @@ describe("communications inbox routes", () => {
       updatedByUserId: "user-admin",
       metadata: { rawNote: "Private conversation note" },
     });
+    await repository.createConversationMessage({
+      id: "conversation-message-001",
+      firmId,
+      matterId: "matter-001",
+      threadId: "conversation-thread-001",
+      kind: "internal_note",
+      bodyText: "Private conversation message body",
+      authoredAt: "2026-05-05T12:30:00.000Z",
+      authoredByUserId: "user-admin",
+      createdAt: "2026-05-05T12:30:01.000Z",
+      createdByUserId: "user-admin",
+      metadata: { rawNote: "Private message routing note" },
+    });
 
     const response = await testServer(repository, user("licensee", ["matter-001"])).inject({
       method: "GET",
@@ -250,6 +263,8 @@ describe("communications inbox routes", () => {
           id: "conversation-thread-001",
           topic: "Repair evidence follow-up",
           notificationBoundary: "internal_only",
+          messageCount: 1,
+          latestMessageAt: "2026-05-05T12:30:00.000Z",
         }),
       ],
     });
@@ -274,6 +289,8 @@ describe("communications inbox routes", () => {
     expect(serialized).not.toContain("private-smtp-config");
     expect(serialized).not.toContain("Private staff note");
     expect(serialized).not.toContain("Private conversation note");
+    expect(serialized).not.toContain("Private conversation message body");
+    expect(serialized).not.toContain("Private message routing note");
   });
 
   it("denies cross-matter aggregate reads", async () => {

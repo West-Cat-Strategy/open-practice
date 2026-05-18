@@ -22,6 +22,7 @@ import type {
   IntakeFormItemActionRecord,
   IntakeResolutionSnapshot,
   IntakeVariableProposal,
+  ConversationMessageRecord,
   LegalClinicMatterProfile,
   LegalClinicProgram,
   LedgerReconciliationStatementRow,
@@ -133,6 +134,11 @@ export const conversationThreadNotificationBoundary = pgEnum(
   "conversation_thread_notification_boundary",
   ["disabled", "internal_only"],
 );
+export const conversationMessageKind = pgEnum("conversation_message_kind", [
+  "internal_note",
+  "client_message",
+  "imported_email",
+]);
 export const savedOperationalViewSurface = pgEnum("saved_operational_view_surface", ["queues"]);
 export const savedOperationalViewStatus = pgEnum("saved_operational_view_status", [
   "active",
@@ -817,6 +823,42 @@ export const conversationThreads = pgTable(
       table.firmId,
       table.matterId,
       table.topic,
+    ),
+  }),
+);
+
+export const conversationMessages = pgTable(
+  "conversation_messages",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => conversationThreads.id),
+    kind: conversationMessageKind("kind").notNull().default("internal_note"),
+    bodyText: text("body_text").notNull(),
+    authoredAt: timestamp("authored_at", { withTimezone: true }).notNull(),
+    authoredByUserId: text("authored_by_user_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    metadata: jsonb("metadata")
+      .$type<ConversationMessageRecord["metadata"]>()
+      .notNull()
+      .default({}),
+  },
+  (table) => ({
+    firmMatterThreadAuthored: index("conversation_messages_firm_matter_thread_authored_idx").on(
+      table.firmId,
+      table.matterId,
+      table.threadId,
+      table.authoredAt,
     ),
   }),
 );
