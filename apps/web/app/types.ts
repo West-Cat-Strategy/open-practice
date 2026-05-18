@@ -1,4 +1,5 @@
 import type {
+  AuditEventTaxonomySummary,
   Contact,
   ConflictCandidate,
   DocumentRecord,
@@ -62,6 +63,11 @@ export interface PracticeOverview {
 export interface ConflictResponse {
   results: ConflictCandidate[];
   auditChainValid: boolean;
+}
+
+export interface AuditResponse {
+  valid: boolean;
+  taxonomySummary: AuditEventTaxonomySummary;
 }
 
 export interface SessionResponse {

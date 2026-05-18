@@ -289,6 +289,8 @@
 
   .section-title,
   .lane-refresh-panel,
+  .audit-projection-header,
+  .audit-projection-details,
   .party-row,
   .matter-row,
   .review-row,
@@ -303,6 +305,10 @@
 
   .lane-refresh-button {
     width: 100%;
+  }
+
+  .audit-projection-grid {
+    grid-template-columns: 1fr;
   }
 
   .app-shell {

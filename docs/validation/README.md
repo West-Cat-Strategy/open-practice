@@ -17,10 +17,11 @@ lives in [Archive](../archive/README.md).
 
 ## Active Proof Notes
 
-| Artifact                                                                                                                         | Type                 | Use                                                                                                                                                                           |
-| -------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [OP-T90_ASYNC_AUDIT_EXPORT_REQUESTS_PROOF_2026-05-15.md](OP-T90_ASYNC_AUDIT_EXPORT_REQUESTS_PROOF_2026-05-15.md)                 | Row-local proof note | Done proof for queued audit export requests, reports queue wiring, redacted download semantics, bounded job pagination, and selector/allowlist ratchets.                      |
-| [OP-T89_NONPROFIT_HARVEST_CLIENT_ACTION_HUB_PROOF_2026-05-12.md](OP-T89_NONPROFIT_HARVEST_CLIENT_ACTION_HUB_PROOF_2026-05-12.md) | Row-local proof note | Review-ready proof for the validation index, candidate-row harvest, token `Needs attention` summary, unsupported intake schema lockout, and selector runtime-config coverage. |
+| Artifact                                                                                                                           | Type                 | Use                                                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [OP-T97_AUDIT_PROJECTION_DASHBOARD_SUMMARIES_PROOF_2026-05-17.md](OP-T97_AUDIT_PROJECTION_DASHBOARD_SUMMARIES_PROOF_2026-05-17.md) | Row-local proof note | Review-ready proof for read-only audit taxonomy dashboard summaries covering unknown actions, matter-scope gaps, and resource-type mismatches.                                |
+| [OP-T90_ASYNC_AUDIT_EXPORT_REQUESTS_PROOF_2026-05-15.md](OP-T90_ASYNC_AUDIT_EXPORT_REQUESTS_PROOF_2026-05-15.md)                   | Row-local proof note | Done proof for queued audit export requests, reports queue wiring, redacted download semantics, bounded job pagination, and selector/allowlist ratchets.                      |
+| [OP-T89_NONPROFIT_HARVEST_CLIENT_ACTION_HUB_PROOF_2026-05-12.md](OP-T89_NONPROFIT_HARVEST_CLIENT_ACTION_HUB_PROOF_2026-05-12.md)   | Row-local proof note | Review-ready proof for the validation index, candidate-row harvest, token `Needs attention` summary, unsupported intake schema lockout, and selector runtime-config coverage. |
 
 ## Proof Discipline
 
