@@ -204,6 +204,13 @@ import {
   operationalFocusEmptyMessage,
 } from "./operational-focus-panel";
 import {
+  auditProjectionFromResponse,
+  auditProjectionSummary,
+  emptyAuditDashboardProjection,
+  leadingAuditCategories,
+  matterScopeCount,
+} from "./audit-dashboard";
+import {
   buildMatterFileCommandCenter,
   filterMatterActivity,
   summarizeMatterActivity,
@@ -235,6 +242,8 @@ import {
   upsertIntakeSession,
 } from "./types";
 import type {
+  AuditDashboardProjection,
+  AuditResponse,
   CalendarAttendeeMutationResponse,
   BillingDashboardResponse,
   CalendarCredentialCreateResponse,
@@ -295,6 +304,7 @@ import type {
 
 interface DashboardClientProps {
   apiBaseUrl: string;
+  auditProjection: AuditDashboardProjection;
   billing: BillingDashboardResponse;
   calendar: CalendarDashboardResponse;
   capabilities: CapabilitiesResponse;
@@ -383,6 +393,7 @@ function formatSavedOperationalViewDefinition(definition: SavedOperationalViewDe
 
 export default function DashboardClient({
   apiBaseUrl,
+  auditProjection: initialAuditProjection,
   billing,
   calendar,
   capabilities,
@@ -418,6 +429,7 @@ export default function DashboardClient({
   const shouldFocusDetailRef = useRef(false);
   const hasAppliedUrlSectionRef = useRef(false);
   const [matters, setMatters] = useState(initialMatters);
+  const [auditProjection, setAuditProjection] = useState(initialAuditProjection);
   const [queues, setQueues] = useState(initialQueues);
   const [providerStatus, setProviderStatus] = useState(initialProviderStatus);
   const [operationalViews, setOperationalViews] = useState(initialOperationalViews);
@@ -953,6 +965,15 @@ export default function DashboardClient({
           : undefined,
     },
   );
+  const auditCategoryLeaders = leadingAuditCategories(auditProjection.taxonomySummary);
+  const auditProjectionStatusLabel =
+    auditProjection.status === "available" && auditProjection.valid
+      ? "Hash chain valid"
+      : auditProjection.status === "available"
+        ? "Hash chain needs review"
+        : auditProjection.status.replace("_", " ");
+  const auditProjectionStatusTone =
+    auditProjection.status === "available" && auditProjection.valid ? "ready" : "risk";
 
   useEffect(() => {
     const loadedAt = new Date().toISOString();
@@ -1195,17 +1216,22 @@ export default function DashboardClient({
   async function refreshAuditLane(): Promise<void> {
     setAuditRefreshState((current) => ({ ...current, refreshing: true, error: undefined }));
     try {
-      const [refreshedMatters, refreshedOperationalViews] = await Promise.all([
+      const [refreshedMatters, refreshedOperationalViews, refreshedAudit] = await Promise.all([
         requestDashboardJson<MatterSummary[]>(apiBaseUrl, "/api/matters", { headers: devHeaders }),
         requestDashboardJson<OperationalViewsResponse>(apiBaseUrl, "/api/operational-views", {
           headers: devHeaders,
         }),
+        requestDashboardJson<AuditResponse>(apiBaseUrl, "/api/audit", { headers: devHeaders }),
       ]);
       setMatters(refreshedMatters);
       setOperationalViews(refreshedOperationalViews);
+      setAuditProjection(auditProjectionFromResponse(refreshedAudit));
       setAuditRefreshState({ loadedAt: new Date().toISOString(), refreshing: false });
       setFreshnessNow(new Date());
     } catch (error) {
+      if (dashboardApiStatus(error) === 403) {
+        setAuditProjection(emptyAuditDashboardProjection("access_denied"));
+      }
       setAuditRefreshState((current) => ({
         ...current,
         refreshing: false,
@@ -5290,6 +5316,76 @@ export default function DashboardClient({
                     <RotateCcw aria-hidden="true" size={16} />
                     {auditRefreshState.refreshing ? "Refreshing" : auditFreshnessCue.label}
                   </button>
+                </div>
+                <div
+                  className="detail-grid audit-summary-grid"
+                  aria-label="Audit projection summary"
+                >
+                  <div>
+                    <span className="field-label">Projection</span>
+                    <strong>{auditProjection.eventCount} events</strong>
+                    <small>{auditProjectionSummary(auditProjection)}</small>
+                  </div>
+                  <div>
+                    <span className="field-label">Taxonomy</span>
+                    <strong>
+                      {auditProjection.taxonomySummary.known} known ·{" "}
+                      {auditProjection.taxonomySummary.unknown} unknown
+                    </strong>
+                    <small>
+                      {auditCategoryLeaders.length > 0
+                        ? auditCategoryLeaders
+                            .map((category) => `${category.label}: ${category.count}`)
+                            .join(" · ")
+                        : "No category counts yet"}
+                    </small>
+                  </div>
+                  <div>
+                    <span className="field-label">Matter scope</span>
+                    <strong>
+                      {matterScopeCount(auditProjection.taxonomySummary, "matter")} matter ·{" "}
+                      {matterScopeCount(auditProjection.taxonomySummary, "firm")} firm
+                    </strong>
+                    <small>
+                      {auditProjection.taxonomySummary.matterScopedWithoutMatterId} matter-scoped
+                      gaps
+                    </small>
+                  </div>
+                  <div className={auditProjectionStatusTone}>
+                    <span className="field-label">Integrity cues</span>
+                    <strong>{auditProjectionStatusLabel}</strong>
+                    <small>
+                      {auditProjection.taxonomySummary.resourceTypeMismatches.length} resource-type
+                      mismatches
+                    </small>
+                  </div>
+                </div>
+                <div className="section-title">
+                  <h3>Recent audit projection</h3>
+                  <span>{auditProjection.recentEvents.length} events</span>
+                </div>
+                <div className="party-list">
+                  {auditProjection.recentEvents.map((event) => (
+                    <div className="party-row" key={event.id}>
+                      <span>
+                        <strong>{event.action}</strong>
+                        <small>
+                          {event.resourceType} · {event.resourceId} ·{" "}
+                          {new Date(event.occurredAt).toLocaleString("en-CA")}
+                        </small>
+                      </span>
+                      <em>{event.id}</em>
+                    </div>
+                  ))}
+                  {auditProjection.recentEvents.length === 0 ? (
+                    <p className="inline-empty">
+                      No audit events are available in this projection.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="section-title">
+                  <h3>Matter activity</h3>
+                  <span>{activeMatter.activity.length} entries</span>
                 </div>
                 <div className="party-list">
                   {activeMatter.activity.map((entry) => (

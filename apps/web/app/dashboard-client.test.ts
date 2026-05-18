@@ -159,6 +159,11 @@ import {
   operationalFocusEmptyMessage,
 } from "./operational-focus-panel";
 import {
+  auditProjectionFromResponse,
+  auditProjectionSummary,
+  leadingAuditCategories,
+} from "./audit-dashboard";
+import {
   buildIntakeFormLinkCreatePayload,
   buildIntakeFormLinkListPath,
   buildIntakeFormReviewDecisionPath,
@@ -225,6 +230,7 @@ import type {
   DocumentProcessingWorkbenchResponse,
   CommunicationsInboxMatterResponse,
   BillingDashboardResponse,
+  AuditResponse,
   ConnectorOperationsResponse,
   IntakeFormLinkSummary,
   MatterSummary,
@@ -3449,5 +3455,62 @@ describe("dashboard client behavior", () => {
     expect(JSON.stringify(fiscalHost)).not.toContain("raw private facts");
     expect(describeFiscalHostProgramMetadata({})).toBe("Fiscal-host metadata needs staff review.");
     expect(describeRestrictedFundMetadata({})).toBe("Restricted-fund metadata needs staff review.");
+  });
+
+  it("builds an audit dashboard projection without carrying audit metadata values", () => {
+    const response: AuditResponse = {
+      valid: true,
+      taxonomySummary: {
+        total: 2,
+        known: 1,
+        unknown: 1,
+        byCategory: { documents: 1, unknown: 1 },
+        byMatterScope: { matter: 1, derived: 1 },
+        byActorHint: { authenticated_user: 1, unknown: 1 },
+        matterScopedWithoutMatterId: 0,
+        resourceTypeMismatches: [],
+        unknownActions: ["custom.private_action"],
+      },
+      events: [
+        {
+          id: "audit-older",
+          firmId: "firm-west-legal",
+          actorId: "user-admin",
+          action: "document.upload.completed",
+          resourceType: "document",
+          resourceId: "doc-001",
+          occurredAt: "2026-05-16T10:00:00.000Z",
+          metadata: { rawClientName: "Synthetic Private Client" },
+          previousHash: "previous",
+          hash: "hash-older",
+        },
+        {
+          id: "audit-newer",
+          firmId: "firm-west-legal",
+          actorId: "user-admin",
+          action: "custom.private_action",
+          resourceType: "custom",
+          resourceId: "custom-001",
+          occurredAt: "2026-05-17T10:00:00.000Z",
+          metadata: { rawSecret: "synthetic-private-secret" },
+          previousHash: "hash-older",
+          hash: "hash-newer",
+        },
+      ],
+    };
+
+    const projection = auditProjectionFromResponse(response);
+
+    expect(auditProjectionSummary(projection)).toBe("2 events. 50% classified. 1 unknown actions.");
+    expect(leadingAuditCategories(projection.taxonomySummary)).toEqual([
+      { label: "documents", count: 1 },
+      { label: "unknown", count: 1 },
+    ]);
+    expect(projection.recentEvents.map((event) => event.id)).toEqual([
+      "audit-newer",
+      "audit-older",
+    ]);
+    expect(JSON.stringify(projection)).not.toContain("synthetic-private-secret");
+    expect(JSON.stringify(projection)).not.toContain("Synthetic Private Client");
   });
 });

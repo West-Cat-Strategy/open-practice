@@ -40,6 +40,7 @@ import LoginClient from "./login-client";
 import SetupWizard from "./setup-wizard";
 import { selectStartupView } from "./setup-wizard-utils";
 import { browserApiBaseUrl, serverApiBaseUrl } from "./api-base-urls";
+import { auditProjectionFromResponse, emptyAuditDashboardProjection } from "./audit-dashboard";
 import {
   buildJurisdictionalTrustReportPath,
   buildTrustControlsPath,
@@ -60,6 +61,7 @@ import {
 import { emptyConnectorOperationsResponse } from "./connector-outbox-dashboard";
 import type {
   BillingDashboardResponse,
+  AuditResponse,
   CalendarCredentialsResponse,
   CalendarDashboardResponse,
   CalendarEventsResponse,
@@ -90,6 +92,7 @@ import type {
   LegalClinicProgramsResponse,
   OperationalViewDefinitionsResponse,
   MatterSummary,
+  AuditDashboardProjection,
   OperationalViewsResponse,
   PracticeOverview,
   ProvidersStatusResponse,
@@ -407,6 +410,16 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     headers,
     { views: [] },
   );
+  const auditProjection = await apiGetOptional<AuditResponse | AuditDashboardProjection>(
+    "/api/audit",
+    emptyAuditDashboardProjection("unavailable"),
+    headers,
+    emptyAuditDashboardProjection("access_denied"),
+  ).then((response) =>
+    "taxonomySummary" in response && "events" in response
+      ? auditProjectionFromResponse(response)
+      : response,
+  );
   const operationalViewDefinitions = await apiGetOptional<OperationalViewDefinitionsResponse>(
     "/api/operational-views/definitions?surface=queues",
     { definitions: [] },
@@ -612,6 +625,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   return (
     <DashboardClient
       apiBaseUrl={browserApiBaseUrl}
+      auditProjection={auditProjection}
       billing={billing}
       calendar={calendar}
       capabilities={capabilities}

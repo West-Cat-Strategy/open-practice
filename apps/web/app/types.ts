@@ -34,6 +34,8 @@ import type {
   TaskDeadlineWorkbench,
   TimeEntry,
   User,
+  AuditEvent,
+  AuditEventTaxonomySummary,
 } from "@open-practice/domain";
 
 export type { ContactDossier };
@@ -62,6 +64,22 @@ export interface PracticeOverview {
 export interface ConflictResponse {
   results: ConflictCandidate[];
   auditChainValid: boolean;
+}
+
+export interface AuditResponse {
+  events: AuditEvent[];
+  valid: boolean;
+  taxonomySummary: AuditEventTaxonomySummary;
+}
+
+export interface AuditDashboardProjection {
+  status: "available" | "access_denied" | "unavailable";
+  valid: boolean;
+  eventCount: number;
+  taxonomySummary: AuditEventTaxonomySummary;
+  recentEvents: Array<
+    Pick<AuditEvent, "id" | "action" | "resourceType" | "resourceId" | "occurredAt">
+  >;
 }
 
 export interface SessionResponse {

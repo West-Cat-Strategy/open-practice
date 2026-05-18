@@ -48,6 +48,27 @@ afterEach(async () => {
 });
 
 describe("audit routes", () => {
+  it("returns the read-only taxonomy projection without changing stored events", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const before = await repository.listAuditEvents(firmId);
+    const server = testServer({ repository });
+
+    const response = await server.inject({ method: "GET", url: "/api/audit" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      valid: before.valid,
+      events: expect.any(Array),
+      taxonomySummary: {
+        total: before.events.length,
+        known: expect.any(Number),
+        unknown: expect.any(Number),
+      },
+    });
+    expect(response.json().taxonomySummary).not.toHaveProperty("metadata");
+    expect(await repository.listAuditEvents(firmId)).toEqual(before);
+  });
+
   it("creates a redacted audit export request with poll and download links", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const queuedReports: Array<{ name: string; data: unknown; jobId?: string }> = [];
