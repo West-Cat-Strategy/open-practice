@@ -60,6 +60,21 @@ describe("select-validation contract", () => {
     ]);
   });
 
+  it("routes database migrations through the migration parity check", () => {
+    assert.deepEqual(
+      selectCommands([
+        "packages/database/migrations/0033_saved_operational_view_matters_surface.sql",
+      ]),
+      [
+        COMMANDS.databaseTest,
+        COMMANDS.databaseCheck,
+        COMMANDS.migrationsCheck,
+        COMMANDS.databaseTypecheck,
+        COMMANDS.apiTest,
+      ],
+    );
+  });
+
   it("maps the scripts directory shorthand to script validation", () => {
     assert.deepEqual(selectCommands(["scripts"]), [COMMANDS.policyCheck, COMMANDS.test]);
   });

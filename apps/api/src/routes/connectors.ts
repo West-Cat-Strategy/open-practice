@@ -5,6 +5,7 @@ import type {
   ConnectorOutboxRecord,
   ConnectorRecord,
   ConnectorSecretReference,
+  JobLifecycleRecord,
 } from "@open-practice/domain";
 import { outboundWebhookEventAllowlist } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
@@ -12,7 +13,12 @@ import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
-import { rethrowIdempotencyConflict } from "./idempotency.js";
+import {
+  buildIdempotencyKey,
+  idempotencyMetadata,
+  rethrowIdempotencyConflict,
+} from "./idempotency.js";
+import { enqueueFailureError, markJobEnqueueFailed } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const connectorTypeSchema = z.enum([
@@ -42,6 +48,8 @@ const secretReferenceSchema = z
   .strict();
 
 const maskedSecretReferenceId = "__open_practice_connector_secret_unchanged__";
+const CONNECTOR_DELIVERY_JOB_NAME = "deliver_connectors";
+const CONNECTOR_JOB_MAX_ATTEMPTS = 3;
 
 const maskedSecretReferenceSchema = secretReferenceSchema
   .extend({
@@ -255,10 +263,119 @@ function serializeOutbox(outbox: ConnectorOutboxRecord) {
   };
 }
 
+function jobDelayUntil(nextAttemptAt: string | undefined, now: string): number | undefined {
+  if (!nextAttemptAt) return undefined;
+  const delay = Date.parse(nextAttemptAt) - Date.parse(now);
+  return Number.isFinite(delay) && delay > 0 ? delay : undefined;
+}
+
+function connectorDeliveryJobMetadata(
+  outbox: ConnectorOutboxRecord,
+  now: string,
+): Record<string, unknown> {
+  const delay = jobDelayUntil(outbox.nextAttemptAt, now);
+  return {
+    resourceType: "connector_outbox",
+    resourceId: outbox.id,
+    eventCount: 1,
+    maxAttempts: outbox.maxAttempts,
+    idempotencyKeyPresent: Boolean(outbox.idempotencyKey),
+    ...(delay ? { nextRetryAt: outbox.nextAttemptAt } : {}),
+    ...idempotencyMetadata({
+      outboxId: outbox.id,
+      connectorId: outbox.connectorId,
+      eventType: outbox.eventType,
+      resourceType: outbox.resourceType,
+      resourceId: outbox.resourceId,
+      nextAttemptAt: outbox.nextAttemptAt,
+      maxAttempts: outbox.maxAttempts,
+    }),
+  };
+}
+
+function summarizeConnectorDeliveryJob(job: JobLifecycleRecord | undefined) {
+  if (!job) return undefined;
+  return {
+    id: job.id,
+    queueName: job.queueName,
+    jobName: job.jobName,
+    status: job.status,
+    bullJobId: job.bullJobId,
+    targetResourceType: job.targetResourceType,
+    targetResourceId: job.targetResourceId,
+    queuedAt: job.queuedAt,
+    idempotencyKeyPresent: Boolean(job.idempotencyKey),
+  };
+}
+
+async function scheduleConnectorDeliveryJob(
+  { repository, connectorJobQueue }: ApiRouteDependencies,
+  auth: ApiAuthContext,
+  outbox: ConnectorOutboxRecord,
+  now: string,
+): Promise<JobLifecycleRecord | undefined> {
+  if (!connectorJobQueue) return undefined;
+
+  const jobId = crypto.randomUUID();
+  const metadata = connectorDeliveryJobMetadata(outbox, now);
+  const idempotencyKey = buildIdempotencyKey({
+    scope: "job",
+    firmId: auth.firmId,
+    resourceType: "connector_outbox",
+    resourceId: outbox.id,
+    action: "connectors.deliver",
+    providerOrTemplate: CONNECTOR_DELIVERY_JOB_NAME,
+  });
+  const job = await repository.createJobLifecycleRecord({
+    id: jobId,
+    firmId: auth.firmId,
+    queueName: "connectors",
+    jobName: CONNECTOR_DELIVERY_JOB_NAME,
+    status: "queued",
+    targetResourceType: "connector_outbox",
+    targetResourceId: outbox.id,
+    idempotencyKey,
+    attemptsMade: 0,
+    maxAttempts: CONNECTOR_JOB_MAX_ATTEMPTS,
+    queuedAt: now,
+    metadata,
+  });
+  if (job.id !== jobId) return job;
+
+  let bullJobId: string | undefined;
+  try {
+    const delay = jobDelayUntil(outbox.nextAttemptAt, now);
+    const bullJob = await connectorJobQueue.add(
+      CONNECTOR_DELIVERY_JOB_NAME,
+      {
+        firmId: auth.firmId,
+        resourceType: "connector_outbox",
+        resourceId: outbox.id,
+        metadata: {
+          resourceType: "connector_outbox",
+          resourceId: outbox.id,
+          eventCount: 1,
+          maxAttempts: outbox.maxAttempts,
+          idempotencyKeyPresent: Boolean(outbox.idempotencyKey),
+        },
+      },
+      delay === undefined ? { jobId } : { jobId, delay },
+    );
+    bullJobId = bullJob.id === undefined ? undefined : String(bullJob.id);
+  } catch {
+    await markJobEnqueueFailed(repository, auth.firmId, job, now);
+    throw enqueueFailureError();
+  }
+
+  return repository.updateJobLifecycleRecord(auth.firmId, job.id, { bullJobId });
+}
+
 export function registerConnectorRoutes(
   server: FastifyInstance,
-  { repository }: ApiRouteDependencies,
+  dependencies: ApiRouteDependencies,
 ): void {
+  const { repository } = dependencies;
+
   server.get("/api/connectors", async (request) => {
     const query = parseRequestPart(connectorListQuerySchema, request.query, "query");
     assertConnectorAccess(request.auth, { resource: "connector", action: "read" });
@@ -403,7 +520,15 @@ export function registerConnectorRoutes(
       });
     }
 
+    const deliveryJob = queued.created
+      ? await scheduleConnectorDeliveryJob(dependencies, request.auth, queued.outbox, now)
+      : undefined;
+
     reply.code(queued.created ? 201 : 200);
-    return { outbox: serializeOutbox(queued.outbox), created: queued.created };
+    return {
+      outbox: serializeOutbox(queued.outbox),
+      created: queued.created,
+      deliveryJob: summarizeConnectorDeliveryJob(deliveryJob),
+    };
   });
 }

@@ -14,8 +14,10 @@ describe("release evidence artifact", () => {
     assert.equal(evidence.privacy, "synthetic_metadata_only");
     assert.deepEqual(evidence.validationCommands, [
       "pnpm deps:audit",
-      "pnpm deps:licenses",
+      "pnpm deps:licenses -- --json-output <release artifact dir>/dependency-licenses.json",
       "pnpm ci:local",
+      "pnpm migrations:replay",
+      "pnpm security:scan -- --path <release artifact dir>",
       "git diff --check",
     ]);
     assert.match(evidence.dependencyEvidence.lockfile.sha256, /^[a-f0-9]{64}$/);

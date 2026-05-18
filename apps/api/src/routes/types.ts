@@ -15,7 +15,7 @@ export interface ApiJobQueue {
       resourceId?: string;
       metadata?: Record<string, unknown>;
     },
-    options?: { jobId?: string },
+    options?: { jobId?: string; delay?: number },
   ): Promise<{ id?: string | number }>;
 }
 
@@ -30,6 +30,7 @@ export interface ApiRouteDependencies {
     guestAccessTokenSigningConfigured?: boolean;
   };
   emailJobQueue?: ApiJobQueue;
+  connectorJobQueue?: ApiJobQueue;
   reportJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
   s3?: {

@@ -22,7 +22,7 @@ export function buildReleaseArtifactDir({
   return path.resolve(cwd ?? process.cwd(), artifactRoot, releaseTimestamp(now));
 }
 
-export function releaseProofCommands({ sbomPath } = {}) {
+export function releaseProofCommands({ sbomPath, licenseJsonPath, artifactDir } = {}) {
   return [
     {
       id: "changed-path-selector",
@@ -31,7 +31,17 @@ export function releaseProofCommands({ sbomPath } = {}) {
       required: false,
     },
     { id: "dependency-audit", command: "pnpm", args: ["deps:audit"], required: true },
-    { id: "license-evidence", command: "pnpm", args: ["deps:licenses"], required: true },
+    {
+      id: "license-evidence",
+      command: "pnpm",
+      args: [
+        "deps:licenses",
+        "--",
+        "--json-output",
+        licenseJsonPath ?? path.join(DEFAULT_ARTIFACT_ROOT, "dependency-licenses.json"),
+      ],
+      required: true,
+    },
     {
       id: "cyclonedx-sbom",
       command: "pnpm",
@@ -51,6 +61,13 @@ export function releaseProofCommands({ sbomPath } = {}) {
       required: true,
     },
     { id: "local-ci-gate", command: "pnpm", args: ["ci:local"], required: true },
+    { id: "migration-replay", command: "pnpm", args: ["migrations:replay"], required: true },
+    {
+      id: "artifact-secret-scan",
+      command: "pnpm",
+      args: ["security:scan", "--", "--path", artifactDir ?? DEFAULT_ARTIFACT_ROOT],
+      required: true,
+    },
   ];
 }
 
@@ -109,6 +126,7 @@ export function createReleaseProof({
   const commandsDir = path.join(artifactDir, "commands");
   mkdirSync(commandsDir, { recursive: true });
   const sbomPath = path.join(artifactDir, "sbom.cdx.json");
+  const licenseJsonPath = path.join(artifactDir, "dependency-licenses.json");
   const metadata = {
     generatedAt: now.toISOString(),
     artifactDir,
@@ -117,7 +135,7 @@ export function createReleaseProof({
     commands: [],
   };
 
-  for (const command of releaseProofCommands({ sbomPath })) {
+  for (const command of releaseProofCommands({ sbomPath, licenseJsonPath, artifactDir })) {
     const result = run(command.command, command.args, {
       cwd,
       outputDir: commandsDir,
@@ -153,7 +171,7 @@ export function createReleaseProof({
       "",
       "This local artifact records command status and dependency evidence only. It must not include environment values, credentials, client data, matter data, private deployment details, raw audit exports, or privileged document content.",
       "",
-      "See `release-proof.json`, `sbom.cdx.json`, and `commands/*.log` for the captured local proof.",
+      "See `release-proof.json`, `dependency-licenses.json`, `sbom.cdx.json`, and `commands/*.log` for the captured local proof.",
       "",
     ].join("\n"),
   );

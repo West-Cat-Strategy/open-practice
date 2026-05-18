@@ -648,6 +648,86 @@ describe("ledger routes", () => {
     });
   });
 
+  it("previews trust statement rows without posting ledger entries or creating reconciliations", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const ledgerBefore = await repository.getLedger("firm-west-legal");
+    const auditBefore = await repository.listAuditEvents("firm-west-legal");
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/preview",
+      payload: {
+        accountId: "acct-trust-bank",
+        statementRows: [
+          {
+            id: "statement-import-001",
+            postedAt: "2026-04-02T17:00:00.000Z",
+            description: "Retainer received into pooled trust",
+            amountCents: 150000,
+            reference: "trust-retainer",
+          },
+          {
+            id: "statement-import-duplicate",
+            postedAt: "2026-04-02T08:00:00.000Z",
+            description: "retainer   received into pooled trust",
+            amountCents: 150000,
+            reference: "TRUST-RETAINER",
+          },
+          {
+            id: "statement-import-unmatched",
+            postedAt: "2026-04-29T17:00:00.000Z",
+            description: "Synthetic unresolved service charge",
+            amountCents: -125,
+          },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      accountId: "acct-trust-bank",
+      importedStatementRowCount: 3,
+      uniqueStatementRowCount: 2,
+      duplicateStatementRowCount: 1,
+      proposedMatchedStatementRowCount: 1,
+      postingPolicy: "review_only_no_automatic_ledger_posting",
+      rows: [
+        {
+          id: "statement-import-001",
+          reviewDecision: "matched",
+          proposedMatches: [
+            {
+              ledgerEntryId: "trust-retainer-1",
+              transactionId: "trust-retainer",
+              amountCents: 150000,
+              confidence: "exact",
+              reasons: ["amount", "date", "description", "reference"],
+            },
+          ],
+        },
+        {
+          id: "statement-import-duplicate",
+          duplicateOfRowId: "statement-import-001",
+          reviewDecision: "unmatched",
+          proposedMatches: [],
+        },
+        {
+          id: "statement-import-unmatched",
+          reviewDecision: "unmatched",
+          proposedMatches: [],
+        },
+      ],
+    });
+    await expect(repository.getLedger("firm-west-legal")).resolves.toMatchObject({
+      entries: ledgerBefore.entries,
+    });
+    await expect(repository.listLedgerReconciliations("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: auditBefore.events,
+      valid: true,
+    });
+  });
+
   it("rejects invalid ledger approval and reconciliation controls", async () => {
     const server = testServer({ repository: new InMemoryOpenPracticeRepository() });
     const firstApproval = await server.inject({
@@ -804,7 +884,27 @@ describe("ledger routes", () => {
   });
 
   it("requires firm-wide ledger authority for account reconciliations", async () => {
-    const response = await testServer().inject({
+    const server = testServer();
+    const preview = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/preview",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: {
+        accountId: "acct-trust-bank",
+        statementRows: [
+          {
+            id: "statement-import-001",
+            postedAt: "2026-04-02T17:00:00.000Z",
+            description: "Synthetic retainer deposit",
+            amountCents: 150000,
+          },
+        ],
+      },
+    });
+    const response = await server.inject({
       method: "POST",
       url: "/api/ledger/reconciliations",
       headers: {
@@ -814,6 +914,11 @@ describe("ledger routes", () => {
       payload: reconciliationPayload(),
     });
 
+    expect(preview.statusCode).toBe(403);
+    expect(preview.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Trust ledger access required",
+    });
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({
       error: "ApiHttpError",

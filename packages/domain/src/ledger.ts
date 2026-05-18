@@ -101,6 +101,46 @@ export interface LedgerReconciliationReviewSummary {
   varianceCents: number;
 }
 
+export interface LedgerStatementImportPreviewRowInput {
+  id: string;
+  postedAt: string;
+  description: string;
+  amountCents: number;
+  reference?: string;
+}
+
+export interface LedgerStatementImportPreviewMatch {
+  ledgerEntryId: string;
+  transactionId: string;
+  postedAt: string;
+  amountCents: number;
+  memo: string;
+  confidence: "exact" | "amount_and_description" | "amount_only";
+  reasons: string[];
+}
+
+export interface LedgerStatementImportPreviewRow {
+  id: string;
+  postedAt: string;
+  description: string;
+  amountCents: number;
+  reference?: string;
+  duplicateKey: string;
+  duplicateOfRowId?: string;
+  reviewDecision: LedgerStatementRowReviewDecision;
+  proposedMatches: LedgerStatementImportPreviewMatch[];
+}
+
+export interface LedgerStatementImportPreview {
+  accountId: string;
+  importedStatementRowCount: number;
+  uniqueStatementRowCount: number;
+  duplicateStatementRowCount: number;
+  proposedMatchedStatementRowCount: number;
+  rows: LedgerStatementImportPreviewRow[];
+  postingPolicy: "review_only_no_automatic_ledger_posting";
+}
+
 export interface ClientTrustBalanceDelta {
   firmId: string;
   matterId: string;
@@ -464,6 +504,46 @@ export function ledgerReconciliationReviewSummary(
   };
 }
 
+export function previewLedgerStatementImport(input: {
+  accountId: string;
+  statementRows: LedgerStatementImportPreviewRowInput[];
+  ledgerEntries: LedgerEntry[];
+}): LedgerStatementImportPreview {
+  const ledgerEntriesForAccount = input.ledgerEntries.filter(
+    (entry) => entry.accountId === input.accountId,
+  );
+  const firstRowIdByDuplicateKey = new Map<string, string>();
+  const rows = input.statementRows.map((row) => {
+    const duplicateKey = statementRowDuplicateKey(row);
+    const duplicateOfRowId = firstRowIdByDuplicateKey.get(duplicateKey);
+    if (!duplicateOfRowId) firstRowIdByDuplicateKey.set(duplicateKey, row.id);
+    const proposedMatches = duplicateOfRowId
+      ? []
+      : proposedStatementLedgerMatches(row, ledgerEntriesForAccount);
+
+    return {
+      ...row,
+      duplicateKey,
+      duplicateOfRowId,
+      reviewDecision:
+        duplicateOfRowId || proposedMatches.length === 0
+          ? ("unmatched" as const)
+          : ("matched" as const),
+      proposedMatches,
+    };
+  });
+
+  return {
+    accountId: input.accountId,
+    importedStatementRowCount: rows.length,
+    uniqueStatementRowCount: rows.filter((row) => !row.duplicateOfRowId).length,
+    duplicateStatementRowCount: rows.filter((row) => row.duplicateOfRowId).length,
+    proposedMatchedStatementRowCount: rows.filter((row) => row.proposedMatches.length > 0).length,
+    rows,
+    postingPolicy: "review_only_no_automatic_ledger_posting",
+  };
+}
+
 export function buildJurisdictionalTrustReport(input: {
   matters: Array<Pick<Matter, "id" | "jurisdiction">>;
   ledger: LedgerControlsLedgerSnapshot;
@@ -601,6 +681,90 @@ export function validateLedgerReconciliationRecord(
 
 function uniqueInOrder<T extends string>(values: T[]): T[] {
   return [...new Set(values)];
+}
+
+function statementRowDuplicateKey(row: LedgerStatementImportPreviewRowInput): string {
+  return [
+    statementDateKey(row.postedAt),
+    row.amountCents.toString(),
+    normalizeStatementText(row.description),
+    normalizeStatementText(row.reference ?? ""),
+  ].join("|");
+}
+
+function proposedStatementLedgerMatches(
+  row: LedgerStatementImportPreviewRowInput,
+  entries: LedgerEntry[],
+): LedgerStatementImportPreviewMatch[] {
+  const rowDate = statementDateKey(row.postedAt);
+  const rowDescription = normalizeStatementText(row.description);
+  const rowReference = normalizeStatementText(row.reference ?? "");
+
+  return entries
+    .map((entry): LedgerStatementImportPreviewMatch | undefined => {
+      const reasons: string[] = [];
+      if (entryAmountCents(entry) !== row.amountCents) return undefined;
+      reasons.push("amount");
+
+      const entryDate = statementDateKey(entry.postedAt);
+      if (entryDate === rowDate) reasons.push("date");
+
+      const entryMemo = normalizeStatementText(entry.memo);
+      if (rowDescription && entryMemo.includes(rowDescription)) reasons.push("description");
+      if (
+        rowReference &&
+        [entry.id, entry.transactionId, entry.memo].some((value) =>
+          normalizeStatementText(value).includes(rowReference),
+        )
+      ) {
+        reasons.push("reference");
+      }
+
+      if (reasons.length === 1) {
+        return {
+          ledgerEntryId: entry.id,
+          transactionId: entry.transactionId,
+          postedAt: entry.postedAt,
+          amountCents: entryAmountCents(entry),
+          memo: entry.memo,
+          confidence: "amount_only",
+          reasons,
+        };
+      }
+
+      return {
+        ledgerEntryId: entry.id,
+        transactionId: entry.transactionId,
+        postedAt: entry.postedAt,
+        amountCents: entryAmountCents(entry),
+        memo: entry.memo,
+        confidence:
+          reasons.includes("date") &&
+          (reasons.includes("description") || reasons.includes("reference"))
+            ? "exact"
+            : "amount_and_description",
+        reasons,
+      };
+    })
+    .filter((match): match is LedgerStatementImportPreviewMatch => Boolean(match))
+    .sort((left, right) => matchRank(right) - matchRank(left));
+}
+
+function entryAmountCents(entry: Pick<LedgerEntry, "debitCents" | "creditCents">): number {
+  return entry.debitCents - entry.creditCents;
+}
+
+function statementDateKey(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value.slice(0, 10) : date.toISOString().slice(0, 10);
+}
+
+function normalizeStatementText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function matchRank(match: LedgerStatementImportPreviewMatch): number {
+  return match.confidence === "exact" ? 3 : match.confidence === "amount_and_description" ? 2 : 1;
 }
 
 function groupEntriesBy(

@@ -313,6 +313,12 @@ describe("inbound email routes", () => {
           status: "routed",
           assignedToUserId: "user-staff",
           contactIds: ["contact-ada"],
+          privateNote: "Internal call-back context stays staff-only.",
+          followUp: {
+            channel: "phone",
+            consentStatus: "consented",
+            dueAt: "2026-04-30T18:00:00.000Z",
+          },
         },
       },
     });
@@ -329,25 +335,91 @@ describe("inbound email routes", () => {
           status: "routed",
           assignedToUserId: "user-staff",
           contactIds: ["contact-ada"],
+          privateNoteCount: 1,
+          latestPrivateNoteAt: expect.any(String),
+          followUp: {
+            channel: "phone",
+            consentStatus: "consented",
+            dueAt: "2026-04-30T18:00:00.000Z",
+          },
           updatedByUserId: "user-licensee",
         },
       },
     });
     const updated = await repository.getInboundEmailMessage(firmId, "inbound-message-unscoped");
     expect(updated?.metadata.staffTriage).not.toHaveProperty("note");
-    const audit = await repository.listAuditEvents(firmId);
-    const triageAudit = audit.events.find(
-      (event) => event.action === "inbound_email.triage_updated",
+    expect(updated?.metadata.staffTriage).toMatchObject({
+      privateNotes: [
+        expect.objectContaining({
+          authorUserId: "user-licensee",
+          text: "Internal call-back context stays staff-only.",
+        }),
+      ],
+      followUp: {
+        channel: "phone",
+        consentStatus: "consented",
+        dueAt: "2026-04-30T18:00:00.000Z",
+      },
+    });
+    expect(JSON.stringify(response.json())).not.toContain("Internal call-back context");
+
+    const secondResponse = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "PATCH",
+      url: "/api/communications/inbox/inbound-email/inbound-message-unscoped",
+      payload: {
+        staffTriage: {
+          privateNote: "Second internal-only context.",
+          followUp: { dueAt: "2026-05-01T18:00:00.000Z" },
+        },
+      },
+    });
+    expect(secondResponse.statusCode).toBe(200);
+    expect(secondResponse.json()).toMatchObject({
+      message: {
+        staffTriage: {
+          status: "routed",
+          assignedToUserId: "user-staff",
+          contactIds: ["contact-ada"],
+          privateNoteCount: 2,
+          followUp: {
+            channel: "phone",
+            consentStatus: "consented",
+            dueAt: "2026-05-01T18:00:00.000Z",
+          },
+          updatedByUserId: "user-licensee",
+        },
+      },
+    });
+    expect(JSON.stringify(secondResponse.json())).not.toContain("Second internal-only context");
+    const secondUpdated = await repository.getInboundEmailMessage(
+      firmId,
+      "inbound-message-unscoped",
     );
+    expect(secondUpdated?.metadata.staffTriage).toMatchObject({
+      privateNotes: [
+        expect.objectContaining({ text: "Internal call-back context stays staff-only." }),
+        expect.objectContaining({ text: "Second internal-only context." }),
+      ],
+    });
+
+    const audit = await repository.listAuditEvents(firmId);
+    const triageAudit = audit.events
+      .filter((event) => event.action === "inbound_email.triage_updated")
+      .at(-1);
     expect(triageAudit?.metadata).toMatchObject({
       matterId: "matter-001",
       status: "triaged",
       labelCount: 2,
       staffTriageStatus: "routed",
-      assignedToUserId: "user-staff",
-      contactIds: ["contact-ada"],
+      privateNoteAdded: true,
+      privateNoteCount: 2,
+      followUpChannel: "phone",
+      followUpConsentStatus: "consented",
+      followUpDueAt: "2026-05-01T18:00:00.000Z",
     });
     expect(JSON.stringify(triageAudit?.metadata)).not.toContain("Private note");
+    expect(JSON.stringify(triageAudit?.metadata)).not.toContain("Internal call-back context");
+    expect(JSON.stringify(triageAudit?.metadata)).not.toContain("Second internal-only context");
   });
 
   it("denies auditor triage mutation", async () => {
@@ -361,6 +433,51 @@ describe("inbound email routes", () => {
     });
 
     expect(response.statusCode).toBe(403);
+  });
+
+  it("caps stored private triage notes to the latest 25 entries", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(
+      message({
+        metadata: {
+          staffTriage: {
+            status: "needs_review",
+            privateNotes: Array.from({ length: 25 }, (_, index) => ({
+              authorUserId: "user-staff",
+              createdAt: `2026-04-${String(index + 1).padStart(2, "0")}T12:00:00.000Z`,
+              text: `Existing private note ${index + 1}`,
+            })),
+          },
+        },
+      }),
+    );
+
+    const response = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "PATCH",
+      url: "/api/communications/inbox/inbound-email/inbound-message-001",
+      payload: {
+        staffTriage: { privateNote: "Newest private note." },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      message: {
+        staffTriage: {
+          status: "needs_review",
+          privateNoteCount: 25,
+          latestPrivateNoteAt: expect.any(String),
+        },
+      },
+    });
+    const updated = await repository.getInboundEmailMessage(firmId, "inbound-message-001");
+    const privateNotes = (
+      updated?.metadata.staffTriage as { privateNotes?: Array<{ text: string }> } | undefined
+    )?.privateNotes;
+    expect(privateNotes).toHaveLength(25);
+    expect(privateNotes?.[0]?.text).toBe("Existing private note 2");
+    expect(privateNotes?.at(-1)?.text).toBe("Newest private note.");
+    expect(JSON.stringify(response.json())).not.toContain("Newest private note.");
   });
 
   it("rejects cross-matter triage routing for already scoped inbound email", async () => {
@@ -444,6 +561,15 @@ describe("inbound email routes", () => {
       },
     });
     expect(badAssignee.statusCode).toBe(403);
+
+    const unscopedNote = await testServer(repository).inject({
+      method: "PATCH",
+      url: "/api/communications/inbox/inbound-email/inbound-message-unscoped",
+      payload: {
+        staffTriage: { privateNote: "Unscoped staff note should not attach" },
+      },
+    });
+    expect(unscopedNote.statusCode).toBe(400);
   });
 
   it("promotes a matter-scoped attachment to a document", async () => {

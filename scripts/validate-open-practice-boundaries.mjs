@@ -1,10 +1,23 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import vm from "node:vm";
+import ts from "typescript";
+import {
+  MATTER_SCOPED_AUTH_RESOURCES,
+  ROUTE_AUTHORIZATION_MANIFEST,
+  VALID_AUTH_ACTIONS,
+  VALID_AUTH_RESOURCES,
+  VALID_MATTER_SCOPES,
+  publicRouteSamplePath,
+  routeAuthorizationKey,
+} from "./route-authorization-manifest.mjs";
 
 export const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const require = createRequire(import.meta.url);
 
 export const SERVER_RATCHETS = [
   {
@@ -244,6 +257,7 @@ export const FORBIDDEN_SERVER_ROUTE_GROUPS = [
       "/api/ledger",
       "/api/ledger/transactions",
       "/api/ledger/transactions/:id/approvals",
+      "/api/ledger/reconciliations/preview",
       "/api/ledger/reconciliations",
     ],
   },
@@ -457,10 +471,293 @@ export function collectRouteCatalogFailures(routeCatalog) {
   );
 }
 
+function unwrapExpression(node) {
+  let current = node;
+  while (
+    ts.isAsExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isParenthesizedExpression(current) ||
+    ts.isSatisfiesExpression?.(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function stringValue(node) {
+  const current = unwrapExpression(node);
+  if (ts.isStringLiteralLike(current)) return current.text;
+  return undefined;
+}
+
+function routePathValue(node, sourceFile) {
+  const current = unwrapExpression(node);
+  if (ts.isStringLiteralLike(current)) return current.text;
+  if (ts.isNoSubstitutionTemplateLiteral(current)) return current.text;
+  if (!ts.isTemplateExpression(current)) return undefined;
+
+  return current.templateSpans.reduce(
+    (path, span) => `${path}\${${span.expression.getText(sourceFile)}}${span.literal.text}`,
+    current.head.text,
+  );
+}
+
+function routeMethods(node) {
+  const current = unwrapExpression(node);
+  if (ts.isStringLiteralLike(current)) return [current.text.toUpperCase()];
+  if (!ts.isArrayLiteralExpression(current)) return [];
+  return current.elements.flatMap((element) => {
+    const value = stringValue(element);
+    return value ? [value.toUpperCase()] : [];
+  });
+}
+
+function propertyValue(objectLiteral, propertyName) {
+  for (const property of objectLiteral.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    const name = property.name;
+    if (
+      (ts.isIdentifier(name) && name.text === propertyName) ||
+      (ts.isStringLiteral(name) && name.text === propertyName)
+    ) {
+      return property.initializer;
+    }
+  }
+  return undefined;
+}
+
+function tokenPolicyScopeFromExpression(node) {
+  const current = unwrapExpression(node);
+  if (!ts.isCallExpression(current)) return undefined;
+  const expression = unwrapExpression(current.expression);
+  if (!ts.isIdentifier(expression) || expression.text !== "publicTokenPolicyOptions") {
+    return undefined;
+  }
+  const family = current.arguments[0] ? stringValue(current.arguments[0]) : undefined;
+  const scope = current.arguments[1] ? stringValue(current.arguments[1]) : undefined;
+  return family && scope ? `${family}:${scope}` : undefined;
+}
+
+function routeDeclarationsFromCall(call, sourceFile, registrar) {
+  const expression = unwrapExpression(call.expression);
+  if (!ts.isPropertyAccessExpression(expression)) return [];
+  if (expression.expression.getText(sourceFile) !== "server") return [];
+
+  const methodName = expression.name.text;
+  if (["get", "post", "put", "patch", "delete"].includes(methodName)) {
+    const path = call.arguments[0] ? routePathValue(call.arguments[0], sourceFile) : undefined;
+    if (!path) return [];
+    const tokenPolicyScope = call.arguments
+      .slice(1)
+      .map((argument) => tokenPolicyScopeFromExpression(argument))
+      .find(Boolean);
+    return [{ method: methodName.toUpperCase(), path, registrar, tokenPolicyScope }];
+  }
+
+  if (methodName !== "route") return [];
+  const routeOptions = call.arguments[0] ? unwrapExpression(call.arguments[0]) : undefined;
+  if (!routeOptions || !ts.isObjectLiteralExpression(routeOptions)) return [];
+  const urlNode = propertyValue(routeOptions, "url");
+  const methodNode = propertyValue(routeOptions, "method");
+  const path = urlNode ? routePathValue(urlNode, sourceFile) : undefined;
+  if (!path || !methodNode) return [];
+  return routeMethods(methodNode).map((method) => ({ method, path, registrar }));
+}
+
+export function collectApiRouteDeclarations({
+  readText = defaultRead,
+  routeRegistrars = ROUTE_REGISTRARS,
+} = {}) {
+  const routeOwners = [
+    { registrar: "serverHealth", file: "apps/api/src/server.ts" },
+    ...routeRegistrars.map(({ registrar, file }) => ({ registrar, file })),
+  ];
+  const declarations = [];
+
+  for (const owner of routeOwners) {
+    const sourceText = readText(owner.file);
+    const sourceFile = ts.createSourceFile(owner.file, sourceText, ts.ScriptTarget.Latest, true);
+    const visit = (node) => {
+      if (ts.isCallExpression(node)) {
+        declarations.push(...routeDeclarationsFromCall(node, sourceFile, owner.registrar));
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+
+  declarations.sort((left, right) =>
+    routeAuthorizationKey(left).localeCompare(routeAuthorizationKey(right)),
+  );
+  return declarations;
+}
+
+let cachedDefaultIsPublicRoute;
+
+function defaultIsPublicRoute(readText) {
+  if (cachedDefaultIsPublicRoute) return cachedDefaultIsPublicRoute;
+  const source = readText("apps/api/src/http/auth-helpers.ts");
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const module = { exports: {} };
+  vm.runInNewContext(output, {
+    require,
+    module,
+    exports: module.exports,
+  });
+  cachedDefaultIsPublicRoute = module.exports.isPublicRoute;
+  return cachedDefaultIsPublicRoute;
+}
+
+function manifestAuthUsesGlobalPublic(auth) {
+  return auth.kind === "public" || auth.kind === "token" || auth.globalPublic === true;
+}
+
+function validateAuthEntry(entry, failures, pathExists, knownRegistrars) {
+  const key = routeAuthorizationKey(entry);
+
+  if (!knownRegistrars.has(entry.registrar)) {
+    failures.push(`${key} manifest references unknown registrar ${entry.registrar}.`);
+  }
+
+  if (!entry.testFile || !pathExists(entry.testFile)) {
+    failures.push(`${key} manifest test file must exist: ${entry.testFile ?? "<missing>"}.`);
+  }
+
+  const auth = entry.auth;
+  if (!auth || typeof auth.kind !== "string") {
+    failures.push(`${key} manifest must declare an auth kind.`);
+    return;
+  }
+
+  if (auth.kind === "public") return;
+
+  if (auth.kind === "token") {
+    if (!auth.tokenScope || typeof auth.tokenScope !== "string") {
+      failures.push(`${key} token route must declare tokenScope.`);
+    }
+    return;
+  }
+
+  if (auth.kind !== "authenticated" && auth.kind !== "basic") {
+    failures.push(`${key} manifest has unsupported auth kind ${auth.kind}.`);
+    return;
+  }
+
+  if (!VALID_AUTH_RESOURCES.includes(auth.resource)) {
+    failures.push(
+      `${key} manifest resource ${auth.resource ?? "<missing>"} is not a valid ResourceKind.`,
+    );
+  }
+
+  if (!VALID_AUTH_ACTIONS.includes(auth.action)) {
+    failures.push(`${key} manifest action ${auth.action ?? "<missing>"} is not a valid Action.`);
+  }
+
+  if (MATTER_SCOPED_AUTH_RESOURCES.includes(auth.resource) && !("matterScope" in auth)) {
+    failures.push(`${key} manifest resource ${auth.resource} must declare matterScope.`);
+  }
+
+  if ("matterScope" in auth && !VALID_MATTER_SCOPES.includes(auth.matterScope)) {
+    failures.push(`${key} manifest matterScope ${auth.matterScope} is not supported.`);
+  }
+}
+
+export function collectRouteAuthorizationManifestFailures({
+  manifest = ROUTE_AUTHORIZATION_MANIFEST,
+  actualRoutes,
+  readText = defaultRead,
+  pathExists = defaultExists,
+  routeRegistrars = ROUTE_REGISTRARS,
+  isPublicRoute,
+} = {}) {
+  const failures = [];
+  const knownRegistrars = new Set([
+    "serverHealth",
+    ...routeRegistrars.map(({ registrar }) => registrar),
+  ]);
+  const actual = actualRoutes ?? collectApiRouteDeclarations({ readText, routeRegistrars });
+  const actualByKey = new Map();
+  const manifestByKey = new Map();
+  const publicRouteCheck = isPublicRoute ?? defaultIsPublicRoute(readText);
+
+  for (const routeDeclaration of actual) {
+    const key = routeAuthorizationKey(routeDeclaration);
+    if (actualByKey.has(key)) {
+      failures.push(`${key} is registered more than once in API route files.`);
+    }
+    actualByKey.set(key, routeDeclaration);
+  }
+
+  for (const entry of manifest) {
+    const key = routeAuthorizationKey(entry);
+    if (manifestByKey.has(key)) {
+      failures.push(`${key} appears more than once in the route authorization manifest.`);
+    }
+    manifestByKey.set(key, entry);
+    validateAuthEntry(entry, failures, pathExists, knownRegistrars);
+  }
+
+  for (const routeDeclaration of actual) {
+    const key = routeAuthorizationKey(routeDeclaration);
+    if (!manifestByKey.has(key)) {
+      failures.push(
+        `${key} from ${routeDeclaration.registrar} is missing from route authorization manifest.`,
+      );
+    }
+  }
+
+  for (const entry of manifest) {
+    const key = routeAuthorizationKey(entry);
+    const routeDeclaration = actualByKey.get(key);
+    if (!routeDeclaration) {
+      failures.push(`${key} in route authorization manifest is not registered by API route files.`);
+      continue;
+    }
+
+    if (entry.registrar !== routeDeclaration.registrar) {
+      failures.push(
+        `${key} manifest registrar ${entry.registrar} does not match registered owner ${routeDeclaration.registrar}.`,
+      );
+    }
+
+    const authHelperPublic = publicRouteCheck(entry.method, publicRouteSamplePath(entry.path));
+    const manifestPublic = manifestAuthUsesGlobalPublic(entry.auth);
+    if (authHelperPublic !== manifestPublic) {
+      failures.push(
+        `${key} public-route mismatch: auth helper says ${authHelperPublic ? "public" : "authenticated"} but manifest says ${manifestPublic ? "public" : "authenticated"}.`,
+      );
+    }
+
+    if (entry.path.startsWith("/api/portal/")) {
+      if (!routeDeclaration.tokenPolicyScope) {
+        failures.push(`${key} portal route must use publicTokenPolicyOptions.`);
+      }
+      if (entry.auth.kind !== "token") {
+        failures.push(`${key} portal route must declare token auth.`);
+      } else if (
+        routeDeclaration.tokenPolicyScope &&
+        entry.auth.tokenScope !== routeDeclaration.tokenPolicyScope
+      ) {
+        failures.push(
+          `${key} tokenScope ${entry.auth.tokenScope} does not match publicTokenPolicyOptions ${routeDeclaration.tokenPolicyScope}.`,
+        );
+      }
+    }
+  }
+
+  return failures;
+}
+
 export function evaluateBoundaryPolicy({
   root = ROOT,
   readText = (path) => defaultRead(path, root),
   pathExists = (path) => defaultExists(path, root),
+  validateRouteAuthorizationManifest = true,
 } = {}) {
   const server = readText("apps/api/src/server.ts");
   const routeCatalog = readText("apps/web/routes/routeCatalog.ts");
@@ -473,6 +770,14 @@ export function evaluateBoundaryPolicy({
     ...collectUntrackedRegistrarFailures(server),
     ...collectForbiddenRouteFailures(server),
     ...collectRouteCatalogFailures(routeCatalog),
+    ...(validateRouteAuthorizationManifest
+      ? [
+          ...collectRouteAuthorizationManifestFailures({
+            readText,
+            pathExists,
+          }),
+        ]
+      : []),
   ];
 }
 

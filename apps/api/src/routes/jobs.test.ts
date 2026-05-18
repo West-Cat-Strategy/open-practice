@@ -29,6 +29,7 @@ const fakeQueue: ApiJobQueue = {
 function testServer(input: {
   repository: InMemoryOpenPracticeRepository;
   emailJobQueue?: ApiJobQueue;
+  connectorJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
   role?: ProfessionalRole;
 }): FastifyInstance {
@@ -529,7 +530,7 @@ describe("jobs routes", () => {
         rawBody: "Synthetic private body must not be exposed",
       },
     });
-    const response = await testServer({ repository }).inject({
+    const response = await testServer({ repository, connectorJobQueue: fakeQueue }).inject({
       method: "GET",
       url: "/api/jobs?queueName=connectors",
     });
@@ -549,6 +550,7 @@ describe("jobs routes", () => {
           },
         },
       ],
+      workerQueues: expect.arrayContaining([{ queueName: "connectors", status: "configured" }]),
     });
     expect(JSON.stringify(response.json())).not.toContain("Synthetic private body");
   });

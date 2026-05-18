@@ -65,7 +65,13 @@ async function visibleJobPage(input: {
 
 export function registerJobsRoutes(
   server: FastifyInstance,
-  { repository, emailJobQueue, reportJobQueue, ocrJobQueue }: ApiRouteDependencies,
+  {
+    repository,
+    emailJobQueue,
+    connectorJobQueue,
+    reportJobQueue,
+    ocrJobQueue,
+  }: ApiRouteDependencies,
 ): void {
   function workerQueues() {
     return openPracticeQueueNames.map((queueName) =>
@@ -73,11 +79,13 @@ export function registerJobsRoutes(
         queueName,
         queueName === "email"
           ? emailJobQueue
-          : queueName === "reports"
-            ? reportJobQueue
-            : queueName === "ocr"
-              ? ocrJobQueue
-              : undefined,
+          : queueName === "connectors"
+            ? connectorJobQueue
+            : queueName === "reports"
+              ? reportJobQueue
+              : queueName === "ocr"
+                ? ocrJobQueue
+                : undefined,
       ),
     );
   }

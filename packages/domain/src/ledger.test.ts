@@ -3,6 +3,7 @@ import {
   buildJurisdictionalTrustReport,
   ledgerControlsDiagnostics,
   ledgerReconciliationReviewSummary,
+  previewLedgerStatementImport,
   validateLedgerReconciliationRecord,
 } from "./ledger.js";
 import type {
@@ -272,5 +273,67 @@ describe("ledger controls diagnostics", () => {
         status: "matched",
       }),
     ).toThrow(/Matched reconciliations/);
+  });
+
+  it("previews statement imports with row dedupe and proposed existing-ledger matches only", () => {
+    const preview = previewLedgerStatementImport({
+      accountId: "acct-trust-bank",
+      ledgerEntries: entries,
+      statementRows: [
+        {
+          id: "statement-import-001",
+          postedAt: "2026-05-01T18:30:00.000Z",
+          description: "Trust receipt",
+          amountCents: 5000,
+          reference: "tx-pending",
+        },
+        {
+          id: "statement-import-duplicate",
+          postedAt: "2026-05-01T09:00:00.000Z",
+          description: "  trust   receipt ",
+          amountCents: 5000,
+          reference: "TX-PENDING",
+        },
+        {
+          id: "statement-import-unmatched",
+          postedAt: "2026-05-02T12:00:00.000Z",
+          description: "Synthetic bank fee pending review",
+          amountCents: -125,
+        },
+      ],
+    });
+
+    expect(preview).toMatchObject({
+      accountId: "acct-trust-bank",
+      importedStatementRowCount: 3,
+      uniqueStatementRowCount: 2,
+      duplicateStatementRowCount: 1,
+      proposedMatchedStatementRowCount: 1,
+      postingPolicy: "review_only_no_automatic_ledger_posting",
+    });
+    expect(preview.rows[0]).toMatchObject({
+      id: "statement-import-001",
+      reviewDecision: "matched",
+      proposedMatches: [
+        {
+          ledgerEntryId: "entry-001",
+          transactionId: "tx-pending",
+          amountCents: 5000,
+          confidence: "exact",
+          reasons: ["amount", "date", "description", "reference"],
+        },
+      ],
+    });
+    expect(preview.rows[1]).toMatchObject({
+      id: "statement-import-duplicate",
+      duplicateOfRowId: "statement-import-001",
+      reviewDecision: "unmatched",
+      proposedMatches: [],
+    });
+    expect(preview.rows[2]).toMatchObject({
+      id: "statement-import-unmatched",
+      reviewDecision: "unmatched",
+      proposedMatches: [],
+    });
   });
 });

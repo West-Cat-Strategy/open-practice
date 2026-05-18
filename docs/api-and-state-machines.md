@@ -95,6 +95,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/portal/intake-forms/:token/items/:itemId/documents/:id/complete`       | Public checksum completion for an intake upload item document.                                                                                                                                                                                                                                     |
 | `POST /api/portal/intake-forms/:token/items/:itemId/signature`                    | Public embedded attestation fallback or document-backed signature request creation for an intake signature item.                                                                                                                                                                                   |
 | `POST /api/ledger/transactions/:id/approvals`                                     | Maker-checker approval decision for a trust transaction boundary.                                                                                                                                                                                                                                  |
+| `POST /api/ledger/reconciliations/preview`                                        | Firm-wide, review-only trust statement import preview that dedupes statement rows and proposes matches to existing ledger entries for a trust asset account. It does not post ledger entries, create reconciliation records, or emit audit events.                                                 |
 | `POST /api/ledger/reconciliations`                                                | Trust-account reconciliation record with imported statement rows, row-level matched/unmatched review decisions, immutable beginning/ending balance snapshots, and variance explanation.                                                                                                            |
 | `GET /api/queues`                                                                 | Permission-aware operational queues for matters, documents, signatures, intake, ledger, task deadlines, and audit review.                                                                                                                                                                          |
 | `GET /api/tasks/workbench?matterId=`                                              | Matter-scoped task/deadline projections, my/team counters, matter/contact queues, and focused overdue, today, upcoming, and unassigned task IDs.                                                                                                                                                   |
@@ -495,6 +496,12 @@ decisions, immutable beginning/ending statement-balance snapshots, expected-vers
 and a required explanation whenever balances or rows do not match. Matched statement rows must point
 at existing ledger entries for the reconciled account; unmatched rows carry no ledger-entry links.
 
+The statement import preview is a non-persistent review aid before reconciliation creation. It
+dedupes repeated statement rows by normalized date, amount, description, and reference, proposes
+candidate matches against existing entries for the selected trust asset account, and returns a
+`review_only_no_automatic_ledger_posting` policy marker. It does not create ledger entries,
+reconciliation records, approvals, or audit events.
+
 The read-only trust controls workbench surfaces existing balances, approval decisions,
 reconciliation exceptions, unreconciled accounts, statement-row counts, variance explanations, recent
 postings, and invariant diagnostics for operator review. It does not post ledger entries, approve
@@ -560,12 +567,13 @@ notes, or privileged document content.
 
 The communications inbox is a matter-view aggregate, not a new navigation route. It combines
 matter-scoped inbound email summaries, redacted outbound delivery history, conversation topic
-summaries with message counts/latest-message timestamps, contact dossier cues without notes, and
-channel state. It does not expose email bodies,
-parsed text, raw storage keys, checksums, provider IDs/tokens, contact notes, conversation messages,
-composers, realtime chat, retry controls, or new provider setup. Triage updates stay on existing
-inbound email rows and accept only status, labels, matter scope, and constrained
-`metadata.staffTriage` fields for staff routing.
+summaries with message counts/latest-message timestamps, contact dossier cues without notes,
+derived staff-triage note counts/latest-note timestamps, consent/channel follow-up state, and
+channel state. It does not expose email bodies, parsed text, raw storage keys, checksums, provider
+IDs/tokens, contact notes, private staff-note text, conversation messages, composers, realtime chat,
+retry controls, or new provider setup. Triage updates stay on existing inbound email rows and accept
+only status, labels, matter scope, one internal staff note per update, consent/channel follow-up
+fields, and constrained `metadata.staffTriage` fields for staff routing.
 
 `@open-practice/domain` exports the audit event taxonomy used to classify known action names,
 expected resource types, matter-scope hints, actor-source hints, and safe metadata keys for operator

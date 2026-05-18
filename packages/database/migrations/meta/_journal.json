@@ -169,6 +169,76 @@
       "when": 1778019553000,
       "tag": "0023_trust_reconciliation_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1779081230000,
+      "tag": "0024_draft_office_exports",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1779081231000,
+      "tag": "0025_intake_review_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1779081232000,
+      "tag": "0026_intake_submission_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1779081233000,
+      "tag": "0027_saved_operational_view_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1779081234000,
+      "tag": "0028_calendar_meeting_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1779081235000,
+      "tag": "0029_calendar_event_reminders",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1779081236000,
+      "tag": "0030_connector_worker_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1779081237000,
+      "tag": "0031_report_job_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1779081238000,
+      "tag": "0032_conversation_message_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1779081239000,
+      "tag": "0033_saved_operational_view_matters_surface",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { ApiAuthContext } from "../server.js";
 import { requireAccess } from "./auth-guards.js";
+import { isPublicRoute } from "./auth-helpers.js";
 import { ApiHttpError, errorEnvelope, normalizeApiError, successEnvelope } from "./response.js";
 import { parseRequestPart, validateRequestPart } from "./validation.js";
 
@@ -99,5 +100,10 @@ describe("API HTTP helpers", () => {
         message: "Audit log access required",
       });
     }
+  });
+
+  it("keeps public token mutation routes outside the session-auth hook", () => {
+    expect(isPublicRoute("POST", "/api/portal/shares/token-001/email-verification")).toBe(true);
+    expect(isPublicRoute("POST", "/api/portal/intake-forms/token-001/draft")).toBe(true);
   });
 });

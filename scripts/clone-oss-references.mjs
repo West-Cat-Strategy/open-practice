@@ -1,87 +1,80 @@
+#!/usr/bin/env node
+
 import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readFileSync,
   readlinkSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import path, { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  assertReferenceIndexExists,
+  buildReferenceLock,
+  centralPathForReference,
+  openPracticeReferences,
+  readJson,
+  referenceIndexPath,
+} from "./reference-governance.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const compatibilityRoot = join(root, ".references", "oss");
 const referencesRoot = resolve(
   process.env.REFERENCE_REPOS_ROOT ?? join(root, "..", "reference-repos", "repos"),
 );
+const lockPath = join(root, "docs", "oss-references.lock.json");
 
-const repositories = [
-  ["jlawyerorg__j-lawyer-org", "https://github.com/jlawyerorg/j-lawyer-org.git"],
-  ["ArkCase__ArkCase", "https://github.com/ArkCase/ArkCase.git"],
-  ["NodineLegal__OpenLawOffice", "https://github.com/NodineLegal/OpenLawOffice.git"],
-  ["jhpyle__docassemble", "https://github.com/jhpyle/docassemble.git"],
-  ["paperless-ngx__paperless-ngx", "https://github.com/paperless-ngx/paperless-ngx.git"],
-  ["papermerge__papermerge-core", "https://github.com/papermerge/papermerge-core.git"],
-  ["mayan-edms__Mayan-EDMS", "https://github.com/mayan-edms/Mayan-EDMS.git"],
-  ["Open-Source-Legal__OpenContracts", "https://github.com/Open-Source-Legal/OpenContracts.git"],
-  ["kimai__kimai", "https://github.com/kimai/kimai.git"],
-  ["docusealco__docuseal", "https://github.com/docusealco/docuseal.git"],
-  ["documenso__documenso", "https://github.com/documenso/documenso.git"],
-  ["opencollective__opencollective", "https://github.com/opencollective/opencollective.git"],
-  [
-    "opencollective__opencollective-api",
-    "https://github.com/opencollective/opencollective-api.git",
-  ],
-  [
-    "opencollective__opencollective-frontend",
-    "https://github.com/opencollective/opencollective-frontend.git",
-  ],
-  ["nextcloud__server", "https://github.com/nextcloud/server.git"],
-  ["espocrm__espocrm", "https://github.com/espocrm/espocrm.git"],
-  ["SuiteCRM__SuiteCRM-Core", "https://github.com/SuiteCRM/SuiteCRM-Core.git"],
-  ["twentyhq__twenty", "https://github.com/twentyhq/twenty.git"],
-  ["formbricks__formbricks", "https://github.com/formbricks/formbricks.git"],
-  ["chatwoot__chatwoot", "https://github.com/chatwoot/chatwoot.git"],
-  ["zulip__zulip", "https://github.com/zulip/zulip.git"],
-  ["jitsi__jitsi-meet", "https://github.com/jitsi/jitsi-meet.git"],
-  ["element-hq__synapse", "https://github.com/element-hq/synapse.git"],
-  ["mattermost__mattermost", "https://github.com/mattermost/mattermost.git"],
-  ["calcom__cal.com", "https://github.com/calcom/cal.com.git"],
-  ["activepieces__activepieces", "https://github.com/activepieces/activepieces.git"],
-  ["surveyjs__survey-library", "https://github.com/surveyjs/survey-library.git"],
-  ["apache__camel", "https://github.com/apache/camel.git"],
-  ["temporalio__temporal", "https://github.com/temporalio/temporal.git"],
-  ["blnkfinance__blnk", "https://github.com/blnkfinance/blnk.git"],
-  ["LerianStudio__midaz", "https://github.com/LerianStudio/midaz.git"],
-  ["apache__fineract", "https://github.com/apache/fineract.git"],
-  ["civicrm__civicrm-core", "https://github.com/civicrm/civicrm-core.git"],
-  ["ledgersmb__LedgerSMB", "https://github.com/ledgersmb/LedgerSMB.git"],
-];
+function parseArgs(rawArgs = process.argv.slice(2)) {
+  const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
+  const options = {
+    check: false,
+    dryRun: false,
+    includeMetadataOnly: false,
+  };
 
-function centralDirectoryName(url) {
-  const parsed = new URL(url);
-  const [owner, repo] = parsed.pathname.replace(/^\/|\.git$/g, "").split("/");
-  return `${owner.toLowerCase()}__${repo.toLowerCase()}`;
+  for (const arg of args) {
+    if (arg === "--check") {
+      options.check = true;
+      continue;
+    }
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+    if (arg === "--include-metadata-only") {
+      options.includeMetadataOnly = true;
+      continue;
+    }
+    if (arg === "--from-index") continue;
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+
+  return options;
 }
 
-function lstatIfExists(path) {
+function lstatIfExists(pathname) {
   try {
-    return lstatSync(path);
+    return lstatSync(pathname);
   } catch (error) {
     if (error?.code === "ENOENT") return null;
     throw error;
   }
 }
 
-function ensureCompatibilityLink(directory, target) {
-  const link = join(compatibilityRoot, directory);
+function ensureCompatibilityLink(directory, target, { dryRun }) {
+  const link = join(root, directory);
   const stat = lstatIfExists(link);
   if (stat) {
     if (stat.isSymbolicLink()) {
       const currentTarget = resolve(dirname(link), readlinkSync(link));
-      if (currentTarget === target) {
+      if (currentTarget === target) return;
+      if (dryRun) {
+        console.log(`Would replace compatibility link ${directory} -> ${target}`);
         return;
       }
       rmSync(link);
@@ -93,69 +86,135 @@ function ensureCompatibilityLink(directory, target) {
     }
   }
 
+  if (dryRun) {
+    console.log(`Would link ${directory} -> ${target}`);
+    return;
+  }
+  mkdirSync(dirname(link), { recursive: true });
   symlinkSync(target, link, "dir");
 }
 
-function relativeCentralPath(url) {
-  return `../reference-repos/repos/${centralDirectoryName(url)}`;
+function runGit(args, { cwd }) {
+  const result = spawnSync("git", args, { cwd, stdio: "inherit" });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(" ")} failed with status ${result.status ?? 1}`);
+  }
 }
 
-mkdirSync(referencesRoot, { recursive: true });
-mkdirSync(compatibilityRoot, { recursive: true });
-
-const lockEntries = [];
-
-for (const [directory, url] of repositories) {
-  const target = join(referencesRoot, centralDirectoryName(url));
-  if (existsSync(join(target, ".git"))) {
-    console.log(`Refreshing ${target}`);
-    const fetchResult = spawnSync("git", ["-C", target, "fetch", "--depth", "1", "origin"], {
-      stdio: "inherit",
-    });
-    if (fetchResult.status !== 0) {
-      process.exitCode = fetchResult.status ?? 1;
-      break;
-    }
-    const resetResult = spawnSync("git", ["-C", target, "reset", "--hard", "FETCH_HEAD"], {
-      stdio: "inherit",
-    });
-    if (resetResult.status !== 0) {
-      process.exitCode = resetResult.status ?? 1;
-      break;
-    }
-  } else {
-    mkdirSync(dirname(target), { recursive: true });
-    console.log(`Cloning ${url} -> ${target}`);
-    const result = spawnSync("git", ["clone", "--depth", "1", "--filter=blob:none", url, target], {
-      stdio: "inherit",
-    });
-
-    if (result.status !== 0) {
-      process.exitCode = result.status ?? 1;
-      break;
-    }
-  }
-
-  const commitResult = spawnSync("git", ["-C", target, "rev-parse", "HEAD"], {
+function readCommit(target) {
+  const result = spawnSync("git", ["-C", target, "rev-parse", "HEAD"], {
     encoding: "utf8",
   });
-  if (commitResult.status !== 0) {
-    process.exitCode = commitResult.status ?? 1;
-    break;
+  if (result.status !== 0) {
+    throw new Error(`Unable to read commit for ${target}`);
   }
-  lockEntries.push({
-    name: directory,
-    url,
-    commit: commitResult.stdout.trim(),
-    centralPath: relativeCentralPath(url),
-    compatibilityPath: `.references/oss/${directory}`,
-  });
-  ensureCompatibilityLink(directory, target);
+  return result.stdout.trim();
 }
 
-if (!process.exitCode) {
-  writeFileSync(
-    join(root, "docs", "oss-references.lock.json"),
-    `${JSON.stringify({ generatedFrom: "pnpm refs:clone", references: lockEntries }, null, 2)}\n`,
-  );
+function refreshClone(reference, target, { dryRun }) {
+  if (reference.curationMode === "metadata_only") {
+    console.log(`Metadata-only reference ${reference.id}; skipping clone refresh`);
+    return;
+  }
+
+  if (existsSync(join(target, ".git"))) {
+    if (dryRun) {
+      console.log(`Would refresh ${target} to ${reference.upstream.commit}`);
+      return;
+    }
+    console.log(`Refreshing ${target} to ${reference.upstream.commit}`);
+    runGit(["-C", target, "fetch", "--depth", "1", "origin", reference.upstream.commit], {
+      cwd: root,
+    });
+    runGit(["-C", target, "reset", "--hard", reference.upstream.commit], { cwd: root });
+    return;
+  }
+
+  if (dryRun) {
+    console.log(
+      `Would clone ${reference.upstream.url} -> ${target} at ${reference.upstream.commit}`,
+    );
+    return;
+  }
+  mkdirSync(dirname(target), { recursive: true });
+  console.log(`Cloning ${reference.upstream.url} -> ${target} at ${reference.upstream.commit}`);
+  runGit(["clone", "--filter=blob:none", "--no-checkout", reference.upstream.url, target], {
+    cwd: root,
+  });
+  runGit(["-C", target, "fetch", "--depth", "1", "origin", reference.upstream.commit], {
+    cwd: root,
+  });
+  runGit(["-C", target, "reset", "--hard", reference.upstream.commit], { cwd: root });
+}
+
+function compareLock(expected) {
+  const current = JSON.parse(readFileSync(lockPath, "utf8"));
+  const expectedText = `${JSON.stringify(expected, null, 2)}\n`;
+  const currentText = `${JSON.stringify(current, null, 2)}\n`;
+  return currentText === expectedText;
+}
+
+export function runCloneReferences(rawArgs = process.argv.slice(2), env = process.env) {
+  const options = parseArgs(rawArgs);
+  const indexPath = referenceIndexPath(env);
+  assertReferenceIndexExists(indexPath);
+  const index = readJson(indexPath);
+  const references = openPracticeReferences(index, options);
+  const lock = buildReferenceLock({
+    index,
+    root,
+    referencesRoot,
+    indexPath,
+    includeMetadataOnly: options.includeMetadataOnly,
+  });
+
+  if (options.check) {
+    if (!compareLock(lock)) {
+      console.error(
+        "docs/oss-references.lock.json is out of sync with the central reference index.",
+      );
+      console.error(`Refresh with: REFERENCE_REPOS_INDEX=${indexPath} pnpm refs:clone`);
+      process.exit(1);
+    }
+    console.log(`Reference lock matches ${references.length} Open Practice index entries.`);
+    return lock;
+  }
+
+  mkdirSync(referencesRoot, { recursive: true });
+  mkdirSync(compatibilityRoot, { recursive: true });
+
+  for (const reference of references) {
+    const target = centralPathForReference(reference, root, referencesRoot);
+    refreshClone(reference, target, options);
+    const lockEntry = lock.references.find((entry) => entry.id === reference.id);
+    for (const compatibilityPath of lockEntry?.compatibilityPaths ?? []) {
+      ensureCompatibilityLink(compatibilityPath, target, options);
+    }
+    if (!options.dryRun && reference.curationMode !== "metadata_only") {
+      const actualCommit = readCommit(target);
+      if (actualCommit !== reference.upstream.commit) {
+        console.warn(
+          `${reference.id} refreshed to ${actualCommit}; central index records ${reference.upstream.commit}`,
+        );
+      }
+    }
+  }
+
+  if (options.dryRun) {
+    console.log(`Would write ${lockPath} with ${lock.references.length} Open Practice references.`);
+    return lock;
+  }
+
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  console.log(`Wrote ${lockPath} with ${lock.references.length} Open Practice references.`);
+  return lock;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  try {
+    runCloneReferences();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }

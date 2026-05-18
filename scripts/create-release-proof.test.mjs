@@ -27,6 +27,18 @@ describe("create-release-proof contract", () => {
 
   it("keeps the SBOM command pinned to the local CycloneDX executable", () => {
     const sbomPath = "/repo/artifacts/release-local/run/sbom.cdx.json";
+    const licenseJsonPath = "/repo/artifacts/release-local/run/dependency-licenses.json";
+    assert.deepEqual(
+      releaseProofCommands({ licenseJsonPath }).find(
+        (command) => command.id === "license-evidence",
+      ),
+      {
+        id: "license-evidence",
+        command: "pnpm",
+        args: ["deps:licenses", "--", "--json-output", licenseJsonPath],
+        required: true,
+      },
+    );
     assert.deepEqual(
       releaseProofCommands({ sbomPath }).find((command) => command.id === "cyclonedx-sbom"),
       {
@@ -48,6 +60,17 @@ describe("create-release-proof contract", () => {
         required: true,
       },
     );
+    assert.deepEqual(
+      releaseProofCommands({ sbomPath, artifactDir: "/repo/artifacts/release-local/run" }).find(
+        (command) => command.id === "artifact-secret-scan",
+      ),
+      {
+        id: "artifact-secret-scan",
+        command: "pnpm",
+        args: ["security:scan", "--", "--path", "/repo/artifacts/release-local/run"],
+        required: true,
+      },
+    );
   });
 
   it("writes partial proof and fails when a required command fails", () => {
@@ -60,7 +83,15 @@ describe("create-release-proof contract", () => {
         if (args[0] === "branch") return { status: 0, stdout: "codex/test\n", stderr: "" };
         if (args[0] === "status") return { status: 0, stdout: " M package.json\n", stderr: "" };
       }
-      const id = args.includes("ci:local") ? "local-ci-gate" : args.at(-1);
+      const id = args.includes("ci:local")
+        ? "local-ci-gate"
+        : args.includes("migrations:replay")
+          ? "migration-replay"
+          : args.includes("security:scan")
+            ? "artifact-secret-scan"
+            : args.includes("deps:licenses")
+              ? "license-evidence"
+              : args.at(-1);
       return {
         status: args.includes("deps:audit") ? 1 : 0,
         stdout: `stdout for ${id}\n`,
@@ -82,7 +113,7 @@ describe("create-release-proof contract", () => {
       readFileSync(path.join(metadata.artifactDir, "release-proof.json"), "utf8"),
     );
     assert.equal(proof.git.branch, "codex/test");
-    assert.equal(proof.commands.length, 5);
+    assert.equal(proof.commands.length, 7);
     assert.match(
       readFileSync(
         path.join(metadata.artifactDir, "commands", "dependency-audit.stderr.log"),
@@ -90,5 +121,11 @@ describe("create-release-proof contract", () => {
       ),
       /audit failed/,
     );
+    assert.deepEqual(proof.commands.find((command) => command.id === "license-evidence").args, [
+      "deps:licenses",
+      "--",
+      "--json-output",
+      path.join(metadata.artifactDir, "dependency-licenses.json"),
+    ]);
   });
 });

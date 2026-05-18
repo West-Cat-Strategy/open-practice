@@ -16,6 +16,9 @@ trust accounting software, accounting software, or tax-advice tooling.
   immutable beginning/ending balance snapshots, and variance explanations. These records,
   maker-checker approvals, and persistent concurrency guarantees are operational controls; they are
   not jurisdiction-certified controls.
+- Statement import previews are non-persistent review aids only. They can dedupe imported rows and
+  propose matches against existing trust-ledger entries, but they do not post ledger entries, create
+  reconciliation records, approve transactions, or move funds.
 - The trust controls workbench is a read-only operator review surface for existing balances,
   approvals, reconciliations, statement-row counts, variance notes, recent postings, and diagnostics.
   It does not post, approve, reconcile, certify, or move funds.

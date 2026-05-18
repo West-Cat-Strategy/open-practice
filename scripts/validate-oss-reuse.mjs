@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildReferenceLock, readJson, referenceIndexPath } from "./reference-governance.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const failures = [];
@@ -17,6 +18,14 @@ const gitignore = read(".gitignore");
 const matrix = read("docs/oss-references.md");
 const policy = read("docs/reuse-decision-policy.md");
 const lock = JSON.parse(read("docs/oss-references.lock.json"));
+const indexPath = referenceIndexPath();
+const expectedLock = buildReferenceLock({
+  index: readJson(indexPath),
+  root,
+  referencesRoot: join(root, "..", "reference-repos", "repos"),
+  indexPath,
+  includeMetadataOnly: Boolean(lock.referenceIndex?.includeMetadataOnly),
+});
 
 assert(gitignore.includes(".references/oss/"), ".references/oss/ must remain ignored");
 assert(
@@ -76,8 +85,8 @@ for (const required of ["Adopt", "Wrap", "Fork", "Reference-Only", "Avoid", "Def
 
 for (const reference of lock.references) {
   assert(
-    reference.name && reference.url && reference.commit,
-    "Every lock entry needs name/url/commit",
+    reference.id && reference.name && reference.url && reference.commit,
+    "Every lock entry needs id/name/url/commit",
   );
   assert(
     reference.centralPath &&
@@ -88,6 +97,64 @@ for (const reference of lock.references) {
   assert(
     reference.compatibilityPath?.startsWith(".references/oss/"),
     `${reference.name} compatibilityPath must use .references/oss`,
+  );
+  assert(
+    Array.isArray(reference.compatibilityPaths) &&
+      reference.compatibilityPaths.every((compatibilityPath) =>
+        compatibilityPath.startsWith(".references/oss/"),
+      ),
+    `${reference.name} compatibilityPaths must use .references/oss`,
+  );
+  assert(
+    reference.sourceFamilies?.includes("open-practice"),
+    `${reference.name} must be indexed for the Open Practice source family`,
+  );
+  assert(reference.reuseClass, `${reference.name} must record reuseClass`);
+  assert(reference.licenseRisk, `${reference.name} must record licenseRisk`);
+  assert(reference.curationMode, `${reference.name} must record curationMode`);
+  assert(
+    reference.centralIndex?.path === indexPath &&
+      reference.centralIndex?.sourceFamily === "open-practice",
+    `${reference.name} must record the central reference index source`,
+  );
+}
+
+const expectedById = new Map(expectedLock.references.map((reference) => [reference.id, reference]));
+const actualById = new Map(lock.references.map((reference) => [reference.id, reference]));
+
+for (const expected of expectedLock.references) {
+  const actual = actualById.get(expected.id);
+  assert(actual, `Reference lock is missing central index entry ${expected.id}`);
+  if (!actual) continue;
+  for (const field of [
+    "url",
+    "commit",
+    "branch",
+    "reuseClass",
+    "license",
+    "licenseRisk",
+    "curationMode",
+    "centralPath",
+  ]) {
+    assert(
+      actual[field] === expected[field],
+      `${expected.id} lock ${field} must match the central reference index`,
+    );
+  }
+  assert(
+    JSON.stringify(actual.sourceFamilies) === JSON.stringify(expected.sourceFamilies),
+    `${expected.id} sourceFamilies must match the central reference index`,
+  );
+  assert(
+    JSON.stringify(actual.compatibilityPaths) === JSON.stringify(expected.compatibilityPaths),
+    `${expected.id} compatibilityPaths must match the central reference index`,
+  );
+}
+
+for (const actual of lock.references) {
+  assert(
+    expectedById.has(actual.id),
+    `Reference lock contains non-index Open Practice entry ${actual.id}`,
   );
 }
 

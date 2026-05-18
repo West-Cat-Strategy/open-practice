@@ -50,8 +50,10 @@ export function buildReleaseEvidence(input = {}) {
     privacy: "synthetic_metadata_only",
     validationCommands: [
       "pnpm deps:audit",
-      "pnpm deps:licenses",
+      "pnpm deps:licenses -- --json-output <release artifact dir>/dependency-licenses.json",
       "pnpm ci:local",
+      "pnpm migrations:replay",
+      "pnpm security:scan -- --path <release artifact dir>",
       "git diff --check",
     ],
     dependencyEvidence: {

@@ -89,5 +89,17 @@ This matrix decides how each researched or cloned project may influence the prod
 No project should be forked in the next phase.
 
 Run `pnpm refs:clone` after install to create or refresh central shallow clones and compatibility
-symlinks. Set `REFERENCE_REPOS_ROOT` to override the central store. The pinned clone commits are
-recorded in `docs/oss-references.lock.json`.
+symlinks from `/Users/bryan/projects/reference-repos/docs/index.json`. Set `REFERENCE_REPOS_ROOT`
+to override the central clone store and `REFERENCE_REPOS_INDEX` to test another central index.
+
+Useful reference-governance checks:
+
+```bash
+pnpm refs:clone -- --check
+pnpm refs:clone -- --dry-run
+pnpm refs:clone -- --include-metadata-only --dry-run
+```
+
+The pinned clone commits, licenses, reuse classes, license risk, curation mode, compatibility paths,
+guardrails, and source-index docs are recorded in `docs/oss-references.lock.json`. The lockfile is
+validated against the central index by `pnpm policy:check`.

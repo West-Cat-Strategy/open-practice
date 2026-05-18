@@ -17,11 +17,27 @@ const inboundEmailQuerySchema = z.object({
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
+const followUpSchema = z
+  .object({
+    channel: z.enum(["email", "phone", "portal", "sms", "in_person"]).optional(),
+    consentStatus: z.enum(["unknown", "consented", "declined", "do_not_contact"]).optional(),
+    dueAt: z.string().datetime({ offset: true }).optional(),
+  })
+  .strict()
+  .refine(
+    (followUp) =>
+      followUp.channel !== undefined ||
+      followUp.consentStatus !== undefined ||
+      followUp.dueAt !== undefined,
+    { message: "At least one follow-up field is required" },
+  );
 const staffTriageSchema = z
   .object({
     status: z.enum(["needs_review", "routed", "rejected", "closed"]).optional(),
     assignedToUserId: z.string().min(1).optional(),
     contactIds: z.array(z.string().min(1)).max(20).optional(),
+    privateNote: z.string().trim().min(1).max(1000).optional(),
+    followUp: followUpSchema.optional(),
   })
   .strict();
 const inboundEmailTriageBodySchema = z
@@ -40,10 +56,20 @@ const inboundEmailTriageBodySchema = z
       (body.staffTriage !== undefined &&
         (body.staffTriage.status !== undefined ||
           body.staffTriage.assignedToUserId !== undefined ||
-          body.staffTriage.contactIds !== undefined)),
+          body.staffTriage.contactIds !== undefined ||
+          body.staffTriage.privateNote !== undefined ||
+          body.staffTriage.followUp !== undefined)),
     { message: "At least one triage field is required" },
   );
 type InboundEmailTriageBody = z.infer<typeof inboundEmailTriageBodySchema>;
+type StaffTriageFollowUp = NonNullable<
+  NonNullable<InboundEmailTriageBody["staffTriage"]>["followUp"]
+>;
+type StaffTriagePrivateNote = {
+  authorUserId: string;
+  createdAt: string;
+  text: string;
+};
 const promoteAttachmentParamsSchema = z.object({
   id: z.string().min(1),
   attachmentId: z.string().min(1),
@@ -66,15 +92,102 @@ function assertInboundEmailAccess(
   if (!access.ok) throw access.error;
 }
 
-function redactedStaffTriage(input: InboundEmailTriageBody["staffTriage"]) {
+function currentStaffTriage(message: InboundEmailMessageRecord): Record<string, unknown> {
+  const triage = message.metadata.staffTriage;
+  if (!triage || typeof triage !== "object" || Array.isArray(triage)) return {};
+  return triage as Record<string, unknown>;
+}
+
+function currentPrivateNotes(triage: Record<string, unknown>): StaffTriagePrivateNote[] {
+  return Array.isArray(triage.privateNotes)
+    ? triage.privateNotes.filter(
+        (note): note is StaffTriagePrivateNote =>
+          Boolean(note) &&
+          typeof note === "object" &&
+          !Array.isArray(note) &&
+          typeof (note as Record<string, unknown>).authorUserId === "string" &&
+          typeof (note as Record<string, unknown>).createdAt === "string" &&
+          typeof (note as Record<string, unknown>).text === "string",
+      )
+    : [];
+}
+
+function safeFollowUp(input: unknown): StaffTriageFollowUp | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
+  const followUp = input as Record<string, unknown>;
+  const output: StaffTriageFollowUp = {};
+  if (["email", "phone", "portal", "sms", "in_person"].includes(String(followUp.channel))) {
+    output.channel = followUp.channel as StaffTriageFollowUp["channel"];
+  }
+  if (
+    ["unknown", "consented", "declined", "do_not_contact"].includes(String(followUp.consentStatus))
+  ) {
+    output.consentStatus = followUp.consentStatus as StaffTriageFollowUp["consentStatus"];
+  }
+  if (typeof followUp.dueAt === "string") output.dueAt = followUp.dueAt;
+  return Object.values(output).some((value) => value !== undefined) ? output : undefined;
+}
+
+function buildStaffTriageMetadata(
+  message: InboundEmailMessageRecord,
+  input: InboundEmailTriageBody["staffTriage"],
+  actorUserId: string,
+) {
   if (!input) return undefined;
+  const existing = currentStaffTriage(message);
+  const now = new Date().toISOString();
+  const privateNotes = currentPrivateNotes(existing);
+  const nextPrivateNotes = input.privateNote
+    ? [
+        ...privateNotes,
+        {
+          authorUserId: actorUserId,
+          createdAt: now,
+          text: input.privateNote.trim(),
+        },
+      ].slice(-25)
+    : privateNotes;
+  const existingFollowUp = safeFollowUp(existing.followUp);
+  const followUp = input.followUp
+    ? safeFollowUp({ ...(existingFollowUp ?? {}), ...input.followUp })
+    : existingFollowUp;
   const triage = {
-    status: input.status,
-    assignedToUserId: input.assignedToUserId,
-    contactIds: input.contactIds,
-    updatedAt: new Date().toISOString(),
+    status: input.status ?? (typeof existing.status === "string" ? existing.status : undefined),
+    assignedToUserId:
+      input.assignedToUserId ??
+      (typeof existing.assignedToUserId === "string" ? existing.assignedToUserId : undefined),
+    contactIds:
+      input.contactIds ??
+      (Array.isArray(existing.contactIds)
+        ? existing.contactIds.filter((id): id is string => typeof id === "string")
+        : undefined),
+    privateNotes: nextPrivateNotes.length > 0 ? nextPrivateNotes : undefined,
+    followUp,
+    updatedAt: now,
+    updatedByUserId: actorUserId,
   };
   return Object.fromEntries(Object.entries(triage).filter(([, value]) => value !== undefined));
+}
+
+function serializeStaffTriageDetail(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  const output: Record<string, unknown> = {};
+  if (typeof input.status === "string") output.status = input.status;
+  if (typeof input.assignedToUserId === "string") output.assignedToUserId = input.assignedToUserId;
+  if (Array.isArray(input.contactIds)) {
+    output.contactIds = input.contactIds.filter((id): id is string => typeof id === "string");
+  }
+  const privateNotes = currentPrivateNotes(input);
+  if (privateNotes.length > 0) {
+    output.privateNoteCount = privateNotes.length;
+    output.latestPrivateNoteAt = privateNotes.at(-1)?.createdAt;
+  }
+  const followUp = safeFollowUp(input.followUp);
+  if (followUp) output.followUp = followUp;
+  if (typeof input.updatedAt === "string") output.updatedAt = input.updatedAt;
+  if (typeof input.updatedByUserId === "string") output.updatedByUserId = input.updatedByUserId;
+  return Object.keys(output).length > 0 ? output : undefined;
 }
 
 function buildInboundEmailTriageUpdates(
@@ -88,14 +201,11 @@ function buildInboundEmailTriageUpdates(
   if (body.status !== undefined) updates.status = body.status;
   if (body.labels !== undefined) updates.labels = body.labels;
   if (body.matterId !== undefined) updates.matterId = body.matterId;
-  const staffTriage = redactedStaffTriage(body.staffTriage);
+  const staffTriage = buildStaffTriageMetadata(message, body.staffTriage, actorUserId);
   if (staffTriage) {
     updates.metadata = {
       ...message.metadata,
-      staffTriage: {
-        ...staffTriage,
-        updatedByUserId: actorUserId,
-      },
+      staffTriage,
     };
   }
   return updates;
@@ -251,10 +361,19 @@ export function registerInboundEmailRoutes(
     }
 
     const contactIds = body.staffTriage?.contactIds ?? [];
-    if ((contactIds.length > 0 || body.staffTriage?.assignedToUserId) && !targetMatter) {
-      throw Object.assign(new Error("Staff triage assignments require a target matter"), {
-        statusCode: 400,
-      });
+    const requiresTargetMatter = Boolean(
+      contactIds.length > 0 ||
+      body.staffTriage?.assignedToUserId ||
+      body.staffTriage?.privateNote ||
+      body.staffTriage?.followUp,
+    );
+    if (requiresTargetMatter && !targetMatter) {
+      throw Object.assign(
+        new Error("Staff triage ownership and follow-up require a target matter"),
+        {
+          statusCode: 400,
+        },
+      );
     }
     if (contactIds.length > 0) {
       const linkedContactIds = new Set(targetMatter?.parties.map((party) => party.contactId) ?? []);
@@ -285,6 +404,13 @@ export function registerInboundEmailRoutes(
       message.id,
       buildInboundEmailTriageUpdates(message, body, request.auth.user.id),
     );
+    const staffTriageDetail = serializeStaffTriageDetail(updated.metadata.staffTriage);
+    const followUp =
+      staffTriageDetail?.followUp &&
+      typeof staffTriageDetail.followUp === "object" &&
+      !Array.isArray(staffTriageDetail.followUp)
+        ? (staffTriageDetail.followUp as Record<string, unknown>)
+        : undefined;
 
     await appendRouteAuditEvent(repository, request.auth, {
       action: "inbound_email.triage_updated",
@@ -303,6 +429,11 @@ export function registerInboundEmailRoutes(
             : undefined,
         assignedToUserId: body.staffTriage?.assignedToUserId,
         contactIds: body.staffTriage?.contactIds,
+        privateNoteAdded: Boolean(body.staffTriage?.privateNote),
+        privateNoteCount: staffTriageDetail?.privateNoteCount,
+        followUpChannel: followUp?.channel,
+        followUpConsentStatus: followUp?.consentStatus,
+        followUpDueAt: followUp?.dueAt,
       },
     });
 
@@ -314,12 +445,7 @@ export function registerInboundEmailRoutes(
         status: updated.status,
         labels: updated.labels,
         receivedAt: updated.receivedAt,
-        staffTriage:
-          typeof updated.metadata.staffTriage === "object" &&
-          updated.metadata.staffTriage !== null &&
-          !Array.isArray(updated.metadata.staffTriage)
-            ? updated.metadata.staffTriage
-            : undefined,
+        staffTriage: staffTriageDetail,
       },
     };
   });

@@ -10,6 +10,7 @@ import {
   buildJurisdictionalTrustReport,
   ledgerControlsDiagnostics,
   ledgerReconciliationReviewSummary,
+  previewLedgerStatementImport,
 } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
@@ -78,6 +79,21 @@ const ledgerReconciliationBodySchema = z.object({
     .min(1),
   varianceExplanation: z.string().min(1).optional(),
   evidence: z.record(z.string(), z.unknown()).default({}),
+});
+
+const ledgerStatementImportPreviewBodySchema = z.object({
+  accountId: z.string().min(1),
+  statementRows: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        postedAt: z.string().datetime(),
+        description: z.string().min(1),
+        amountCents: z.number().int(),
+        reference: z.string().min(1).optional(),
+      }),
+    )
+    .min(1),
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
@@ -304,6 +320,25 @@ export function registerLedgerRoutes(
       },
     });
     return created;
+  });
+
+  server.post("/api/ledger/reconciliations/preview", async (request) => {
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "approve",
+    });
+    const body = parseRequestPart(ledgerStatementImportPreviewBodySchema, request.body, "body");
+    const ledger = await repository.getLedger(request.auth.firmId);
+    const account = ledger.accounts.find((candidate) => candidate.id === body.accountId);
+    if (!account || account.type !== "trust_asset") {
+      throw new Error("Statement import preview requires an existing trust asset account");
+    }
+
+    return previewLedgerStatementImport({
+      accountId: body.accountId,
+      statementRows: body.statementRows,
+      ledgerEntries: ledger.entries,
+    });
   });
 
   server.post("/api/ledger/reconciliations", async (request) => {

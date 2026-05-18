@@ -96,7 +96,9 @@ the PR, issue, or release notes when settings change.
   next branch.
 - For release maintenance, collect changed scope, the `artifacts/release-local/<timestamp>/`
   artifact from `pnpm release:local`, migration notes, deployment notes, and any known operational
-  caveats before drafting notes. Keep the artifact local unless the user explicitly asks to publish
-  it, because command logs are validation evidence rather than a public release note.
+  caveats before drafting notes. The local artifact includes command logs, dependency-license JSON,
+  SBOM output, migration replay status, and an artifact-secret scan result. Keep the artifact local
+  unless the user explicitly asks to publish it, because command logs are validation evidence rather
+  than a public release note.
 - `pnpm release:evidence` may also write `.tmp/open-practice-release/release-evidence.json` for a
   compact local inventory when a full release proof is not needed.

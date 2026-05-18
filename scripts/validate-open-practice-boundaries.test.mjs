@@ -6,6 +6,7 @@ import {
   ROUTE_REGISTRARS,
   collectForbiddenRouteFailures,
   collectRegistrarTestFailures,
+  collectRouteAuthorizationManifestFailures,
   collectUntrackedRegistrarFailures,
   evaluateBoundaryPolicy,
 } from "./validate-open-practice-boundaries.mjs";
@@ -40,6 +41,7 @@ describe("validate-open-practice-boundaries contract", () => {
         throw new Error(`unexpected read: ${path}`);
       },
       pathExists: () => true,
+      validateRouteAuthorizationManifest: false,
     });
 
     assert.deepEqual(failures, []);
@@ -55,6 +57,7 @@ describe("validate-open-practice-boundaries contract", () => {
         throw new Error(`unexpected read: ${path}`);
       },
       pathExists: (path) => path !== "apps/api/src/routes/tasks.ts",
+      validateRouteAuthorizationManifest: false,
     });
 
     assert.ok(
@@ -105,6 +108,99 @@ describe("validate-open-practice-boundaries contract", () => {
     assert.ok(
       failures.includes(
         "apps/api/src/server.ts still contains task route literal /api/tasks/; keep task endpoints in their module-owned route registrar.",
+      ),
+    );
+  });
+
+  it("requires route authorization manifest coverage and valid auth declarations", () => {
+    const failures = collectRouteAuthorizationManifestFailures({
+      actualRoutes: [
+        { method: "GET", path: "/api/shares", registrar: "registerShareRoutes" },
+        { method: "GET", path: "/api/setup/status", registrar: "registerSetupRoutes" },
+        { method: "GET", path: "/api/portal/shares/:token", registrar: "registerShareRoutes" },
+        {
+          method: "POST",
+          path: "/api/documents/:id/upload-complete",
+          registrar: "registerDocumentRoutes",
+        },
+      ],
+      manifest: [
+        {
+          method: "GET",
+          path: "/api/setup/status",
+          registrar: "registerSetupRoutes",
+          testFile: "apps/api/src/server.test.ts",
+          auth: { kind: "authenticated", resource: "firm", action: "read" },
+        },
+        {
+          method: "GET",
+          path: "/api/portal/shares/:token",
+          registrar: "registerShareRoutes",
+          testFile: "apps/api/src/routes/shares.test.ts",
+          auth: { kind: "token", tokenScope: "share:mutation" },
+        },
+        {
+          method: "POST",
+          path: "/api/documents/:id/upload-complete",
+          registrar: "registerDocumentRoutes",
+          testFile: "apps/api/src/routes/documents.test.ts",
+          auth: { kind: "authenticated", resource: "document", action: "update" },
+        },
+        {
+          method: "GET",
+          path: "/api/ghost",
+          registrar: "registerGhostRoutes",
+          testFile: "apps/api/src/routes/ghost.test.ts",
+          auth: { kind: "authenticated", resource: "ghost", action: "read" },
+        },
+      ],
+      pathExists: (path) => path !== "apps/api/src/routes/ghost.test.ts",
+      isPublicRoute: (method, path) =>
+        (method === "GET" && path === "/api/setup/status") ||
+        (method === "GET" && path === "/api/portal/shares/sample"),
+    });
+
+    assert.ok(
+      failures.includes(
+        "GET /api/shares from registerShareRoutes is missing from route authorization manifest.",
+      ),
+    );
+    assert.ok(
+      failures.includes(
+        "GET /api/setup/status public-route mismatch: auth helper says public but manifest says authenticated.",
+      ),
+    );
+    assert.ok(
+      failures.includes(
+        "GET /api/portal/shares/:token portal route must use publicTokenPolicyOptions.",
+      ),
+    );
+    assert.ok(
+      failures.includes(
+        "GET /api/portal/shares/:token tokenScope share:mutation does not match publicTokenPolicyOptions undefined.",
+      ) === false,
+    );
+    assert.ok(
+      failures.includes(
+        "POST /api/documents/:id/upload-complete manifest resource document must declare matterScope.",
+      ),
+    );
+    assert.ok(
+      failures.includes(
+        "GET /api/ghost manifest references unknown registrar registerGhostRoutes.",
+      ),
+    );
+    assert.ok(
+      failures.includes(
+        "GET /api/ghost manifest test file must exist: apps/api/src/routes/ghost.test.ts.",
+      ),
+    );
+    assert.ok(
+      failures.includes("GET /api/ghost manifest resource ghost is not a valid ResourceKind."),
+    );
+    assert.ok(
+      failures.includes(
+        "GET /api/ghost in route authorization manifest is not registered by API route files.",
       ),
     );
   });

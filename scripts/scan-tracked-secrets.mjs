@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const MAX_TEXT_FILE_BYTES = 5 * 1024 * 1024;
+const SKIPPED_DIRECTORIES = new Set([".git", "node_modules", ".next", ".turbo", "dist"]);
 
-const patterns = [
+export const secretPatterns = [
   {
     name: "private key",
     regex: /-----BEGIN (?:(?:RSA|OPENSSH|EC|DSA) )?PRIVATE KEY-----/g,
@@ -54,15 +57,8 @@ function lineAndColumn(text, index) {
   };
 }
 
-const findings = [];
-
-for (const file of trackedFiles()) {
-  if (!existsSync(file)) continue;
-
-  const buffer = readFileSync(file);
-  if (buffer.length > MAX_TEXT_FILE_BYTES || isBinary(buffer)) continue;
-
-  const text = buffer.toString("utf8");
+export function scanTextForSecrets(file, text, patterns = secretPatterns) {
+  const findings = [];
   for (const pattern of patterns) {
     pattern.regex.lastIndex = 0;
     for (const match of text.matchAll(pattern.regex)) {
@@ -75,15 +71,86 @@ for (const file of trackedFiles()) {
       });
     }
   }
+  return findings;
 }
 
-if (findings.length > 0) {
-  console.error("Potential tracked secrets found:");
-  for (const finding of findings) {
-    console.error(`- ${finding.file}:${finding.line}:${finding.column} ${finding.type}`);
+function scanFile(file) {
+  if (!existsSync(file)) return [];
+  const buffer = readFileSync(file);
+  if (buffer.length > MAX_TEXT_FILE_BYTES || isBinary(buffer)) return [];
+  return scanTextForSecrets(file, buffer.toString("utf8"));
+}
+
+function collectFilesFromPath(inputPath) {
+  if (!existsSync(inputPath)) return [];
+  const stat = statSync(inputPath);
+  if (stat.isFile()) return [inputPath];
+  if (!stat.isDirectory()) return [];
+
+  const files = [];
+  for (const entry of readdirSync(inputPath)) {
+    if (SKIPPED_DIRECTORIES.has(entry)) continue;
+    files.push(...collectFilesFromPath(path.join(inputPath, entry)));
   }
-  console.error("Remove the secret from tracked content and rotate it before publishing.");
-  process.exit(1);
+  return files;
 }
 
-console.log("No high-confidence tracked secrets found.");
+export function scanSecretPaths(paths) {
+  return paths.flatMap((inputPath) =>
+    collectFilesFromPath(inputPath).flatMap((file) => scanFile(file)),
+  );
+}
+
+function parseArgs(rawArgs = process.argv.slice(2)) {
+  const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
+  const explicitPaths = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--path") {
+      const explicitPath = args[index + 1];
+      index += 1;
+      if (!explicitPath || explicitPath.startsWith("--")) {
+        throw new Error("--path requires a file or directory.");
+      }
+      explicitPaths.push(explicitPath);
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+
+  return { explicitPaths };
+}
+
+export function runSecretScan(rawArgs = process.argv.slice(2)) {
+  const { explicitPaths } = parseArgs(rawArgs);
+  const files = explicitPaths.length > 0 ? explicitPaths : trackedFiles();
+  const findings =
+    explicitPaths.length > 0 ? scanSecretPaths(files) : files.flatMap((file) => scanFile(file));
+
+  if (findings.length > 0) {
+    console.error("Potential tracked secrets found:");
+    for (const finding of findings) {
+      console.error(`- ${finding.file}:${finding.line}:${finding.column} ${finding.type}`);
+    }
+    console.error("Remove the secret from tracked content and rotate it before publishing.");
+    process.exitCode = 1;
+    return findings;
+  }
+
+  console.log(
+    explicitPaths.length > 0
+      ? "No high-confidence secrets found in requested paths."
+      : "No high-confidence tracked secrets found.",
+  );
+  return findings;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  try {
+    runSecretScan();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
