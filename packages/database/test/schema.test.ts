@@ -18,6 +18,7 @@ import {
   connectorDeliveryAttempts,
   connectorOutbox,
   connectors,
+  conversationMessages,
   conversationThreads,
   documentTextExtractions,
   documentVersions,
@@ -236,6 +237,30 @@ describe("database schema hardening", () => {
       config.indexes.find(
         (index) => index.config.name === "conversation_threads_firm_matter_topic_idx",
       )?.config.unique,
+    ).toBe(true);
+  });
+
+  it("persists matter-scoped conversation message records", () => {
+    const config = getTableConfig(conversationMessages);
+    const columns = config.columns.map((column) => column.name);
+
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "thread_id",
+        "kind",
+        "body_text",
+        "authored_at",
+        "authored_by_user_id",
+        "created_by_user_id",
+        "metadata",
+      ]),
+    );
+    expect(
+      config.indexes.some(
+        (index) => index.config.name === "conversation_messages_firm_matter_thread_authored_idx",
+      ),
     ).toBe(true);
   });
 

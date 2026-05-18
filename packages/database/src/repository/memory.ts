@@ -35,6 +35,7 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDossier,
+  type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
   type DraftAssistRecord,
@@ -168,6 +169,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private legalClinicPrograms: LegalClinicProgram[];
   private legalClinicMatterProfiles: LegalClinicMatterProfile[];
   private conversationThreads: ConversationThreadRecord[] = [];
+  private conversationMessages: ConversationMessageRecord[] = [];
   private calendarEvents: CalendarEventRecord[];
   private taskDeadlines: TaskDeadlineRecord[];
   private portalGrants: PortalGrant[];
@@ -1343,6 +1345,42 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     const updated = applyConversationThreadLifecycleAction(this.conversationThreads[index]!, input);
     this.conversationThreads[index] = clone(updated);
     return clone(updated);
+  }
+
+  async listConversationMessages(
+    firmId: string,
+    options: { threadId?: string; matterId?: string } = {},
+  ): Promise<ConversationMessageRecord[]> {
+    return clone(
+      this.conversationMessages
+        .filter((message) => {
+          if (message.firmId !== firmId) return false;
+          if (options.threadId && message.threadId !== options.threadId) return false;
+          if (options.matterId && message.matterId !== options.matterId) return false;
+          return true;
+        })
+        .sort(
+          (left, right) =>
+            left.authoredAt.localeCompare(right.authoredAt) || left.id.localeCompare(right.id),
+        ),
+    );
+  }
+
+  async createConversationMessage(
+    message: ConversationMessageRecord,
+  ): Promise<ConversationMessageRecord> {
+    this.conversationMessages = [...this.conversationMessages, clone(message)];
+    const threadIndex = this.conversationThreads.findIndex(
+      (thread) => thread.firmId === message.firmId && thread.id === message.threadId,
+    );
+    if (threadIndex >= 0) {
+      this.conversationThreads[threadIndex] = {
+        ...this.conversationThreads[threadIndex]!,
+        updatedAt: message.authoredAt,
+        updatedByUserId: message.createdByUserId,
+      };
+    }
+    return clone(message);
   }
 
   async listLegalClinicPrograms(

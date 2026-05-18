@@ -23,6 +23,7 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDossier,
+  type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
   type DraftAssistRecord,
@@ -565,6 +566,11 @@ export interface OpenPracticeRepository {
     occurredAt: string;
     actorUserId: string;
   }): Promise<ConversationThreadRecord | undefined>;
+  listConversationMessages(
+    firmId: string,
+    options: { threadId?: string; matterId?: string },
+  ): Promise<ConversationMessageRecord[]>;
+  createConversationMessage(message: ConversationMessageRecord): Promise<ConversationMessageRecord>;
   listLegalClinicPrograms(
     firmId: string,
     options?: { status?: LegalClinicProgram["status"] },

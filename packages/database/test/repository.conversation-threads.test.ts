@@ -93,4 +93,59 @@ describe("repository conversation threads", () => {
       }),
     ).rejects.toThrow("CONVERSATION_THREAD_REVOKED");
   });
+
+  it("stores message records under matter-scoped conversation threads", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await repository.createConversationThread({
+      id: "conversation-thread-message",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      topic: "Synthetic message records",
+      status: "open",
+      exportState: "not_requested",
+      notificationBoundary: "disabled",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+      metadata: {},
+    });
+
+    await repository.createConversationMessage({
+      id: "conversation-message-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      threadId: "conversation-thread-message",
+      kind: "internal_note",
+      bodyText: "Synthetic staff-visible message body.",
+      authoredAt: "2026-05-01T12:00:00.000Z",
+      authoredByUserId: "user-licensee",
+      createdAt: "2026-05-01T12:00:01.000Z",
+      createdByUserId: "user-licensee",
+      metadata: { privateRoutingNote: "not for inbox summaries" },
+    });
+
+    await expect(
+      repository.listConversationMessages("firm-west-legal", {
+        threadId: "conversation-thread-message",
+      }),
+    ).resolves.toMatchObject([
+      {
+        id: "conversation-message-001",
+        matterId: "matter-001",
+        threadId: "conversation-thread-message",
+        bodyText: "Synthetic staff-visible message body.",
+      },
+    ]);
+    await expect(
+      repository.listConversationMessages("firm-west-legal", { matterId: "matter-002" }),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.getConversationThread("firm-west-legal", "conversation-thread-message"),
+    ).resolves.toMatchObject({
+      updatedAt: "2026-05-01T12:00:00.000Z",
+      updatedByUserId: "user-licensee",
+    });
+  });
 });

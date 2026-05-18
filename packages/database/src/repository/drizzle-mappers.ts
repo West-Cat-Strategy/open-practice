@@ -25,6 +25,7 @@ import {
   type ConnectorOutboxRecord,
   type ConnectorRecord,
   type Contact,
+  type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
   type DraftAssistRecord,
@@ -719,6 +720,24 @@ export function mapConversationThreadRow(
     updatedAt: row.updatedAt.toISOString(),
     createdByUserId: row.createdByUserId,
     updatedByUserId: row.updatedByUserId,
+    metadata: row.metadata,
+  };
+}
+
+export function mapConversationMessageRow(
+  row: typeof schema.conversationMessages.$inferSelect,
+): ConversationMessageRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    threadId: row.threadId,
+    kind: row.kind,
+    bodyText: row.bodyText,
+    authoredAt: row.authoredAt.toISOString(),
+    authoredByUserId: row.authoredByUserId ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    createdByUserId: row.createdByUserId,
     metadata: row.metadata,
   };
 }

@@ -253,6 +253,22 @@ export interface ConversationThreadRecord {
   metadata: Record<string, unknown>;
 }
 
+export type ConversationMessageRecordKind = "internal_note" | "client_message" | "imported_email";
+
+export interface ConversationMessageRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  threadId: string;
+  kind: ConversationMessageRecordKind;
+  bodyText: string;
+  authoredAt: string;
+  authoredByUserId?: string;
+  createdAt: string;
+  createdByUserId: string;
+  metadata: Record<string, unknown>;
+}
+
 export type CalendarEventStatus = "confirmed" | "tentative" | "cancelled";
 export type CalendarAttendeeRole = "required" | "optional";
 export type CalendarAttendeeResponseStatus = "needs_action" | "accepted" | "tentative" | "declined";

@@ -159,7 +159,9 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/inbound-email/messages/:id/attachments/:attachmentId/promote-document` | Explicitly promotes one matter-scoped inbound attachment to a verified document record and optionally queues OCR.                                                                                                                                                                                  |
 | `GET /api/conversation-threads?matterId=`                                         | Lists matter-scoped provider-neutral conversation topic records with retention/export/revocation boundary fields and no message bodies.                                                                                                                                                            |
 | `GET /api/conversation-threads/:id`                                               | Reads one authorized conversation topic record after resolving its matter scope.                                                                                                                                                                                                                   |
-| `POST /api/conversation-threads`                                                  | Creates one authorized matter-scoped conversation topic record and records redacted boundary metadata; realtime chat, messages, and notifications remain deferred.                                                                                                                                 |
+| `GET /api/conversation-threads/:id/messages`                                      | Lists authorized matter-scoped message records for one conversation topic; this is persisted record access, not realtime chat or delivery.                                                                                                                                                         |
+| `POST /api/conversation-threads`                                                  | Creates one authorized matter-scoped conversation topic record and records redacted boundary metadata; realtime chat, delivery, and notifications remain deferred.                                                                                                                                 |
+| `POST /api/conversation-threads/:id/messages`                                     | Creates one authorized message record on an open matter-scoped conversation topic and records redacted audit metadata without queueing delivery, notifications, or exports.                                                                                                                        |
 | `PATCH /api/conversation-threads/:id/lifecycle`                                   | Applies a constrained matter-scoped thread lifecycle action for close, reopen, access revocation, or export request without accepting message bodies or producing export artifacts.                                                                                                                |
 | `GET /api/document-processing/status`                                             | OCR-only actionable document-processing status with reserved/deferred AI triage, transcription, and media queue metadata plus redacted job summaries.                                                                                                                                              |
 | `GET /api/document-processing/workbench?matterId=`                                | Matter-scoped document processing workbench with sanitized document states, review-queue counts, queue eligibility, provider/worker status, redacted latest job/extraction summaries, and reviewer-only non-mutating suggestion cues.                                                              |
@@ -365,14 +367,18 @@ against out-of-order non-terminal events. Embedded signature events capture sign
 actor ID, IP, user-agent, timestamps, and caller-provided evidence. Legacy `docuseal` requests
 remain historical records and are rejected by embedded event routes.
 
-Conversation threads are non-real-time matter-scoped topic records. The current slice stores topic,
+Conversation threads are non-real-time matter-scoped topic records. The topic slice stores topic,
 status, retention boundary, export state, access-revocation timestamp, notification boundary,
 creator/updater IDs, timestamps, and server-owned operational metadata behind `conversation_thread`
-authorization. Create/list/read/lifecycle routes never accept or return message bodies, connector
-delivery attempts, webhook payloads, raw notification content, or public tokens. Lifecycle updates
-are limited to close, reopen, access revocation, and export-request state; export request marks the
-thread as requested only and does not create an export artifact. Audit events include only thread
-ID, matter ID, status, retention/export/notification boundary state, and access-revoked state.
+authorization. Message records are additive child records under an authorized open thread with kind,
+body text, author/user IDs, authored/created timestamps, and server-owned metadata. Message list and
+create routes do not queue delivery, notifications, realtime events, webhook payloads, public
+tokens, or export artifacts. Message reads are blocked after access revocation, and new message
+creation is blocked after the thread retention boundary has expired. Lifecycle updates are limited
+to close, reopen, access revocation, and export-request state; export request marks the thread as
+requested only and does not create an export artifact. Audit events include only thread/message IDs,
+matter ID, status/boundary state, message kind, body length, and author-presence booleans; message
+bodies are not copied into audit metadata.
 
 Email preview is render-only. `POST /api/email/previews` requires matter-scoped email create access
 and returns normalized template key, recipients, subject, sanitized/truncated body preview,
@@ -546,7 +552,8 @@ notes, or privileged document content.
 
 The communications inbox is a matter-view aggregate, not a new navigation route. It combines
 matter-scoped inbound email summaries, redacted outbound delivery history, conversation topic
-summaries, contact dossier cues without notes, and channel state. It does not expose email bodies,
+summaries with message counts/latest-message timestamps, contact dossier cues without notes, and
+channel state. It does not expose email bodies,
 parsed text, raw storage keys, checksums, provider IDs/tokens, contact notes, conversation messages,
 composers, realtime chat, retry controls, or new provider setup. Triage updates stay on existing
 inbound email rows and accept only status, labels, matter scope, and constrained

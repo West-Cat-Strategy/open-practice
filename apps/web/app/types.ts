@@ -532,6 +532,8 @@ export interface CommunicationsInboxConversation {
   retentionUntil?: string;
   accessRevokedAt?: string;
   updatedAt: string;
+  messageCount?: number;
+  latestMessageAt?: string;
 }
 
 export interface CommunicationsInboxContactCue {
