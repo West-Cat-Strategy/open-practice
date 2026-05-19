@@ -36,6 +36,7 @@ import {
   type DraftTemplateRecord,
   type EmailEventRecord,
   type EmailOutboxRecord,
+  type EmailReceiptLinkRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type FirmSettings,
@@ -606,6 +607,40 @@ export function emailOutboxInsert(
     failedAt: record.failedAt ? new Date(record.failedAt) : null,
     lastAttemptAt: record.lastAttemptAt ? new Date(record.lastAttemptAt) : null,
     terminalFailureAt: record.terminalFailureAt ? new Date(record.terminalFailureAt) : null,
+  };
+}
+
+export function mapEmailReceiptLinkRow(
+  row: typeof schema.emailReceiptLinks.$inferSelect,
+): EmailReceiptLinkRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    emailId: row.emailId,
+    tokenHash: row.tokenHash,
+    purpose: row.purpose,
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: dateToIso(row.expiresAt),
+    revokedAt: dateToIso(row.revokedAt),
+    firstRecordedAt: dateToIso(row.firstRecordedAt),
+    lastRecordedAt: dateToIso(row.lastRecordedAt),
+    recordCount: row.recordCount,
+    metadata: row.metadata,
+  };
+}
+
+export function emailReceiptLinkInsert(
+  record: EmailReceiptLinkRecord,
+): typeof schema.emailReceiptLinks.$inferInsert {
+  return {
+    ...record,
+    createdAt: new Date(record.createdAt),
+    expiresAt: record.expiresAt ? new Date(record.expiresAt) : null,
+    revokedAt: record.revokedAt ? new Date(record.revokedAt) : null,
+    firstRecordedAt: record.firstRecordedAt ? new Date(record.firstRecordedAt) : null,
+    lastRecordedAt: record.lastRecordedAt ? new Date(record.lastRecordedAt) : null,
   };
 }
 

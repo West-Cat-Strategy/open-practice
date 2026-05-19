@@ -26,6 +26,7 @@ import type {
   IntakeResolutionSnapshot,
   IntakeVariableProposal,
   ConversationMessageRecord,
+  EmailReceiptLinkRecord,
   LegalClinicMatterProfile,
   LegalClinicProgram,
   LedgerReconciliationExceptionResolutionStatementRow,
@@ -1501,6 +1502,54 @@ export const emailOutbox = pgTable(
       table.firmId,
       table.matterId,
       table.queuedAt,
+    ),
+  }),
+);
+
+export const emailReceiptLinks = pgTable(
+  "email_receipt_links",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    emailId: text("email_id")
+      .notNull()
+      .references(() => emailOutbox.id),
+    tokenHash: text("token_hash").notNull(),
+    purpose: text("purpose").$type<EmailReceiptLinkRecord["purpose"]>().notNull(),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    firstRecordedAt: timestamp("first_recorded_at", { withTimezone: true }),
+    lastRecordedAt: timestamp("last_recorded_at", { withTimezone: true }),
+    recordCount: integer("record_count").notNull().default(0),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    tokenHash: uniqueIndex("email_receipt_links_token_hash_idx").on(table.tokenHash),
+    emailPurpose: index("email_receipt_links_email_purpose_idx").on(
+      table.firmId,
+      table.emailId,
+      table.purpose,
+    ),
+    matterExpiry: index("email_receipt_links_matter_expiry_idx").on(
+      table.matterId,
+      table.expiresAt,
+    ),
+    purposeValue: check(
+      "email_receipt_links_purpose_value",
+      sql`${table.purpose} in ('delivery_receipt', 'read_receipt', 'client_acknowledgement')`,
+    ),
+    nonNegativeRecordCount: check(
+      "email_receipt_links_non_negative_record_count",
+      sql`${table.recordCount} >= 0`,
     ),
   }),
 );

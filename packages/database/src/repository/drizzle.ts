@@ -52,6 +52,7 @@ import {
   type DraftTemplateRecord,
   type EmailEventRecord,
   type EmailOutboxRecord,
+  type EmailReceiptLinkRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type FirmSettings,
@@ -147,6 +148,7 @@ import {
   connectorOutboxInsert,
   emailEventInsert,
   emailOutboxInsert,
+  emailReceiptLinkInsert,
   externalUploadLinkInsert,
   intakeFormItemActionInsert,
   intakeFormLinkInsert,
@@ -181,6 +183,7 @@ import {
   mapDraftTemplateRow,
   mapEmailEventRow,
   mapEmailOutboxRow,
+  mapEmailReceiptLinkRow,
   mapExpenseEntryRow,
   mapExternalUploadLinkRow,
   mapFirmSettingsRow,
@@ -887,6 +890,62 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .orderBy(desc(schema.emailOutbox.queuedAt))
       .limit(options.limit ?? 50);
     return rows.map(mapEmailOutboxRow);
+  }
+
+  async createEmailReceiptLink(link: EmailReceiptLinkRecord): Promise<EmailReceiptLinkRecord> {
+    const [row] = await this.db
+      .insert(schema.emailReceiptLinks)
+      .values(emailReceiptLinkInsert(link))
+      .returning();
+    return mapEmailReceiptLinkRow(row);
+  }
+
+  async listEmailReceiptLinks(
+    firmId: string,
+    options: { emailId?: string; matterId?: string } = {},
+  ): Promise<EmailReceiptLinkRecord[]> {
+    const conditions = [eq(schema.emailReceiptLinks.firmId, firmId)];
+    if (options.emailId) conditions.push(eq(schema.emailReceiptLinks.emailId, options.emailId));
+    if (options.matterId) conditions.push(eq(schema.emailReceiptLinks.matterId, options.matterId));
+    const rows = await this.db
+      .select()
+      .from(schema.emailReceiptLinks)
+      .where(and(...conditions))
+      .orderBy(desc(schema.emailReceiptLinks.createdAt));
+    return rows.map(mapEmailReceiptLinkRow);
+  }
+
+  async getEmailReceiptLinkByTokenHash(
+    tokenHash: string,
+  ): Promise<EmailReceiptLinkRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.emailReceiptLinks)
+      .where(eq(schema.emailReceiptLinks.tokenHash, tokenHash));
+    return row ? mapEmailReceiptLinkRow(row) : undefined;
+  }
+
+  async recordEmailReceiptLinkAccess(input: {
+    firmId: string;
+    id: string;
+    recordedAt: string;
+  }): Promise<EmailReceiptLinkRecord | undefined> {
+    const recordedAt = new Date(input.recordedAt);
+    const [row] = await this.db
+      .update(schema.emailReceiptLinks)
+      .set({
+        firstRecordedAt: sql`coalesce(${schema.emailReceiptLinks.firstRecordedAt}, ${recordedAt})`,
+        lastRecordedAt: recordedAt,
+        recordCount: sql`${schema.emailReceiptLinks.recordCount} + 1`,
+      })
+      .where(
+        and(
+          eq(schema.emailReceiptLinks.firmId, input.firmId),
+          eq(schema.emailReceiptLinks.id, input.id),
+        ),
+      )
+      .returning();
+    return row ? mapEmailReceiptLinkRow(row) : undefined;
   }
 
   async recordEmailDeliveryResult(input: {

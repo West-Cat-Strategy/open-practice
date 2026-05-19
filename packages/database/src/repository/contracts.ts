@@ -36,6 +36,7 @@ import {
   type DraftTemplateRecord,
   type EmailEventRecord,
   type EmailOutboxRecord,
+  type EmailReceiptLinkRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type Firm,
@@ -468,6 +469,17 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { matterId?: string; limit?: number },
   ): Promise<EmailOutboxRecord[]>;
+  createEmailReceiptLink(link: EmailReceiptLinkRecord): Promise<EmailReceiptLinkRecord>;
+  listEmailReceiptLinks(
+    firmId: string,
+    options?: { emailId?: string; matterId?: string },
+  ): Promise<EmailReceiptLinkRecord[]>;
+  getEmailReceiptLinkByTokenHash(tokenHash: string): Promise<EmailReceiptLinkRecord | undefined>;
+  recordEmailReceiptLinkAccess(input: {
+    firmId: string;
+    id: string;
+    recordedAt: string;
+  }): Promise<EmailReceiptLinkRecord | undefined>;
   recordEmailDeliveryResult(input: {
     firmId: string;
     emailId: string;

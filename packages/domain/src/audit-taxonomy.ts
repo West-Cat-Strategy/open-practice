@@ -714,6 +714,15 @@ export const auditEventTaxonomyDefinitions = [
     actorMetadataKeys: ["actorId", "actorType"],
   }),
   define({
+    action: "email_receipt_link.created",
+    category: "communications",
+    resourceType: "email_receipt_link",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["emailId", "receiptLinkId", "purpose", "expiresAt"],
+    actorMetadataKeys: ["actorId", "actorType"],
+  }),
+  define({
     action: "connector.created",
     category: "operations",
     resourceType: "connector",

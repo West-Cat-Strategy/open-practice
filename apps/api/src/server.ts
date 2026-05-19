@@ -415,6 +415,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerEmailRoutes(server, {
     repository: options.repository,
     emailJobQueue: options.emailJobQueue,
+    jwtSecret: options.jwtSecret,
   });
   registerInboundEmailRoutes(server, {
     repository: options.repository,

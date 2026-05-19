@@ -50,6 +50,7 @@ import {
   type DraftTemplateRecord,
   type EmailEventRecord,
   type EmailOutboxRecord,
+  type EmailReceiptLinkRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type Firm,
@@ -223,6 +224,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private jobLifecycleRecords: JobLifecycleRecord[] = [];
   private emailOutbox: EmailOutboxRecord[] = [];
   private emailEvents: EmailEventRecord[] = [];
+  private emailReceiptLinks: EmailReceiptLinkRecord[] = [];
   private authAccounts: AuthAccountRecord[] = [];
   private authSessions: AuthSessionRecord[] = [];
   private calendarCredentials: CalendarCredentialRecord[] = [];
@@ -729,6 +731,54 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         .sort((left, right) => right.queuedAt.localeCompare(left.queuedAt))
         .slice(0, limit),
     );
+  }
+
+  async createEmailReceiptLink(link: EmailReceiptLinkRecord): Promise<EmailReceiptLinkRecord> {
+    if (this.emailReceiptLinks.some((candidate) => candidate.tokenHash === link.tokenHash)) {
+      throw new Error("Email receipt token hash already exists");
+    }
+    this.emailReceiptLinks.push(clone(link));
+    return clone(link);
+  }
+
+  async listEmailReceiptLinks(
+    firmId: string,
+    options: { emailId?: string; matterId?: string } = {},
+  ): Promise<EmailReceiptLinkRecord[]> {
+    return clone(
+      this.emailReceiptLinks.filter(
+        (link) =>
+          link.firmId === firmId &&
+          (!options.emailId || link.emailId === options.emailId) &&
+          (!options.matterId || link.matterId === options.matterId),
+      ),
+    );
+  }
+
+  async getEmailReceiptLinkByTokenHash(
+    tokenHash: string,
+  ): Promise<EmailReceiptLinkRecord | undefined> {
+    return clone(this.emailReceiptLinks.find((link) => link.tokenHash === tokenHash));
+  }
+
+  async recordEmailReceiptLinkAccess(input: {
+    firmId: string;
+    id: string;
+    recordedAt: string;
+  }): Promise<EmailReceiptLinkRecord | undefined> {
+    const index = this.emailReceiptLinks.findIndex(
+      (link) => link.firmId === input.firmId && link.id === input.id,
+    );
+    if (index === -1) return undefined;
+    const existing = this.emailReceiptLinks[index]!;
+    const updated: EmailReceiptLinkRecord = {
+      ...existing,
+      firstRecordedAt: existing.firstRecordedAt ?? input.recordedAt,
+      lastRecordedAt: input.recordedAt,
+      recordCount: existing.recordCount + 1,
+    };
+    this.emailReceiptLinks[index] = clone(updated);
+    return clone(updated);
   }
 
   async recordEmailDeliveryResult(input: {

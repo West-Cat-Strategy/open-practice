@@ -31,6 +31,7 @@ import {
   draftTemplates,
   emailEvents,
   emailOutbox,
+  emailReceiptLinks,
   externalUploadLinks,
   firmSettings,
   inboundEmailAddresses,
@@ -636,6 +637,17 @@ describe("database schema hardening", () => {
         "source",
         "error_message",
         "metadata",
+      ]),
+    );
+    expect(getTableConfig(emailReceiptLinks).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "email_id",
+        "token_hash",
+        "purpose",
+        "expires_at",
+        "first_recorded_at",
+        "last_recorded_at",
+        "record_count",
       ]),
     );
     expect(getTableConfig(inboundEmailAddresses).columns.map((column) => column.name)).toEqual(
