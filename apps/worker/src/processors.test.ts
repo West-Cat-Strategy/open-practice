@@ -957,6 +957,155 @@ describe("worker processors", () => {
     expect(job.metadata).not.toHaveProperty("rawBody");
   });
 
+  it("completes billing and trust report export jobs with count-only metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createTimeEntry({
+      id: "time-worker-billing-export",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      userId: "user-admin",
+      performedAt: "2026-05-18T10:00:00.000Z",
+      minutes: 30,
+      rateCents: 18000,
+      narrative: "Synthetic private worker billing export narrative",
+      billable: true,
+      billingStatus: "approved",
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-billing-export-worker-test",
+      firmId: "firm-west-legal",
+      queueName: "reports",
+      jobName: "billing_export",
+      status: "queued",
+      targetResourceType: "billing_export",
+      targetResourceId: "billing-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-05-18T10:00:00.000Z",
+      metadata: {
+        exportKind: "billing",
+        matterId: "matter-001",
+        requestedByUserId: "user-admin",
+        rawBody: "Synthetic export body must not survive job metadata",
+      },
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-trust-export-worker-test",
+      firmId: "firm-west-legal",
+      queueName: "reports",
+      jobName: "trust_export",
+      status: "queued",
+      targetResourceType: "trust_export",
+      targetResourceId: "trust-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-05-18T10:01:00.000Z",
+      metadata: {
+        exportKind: "trust",
+        matterId: "matter-001",
+        requestedByUserId: "user-admin",
+        ledgerEntries: [{ memo: "Synthetic private ledger memo" }],
+      },
+    });
+
+    const shared = {
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    };
+    const billing = await processOpenPracticeJob({
+      queueName: "reports",
+      jobName: "billing_export",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "billing_export",
+        resourceId: "billing-export-worker-test",
+        metadata: {
+          exportKind: "billing",
+          matterId: "matter-001",
+          requestedByUserId: "user-admin",
+          rawBody: "Synthetic export body must not survive job metadata",
+        },
+      },
+      jobLifecycleId: "job-billing-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      ...shared,
+    });
+    const trust = await processOpenPracticeJob({
+      queueName: "reports",
+      jobName: "trust_export",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "trust_export",
+        resourceId: "trust-export-worker-test",
+        metadata: {
+          exportKind: "trust",
+          matterId: "matter-001",
+          requestedByUserId: "user-admin",
+          ledgerEntries: [{ memo: "Synthetic private ledger memo" }],
+        },
+      },
+      jobLifecycleId: "job-trust-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      ...shared,
+    });
+
+    expect(billing).toMatchObject({
+      status: "completed",
+      metadata: {
+        resourceType: "billing_export",
+        exportKind: "billing",
+        matterId: "matter-001",
+        recordCount: expect.any(Number),
+        timeEntryCount: expect.any(Number),
+      },
+    });
+    expect(trust).toMatchObject({
+      status: "completed",
+      metadata: {
+        resourceType: "trust_export",
+        exportKind: "trust",
+        matterId: "matter-001",
+        recordCount: expect.any(Number),
+        ledgerEntryCount: expect.any(Number),
+      },
+    });
+    const jobs = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    expect(jobs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "job-billing-export-worker-test",
+          status: "completed",
+          metadata: expect.objectContaining({
+            exportKind: "billing",
+            recordCount: expect.any(Number),
+            timeEntryCount: expect.any(Number),
+          }),
+        }),
+        expect.objectContaining({
+          id: "job-trust-export-worker-test",
+          status: "completed",
+          metadata: expect.objectContaining({
+            exportKind: "trust",
+            ledgerEntryCount: expect.any(Number),
+            trustTransferRequestCount: expect.any(Number),
+          }),
+        }),
+      ]),
+    );
+    const serialized = JSON.stringify({ billing, trust, jobs });
+    expect(serialized).not.toContain("Synthetic private worker billing export narrative");
+    expect(serialized).not.toContain("Synthetic export body");
+    expect(serialized).not.toContain("Synthetic private ledger memo");
+    expect(serialized).not.toContain("Retainer received into pooled trust");
+  });
+
   it("runs OCR jobs from document storage and completes lifecycle records", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const requestedObjects: string[] = [];

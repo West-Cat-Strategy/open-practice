@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  summarizeBillingTrustExportCounts,
   summarizeTrustTransferLedgerLink,
   trustTransferRequestAvailableBalanceCents,
 } from "./billing.js";
@@ -31,6 +32,79 @@ describe("trust transfer request billing helpers", () => {
         trustBalances,
       }),
     ).toBe(0);
+  });
+
+  it("summarizes async billing and trust export counts without inspecting private fields", () => {
+    expect(
+      summarizeBillingTrustExportCounts({
+        exportKind: "billing",
+        billing: {
+          timeEntries: [
+            {
+              id: "time-export-count",
+              firmId: "firm-west-legal",
+              matterId: "matter-001",
+              userId: "user-admin",
+              performedAt: "2026-05-18T10:00:00.000Z",
+              minutes: 30,
+              rateCents: 18000,
+              narrative: "Synthetic private billing export narrative",
+              billable: true,
+              billingStatus: "approved",
+            },
+          ],
+          expenseEntries: [],
+          invoices: [],
+          payments: [],
+        },
+      }),
+    ).toEqual({
+      recordCount: 1,
+      timeEntryCount: 1,
+      expenseEntryCount: 0,
+      invoiceCount: 0,
+      paymentCount: 0,
+    });
+
+    expect(
+      summarizeBillingTrustExportCounts({
+        exportKind: "trust",
+        trust: {
+          accounts: [
+            {
+              id: "acct-trust-bank",
+              firmId: "firm-west-legal",
+              name: "Trust",
+              type: "trust_asset",
+            },
+          ],
+          entries: [
+            {
+              id: "ledger-export-count",
+              transactionId: "trust-retainer",
+              firmId: "firm-west-legal",
+              matterId: "matter-001",
+              clientId: "contact-ada",
+              accountId: "acct-trust-bank",
+              debitCents: 100,
+              creditCents: 0,
+              memo: "Synthetic private ledger export memo",
+              postedAt: "2026-05-18T10:00:00.000Z",
+            },
+          ],
+          balances: { "matter-001": 100 },
+          trustBalances: { "contact-ada:matter-001": 100 },
+          trustTransferRequests: [],
+        },
+      }),
+    ).toEqual({
+      recordCount: 4,
+      trustTransferRequestCount: 0,
+      ledgerAccountCount: 1,
+      ledgerEntryCount: 1,
+      balanceCount: 1,
+      trustBalanceCount: 1,
+    });
   });
 
   it("summarizes whether a ledger transaction matches a trust transfer request", () => {

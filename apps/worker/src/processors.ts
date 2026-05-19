@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type {
   ConnectorOutboxRecord,
+  BillingTrustExportKind,
   DocumentTextExtractionRecord,
   DraftAssistProvider,
   DraftAssistRecord,
@@ -12,6 +13,8 @@ import type {
 } from "@open-practice/domain";
 import {
   assertDraftAssistTask,
+  billingTrustExportResourceType,
+  summarizeBillingTrustExportCounts,
   buildDraftAssistAuditMetadata,
   extractTipTapPlainText,
   outboundWebhookEventAllowlist,
@@ -412,7 +415,65 @@ async function processReportJob(input: {
 }): Promise<WorkerJobResult> {
   const { data, repository } = input;
 
-  if (input.jobName !== "audit_export" || data.resourceType !== "audit_export") {
+  if (input.jobName === "audit_export" && data.resourceType === "audit_export") {
+    const audit = await repository.listAuditEvents(data.firmId);
+    return {
+      status: "completed",
+      metadata: {
+        firmId: data.firmId,
+        resourceType: "audit_export",
+        resourceId: data.resourceId,
+        reportType: "audit_log",
+        reportScope: "firm",
+        eventCount: audit.events.length,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  if (input.jobName === "billing_export" || input.jobName === "trust_export") {
+    return processBillingTrustExportJob(input);
+  }
+
+  return {
+    status: "skipped",
+    reason: "Unsupported report export job",
+    metadata: {
+      firmId: data.firmId,
+      resourceType: data.resourceType,
+      resourceId: data.resourceId,
+      reportStatus: "unsupported",
+    },
+  };
+}
+
+function billingTrustCountMetadata(
+  counts: ReturnType<typeof summarizeBillingTrustExportCounts>,
+): Record<string, number | undefined> {
+  return {
+    recordCount: counts.recordCount,
+    timeEntryCount: counts.timeEntryCount,
+    expenseEntryCount: counts.expenseEntryCount,
+    invoiceCount: counts.invoiceCount,
+    paymentCount: counts.paymentCount,
+    trustTransferRequestCount: counts.trustTransferRequestCount,
+    ledgerAccountCount: counts.ledgerAccountCount,
+    ledgerEntryCount: counts.ledgerEntryCount,
+    balanceCount: counts.balanceCount,
+    trustBalanceCount: counts.trustBalanceCount,
+  };
+}
+
+async function processBillingTrustExportJob(input: {
+  jobName: string;
+  data: WorkerJobEnvelope;
+  repository: OpenPracticeRepository;
+}): Promise<WorkerJobResult> {
+  const { data, repository } = input;
+  const exportKind: BillingTrustExportKind =
+    input.jobName === "trust_export" || data.resourceType === "trust_export" ? "trust" : "billing";
+  const expectedResourceType = billingTrustExportResourceType(exportKind);
+  if (data.resourceType !== expectedResourceType) {
     return {
       status: "skipped",
       reason: "Unsupported report export job",
@@ -425,18 +486,60 @@ async function processReportJob(input: {
     };
   }
 
-  const audit = await repository.listAuditEvents(data.firmId);
+  const matterId = metadataString(data.metadata ?? {}, "matterId");
+  const requestedByUserId = metadataString(data.metadata ?? {}, "requestedByUserId");
+  if (exportKind === "billing") {
+    const [timeEntries, expenseEntries, invoices, payments] = await Promise.all([
+      repository.listTimeEntries(data.firmId, { matterId }),
+      repository.listExpenseEntries(data.firmId, { matterId }),
+      repository.listInvoices(data.firmId, { matterId }),
+      repository.listPayments(data.firmId, { matterId }),
+    ]);
+    const counts = summarizeBillingTrustExportCounts({
+      exportKind,
+      matterId,
+      billing: { timeEntries, expenseEntries, invoices, payments },
+    });
+    return {
+      status: "completed",
+      metadata: compactMetadata({
+        firmId: data.firmId,
+        resourceType: expectedResourceType,
+        resourceId: data.resourceId,
+        exportKind,
+        matterId,
+        requestedByUserId,
+        ...billingTrustCountMetadata(counts),
+      }),
+    };
+  }
+
+  const [ledger, trustTransferRequests] = await Promise.all([
+    repository.getLedger(data.firmId, { matterId }),
+    repository.listTrustTransferRequests(data.firmId, { matterId }),
+  ]);
+  const counts = summarizeBillingTrustExportCounts({
+    exportKind,
+    matterId,
+    trust: {
+      accounts: ledger.accounts,
+      entries: ledger.entries,
+      balances: ledger.balances,
+      trustBalances: ledger.trustBalances,
+      trustTransferRequests,
+    },
+  });
   return {
     status: "completed",
-    metadata: {
+    metadata: compactMetadata({
       firmId: data.firmId,
-      resourceType: "audit_export",
+      resourceType: expectedResourceType,
       resourceId: data.resourceId,
-      reportType: "audit_log",
-      reportScope: "firm",
-      eventCount: audit.events.length,
-      generatedAt: new Date().toISOString(),
-    },
+      exportKind,
+      matterId,
+      requestedByUserId,
+      ...billingTrustCountMetadata(counts),
+    }),
   };
 }
 

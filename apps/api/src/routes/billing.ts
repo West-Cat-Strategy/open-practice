@@ -2,13 +2,18 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   assertBillingStatusTransition,
+  billingTrustExportKinds,
+  billingTrustExportResourceType,
   calculateInvoiceTotals,
   clientTrustBalanceByMatter,
   createInvoiceLineTotals,
   isBillableUnbilled,
+  summarizeBillingTrustExportCounts,
   summarizeTrustTransferLedgerLink,
   trustTransferRequestAvailableBalanceCents,
   type AccessRequest,
+  type BillingTrustExportKind,
+  type BillingTrustExportSnapshot,
 } from "@open-practice/domain";
 import type {
   ExpenseEntry,
@@ -20,6 +25,7 @@ import type {
   TrustTransferRequestRecord,
 } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
+import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
@@ -140,7 +146,21 @@ const trustTransferRequestLinkBodySchema = z.object({
   evidence: z.record(z.string(), z.unknown()).default({}),
 });
 
+const billingTrustExportRequestBodySchema = z
+  .object({
+    exportKind: z.enum(billingTrustExportKinds).default("billing"),
+    matterId: z.string().min(1).optional(),
+    idempotencyKey: z.string().min(1).max(160).optional(),
+  })
+  .strict();
+
+const billingTrustExportParamsSchema = z.object({
+  exportJobId: z.string().min(1),
+});
+
 const idParamsSchema = z.object({ id: z.string().min(1) });
+
+type BillingTrustExportCountsMetadata = Record<string, number | undefined>;
 
 function assertMatterAccess(
   context: ApiAuthContext,
@@ -152,6 +172,10 @@ function assertMatterAccess(
 
 function hasEvidence(evidence: Record<string, unknown>): boolean {
   return Object.keys(evidence).length > 0;
+}
+
+function compactMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined));
 }
 
 function assertTrustTransferInvoiceClientMatches(
@@ -176,9 +200,171 @@ function assertTrustTransferAmountWithinInvoiceBalance(
   }
 }
 
+function billingTrustExportJobId(exportKind: BillingTrustExportKind): string {
+  return `${billingTrustExportResourceType(exportKind)}-${crypto.randomUUID()}`;
+}
+
+function billingTrustExportRequestFingerprint(input: {
+  firmId: string;
+  userId: string;
+  exportKind: BillingTrustExportKind;
+  matterId?: string;
+}): string {
+  return [
+    "billing-trust-export",
+    input.firmId,
+    input.userId,
+    input.exportKind,
+    input.matterId ?? "firm",
+  ].join(":");
+}
+
+function billingTrustExportCountsMetadata(
+  counts: BillingTrustExportSnapshot["counts"],
+): BillingTrustExportCountsMetadata {
+  return {
+    recordCount: counts.recordCount,
+    timeEntryCount: counts.timeEntryCount,
+    expenseEntryCount: counts.expenseEntryCount,
+    invoiceCount: counts.invoiceCount,
+    paymentCount: counts.paymentCount,
+    trustTransferRequestCount: counts.trustTransferRequestCount,
+    ledgerAccountCount: counts.ledgerAccountCount,
+    ledgerEntryCount: counts.ledgerEntryCount,
+    balanceCount: counts.balanceCount,
+    trustBalanceCount: counts.trustBalanceCount,
+  };
+}
+
+function requireBillingTrustExportAccess(
+  context: ApiAuthContext,
+  exportKind: BillingTrustExportKind,
+  matterId: string | undefined,
+): void {
+  if (exportKind === "billing") {
+    if (!matterId) {
+      if (!hasFirmWideLedgerAccess(context.user)) {
+        throw new ApiHttpError(
+          403,
+          "BILLING_EXPORT_ACCESS_REQUIRED",
+          "Billing export access required",
+        );
+      }
+      return;
+    }
+
+    assertMatterAccess(context, { resource: "time_entry", action: "export", matterId });
+    assertMatterAccess(context, { resource: "expense_entry", action: "export", matterId });
+    return;
+  }
+
+  if (!matterId) {
+    if (!hasFirmWideLedgerAccess(context.user)) {
+      throw new ApiHttpError(
+        403,
+        "TRUST_LEDGER_EXPORT_ACCESS_REQUIRED",
+        "Trust ledger export access required",
+      );
+    }
+    return;
+  }
+
+  assertMatterAccess(context, { resource: "trust_ledger", action: "export", matterId });
+}
+
+async function buildBillingTrustExportSnapshot(input: {
+  repository: ApiRouteDependencies["repository"];
+  firmId: string;
+  exportKind: BillingTrustExportKind;
+  matterId?: string;
+}): Promise<BillingTrustExportSnapshot> {
+  if (input.exportKind === "billing") {
+    const [timeEntries, expenseEntries, invoices, payments] = await Promise.all([
+      input.repository.listTimeEntries(input.firmId, { matterId: input.matterId }),
+      input.repository.listExpenseEntries(input.firmId, { matterId: input.matterId }),
+      input.repository.listInvoices(input.firmId, { matterId: input.matterId }),
+      input.repository.listPayments(input.firmId, { matterId: input.matterId }),
+    ]);
+    const snapshot = {
+      exportKind: input.exportKind,
+      matterId: input.matterId,
+      billing: { timeEntries, expenseEntries, invoices, payments },
+    } satisfies Omit<BillingTrustExportSnapshot, "generatedAt" | "counts">;
+
+    return {
+      generatedAt: new Date().toISOString(),
+      ...snapshot,
+      counts: summarizeBillingTrustExportCounts(snapshot),
+    };
+  }
+
+  const [ledger, trustTransferRequests] = await Promise.all([
+    input.repository.getLedger(input.firmId, { matterId: input.matterId }),
+    input.repository.listTrustTransferRequests(input.firmId, { matterId: input.matterId }),
+  ]);
+  const snapshot = {
+    exportKind: input.exportKind,
+    matterId: input.matterId,
+    trust: {
+      accounts: ledger.accounts,
+      entries: ledger.entries,
+      balances: ledger.balances,
+      trustBalances: ledger.trustBalances,
+      trustTransferRequests,
+    },
+  } satisfies Omit<BillingTrustExportSnapshot, "generatedAt" | "counts">;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    ...snapshot,
+    counts: summarizeBillingTrustExportCounts(snapshot),
+  };
+}
+
+function isBillingTrustExportJob(
+  job: Awaited<ReturnType<ApiRouteDependencies["repository"]["listJobLifecycleRecords"]>>[number],
+): boolean {
+  return job.queueName === "reports" && ["billing_export", "trust_export"].includes(job.jobName);
+}
+
+function billingTrustExportKindFromJob(
+  job: Awaited<ReturnType<ApiRouteDependencies["repository"]["listJobLifecycleRecords"]>>[number],
+): BillingTrustExportKind {
+  return job.jobName === "trust_export" ? "trust" : "billing";
+}
+
+async function findBillingTrustExportJob(
+  repository: ApiRouteDependencies["repository"],
+  firmId: string,
+  jobId: string,
+) {
+  return (await repository.listJobLifecycleRecords(firmId, { queueName: "reports" })).find(
+    (record) => record.id === jobId && isBillingTrustExportJob(record),
+  );
+}
+
+function serializeBillingTrustExportRequest(
+  job: Awaited<ReturnType<ApiRouteDependencies["repository"]["listJobLifecycleRecords"]>>[number],
+) {
+  const exportKind = billingTrustExportKindFromJob(job);
+  const matterId = typeof job.metadata.matterId === "string" ? job.metadata.matterId : undefined;
+  return {
+    id: job.id,
+    jobId: job.id,
+    exportKind,
+    matterId,
+    status: job.status,
+    queuedAt: job.queuedAt,
+    finishedAt: job.finishedAt,
+    failedAt: job.failedAt,
+    pollUrl: `/api/billing/export-requests/${job.id}`,
+    downloadUrl: `/api/billing/export-requests/${job.id}/download`,
+  };
+}
+
 export function registerBillingRoutes(
   server: FastifyInstance,
-  { repository }: ApiRouteDependencies,
+  { repository, reportJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/time-entries", async (request) => {
     const query = parseRequestPart(billingEntryQuerySchema, request.query, "query");
@@ -1131,6 +1317,157 @@ export function registerBillingRoutes(
       },
     });
     return updated;
+  });
+
+  server.post("/api/billing/export-requests", async (request, reply) => {
+    const body = parseRequestPart(billingTrustExportRequestBodySchema, request.body, "body");
+    requireBillingTrustExportAccess(request.auth, body.exportKind, body.matterId);
+
+    const now = new Date().toISOString();
+    const jobId = billingTrustExportJobId(body.exportKind);
+    const resourceType = billingTrustExportResourceType(body.exportKind);
+    const queueConfigured = Boolean(reportJobQueue);
+    const snapshot = await buildBillingTrustExportSnapshot({
+      repository,
+      firmId: request.auth.firmId,
+      exportKind: body.exportKind,
+      matterId: body.matterId,
+    });
+    const countMetadata = billingTrustExportCountsMetadata(snapshot.counts);
+    const idempotencyFingerprint = billingTrustExportRequestFingerprint({
+      firmId: request.auth.firmId,
+      userId: request.auth.user.id,
+      exportKind: body.exportKind,
+      matterId: body.matterId,
+    });
+    const metadata = compactMetadata({
+      exportKind: body.exportKind,
+      matterId: body.matterId,
+      requestedByUserId: request.auth.user.id,
+      ...countMetadata,
+      enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
+    });
+    const idempotencyKey =
+      body.idempotencyKey === undefined
+        ? [
+            resourceType,
+            request.auth.user.id,
+            body.matterId ?? "firm",
+            new Date(now).toISOString().slice(0, 10),
+          ].join(":")
+        : `${body.idempotencyKey}:${idempotencyFingerprint}`;
+
+    const job = await repository.createJobLifecycleRecord({
+      id: jobId,
+      firmId: request.auth.firmId,
+      queueName: "reports",
+      jobName: resourceType,
+      bullJobId: queueConfigured ? jobId : undefined,
+      idempotencyKey,
+      status: queueConfigured ? "queued" : "completed",
+      targetResourceType: resourceType,
+      targetResourceId: jobId,
+      attemptsMade: 0,
+      maxAttempts: queueConfigured ? 2 : 1,
+      queuedAt: now,
+      finishedAt: queueConfigured ? undefined : now,
+      metadata,
+    });
+
+    if (reportJobQueue && job.id === jobId) {
+      try {
+        await reportJobQueue.add(
+          resourceType,
+          {
+            firmId: request.auth.firmId,
+            resourceType,
+            resourceId: job.id,
+            metadata: compactMetadata({
+              exportKind: body.exportKind,
+              matterId: body.matterId,
+              requestedByUserId: request.auth.user.id,
+              ...countMetadata,
+            }),
+          },
+          { jobId: job.id },
+        );
+      } catch (error) {
+        await repository.updateJobLifecycleRecord(request.auth.firmId, job.id, {
+          status: "failed",
+          failedAt: new Date().toISOString(),
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+    }
+
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: `${resourceType}.requested`,
+      resourceType,
+      resourceId: job.id,
+      metadata: compactMetadata({
+        jobId: job.id,
+        exportKind: body.exportKind,
+        matterId: body.matterId,
+        requestedByUserId: request.auth.user.id,
+        ...countMetadata,
+        enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
+      }),
+    });
+
+    reply.status(202);
+    return { exportRequest: serializeBillingTrustExportRequest(job) };
+  });
+
+  server.get("/api/billing/export-requests/:exportJobId", async (request) => {
+    const params = parseRequestPart(billingTrustExportParamsSchema, request.params, "params");
+    const job = await findBillingTrustExportJob(
+      repository,
+      request.auth.firmId,
+      params.exportJobId,
+    );
+    if (!job) {
+      throw new ApiHttpError(404, "BILLING_EXPORT_NOT_FOUND", "Billing export was not found");
+    }
+    requireBillingTrustExportAccess(
+      request.auth,
+      billingTrustExportKindFromJob(job),
+      typeof job.metadata.matterId === "string" ? job.metadata.matterId : undefined,
+    );
+
+    return { exportRequest: serializeBillingTrustExportRequest(job) };
+  });
+
+  server.get("/api/billing/export-requests/:exportJobId/download", async (request) => {
+    const params = parseRequestPart(billingTrustExportParamsSchema, request.params, "params");
+    const job = await findBillingTrustExportJob(
+      repository,
+      request.auth.firmId,
+      params.exportJobId,
+    );
+    if (!job) {
+      throw new ApiHttpError(404, "BILLING_EXPORT_NOT_FOUND", "Billing export was not found");
+    }
+    const exportKind = billingTrustExportKindFromJob(job);
+    const matterId = typeof job.metadata.matterId === "string" ? job.metadata.matterId : undefined;
+    requireBillingTrustExportAccess(request.auth, exportKind, matterId);
+
+    if (job.status === "failed" || job.status === "dead_letter") {
+      throw new ApiHttpError(409, "BILLING_EXPORT_FAILED", "Billing export did not complete");
+    }
+    if (job.status !== "completed") {
+      throw new ApiHttpError(409, "BILLING_EXPORT_NOT_READY", "Billing export is not ready yet");
+    }
+
+    return {
+      exportRequest: serializeBillingTrustExportRequest(job),
+      export: await buildBillingTrustExportSnapshot({
+        repository,
+        firmId: request.auth.firmId,
+        exportKind,
+        matterId,
+      }),
+    };
   });
 
   server.get("/api/billing/dashboard", async (request) => {

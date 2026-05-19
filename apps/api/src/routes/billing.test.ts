@@ -5,6 +5,17 @@ import { createApiServer } from "../server.js";
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
 
+function fakeReportQueue(
+  jobs: Array<{ name: string; data: unknown; jobId?: string }> = [],
+): NonNullable<CreateServerOptions["reportJobQueue"]> {
+  return {
+    async add(name, data, options) {
+      jobs.push({ name, data, jobId: options?.jobId });
+      return { id: options?.jobId ?? "report-job" };
+    },
+  };
+}
+
 function testServer(overrides: Partial<CreateServerOptions> = {}) {
   const repository = overrides.repository ?? new InMemoryOpenPracticeRepository();
   const server = createApiServer({
@@ -744,6 +755,217 @@ describe("billing routes", () => {
       id: "invoice-duplicate-source-after-void",
       status: "draft",
     });
+  });
+
+  it("creates queued async billing export requests with count-only job and audit metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const queuedReports: Array<{ name: string; data: unknown; jobId?: string }> = [];
+    const server = testServer({
+      repository,
+      reportJobQueue: fakeReportQueue(queuedReports),
+    });
+
+    const time = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-async-billing-export",
+        matterId: "matter-001",
+        minutes: 30,
+        rateCents: 18000,
+        narrative: "Synthetic private async billing export narrative",
+        billingStatus: "approved",
+      },
+    });
+    expect(time.statusCode).toBe(200);
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/billing/export-requests",
+      payload: {
+        exportKind: "billing",
+        matterId: "matter-001",
+        idempotencyKey: "billing-export-route-test",
+      },
+    });
+
+    expect(created.statusCode).toBe(202);
+    expect(created.json()).toMatchObject({
+      exportRequest: {
+        exportKind: "billing",
+        matterId: "matter-001",
+        status: "queued",
+        pollUrl: expect.stringContaining("/api/billing/export-requests/"),
+        downloadUrl: expect.stringContaining("/api/billing/export-requests/"),
+      },
+    });
+    const jobId = created.json<{ exportRequest: { jobId: string } }>().exportRequest.jobId;
+    expect(queuedReports).toEqual([
+      expect.objectContaining({
+        name: "billing_export",
+        jobId,
+        data: expect.objectContaining({
+          resourceType: "billing_export",
+          resourceId: jobId,
+          metadata: expect.objectContaining({
+            exportKind: "billing",
+            matterId: "matter-001",
+            recordCount: expect.any(Number),
+            timeEntryCount: expect.any(Number),
+          }),
+        }),
+      }),
+    ]);
+
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    expect(job).toMatchObject({
+      id: jobId,
+      jobName: "billing_export",
+      targetResourceType: "billing_export",
+      status: "queued",
+      metadata: expect.objectContaining({
+        exportKind: "billing",
+        matterId: "matter-001",
+        recordCount: expect.any(Number),
+        timeEntryCount: expect.any(Number),
+        expenseEntryCount: expect.any(Number),
+        invoiceCount: expect.any(Number),
+        paymentCount: expect.any(Number),
+        enqueueStatus: "queued_for_local_report_worker",
+      }),
+    });
+    const events = await auditEvents(repository);
+    const requested = events.find((event) => event.action === "billing_export.requested");
+    expect(requested?.metadata).toMatchObject({
+      jobId,
+      exportKind: "billing",
+      matterId: "matter-001",
+      recordCount: expect.any(Number),
+      timeEntryCount: expect.any(Number),
+    });
+    const serializedMetadata = JSON.stringify({
+      queuedReports,
+      job,
+      auditMetadata: requested?.metadata,
+    });
+    expect(serializedMetadata).not.toContain("Synthetic private async billing export narrative");
+    expect(serializedMetadata).not.toContain("Reviewed tenancy branch materials");
+    expect(serializedMetadata).not.toContain("Initial tenancy dispute invoice");
+
+    const status = await server.inject({
+      method: "GET",
+      url: `/api/billing/export-requests/${jobId}`,
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toMatchObject({ exportRequest: { jobId, status: "queued" } });
+
+    const earlyDownload = await server.inject({
+      method: "GET",
+      url: `/api/billing/export-requests/${jobId}/download`,
+    });
+    expect(earlyDownload.statusCode).toBe(409);
+    expect(earlyDownload.json()).toMatchObject({ code: "BILLING_EXPORT_NOT_READY" });
+  });
+
+  it("downloads completed async trust exports without persisting ledger detail in metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/billing/export-requests",
+      payload: {
+        exportKind: "trust",
+        matterId: "matter-001",
+        idempotencyKey: "trust-export-route-test",
+      },
+    });
+
+    expect(created.statusCode).toBe(202);
+    const jobId = created.json<{ exportRequest: { jobId: string } }>().exportRequest.jobId;
+    expect(created.json()).toMatchObject({
+      exportRequest: { jobId, exportKind: "trust", matterId: "matter-001", status: "completed" },
+    });
+
+    const downloaded = await server.inject({
+      method: "GET",
+      url: `/api/billing/export-requests/${jobId}/download`,
+    });
+    expect(downloaded.statusCode).toBe(200);
+    expect(downloaded.json()).toMatchObject({
+      exportRequest: { jobId, exportKind: "trust", status: "completed" },
+      export: {
+        exportKind: "trust",
+        matterId: "matter-001",
+        counts: {
+          trustTransferRequestCount: expect.any(Number),
+          ledgerAccountCount: expect.any(Number),
+          ledgerEntryCount: expect.any(Number),
+        },
+        trust: {
+          entries: expect.arrayContaining([
+            expect.objectContaining({ memo: "Retainer received into pooled trust" }),
+          ]),
+        },
+      },
+    });
+
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    const events = await auditEvents(repository);
+    const serializedMetadata = JSON.stringify({
+      jobMetadata: job?.metadata,
+      auditMetadata: events.find((event) => event.action === "trust_export.requested")?.metadata,
+    });
+    expect(serializedMetadata).not.toContain("Retainer received into pooled trust");
+    expect(serializedMetadata).not.toContain("Client trust liability");
+    expect(serializedMetadata).not.toContain("Apply trust funds to issued invoice");
+  });
+
+  it("denies async billing export create, status, and download to users without export access", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+
+    const deniedCreate = await server.inject({
+      method: "POST",
+      url: "/api/billing/export-requests",
+      headers: {
+        "x-open-practice-user-id": "user-staff",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: { exportKind: "billing", matterId: "matter-001" },
+    });
+    expect(deniedCreate.statusCode).toBe(403);
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/billing/export-requests",
+      payload: {
+        exportKind: "billing",
+        matterId: "matter-001",
+        idempotencyKey: "billing-export-denial-route-test",
+      },
+    });
+    expect(created.statusCode).toBe(202);
+    const jobId = created.json<{ exportRequest: { jobId: string } }>().exportRequest.jobId;
+
+    for (const url of [
+      `/api/billing/export-requests/${jobId}`,
+      `/api/billing/export-requests/${jobId}/download`,
+    ]) {
+      const response = await server.inject({
+        method: "GET",
+        url,
+        headers: {
+          "x-open-practice-user-id": "user-staff",
+          "x-open-practice-firm-id": "firm-west-legal",
+        },
+      });
+      expect(response.statusCode).toBe(403);
+    }
   });
 
   it("records concise audit events for billing mutation routes", async () => {

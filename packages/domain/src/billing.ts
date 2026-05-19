@@ -18,6 +18,10 @@ export type TrustTransferRequestStatus =
   | "linked"
   | "cancelled";
 
+export const billingTrustExportKinds = ["billing", "trust"] as const;
+
+export type BillingTrustExportKind = (typeof billingTrustExportKinds)[number];
+
 export interface InvoiceRecord {
   id: string;
   firmId: string;
@@ -220,6 +224,80 @@ export interface TrustTransferLedgerLinkSummary {
   trustAssetCreditCents: number;
   clientLiabilityDebitCents: number;
   amountMatches: boolean;
+}
+
+export interface BillingTrustExportCounts {
+  recordCount: number;
+  timeEntryCount?: number;
+  expenseEntryCount?: number;
+  invoiceCount?: number;
+  paymentCount?: number;
+  trustTransferRequestCount?: number;
+  ledgerAccountCount?: number;
+  ledgerEntryCount?: number;
+  balanceCount?: number;
+  trustBalanceCount?: number;
+}
+
+export interface BillingTrustExportSnapshot {
+  generatedAt: string;
+  exportKind: BillingTrustExportKind;
+  matterId?: string;
+  counts: BillingTrustExportCounts;
+  billing?: {
+    timeEntries: TimeEntry[];
+    expenseEntries: ExpenseEntry[];
+    invoices: Array<InvoiceRecord & { lines: InvoiceLineRecord[] }>;
+    payments: Array<ManualPaymentRecord & { allocations: PaymentAllocationRecord[] }>;
+  };
+  trust?: {
+    accounts: LedgerAccount[];
+    entries: LedgerEntry[];
+    balances: Record<string, number>;
+    trustBalances: Record<string, number>;
+    trustTransferRequests: TrustTransferRequestRecord[];
+  };
+}
+
+export function billingTrustExportResourceType(exportKind: BillingTrustExportKind): string {
+  return exportKind === "billing" ? "billing_export" : "trust_export";
+}
+
+export function summarizeBillingTrustExportCounts(
+  snapshot: Omit<BillingTrustExportSnapshot, "generatedAt" | "counts">,
+): BillingTrustExportCounts {
+  if (snapshot.exportKind === "billing") {
+    const timeEntryCount = snapshot.billing?.timeEntries.length ?? 0;
+    const expenseEntryCount = snapshot.billing?.expenseEntries.length ?? 0;
+    const invoiceCount = snapshot.billing?.invoices.length ?? 0;
+    const paymentCount = snapshot.billing?.payments.length ?? 0;
+    return {
+      recordCount: timeEntryCount + expenseEntryCount + invoiceCount + paymentCount,
+      timeEntryCount,
+      expenseEntryCount,
+      invoiceCount,
+      paymentCount,
+    };
+  }
+
+  const trustTransferRequestCount = snapshot.trust?.trustTransferRequests.length ?? 0;
+  const ledgerAccountCount = snapshot.trust?.accounts.length ?? 0;
+  const ledgerEntryCount = snapshot.trust?.entries.length ?? 0;
+  const balanceCount = Object.keys(snapshot.trust?.balances ?? {}).length;
+  const trustBalanceCount = Object.keys(snapshot.trust?.trustBalances ?? {}).length;
+  return {
+    recordCount:
+      trustTransferRequestCount +
+      ledgerAccountCount +
+      ledgerEntryCount +
+      balanceCount +
+      trustBalanceCount,
+    trustTransferRequestCount,
+    ledgerAccountCount,
+    ledgerEntryCount,
+    balanceCount,
+    trustBalanceCount,
+  };
 }
 
 export function summarizeTrustTransferLedgerLink(input: {
