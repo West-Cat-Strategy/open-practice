@@ -8,6 +8,111 @@ import type {
 
 export type DashboardRefreshLane = "queues" | "providers" | "audit";
 export type DashboardLaneFreshnessTone = "neutral" | "ready" | "risk";
+export type SavedMatterOperationalViewPresetId =
+  | "matter_follow_up"
+  | "overdue_filings"
+  | "uncontacted_intake_clients"
+  | "expiring_upload_links";
+
+export interface SavedMatterOperationalViewPreset {
+  id: SavedMatterOperationalViewPresetId;
+  name: string;
+  saveLabel: string;
+  statusLabel: string;
+  filters: {
+    source: "dashboard-matters";
+    presetFamily: SavedMatterOperationalViewPresetId;
+    operationalViewKeys: string[];
+    statuses?: string[];
+  };
+  columns: string[];
+  sort: Record<string, string>;
+  rowLimit: number;
+  dashboardBehavior: Record<string, boolean>;
+  permissionScope: string[];
+}
+
+export interface SavedMatterOperationalViewDefinitionPayload {
+  surface: "matters";
+  name: string;
+  filters: SavedMatterOperationalViewPreset["filters"];
+  columns: string[];
+  sort: Record<string, string>;
+  rowLimit: number;
+  dashboardBehavior: Record<string, boolean>;
+  permissionScope: string[];
+}
+
+export const SAVED_MATTER_OPERATIONAL_VIEW_PRESETS: SavedMatterOperationalViewPreset[] = [
+  {
+    id: "matter_follow_up",
+    name: "Matter follow-up",
+    saveLabel: "Save follow-up",
+    statusLabel: "matter follow-up",
+    filters: {
+      source: "dashboard-matters",
+      presetFamily: "matter_follow_up",
+      operationalViewKeys: ["stale_matters", "uncontacted_clients"],
+      statuses: ["intake", "open", "paused"],
+    },
+    columns: ["number", "practiceArea", "status"],
+    sort: { priority: "desc", lastActivityAt: "asc" },
+    rowLimit: 12,
+    dashboardBehavior: { pinToMatterContext: true },
+    permissionScope: ["matter:read"],
+  },
+  {
+    id: "overdue_filings",
+    name: "Overdue filings",
+    saveLabel: "Save filings",
+    statusLabel: "overdue filings",
+    filters: {
+      source: "dashboard-matters",
+      presetFamily: "overdue_filings",
+      operationalViewKeys: ["overdue_tasks_deadlines"],
+      statuses: ["intake", "open", "paused"],
+    },
+    columns: ["number", "practiceArea", "status"],
+    sort: { dueAt: "asc", priority: "desc" },
+    rowLimit: 12,
+    dashboardBehavior: { pinToMatterContext: true },
+    permissionScope: ["matter:read", "calendar_event:read"],
+  },
+  {
+    id: "uncontacted_intake_clients",
+    name: "Uncontacted intake clients",
+    saveLabel: "Save intake clients",
+    statusLabel: "uncontacted intake clients",
+    filters: {
+      source: "dashboard-matters",
+      presetFamily: "uncontacted_intake_clients",
+      operationalViewKeys: ["uncontacted_clients"],
+      statuses: ["intake"],
+    },
+    columns: ["number", "practiceArea", "status"],
+    sort: { priority: "desc", lastActivityAt: "asc" },
+    rowLimit: 12,
+    dashboardBehavior: { pinToMatterContext: true },
+    permissionScope: ["matter:read", "intake_session:read"],
+  },
+  {
+    id: "expiring_upload_links",
+    name: "Expiring upload links",
+    saveLabel: "Save upload links",
+    statusLabel: "expiring upload links",
+    filters: {
+      source: "dashboard-matters",
+      presetFamily: "expiring_upload_links",
+      operationalViewKeys: ["external_uploads_expiring"],
+      statuses: ["intake", "open", "paused"],
+    },
+    columns: ["number", "practiceArea", "status"],
+    sort: { dueAt: "asc", priority: "desc" },
+    rowLimit: 12,
+    dashboardBehavior: { pinToMatterContext: true },
+    permissionScope: ["matter:read", "external_upload:read"],
+  },
+];
 
 export interface DashboardLaneRefreshState {
   loadedAt?: string;
@@ -151,7 +256,45 @@ export function describeSavedQueueFocus(
   return `${definition.name} applies ${itemCount} ${itemCount === 1 ? "item" : "items"} across ${sectionCount} ${sectionCount === 1 ? "section" : "sections"}.`;
 }
 
-const matterFollowUpViewKeys = new Set(["stale_matters", "uncontacted_clients"]);
+function cloneMatterPresetFilters(
+  filters: SavedMatterOperationalViewPreset["filters"],
+): SavedMatterOperationalViewPreset["filters"] {
+  return {
+    ...filters,
+    operationalViewKeys: [...filters.operationalViewKeys],
+    ...(filters.statuses ? { statuses: [...filters.statuses] } : {}),
+  };
+}
+
+export function buildSavedMatterOperationalViewDefinitionPayload(
+  preset: SavedMatterOperationalViewPreset,
+  sequence: number,
+): SavedMatterOperationalViewDefinitionPayload {
+  return {
+    surface: "matters",
+    name: `${preset.name} ${sequence}`,
+    filters: cloneMatterPresetFilters(preset.filters),
+    columns: [...preset.columns],
+    sort: { ...preset.sort },
+    rowLimit: preset.rowLimit,
+    dashboardBehavior: { ...preset.dashboardBehavior },
+    permissionScope: [...preset.permissionScope],
+  };
+}
+
+export function savedMatterOperationalViewPresetForDefinition(
+  definition: SavedOperationalViewDefinition,
+): SavedMatterOperationalViewPreset | undefined {
+  const presetFamily = definition.filters.presetFamily;
+  if (typeof presetFamily !== "string") return undefined;
+  return SAVED_MATTER_OPERATIONAL_VIEW_PRESETS.find((preset) => preset.id === presetFamily);
+}
+
+export function savedMatterOperationalViewPresetLabel(
+  definition: SavedOperationalViewDefinition,
+): string {
+  return savedMatterOperationalViewPresetForDefinition(definition)?.name ?? "Matter command centre";
+}
 
 function savedMatterViewKeys(definition: SavedOperationalViewDefinition): Set<string> {
   const rawKeys = definition.filters.operationalViewKeys;
@@ -160,9 +303,8 @@ function savedMatterViewKeys(definition: SavedOperationalViewDefinition): Set<st
       rawKeys.filter((key): key is string => typeof key === "string" && key.length > 0),
     );
   }
-  return definition.filters.presetFamily === "matter_follow_up"
-    ? new Set(matterFollowUpViewKeys)
-    : new Set();
+  const preset = savedMatterOperationalViewPresetForDefinition(definition);
+  return new Set(preset?.filters.operationalViewKeys ?? []);
 }
 
 function savedMatterStatuses(definition: SavedOperationalViewDefinition): Set<string> {

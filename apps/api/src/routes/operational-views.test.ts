@@ -257,6 +257,94 @@ describe("operational view routes", () => {
     expect(otherUserList.json<SavedOperationalViewDefinitionsResponse>().definitions).toEqual([]);
   });
 
+  it("persists additional saved matter operational view presets through existing definitions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const ownerServer = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
+    const presetPayloads = [
+      {
+        name: "Overdue filings 1",
+        filters: {
+          source: "dashboard-matters",
+          presetFamily: "overdue_filings",
+          operationalViewKeys: ["overdue_tasks_deadlines"],
+          statuses: ["intake", "open", "paused"],
+        },
+        sort: { dueAt: "asc", priority: "desc" },
+        permissionScope: ["matter:read", "calendar_event:read"],
+      },
+      {
+        name: "Uncontacted intake clients 1",
+        filters: {
+          source: "dashboard-matters",
+          presetFamily: "uncontacted_intake_clients",
+          operationalViewKeys: ["uncontacted_clients"],
+          statuses: ["intake"],
+        },
+        sort: { priority: "desc", lastActivityAt: "asc" },
+        permissionScope: ["matter:read", "intake_session:read"],
+      },
+      {
+        name: "Expiring upload links 1",
+        filters: {
+          source: "dashboard-matters",
+          presetFamily: "expiring_upload_links",
+          operationalViewKeys: ["external_uploads_expiring"],
+          statuses: ["intake", "open", "paused"],
+        },
+        sort: { dueAt: "asc", priority: "desc" },
+        permissionScope: ["matter:read", "external_upload:read"],
+      },
+    ];
+
+    for (const payload of presetPayloads) {
+      const response = await ownerServer.inject({
+        method: "POST",
+        url: "/api/operational-views/definitions",
+        payload: {
+          surface: "matters",
+          columns: ["number", "practiceArea", "status"],
+          rowLimit: 12,
+          dashboardBehavior: { pinToMatterContext: true },
+          ...payload,
+        },
+      });
+      expect(response.statusCode).toBe(200);
+    }
+
+    const listedMatterViews = await ownerServer.inject({
+      method: "GET",
+      url: "/api/operational-views/definitions?surface=matters",
+    });
+
+    expect(listedMatterViews.json<SavedOperationalViewDefinitionsResponse>().definitions).toEqual([
+      expect.objectContaining({
+        name: "Expiring upload links 1",
+        filters: expect.objectContaining({
+          presetFamily: "expiring_upload_links",
+          operationalViewKeys: ["external_uploads_expiring"],
+        }),
+        permissionScope: ["matter:read", "external_upload:read"],
+      }),
+      expect.objectContaining({
+        name: "Overdue filings 1",
+        filters: expect.objectContaining({
+          presetFamily: "overdue_filings",
+          operationalViewKeys: ["overdue_tasks_deadlines"],
+        }),
+        permissionScope: ["matter:read", "calendar_event:read"],
+      }),
+      expect.objectContaining({
+        name: "Uncontacted intake clients 1",
+        filters: expect.objectContaining({
+          presetFamily: "uncontacted_intake_clients",
+          operationalViewKeys: ["uncontacted_clients"],
+          statuses: ["intake"],
+        }),
+        permissionScope: ["matter:read", "intake_session:read"],
+      }),
+    ]);
+  });
+
   it("updates and archives saved operational view definitions without showing archived rows by default", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository });
