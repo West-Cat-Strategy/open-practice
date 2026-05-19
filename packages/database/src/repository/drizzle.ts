@@ -26,6 +26,7 @@ import {
   postLedgerTransaction,
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
+  validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
   verifyAuditChain,
   type AccessLogRecord,
@@ -64,6 +65,7 @@ import {
   type JobLifecycleRecord,
   type LedgerAccount,
   type LedgerEntry,
+  type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
@@ -192,6 +194,7 @@ import {
   mapInvoiceRow,
   mapJobLifecycleRow,
   mapLedgerApprovalRow,
+  mapLedgerReconciliationExceptionResolutionRow,
   mapLedgerReconciliationRow,
   mapLegalClinicMatterProfileRow,
   mapLegalClinicProgramRow,
@@ -4209,6 +4212,50 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .where(eq(schema.trustReconciliations.firmId, firmId))
       .orderBy(asc(schema.trustReconciliations.createdAt));
     return rows.map(mapLedgerReconciliationRow);
+  }
+
+  async createLedgerReconciliationExceptionResolution(
+    resolution: LedgerReconciliationExceptionResolutionRecord,
+  ): Promise<LedgerReconciliationExceptionResolutionRecord> {
+    const [account] = await this.db
+      .select()
+      .from(schema.ledgerAccounts)
+      .where(
+        and(
+          eq(schema.ledgerAccounts.firmId, resolution.firmId),
+          eq(schema.ledgerAccounts.id, resolution.accountId),
+        ),
+      );
+    if (!account || account.type !== "trust_asset") {
+      throw new Error(
+        "Reconciliation exception resolutions require an existing trust asset account",
+      );
+    }
+    validateLedgerReconciliationExceptionResolutionRecord(resolution);
+    await this.db.insert(schema.trustReconciliationExceptionResolutions).values({
+      ...resolution,
+      recordedAt: new Date(resolution.recordedAt),
+    });
+    return resolution;
+  }
+
+  async listLedgerReconciliationExceptionResolutions(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerReconciliationExceptionResolutionRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.trustReconciliationExceptionResolutions)
+      .where(
+        options.accountId
+          ? and(
+              eq(schema.trustReconciliationExceptionResolutions.firmId, firmId),
+              eq(schema.trustReconciliationExceptionResolutions.accountId, options.accountId),
+            )
+          : eq(schema.trustReconciliationExceptionResolutions.firmId, firmId),
+      )
+      .orderBy(asc(schema.trustReconciliationExceptionResolutions.recordedAt));
+    return rows.map(mapLedgerReconciliationExceptionResolutionRow);
   }
 
   private async listUsers(firmId: string): Promise<User[]> {

@@ -58,6 +58,7 @@ import {
   signatureRequests,
   totpCredentials,
   trustClientBalances,
+  trustReconciliationExceptionResolutions,
   trustReconciliations,
   trustLedgerEntries,
   trustTransactionApprovals,
@@ -798,6 +799,26 @@ describe("database schema hardening", () => {
       expect.arrayContaining([
         "trust_reconciliations_valid_period",
         "trust_reconciliations_status_value",
+      ]),
+    );
+    const exceptionResolutionConfig = getTableConfig(trustReconciliationExceptionResolutions);
+    expect(exceptionResolutionConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "account_id",
+        "statement_row",
+        "variance_decision",
+        "resolution_note",
+        "recorded_by_user_id",
+        "recorded_at",
+      ]),
+    );
+    expect(exceptionResolutionConfig.columns.map((column) => column.name)).not.toContain(
+      "evidence",
+    );
+    expect(exceptionResolutionConfig.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "trust_reconciliation_exception_resolutions_variance_decision_value",
+        "trust_reconciliation_exception_resolutions_note_present",
       ]),
     );
   });

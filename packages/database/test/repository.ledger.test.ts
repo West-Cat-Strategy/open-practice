@@ -199,5 +199,102 @@ describe("repository ledger approvals and reconciliations", () => {
         createdAt: now,
       }),
     ).rejects.toThrow(/Unknown ledger account/);
+
+    await expect(
+      repository.createLedgerReconciliationExceptionResolution({
+        id: "resolution-001",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        statementRow: {
+          id: "statement-row-unmatched",
+          postedAt: "2026-04-29T17:00:00.000Z",
+          description: "Synthetic unresolved service charge",
+          amountCents: -125,
+          duplicateKey: "2026-04-29|-125|synthetic unresolved service charge|",
+          reviewDecision: "unmatched",
+        },
+        varianceDecision: "needs_follow_up",
+        resolutionNote: "Synthetic staff note for later ledger review.",
+        recordedByUserId: "user-admin",
+        recordedAt: now,
+      }),
+    ).resolves.toMatchObject({
+      accountId: "acct-trust-bank",
+      varianceDecision: "needs_follow_up",
+    });
+    await expect(
+      repository.createLedgerReconciliationExceptionResolution({
+        id: "resolution-older",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        statementRow: {
+          id: "statement-row-older-unmatched",
+          postedAt: "2026-04-24T17:00:00.000Z",
+          description: "Synthetic older unresolved transfer",
+          amountCents: -250,
+          duplicateKey: "2026-04-24|-250|synthetic older unresolved transfer|",
+          reviewDecision: "unmatched",
+        },
+        varianceDecision: "ledger_entry_expected",
+        resolutionNote: "Synthetic older staff note for chronological ordering.",
+        recordedByUserId: "user-admin",
+        recordedAt: "2026-04-24T12:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({
+      id: "resolution-older",
+      varianceDecision: "ledger_entry_expected",
+    });
+    await expect(
+      repository.listLedgerReconciliationExceptionResolutions("firm-west-legal", {
+        accountId: "acct-trust-bank",
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "resolution-older",
+        statementRow: expect.objectContaining({ reviewDecision: "unmatched" }),
+      }),
+      expect.objectContaining({
+        id: "resolution-001",
+        statementRow: expect.objectContaining({ reviewDecision: "unmatched" }),
+      }),
+    ]);
+    await expect(
+      repository.createLedgerReconciliationExceptionResolution({
+        id: "resolution-operating-account",
+        firmId: "firm-west-legal",
+        accountId: "acct-operating-revenue",
+        statementRow: {
+          id: "statement-row-unmatched",
+          postedAt: "2026-04-29T17:00:00.000Z",
+          description: "Synthetic unresolved service charge",
+          amountCents: -125,
+          duplicateKey: "2026-04-29|-125|synthetic unresolved service charge|",
+          reviewDecision: "unmatched",
+        },
+        varianceDecision: "needs_follow_up",
+        resolutionNote: "Synthetic staff note for later ledger review.",
+        recordedByUserId: "user-admin",
+        recordedAt: now,
+      }),
+    ).rejects.toThrow(/trust asset account/);
+    await expect(
+      repository.createLedgerReconciliationExceptionResolution({
+        id: "resolution-missing-reviewer",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        statementRow: {
+          id: "statement-row-unmatched",
+          postedAt: "2026-04-29T17:00:00.000Z",
+          description: "Synthetic unresolved service charge",
+          amountCents: -125,
+          duplicateKey: "2026-04-29|-125|synthetic unresolved service charge|",
+          reviewDecision: "unmatched",
+        },
+        varianceDecision: "needs_follow_up",
+        resolutionNote: "Synthetic staff note for later ledger review.",
+        recordedByUserId: "missing-user",
+        recordedAt: now,
+      }),
+    ).rejects.toThrow(/Unknown user/);
   });
 });

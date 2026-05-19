@@ -7,8 +7,10 @@ import type {
   LedgerTransactionApprovalRecord,
 } from "@open-practice/domain";
 import {
+  buildLedgerReconciliationExceptionResolutionStatementRow,
   buildJurisdictionalTrustReport,
   ledgerControlsDiagnostics,
+  ledgerReconciliationExceptionVarianceDecisions,
   ledgerReconciliationReviewSummary,
   previewLedgerStatementImport,
 } from "@open-practice/domain";
@@ -96,6 +98,25 @@ const ledgerStatementImportPreviewBodySchema = z.object({
     .min(1),
 });
 
+const ledgerReconciliationExceptionResolutionsQuerySchema = z.object({
+  accountId: z.string().min(1),
+});
+
+const ledgerReconciliationExceptionResolutionBodySchema = z.object({
+  accountId: z.string().min(1),
+  statementRow: z.object({
+    id: z.string().min(1),
+    postedAt: z.string().datetime(),
+    description: z.string().min(1),
+    amountCents: z.number().int(),
+    reference: z.string().min(1).optional(),
+    duplicateOfRowId: z.string().min(1).optional(),
+    reviewDecision: z.literal("unmatched"),
+  }),
+  varianceDecision: z.enum(ledgerReconciliationExceptionVarianceDecisions),
+  resolutionNote: z.string().min(1),
+});
+
 const idParamsSchema = z.object({ id: z.string().min(1) });
 
 function assertLedgerAccess(
@@ -128,6 +149,18 @@ async function assertLedgerTransactionApprovalAccess(
     });
   }
   return matterIds;
+}
+
+async function assertTrustAssetAccount(
+  repository: ApiRouteDependencies["repository"],
+  firmId: string,
+  accountId: string,
+): Promise<void> {
+  const ledger = await repository.getLedger(firmId);
+  const account = ledger.accounts.find((candidate) => candidate.id === accountId);
+  if (!account || account.type !== "trust_asset") {
+    throw new Error("Reconciliation exception resolutions require an existing trust asset account");
+  }
 }
 
 export function registerLedgerRoutes(
@@ -339,6 +372,57 @@ export function registerLedgerRoutes(
       statementRows: body.statementRows,
       ledgerEntries: ledger.entries,
     });
+  });
+
+  server.get("/api/ledger/reconciliation-exception-resolutions", async (request) => {
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "approve",
+    });
+    const query = parseRequestPart(
+      ledgerReconciliationExceptionResolutionsQuerySchema,
+      request.query,
+      "query",
+    );
+    await assertTrustAssetAccount(repository, request.auth.firmId, query.accountId);
+    return repository.listLedgerReconciliationExceptionResolutions(request.auth.firmId, {
+      accountId: query.accountId,
+    });
+  });
+
+  server.post("/api/ledger/reconciliation-exception-resolutions", async (request) => {
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "approve",
+    });
+    const body = parseRequestPart(
+      ledgerReconciliationExceptionResolutionBodySchema,
+      request.body,
+      "body",
+    );
+    await assertTrustAssetAccount(repository, request.auth.firmId, body.accountId);
+    const created = await repository.createLedgerReconciliationExceptionResolution({
+      id: crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      accountId: body.accountId,
+      statementRow: buildLedgerReconciliationExceptionResolutionStatementRow(body.statementRow),
+      varianceDecision: body.varianceDecision,
+      resolutionNote: body.resolutionNote,
+      recordedByUserId: request.auth.user.id,
+      recordedAt: new Date().toISOString(),
+    });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "ledger.reconciliation_exception_resolution.recorded",
+      resourceType: "ledger_reconciliation_exception_resolution",
+      resourceId: created.id,
+      metadata: {
+        accountId: created.accountId,
+        statementRowId: created.statementRow.id,
+        varianceDecision: created.varianceDecision,
+        resolutionNotePresent: Boolean(created.resolutionNote.trim()),
+      },
+    });
+    return created;
   });
 
   server.post("/api/ledger/reconciliations", async (request) => {

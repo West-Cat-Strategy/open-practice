@@ -22,9 +22,6 @@ surface it must not duplicate.
 - **Billing Period Locks And Rate Rules**: Add matter/user rate presets and billing-period locks
   that preserve rate snapshots and prevent edits to submitted or approved ranges. Do not rewrite
   existing invoice lifecycle or trust-transfer behavior.
-- **Reconciliation Exception Resolution Records**: Add staff resolution notes and variance
-  decisions for unmatched statement rows without mutating posted ledger entries or creating
-  accounting-certification language.
 - **Delivery Receipt Tokens**: Add purpose-scoped public delivery receipt links for selected
   outbound emails without exposing sessions, recipient lists, or message bodies.
 - **Saved Operational View Additional Presets**: Add more user-owned saved-view preset families

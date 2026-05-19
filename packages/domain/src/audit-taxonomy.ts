@@ -631,6 +631,20 @@ export const auditEventTaxonomyDefinitions = [
     resourceMetadataKeys: ["accountId", "statementDate", "balanced"],
   }),
   define({
+    action: "ledger.reconciliation_exception_resolution.recorded",
+    category: "trust",
+    resourceType: "ledger_reconciliation_exception_resolution",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    matterMetadataKeys: [],
+    resourceMetadataKeys: [
+      "accountId",
+      "statementRowId",
+      "varianceDecision",
+      "resolutionNotePresent",
+    ],
+  }),
+  define({
     action: "email_outbox.queued",
     category: "communications",
     resourceType: "email_outbox",

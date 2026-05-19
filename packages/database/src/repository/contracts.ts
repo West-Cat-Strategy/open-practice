@@ -51,6 +51,7 @@ import {
   type JobLifecycleRecord,
   type LedgerAccount,
   type LedgerEntry,
+  type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
@@ -970,6 +971,13 @@ export interface OpenPracticeRepository {
     reconciliation: LedgerReconciliationRecord,
   ): Promise<LedgerReconciliationRecord>;
   listLedgerReconciliations(firmId: string): Promise<LedgerReconciliationRecord[]>;
+  createLedgerReconciliationExceptionResolution(
+    resolution: LedgerReconciliationExceptionResolutionRecord,
+  ): Promise<LedgerReconciliationExceptionResolutionRecord>;
+  listLedgerReconciliationExceptionResolutions(
+    firmId: string,
+    options?: { accountId?: string },
+  ): Promise<LedgerReconciliationExceptionResolutionRecord[]>;
   listTimeEntries(
     firmId: string,
     options?: { matterId?: string; status?: TimeEntry["billingStatus"] },

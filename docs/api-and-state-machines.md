@@ -97,6 +97,8 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `POST /api/portal/intake-forms/:token/items/:itemId/signature`                        | Public embedded attestation fallback or document-backed signature request creation for an intake signature item.                                                                                                                                                                                   |
 | `POST /api/ledger/transactions/:id/approvals`                                         | Maker-checker approval decision for a trust transaction boundary.                                                                                                                                                                                                                                  |
 | `POST /api/ledger/reconciliations/preview`                                            | Firm-wide, review-only trust statement import preview that dedupes statement rows and proposes matches to existing ledger entries for a trust asset account. It does not post ledger entries, create reconciliation records, or emit audit events.                                                 |
+| `GET /api/ledger/reconciliation-exception-resolutions?accountId=`                     | Lists firm-wide staff resolution records for unmatched statement-preview rows on one trust asset account.                                                                                                                                                                                          |
+| `POST /api/ledger/reconciliation-exception-resolutions`                               | Records a staff resolution note and variance decision for an unmatched statement-preview row with redacted audit metadata only. It does not post ledger entries, create reconciliation records, move funds, or certify accounting conclusions.                                                     |
 | `POST /api/ledger/reconciliations`                                                    | Trust-account reconciliation record with imported statement rows, row-level matched/unmatched review decisions, immutable beginning/ending balance snapshots, and variance explanation.                                                                                                            |
 | `GET /api/queues`                                                                     | Permission-aware operational queues for matters, documents, signatures, intake, ledger, task deadlines, and audit review.                                                                                                                                                                          |
 | `GET /api/tasks/workbench?matterId=`                                                  | Matter-scoped task/deadline projections, my/team counters, matter/contact queues, and focused overdue, today, upcoming, and unassigned task IDs.                                                                                                                                                   |
@@ -520,6 +522,13 @@ dedupes repeated statement rows by normalized date, amount, description, and ref
 candidate matches against existing entries for the selected trust asset account, and returns a
 `review_only_no_automatic_ledger_posting` policy marker. It does not create ledger entries,
 reconciliation records, approvals, or audit events.
+
+Reconciliation exception resolution records are immutable staff review notes for unmatched
+statement-preview rows. They store a statement-row snapshot with a server-computed duplicate key,
+one variance decision, reviewer metadata, and a staff note. Recording a resolution
+does not mutate posted ledger entries, create reconciliation records, move funds, or certify
+accounting conclusions. Route audit metadata records only account id, statement-row id, variance
+decision, and note-presence flags.
 
 The read-only trust controls workbench surfaces existing balances, approval decisions,
 reconciliation exceptions, unreconciled accounts, statement-row counts, variance explanations, recent

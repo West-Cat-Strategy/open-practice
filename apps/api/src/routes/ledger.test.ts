@@ -728,6 +728,141 @@ describe("ledger routes", () => {
     });
   });
 
+  it("records reconciliation exception resolution decisions without posting or reconciling", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const ledgerBefore = await repository.getLedger("firm-west-legal");
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliation-exception-resolutions",
+      payload: {
+        accountId: "acct-trust-bank",
+        statementRow: {
+          id: "statement-import-unmatched",
+          postedAt: "2026-04-29T17:00:00.000Z",
+          description: "Synthetic unresolved service charge",
+          amountCents: -125,
+          reference: "synthetic-bank-reference",
+          reviewDecision: "unmatched",
+        },
+        varianceDecision: "needs_follow_up",
+        resolutionNote: "Synthetic staff note: confirm whether a ledger entry is still expected.",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      accountId: "acct-trust-bank",
+      statementRow: {
+        id: "statement-import-unmatched",
+        reviewDecision: "unmatched",
+        duplicateKey:
+          "2026-04-29|-125|synthetic unresolved service charge|synthetic-bank-reference",
+      },
+      varianceDecision: "needs_follow_up",
+      resolutionNote: "Synthetic staff note: confirm whether a ledger entry is still expected.",
+      recordedByUserId: "user-admin",
+    });
+    const listResponse = await server.inject({
+      method: "GET",
+      url: "/api/ledger/reconciliation-exception-resolutions?accountId=acct-trust-bank",
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject([
+      {
+        accountId: "acct-trust-bank",
+        statementRow: { id: "statement-import-unmatched", reviewDecision: "unmatched" },
+        varianceDecision: "needs_follow_up",
+      },
+    ]);
+    await expect(
+      repository.listLedgerReconciliationExceptionResolutions("firm-west-legal", {
+        accountId: "acct-trust-bank",
+      }),
+    ).resolves.toHaveLength(1);
+    await expect(repository.getLedger("firm-west-legal")).resolves.toMatchObject({
+      entries: ledgerBefore.entries,
+    });
+    await expect(repository.listLedgerReconciliations("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "ledger.reconciliation_exception_resolution.recorded",
+          resourceType: "ledger_reconciliation_exception_resolution",
+          metadata: {
+            accountId: "acct-trust-bank",
+            statementRowId: "statement-import-unmatched",
+            varianceDecision: "needs_follow_up",
+            resolutionNotePresent: true,
+          },
+        }),
+      ]),
+      valid: true,
+    });
+  });
+
+  it("rejects unsafe reconciliation exception resolution inputs without side effects", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const auditBefore = await repository.listAuditEvents("firm-west-legal");
+    const basePayload = {
+      accountId: "acct-trust-bank",
+      statementRow: {
+        id: "statement-import-unmatched",
+        postedAt: "2026-04-29T17:00:00.000Z",
+        description: "Synthetic unresolved service charge",
+        amountCents: -125,
+        reviewDecision: "unmatched",
+      },
+      varianceDecision: "needs_follow_up",
+      resolutionNote: "Synthetic staff note for later ledger review.",
+    };
+
+    const matchedRow = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliation-exception-resolutions",
+      payload: {
+        ...basePayload,
+        statementRow: { ...basePayload.statementRow, reviewDecision: "matched" },
+      },
+    });
+    const whitespaceNote = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliation-exception-resolutions",
+      payload: { ...basePayload, resolutionNote: "   " },
+    });
+    const operatingAccount = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliation-exception-resolutions",
+      payload: { ...basePayload, accountId: "acct-operating-revenue" },
+    });
+
+    expect(matchedRow.statusCode).toBe(400);
+    expect(matchedRow.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Invalid request body",
+    });
+    expect(whitespaceNote.statusCode).toBe(400);
+    expect(whitespaceNote.json()).toMatchObject({
+      error: "Error",
+      message: "Reconciliation exception resolution note is required",
+    });
+    expect(operatingAccount.statusCode).toBe(400);
+    expect(operatingAccount.json()).toMatchObject({
+      error: "Error",
+      message: "Reconciliation exception resolutions require an existing trust asset account",
+    });
+    await expect(
+      repository.listLedgerReconciliationExceptionResolutions("firm-west-legal", {
+        accountId: "acct-trust-bank",
+      }),
+    ).resolves.toEqual([]);
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: auditBefore.events,
+      valid: true,
+    });
+  });
+
   it("rejects invalid ledger approval and reconciliation controls", async () => {
     const server = testServer({ repository: new InMemoryOpenPracticeRepository() });
     const firstApproval = await server.inject({
@@ -904,6 +1039,34 @@ describe("ledger routes", () => {
         ],
       },
     });
+    const exceptionResolution = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliation-exception-resolutions",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: {
+        accountId: "acct-trust-bank",
+        statementRow: {
+          id: "statement-import-unmatched",
+          postedAt: "2026-04-29T17:00:00.000Z",
+          description: "Synthetic unresolved service charge",
+          amountCents: -125,
+          reviewDecision: "unmatched",
+        },
+        varianceDecision: "needs_follow_up",
+        resolutionNote: "Synthetic staff note for later ledger review.",
+      },
+    });
+    const exceptionResolutionList = await server.inject({
+      method: "GET",
+      url: "/api/ledger/reconciliation-exception-resolutions?accountId=acct-trust-bank",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
     const response = await server.inject({
       method: "POST",
       url: "/api/ledger/reconciliations",
@@ -916,6 +1079,16 @@ describe("ledger routes", () => {
 
     expect(preview.statusCode).toBe(403);
     expect(preview.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Trust ledger access required",
+    });
+    expect(exceptionResolution.statusCode).toBe(403);
+    expect(exceptionResolution.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Trust ledger access required",
+    });
+    expect(exceptionResolutionList.statusCode).toBe(403);
+    expect(exceptionResolutionList.json()).toMatchObject({
       error: "ApiHttpError",
       message: "Trust ledger access required",
     });

@@ -145,6 +145,35 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies reconciliation exception resolution events without statement detail hints", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "ledger.reconciliation_exception_resolution.recorded",
+        resourceType: "ledger_reconciliation_exception_resolution",
+        resourceId: "resolution-001",
+        metadata: {
+          accountId: "acct-trust-bank",
+          statementRowId: "statement-import-unmatched",
+          varianceDecision: "needs_follow_up",
+          resolutionNotePresent: true,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "trust",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual([
+      "accountId",
+      "statementRowId",
+      "varianceDecision",
+      "resolutionNotePresent",
+    ]);
+  });
+
   it("classifies communications triage note and follow-up metadata as safe resource hints", () => {
     const classification = classifyAuditEvent(
       auditEvent({

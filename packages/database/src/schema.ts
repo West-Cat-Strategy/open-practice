@@ -27,6 +27,7 @@ import type {
   ConversationMessageRecord,
   LegalClinicMatterProfile,
   LegalClinicProgram,
+  LedgerReconciliationExceptionResolutionStatementRow,
   LedgerReconciliationStatementRow,
   SavedOperationalViewDefinition,
 } from "@open-practice/domain";
@@ -1291,6 +1292,43 @@ export const trustReconciliations = pgTable(
     statusValue: check(
       "trust_reconciliations_status_value",
       sql`${table.status} in ('draft', 'matched', 'exception', 'reviewed')`,
+    ),
+  }),
+);
+
+export const trustReconciliationExceptionResolutions = pgTable(
+  "trust_reconciliation_exception_resolutions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id),
+    statementRow: jsonb("statement_row")
+      .$type<LedgerReconciliationExceptionResolutionStatementRow>()
+      .notNull(),
+    varianceDecision: text("variance_decision").notNull(),
+    resolutionNote: text("resolution_note").notNull(),
+    recordedByUserId: text("recorded_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    accountRecordedAt: index("trust_reconciliation_exception_resolutions_account_recorded_idx").on(
+      table.firmId,
+      table.accountId,
+      table.recordedAt,
+    ),
+    varianceDecisionValue: check(
+      "trust_reconciliation_exception_resolutions_variance_decision_value",
+      sql`${table.varianceDecision} in ('ledger_entry_expected', 'statement_duplicate', 'statement_source_issue', 'operational_variance_acknowledged', 'needs_follow_up')`,
+    ),
+    resolutionNotePresent: check(
+      "trust_reconciliation_exception_resolutions_note_present",
+      sql`length(trim(${table.resolutionNote})) > 0`,
     ),
   }),
 );

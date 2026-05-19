@@ -23,6 +23,7 @@ import {
   postLedgerTransaction,
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
+  validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
   verifyAuditChain,
   type AccessLogRecord,
@@ -63,6 +64,7 @@ import {
   type JobLifecycleRecord,
   type LedgerAccount,
   type LedgerEntry,
+  type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
@@ -195,6 +197,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private ledgerAccounts: LedgerAccount[];
   private ledgerApprovals: LedgerTransactionApprovalRecord[] = [];
   private ledgerReconciliations: LedgerReconciliationRecord[] = [];
+  private ledgerReconciliationExceptionResolutions: LedgerReconciliationExceptionResolutionRecord[] =
+    [];
   private intakeTemplates: IntakeTemplateRecord[];
   private signatureRequestSigners: SignatureRequestSignerRecord[];
   private signatureProviderEvents: SignatureProviderEventRecord[];
@@ -3002,6 +3006,48 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   async listLedgerReconciliations(firmId: string): Promise<LedgerReconciliationRecord[]> {
     return clone(
       this.ledgerReconciliations.filter((reconciliation) => reconciliation.firmId === firmId),
+    );
+  }
+
+  async createLedgerReconciliationExceptionResolution(
+    resolution: LedgerReconciliationExceptionResolutionRecord,
+  ): Promise<LedgerReconciliationExceptionResolutionRecord> {
+    const account = this.ledgerAccounts.find(
+      (candidate) =>
+        candidate.firmId === resolution.firmId && candidate.id === resolution.accountId,
+    );
+    if (!account || account.type !== "trust_asset") {
+      throw new Error(
+        "Reconciliation exception resolutions require an existing trust asset account",
+      );
+    }
+    const reviewer = this.users.find(
+      (candidate) =>
+        candidate.firmId === resolution.firmId && candidate.id === resolution.recordedByUserId,
+    );
+    if (!reviewer) {
+      throw new Error(`Unknown user ${resolution.recordedByUserId}`);
+    }
+    validateLedgerReconciliationExceptionResolutionRecord(resolution);
+    this.ledgerReconciliationExceptionResolutions = [
+      ...this.ledgerReconciliationExceptionResolutions,
+      clone(resolution),
+    ];
+    return clone(resolution);
+  }
+
+  async listLedgerReconciliationExceptionResolutions(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerReconciliationExceptionResolutionRecord[]> {
+    return clone(
+      this.ledgerReconciliationExceptionResolutions
+        .filter(
+          (resolution) =>
+            resolution.firmId === firmId &&
+            (!options.accountId || resolution.accountId === options.accountId),
+        )
+        .sort((left, right) => Date.parse(left.recordedAt) - Date.parse(right.recordedAt)),
     );
   }
 
