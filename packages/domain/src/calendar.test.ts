@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   InvalidCalendarPayloadError,
+  InvalidCalendarMeetingTransitionError,
   UnsupportedCalendarPayloadError,
   buildCalendarMeetingInvitationBoundary,
   buildICalendarFeed,
@@ -8,8 +9,14 @@ import {
   calendarEventEtag,
   normalizeCalendarMeetingLinkState,
   parseICalendarEvent,
+  transitionCalendarGuestLinkStatus,
+  transitionCalendarMeetingSessionStatus,
 } from "./calendar.js";
-import type { CalendarEventRecord } from "./models.js";
+import type {
+  CalendarEventRecord,
+  CalendarGuestLinkRecord,
+  CalendarMeetingSessionRecord,
+} from "./models.js";
 
 const events: CalendarEventRecord[] = [
   {
@@ -244,6 +251,116 @@ END:VCALENDAR`,
       url: "https://meet.example.test/rooms/calendar-room-001",
       roomId: "calendar-room-001",
       providerKey: "synthetic-meeting",
+    });
+  });
+
+  it("transitions hosted meeting sessions through lobby and terminal states", () => {
+    const session: CalendarMeetingSessionRecord = {
+      id: "meeting-session-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-001",
+      status: "lobby_closed",
+      retentionUntil: "2026-08-03T16:00:00.000Z",
+      createdAt: "2026-05-03T16:00:00.000Z",
+      updatedAt: "2026-05-03T16:00:00.000Z",
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+      metadata: { synthetic: true },
+    };
+
+    const opened = transitionCalendarMeetingSessionStatus(session, {
+      status: "lobby_open",
+      occurredAt: "2026-05-03T16:05:00.000Z",
+      actorUserId: "user-licensee",
+    });
+    expect(opened).toMatchObject({
+      status: "lobby_open",
+      updatedAt: "2026-05-03T16:05:00.000Z",
+      updatedByUserId: "user-licensee",
+    });
+
+    const ended = transitionCalendarMeetingSessionStatus(opened, {
+      status: "ended",
+      occurredAt: "2026-05-03T17:00:00.000Z",
+      actorUserId: "user-licensee",
+    });
+    expect(ended).toMatchObject({
+      status: "ended",
+      endedAt: "2026-05-03T17:00:00.000Z",
+    });
+    expect(() =>
+      transitionCalendarMeetingSessionStatus(ended, {
+        status: "lobby_open",
+        occurredAt: "2026-05-03T17:05:00.000Z",
+        actorUserId: "user-licensee",
+      }),
+    ).toThrow(InvalidCalendarMeetingTransitionError);
+  });
+
+  it("transitions hashed guest links without recovering raw tokens", () => {
+    const link: CalendarGuestLinkRecord = {
+      id: "guest-link-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-001",
+      sessionId: "meeting-session-001",
+      tokenHash: "hmac-sha256:synthetic-token-hash",
+      status: "issued",
+      expiresAt: "2026-05-03T18:00:00.000Z",
+      retentionUntil: "2026-08-03T16:00:00.000Z",
+      createdAt: "2026-05-03T16:00:00.000Z",
+      updatedAt: "2026-05-03T16:00:00.000Z",
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+      metadata: {},
+    };
+
+    const waiting = transitionCalendarGuestLinkStatus(link, {
+      status: "waiting",
+      occurredAt: "2026-05-03T16:10:00.000Z",
+      actorUserId: "user-licensee",
+    });
+    expect(waiting).toMatchObject({
+      status: "waiting",
+      tokenHash: "hmac-sha256:synthetic-token-hash",
+      checkedInAt: "2026-05-03T16:10:00.000Z",
+    });
+    expect(waiting).not.toHaveProperty("token");
+
+    const admitted = transitionCalendarGuestLinkStatus(waiting, {
+      status: "admitted",
+      occurredAt: "2026-05-03T16:12:00.000Z",
+      actorUserId: "user-licensee",
+    });
+    expect(admitted).toMatchObject({
+      status: "admitted",
+      admittedAt: "2026-05-03T16:12:00.000Z",
+    });
+
+    expect(() =>
+      transitionCalendarGuestLinkStatus(admitted, {
+        status: "waiting",
+        occurredAt: "2026-05-03T16:13:00.000Z",
+        actorUserId: "user-licensee",
+      }),
+    ).toThrow(InvalidCalendarMeetingTransitionError);
+    expect(() =>
+      transitionCalendarGuestLinkStatus(link, {
+        status: "waiting",
+        occurredAt: "2026-05-03T18:00:00.000Z",
+        actorUserId: "user-licensee",
+      }),
+    ).toThrow(InvalidCalendarMeetingTransitionError);
+
+    const revoked = transitionCalendarGuestLinkStatus(admitted, {
+      status: "revoked",
+      occurredAt: "2026-05-03T16:20:00.000Z",
+      actorUserId: "user-licensee",
+    });
+    expect(revoked).toMatchObject({
+      status: "revoked",
+      revokedAt: "2026-05-03T16:20:00.000Z",
     });
   });
 });

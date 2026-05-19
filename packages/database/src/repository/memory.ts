@@ -16,6 +16,8 @@ import {
   buildPracticePresetTemplates,
   calculateInvoiceTotals,
   clientTrustBalanceByMatter,
+  transitionCalendarGuestLinkStatus,
+  transitionCalendarMeetingSessionStatus,
   invoiceStatusForPayment,
   ledgerBalanceByMatter,
   postLedgerTransaction,
@@ -29,6 +31,8 @@ import {
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
   type CalendarEventReminderRecord,
+  type CalendarGuestLinkRecord,
+  type CalendarMeetingSessionRecord,
   type ConflictCheckRecord,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
@@ -118,9 +122,11 @@ import type {
   AuthAccountRecord,
   AuthPasswordSetupTokenRecord,
   AuthSessionRecord,
+  CalendarGuestLinkCreateInput,
   CalendarEventAttendeeUpsertInput,
   CalendarEventReminderUpsertInput,
   CalendarEventUpsertInput,
+  CalendarMeetingSessionCreateInput,
   DocumentUploadIntent,
   FirstRunSetupInput,
   FirstRunSetupResult,
@@ -133,6 +139,8 @@ import type {
   PaymentWithAllocations,
   PracticeOverview,
   TaskDeadlineCompletionInput,
+  TrustTransferRequestUpdate,
+  TrustTransferRequestUpdateOptions,
 } from "./contracts.js";
 import {
   CalendarEventScopeConflictError,
@@ -171,6 +179,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private conversationThreads: ConversationThreadRecord[] = [];
   private conversationMessages: ConversationMessageRecord[] = [];
   private calendarEvents: CalendarEventRecord[];
+  private calendarMeetingSessions: CalendarMeetingSessionRecord[] = [];
+  private calendarGuestLinks: CalendarGuestLinkRecord[] = [];
   private taskDeadlines: TaskDeadlineRecord[];
   private portalGrants: PortalGrant[];
   private externalUploadLinks: ExternalUploadLinkRecord[] = [];
@@ -1782,6 +1792,214 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     credential.revokedAt = input.revokedAt;
     return clone(credential);
   }
+
+  async createCalendarMeetingSession(
+    session: CalendarMeetingSessionCreateInput,
+  ): Promise<CalendarMeetingSessionRecord> {
+    const event = this.calendarEvents.find(
+      (candidate) =>
+        candidate.firmId === session.firmId &&
+        candidate.matterId === session.matterId &&
+        candidate.id === session.eventId &&
+        !candidate.deletedAt,
+    );
+    if (!event) {
+      throw new Error(`Calendar event ${session.eventId} was not found`);
+    }
+    if (this.calendarMeetingSessions.some((candidate) => candidate.id === session.id)) {
+      throw new Error("Calendar meeting session already exists");
+    }
+    this.calendarMeetingSessions = [...this.calendarMeetingSessions, clone(session)];
+    return clone(session);
+  }
+
+  async listCalendarMeetingSessions(
+    firmId: string,
+    options: {
+      matterId?: string;
+      eventId?: string;
+      status?: CalendarMeetingSessionRecord["status"];
+    } = {},
+  ): Promise<CalendarMeetingSessionRecord[]> {
+    return clone(
+      this.calendarMeetingSessions
+        .filter(
+          (session) =>
+            session.firmId === firmId &&
+            (!options.matterId || session.matterId === options.matterId) &&
+            (!options.eventId || session.eventId === options.eventId) &&
+            (!options.status || session.status === options.status),
+        )
+        .sort(
+          (left, right) =>
+            right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id),
+        ),
+    );
+  }
+
+  async getCalendarMeetingSession(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+    sessionId: string,
+  ): Promise<CalendarMeetingSessionRecord | undefined> {
+    return clone(
+      this.calendarMeetingSessions.find(
+        (session) =>
+          session.firmId === firmId &&
+          session.matterId === matterId &&
+          session.eventId === eventId &&
+          session.id === sessionId,
+      ),
+    );
+  }
+
+  async updateCalendarMeetingSessionStatus(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    sessionId: string;
+    status: CalendarMeetingSessionRecord["status"];
+    occurredAt: string;
+    actorUserId: string;
+  }): Promise<CalendarMeetingSessionRecord | undefined> {
+    const index = this.calendarMeetingSessions.findIndex(
+      (session) =>
+        session.firmId === input.firmId &&
+        session.matterId === input.matterId &&
+        session.eventId === input.eventId &&
+        session.id === input.sessionId,
+    );
+    if (index < 0) return undefined;
+    const updated = transitionCalendarMeetingSessionStatus(this.calendarMeetingSessions[index]!, {
+      status: input.status,
+      occurredAt: input.occurredAt,
+      actorUserId: input.actorUserId,
+    });
+    this.calendarMeetingSessions[index] = clone(updated);
+    return clone(updated);
+  }
+
+  async createCalendarGuestLink(
+    link: CalendarGuestLinkCreateInput,
+  ): Promise<CalendarGuestLinkRecord> {
+    const session = this.calendarMeetingSessions.find(
+      (candidate) =>
+        candidate.firmId === link.firmId &&
+        candidate.matterId === link.matterId &&
+        candidate.eventId === link.eventId &&
+        candidate.id === link.sessionId,
+    );
+    if (!session) {
+      throw new Error(`Calendar meeting session ${link.sessionId} was not found`);
+    }
+    if (this.calendarGuestLinks.some((candidate) => candidate.tokenHash === link.tokenHash)) {
+      throw new Error("Calendar guest link token hash already exists");
+    }
+    this.calendarGuestLinks = [...this.calendarGuestLinks, clone(link)];
+    return clone(link);
+  }
+
+  async listCalendarGuestLinks(
+    firmId: string,
+    options: {
+      matterId?: string;
+      eventId?: string;
+      sessionId?: string;
+      status?: CalendarGuestLinkRecord["status"];
+    } = {},
+  ): Promise<CalendarGuestLinkRecord[]> {
+    return clone(
+      this.calendarGuestLinks
+        .filter(
+          (link) =>
+            link.firmId === firmId &&
+            (!options.matterId || link.matterId === options.matterId) &&
+            (!options.eventId || link.eventId === options.eventId) &&
+            (!options.sessionId || link.sessionId === options.sessionId) &&
+            (!options.status || link.status === options.status),
+        )
+        .sort(
+          (left, right) =>
+            right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id),
+        ),
+    );
+  }
+
+  async getCalendarGuestLink(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+    sessionId: string,
+    linkId: string,
+  ): Promise<CalendarGuestLinkRecord | undefined> {
+    return clone(
+      this.calendarGuestLinks.find(
+        (link) =>
+          link.firmId === firmId &&
+          link.matterId === matterId &&
+          link.eventId === eventId &&
+          link.sessionId === sessionId &&
+          link.id === linkId,
+      ),
+    );
+  }
+
+  async getCalendarGuestLinkByTokenHash(
+    tokenHash: string,
+  ): Promise<CalendarGuestLinkRecord | undefined> {
+    return clone(this.calendarGuestLinks.find((link) => link.tokenHash === tokenHash));
+  }
+
+  async updateCalendarGuestLinkStatus(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    sessionId: string;
+    linkId: string;
+    status: CalendarGuestLinkRecord["status"];
+    occurredAt: string;
+    actorUserId: string;
+  }): Promise<CalendarGuestLinkRecord | undefined> {
+    const index = this.calendarGuestLinks.findIndex(
+      (link) =>
+        link.firmId === input.firmId &&
+        link.matterId === input.matterId &&
+        link.eventId === input.eventId &&
+        link.sessionId === input.sessionId &&
+        link.id === input.linkId,
+    );
+    if (index < 0) return undefined;
+    const updated = transitionCalendarGuestLinkStatus(this.calendarGuestLinks[index]!, {
+      status: input.status,
+      occurredAt: input.occurredAt,
+      actorUserId: input.actorUserId,
+    });
+    this.calendarGuestLinks[index] = clone(updated);
+    return clone(updated);
+  }
+
+  async revokeCalendarGuestLink(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    sessionId: string;
+    linkId: string;
+    revokedAt: string;
+    actorUserId: string;
+  }): Promise<CalendarGuestLinkRecord | undefined> {
+    return this.updateCalendarGuestLinkStatus({
+      firmId: input.firmId,
+      matterId: input.matterId,
+      eventId: input.eventId,
+      sessionId: input.sessionId,
+      linkId: input.linkId,
+      status: "revoked",
+      occurredAt: input.revokedAt,
+      actorUserId: input.actorUserId,
+    });
+  }
+
   async runConflictCheck(input: {
     firmId: string;
     actorId: string;
@@ -2984,6 +3202,17 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(request);
   }
 
+  async getTrustTransferRequest(
+    firmId: string,
+    requestId: string,
+  ): Promise<TrustTransferRequestRecord | undefined> {
+    return clone(
+      this.trustTransferRequests.find(
+        (request) => request.firmId === firmId && request.id === requestId,
+      ),
+    );
+  }
+
   async listTrustTransferRequests(
     firmId: string,
     options: { matterId?: string; status?: TrustTransferRequestRecord["status"] } = {},
@@ -2996,6 +3225,27 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           (!options.status || request.status === options.status),
       ),
     );
+  }
+
+  async updateTrustTransferRequest(
+    firmId: string,
+    requestId: string,
+    updates: TrustTransferRequestUpdate,
+    options: TrustTransferRequestUpdateOptions = {},
+  ): Promise<TrustTransferRequestRecord> {
+    const existing = await this.getTrustTransferRequest(firmId, requestId);
+    if (!existing) throw new Error("Trust transfer request was not found");
+    if (
+      (options.expectedStatus && existing.status !== options.expectedStatus) ||
+      (options.requireLedgerTransactionUnlinked && existing.ledgerTransactionId)
+    ) {
+      throw new Error("Trust transfer request update conflict");
+    }
+    const updated: TrustTransferRequestRecord = { ...existing, ...updates };
+    this.trustTransferRequests = this.trustTransferRequests.map((request) =>
+      request.firmId === firmId && request.id === requestId ? clone(updated) : request,
+    );
+    return clone(updated);
   }
 
   async createDocumentTextExtraction(

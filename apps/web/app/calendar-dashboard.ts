@@ -9,6 +9,7 @@ import type {
   CalendarCredentialSummary,
   CalendarDashboardResponse,
   CalendarEventsResponse,
+  CalendarGuestSessionSummary,
   CalendarMatterLinks,
   DeliveryConfirmationPayload,
   MatterSummary,
@@ -116,6 +117,51 @@ export function describeMeetingLinkAvailability(
       : "Add another meeting link, leave it blank, or configure Hosted WebRTC before using hosted links.",
     status: "disabled",
     actionable: false,
+  };
+}
+
+export function describeCalendarGuestSessionStatus(
+  session: Pick<
+    CalendarGuestSessionSummary,
+    "status" | "issuedCount" | "waitingCount" | "admittedCount" | "deniedCount" | "revokedCount"
+  >,
+): string {
+  const lobby =
+    session.status === "open"
+      ? "Lobby open"
+      : session.status === "locked"
+        ? "Lobby locked"
+        : session.status === "ended"
+          ? "Session ended"
+          : session.status === "expired"
+            ? "Guest access expired"
+            : "Lobby closed";
+  return `${lobby}; ${session.waitingCount} waiting, ${session.admittedCount} admitted, ${session.deniedCount} denied, ${session.revokedCount} revoked.`;
+}
+
+export function sortCalendarGuestSessions(
+  sessions: CalendarGuestSessionSummary[],
+): CalendarGuestSessionSummary[] {
+  return [...sessions].sort((left, right) => {
+    const endedWeight = Number(left.status === "ended") - Number(right.status === "ended");
+    if (endedWeight !== 0) return endedWeight;
+    const updatedDifference = Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+    return updatedDifference === 0 ? left.id.localeCompare(right.id) : updatedDifference;
+  });
+}
+
+export function upsertCalendarGuestSession(
+  sessionsByEventId: Record<string, CalendarGuestSessionSummary[]>,
+  session: CalendarGuestSessionSummary,
+): Record<string, CalendarGuestSessionSummary[]> {
+  const existingSessions = sessionsByEventId[session.eventId] ?? [];
+  const exists = existingSessions.some((candidate) => candidate.id === session.id);
+  const nextSessions = exists
+    ? existingSessions.map((candidate) => (candidate.id === session.id ? session : candidate))
+    : [session, ...existingSessions];
+  return {
+    ...sessionsByEventId,
+    [session.eventId]: sortCalendarGuestSessions(nextSessions),
   };
 }
 
@@ -346,10 +392,17 @@ export async function loadCalendarDashboardData(input: {
     ),
   ]);
   const eventsByMatterId: Record<string, CalendarEventRecord[]> = {};
+  const guestSessionsByEventId: Record<string, CalendarGuestSessionSummary[]> = {};
   const linksByMatterId: Record<string, CalendarMatterLinks> = {};
 
   for (const matterResponse of matterResponses) {
     eventsByMatterId[matterResponse.matterId] = matterResponse.response.events;
+    for (const session of matterResponse.response.guestSessions ?? []) {
+      guestSessionsByEventId[session.eventId] = sortCalendarGuestSessions([
+        ...(guestSessionsByEventId[session.eventId] ?? []),
+        session,
+      ]);
+    }
     linksByMatterId[matterResponse.matterId] = {
       caldavUrl: matterResponse.response.caldavUrl,
       subscriptionUrl: matterResponse.response.subscriptionUrl,
@@ -358,6 +411,7 @@ export async function loadCalendarDashboardData(input: {
 
   return {
     eventsByMatterId,
+    guestSessionsByEventId,
     linksByMatterId,
     credentials,
   };

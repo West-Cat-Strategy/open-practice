@@ -100,6 +100,51 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies trust transfer review events with safe metadata hints", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "trust_transfer_request.linked",
+        resourceType: "trust_transfer_request",
+        resourceId: "trust-transfer-request-001",
+        metadata: {
+          matterId: "matter-001",
+          trustTransferRequestId: "trust-transfer-request-001",
+          invoiceId: "invoice-001",
+          ledgerTransactionId: "trust-transfer-posting",
+          amountCents: 13230,
+          status: "linked",
+          previousStatus: "approved",
+          trustAssetCreditCents: 13230,
+          clientLiabilityDebitCents: 13230,
+          evidencePresent: true,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "trust",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "trustTransferRequestId",
+        "invoiceId",
+        "ledgerTransactionId",
+        "amountCents",
+        "status",
+        "previousStatus",
+        "trustAssetCreditCents",
+        "clientLiabilityDebitCents",
+        "evidencePresent",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["reason", "evidence"]),
+    );
+  });
+
   it("classifies communications triage note and follow-up metadata as safe resource hints", () => {
     const classification = classifyAuditEvent(
       auditEvent({
@@ -225,6 +270,63 @@ describe("audit event taxonomy", () => {
       matterScope: "matter",
       resourceTypeMatches: true,
     });
+  });
+
+  it("classifies hosted calendar meeting session and guest link events without token hints", () => {
+    const sessionClassification = classifyAuditEvent(
+      auditEvent({
+        action: "calendar.meeting_session.updated",
+        resourceType: "calendar_meeting_session",
+        resourceId: "meeting-session-001",
+        metadata: {
+          matterId: "matter-001",
+          eventId: "calendar-event-001",
+          sessionId: "meeting-session-001",
+          status: "lobby_open",
+          retentionUntil: "2026-08-03T16:00:00.000Z",
+        },
+      }),
+    );
+    expect(sessionClassification).toMatchObject({
+      category: "calendar",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(sessionClassification.metadataHints.resource).toEqual(
+      expect.arrayContaining(["eventId", "sessionId", "status", "retentionUntil"]),
+    );
+
+    const guestLinkClassification = classifyAuditEvent(
+      auditEvent({
+        action: "calendar.guest_link.revoked",
+        resourceType: "calendar_guest_link",
+        resourceId: "guest-link-001",
+        metadata: {
+          matterId: "matter-001",
+          eventId: "calendar-event-001",
+          sessionId: "meeting-session-001",
+          linkId: "guest-link-001",
+          status: "revoked",
+          revokedAt: "2026-05-03T16:20:00.000Z",
+          checkedInAt: "2026-05-03T16:10:00.000Z",
+          retentionUntil: "2026-08-03T16:00:00.000Z",
+          tokenHash: "should-not-be-a-hint",
+          email: "should-not-be-a-hint@example.test",
+        },
+      }),
+    );
+    expect(guestLinkClassification).toMatchObject({
+      category: "calendar",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(guestLinkClassification.metadataHints.resource).toEqual(
+      expect.arrayContaining(["eventId", "sessionId", "linkId", "status", "revokedAt"]),
+    );
+    expect(guestLinkClassification.metadataHints.resource).not.toContain("tokenHash");
+    expect(guestLinkClassification.metadataHints.resource).not.toContain("email");
   });
 
   it("classifies workflow audit events with envelope metadata hints", () => {

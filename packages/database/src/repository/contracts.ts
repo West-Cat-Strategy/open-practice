@@ -18,6 +18,10 @@ import {
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
   type CalendarEventReminderRecord,
+  type CalendarGuestLinkRecord,
+  type CalendarGuestLinkStatus,
+  type CalendarMeetingSessionRecord,
+  type CalendarMeetingSessionStatus,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
   type ConnectorRecord,
@@ -212,6 +216,19 @@ export interface AuthSessionRecord {
 export type CalendarEventUpsertInput = CalendarEventRecord;
 export type CalendarEventAttendeeUpsertInput = CalendarEventAttendeeRecord;
 export type CalendarEventReminderUpsertInput = CalendarEventReminderRecord;
+export type CalendarMeetingSessionCreateInput = CalendarMeetingSessionRecord;
+export type CalendarGuestLinkCreateInput = CalendarGuestLinkRecord;
+export type TrustTransferRequestUpdate = Partial<
+  Pick<
+    TrustTransferRequestRecord,
+    "status" | "reviewedByUserId" | "reviewedAt" | "ledgerTransactionId" | "evidence"
+  >
+>;
+
+export interface TrustTransferRequestUpdateOptions {
+  expectedStatus?: TrustTransferRequestRecord["status"];
+  requireLedgerTransactionUnlinked?: boolean;
+}
 
 export interface TaskDeadlineCompletionInput {
   firmId: string;
@@ -655,6 +672,69 @@ export interface OpenPracticeRepository {
     credentialId: string;
     revokedAt: string;
   }): Promise<CalendarCredentialRecord | undefined>;
+  createCalendarMeetingSession(
+    session: CalendarMeetingSessionCreateInput,
+  ): Promise<CalendarMeetingSessionRecord>;
+  listCalendarMeetingSessions(
+    firmId: string,
+    options?: {
+      matterId?: string;
+      eventId?: string;
+      status?: CalendarMeetingSessionStatus;
+    },
+  ): Promise<CalendarMeetingSessionRecord[]>;
+  getCalendarMeetingSession(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+    sessionId: string,
+  ): Promise<CalendarMeetingSessionRecord | undefined>;
+  updateCalendarMeetingSessionStatus(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    sessionId: string;
+    status: CalendarMeetingSessionStatus;
+    occurredAt: string;
+    actorUserId: string;
+  }): Promise<CalendarMeetingSessionRecord | undefined>;
+  createCalendarGuestLink(link: CalendarGuestLinkCreateInput): Promise<CalendarGuestLinkRecord>;
+  listCalendarGuestLinks(
+    firmId: string,
+    options?: {
+      matterId?: string;
+      eventId?: string;
+      sessionId?: string;
+      status?: CalendarGuestLinkStatus;
+    },
+  ): Promise<CalendarGuestLinkRecord[]>;
+  getCalendarGuestLink(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+    sessionId: string,
+    linkId: string,
+  ): Promise<CalendarGuestLinkRecord | undefined>;
+  getCalendarGuestLinkByTokenHash(tokenHash: string): Promise<CalendarGuestLinkRecord | undefined>;
+  updateCalendarGuestLinkStatus(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    sessionId: string;
+    linkId: string;
+    status: CalendarGuestLinkStatus;
+    occurredAt: string;
+    actorUserId: string;
+  }): Promise<CalendarGuestLinkRecord | undefined>;
+  revokeCalendarGuestLink(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    sessionId: string;
+    linkId: string;
+    revokedAt: string;
+    actorUserId: string;
+  }): Promise<CalendarGuestLinkRecord | undefined>;
   runConflictCheck(input: {
     firmId: string;
     actorId: string;
@@ -943,10 +1023,20 @@ export interface OpenPracticeRepository {
   createTrustTransferRequest(
     request: TrustTransferRequestRecord,
   ): Promise<TrustTransferRequestRecord>;
+  getTrustTransferRequest(
+    firmId: string,
+    requestId: string,
+  ): Promise<TrustTransferRequestRecord | undefined>;
   listTrustTransferRequests(
     firmId: string,
     options?: { matterId?: string; status?: TrustTransferRequestRecord["status"] },
   ): Promise<TrustTransferRequestRecord[]>;
+  updateTrustTransferRequest(
+    firmId: string,
+    requestId: string,
+    updates: TrustTransferRequestUpdate,
+    options?: TrustTransferRequestUpdateOptions,
+  ): Promise<TrustTransferRequestRecord>;
   createDocumentTextExtraction(
     extraction: DocumentTextExtractionRecord,
   ): Promise<DocumentTextExtractionRecord>;

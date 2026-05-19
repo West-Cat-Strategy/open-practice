@@ -319,6 +319,7 @@ export interface CalendarCredentialSummary {
 
 export interface CalendarEventsResponse {
   events: CalendarEventRecord[];
+  guestSessions?: CalendarGuestSessionSummary[];
   caldavUrl: string;
   subscriptionUrl: string;
 }
@@ -372,6 +373,83 @@ export interface CalendarInvitationResponse {
   meetingInvitationBoundary?: CalendarMeetingInvitationBoundary;
 }
 
+export type CalendarGuestAccessStatus = "issued" | "waiting" | "admitted" | "denied" | "revoked";
+
+export type CalendarGuestSessionStatus = "created" | "open" | "locked" | "ended" | "expired";
+
+export interface CalendarGuestSessionGuestSummary {
+  id: string;
+  sessionId: string;
+  status: CalendarGuestAccessStatus;
+  expiresAt: string;
+  checkedInAt?: string;
+  admittedAt?: string;
+  deniedAt?: string;
+  revokedAt?: string;
+}
+
+export interface CalendarGuestSessionSummary {
+  id: string;
+  eventId: string;
+  status: CalendarGuestSessionStatus;
+  lobbyStatus?: CalendarGuestSessionStatus;
+  provider?: string;
+  createdAt: string;
+  updatedAt: string;
+  endedAt?: string;
+  retentionUntil?: string;
+  issuedCount: number;
+  waitingCount: number;
+  admittedCount: number;
+  deniedCount: number;
+  revokedCount: number;
+  guests: CalendarGuestSessionGuestSummary[];
+}
+
+export interface CalendarGuestSessionMutationResponse {
+  session: CalendarGuestSessionSummary;
+}
+
+export interface CalendarGuestSessionIssueResponse {
+  session: CalendarGuestSessionSummary;
+  guest: CalendarGuestSessionGuestSummary;
+  token: string;
+  portalUrl: string;
+}
+
+export interface CalendarGuestSessionGuestMutationResponse {
+  session?: CalendarGuestSessionSummary | null;
+  guest: CalendarGuestSessionGuestSummary;
+}
+
+export interface PublicGuestSessionResponse {
+  session: {
+    status: CalendarGuestSessionStatus;
+    lobbyStatus?: CalendarGuestSessionStatus;
+    startsAt?: string;
+    endsAt?: string;
+    issuedCount?: number;
+    waitingCount?: number;
+    admittedCount?: number;
+    deniedCount?: number;
+    revokedCount?: number;
+  };
+  guest?: {
+    status: CalendarGuestAccessStatus;
+    checkedInAt?: string;
+    admittedAt?: string;
+    deniedAt?: string;
+    revokedAt?: string;
+  };
+  lobby?: {
+    status?: CalendarGuestSessionStatus;
+    waitingCount?: number;
+    admittedCount?: number;
+    deniedCount?: number;
+    revokedCount?: number;
+  };
+}
+
 export interface CalendarMatterLinks {
   caldavUrl: string;
   subscriptionUrl: string;
@@ -379,6 +457,7 @@ export interface CalendarMatterLinks {
 
 export interface CalendarDashboardResponse {
   eventsByMatterId: Record<string, CalendarEventRecord[]>;
+  guestSessionsByEventId: Record<string, CalendarGuestSessionSummary[]>;
   linksByMatterId: Record<string, CalendarMatterLinks>;
   credentials: CalendarCredentialSummary[];
 }

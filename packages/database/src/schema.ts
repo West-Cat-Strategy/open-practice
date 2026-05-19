@@ -14,6 +14,8 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type {
+  CalendarGuestLinkRecord,
+  CalendarMeetingSessionRecord,
   ConnectorSecretReference,
   ConversationThreadRecord,
   DraftAssistRecord,
@@ -1831,6 +1833,100 @@ export const calendarEventReminders = pgTable(
     statusValue: check(
       "calendar_event_reminders_status_value",
       sql`${table.status} in ('pending', 'acknowledged', 'dismissed', 'cancelled')`,
+    ),
+  }),
+);
+
+export const calendarMeetingSessions = pgTable(
+  "calendar_meeting_sessions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => calendarEvents.id),
+    status: text("status").notNull().default("lobby_closed"),
+    retentionUntil: timestamp("retention_until", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    updatedByUserId: text("updated_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    metadata: jsonb("metadata")
+      .$type<CalendarMeetingSessionRecord["metadata"]>()
+      .notNull()
+      .default({}),
+  },
+  (table) => ({
+    firmMatterEvent: index("calendar_meeting_sessions_firm_matter_event_idx").on(
+      table.firmId,
+      table.matterId,
+      table.eventId,
+      table.status,
+    ),
+    statusValue: check(
+      "calendar_meeting_sessions_status_value",
+      sql`${table.status} in ('lobby_closed', 'lobby_open', 'locked', 'ended')`,
+    ),
+  }),
+);
+
+export const calendarGuestLinks = pgTable(
+  "calendar_guest_links",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => calendarEvents.id),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => calendarMeetingSessions.id),
+    tokenHash: text("token_hash").notNull(),
+    status: text("status").notNull().default("issued"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    retentionUntil: timestamp("retention_until", { withTimezone: true }),
+    checkedInAt: timestamp("checked_in_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    admittedAt: timestamp("admitted_at", { withTimezone: true }),
+    deniedAt: timestamp("denied_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    updatedByUserId: text("updated_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    metadata: jsonb("metadata").$type<CalendarGuestLinkRecord["metadata"]>().notNull().default({}),
+  },
+  (table) => ({
+    tokenHash: uniqueIndex("calendar_guest_links_token_hash_idx").on(table.tokenHash),
+    sessionStatus: index("calendar_guest_links_session_status_idx").on(
+      table.firmId,
+      table.matterId,
+      table.eventId,
+      table.sessionId,
+      table.status,
+    ),
+    expiry: index("calendar_guest_links_expiry_idx").on(table.firmId, table.expiresAt),
+    statusValue: check(
+      "calendar_guest_links_status_value",
+      sql`${table.status} in ('issued', 'waiting', 'admitted', 'denied', 'revoked')`,
     ),
   }),
 );

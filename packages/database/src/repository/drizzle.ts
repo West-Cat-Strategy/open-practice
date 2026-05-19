@@ -18,6 +18,8 @@ import {
   calculateInvoiceTotals,
   clientTrustBalanceByMatter,
   clientTrustBalanceDeltas,
+  transitionCalendarGuestLinkStatus,
+  transitionCalendarMeetingSessionStatus,
   invoiceStatusForPayment,
   ledgerBalanceByMatter,
   ledgerRequestFingerprint,
@@ -32,6 +34,8 @@ import {
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
   type CalendarEventReminderRecord,
+  type CalendarGuestLinkRecord,
+  type CalendarMeetingSessionRecord,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
   type ConnectorRecord,
@@ -91,9 +95,11 @@ import type {
   AuthAccountRecord,
   AuthPasswordSetupTokenRecord,
   AuthSessionRecord,
+  CalendarGuestLinkCreateInput,
   CalendarEventAttendeeUpsertInput,
   CalendarEventReminderUpsertInput,
   CalendarEventUpsertInput,
+  CalendarMeetingSessionCreateInput,
   DocumentUploadIntent,
   FirstRunSetupInput,
   FirstRunSetupResult,
@@ -106,6 +112,8 @@ import type {
   PaymentWithAllocations,
   PracticeOverview,
   TaskDeadlineCompletionInput,
+  TrustTransferRequestUpdate,
+  TrustTransferRequestUpdateOptions,
 } from "./contracts.js";
 import {
   CalendarEventScopeConflictError,
@@ -127,6 +135,8 @@ import {
   accessLogInsert,
   applyVariableProposalWithTx,
   buildActivityTimeline,
+  calendarGuestLinkInsert,
+  calendarMeetingSessionInsert,
   connectorDeliveryAttemptInsert,
   connectorInsert,
   connectorOutboxInsert,
@@ -149,6 +159,8 @@ import {
   mapCalendarEventAttendeeRow,
   mapCalendarEventReminderRow,
   mapCalendarEventRow,
+  mapCalendarGuestLinkRow,
+  mapCalendarMeetingSessionRow,
   mapConflictCheckRow,
   mapConnectorDeliveryAttemptRow,
   mapConnectorOutboxRow,
@@ -2471,6 +2483,276 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return row ? mapCalendarCredentialRow(row) : undefined;
   }
 
+  async createCalendarMeetingSession(
+    session: CalendarMeetingSessionCreateInput,
+  ): Promise<CalendarMeetingSessionRecord> {
+    const [eventRow] = await this.db
+      .select({ id: schema.calendarEvents.id })
+      .from(schema.calendarEvents)
+      .where(
+        and(
+          eq(schema.calendarEvents.firmId, session.firmId),
+          eq(schema.calendarEvents.matterId, session.matterId),
+          eq(schema.calendarEvents.id, session.eventId),
+          isNull(schema.calendarEvents.deletedAt),
+        ),
+      );
+    if (!eventRow) {
+      throw new Error(`Calendar event ${session.eventId} was not found`);
+    }
+    const [row] = await this.db
+      .insert(schema.calendarMeetingSessions)
+      .values(calendarMeetingSessionInsert(session))
+      .returning();
+    return mapCalendarMeetingSessionRow(row);
+  }
+
+  async listCalendarMeetingSessions(
+    firmId: string,
+    options: {
+      matterId?: string;
+      eventId?: string;
+      status?: CalendarMeetingSessionRecord["status"];
+    } = {},
+  ): Promise<CalendarMeetingSessionRecord[]> {
+    const conditions = [eq(schema.calendarMeetingSessions.firmId, firmId)];
+    if (options.matterId) {
+      conditions.push(eq(schema.calendarMeetingSessions.matterId, options.matterId));
+    }
+    if (options.eventId) {
+      conditions.push(eq(schema.calendarMeetingSessions.eventId, options.eventId));
+    }
+    if (options.status) {
+      conditions.push(eq(schema.calendarMeetingSessions.status, options.status));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.calendarMeetingSessions)
+      .where(and(...conditions))
+      .orderBy(
+        desc(schema.calendarMeetingSessions.createdAt),
+        asc(schema.calendarMeetingSessions.id),
+      );
+    return rows.map(mapCalendarMeetingSessionRow);
+  }
+
+  async getCalendarMeetingSession(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+    sessionId: string,
+  ): Promise<CalendarMeetingSessionRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.calendarMeetingSessions)
+      .where(
+        and(
+          eq(schema.calendarMeetingSessions.firmId, firmId),
+          eq(schema.calendarMeetingSessions.matterId, matterId),
+          eq(schema.calendarMeetingSessions.eventId, eventId),
+          eq(schema.calendarMeetingSessions.id, sessionId),
+        ),
+      );
+    return row ? mapCalendarMeetingSessionRow(row) : undefined;
+  }
+
+  async updateCalendarMeetingSessionStatus(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    sessionId: string;
+    status: CalendarMeetingSessionRecord["status"];
+    occurredAt: string;
+    actorUserId: string;
+  }): Promise<CalendarMeetingSessionRecord | undefined> {
+    const existing = await this.getCalendarMeetingSession(
+      input.firmId,
+      input.matterId,
+      input.eventId,
+      input.sessionId,
+    );
+    if (!existing) return undefined;
+    const updated = transitionCalendarMeetingSessionStatus(existing, {
+      status: input.status,
+      occurredAt: input.occurredAt,
+      actorUserId: input.actorUserId,
+    });
+    const [row] = await this.db
+      .update(schema.calendarMeetingSessions)
+      .set({
+        status: updated.status,
+        updatedAt: new Date(updated.updatedAt),
+        updatedByUserId: updated.updatedByUserId,
+        endedAt: updated.endedAt ? new Date(updated.endedAt) : null,
+      })
+      .where(
+        and(
+          eq(schema.calendarMeetingSessions.firmId, input.firmId),
+          eq(schema.calendarMeetingSessions.matterId, input.matterId),
+          eq(schema.calendarMeetingSessions.eventId, input.eventId),
+          eq(schema.calendarMeetingSessions.id, input.sessionId),
+        ),
+      )
+      .returning();
+    return row ? mapCalendarMeetingSessionRow(row) : undefined;
+  }
+
+  async createCalendarGuestLink(
+    link: CalendarGuestLinkCreateInput,
+  ): Promise<CalendarGuestLinkRecord> {
+    const session = await this.getCalendarMeetingSession(
+      link.firmId,
+      link.matterId,
+      link.eventId,
+      link.sessionId,
+    );
+    if (!session) {
+      throw new Error(`Calendar meeting session ${link.sessionId} was not found`);
+    }
+    try {
+      const [row] = await this.db
+        .insert(schema.calendarGuestLinks)
+        .values(calendarGuestLinkInsert(link))
+        .returning();
+      return mapCalendarGuestLinkRow(row);
+    } catch (error) {
+      if (isPostgresUniqueViolation(error, "calendar_guest_links_token_hash_idx")) {
+        throw new Error("Calendar guest link token hash already exists", { cause: error });
+      }
+      throw error;
+    }
+  }
+
+  async listCalendarGuestLinks(
+    firmId: string,
+    options: {
+      matterId?: string;
+      eventId?: string;
+      sessionId?: string;
+      status?: CalendarGuestLinkRecord["status"];
+    } = {},
+  ): Promise<CalendarGuestLinkRecord[]> {
+    const conditions = [eq(schema.calendarGuestLinks.firmId, firmId)];
+    if (options.matterId) {
+      conditions.push(eq(schema.calendarGuestLinks.matterId, options.matterId));
+    }
+    if (options.eventId) {
+      conditions.push(eq(schema.calendarGuestLinks.eventId, options.eventId));
+    }
+    if (options.sessionId) {
+      conditions.push(eq(schema.calendarGuestLinks.sessionId, options.sessionId));
+    }
+    if (options.status) {
+      conditions.push(eq(schema.calendarGuestLinks.status, options.status));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.calendarGuestLinks)
+      .where(and(...conditions))
+      .orderBy(desc(schema.calendarGuestLinks.createdAt), asc(schema.calendarGuestLinks.id));
+    return rows.map(mapCalendarGuestLinkRow);
+  }
+
+  async getCalendarGuestLink(
+    firmId: string,
+    matterId: string,
+    eventId: string,
+    sessionId: string,
+    linkId: string,
+  ): Promise<CalendarGuestLinkRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.calendarGuestLinks)
+      .where(
+        and(
+          eq(schema.calendarGuestLinks.firmId, firmId),
+          eq(schema.calendarGuestLinks.matterId, matterId),
+          eq(schema.calendarGuestLinks.eventId, eventId),
+          eq(schema.calendarGuestLinks.sessionId, sessionId),
+          eq(schema.calendarGuestLinks.id, linkId),
+        ),
+      );
+    return row ? mapCalendarGuestLinkRow(row) : undefined;
+  }
+
+  async getCalendarGuestLinkByTokenHash(
+    tokenHash: string,
+  ): Promise<CalendarGuestLinkRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.calendarGuestLinks)
+      .where(eq(schema.calendarGuestLinks.tokenHash, tokenHash));
+    return row ? mapCalendarGuestLinkRow(row) : undefined;
+  }
+
+  async updateCalendarGuestLinkStatus(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    sessionId: string;
+    linkId: string;
+    status: CalendarGuestLinkRecord["status"];
+    occurredAt: string;
+    actorUserId: string;
+  }): Promise<CalendarGuestLinkRecord | undefined> {
+    const existing = await this.getCalendarGuestLink(
+      input.firmId,
+      input.matterId,
+      input.eventId,
+      input.sessionId,
+      input.linkId,
+    );
+    if (!existing) return undefined;
+    const updated = transitionCalendarGuestLinkStatus(existing, {
+      status: input.status,
+      occurredAt: input.occurredAt,
+      actorUserId: input.actorUserId,
+    });
+    const [row] = await this.db
+      .update(schema.calendarGuestLinks)
+      .set({
+        status: updated.status,
+        updatedAt: new Date(updated.updatedAt),
+        updatedByUserId: updated.updatedByUserId,
+        checkedInAt: updated.checkedInAt ? new Date(updated.checkedInAt) : null,
+        revokedAt: updated.revokedAt ? new Date(updated.revokedAt) : null,
+        admittedAt: updated.admittedAt ? new Date(updated.admittedAt) : null,
+        deniedAt: updated.deniedAt ? new Date(updated.deniedAt) : null,
+      })
+      .where(
+        and(
+          eq(schema.calendarGuestLinks.firmId, input.firmId),
+          eq(schema.calendarGuestLinks.matterId, input.matterId),
+          eq(schema.calendarGuestLinks.eventId, input.eventId),
+          eq(schema.calendarGuestLinks.sessionId, input.sessionId),
+          eq(schema.calendarGuestLinks.id, input.linkId),
+        ),
+      )
+      .returning();
+    return row ? mapCalendarGuestLinkRow(row) : undefined;
+  }
+
+  async revokeCalendarGuestLink(input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    sessionId: string;
+    linkId: string;
+    revokedAt: string;
+    actorUserId: string;
+  }): Promise<CalendarGuestLinkRecord | undefined> {
+    return this.updateCalendarGuestLinkStatus({
+      firmId: input.firmId,
+      matterId: input.matterId,
+      eventId: input.eventId,
+      sessionId: input.sessionId,
+      linkId: input.linkId,
+      status: "revoked",
+      occurredAt: input.revokedAt,
+      actorUserId: input.actorUserId,
+    });
+  }
+
   async runConflictCheck(input: {
     firmId: string;
     actorId: string;
@@ -4188,6 +4470,22 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return clone(request);
   }
 
+  async getTrustTransferRequest(
+    firmId: string,
+    requestId: string,
+  ): Promise<TrustTransferRequestRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.billingTrustTransferRequests)
+      .where(
+        and(
+          eq(schema.billingTrustTransferRequests.firmId, firmId),
+          eq(schema.billingTrustTransferRequests.id, requestId),
+        ),
+      );
+    return row ? mapTrustTransferRequestRow(row) : undefined;
+  }
+
   async listTrustTransferRequests(
     firmId: string,
     options: { matterId?: string; status?: TrustTransferRequestRecord["status"] } = {},
@@ -4204,6 +4502,49 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .from(schema.billingTrustTransferRequests)
       .where(and(...filters));
     return rows.map(mapTrustTransferRequestRow);
+  }
+
+  async updateTrustTransferRequest(
+    firmId: string,
+    requestId: string,
+    updates: TrustTransferRequestUpdate,
+    options: TrustTransferRequestUpdateOptions = {},
+  ): Promise<TrustTransferRequestRecord> {
+    const setValues: Partial<typeof schema.billingTrustTransferRequests.$inferInsert> = {};
+    if ("status" in updates) setValues.status = updates.status;
+    if ("reviewedByUserId" in updates) setValues.reviewedByUserId = updates.reviewedByUserId;
+    if ("reviewedAt" in updates) {
+      setValues.reviewedAt = updates.reviewedAt ? new Date(updates.reviewedAt) : null;
+    }
+    if ("ledgerTransactionId" in updates) {
+      setValues.ledgerTransactionId = updates.ledgerTransactionId;
+    }
+    if ("evidence" in updates) setValues.evidence = updates.evidence;
+
+    if (Object.keys(setValues).length === 0) {
+      const existing = await this.getTrustTransferRequest(firmId, requestId);
+      if (!existing) throw new Error("Trust transfer request was not found");
+      return existing;
+    }
+
+    const filters = [
+      eq(schema.billingTrustTransferRequests.firmId, firmId),
+      eq(schema.billingTrustTransferRequests.id, requestId),
+    ];
+    if (options.expectedStatus) {
+      filters.push(eq(schema.billingTrustTransferRequests.status, options.expectedStatus));
+    }
+    if (options.requireLedgerTransactionUnlinked) {
+      filters.push(isNull(schema.billingTrustTransferRequests.ledgerTransactionId));
+    }
+
+    const [row] = await this.db
+      .update(schema.billingTrustTransferRequests)
+      .set(setValues)
+      .where(and(...filters))
+      .returning();
+    if (!row) throw new Error("Trust transfer request update conflict");
+    return mapTrustTransferRequestRow(row);
   }
 
   private async listPaymentAllocationsForInvoice(

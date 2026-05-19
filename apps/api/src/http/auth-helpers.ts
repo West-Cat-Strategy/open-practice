@@ -98,7 +98,9 @@ export function isPublicRoute(method: string, url: string): boolean {
     (method === "GET" && /^\/api\/portal\/intake-forms\/[^/]+$/.test(path ?? "")) ||
     (method === "POST" && /^\/api\/portal\/intake-forms\/[^/]+\/draft$/.test(path ?? "")) ||
     (method === "GET" && /^\/api\/portal\/external-uploads\/[^/]+$/.test(path ?? "")) ||
+    (method === "GET" && /^\/api\/portal\/guest-sessions\/[^/]+$/.test(path ?? "")) ||
     (method === "POST" && /^\/api\/portal\/intake-forms\/[^/]+\/submit$/.test(path ?? "")) ||
+    (method === "POST" && /^\/api\/portal\/guest-sessions\/[^/]+\/check-in$/.test(path ?? "")) ||
     (method === "POST" &&
       /^\/api\/portal\/intake-forms\/[^/]+\/items\/[^/]+\/uploads$/.test(path ?? "")) ||
     (method === "POST" &&

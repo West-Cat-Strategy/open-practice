@@ -30,6 +30,92 @@ async function auditEvents(repository: InMemoryOpenPracticeRepository) {
   return (await repository.listAuditEvents("firm-west-legal")).events;
 }
 
+type SyntheticLedgerOptions = {
+  id?: string;
+  idempotencyKey?: string;
+  matterId?: string;
+  clientId?: string;
+  amountCents?: number;
+};
+
+async function postSyntheticTrustTransferLedger(
+  repository: InMemoryOpenPracticeRepository,
+  {
+    id = "trust-transfer-link-route-posting",
+    idempotencyKey = `${id}-key`,
+    matterId = "matter-001",
+    clientId = "contact-ada",
+    amountCents = 13230,
+  }: SyntheticLedgerOptions = {},
+) {
+  return repository.postLedgerTransaction({
+    id,
+    firmId: "firm-west-legal",
+    idempotencyKey,
+    postedByUserId: "user-admin",
+    postedAt: "2026-04-24T12:00:00.000Z",
+    entries: [
+      {
+        firmId: "firm-west-legal",
+        matterId,
+        clientId,
+        accountId: "acct-client-liability",
+        debitCents: amountCents,
+        creditCents: 0,
+        memo: "Synthetic trust transfer request link",
+      },
+      {
+        firmId: "firm-west-legal",
+        matterId,
+        clientId,
+        accountId: "acct-trust-bank",
+        debitCents: 0,
+        creditCents: amountCents,
+        memo: "Synthetic trust transfer request link",
+      },
+    ],
+  });
+}
+
+async function postSyntheticTrustRetainerLedger(
+  repository: InMemoryOpenPracticeRepository,
+  {
+    id = "trust-transfer-link-route-retainer",
+    idempotencyKey = `${id}-key`,
+    matterId = "matter-001",
+    clientId = "contact-ada",
+    amountCents = 13230,
+  }: SyntheticLedgerOptions = {},
+) {
+  return repository.postLedgerTransaction({
+    id,
+    firmId: "firm-west-legal",
+    idempotencyKey,
+    postedByUserId: "user-admin",
+    postedAt: "2026-04-24T11:00:00.000Z",
+    entries: [
+      {
+        firmId: "firm-west-legal",
+        matterId,
+        clientId,
+        accountId: "acct-trust-bank",
+        debitCents: amountCents,
+        creditCents: 0,
+        memo: "Synthetic trust retainer for link validation",
+      },
+      {
+        firmId: "firm-west-legal",
+        matterId,
+        clientId,
+        accountId: "acct-client-liability",
+        debitCents: 0,
+        creditCents: amountCents,
+        memo: "Synthetic trust retainer for link validation",
+      },
+    ],
+  });
+}
+
 describe("billing routes", () => {
   it("returns legacy top-level error shape for invalid billing requests", async () => {
     const response = await testServer().inject({
@@ -215,6 +301,383 @@ describe("billing routes", () => {
       ]),
     });
     expect(ledgerAfter.json<{ entries: unknown[] }>().entries).toHaveLength(beforeEntryCount);
+  });
+
+  it("keeps trust transfer request creation review-gated and unlinked", async () => {
+    const server = testServer();
+
+    const bypass = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests",
+      payload: {
+        id: "trust-transfer-create-bypass-route",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        clientContactId: "contact-ada",
+        amountCents: 1000,
+        status: "linked",
+        reviewedByUserId: "user-admin",
+        ledgerTransactionId: "trust-retainer",
+      },
+    });
+    expect(bypass.statusCode).toBe(400);
+    expect(bypass.json()).toMatchObject({ message: "Invalid request body" });
+
+    const valid = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests",
+      payload: {
+        id: "trust-transfer-create-route",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        amountCents: 1000,
+        evidence: { syntheticRequest: true },
+      },
+    });
+    expect(valid.statusCode).toBe(200);
+    expect(valid.json()).toMatchObject({
+      id: "trust-transfer-create-route",
+      status: "pending_approval",
+      clientContactId: "contact-ada",
+      requestedByUserId: "user-admin",
+      evidence: { syntheticRequest: true },
+    });
+    expect(valid.json()).not.toHaveProperty("reviewedByUserId");
+    expect(valid.json()).not.toHaveProperty("ledgerTransactionId");
+
+    const mismatchedClient = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests",
+      payload: {
+        id: "trust-transfer-create-client-mismatch",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        clientContactId: "contact-river",
+        amountCents: 1000,
+      },
+    });
+    expect(mismatchedClient.statusCode).toBe(400);
+    expect(mismatchedClient.json()).toMatchObject({
+      message: "Trust transfer request client must match the invoice client",
+    });
+
+    const highAmountRequest = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests",
+      payload: {
+        id: "trust-transfer-create-high-amount",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        clientContactId: "contact-ada",
+        amountCents: 13231,
+      },
+    });
+    expect(highAmountRequest.statusCode).toBe(200);
+    expect(highAmountRequest.json()).toMatchObject({
+      id: "trust-transfer-create-high-amount",
+      status: "pending_approval",
+      amountCents: 13231,
+    });
+  });
+
+  it("requires trust ledger approval for trust transfer review and link routes", async () => {
+    const server = testServer();
+
+    for (const request of [
+      {
+        url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+        payload: {},
+      },
+      {
+        url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/reject",
+        payload: {},
+      },
+      {
+        url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/link",
+        payload: { ledgerTransactionId: "trust-retainer" },
+      },
+    ]) {
+      const response = await server.inject({
+        method: "POST",
+        url: request.url,
+        headers: {
+          "x-open-practice-user-id": "user-staff",
+          "x-open-practice-firm-id": "firm-west-legal",
+        },
+        payload: request.payload,
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ message: "Trust ledger access required" });
+    }
+  });
+
+  it("approves pending trust transfer requests without linking or posting ledger entries", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const ledgerBefore = await repository.getLedger("firm-west-legal");
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+      payload: { evidence: { syntheticReview: true } },
+    });
+    const ledgerAfter = await repository.getLedger("firm-west-legal");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: "trust-transfer-request-001",
+      status: "approved",
+      reviewedByUserId: "user-admin",
+      evidence: { syntheticReview: true },
+    });
+    expect(response.json()).not.toHaveProperty("ledgerTransactionId");
+    expect(ledgerAfter.entries).toHaveLength(ledgerBefore.entries.length);
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "trust_transfer_request.approved",
+          resourceId: "trust-transfer-request-001",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            invoiceId: "invoice-001",
+            previousStatus: "pending_approval",
+            status: "approved",
+            amountCents: 13230,
+            evidencePresent: true,
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+  });
+
+  it("rejects trust transfer approval when invoice or trust balances no longer cover the request", async () => {
+    const invoiceRepository = new InMemoryOpenPracticeRepository();
+    const invoiceServer = testServer({ repository: invoiceRepository });
+    const invoiceBeforePayment = await invoiceServer.inject({
+      method: "GET",
+      url: "/api/invoices/invoice-001",
+    });
+    const paymentAmountCents =
+      invoiceBeforePayment.json<{ balanceDueCents: number }>().balanceDueCents - 13229;
+    expect(paymentAmountCents).toBeGreaterThan(0);
+    const payment = await invoiceServer.inject({
+      method: "POST",
+      url: "/api/payments",
+      payload: {
+        id: "payment-before-trust-transfer-approval",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        clientContactId: "contact-ada",
+        amountCents: paymentAmountCents,
+        method: "eft",
+      },
+    });
+    expect(payment.statusCode).toBe(200);
+    const overInvoiceBalance = await invoiceServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+    });
+    expect(overInvoiceBalance.statusCode).toBe(409);
+    expect(overInvoiceBalance.json()).toMatchObject({
+      message: "Trust transfer amount exceeds invoice balance due",
+    });
+
+    const trustRepository = new InMemoryOpenPracticeRepository();
+    const trustServer = testServer({ repository: trustRepository });
+    await postSyntheticTrustTransferLedger(trustRepository, {
+      id: "trust-transfer-balance-reduction",
+      amountCents: 140000,
+    });
+    const overTrustBalance = await trustServer.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+    });
+    expect(overTrustBalance.statusCode).toBe(409);
+    expect(overTrustBalance.json()).toMatchObject({
+      message: "Trust transfer amount exceeds available trust balance",
+    });
+  });
+
+  it("rejects pending trust transfer requests without posting or linking ledger entries", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const create = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests",
+      payload: {
+        id: "trust-transfer-reject-route",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        clientContactId: "contact-ada",
+        amountCents: 1000,
+      },
+    });
+    const ledgerBefore = await repository.getLedger("firm-west-legal");
+    const reject = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-reject-route/reject",
+      payload: { evidence: { syntheticDecision: true } },
+    });
+    const ledgerAfter = await repository.getLedger("firm-west-legal");
+
+    expect(create.statusCode).toBe(200);
+    expect(reject.statusCode).toBe(200);
+    expect(reject.json()).toMatchObject({
+      id: "trust-transfer-reject-route",
+      status: "rejected",
+      reviewedByUserId: "user-admin",
+      evidence: { syntheticDecision: true },
+    });
+    expect(reject.json()).not.toHaveProperty("ledgerTransactionId");
+    expect(ledgerAfter.entries).toHaveLength(ledgerBefore.entries.length);
+  });
+
+  it("links approved trust transfer requests to matching posted ledger transactions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+
+    const approve = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+    });
+    await postSyntheticTrustTransferLedger(repository);
+    const link = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/link",
+      payload: {
+        ledgerTransactionId: "trust-transfer-link-route-posting",
+        evidence: { syntheticLink: true },
+      },
+    });
+
+    expect(approve.statusCode).toBe(200);
+    expect(link.statusCode).toBe(200);
+    expect(link.json()).toMatchObject({
+      id: "trust-transfer-request-001",
+      status: "linked",
+      reviewedByUserId: "user-admin",
+      ledgerTransactionId: "trust-transfer-link-route-posting",
+      evidence: { syntheticLink: true },
+    });
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "trust_transfer_request.linked",
+          resourceId: "trust-transfer-request-001",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            invoiceId: "invoice-001",
+            ledgerTransactionId: "trust-transfer-link-route-posting",
+            previousStatus: "approved",
+            status: "linked",
+            amountCents: 13230,
+            evidencePresent: true,
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+
+    const duplicateRequest = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests",
+      payload: {
+        id: "trust-transfer-duplicate-ledger-route",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        amountCents: 13230,
+      },
+    });
+    const duplicateApproval = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-duplicate-ledger-route/approve",
+    });
+    const duplicateLink = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-duplicate-ledger-route/link",
+      payload: { ledgerTransactionId: "trust-transfer-link-route-posting" },
+    });
+
+    expect(duplicateRequest.statusCode).toBe(200);
+    expect(duplicateApproval.statusCode).toBe(200);
+    expect(duplicateLink.statusCode).toBe(409);
+    expect(duplicateLink.json()).toMatchObject({
+      message: "Ledger transaction is already linked to a trust transfer request",
+    });
+  });
+
+  it("rejects trust transfer review and link lifecycle violations", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+
+    const unauthorized = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+      headers: {
+        "x-open-practice-user-id": "user-staff",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+    const linkBeforeApproval = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/link",
+      payload: { ledgerTransactionId: "trust-retainer" },
+    });
+    const approve = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+    });
+    const approveAgain = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/approve",
+    });
+    await postSyntheticTrustRetainerLedger(repository, {
+      id: "trust-transfer-wrong-matter-retainer",
+      matterId: "matter-002",
+      clientId: "contact-northstar",
+    });
+    await postSyntheticTrustTransferLedger(repository, {
+      id: "trust-transfer-wrong-matter-posting",
+      matterId: "matter-002",
+      clientId: "contact-northstar",
+    });
+    const wrongMatterLink = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/link",
+      payload: { ledgerTransactionId: "trust-transfer-wrong-matter-posting" },
+    });
+    const badAmountLink = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/link",
+      payload: { ledgerTransactionId: "trust-retainer" },
+    });
+    const crossMatterLink = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests/trust-transfer-request-001/link",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: { ledgerTransactionId: "trust-transfer-wrong-matter-posting" },
+    });
+
+    expect(unauthorized.statusCode).toBe(403);
+    expect(linkBeforeApproval.statusCode).toBe(409);
+    expect(approve.statusCode).toBe(200);
+    expect(approveAgain.statusCode).toBe(409);
+    expect(wrongMatterLink.statusCode).toBe(404);
+    expect(wrongMatterLink.json()).toMatchObject({
+      message: "Ledger transaction was not found",
+    });
+    expect(badAmountLink.statusCode).toBe(400);
+    expect(badAmountLink.json()).toMatchObject({
+      message: "Ledger transaction amount must match the request amount",
+    });
+    expect(crossMatterLink.statusCode).toBe(404);
+    expect(crossMatterLink.json()).toMatchObject({
+      message: "Ledger transaction was not found",
+    });
   });
 
   it("rejects selected source entries already linked to a non-void invoice", async () => {

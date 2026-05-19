@@ -261,6 +261,24 @@
   overflow-wrap: anywhere;
 }
 
+.calendar-guest-session-panel {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.compact-section-title h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.calendar-guest-session-row,
+.calendar-guest-link-list {
+  display: grid;
+  gap: 8px;
+}
+
 .calendar-attendee-form {
   display: grid;
   grid-template-columns:
@@ -280,6 +298,7 @@
 .share-form-row .compact-button,
 .calendar-meeting-link-form .compact-button,
 .calendar-attendee-form .compact-button,
+.calendar-guest-session-panel .compact-button,
 .calendar-event-summary .compact-button {
   display: inline-flex;
   align-items: center;

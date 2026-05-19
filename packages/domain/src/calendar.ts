@@ -4,8 +4,12 @@ import type {
   CalendarEventAttendeeRecord,
   CalendarEventRecord,
   CalendarEventStatus,
+  CalendarGuestLinkRecord,
+  CalendarGuestLinkStatus,
   CalendarMeetingLinkMode,
   CalendarMeetingInvitationBoundary,
+  CalendarMeetingSessionRecord,
+  CalendarMeetingSessionStatus,
 } from "./models.js";
 
 const DEFAULT_PRODUCT_ID = "-//Open Practice//Matter Calendar//EN";
@@ -25,6 +29,22 @@ const UNSUPPORTED_PROPERTIES = new Set([
 ]);
 const UNSUPPORTED_COMPONENTS = new Set(["VALARM", "VTODO", "VFREEBUSY", "VJOURNAL"]);
 const SUPPORTED_METHOD_VALUES = new Set(["PUBLISH"]);
+const SESSION_STATUS_TRANSITIONS: Record<
+  CalendarMeetingSessionStatus,
+  CalendarMeetingSessionStatus[]
+> = {
+  lobby_closed: ["lobby_closed", "lobby_open", "locked", "ended"],
+  lobby_open: ["lobby_open", "lobby_closed", "locked", "ended"],
+  locked: ["locked", "lobby_closed", "lobby_open", "ended"],
+  ended: ["ended"],
+};
+const GUEST_LINK_STATUS_TRANSITIONS: Record<CalendarGuestLinkStatus, CalendarGuestLinkStatus[]> = {
+  issued: ["issued", "waiting", "admitted", "denied", "revoked"],
+  waiting: ["waiting", "admitted", "denied", "revoked"],
+  admitted: ["admitted", "revoked"],
+  denied: ["denied", "revoked"],
+  revoked: ["revoked"],
+};
 
 export interface CalendarFeedInput {
   events: CalendarEventRecord[];
@@ -66,6 +86,18 @@ export interface CalendarMeetingInvitationBoundaryInput {
   emailQueueConfigured?: boolean;
 }
 
+export interface CalendarMeetingSessionTransitionInput {
+  status: CalendarMeetingSessionStatus;
+  occurredAt: string;
+  actorUserId: string;
+}
+
+export interface CalendarGuestLinkTransitionInput {
+  status: CalendarGuestLinkStatus;
+  occurredAt: string;
+  actorUserId: string;
+}
+
 export function normalizeCalendarMeetingLinkState(
   input: CalendarMeetingLinkStateInput = {},
 ): Required<Pick<CalendarMeetingLinkStateInput, "mode">> &
@@ -96,6 +128,13 @@ export class InvalidCalendarPayloadError extends Error {
   }
 }
 
+export class InvalidCalendarMeetingTransitionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidCalendarMeetingTransitionError";
+  }
+}
+
 export function formatUtcDateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -106,6 +145,62 @@ export function formatUtcDateTime(value: string): string {
     .toISOString()
     .replace(/[-:]/g, "")
     .replace(/\.\d{3}Z$/, "Z");
+}
+
+function assertValidTransitionDate(value: string, label: string): void {
+  if (Number.isNaN(Date.parse(value))) {
+    throw new InvalidCalendarMeetingTransitionError(`${label} must be a valid date-time`);
+  }
+}
+
+export function transitionCalendarMeetingSessionStatus(
+  session: CalendarMeetingSessionRecord,
+  input: CalendarMeetingSessionTransitionInput,
+): CalendarMeetingSessionRecord {
+  assertValidTransitionDate(input.occurredAt, "occurredAt");
+  const allowed = SESSION_STATUS_TRANSITIONS[session.status];
+  if (!allowed.includes(input.status)) {
+    throw new InvalidCalendarMeetingTransitionError(
+      `Calendar meeting session cannot transition from ${session.status} to ${input.status}`,
+    );
+  }
+
+  return {
+    ...session,
+    status: input.status,
+    updatedAt: input.occurredAt,
+    updatedByUserId: input.actorUserId,
+    endedAt: input.status === "ended" ? (session.endedAt ?? input.occurredAt) : session.endedAt,
+  };
+}
+
+export function transitionCalendarGuestLinkStatus(
+  link: CalendarGuestLinkRecord,
+  input: CalendarGuestLinkTransitionInput,
+): CalendarGuestLinkRecord {
+  assertValidTransitionDate(input.occurredAt, "occurredAt");
+  const allowed = GUEST_LINK_STATUS_TRANSITIONS[link.status];
+  if (!allowed.includes(input.status)) {
+    throw new InvalidCalendarMeetingTransitionError(
+      `Calendar guest link cannot transition from ${link.status} to ${input.status}`,
+    );
+  }
+  if (input.status !== "revoked" && Date.parse(link.expiresAt) <= Date.parse(input.occurredAt)) {
+    throw new InvalidCalendarMeetingTransitionError("Calendar guest link has expired");
+  }
+
+  return {
+    ...link,
+    status: input.status,
+    updatedAt: input.occurredAt,
+    updatedByUserId: input.actorUserId,
+    checkedInAt:
+      input.status === "waiting" ? (link.checkedInAt ?? input.occurredAt) : link.checkedInAt,
+    revokedAt: input.status === "revoked" ? (link.revokedAt ?? input.occurredAt) : link.revokedAt,
+    admittedAt:
+      input.status === "admitted" ? (link.admittedAt ?? input.occurredAt) : link.admittedAt,
+    deniedAt: input.status === "denied" ? (link.deniedAt ?? input.occurredAt) : link.deniedAt,
+  };
 }
 
 export function escapeICalendarText(value: string): string {

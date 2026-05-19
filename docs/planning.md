@@ -48,27 +48,24 @@ Completed Phase 3 slices:
     staff QA/preview, public draft save/reload, office-style draft exports, and synchronous
     review-first draft/document assist are live without automatic source-record mutation.
 5.  **Calendar, Meeting, Trust, And Specialized Controls**: Calendar attendee/invitation flows,
-    CalDAV/iCalendar export, stored meeting-link boundary, fiscal-host metadata cues, trust
-    reconciliation records, and read-only jurisdictional trust reports are live with cautious
-    non-certified compliance language.
+    CalDAV/iCalendar export, stored meeting-link boundary, native guest-session lobby controls,
+    fiscal-host metadata cues, trust reconciliation records, and read-only jurisdictional trust
+    reports are live with cautious non-certified compliance language.
 
 Next operational scale priorities:
 
-1.  **Calendar And Native Meeting Controls**: Finish validation for calendar event
-    write/reschedule/reminder records, then add native WebRTC guest-session controls without redoing
-    shipped attendees, iCalendar, invitations, or stored meeting-link boundaries.
-2.  **Async Local AI Jobs**: Move selected matter/document summary and drafting-assist requests
-    behind disabled-by-default queue jobs while preserving reviewed, non-authoritative outputs.
-3.  **Connector/Webhook Delivery**: Surface existing connector delivery attempts read-only first,
-    then turn connector outbox rows into a delivery worker slice with HTTPS allowlists, signing,
-    leases, delivery attempts, and redacted dead-letter state.
-4.  **Conversation And Communications Follow-Through**: Add matter-scoped conversation message
-    records, communications ownership, private staff notes, and consent/channel follow-up state
-    without adding realtime chat or duplicating existing inbox triage.
-5.  **Resolution And Reporting Surfaces**: Add contact data-quality decision records, audit
-    projection summaries, async report export requests, delivery receipt tokens, dashboard lane
-    freshness controls, and saved operational-view expansion beyond the current queue-dashboard
-    surface.
+1.  **Contact Data-Quality Decisions**: Add non-destructive reviewer decisions for duplicate,
+    protected-party, and conflict-revalidation signals without automatic contact merges or conflict
+    disposition changes.
+2.  **Async Billing And Trust Exports**: Move larger billing or trust exports behind capped direct
+    responses and async job status while keeping export bodies out of job metadata.
+3.  **Trust And Billing Follow-Through**: Add reconciliation exception resolution records and
+    billing-period/rate controls while keeping trust ledger posting explicit and separate.
+4.  **Delivery Receipt Tokens**: Add purpose-scoped public receipt links for selected outbound
+    emails without exposing sessions, recipient lists, or message bodies.
+5.  **Calendar Meeting Media Follow-Through**: Build only after the shipped hosted guest-session
+    control plane is reviewed; future work should stay out of attendee, iCalendar, invitation,
+    stored meeting-link, and status-token contracts unless those seams need targeted hardening.
 
 ## Reuse Guardrails
 

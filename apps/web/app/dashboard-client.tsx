@@ -122,6 +122,7 @@ import {
   buildCalendarMeetingLinkPayload,
   buildCalendarReminderPayload,
   buildCalendarReschedulePayload,
+  describeCalendarGuestSessionStatus,
   describeMeetingInvitationBoundary,
   describeMeetingLinkAvailability,
   describeCalendarEventTiming,
@@ -131,6 +132,7 @@ import {
   upsertCalendarEventAttendee,
   upsertCalendarCredential,
   upsertCalendarEventReminder,
+  upsertCalendarGuestSession,
 } from "./calendar-dashboard";
 import {
   buildDocumentProcessingQueuePath,
@@ -250,6 +252,10 @@ import type {
   CalendarCredentialRevokeResponse,
   CalendarDashboardResponse,
   CalendarEventMutationResponse,
+  CalendarGuestSessionGuestMutationResponse,
+  CalendarGuestSessionIssueResponse,
+  CalendarGuestSessionMutationResponse,
+  CalendarGuestSessionSummary,
   CalendarInvitationResponse,
   CalendarMeetingLinkMutationResponse,
   CalendarReminderMutationResponse,
@@ -616,6 +622,17 @@ export default function DashboardClient({
   const [calendarMeetingStatus, setCalendarMeetingStatus] = useState(
     "Meeting attendees have not changed.",
   );
+  const [calendarGuestSessionsByEventId, setCalendarGuestSessionsByEventId] = useState(
+    calendar.guestSessionsByEventId,
+  );
+  const [calendarGuestSessionStatus, setCalendarGuestSessionStatus] = useState(
+    "Guest sessions have not changed.",
+  );
+  const [calendarGuestSessionSecret, setCalendarGuestSessionSecret] =
+    useState<CalendarGuestSessionIssueResponse | null>(null);
+  const [creatingCalendarGuestSessionEventId, setCreatingCalendarGuestSessionEventId] =
+    useState("");
+  const [updatingCalendarGuestSessionKey, setUpdatingCalendarGuestSessionKey] = useState("");
   const [calendarMeetingLinkModesByEventId, setCalendarMeetingLinkModesByEventId] = useState<
     Record<string, CalendarMeetingLinkMode>
   >({});
@@ -2179,6 +2196,159 @@ export default function DashboardClient({
       payload.event.meetingLinkUrl ? "Meeting link saved." : "Meeting link cleared.",
     );
     setUpdatingCalendarMeetingLinkEventId("");
+  }
+
+  function syncCalendarGuestSession(session: CalendarGuestSessionSummary): void {
+    setCalendarGuestSessionsByEventId((current) => upsertCalendarGuestSession(current, session));
+  }
+
+  async function createCalendarGuestSession(event: DashboardCalendarEvent): Promise<void> {
+    if (!activeMatter) return;
+    setCreatingCalendarGuestSessionEventId(event.id);
+    setCalendarGuestSessionSecret(null);
+    setCalendarGuestSessionStatus("Creating guest lobby...");
+    let payload: CalendarGuestSessionMutationResponse;
+    try {
+      payload = await requestDashboardJson<CalendarGuestSessionMutationResponse>(
+        apiBaseUrl,
+        `/api/calendar/events/${encodeURIComponent(event.id)}/guest-sessions`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: { matterId: activeMatter.id },
+        },
+      );
+    } catch (error) {
+      setCalendarGuestSessionStatus(`Guest lobby create failed: ${dashboardApiStatus(error)}`);
+      setCreatingCalendarGuestSessionEventId("");
+      return;
+    }
+    syncCalendarGuestSession(payload.session);
+    setCalendarGuestSessionStatus("Guest lobby ready.");
+    setCreatingCalendarGuestSessionEventId("");
+  }
+
+  async function controlCalendarGuestSession(
+    event: DashboardCalendarEvent,
+    session: CalendarGuestSessionSummary,
+    action: "open" | "lock" | "end",
+  ): Promise<void> {
+    if (!activeMatter) return;
+    const actionKey = `${session.id}:${action}`;
+    setUpdatingCalendarGuestSessionKey(actionKey);
+    setCalendarGuestSessionSecret(null);
+    setCalendarGuestSessionStatus(
+      action === "open"
+        ? "Opening guest lobby..."
+        : action === "lock"
+          ? "Locking guest lobby..."
+          : "Ending guest lobby...",
+    );
+    let payload: CalendarGuestSessionMutationResponse;
+    try {
+      payload = await requestDashboardJson<CalendarGuestSessionMutationResponse>(
+        apiBaseUrl,
+        `/api/calendar/events/${encodeURIComponent(event.id)}/guest-sessions/${encodeURIComponent(
+          session.id,
+        )}/${action}`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: { matterId: activeMatter.id },
+        },
+      );
+    } catch (error) {
+      setCalendarGuestSessionStatus(`Guest lobby action failed: ${dashboardApiStatus(error)}`);
+      setUpdatingCalendarGuestSessionKey("");
+      return;
+    }
+    syncCalendarGuestSession(payload.session);
+    setCalendarGuestSessionStatus(
+      action === "open"
+        ? "Guest lobby opened."
+        : action === "lock"
+          ? "Guest lobby locked."
+          : "Guest lobby ended.",
+    );
+    setUpdatingCalendarGuestSessionKey("");
+  }
+
+  async function issueCalendarGuestLink(
+    event: DashboardCalendarEvent,
+    session: CalendarGuestSessionSummary,
+  ): Promise<void> {
+    if (!activeMatter) return;
+    const actionKey = `${session.id}:issue`;
+    setUpdatingCalendarGuestSessionKey(actionKey);
+    setCalendarGuestSessionSecret(null);
+    setCalendarGuestSessionStatus("Issuing guest access...");
+    let payload: CalendarGuestSessionIssueResponse;
+    try {
+      payload = await requestDashboardJson<CalendarGuestSessionIssueResponse>(
+        apiBaseUrl,
+        `/api/calendar/events/${encodeURIComponent(event.id)}/guest-sessions/${encodeURIComponent(
+          session.id,
+        )}/guest-links`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: { matterId: activeMatter.id },
+        },
+      );
+    } catch (error) {
+      setCalendarGuestSessionStatus(`Guest access issue failed: ${dashboardApiStatus(error)}`);
+      setUpdatingCalendarGuestSessionKey("");
+      return;
+    }
+    syncCalendarGuestSession(payload.session);
+    setCalendarGuestSessionSecret(payload);
+    setCalendarGuestSessionStatus("Guest access issued. Copy it now; it will not be shown again.");
+    setUpdatingCalendarGuestSessionKey("");
+  }
+
+  async function updateCalendarGuestLink(
+    event: DashboardCalendarEvent,
+    session: CalendarGuestSessionSummary,
+    guestId: string,
+    action: "admit" | "deny" | "revoke",
+  ): Promise<void> {
+    if (!activeMatter) return;
+    const actionKey = `${guestId}:${action}`;
+    setUpdatingCalendarGuestSessionKey(actionKey);
+    setCalendarGuestSessionStatus(
+      action === "admit"
+        ? "Admitting guest..."
+        : action === "deny"
+          ? "Denying guest..."
+          : "Revoking guest access...",
+    );
+    let payload: CalendarGuestSessionGuestMutationResponse;
+    try {
+      payload = await requestDashboardJson<CalendarGuestSessionGuestMutationResponse>(
+        apiBaseUrl,
+        `/api/calendar/events/${encodeURIComponent(event.id)}/guest-sessions/${encodeURIComponent(
+          session.id,
+        )}/guests/${encodeURIComponent(guestId)}/${action}`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: { matterId: activeMatter.id },
+        },
+      );
+    } catch (error) {
+      setCalendarGuestSessionStatus(`Guest access update failed: ${dashboardApiStatus(error)}`);
+      setUpdatingCalendarGuestSessionKey("");
+      return;
+    }
+    if (payload.session) syncCalendarGuestSession(payload.session);
+    setCalendarGuestSessionStatus(
+      action === "admit"
+        ? "Guest admitted."
+        : action === "deny"
+          ? "Guest denied."
+          : "Guest access revoked.",
+    );
+    setUpdatingCalendarGuestSessionKey("");
   }
 
   function calendarInvitationProviderState(
@@ -4096,6 +4266,14 @@ export default function DashboardClient({
                       meetingLinkMode === "blank" ||
                       (meetingLinkMode === "external_url" && Boolean(meetingLinkUrl.trim())) ||
                       (meetingLinkMode === "hosted_webrtc" && hostedMeetingConfigured);
+                    const guestSessions = calendarGuestSessionsByEventId[event.id] ?? [];
+                    const guestAccessConfigured =
+                      event.meetingInvitationBoundary?.guestAccess.status === "configured";
+                    const hostedGuestSessionReady =
+                      event.status !== "cancelled" &&
+                      event.meetingLinkMode === "hosted_webrtc" &&
+                      Boolean(event.meetingRoomId) &&
+                      guestAccessConfigured;
                     return (
                       <div className="party-row calendar-event-row" key={event.id}>
                         <div className="calendar-event-summary">
@@ -4239,6 +4417,198 @@ export default function DashboardClient({
                               : "Save link"}
                           </button>
                         </div>
+                        {event.meetingLinkMode === "hosted_webrtc" ? (
+                          <div className="calendar-guest-session-panel">
+                            <div className="section-title compact-section-title">
+                              <h4>Guest lobby</h4>
+                              <span>{guestSessions.length} session records</span>
+                            </div>
+                            {!guestAccessConfigured ? (
+                              <p className="inline-empty">Guest access tokens are disabled.</p>
+                            ) : null}
+                            {guestAccessConfigured && event.status === "cancelled" ? (
+                              <p className="inline-empty">Cancelled events cannot host a lobby.</p>
+                            ) : null}
+                            {guestAccessConfigured && !event.meetingRoomId ? (
+                              <p className="inline-empty">Save a hosted meeting link first.</p>
+                            ) : null}
+                            {guestSessions.map((session) => (
+                              <div className="calendar-guest-session-row" key={session.id}>
+                                <span>
+                                  <strong>{describeCalendarGuestSessionStatus(session)}</strong>
+                                  <small>
+                                    {session.issuedCount} issued · {session.waitingCount} waiting ·{" "}
+                                    {session.admittedCount} admitted
+                                  </small>
+                                </span>
+                                <div className="row-actions">
+                                  <button
+                                    className="secondary-button compact-button row-button"
+                                    disabled={
+                                      !hostedGuestSessionReady ||
+                                      session.status === "open" ||
+                                      session.status === "ended" ||
+                                      updatingCalendarGuestSessionKey === `${session.id}:open`
+                                    }
+                                    onClick={() =>
+                                      void controlCalendarGuestSession(event, session, "open")
+                                    }
+                                    type="button"
+                                  >
+                                    Open
+                                  </button>
+                                  <button
+                                    className="secondary-button compact-button row-button"
+                                    disabled={
+                                      !hostedGuestSessionReady ||
+                                      session.status === "locked" ||
+                                      session.status === "ended" ||
+                                      updatingCalendarGuestSessionKey === `${session.id}:lock`
+                                    }
+                                    onClick={() =>
+                                      void controlCalendarGuestSession(event, session, "lock")
+                                    }
+                                    type="button"
+                                  >
+                                    Lock
+                                  </button>
+                                  <button
+                                    className="secondary-button compact-button row-button"
+                                    disabled={
+                                      !hostedGuestSessionReady ||
+                                      session.status === "ended" ||
+                                      updatingCalendarGuestSessionKey === `${session.id}:end`
+                                    }
+                                    onClick={() =>
+                                      void controlCalendarGuestSession(event, session, "end")
+                                    }
+                                    type="button"
+                                  >
+                                    End
+                                  </button>
+                                  <button
+                                    className="secondary-button compact-button row-button"
+                                    disabled={
+                                      !hostedGuestSessionReady ||
+                                      session.status === "ended" ||
+                                      updatingCalendarGuestSessionKey === `${session.id}:issue`
+                                    }
+                                    onClick={() => void issueCalendarGuestLink(event, session)}
+                                    type="button"
+                                  >
+                                    Issue
+                                  </button>
+                                </div>
+                                {session.guests.length ? (
+                                  <div className="calendar-guest-link-list">
+                                    {session.guests.map((guest) => (
+                                      <div className="calendar-attendee-row" key={guest.id}>
+                                        <span>
+                                          <strong>Guest access</strong>
+                                          <small>
+                                            {guest.status.replace("_", " ")} · expires{" "}
+                                            {compactDate(guest.expiresAt)}
+                                          </small>
+                                        </span>
+                                        <div className="row-actions">
+                                          <button
+                                            className="secondary-button compact-button row-button"
+                                            disabled={
+                                              session.status !== "open" ||
+                                              guest.status === "admitted" ||
+                                              guest.status === "revoked" ||
+                                              updatingCalendarGuestSessionKey ===
+                                                `${guest.id}:admit`
+                                            }
+                                            onClick={() =>
+                                              void updateCalendarGuestLink(
+                                                event,
+                                                session,
+                                                guest.id,
+                                                "admit",
+                                              )
+                                            }
+                                            type="button"
+                                          >
+                                            Admit
+                                          </button>
+                                          <button
+                                            className="secondary-button compact-button row-button"
+                                            disabled={
+                                              guest.status === "denied" ||
+                                              guest.status === "revoked" ||
+                                              updatingCalendarGuestSessionKey === `${guest.id}:deny`
+                                            }
+                                            onClick={() =>
+                                              void updateCalendarGuestLink(
+                                                event,
+                                                session,
+                                                guest.id,
+                                                "deny",
+                                              )
+                                            }
+                                            type="button"
+                                          >
+                                            Deny
+                                          </button>
+                                          <button
+                                            aria-label={`Revoke guest access ${guest.id}`}
+                                            className="icon-button"
+                                            disabled={
+                                              guest.status === "revoked" ||
+                                              updatingCalendarGuestSessionKey ===
+                                                `${guest.id}:revoke`
+                                            }
+                                            onClick={() =>
+                                              void updateCalendarGuestLink(
+                                                event,
+                                                session,
+                                                guest.id,
+                                                "revoke",
+                                              )
+                                            }
+                                            title="Revoke guest access"
+                                            type="button"
+                                          >
+                                            <X size={16} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ))}
+                            {hostedGuestSessionReady && guestSessions.length === 0 ? (
+                              <button
+                                className="secondary-button compact-button row-button"
+                                disabled={creatingCalendarGuestSessionEventId === event.id}
+                                onClick={() => void createCalendarGuestSession(event)}
+                                type="button"
+                              >
+                                <Plus size={16} />
+                                {creatingCalendarGuestSessionEventId === event.id
+                                  ? "Creating..."
+                                  : "Create lobby"}
+                              </button>
+                            ) : null}
+                            {calendarGuestSessionSecret?.session.eventId === event.id ? (
+                              <OneTimeSecretPanel
+                                className="calendar-secret"
+                                items={[
+                                  {
+                                    label: "Guest status page",
+                                    value: calendarGuestSessionSecret.portalUrl,
+                                  },
+                                  {
+                                    label: "One-time token",
+                                    value: calendarGuestSessionSecret.token,
+                                  },
+                                ]}
+                              />
+                            ) : null}
+                          </div>
+                        ) : null}
                         {pendingDeliveryConfirmation?.kind === "calendar-invitations" &&
                         pendingDeliveryConfirmation.eventId === event.id ? (
                           <DeliveryConfirmationPanel
@@ -4467,6 +4837,7 @@ export default function DashboardClient({
                     </button>
                   </div>
                   <p className="inline-empty">{calendarMeetingStatus}</p>
+                  <p className="inline-empty">{calendarGuestSessionStatus}</p>
                 </div>
 
                 <div className="section-title">

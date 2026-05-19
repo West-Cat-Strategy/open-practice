@@ -1,3 +1,4 @@
+import type { LedgerAccount, LedgerEntry } from "./ledger.js";
 import type { ExpenseEntry, TimeEntry } from "./models.js";
 
 export type BillingStatus = "draft" | "submitted" | "approved" | "billed" | "written_off";
@@ -194,4 +195,82 @@ export function trustTransferRequestCanPost(
   request: Pick<TrustTransferRequestRecord, "status" | "ledgerTransactionId">,
 ): boolean {
   return request.status === "approved" && !request.ledgerTransactionId;
+}
+
+export function trustTransferRequestAvailableBalanceCents(input: {
+  request: Pick<TrustTransferRequestRecord, "matterId" | "clientContactId">;
+  trustBalances: Record<string, number>;
+}): number {
+  if (input.request.clientContactId) {
+    return Math.max(
+      0,
+      input.trustBalances[`${input.request.clientContactId}:${input.request.matterId}`] ?? 0,
+    );
+  }
+
+  return Object.entries(input.trustBalances)
+    .filter(([key]) => key.endsWith(`:${input.request.matterId}`))
+    .reduce((sum, [, balance]) => sum + Math.max(0, balance), 0);
+}
+
+export interface TrustTransferLedgerLinkSummary {
+  transactionExists: boolean;
+  matterMatches: boolean;
+  clientMatches: boolean;
+  trustAssetCreditCents: number;
+  clientLiabilityDebitCents: number;
+  amountMatches: boolean;
+}
+
+export function summarizeTrustTransferLedgerLink(input: {
+  request: Pick<TrustTransferRequestRecord, "matterId" | "clientContactId" | "amountCents">;
+  ledgerTransactionId: string;
+  accounts: Array<Pick<LedgerAccount, "id" | "type">>;
+  entries: Array<
+    Pick<
+      LedgerEntry,
+      "transactionId" | "matterId" | "clientId" | "accountId" | "debitCents" | "creditCents"
+    >
+  >;
+}): TrustTransferLedgerLinkSummary {
+  const entries = input.entries.filter(
+    (entry) => entry.transactionId === input.ledgerTransactionId,
+  );
+  const accountTypeById = new Map(input.accounts.map((account) => [account.id, account.type]));
+  const matterEntries = entries.filter((entry) => entry.matterId === input.request.matterId);
+  const requestScopedEntries = input.request.clientContactId
+    ? matterEntries.filter((entry) => entry.clientId === input.request.clientContactId)
+    : matterEntries;
+  const trustAssetCreditCents = matterEntries
+    .filter((entry) => accountTypeById.get(entry.accountId) === "trust_asset")
+    .reduce((sum, entry) => sum + entry.creditCents, 0);
+  const clientLiabilityDebitCents = matterEntries
+    .filter((entry) => accountTypeById.get(entry.accountId) === "client_liability")
+    .reduce((sum, entry) => sum + entry.debitCents, 0);
+  const hasOnlyExpectedTrustTransferEntries = requestScopedEntries.every((entry) => {
+    const accountType = accountTypeById.get(entry.accountId);
+    if (accountType === "trust_asset") return entry.debitCents === 0 && entry.creditCents > 0;
+    if (accountType === "client_liability") return entry.debitCents > 0 && entry.creditCents === 0;
+    return entry.debitCents === 0 && entry.creditCents === 0;
+  });
+  const matterMatches =
+    entries.length > 0 && matterEntries.length > 0 && entries.length === matterEntries.length;
+  const clientMatches =
+    !input.request.clientContactId ||
+    (matterEntries.length > 0 &&
+      matterEntries.every((entry) => entry.clientId === input.request.clientContactId));
+
+  return {
+    transactionExists: entries.length > 0,
+    matterMatches,
+    clientMatches,
+    trustAssetCreditCents,
+    clientLiabilityDebitCents,
+    amountMatches:
+      matterMatches &&
+      clientMatches &&
+      hasOnlyExpectedTrustTransferEntries &&
+      trustAssetCreditCents === input.request.amountCents &&
+      clientLiabilityDebitCents === input.request.amountCents,
+  };
 }

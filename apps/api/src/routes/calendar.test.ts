@@ -43,12 +43,20 @@ function testServer(
         guestAccessTokenSigningConfigured?: boolean;
       }
     | undefined = undefined,
+  jwtSecret = "calendar-guest-session-test-secret-at-least-32-characters",
+  publicWebBaseUrl = "https://practice.example.test",
 ) {
   const server = Fastify({ logger: false });
   server.addHook("preHandler", async (request) => {
     request.auth = { firmId: authUser.firmId, user: authUser };
   });
-  registerCalendarRoutes(server, { repository, emailJobQueue, meetingLinks });
+  registerCalendarRoutes(server, {
+    repository,
+    emailJobQueue,
+    meetingLinks,
+    jwtSecret,
+    publicWebBaseUrl,
+  });
   servers.push(server);
   return server;
 }
@@ -591,6 +599,158 @@ describe("calendar routes", () => {
       invitationEmail: { status: "disabled", reason: "smtp_not_configured" },
     });
     expect(JSON.stringify(response.json())).not.toContain("token");
+  });
+
+  it("manages hosted guest sessions with one-time tokens and status-only public check-in", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("licensee", ["matter-001"]), repository, undefined, {
+      providerKey: "open-practice-webrtc",
+      hostedMeetingBaseUrl: "https://meet.example.test/rooms",
+      guestAccessTokenSigningConfigured: true,
+    });
+
+    const hosted = await server.inject({
+      method: "PATCH",
+      url: "/api/calendar/events/calendar-event-002/meeting-link",
+      payload: { matterId: "matter-001", mode: "hosted_webrtc" },
+    });
+    expect(hosted.statusCode).toBe(200);
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-002/guest-sessions",
+      payload: { matterId: "matter-001" },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().session).toMatchObject({
+      eventId: "calendar-event-002",
+      status: "created",
+      issuedCount: 0,
+    });
+    const sessionId = created.json().session.id;
+
+    const opened = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/open`,
+      payload: { matterId: "matter-001" },
+    });
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json().session).toMatchObject({ status: "open" });
+
+    const issued = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/guest-links`,
+      payload: { matterId: "matter-001" },
+    });
+    expect(issued.statusCode).toBe(201);
+    expect(issued.json()).toMatchObject({
+      token: expect.any(String),
+      portalUrl: expect.stringMatching(/^https:\/\/practice\.example\.test\/guest-sessions\//),
+      guest: { status: "issued" },
+      session: { issuedCount: 1 },
+    });
+    expect(JSON.stringify(issued.json())).not.toContain("tokenHash");
+    const token = issued.json().token;
+    const guestId = issued.json().guest.id;
+
+    const publicStatus = await server.inject({
+      method: "GET",
+      url: `/api/portal/guest-sessions/${token}`,
+    });
+    expect(publicStatus.statusCode).toBe(200);
+    expect(publicStatus.json()).toMatchObject({
+      session: { status: "open", lobbyStatus: "open" },
+      guest: { status: "issued" },
+      lobby: { waitingCount: 0 },
+    });
+    expect(JSON.stringify(publicStatus.json())).not.toContain("matter-001");
+    expect(JSON.stringify(publicStatus.json())).not.toContain("calendar-event-002");
+    expect(JSON.stringify(publicStatus.json())).not.toContain("meet.example.test");
+    expect(JSON.stringify(publicStatus.json())).not.toContain("ada.morgan@example.test");
+
+    const checkedIn = await server.inject({
+      method: "POST",
+      url: `/api/portal/guest-sessions/${token}/check-in`,
+      payload: { attendanceConfirmation: { source: "guest_status_page" } },
+    });
+    expect(checkedIn.statusCode).toBe(200);
+    expect(checkedIn.json()).toMatchObject({
+      guest: { status: "waiting", checkedInAt: expect.any(String) },
+      lobby: { waitingCount: 1 },
+    });
+
+    const admitted = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/guests/${guestId}/admit`,
+      payload: { matterId: "matter-001" },
+    });
+    expect(admitted.statusCode).toBe(200);
+    expect(admitted.json()).toMatchObject({
+      guest: { status: "admitted", admittedAt: expect.any(String) },
+      session: { admittedCount: 1 },
+    });
+
+    const ended = await server.inject({
+      method: "POST",
+      url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/end`,
+      payload: { matterId: "matter-001" },
+    });
+    expect(ended.statusCode).toBe(200);
+    expect(ended.json().session).toMatchObject({ status: "ended", revokedCount: 1 });
+
+    const publicEnded = await server.inject({
+      method: "GET",
+      url: `/api/portal/guest-sessions/${token}`,
+    });
+    expect(publicEnded.statusCode).toBe(200);
+    expect(publicEnded.json()).toMatchObject({
+      session: { status: "ended" },
+      guest: { status: "revoked" },
+    });
+
+    const auditJson = JSON.stringify(repository.recordedAuditEvents);
+    expect(repository.recordedAuditEvents.map((event) => event.action)).toEqual(
+      expect.arrayContaining([
+        "calendar.meeting_session.created",
+        "calendar.meeting_session.updated",
+        "calendar.meeting_session.ended",
+        "calendar.guest_link.created",
+        "calendar.guest_link.updated",
+        "calendar.guest_link.revoked",
+      ]),
+    );
+    expect(auditJson).not.toContain(token);
+    expect(auditJson).not.toContain("tokenHash");
+    expect(auditJson).not.toContain("meet.example.test");
+    await expect(
+      repository.listAccessLogs("firm-west-legal", {
+        resourceType: "calendar_guest_link",
+        resourceId: guestId,
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "view" }),
+        expect.objectContaining({ action: "submit" }),
+      ]),
+    );
+  });
+
+  it("blocks hosted guest-session controls outside the matter or without hosted guest access", async () => {
+    const defaultServer = testServer(user("licensee", ["matter-001"]));
+    const notHosted = await defaultServer.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-002/guest-sessions",
+      payload: { matterId: "matter-001" },
+    });
+    expect(notHosted.statusCode).toBe(409);
+    expect(notHosted.json()).toMatchObject({ code: "HOSTED_MEETING_LINK_REQUIRED" });
+
+    const crossMatter = await defaultServer.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-003/guest-sessions",
+      payload: { matterId: "matter-002" },
+    });
+    expect(crossMatter.statusCode).toBe(403);
   });
 
   it("rejects cross-matter, invalid, and unconfigured hosted meeting-link updates", async () => {

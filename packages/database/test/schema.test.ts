@@ -15,6 +15,8 @@ import {
   calendarEventAttendees,
   calendarEventReminders,
   calendarEvents,
+  calendarGuestLinks,
+  calendarMeetingSessions,
   connectorDeliveryAttempts,
   connectorOutbox,
   connectors,
@@ -206,6 +208,72 @@ describe("database schema hardening", () => {
         "calendar_event_reminders_channel_value",
         "calendar_event_reminders_status_value",
       ]),
+    );
+  });
+
+  it("persists hosted calendar meeting sessions and hash-only guest links", () => {
+    const sessionConfig = getTableConfig(calendarMeetingSessions);
+    const guestLinkConfig = getTableConfig(calendarGuestLinks);
+
+    expect(sessionConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "event_id",
+        "status",
+        "retention_until",
+        "ended_at",
+        "created_by_user_id",
+        "updated_by_user_id",
+        "metadata",
+      ]),
+    );
+    expect(sessionConfig.indexes.map((index) => index.config.name)).toContain(
+      "calendar_meeting_sessions_firm_matter_event_idx",
+    );
+    expect(sessionConfig.checks.map((check) => check.name)).toContain(
+      "calendar_meeting_sessions_status_value",
+    );
+
+    const guestColumns = guestLinkConfig.columns.map((column) => column.name);
+    expect(guestColumns).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "event_id",
+        "session_id",
+        "token_hash",
+        "status",
+        "expires_at",
+        "retention_until",
+        "checked_in_at",
+        "revoked_at",
+        "admitted_at",
+        "denied_at",
+        "created_by_user_id",
+        "updated_by_user_id",
+        "metadata",
+      ]),
+    );
+    expect(sessionConfig.columns.map((column) => column.name)).not.toContain("room_id");
+    expect(sessionConfig.columns.map((column) => column.name)).not.toContain("provider_key");
+    expect(guestColumns).not.toContain("token");
+    expect(guestColumns).not.toContain("raw_token");
+    expect(guestColumns).not.toContain("display_name");
+    expect(guestColumns).not.toContain("email");
+    expect(
+      guestLinkConfig.indexes.find(
+        (index) => index.config.name === "calendar_guest_links_token_hash_idx",
+      )?.config.unique,
+    ).toBe(true);
+    expect(guestLinkConfig.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "calendar_guest_links_session_status_idx",
+        "calendar_guest_links_expiry_idx",
+      ]),
+    );
+    expect(guestLinkConfig.checks.map((check) => check.name)).toContain(
+      "calendar_guest_links_status_value",
     );
   });
 

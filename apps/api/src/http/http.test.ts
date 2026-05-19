@@ -105,5 +105,7 @@ describe("API HTTP helpers", () => {
   it("keeps public token mutation routes outside the session-auth hook", () => {
     expect(isPublicRoute("POST", "/api/portal/shares/token-001/email-verification")).toBe(true);
     expect(isPublicRoute("POST", "/api/portal/intake-forms/token-001/draft")).toBe(true);
+    expect(isPublicRoute("GET", "/api/portal/guest-sessions/token-001")).toBe(true);
+    expect(isPublicRoute("POST", "/api/portal/guest-sessions/token-001/check-in")).toBe(true);
   });
 });

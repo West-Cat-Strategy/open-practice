@@ -20,6 +20,8 @@ import {
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
   type CalendarEventReminderRecord,
+  type CalendarGuestLinkRecord,
+  type CalendarMeetingSessionRecord,
   type ConflictCheckRecord,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
@@ -269,6 +271,78 @@ export function mapCalendarEventReminderRow(
     deletedAt: dateToIso(row.deletedAt),
     createdByUserId: row.createdByUserId,
     updatedByUserId: row.updatedByUserId,
+  };
+}
+
+export function mapCalendarMeetingSessionRow(
+  row: typeof schema.calendarMeetingSessions.$inferSelect,
+): CalendarMeetingSessionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    eventId: row.eventId,
+    status: row.status as CalendarMeetingSessionRecord["status"],
+    retentionUntil: dateToIso(row.retentionUntil),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    endedAt: dateToIso(row.endedAt),
+    createdByUserId: row.createdByUserId,
+    updatedByUserId: row.updatedByUserId,
+    metadata: row.metadata,
+  };
+}
+
+export function calendarMeetingSessionInsert(
+  session: CalendarMeetingSessionRecord,
+): typeof schema.calendarMeetingSessions.$inferInsert {
+  return {
+    ...session,
+    retentionUntil: session.retentionUntil ? new Date(session.retentionUntil) : null,
+    createdAt: new Date(session.createdAt),
+    updatedAt: new Date(session.updatedAt),
+    endedAt: session.endedAt ? new Date(session.endedAt) : null,
+  };
+}
+
+export function mapCalendarGuestLinkRow(
+  row: typeof schema.calendarGuestLinks.$inferSelect,
+): CalendarGuestLinkRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    eventId: row.eventId,
+    sessionId: row.sessionId,
+    tokenHash: row.tokenHash,
+    status: row.status as CalendarGuestLinkRecord["status"],
+    expiresAt: row.expiresAt.toISOString(),
+    retentionUntil: dateToIso(row.retentionUntil),
+    checkedInAt: dateToIso(row.checkedInAt),
+    revokedAt: dateToIso(row.revokedAt),
+    admittedAt: dateToIso(row.admittedAt),
+    deniedAt: dateToIso(row.deniedAt),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    createdByUserId: row.createdByUserId,
+    updatedByUserId: row.updatedByUserId,
+    metadata: row.metadata,
+  };
+}
+
+export function calendarGuestLinkInsert(
+  link: CalendarGuestLinkRecord,
+): typeof schema.calendarGuestLinks.$inferInsert {
+  return {
+    ...link,
+    expiresAt: new Date(link.expiresAt),
+    retentionUntil: link.retentionUntil ? new Date(link.retentionUntil) : null,
+    checkedInAt: link.checkedInAt ? new Date(link.checkedInAt) : null,
+    revokedAt: link.revokedAt ? new Date(link.revokedAt) : null,
+    admittedAt: link.admittedAt ? new Date(link.admittedAt) : null,
+    deniedAt: link.deniedAt ? new Date(link.deniedAt) : null,
+    createdAt: new Date(link.createdAt),
+    updatedAt: new Date(link.updatedAt),
   };
 }
 

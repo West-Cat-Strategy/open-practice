@@ -371,6 +371,8 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerCalendarRoutes(server, {
     repository: options.repository,
     emailJobQueue: options.emailJobQueue,
+    jwtSecret: options.jwtSecret,
+    publicWebBaseUrl: options.publicWebBaseUrl,
     meetingLinks: options.meetingLinks,
   });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });

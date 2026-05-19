@@ -30,7 +30,10 @@ trust accounting software, accounting software, or tax-advice tooling.
   operational controls around review, evidence, authorization, and reconciliation.
 - No live payment processor is currently part of the product contract.
 - Manual payment records are reviewed evidence, not proof of live settlement.
-- Trust-transfer-request approval must not automatically post trust ledger entries.
+- Trust-transfer-request approval must not automatically post trust ledger entries. Approval can
+  record reviewer evidence after invoice-balance and matter trust-balance checks; linkage can only
+  reference an existing matching ledger transaction that has not already been linked to another
+  trust-transfer request.
 
 ## Reference Guidance
 
@@ -49,9 +52,9 @@ present tax treatment, trust withdrawal eligibility, invoice wording, or fee/dis
 certified for a jurisdiction without specific review.
 
 Manual payments and future payment-processor imports should be reconciled before affecting invoice
-status. A trust-transfer request may document that funds are intended to move from trust after review,
-but the actual trust ledger change must remain a separate, explicit, balanced posting with its own
-audit trail.
+status. A trust-transfer request may document that funds are intended to move from trust after review
+and may later be linked to an existing matching ledger transaction, but the actual trust ledger
+change must remain a separate, explicit, balanced posting with its own audit trail.
 
 ## Before Compliance Claims
 

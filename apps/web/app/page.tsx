@@ -501,7 +501,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
           (await apiGet<CalendarCredentialsResponse>("/api/calendar/credentials", headers))
             .credentials,
       })
-    : { eventsByMatterId: {}, linksByMatterId: {}, credentials: [] };
+    : { eventsByMatterId: {}, guestSessionsByEventId: {}, linksByMatterId: {}, credentials: [] };
   const emailDeliveryHistory: EmailDeliveryDashboardResponse = await loadEmailDeliveryDashboardData(
     {
       matters,

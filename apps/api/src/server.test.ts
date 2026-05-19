@@ -1269,6 +1269,22 @@ describe("API auth and persistence boundaries", () => {
       billedTime.json<{ entries: Array<{ id: string }> }>().entries.map((entry) => entry.id),
     ).toContain("time-billing-api");
 
+    const transferRequest = await server.inject({
+      method: "POST",
+      url: "/api/billing/trust-transfer-requests",
+      payload: {
+        id: "trust-transfer-billing-api",
+        matterId: "matter-001",
+        invoiceId: "invoice-billing-api",
+        amountCents: invoiceBody.totalCents,
+        reason: "Request trust transfer approval only.",
+      },
+    });
+
+    expect(transferRequest.statusCode).toBe(200);
+    expect(transferRequest.json()).toMatchObject({ status: "pending_approval" });
+    expect(transferRequest.json()).not.toHaveProperty("ledgerTransactionId");
+
     const payment = await server.inject({
       method: "POST",
       url: "/api/payments",
@@ -1292,22 +1308,8 @@ describe("API auth and persistence boundaries", () => {
       balanceDueCents: 0,
     });
 
-    const transferRequest = await server.inject({
-      method: "POST",
-      url: "/api/billing/trust-transfer-requests",
-      payload: {
-        id: "trust-transfer-billing-api",
-        matterId: "matter-001",
-        invoiceId: "invoice-billing-api",
-        amountCents: invoiceBody.totalCents,
-        reason: "Request trust transfer approval only.",
-      },
-    });
     const ledgerAfter = await server.inject({ method: "GET", url: "/api/ledger" });
 
-    expect(transferRequest.statusCode).toBe(200);
-    expect(transferRequest.json()).toMatchObject({ status: "pending_approval" });
-    expect(transferRequest.json()).not.toHaveProperty("ledgerTransactionId");
     expect(ledgerAfter.json<{ entries: unknown[] }>().entries).toHaveLength(beforeEntryCount);
   });
 

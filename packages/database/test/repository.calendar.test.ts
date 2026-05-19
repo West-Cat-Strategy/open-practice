@@ -282,6 +282,206 @@ describe("repository calendar and tasks", () => {
     ).resolves.toEqual([]);
   });
 
+  it("creates and transitions hosted meeting sessions and HMAC-hashed guest links", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const session = await repository.createCalendarMeetingSession({
+      id: "meeting-session-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-001",
+      status: "lobby_closed",
+      retentionUntil: "2026-07-25T12:00:00.000Z",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+      metadata: { providerNeutral: true },
+    });
+
+    await expect(
+      repository.listCalendarMeetingSessions("firm-west-legal", {
+        matterId: "matter-001",
+        eventId: "calendar-event-001",
+      }),
+    ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ id: session.id })]));
+    await expect(
+      repository.updateCalendarMeetingSessionStatus({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-001",
+        sessionId: session.id,
+        status: "lobby_open",
+        occurredAt: "2026-04-25T12:05:00.000Z",
+        actorUserId: "user-licensee",
+      }),
+    ).resolves.toMatchObject({
+      status: "lobby_open",
+      updatedAt: "2026-04-25T12:05:00.000Z",
+    });
+
+    const link = await repository.createCalendarGuestLink({
+      id: "guest-link-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-001",
+      sessionId: session.id,
+      tokenHash: "hmac-sha256:guest-link-test",
+      status: "issued",
+      expiresAt: "2026-04-25T13:00:00.000Z",
+      retentionUntil: "2026-07-25T12:00:00.000Z",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+      metadata: {},
+    });
+
+    await expect(
+      repository.listCalendarGuestLinks("firm-west-legal", {
+        matterId: "matter-001",
+        eventId: "calendar-event-001",
+        sessionId: session.id,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: link.id,
+        tokenHash: "hmac-sha256:guest-link-test",
+      }),
+    ]);
+    await expect(
+      repository.getCalendarGuestLinkByTokenHash("hmac-sha256:guest-link-test"),
+    ).resolves.toEqual(expect.not.objectContaining({ token: expect.any(String) }));
+    await expect(
+      repository.updateCalendarGuestLinkStatus({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-001",
+        sessionId: session.id,
+        linkId: link.id,
+        status: "waiting",
+        occurredAt: "2026-04-25T12:10:00.000Z",
+        actorUserId: "user-licensee",
+      }),
+    ).resolves.toMatchObject({
+      status: "waiting",
+      checkedInAt: "2026-04-25T12:10:00.000Z",
+    });
+    await expect(
+      repository.updateCalendarGuestLinkStatus({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-001",
+        sessionId: session.id,
+        linkId: link.id,
+        status: "admitted",
+        occurredAt: "2026-04-25T12:12:00.000Z",
+        actorUserId: "user-licensee",
+      }),
+    ).resolves.toMatchObject({
+      status: "admitted",
+      admittedAt: "2026-04-25T12:12:00.000Z",
+    });
+    await expect(
+      repository.revokeCalendarGuestLink({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-001",
+        sessionId: session.id,
+        linkId: link.id,
+        revokedAt: "2026-04-25T12:20:00.000Z",
+        actorUserId: "user-licensee",
+      }),
+    ).resolves.toMatchObject({
+      status: "revoked",
+      revokedAt: "2026-04-25T12:20:00.000Z",
+    });
+    await expect(
+      repository.updateCalendarMeetingSessionStatus({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-001",
+        sessionId: session.id,
+        status: "ended",
+        occurredAt: "2026-04-25T12:45:00.000Z",
+        actorUserId: "user-licensee",
+      }),
+    ).resolves.toMatchObject({
+      status: "ended",
+      endedAt: "2026-04-25T12:45:00.000Z",
+    });
+  });
+
+  it("keeps hosted session and guest link writes scoped to the owning event", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const session = await repository.createCalendarMeetingSession({
+      id: "meeting-session-scope",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-001",
+      status: "lobby_closed",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+      metadata: {},
+    });
+    await repository.createCalendarGuestLink({
+      id: "guest-link-scope",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-001",
+      sessionId: session.id,
+      tokenHash: "hmac-sha256:guest-link-scope",
+      status: "issued",
+      expiresAt: "2026-04-25T13:00:00.000Z",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+      metadata: {},
+    });
+
+    await expect(
+      repository.updateCalendarMeetingSessionStatus({
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        eventId: "calendar-event-001",
+        sessionId: session.id,
+        status: "lobby_open",
+        occurredAt: "2026-04-25T12:05:00.000Z",
+        actorUserId: "user-licensee",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      repository.revokeCalendarGuestLink({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-002",
+        sessionId: session.id,
+        linkId: "guest-link-scope",
+        revokedAt: "2026-04-25T12:05:00.000Z",
+        actorUserId: "user-licensee",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      repository.createCalendarGuestLink({
+        id: "guest-link-scope-duplicate",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        eventId: "calendar-event-001",
+        sessionId: session.id,
+        tokenHash: "hmac-sha256:guest-link-scope",
+        status: "issued",
+        expiresAt: "2026-04-25T13:00:00.000Z",
+        createdAt: now,
+        updatedAt: now,
+        createdByUserId: "user-licensee",
+        updatedByUserId: "user-licensee",
+        metadata: {},
+      }),
+    ).rejects.toThrow("Calendar guest link token hash already exists");
+  });
+
   it("rejects calendar event writes that would cross firm or matter scope", async () => {
     const repository = new InMemoryOpenPracticeRepository();
 

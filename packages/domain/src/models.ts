@@ -274,6 +274,8 @@ export type CalendarAttendeeRole = "required" | "optional";
 export type CalendarAttendeeResponseStatus = "needs_action" | "accepted" | "tentative" | "declined";
 export type CalendarInvitationStatus = "not_sent" | "queued" | "skipped";
 export type CalendarMeetingLinkMode = "blank" | "external_url" | "hosted_webrtc";
+export type CalendarMeetingSessionStatus = "lobby_closed" | "lobby_open" | "locked" | "ended";
+export type CalendarGuestLinkStatus = "issued" | "waiting" | "admitted" | "denied" | "revoked";
 export type CalendarEventReminderChannel = "dashboard";
 export type CalendarEventReminderStatus = "pending" | "acknowledged" | "dismissed" | "cancelled";
 export type CalendarMeetingBoundaryStatus = "disabled" | "configured";
@@ -355,6 +357,42 @@ export interface CalendarEventRecord {
   attendees?: CalendarEventAttendeeRecord[];
   reminders?: CalendarEventReminderRecord[];
   meetingInvitationBoundary?: CalendarMeetingInvitationBoundary;
+}
+
+export interface CalendarMeetingSessionRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  eventId: string;
+  status: CalendarMeetingSessionStatus;
+  retentionUntil?: string;
+  createdAt: string;
+  updatedAt: string;
+  endedAt?: string;
+  createdByUserId: string;
+  updatedByUserId: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface CalendarGuestLinkRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  eventId: string;
+  sessionId: string;
+  tokenHash: string;
+  status: CalendarGuestLinkStatus;
+  expiresAt: string;
+  retentionUntil?: string;
+  checkedInAt?: string;
+  revokedAt?: string;
+  admittedAt?: string;
+  deniedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdByUserId: string;
+  updatedByUserId: string;
+  metadata: Record<string, unknown>;
 }
 
 export interface CalendarCredentialRecord {
