@@ -12,10 +12,6 @@ row should not stay here as future work.
 These candidates name the next smallest useful unimplemented slice. Each row also states the shipped
 surface it must not duplicate.
 
-- **Contact Data-Quality Resolution Decisions**: Add reviewer decision records for duplicate
-  candidates, protected-party handling, and conflict-check revalidation prompts. Keep the first slice
-  non-destructive: no automatic merge, contact rewrite, or conflict-disposition mutation. Do not
-  duplicate shipped contact dossier signals or the read-only review queue.
 - **Async Billing And Trust Export Requests**: Move large billing or trust exports behind capped
   direct responses and async job status when report size exceeds safe synchronous limits. Do not
   duplicate shipped audit export requests, and keep export bodies out of job metadata.

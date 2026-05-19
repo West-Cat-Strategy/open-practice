@@ -100,6 +100,43 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies contact quality decisions without raw reviewer evidence", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "contact_quality_decision.recorded",
+        resourceType: "contact_quality_review_decision",
+        resourceId: "contact-quality-decision-001",
+        metadata: {
+          contactId: "contact-river",
+          matterId: "matter-001",
+          signalKind: "protected_party_cue",
+          decision: "protected_party_handling_confirmed",
+          relatedContactCount: 0,
+          evidenceKeyCount: 1,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "contacts",
+      known: true,
+      matterScope: "optional_matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "contactId",
+        "signalKind",
+        "decision",
+        "relatedContactCount",
+        "evidenceKeyCount",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["matchedValue", "evidence", "conflictDisposition"]),
+    );
+  });
+
   it("classifies trust transfer review events with safe metadata hints", () => {
     const classification = classifyAuditEvent(
       auditEvent({

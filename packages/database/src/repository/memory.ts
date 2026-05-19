@@ -18,6 +18,7 @@ import {
   clientTrustBalanceByMatter,
   transitionCalendarGuestLinkStatus,
   transitionCalendarMeetingSessionStatus,
+  validateContactQualityReviewDecisionRecord,
   invoiceStatusForPayment,
   ledgerBalanceByMatter,
   postLedgerTransaction,
@@ -40,6 +41,7 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDossier,
+  type ContactQualityReviewDecisionRecord,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -173,6 +175,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private firms: Firm[];
   private users: User[];
   private contacts: Contact[];
+  private contactQualityReviewDecisions: ContactQualityReviewDecisionRecord[] = [];
   private matters: Matter[];
   private matterParties: MatterParty[];
   private documents: DocumentRecord[];
@@ -1229,6 +1232,38 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       intakeVariableProposals,
       conflictChecks: this.conflictChecks,
     });
+  }
+
+  async listContactQualityReviewDecisionsForUser(
+    user: User,
+  ): Promise<ContactQualityReviewDecisionRecord[]> {
+    const dossiers = await this.listContactDossiersForUser(user);
+    const visibleContactIds = new Set(dossiers.map((dossier) => dossier.contact.id));
+    const visibleMatterIds = new Set(
+      dossiers.flatMap((dossier) => dossier.matters.map((matter) => matter.matterId)),
+    );
+
+    return clone(
+      this.contactQualityReviewDecisions
+        .filter(
+          (decision) =>
+            decision.firmId === user.firmId &&
+            visibleContactIds.has(decision.contactId) &&
+            (!decision.matterId || visibleMatterIds.has(decision.matterId)),
+        )
+        .sort((left, right) => right.decidedAt.localeCompare(left.decidedAt)),
+    );
+  }
+
+  async createContactQualityReviewDecision(
+    record: ContactQualityReviewDecisionRecord,
+  ): Promise<ContactQualityReviewDecisionRecord> {
+    const validated = validateContactQualityReviewDecisionRecord(record);
+    if (this.contactQualityReviewDecisions.some((decision) => decision.id === validated.id)) {
+      throw new Error("Contact quality review decision already exists");
+    }
+    this.contactQualityReviewDecisions = [...this.contactQualityReviewDecisions, clone(validated)];
+    return clone(validated);
   }
 
   async getContact(firmId: string, contactId: string): Promise<Contact | undefined> {

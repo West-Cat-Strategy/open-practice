@@ -26,6 +26,7 @@ import {
   postLedgerTransaction,
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
+  validateContactQualityReviewDecisionRecord,
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
   verifyAuditChain,
@@ -42,6 +43,7 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDossier,
+  type ContactQualityReviewDecisionRecord,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -139,6 +141,7 @@ import {
   buildActivityTimeline,
   calendarGuestLinkInsert,
   calendarMeetingSessionInsert,
+  contactQualityReviewDecisionInsert,
   connectorDeliveryAttemptInsert,
   connectorInsert,
   connectorOutboxInsert,
@@ -167,6 +170,7 @@ import {
   mapConnectorDeliveryAttemptRow,
   mapConnectorOutboxRow,
   mapConnectorRow,
+  mapContactQualityReviewDecisionRow,
   mapContactRow,
   mapConversationMessageRow,
   mapConversationThreadRow,
@@ -1639,6 +1643,43 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       intakeVariableProposals,
       conflictChecks,
     });
+  }
+
+  async listContactQualityReviewDecisionsForUser(
+    user: User,
+  ): Promise<ContactQualityReviewDecisionRecord[]> {
+    const dossiers = await this.listContactDossiersForUser(user);
+    const visibleContactIds = new Set(dossiers.map((dossier) => dossier.contact.id));
+    const visibleMatterIds = new Set(
+      dossiers.flatMap((dossier) => dossier.matters.map((matter) => matter.matterId)),
+    );
+    if (visibleContactIds.size === 0) return [];
+
+    const rows = await this.db
+      .select()
+      .from(schema.contactQualityReviewDecisions)
+      .where(
+        and(
+          eq(schema.contactQualityReviewDecisions.firmId, user.firmId),
+          inArray(schema.contactQualityReviewDecisions.contactId, [...visibleContactIds]),
+        ),
+      )
+      .orderBy(desc(schema.contactQualityReviewDecisions.decidedAt));
+
+    return rows
+      .map(mapContactQualityReviewDecisionRow)
+      .filter((decision) => !decision.matterId || visibleMatterIds.has(decision.matterId));
+  }
+
+  async createContactQualityReviewDecision(
+    record: ContactQualityReviewDecisionRecord,
+  ): Promise<ContactQualityReviewDecisionRecord> {
+    const validated = validateContactQualityReviewDecisionRecord(record);
+    const [row] = await this.db
+      .insert(schema.contactQualityReviewDecisions)
+      .values(contactQualityReviewDecisionInsert(validated))
+      .returning();
+    return mapContactQualityReviewDecisionRow(row);
   }
 
   async getContact(firmId: string, contactId: string): Promise<Contact | undefined> {

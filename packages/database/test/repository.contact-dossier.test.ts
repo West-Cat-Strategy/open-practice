@@ -99,4 +99,79 @@ describe("repository contact dossier quality review", () => {
     expect(JSON.stringify(dossiers)).not.toContain("North Star Holdings");
     expect(JSON.stringify(dossiers)).not.toContain("matter-002");
   });
+
+  it("stores append-only contact quality decisions within visible dossier scope", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const user: User = {
+      id: "user-licensee",
+      firmId: "firm-west-legal",
+      displayName: "Test Licensee",
+      email: "licensee@example.test",
+      role: "licensee",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    };
+
+    await repository.createContactQualityReviewDecision({
+      id: "contact-quality-decision-visible-protected",
+      firmId: "firm-west-legal",
+      contactId: "contact-river",
+      signalKind: "protected_party_cue",
+      decision: "protected_party_handling_confirmed",
+      matterId: "matter-001",
+      relatedContactIds: [],
+      decidedByUserId: "user-licensee",
+      decidedAt: "2026-05-19T12:00:00.000Z",
+      evidence: { reviewedSource: "contact_review_queue" },
+      createdAt: "2026-05-19T12:00:00.000Z",
+    });
+    await repository.createContactQualityReviewDecision({
+      id: "contact-quality-decision-visible-duplicate",
+      firmId: "firm-west-legal",
+      contactId: "contact-ada",
+      signalKind: "duplicate_candidate",
+      decision: "not_duplicate",
+      relatedContactIds: ["contact-river"],
+      decidedByUserId: "user-licensee",
+      decidedAt: "2026-05-19T12:05:00.000Z",
+      evidence: { reviewedSource: "contact_review_queue" },
+      createdAt: "2026-05-19T12:05:00.000Z",
+    });
+    await repository.createContactQualityReviewDecision({
+      id: "contact-quality-decision-hidden",
+      firmId: "firm-west-legal",
+      contactId: "contact-northstar",
+      signalKind: "protected_party_cue",
+      decision: "protected_party_handling_confirmed",
+      matterId: "matter-002",
+      relatedContactIds: [],
+      decidedByUserId: "user-licensee",
+      decidedAt: "2026-05-19T12:10:00.000Z",
+      evidence: { reviewedSource: "contact_review_queue" },
+      createdAt: "2026-05-19T12:10:00.000Z",
+    });
+
+    const decisions = await repository.listContactQualityReviewDecisionsForUser(user);
+
+    expect(decisions.map((decision) => decision.id)).toEqual([
+      "contact-quality-decision-visible-duplicate",
+      "contact-quality-decision-visible-protected",
+    ]);
+    expect(JSON.stringify(decisions)).not.toContain("contact-quality-decision-hidden");
+    await expect(
+      repository.createContactQualityReviewDecision({
+        id: "contact-quality-decision-rewrite",
+        firmId: "firm-west-legal",
+        contactId: "contact-river",
+        signalKind: "protected_party_cue",
+        decision: "protected_party_handling_confirmed",
+        matterId: "matter-001",
+        relatedContactIds: [],
+        decidedByUserId: "user-licensee",
+        decidedAt: "2026-05-19T12:15:00.000Z",
+        evidence: { contactRewrite: { displayName: "Do not mutate" } },
+        createdAt: "2026-05-19T12:15:00.000Z",
+      }),
+    ).rejects.toThrow("evidence must stay review-only");
+  });
 });

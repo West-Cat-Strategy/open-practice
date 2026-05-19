@@ -39,8 +39,9 @@ Completed Phase 3 slices:
     storage-disabled fallbacks.
 2.  **Operational Queues And Workbenches**: Audit taxonomy/coverage, document-processing status,
     worker-run inspection, task/deadline projections, built-in operational views, matter timelines,
-    contact dossiers, contact review queues, reviewer-only document suggestion summaries, and
-    operations focus panels are live as read-only or constrained workflow surfaces.
+    contact dossiers, contact review queues, append-only contact data-quality reviewer decisions,
+    reviewer-only document suggestion summaries, and operations focus panels are live as read-only
+    or constrained workflow surfaces.
 3.  **Communications And Connectors Foundation**: SMTP outbox queueing, email delivery state,
     inbound email triage, communications inbox aggregation, conversation topics/lifecycle,
     connector registry/outbox, and preview-only outbound webhook guardrails are live.
@@ -54,16 +55,13 @@ Completed Phase 3 slices:
 
 Next operational scale priorities:
 
-1.  **Contact Data-Quality Decisions**: Add non-destructive reviewer decisions for duplicate,
-    protected-party, and conflict-revalidation signals without automatic contact merges or conflict
-    disposition changes.
-2.  **Async Billing And Trust Exports**: Move larger billing or trust exports behind capped direct
+1.  **Async Billing And Trust Exports**: Move larger billing or trust exports behind capped direct
     responses and async job status while keeping export bodies out of job metadata.
-3.  **Trust And Billing Follow-Through**: Add reconciliation exception resolution records and
+2.  **Trust And Billing Follow-Through**: Add reconciliation exception resolution records and
     billing-period/rate controls while keeping trust ledger posting explicit and separate.
-4.  **Delivery Receipt Tokens**: Add purpose-scoped public receipt links for selected outbound
+3.  **Delivery Receipt Tokens**: Add purpose-scoped public receipt links for selected outbound
     emails without exposing sessions, recipient lists, or message bodies.
-5.  **Calendar Meeting Media Follow-Through**: Build only after the shipped hosted guest-session
+4.  **Calendar Meeting Media Follow-Through**: Build only after the shipped hosted guest-session
     control plane is reviewed; future work should stay out of attendee, iCalendar, invitation,
     stored meeting-link, and status-token contracts unless those seams need targeted hardening.
 

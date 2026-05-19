@@ -261,6 +261,22 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "contact",
     "read",
   ),
+  authRoute(
+    "registerContactRoutes",
+    "apps/api/src/routes/contacts.test.ts",
+    "GET",
+    "/api/contacts/review-decisions",
+    "contact",
+    "read",
+  ),
+  authRoute(
+    "registerContactRoutes",
+    "apps/api/src/routes/contacts.test.ts",
+    "POST",
+    "/api/contacts/:contactId/review-decisions",
+    "contact",
+    "update",
+  ),
 
   authRoute(
     "registerConnectorRoutes",

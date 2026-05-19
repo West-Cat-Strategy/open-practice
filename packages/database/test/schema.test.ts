@@ -17,6 +17,7 @@ import {
   calendarEvents,
   calendarGuestLinks,
   calendarMeetingSessions,
+  contactQualityReviewDecisions,
   connectorDeliveryAttempts,
   connectorOutbox,
   connectors,
@@ -275,6 +276,50 @@ describe("database schema hardening", () => {
     );
     expect(guestLinkConfig.checks.map((check) => check.name)).toContain(
       "calendar_guest_links_status_value",
+    );
+  });
+
+  it("persists review-only contact quality decisions", () => {
+    const config = getTableConfig(contactQualityReviewDecisions);
+    const columns = config.columns.map((column) => column.name);
+
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "contact_id",
+        "signal_kind",
+        "decision",
+        "matter_id",
+        "related_contact_ids",
+        "source_record_id",
+        "decided_by_user_id",
+        "decided_at",
+        "reason",
+        "evidence",
+        "created_at",
+      ]),
+    );
+    expect(columns).not.toEqual(
+      expect.arrayContaining([
+        "matched_value",
+        "merge_contact_id",
+        "target_contact_id",
+        "conflict_disposition",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "contact_quality_review_decisions_contact_signal_idx",
+        "contact_quality_review_decisions_matter_signal_idx",
+      ]),
+    );
+    expect(config.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "contact_quality_review_decisions_signal_kind_value",
+        "contact_quality_review_decisions_decision_pairing",
+        "contact_quality_review_decisions_signal_reference_shape",
+        "contact_quality_review_decisions_review_only_evidence",
+      ]),
     );
   });
 

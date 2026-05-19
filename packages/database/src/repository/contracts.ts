@@ -27,6 +27,7 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDossier,
+  type ContactQualityReviewDecisionRecord,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -558,6 +559,12 @@ export interface OpenPracticeRepository {
   getOverview(firmId: string): Promise<PracticeOverview>;
   listMattersForUser(user: User): Promise<MatterSummary[]>;
   listContactDossiersForUser(user: User): Promise<ContactDossier[]>;
+  listContactQualityReviewDecisionsForUser(
+    user: User,
+  ): Promise<ContactQualityReviewDecisionRecord[]>;
+  createContactQualityReviewDecision(
+    record: ContactQualityReviewDecisionRecord,
+  ): Promise<ContactQualityReviewDecisionRecord>;
   getContact(firmId: string, contactId: string): Promise<Contact | undefined>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
   listMatterDocuments(firmId: string, matterId: string): Promise<DocumentRecord[]>;

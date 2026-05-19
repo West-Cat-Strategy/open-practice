@@ -16,6 +16,7 @@ import { sql } from "drizzle-orm";
 import type {
   CalendarGuestLinkRecord,
   CalendarMeetingSessionRecord,
+  ContactQualityReviewDecisionRecord,
   ConnectorSecretReference,
   ConversationThreadRecord,
   DraftAssistRecord,
@@ -719,6 +720,83 @@ export const matterParties = pgTable("matter_parties", {
   adverse: boolean("adverse").notNull().default(false),
   confidential: boolean("confidential").notNull().default(false),
 });
+
+export const contactQualityReviewDecisions = pgTable(
+  "contact_quality_review_decisions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    contactId: text("contact_id")
+      .notNull()
+      .references(() => contacts.id),
+    signalKind: text("signal_kind")
+      .$type<ContactQualityReviewDecisionRecord["signalKind"]>()
+      .notNull(),
+    decision: text("decision").$type<ContactQualityReviewDecisionRecord["decision"]>().notNull(),
+    matterId: text("matter_id").references(() => matters.id),
+    relatedContactIds: jsonb("related_contact_ids").$type<string[]>().notNull().default([]),
+    sourceRecordId: text("source_record_id"),
+    decidedByUserId: text("decided_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
+    reason: text("reason"),
+    evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    contactSignal: index("contact_quality_review_decisions_contact_signal_idx").on(
+      table.firmId,
+      table.contactId,
+      table.signalKind,
+      table.decidedAt,
+    ),
+    matterSignal: index("contact_quality_review_decisions_matter_signal_idx").on(
+      table.firmId,
+      table.matterId,
+      table.signalKind,
+    ),
+    signalKindValue: check(
+      "contact_quality_review_decisions_signal_kind_value",
+      sql`${table.signalKind} in ('duplicate_candidate', 'protected_party_cue', 'conflict_revalidation')`,
+    ),
+    decisionPairing: check(
+      "contact_quality_review_decisions_decision_pairing",
+      sql`(
+        (${table.signalKind} = 'duplicate_candidate' and ${table.decision} in ('duplicate_confirmed', 'not_duplicate', 'needs_more_review')) or
+        (${table.signalKind} = 'protected_party_cue' and ${table.decision} in ('protected_party_handling_confirmed', 'protected_party_handling_not_required', 'needs_more_review')) or
+        (${table.signalKind} = 'conflict_revalidation' and ${table.decision} in ('conflict_revalidation_required', 'conflict_revalidation_not_required', 'needs_more_review'))
+      )`,
+    ),
+    signalReferenceShape: check(
+      "contact_quality_review_decisions_signal_reference_shape",
+      sql`(
+        (${table.signalKind} = 'duplicate_candidate' and jsonb_array_length(${table.relatedContactIds}) > 0 and ${table.matterId} is null and ${table.sourceRecordId} is null) or
+        (${table.signalKind} = 'protected_party_cue' and jsonb_array_length(${table.relatedContactIds}) = 0 and ${table.matterId} is not null and ${table.sourceRecordId} is null) or
+        (${table.signalKind} = 'conflict_revalidation' and jsonb_array_length(${table.relatedContactIds}) = 0 and ${table.matterId} is not null and ${table.sourceRecordId} is not null)
+      )`,
+    ),
+    reviewOnlyEvidence: check(
+      "contact_quality_review_decisions_review_only_evidence",
+      sql`not (${table.evidence} ?| array[
+        'matchedValue',
+        'rawMatchedValue',
+        'mergeContactId',
+        'targetContactId',
+        'sourceContactId',
+        'contactPatch',
+        'contactRewrite',
+        'contactUpdate',
+        'contactNotes',
+        'conflictDisposition',
+        'conflictCheckDisposition',
+        'disposition'
+      ])`,
+    ),
+  }),
+);
 
 export const legalClinicPrograms = pgTable(
   "legal_clinic_programs",

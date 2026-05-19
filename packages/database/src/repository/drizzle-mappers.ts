@@ -27,6 +27,7 @@ import {
   type ConnectorOutboxRecord,
   type ConnectorRecord,
   type Contact,
+  type ContactQualityReviewDecisionRecord,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -691,6 +692,39 @@ export function mapContactRow(row: typeof schema.contacts.$inferSelect): Contact
     aliases: row.aliases,
     identifiers: row.identifiers as Contact["identifiers"],
     notes: row.notes ?? undefined,
+  };
+}
+
+export function mapContactQualityReviewDecisionRow(
+  row: typeof schema.contactQualityReviewDecisions.$inferSelect,
+): ContactQualityReviewDecisionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    contactId: row.contactId,
+    signalKind: row.signalKind,
+    decision: row.decision,
+    matterId: row.matterId ?? undefined,
+    relatedContactIds: row.relatedContactIds,
+    sourceRecordId: row.sourceRecordId ?? undefined,
+    decidedByUserId: row.decidedByUserId,
+    decidedAt: row.decidedAt.toISOString(),
+    reason: row.reason ?? undefined,
+    evidence: row.evidence,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function contactQualityReviewDecisionInsert(
+  record: ContactQualityReviewDecisionRecord,
+): typeof schema.contactQualityReviewDecisions.$inferInsert {
+  return {
+    ...record,
+    matterId: record.matterId ?? null,
+    sourceRecordId: record.sourceRecordId ?? null,
+    reason: record.reason ?? null,
+    decidedAt: new Date(record.decidedAt),
+    createdAt: new Date(record.createdAt),
   };
 }
 

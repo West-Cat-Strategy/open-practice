@@ -7,6 +7,7 @@ export type AuditEventCategory =
   | "calendar"
   | "communications"
   | "conflicts"
+  | "contacts"
   | "documents"
   | "drafting"
   | "intake"
@@ -167,6 +168,22 @@ export const auditEventTaxonomyDefinitions = [
     matterScope: "optional_matter",
     actorHint: "authenticated_user",
     resourceMetadataKeys: ["resultCount", "includeClosedMatters", "partyRole"],
+  }),
+  define({
+    action: "contact_quality_decision.recorded",
+    category: "contacts",
+    resourceType: "contact_quality_review_decision",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    matterMetadataKeys: ["matterId"],
+    resourceMetadataKeys: [
+      "contactId",
+      "signalKind",
+      "decision",
+      "relatedContactCount",
+      "sourceRecordId",
+      "evidenceKeyCount",
+    ],
   }),
   define({
     action: "portal.grant.created",

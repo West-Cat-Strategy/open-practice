@@ -204,6 +204,128 @@ describe("contact routes", () => {
     expect(serialized).not.toContain('"matchedValue":');
   });
 
+  it("records reviewer contact quality decisions without mutating contacts or conflicts", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const visibleContacts = (repository as unknown as { contacts: Contact[] }).contacts;
+    const riverContact = visibleContacts.find((contact) => contact.id === "contact-river");
+    if (!riverContact) throw new Error("Expected sample contact-river fixture");
+    riverContact.identifiers = [{ type: "email", value: "ada@example.test" }];
+    const server = testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/contacts/contact-ada/review-decisions",
+      payload: {
+        signalKind: "duplicate_candidate",
+        decision: "not_duplicate",
+        relatedContactIds: ["contact-river"],
+        evidence: { reviewedSource: "contact_review_queue", syntheticReview: true },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      firmId: "firm-west-legal",
+      contactId: "contact-ada",
+      signalKind: "duplicate_candidate",
+      decision: "not_duplicate",
+      relatedContactIds: ["contact-river"],
+      decidedByUserId: "user-licensee",
+    });
+    expect(response.json()).not.toHaveProperty("matchedValue");
+    expect(response.json()).not.toHaveProperty("mergeContactId");
+    const list = await server.inject({
+      method: "GET",
+      url: "/api/contacts/review-decisions?contactId=contact-ada",
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toMatchObject({
+      decisions: [
+        expect.objectContaining({
+          contactId: "contact-ada",
+          signalKind: "duplicate_candidate",
+          decision: "not_duplicate",
+        }),
+      ],
+    });
+    const serializedList = JSON.stringify(list.json());
+    expect(serializedList).not.toContain("contact-northstar");
+    expect(serializedList).not.toContain("ada@example.test");
+
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const event = audit.events.find(
+      (candidate) => candidate.action === "contact_quality_decision.recorded",
+    );
+    expect(event).toMatchObject({
+      resourceType: "contact_quality_review_decision",
+      metadata: {
+        contactId: "contact-ada",
+        signalKind: "duplicate_candidate",
+        decision: "not_duplicate",
+        relatedContactCount: 1,
+        evidenceKeyCount: 2,
+      },
+    });
+    expect(event?.metadata).not.toHaveProperty("evidence");
+    expect(JSON.stringify(event?.metadata)).not.toContain("matchedValue");
+    expect(JSON.stringify(event?.metadata)).not.toContain("contactPatch");
+    expect(JSON.stringify(event?.metadata)).not.toContain("conflictDisposition");
+  });
+
+  it("rejects destructive or non-current contact quality decisions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    });
+
+    const destructive = await server.inject({
+      method: "POST",
+      url: "/api/contacts/contact-river/review-decisions",
+      payload: {
+        signalKind: "protected_party_cue",
+        decision: "protected_party_handling_confirmed",
+        matterId: "matter-001",
+        evidence: { contactPatch: { displayName: "Do not rewrite" } },
+      },
+    });
+    const stale = await server.inject({
+      method: "POST",
+      url: "/api/contacts/contact-river/review-decisions",
+      payload: {
+        signalKind: "conflict_revalidation",
+        decision: "conflict_revalidation_required",
+        matterId: "matter-001",
+        sourceRecordId: "proposal-that-is-not-current",
+      },
+    });
+    const hidden = await server.inject({
+      method: "POST",
+      url: "/api/contacts/contact-northstar/review-decisions",
+      payload: {
+        signalKind: "protected_party_cue",
+        decision: "protected_party_handling_confirmed",
+        matterId: "matter-002",
+      },
+    });
+
+    expect(destructive.statusCode).toBe(400);
+    expect(destructive.json()).toMatchObject({
+      message: "Contact quality review decision evidence must stay review-only",
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({
+      message: "Contact quality decision must reference a visible current review signal",
+    });
+    expect(hidden.statusCode).toBe(404);
+    expect(hidden.json()).toMatchObject({
+      message: "Contact dossier is not visible to the current user",
+    });
+  });
+
   it("rejects users without contact read access", async () => {
     const dossiers = await testServer({
       user: user("client_external", ["matter-001"]),
@@ -211,6 +333,20 @@ describe("contact routes", () => {
     const reviewQueue = await testServer({
       user: user("client_external", ["matter-001"]),
     }).inject({ method: "GET", url: "/api/contacts/review-queue" });
+    const reviewDecisions = await testServer({
+      user: user("client_external", ["matter-001"]),
+    }).inject({ method: "GET", url: "/api/contacts/review-decisions" });
+    const createDecision = await testServer({
+      user: user("client_external", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: "/api/contacts/contact-river/review-decisions",
+      payload: {
+        signalKind: "protected_party_cue",
+        decision: "protected_party_handling_confirmed",
+        matterId: "matter-001",
+      },
+    });
 
     expect(dossiers.statusCode).toBe(403);
     expect(dossiers.json()).toMatchObject({
@@ -218,6 +354,14 @@ describe("contact routes", () => {
     });
     expect(reviewQueue.statusCode).toBe(403);
     expect(reviewQueue.json()).toMatchObject({
+      message: "Contact access required",
+    });
+    expect(reviewDecisions.statusCode).toBe(403);
+    expect(reviewDecisions.json()).toMatchObject({
+      message: "Contact access required",
+    });
+    expect(createDecision.statusCode).toBe(403);
+    expect(createDecision.json()).toMatchObject({
       message: "Contact access required",
     });
   });
