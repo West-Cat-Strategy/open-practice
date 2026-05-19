@@ -10,6 +10,8 @@ import {
   aiTriageRecords,
   authActionTokens,
   authChallenges,
+  billingPeriodLocks,
+  billingRatePresets,
   billingTrustTransferRequests,
   calendarCredentials,
   calendarEventAttendees,
@@ -914,6 +916,45 @@ describe("database schema hardening", () => {
       getTableConfig(billingTrustTransferRequests).columns.map((column) => column.name),
     ).toEqual(
       expect.arrayContaining(["invoice_id", "amount_cents", "status", "ledger_transaction_id"]),
+    );
+    expect(getTableConfig(billingRatePresets).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "matter_id",
+        "user_id",
+        "label",
+        "rate_cents",
+        "currency",
+        "effective_from",
+        "effective_to",
+        "created_by_user_id",
+        "metadata",
+      ]),
+    );
+    expect(getTableConfig(billingRatePresets).checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "billing_rate_presets_non_negative_rate",
+        "billing_rate_presets_valid_effective_range",
+      ]),
+    );
+    expect(getTableConfig(billingPeriodLocks).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "matter_id",
+        "starts_on",
+        "ends_on",
+        "status",
+        "locked_by_user_id",
+        "locked_at",
+        "released_by_user_id",
+        "released_at",
+        "reason",
+        "metadata",
+      ]),
+    );
+    expect(getTableConfig(billingPeriodLocks).checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "billing_period_locks_valid_period",
+        "billing_period_locks_status_value",
+      ]),
     );
   });
 });

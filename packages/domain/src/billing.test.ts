@@ -1,9 +1,71 @@
 import { describe, expect, it } from "vitest";
 import {
+  isBillingEntrySnapshotMutable,
+  isBillingPeriodLockActiveForEntry,
+  isBillingRatePresetEffectiveForDate,
   summarizeBillingTrustExportCounts,
   summarizeTrustTransferLedgerLink,
   trustTransferRequestAvailableBalanceCents,
 } from "./billing.js";
+
+describe("billing lock and rate helpers", () => {
+  it("treats submitted and later entry snapshots as immutable", () => {
+    expect(isBillingEntrySnapshotMutable("draft")).toBe(true);
+    for (const status of ["submitted", "approved", "billed", "written_off"] as const) {
+      expect(isBillingEntrySnapshotMutable(status)).toBe(false);
+    }
+  });
+
+  it("matches rate presets and active period locks by effective date", () => {
+    expect(
+      isBillingRatePresetEffectiveForDate(
+        {
+          effectiveFrom: "2026-05-01T00:00:00.000Z",
+          effectiveTo: "2026-05-31T23:59:59.000Z",
+        },
+        "2026-05-19T16:00:00.000Z",
+      ),
+    ).toBe(true);
+    expect(
+      isBillingRatePresetEffectiveForDate(
+        { effectiveFrom: "2026-06-01T00:00:00.000Z" },
+        "2026-05-19T16:00:00.000Z",
+      ),
+    ).toBe(false);
+    expect(
+      isBillingPeriodLockActiveForEntry(
+        {
+          matterId: "matter-001",
+          startsOn: "2026-05-01",
+          endsOn: "2026-05-31",
+          status: "active",
+        },
+        { matterId: "matter-001", occurredAt: "2026-05-19T16:00:00.000Z" },
+      ),
+    ).toBe(true);
+    expect(
+      isBillingPeriodLockActiveForEntry(
+        {
+          matterId: "matter-002",
+          startsOn: "2026-05-01",
+          endsOn: "2026-05-31",
+          status: "active",
+        },
+        { matterId: "matter-001", occurredAt: "2026-05-19T16:00:00.000Z" },
+      ),
+    ).toBe(false);
+    expect(
+      isBillingPeriodLockActiveForEntry(
+        {
+          startsOn: "2026-05-01",
+          endsOn: "2026-05-31",
+          status: "released",
+        },
+        { matterId: "matter-001", occurredAt: "2026-05-19T16:00:00.000Z" },
+      ),
+    ).toBe(false);
+  });
+});
 
 describe("trust transfer request billing helpers", () => {
   it("calculates matter trust balance for client-scoped and matter-scoped requests", () => {

@@ -228,6 +228,181 @@ describe("billing routes", () => {
     });
   });
 
+  it("applies rate presets as immutable time-entry snapshots and enforces period locks", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+
+    const preset = await server.inject({
+      method: "POST",
+      url: "/api/billing/rate-presets",
+      payload: {
+        id: "rate-preset-route-test",
+        matterId: "matter-001",
+        userId: "user-admin",
+        label: "Synthetic hearing rate",
+        rateCents: 22500,
+        effectiveFrom: "2026-05-01T00:00:00.000Z",
+        metadata: { test: "rate-snapshot" },
+      },
+    });
+    expect(preset.statusCode).toBe(200);
+
+    const presetTime = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-rate-preset-route-test",
+        matterId: "matter-001",
+        performedAt: "2026-05-10T16:00:00.000Z",
+        minutes: 60,
+        ratePresetId: "rate-preset-route-test",
+        narrative: "Synthetic rate preset time entry.",
+      },
+    });
+    expect(presetTime.statusCode).toBe(200);
+    expect(presetTime.json()).toMatchObject({
+      id: "time-rate-preset-route-test",
+      rateCents: 22500,
+    });
+
+    const laterPreset = await server.inject({
+      method: "POST",
+      url: "/api/billing/rate-presets",
+      payload: {
+        id: "rate-preset-later-route-test",
+        matterId: "matter-001",
+        userId: "user-admin",
+        label: "Synthetic later hearing rate",
+        rateCents: 27500,
+        effectiveFrom: "2026-06-01T00:00:00.000Z",
+      },
+    });
+    expect(laterPreset.statusCode).toBe(200);
+    await expect(
+      repository.getTimeEntry("firm-west-legal", "time-rate-preset-route-test"),
+    ).resolves.toMatchObject({ rateCents: 22500 });
+
+    const lock = await server.inject({
+      method: "POST",
+      url: "/api/billing/period-locks",
+      payload: {
+        id: "billing-lock-route-test",
+        matterId: "matter-001",
+        startsOn: "2026-05-01",
+        endsOn: "2026-05-31",
+        reason: "Synthetic month-end close",
+      },
+    });
+    expect(lock.statusCode).toBe(200);
+
+    const lockedTime = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-locked-route-test",
+        matterId: "matter-001",
+        performedAt: "2026-05-12T16:00:00.000Z",
+        minutes: 15,
+        rateCents: 22500,
+        narrative: "Synthetic locked time entry.",
+      },
+    });
+    expect(lockedTime.statusCode).toBe(409);
+    expect(lockedTime.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Billing period is locked",
+    });
+
+    const lockedExpense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-locked-route-test",
+        matterId: "matter-001",
+        incurredAt: "2026-05-12T16:00:00.000Z",
+        amountCents: 3500,
+        category: "Filing",
+        description: "Synthetic locked expense.",
+      },
+    });
+    expect(lockedExpense.statusCode).toBe(409);
+
+    const release = await server.inject({
+      method: "POST",
+      url: "/api/billing/period-locks/billing-lock-route-test/release",
+      payload: { metadata: { releasedFor: "synthetic correction" } },
+    });
+    expect(release.statusCode).toBe(200);
+    expect(release.json()).toMatchObject({ status: "released" });
+
+    const unlockedTime = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-unlocked-route-test",
+        matterId: "matter-001",
+        performedAt: "2026-05-12T16:00:00.000Z",
+        minutes: 15,
+        rateCents: 22500,
+        narrative: "Synthetic unlocked correction.",
+      },
+    });
+    expect(unlockedTime.statusCode).toBe(200);
+  });
+
+  it("rejects mutable entry edits after submitted and approved billing states", async () => {
+    const server = testServer();
+
+    const submittedTime = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-submitted-mutation-denial",
+        matterId: "matter-001",
+        minutes: 30,
+        rateCents: 18000,
+        narrative: "Synthetic submitted time.",
+        billingStatus: "submitted",
+      },
+    });
+    expect(submittedTime.statusCode).toBe(200);
+    const submittedPatch = await server.inject({
+      method: "PATCH",
+      url: "/api/time-entries/time-submitted-mutation-denial",
+      payload: { rateCents: 22500 },
+    });
+    expect(submittedPatch.statusCode).toBe(409);
+    expect(submittedPatch.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Time entries that are submitted, approved, billed, or written off cannot be edited",
+    });
+
+    const approvedExpense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-approved-mutation-denial",
+        matterId: "matter-001",
+        amountCents: 5000,
+        category: "Filing",
+        description: "Synthetic approved expense.",
+        billingStatus: "approved",
+      },
+    });
+    expect(approvedExpense.statusCode).toBe(200);
+    const expensePatch = await server.inject({
+      method: "PATCH",
+      url: "/api/expense-entries/expense-approved-mutation-denial",
+      payload: { amountCents: 5500 },
+    });
+    expect(expensePatch.statusCode).toBe(409);
+    expect(expensePatch.json()).toMatchObject({
+      error: "ApiHttpError",
+      message:
+        "Expense entries that are submitted, approved, billed, or written off cannot be edited",
+    });
+  });
+
   it("creates a draft invoice from approved billing dashboard sources without trust ledger postings", async () => {
     const server = testServer();
     const ledgerBefore = await server.inject({ method: "GET", url: "/api/ledger" });

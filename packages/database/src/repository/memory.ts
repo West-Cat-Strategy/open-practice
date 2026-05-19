@@ -29,6 +29,8 @@ import {
   verifyAuditChain,
   type AccessLogRecord,
   type AuditEvent,
+  type BillingPeriodLockRecord,
+  type BillingRatePresetRecord,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
@@ -191,6 +193,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private portalGrants: PortalGrant[];
   private externalUploadLinks: ExternalUploadLinkRecord[] = [];
   private savedOperationalViewDefinitions: SavedOperationalViewDefinition[] = [];
+  private billingRatePresets: BillingRatePresetRecord[] = [];
+  private billingPeriodLocks: BillingPeriodLockRecord[] = [];
   private timeEntries: TimeEntry[];
   private expenseEntries: ExpenseEntry[];
   private invoices: InvoiceRecord[];
@@ -3134,6 +3138,82 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         )
         .sort((left, right) => Date.parse(left.recordedAt) - Date.parse(right.recordedAt)),
     );
+  }
+
+  async createBillingRatePreset(preset: BillingRatePresetRecord): Promise<BillingRatePresetRecord> {
+    this.billingRatePresets = [...this.billingRatePresets, clone(preset)];
+    return clone(preset);
+  }
+
+  async listBillingRatePresets(
+    firmId: string,
+    options: { matterId?: string; userId?: string } = {},
+  ): Promise<BillingRatePresetRecord[]> {
+    return clone(
+      this.billingRatePresets
+        .filter(
+          (preset) =>
+            preset.firmId === firmId &&
+            (!options.matterId || preset.matterId === options.matterId) &&
+            (!options.userId || preset.userId === options.userId),
+        )
+        .sort((left, right) => Date.parse(left.effectiveFrom) - Date.parse(right.effectiveFrom)),
+    );
+  }
+
+  async getBillingRatePreset(
+    firmId: string,
+    presetId: string,
+  ): Promise<BillingRatePresetRecord | undefined> {
+    return clone(
+      this.billingRatePresets.find((preset) => preset.firmId === firmId && preset.id === presetId),
+    );
+  }
+
+  async createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord> {
+    this.billingPeriodLocks = [...this.billingPeriodLocks, clone(lock)];
+    return clone(lock);
+  }
+
+  async listBillingPeriodLocks(
+    firmId: string,
+    options: { matterId?: string; status?: BillingPeriodLockRecord["status"] } = {},
+  ): Promise<BillingPeriodLockRecord[]> {
+    return clone(
+      this.billingPeriodLocks
+        .filter(
+          (lock) =>
+            lock.firmId === firmId &&
+            (!options.matterId || lock.matterId === options.matterId || !lock.matterId) &&
+            (!options.status || lock.status === options.status),
+        )
+        .sort((left, right) => left.startsOn.localeCompare(right.startsOn)),
+    );
+  }
+
+  async getBillingPeriodLock(
+    firmId: string,
+    lockId: string,
+  ): Promise<BillingPeriodLockRecord | undefined> {
+    return clone(
+      this.billingPeriodLocks.find((lock) => lock.firmId === firmId && lock.id === lockId),
+    );
+  }
+
+  async updateBillingPeriodLock(
+    firmId: string,
+    lockId: string,
+    updates: Partial<BillingPeriodLockRecord>,
+  ): Promise<BillingPeriodLockRecord> {
+    const index = this.billingPeriodLocks.findIndex(
+      (lock) => lock.firmId === firmId && lock.id === lockId,
+    );
+    if (index === -1) throw new Error("Billing period lock was not found");
+    const updated = { ...this.billingPeriodLocks[index]!, ...updates };
+    this.billingPeriodLocks = this.billingPeriodLocks.map((lock, candidateIndex) =>
+      candidateIndex === index ? updated : lock,
+    );
+    return clone(updated);
   }
 
   async listTimeEntries(

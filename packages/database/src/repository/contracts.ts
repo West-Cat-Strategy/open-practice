@@ -14,6 +14,8 @@ import {
   type AccessLogRecord,
   type ActivityTimelineEntry,
   type AuditEvent,
+  type BillingPeriodLockRecord,
+  type BillingRatePresetRecord,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
@@ -997,6 +999,31 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { accountId?: string },
   ): Promise<LedgerReconciliationExceptionResolutionRecord[]>;
+  createBillingRatePreset(preset: BillingRatePresetRecord): Promise<BillingRatePresetRecord>;
+  listBillingRatePresets(
+    firmId: string,
+    options?: { matterId?: string; userId?: string },
+  ): Promise<BillingRatePresetRecord[]>;
+  getBillingRatePreset(
+    firmId: string,
+    presetId: string,
+  ): Promise<BillingRatePresetRecord | undefined>;
+  createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord>;
+  listBillingPeriodLocks(
+    firmId: string,
+    options?: { matterId?: string; status?: BillingPeriodLockRecord["status"] },
+  ): Promise<BillingPeriodLockRecord[]>;
+  getBillingPeriodLock(
+    firmId: string,
+    lockId: string,
+  ): Promise<BillingPeriodLockRecord | undefined>;
+  updateBillingPeriodLock(
+    firmId: string,
+    lockId: string,
+    updates: Partial<
+      Pick<BillingPeriodLockRecord, "status" | "releasedByUserId" | "releasedAt" | "metadata">
+    >,
+  ): Promise<BillingPeriodLockRecord>;
   listTimeEntries(
     firmId: string,
     options?: { matterId?: string; status?: TimeEntry["billingStatus"] },

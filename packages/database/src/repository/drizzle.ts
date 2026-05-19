@@ -32,6 +32,8 @@ import {
   verifyAuditChain,
   type AccessLogRecord,
   type AuditEvent,
+  type BillingPeriodLockRecord,
+  type BillingRatePresetRecord,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
@@ -162,6 +164,8 @@ import {
   mapAuthAccountRow,
   mapAuthChallengeRow,
   mapAuthSessionRow,
+  mapBillingPeriodLockRow,
+  mapBillingRatePresetRow,
   mapCalendarCredentialRow,
   mapCalendarEventAttendeeRow,
   mapCalendarEventReminderRow,
@@ -4356,6 +4360,116 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       )
       .orderBy(asc(schema.trustReconciliationExceptionResolutions.recordedAt));
     return rows.map(mapLedgerReconciliationExceptionResolutionRow);
+  }
+
+  async createBillingRatePreset(preset: BillingRatePresetRecord): Promise<BillingRatePresetRecord> {
+    await this.db.insert(schema.billingRatePresets).values({
+      ...preset,
+      matterId: preset.matterId ?? null,
+      userId: preset.userId ?? null,
+      effectiveFrom: new Date(preset.effectiveFrom),
+      effectiveTo: preset.effectiveTo ? new Date(preset.effectiveTo) : null,
+      createdAt: new Date(preset.createdAt),
+    });
+    return clone(preset);
+  }
+
+  async listBillingRatePresets(
+    firmId: string,
+    options: { matterId?: string; userId?: string } = {},
+  ): Promise<BillingRatePresetRecord[]> {
+    const filters = [eq(schema.billingRatePresets.firmId, firmId)];
+    if (options.matterId) filters.push(eq(schema.billingRatePresets.matterId, options.matterId));
+    if (options.userId) filters.push(eq(schema.billingRatePresets.userId, options.userId));
+    const rows = await this.db
+      .select()
+      .from(schema.billingRatePresets)
+      .where(and(...filters))
+      .orderBy(asc(schema.billingRatePresets.effectiveFrom));
+    return rows.map(mapBillingRatePresetRow);
+  }
+
+  async getBillingRatePreset(
+    firmId: string,
+    presetId: string,
+  ): Promise<BillingRatePresetRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.billingRatePresets)
+      .where(
+        and(
+          eq(schema.billingRatePresets.firmId, firmId),
+          eq(schema.billingRatePresets.id, presetId),
+        ),
+      );
+    return row ? mapBillingRatePresetRow(row) : undefined;
+  }
+
+  async createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord> {
+    await this.db.insert(schema.billingPeriodLocks).values({
+      ...lock,
+      matterId: lock.matterId ?? null,
+      lockedAt: new Date(lock.lockedAt),
+      releasedByUserId: lock.releasedByUserId ?? null,
+      releasedAt: lock.releasedAt ? new Date(lock.releasedAt) : null,
+      reason: lock.reason ?? null,
+    });
+    return clone(lock);
+  }
+
+  async listBillingPeriodLocks(
+    firmId: string,
+    options: { matterId?: string; status?: BillingPeriodLockRecord["status"] } = {},
+  ): Promise<BillingPeriodLockRecord[]> {
+    const filters = [eq(schema.billingPeriodLocks.firmId, firmId)];
+    if (options.matterId) {
+      const scopeFilter = or(
+        eq(schema.billingPeriodLocks.matterId, options.matterId),
+        isNull(schema.billingPeriodLocks.matterId),
+      );
+      if (scopeFilter) filters.push(scopeFilter);
+    }
+    if (options.status) filters.push(eq(schema.billingPeriodLocks.status, options.status));
+    const rows = await this.db
+      .select()
+      .from(schema.billingPeriodLocks)
+      .where(and(...filters))
+      .orderBy(asc(schema.billingPeriodLocks.startsOn));
+    return rows.map(mapBillingPeriodLockRow);
+  }
+
+  async getBillingPeriodLock(
+    firmId: string,
+    lockId: string,
+  ): Promise<BillingPeriodLockRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.billingPeriodLocks)
+      .where(
+        and(eq(schema.billingPeriodLocks.firmId, firmId), eq(schema.billingPeriodLocks.id, lockId)),
+      );
+    return row ? mapBillingPeriodLockRow(row) : undefined;
+  }
+
+  async updateBillingPeriodLock(
+    firmId: string,
+    lockId: string,
+    updates: Partial<BillingPeriodLockRecord>,
+  ): Promise<BillingPeriodLockRecord> {
+    const [row] = await this.db
+      .update(schema.billingPeriodLocks)
+      .set({
+        status: updates.status,
+        releasedByUserId: updates.releasedByUserId,
+        releasedAt: updates.releasedAt ? new Date(updates.releasedAt) : undefined,
+        metadata: updates.metadata,
+      })
+      .where(
+        and(eq(schema.billingPeriodLocks.firmId, firmId), eq(schema.billingPeriodLocks.id, lockId)),
+      )
+      .returning();
+    if (!row) throw new Error("Billing period lock was not found");
+    return mapBillingPeriodLockRow(row);
   }
 
   private async listUsers(firmId: string): Promise<User[]> {

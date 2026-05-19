@@ -267,6 +267,13 @@
       "when": 1779236000000,
       "tag": "0037_email_receipt_links",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1779237000000,
+      "tag": "0038_billing_locks_rate_rules",
+      "breakpoints": true
     }
   ]
 }

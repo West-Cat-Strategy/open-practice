@@ -16,6 +16,8 @@ import { sql } from "drizzle-orm";
 import type {
   CalendarGuestLinkRecord,
   CalendarMeetingSessionRecord,
+  BillingPeriodLockRecord,
+  BillingRatePresetRecord,
   ContactQualityReviewDecisionRecord,
   ConnectorSecretReference,
   ConversationThreadRecord,
@@ -1674,6 +1676,80 @@ export const aiTriageRecords = pgTable(
       table.firmId,
       table.sourceType,
       table.sourceId,
+    ),
+  }),
+);
+
+export const billingRatePresets = pgTable(
+  "billing_rate_presets",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id").references(() => matters.id),
+    userId: text("user_id").references(() => users.id),
+    label: text("label").notNull(),
+    rateCents: integer("rate_cents").notNull(),
+    currency: text("currency").notNull().default("CAD"),
+    effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull(),
+    effectiveTo: timestamp("effective_to", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<BillingRatePresetRecord["metadata"]>().notNull().default({}),
+  },
+  (table) => ({
+    matterUserEffective: index("billing_rate_presets_scope_effective_idx").on(
+      table.firmId,
+      table.matterId,
+      table.userId,
+      table.effectiveFrom,
+    ),
+    nonNegativeRate: check("billing_rate_presets_non_negative_rate", sql`${table.rateCents} >= 0`),
+    validEffectiveRange: check(
+      "billing_rate_presets_valid_effective_range",
+      sql`${table.effectiveTo} is null or ${table.effectiveTo} >= ${table.effectiveFrom}`,
+    ),
+  }),
+);
+
+export const billingPeriodLocks = pgTable(
+  "billing_period_locks",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id").references(() => matters.id),
+    startsOn: text("starts_on").notNull(),
+    endsOn: text("ends_on").notNull(),
+    status: text("status").notNull().default("active"),
+    lockedByUserId: text("locked_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    lockedAt: timestamp("locked_at", { withTimezone: true }).notNull().defaultNow(),
+    releasedByUserId: text("released_by_user_id").references(() => users.id),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    reason: text("reason"),
+    metadata: jsonb("metadata").$type<BillingPeriodLockRecord["metadata"]>().notNull().default({}),
+  },
+  (table) => ({
+    activeScope: index("billing_period_locks_active_scope_idx").on(
+      table.firmId,
+      table.matterId,
+      table.status,
+      table.startsOn,
+      table.endsOn,
+    ),
+    validPeriod: check(
+      "billing_period_locks_valid_period",
+      sql`${table.startsOn} <= ${table.endsOn}`,
+    ),
+    statusValue: check(
+      "billing_period_locks_status_value",
+      sql`${table.status} in ('active', 'released')`,
     ),
   }),
 );

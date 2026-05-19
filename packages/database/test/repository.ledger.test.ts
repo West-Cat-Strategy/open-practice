@@ -3,6 +3,59 @@ import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
 import { now } from "./repository.fixtures.js";
 
 describe("repository ledger approvals and reconciliations", () => {
+  it("persists billing rate presets and period locks clone-safely", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await expect(
+      repository.createBillingRatePreset({
+        id: "rate-preset-repository-test",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        userId: "user-admin",
+        label: "Synthetic hearing rate",
+        rateCents: 22500,
+        currency: "CAD",
+        effectiveFrom: "2026-05-01T00:00:00.000Z",
+        createdByUserId: "user-admin",
+        createdAt: now,
+        metadata: { synthetic: true },
+      }),
+    ).resolves.toMatchObject({ rateCents: 22500, matterId: "matter-001" });
+
+    const presets = await repository.listBillingRatePresets("firm-west-legal", {
+      matterId: "matter-001",
+      userId: "user-admin",
+    });
+    expect(presets).toHaveLength(1);
+    presets[0]!.metadata.synthetic = false;
+    await expect(
+      repository.getBillingRatePreset("firm-west-legal", "rate-preset-repository-test"),
+    ).resolves.toMatchObject({ metadata: { synthetic: true } });
+
+    await expect(
+      repository.createBillingPeriodLock({
+        id: "billing-lock-repository-test",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        startsOn: "2026-05-01",
+        endsOn: "2026-05-31",
+        status: "active",
+        lockedByUserId: "user-admin",
+        lockedAt: now,
+        reason: "Synthetic month-end close",
+        metadata: { source: "repository-test" },
+      }),
+    ).resolves.toMatchObject({ status: "active", startsOn: "2026-05-01" });
+
+    await expect(
+      repository.updateBillingPeriodLock("firm-west-legal", "billing-lock-repository-test", {
+        status: "released",
+        releasedByUserId: "user-admin",
+        releasedAt: "2026-06-01T00:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({ status: "released", releasedByUserId: "user-admin" });
+  });
+
   it("updates trust transfer review and ledger link fields without schema changes", async () => {
     const repository = new InMemoryOpenPracticeRepository();
 

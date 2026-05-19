@@ -22,6 +22,38 @@ export const billingTrustExportKinds = ["billing", "trust"] as const;
 
 export type BillingTrustExportKind = (typeof billingTrustExportKinds)[number];
 
+export type BillingPeriodLockStatus = "active" | "released";
+
+export interface BillingRatePresetRecord {
+  id: string;
+  firmId: string;
+  matterId?: string;
+  userId?: string;
+  label: string;
+  rateCents: number;
+  currency: string;
+  effectiveFrom: string;
+  effectiveTo?: string;
+  createdByUserId: string;
+  createdAt: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface BillingPeriodLockRecord {
+  id: string;
+  firmId: string;
+  matterId?: string;
+  startsOn: string;
+  endsOn: string;
+  status: BillingPeriodLockStatus;
+  lockedByUserId: string;
+  lockedAt: string;
+  releasedByUserId?: string;
+  releasedAt?: string;
+  reason?: string;
+  metadata: Record<string, unknown>;
+}
+
 export interface InvoiceRecord {
   id: string;
   firmId: string;
@@ -193,6 +225,45 @@ export function assertBillingStatusTransition(from: BillingStatus, to: BillingSt
   if (!allowed[from].includes(to)) {
     throw new Error(`Invalid billing status transition: ${from} to ${to}`);
   }
+}
+
+const immutableEntryStatuses = new Set<BillingStatus>([
+  "submitted",
+  "approved",
+  "billed",
+  "written_off",
+]);
+
+function billingDateOnly(isoTimestamp: string): string {
+  const timestamp = Date.parse(isoTimestamp);
+  if (!Number.isFinite(timestamp)) {
+    throw new Error("Invalid billing timestamp");
+  }
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+export function isBillingEntrySnapshotMutable(status: BillingStatus): boolean {
+  return !immutableEntryStatuses.has(status);
+}
+
+export function isBillingRatePresetEffectiveForDate(
+  preset: Pick<BillingRatePresetRecord, "effectiveFrom" | "effectiveTo">,
+  performedAt: string,
+): boolean {
+  const performedOn = billingDateOnly(performedAt);
+  const effectiveFrom = billingDateOnly(preset.effectiveFrom);
+  const effectiveTo = preset.effectiveTo ? billingDateOnly(preset.effectiveTo) : undefined;
+  return performedOn >= effectiveFrom && (!effectiveTo || performedOn <= effectiveTo);
+}
+
+export function isBillingPeriodLockActiveForEntry(
+  lock: Pick<BillingPeriodLockRecord, "matterId" | "startsOn" | "endsOn" | "status">,
+  input: { matterId: string; occurredAt: string },
+): boolean {
+  if (lock.status !== "active") return false;
+  if (lock.matterId && lock.matterId !== input.matterId) return false;
+  const occurredOn = billingDateOnly(input.occurredAt);
+  return occurredOn >= lock.startsOn && occurredOn <= lock.endsOn;
 }
 
 export function trustTransferRequestCanPost(

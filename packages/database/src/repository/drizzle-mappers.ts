@@ -16,6 +16,8 @@ import {
   type AccessLogRecord,
   type ActivityTimelineEntry,
   type AuditEvent,
+  type BillingPeriodLockRecord,
+  type BillingRatePresetRecord,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
@@ -1987,6 +1989,44 @@ export function mapMatter(row: typeof schema.matters.$inferSelect): Matter {
     responsibleUserId: row.responsibleUserId,
     openedOn: dateToIso(row.openedOn),
     closedOn: dateToIso(row.closedOn),
+  };
+}
+
+export function mapBillingRatePresetRow(
+  row: typeof schema.billingRatePresets.$inferSelect,
+): BillingRatePresetRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId ?? undefined,
+    userId: row.userId ?? undefined,
+    label: row.label,
+    rateCents: row.rateCents,
+    currency: row.currency,
+    effectiveFrom: row.effectiveFrom.toISOString(),
+    effectiveTo: dateToIso(row.effectiveTo),
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    metadata: row.metadata,
+  };
+}
+
+export function mapBillingPeriodLockRow(
+  row: typeof schema.billingPeriodLocks.$inferSelect,
+): BillingPeriodLockRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId ?? undefined,
+    startsOn: row.startsOn,
+    endsOn: row.endsOn,
+    status: row.status as BillingPeriodLockRecord["status"],
+    lockedByUserId: row.lockedByUserId,
+    lockedAt: row.lockedAt.toISOString(),
+    releasedByUserId: row.releasedByUserId ?? undefined,
+    releasedAt: dateToIso(row.releasedAt),
+    reason: row.reason ?? undefined,
+    metadata: row.metadata,
   };
 }
 
