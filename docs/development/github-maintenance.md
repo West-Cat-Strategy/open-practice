@@ -25,6 +25,9 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
   boundary checks.
 - For dependency changes, inspect the package path locally with `pnpm list` or `pnpm why`, make the
   smallest manifest or lockfile change, then run `pnpm deps:audit` and `pnpm ci:local`.
+- Pnpm workspace policy lives in `pnpm-workspace.yaml`: keep overrides there, keep required native
+  build approvals explicit, and leave optional `libxmljs2` builds disabled unless CycloneDX starts
+  requiring that native helper for local SBOM generation.
 - Major updates, runtime dependency updates, vulnerable packages, and license-sensitive updates stay
   manual. Follow [License Policy](../license-policy.md) before adding dependencies or copied
   excerpts.
@@ -34,17 +37,20 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
 
 ### Docker Dependency Snapshot
 
-2026-05-05 dependency refresh evidence, with the 2026-05-12 infra-image follow-up:
+2026-05-19 dependency refresh evidence, building on the 2026-05-12 and 2026-05-16
+infra-image follow-ups:
 
-- `node:24.15.0-alpine3.23` is pinned by digest as the app base to avoid a Node major or Debian
-  image-family swap. The Dockerfile still updates bundled npm and pnpm explicitly, deploys runtime
-  images with production dependencies, and uses Node's built-in `fetch` for API health checks instead
-  of installing `curl`. Final local app images, not only the upstream base, are the validation target;
-  the upstream Node base still reported the npm `picomatch` high finding in the planning scan.
-- The local Postgres service now builds `open-practice-postgres:17-alpine-su-exec` from the pinned
-  `postgres:17-alpine` 17.10 digest and replaces the vulnerable bundled `gosu` helper with Alpine
-  `su-exec` while preserving the standard Postgres 17 entrypoint and health-check contract. The
-  2026-05-12 local Scout proof reported no critical/high findings for the rebuilt image.
+- `node:26.0.0-alpine3.23` is pinned by digest as the app base. The Dockerfile still updates bundled
+  npm and pnpm explicitly, deploys runtime images with production dependencies, and uses Node's
+  built-in `fetch` for API health checks instead of installing `curl`. Final local app images, not
+  only the upstream base, are the validation target; the upstream Node 26 base still reports the npm
+  `picomatch` high finding until the bundled npm dependency graph carries the patched `picomatch`
+  line.
+- The local Postgres service now builds `open-practice-postgres:18-alpine-su-exec` from the pinned
+  `postgres:18-alpine` 18.4 digest and replaces the vulnerable bundled `gosu` helper with Alpine
+  `su-exec` while preserving the standard Postgres 18 entrypoint and health-check contract. Scout may
+  still report upstream `gosu` findings against the public base attestation, so scan the rebuilt
+  local `open-practice-postgres:18-alpine-su-exec` image when Docker Engine is available.
 - `redis:8-alpine` replaced `redis:7-alpine` in the local Docker stack because the Scout result
   dropped from critical/high Go runtime findings to no critical/high findings in the current scan.
 - `minio/minio:RELEASE.2025-09-07T16-13-09Z` is pinned by digest. Current Docker Hub, Quay, hotfix,

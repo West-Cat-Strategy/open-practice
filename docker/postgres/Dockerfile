@@ -1,4 +1,4 @@
-FROM postgres:17-alpine@sha256:d5daad18926b71c3d663f358af0aea798670cb79fb550c106d19662a9d1627ef AS upstream
+FROM postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88 AS upstream
 
 RUN apk add --no-cache su-exec \
   && rm -f /usr/local/bin/gosu \
@@ -18,9 +18,9 @@ COPY --from=upstream / /
 
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ENV LANG=en_US.utf8
-ENV PG_MAJOR=17
-ENV PG_VERSION=17.10
-ENV PG_SHA256=078a03516dcdbdb705fecaf415ea3d13a956c589e46f09fed68a06fb00598c90
+ENV PG_MAJOR=18
+ENV PG_VERSION=18.4
+ENV PG_SHA256=81a81ec695fb0c7901407defaa1d2f7973617154cf27ba74e3a7ab8e64436094
 ENV DOCKER_PG_LLVM_DEPS="llvm19-dev \t\tclang19"
 ENV PGDATA=/var/lib/postgresql/data
 

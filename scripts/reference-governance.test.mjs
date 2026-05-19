@@ -100,4 +100,28 @@ describe("reference governance helpers", () => {
       guardrail: undefined,
     });
   });
+
+  it("keeps canonical Open Practice aliases local in sibling worktrees", () => {
+    const lock = buildReferenceLock({
+      index: {
+        repos: [
+          reference({
+            aliases: [{ family: "open-practice", legacyName: "Legacy__Repo" }],
+            paths: {
+              central: "/Users/bryan/projects/reference-repos/repos/owner__repo",
+              doc: "owner__repo.md",
+              compatibilityAliases: [
+                "/Users/bryan/projects/open-practice/.references/oss/Legacy__Repo",
+              ],
+            },
+          }),
+        ],
+      },
+      root: "/Users/bryan/projects/open-practice-dependency-major-refresh",
+      referencesRoot,
+      indexPath,
+    });
+
+    assert.deepEqual(lock.references[0].compatibilityPaths, [".references/oss/Legacy__Repo"]);
+  });
 });

@@ -50,7 +50,10 @@ function openPracticeAlias(reference) {
 export function compatibilityPathsForReference(reference, root) {
   const indexed = (reference.paths?.compatibilityAliases ?? [])
     .filter((aliasPath) => aliasPath.includes("/open-practice/.references/oss/"))
-    .map((aliasPath) => repoRelativePath(root, aliasPath).replace(/^\.\//, ""));
+    .map((aliasPath) => {
+      const [, aliasName] = aliasPath.split("/.references/oss/");
+      return path.posix.join(".references/oss", aliasName);
+    });
 
   if (indexed.length > 0) return indexed;
 
