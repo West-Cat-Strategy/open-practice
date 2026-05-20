@@ -62,7 +62,7 @@ export function filterContactDossiers(
       ...dossier.qualityReview.signals.flatMap((signal) => [
         signal.kind,
         signal.reason,
-        signal.matchedValue ?? "",
+        signal.matchedValueRedacted ? "value redacted" : "",
         signal.sourceRecordId ?? "",
         signal.changedAt ?? "",
       ]),

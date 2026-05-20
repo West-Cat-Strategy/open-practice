@@ -14,7 +14,7 @@ import type {
   CalendarEventAttendeeRecord,
   CalendarEventReminderRecord,
   CalendarMeetingInvitationBoundary,
-  ContactDossier,
+  ContactDossier as DomainContactDossier,
   DashboardSectionCapability,
   IntakeSessionRecord,
   IntakeTemplateRecord,
@@ -37,7 +37,18 @@ import type {
   User,
 } from "@open-practice/domain";
 
-export type { ContactDossier };
+type RedactedContactDossierQualitySignal = Omit<
+  DomainContactDossier["qualityReview"]["signals"][number],
+  "matchedValue"
+> & {
+  matchedValueRedacted: boolean;
+};
+
+export type ContactDossier = Omit<DomainContactDossier, "qualityReview"> & {
+  qualityReview: Omit<DomainContactDossier["qualityReview"], "signals"> & {
+    signals: RedactedContactDossierQualitySignal[];
+  };
+};
 
 export interface MatterSummary extends Matter {
   parties: Array<MatterParty & { contact: Contact }>;
@@ -80,12 +91,7 @@ export interface CapabilitiesResponse {
 
 export type ContactDossiersResponse = ContactDossier[];
 
-export type ContactReviewQueueSignal = Omit<
-  ContactDossier["qualityReview"]["signals"][number],
-  "matchedValue"
-> & {
-  matchedValueRedacted: boolean;
-};
+export type ContactReviewQueueSignal = ContactDossier["qualityReview"]["signals"][number];
 
 export interface ContactReviewQueueItem {
   contact: {

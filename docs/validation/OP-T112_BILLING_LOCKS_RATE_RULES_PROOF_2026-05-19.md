@@ -90,3 +90,21 @@ git diff --check
 
 Result: pass. The fresh worktree needed local package builds before database/API tests could resolve
 workspace package entrypoints; after those builds, the same focused checks passed.
+
+## Integration Closeout
+
+The final improvement-batch closeout tightened period-lock enforcement so locked-period time and
+expense status-transition routes are covered alongside create and patch routes. Submit, approve, and
+write-off routes now recheck the active billing-period lock for the entry date before changing
+`billingStatus`.
+
+Focused follow-through passed:
+
+```text
+pnpm --filter @open-practice/api test -- src/routes/billing.test.ts
+Test Files  33 passed (33)
+Tests  340 passed (340)
+
+pnpm --filter @open-practice/api typecheck
+tsc -p tsconfig.json --noEmit
+```

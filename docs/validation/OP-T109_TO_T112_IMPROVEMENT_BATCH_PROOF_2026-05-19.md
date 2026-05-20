@@ -109,3 +109,35 @@ Tasks: 6 successful, 6 total
 ```
 
 No validation was skipped.
+
+## Final Closeout
+
+After read-only lane checks, the branch received a small final hardening pass:
+
+- corrected the OP-T108 proof branch label
+- added the missing OP-T110, OP-T111, and OP-T112 API route table entries
+- redacted contact quality `matchedValue` fields from `GET /api/contacts/dossiers`
+- extended billing-period lock enforcement to time/expense status-transition routes
+
+Focused follow-through passed:
+
+```text
+pnpm --filter @open-practice/api test -- src/routes/contacts.test.ts
+Test Files  33 passed (33)
+Tests  340 passed (340)
+
+pnpm --filter @open-practice/api test -- src/routes/billing.test.ts
+Test Files  33 passed (33)
+Tests  340 passed (340)
+
+pnpm --filter @open-practice/web test -- app/dashboard-client.test.ts
+Test Files  11 passed (11)
+Tests  93 passed (93)
+
+pnpm --filter @open-practice/api typecheck
+pnpm --filter @open-practice/web typecheck
+tsc -p tsconfig.json --noEmit
+```
+
+Final selector and integrated validation were rerun after these closeout edits. No validation was
+skipped.

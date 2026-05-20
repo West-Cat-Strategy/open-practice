@@ -815,6 +815,11 @@ export function registerBillingRoutes(
         matterId: existing.matterId,
       });
       assertBillingStatusTransition(existing.billingStatus, nextStatus);
+      await assertBillingPeriodUnlocked(repository, {
+        firmId: request.auth.firmId,
+        matterId: existing.matterId,
+        occurredAt: existing.performedAt,
+      });
       const updated = await repository.updateTimeEntry(request.auth.firmId, params.id, {
         billingStatus: nextStatus,
       });
@@ -953,6 +958,11 @@ export function registerBillingRoutes(
         matterId: existing.matterId,
       });
       assertBillingStatusTransition(existing.billingStatus, nextStatus);
+      await assertBillingPeriodUnlocked(repository, {
+        firmId: request.auth.firmId,
+        matterId: existing.matterId,
+        occurredAt: existing.incurredAt,
+      });
       const updated = await repository.updateExpenseEntry(request.auth.firmId, params.id, {
         billingStatus: nextStatus,
       });

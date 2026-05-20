@@ -2,7 +2,7 @@
 
 Date: 2026-05-19
 
-Branch: `codex/op-t107-contact-quality-decisions`
+Branch: `codex/op-t108-contact-quality-decisions`
 
 Worktree: `/Users/bryan/projects/open-practice-op-t107-contact-quality-decisions`
 
@@ -305,4 +305,27 @@ Open Practice boundary policy passed.
 
 git diff --check
 pass
+```
+
+## Integration Closeout
+
+The final improvement-batch closeout corrected the proof branch label and aligned the dossier API
+serializer with the already-redacted review queue serializer. `GET /api/contacts/dossiers` now
+returns `matchedValueRedacted` instead of raw `matchedValue` for quality signals, and the Contacts
+dashboard displays only the redacted cue state.
+
+Focused follow-through passed:
+
+```text
+pnpm --filter @open-practice/api test -- src/routes/contacts.test.ts
+Test Files  33 passed (33)
+Tests  340 passed (340)
+
+pnpm --filter @open-practice/web test -- app/dashboard-client.test.ts
+Test Files  11 passed (11)
+Tests  93 passed (93)
+
+pnpm --filter @open-practice/api typecheck
+pnpm --filter @open-practice/web typecheck
+tsc -p tsconfig.json --noEmit
 ```

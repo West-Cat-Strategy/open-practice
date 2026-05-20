@@ -141,6 +141,8 @@ describe("contact routes", () => {
     ]);
     expect(JSON.stringify(payload)).not.toContain("North Star Holdings");
     expect(JSON.stringify(payload)).not.toContain("matter-002");
+    expect(JSON.stringify(payload)).not.toContain('"matchedValue":');
+    expect(JSON.stringify(payload)).toContain('"matchedValueRedacted":');
   });
 
   it("returns an audit-safe contact review queue without widening matter visibility", async () => {

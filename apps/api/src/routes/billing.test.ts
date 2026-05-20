@@ -264,6 +264,34 @@ describe("billing routes", () => {
       id: "time-rate-preset-route-test",
       rateCents: 22500,
     });
+    const submittedLockedTime = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-submitted-locked-transition-test",
+        matterId: "matter-001",
+        performedAt: "2026-05-11T16:00:00.000Z",
+        minutes: 30,
+        rateCents: 22500,
+        narrative: "Synthetic locked submitted time entry.",
+        billingStatus: "submitted",
+      },
+    });
+    expect(submittedLockedTime.statusCode).toBe(200);
+    const approvedLockedExpense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-approved-locked-transition-test",
+        matterId: "matter-001",
+        incurredAt: "2026-05-11T16:00:00.000Z",
+        amountCents: 4500,
+        category: "Filing",
+        description: "Synthetic locked approved expense.",
+        billingStatus: "approved",
+      },
+    });
+    expect(approvedLockedExpense.statusCode).toBe(200);
 
     const laterPreset = await server.inject({
       method: "POST",
@@ -326,6 +354,26 @@ describe("billing routes", () => {
       },
     });
     expect(lockedExpense.statusCode).toBe(409);
+
+    const lockedTimeApproval = await server.inject({
+      method: "POST",
+      url: "/api/time-entries/time-submitted-locked-transition-test/approve",
+    });
+    expect(lockedTimeApproval.statusCode).toBe(409);
+    expect(lockedTimeApproval.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Billing period is locked",
+    });
+
+    const lockedExpenseWriteOff = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries/expense-approved-locked-transition-test/write-off",
+    });
+    expect(lockedExpenseWriteOff.statusCode).toBe(409);
+    expect(lockedExpenseWriteOff.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Billing period is locked",
+    });
 
     const release = await server.inject({
       method: "POST",

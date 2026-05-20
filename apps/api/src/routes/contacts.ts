@@ -46,6 +46,26 @@ const contactReviewDecisionBodySchema = z
 
 type ContactReviewDecisionBody = z.infer<typeof contactReviewDecisionBodySchema>;
 
+function redactQualitySignal({
+  matchedValue: _matchedValue,
+  ...signal
+}: ContactDossierQualitySignal) {
+  return {
+    ...signal,
+    matchedValueRedacted: Boolean(_matchedValue),
+  };
+}
+
+function serializeContactDossier(dossier: ContactDossier) {
+  return {
+    ...dossier,
+    qualityReview: {
+      ...dossier.qualityReview,
+      signals: dossier.qualityReview.signals.map(redactQualitySignal),
+    },
+  };
+}
+
 function serializeContactReviewQueueItem(dossier: ContactDossier) {
   return {
     contact: {
@@ -57,10 +77,7 @@ function serializeContactReviewQueueItem(dossier: ContactDossier) {
     },
     matters: dossier.matters,
     summary: dossier.qualityReview.summary,
-    signals: dossier.qualityReview.signals.map(({ matchedValue: _matchedValue, ...signal }) => ({
-      ...signal,
-      matchedValueRedacted: Boolean(_matchedValue),
-    })),
+    signals: dossier.qualityReview.signals.map(redactQualitySignal),
     auditSafe: true,
   };
 }
@@ -158,7 +175,8 @@ export function registerContactRoutes(
   server.get("/api/contacts/dossiers", async (request) => {
     const access = requireAccess(request.auth, { resource: "contact", action: "read" });
     if (!access.ok) throw access.error;
-    return options.repository.listContactDossiersForUser(request.auth.user);
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    return dossiers.map(serializeContactDossier);
   });
 
   server.get("/api/contacts/review-queue", async (request) => {
