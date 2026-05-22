@@ -140,7 +140,7 @@ describe("job metadata redaction", () => {
     });
   });
 
-  it("keeps async billing and trust export counts while dropping export bodies", () => {
+  it("keeps async export safe counts while dropping export bodies", () => {
     expect(
       redactJobMetadata({
         exportKind: "billing",
@@ -158,14 +158,12 @@ describe("job metadata redaction", () => {
         exportBody: [{ private: "Synthetic export content" }],
       }),
     ).toEqual({
-      exportKind: "billing",
       matterId: "matter-001",
       requestedByUserId: "user-admin",
       recordCount: 4,
       timeEntryCount: 1,
       expenseEntryCount: 1,
       invoiceCount: 1,
-      paymentCount: 1,
       enqueueStatus: "queued_for_local_report_worker",
     });
 
@@ -182,13 +180,8 @@ describe("job metadata redaction", () => {
         ledgerEntries: [{ memo: "Synthetic private ledger memo" }],
       }),
     ).toEqual({
-      exportKind: "trust",
       recordCount: 7,
       trustTransferRequestCount: 1,
-      ledgerAccountCount: 3,
-      ledgerEntryCount: 2,
-      balanceCount: 1,
-      trustBalanceCount: 1,
     });
   });
 });
