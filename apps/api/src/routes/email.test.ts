@@ -2,7 +2,6 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
-import { hashToken } from "../http/auth-helpers.js";
 import { registerEmailRoutes } from "./email.js";
 import type { ApiJobQueue } from "./types.js";
 
@@ -34,6 +33,7 @@ function testServer(input: {
   authUser?: User;
   emailJobQueue?: ApiJobQueue;
   jwtSecret?: string;
+  publicWebBaseUrl?: string;
 }): FastifyInstance {
   const server = Fastify({ logger: false });
   const authUser = input.authUser ?? user("owner_admin", ["matter-001", "matter-002"]);
@@ -43,10 +43,19 @@ function testServer(input: {
   registerEmailRoutes(server, {
     repository: input.repository,
     emailJobQueue: input.emailJobQueue ?? emailJobQueue,
-    jwtSecret: input.jwtSecret ?? "test-email-receipt-secret-at-least-32-chars",
+    jwtSecret: input.jwtSecret,
+    publicWebBaseUrl: input.publicWebBaseUrl,
   });
   servers.push(server);
   return server;
+}
+
+function extractReceiptToken(emailBody: string): string {
+  const match = emailBody.match(
+    /\/api\/portal\/(?:email-receipts|mail\/receipts)\/([A-Za-z0-9_-]+)/,
+  );
+  if (!match?.[1]) throw new Error("Receipt token was not appended to the email body");
+  return match[1];
 }
 
 afterEach(async () => {
@@ -324,101 +333,7 @@ describe("email routes", () => {
     });
   });
 
-  it("creates purpose-scoped receipt links and records public acknowledgements without leaking email content", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
-    const jwtSecret = "test-email-receipt-secret-at-least-32-chars";
-    await repository.upsertProviderSetting({
-      id: "provider-smtp-mailpit",
-      firmId: "firm-west-legal",
-      kind: "smtp",
-      key: "mailpit",
-      enabled: true,
-      encryptedConfig: "local-mailpit-profile",
-      createdAt: "2026-05-01T00:00:00.000Z",
-      updatedAt: "2026-05-01T00:00:00.000Z",
-    });
-    const server = testServer({ repository, authUser: user("licensee"), jwtSecret });
-    const createdEmail = await server.inject({
-      method: "POST",
-      url: "/api/mail/outbox",
-      payload: {
-        matterId: "matter-001",
-        templateKey: "matter.update",
-        to: ["client@example.test"],
-        subject: "Synthetic private subject",
-        textBody: "Synthetic private delivery body.",
-        deliveryConfirmation: deliveryConfirmation(),
-      },
-    });
-    const emailId = createdEmail.json().email.id as string;
-
-    const receipt = await server.inject({
-      method: "POST",
-      url: `/api/mail/outbox/${emailId}/receipt-links`,
-      payload: {
-        purpose: "client_acknowledgement",
-        expiresAt: "2026-05-30T12:00:00.000Z",
-        metadata: { correlationId: "receipt-test" },
-      },
-    });
-
-    expect(receipt.statusCode).toBe(201);
-    const receiptPayload = receipt.json();
-    const token = receiptPayload.token as string;
-    expect(receiptPayload.receiptLink).toMatchObject({
-      emailId,
-      matterId: "matter-001",
-      purpose: "client_acknowledgement",
-      recordCount: 0,
-    });
-    expect(receiptPayload.receiptLink).not.toHaveProperty("tokenHash");
-    const [storedLink] = await repository.listEmailReceiptLinks("firm-west-legal", { emailId });
-    expect(storedLink?.tokenHash).toBe(hashToken(token, jwtSecret));
-    expect(storedLink?.tokenHash).not.toBe(token);
-
-    const viewed = await server.inject({
-      method: "GET",
-      url: `/api/portal/mail/receipts/${token}`,
-    });
-    expect(viewed.statusCode).toBe(200);
-    expect(viewed.json()).toEqual({
-      receipt: {
-        status: "available",
-        purpose: "client_acknowledgement",
-        expiresAt: "2026-05-30T12:00:00.000Z",
-      },
-    });
-
-    const acknowledged = await server.inject({
-      method: "POST",
-      url: `/api/portal/mail/receipts/${token}/acknowledge`,
-    });
-    expect(acknowledged.statusCode).toBe(200);
-    expect(acknowledged.json()).toMatchObject({
-      receipt: {
-        status: "acknowledged",
-        purpose: "client_acknowledgement",
-        acknowledgedAt: expect.any(String),
-      },
-    });
-    await expect(repository.listEmailReceiptLinks("firm-west-legal", { emailId })).resolves.toEqual(
-      [expect.objectContaining({ recordCount: 1, firstRecordedAt: expect.any(String) })],
-    );
-
-    const serialized = JSON.stringify({
-      created: receipt.json(),
-      viewed: viewed.json(),
-      acknowledged: acknowledged.json(),
-      audit: await repository.listAuditEvents("firm-west-legal"),
-    });
-    expect(serialized).not.toContain("Synthetic private subject");
-    expect(serialized).not.toContain("Synthetic private delivery body");
-    expect(serialized).not.toContain("client@example.test");
-    expect(serialized).not.toContain("tokenHash");
-    expect(serialized).not.toContain(storedLink?.tokenHash);
-  });
-
-  it("requires matter access before creating receipt links for outbound email", async () => {
+  it("records opt-in delivery receipts with hashed public tokens and staff-safe status", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.upsertProviderSetting({
       id: "provider-smtp-mailpit",
@@ -430,65 +345,276 @@ describe("email routes", () => {
       createdAt: "2026-05-01T00:00:00.000Z",
       updatedAt: "2026-05-01T00:00:00.000Z",
     });
-    const ownerServer = testServer({ repository, authUser: user("owner_admin") });
-    const createdEmail = await ownerServer.inject({
-      method: "POST",
-      url: "/api/mail/outbox",
-      payload: {
-        matterId: "matter-001",
-        templateKey: "matter.update",
-        to: ["client@example.test"],
-        subject: "Synthetic private subject",
-        textBody: "Synthetic private delivery body.",
-        deliveryConfirmation: deliveryConfirmation(),
+    const queuedJobs: unknown[] = [];
+    const queue: ApiJobQueue = {
+      async add(_name, data, options) {
+        queuedJobs.push(data);
+        return { id: options?.jobId ?? "email-job-test" };
       },
-    });
-    const emailId = createdEmail.json().email.id as string;
-    const restrictedServer = testServer({
+    };
+    const server = testServer({
       repository,
-      authUser: user("firm_member", ["matter-002"]),
+      authUser: user("licensee"),
+      emailJobQueue: queue,
+      jwtSecret: "receipt-token-test-secret-at-least-32-characters",
+      publicWebBaseUrl: "https://practice.example.test",
     });
 
-    const denied = await restrictedServer.inject({
+    const created = await server.inject({
       method: "POST",
-      url: `/api/mail/outbox/${emailId}/receipt-links`,
-      payload: { purpose: "delivery_receipt" },
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "client.update",
+        to: ["client@example.test"],
+        subject: "Synthetic private subject",
+        textBody: "Synthetic private body.",
+        htmlBody: "<p>Synthetic private body.</p>",
+        deliveryConfirmation: deliveryConfirmation(),
+        receipt: { requested: true },
+      },
     });
 
-    expect(denied.statusCode).toBe(403);
-    expect(denied.json()).toMatchObject({ code: "EMAIL_ACCESS_REQUIRED" });
-    await expect(repository.listEmailReceiptLinks("firm-west-legal", { emailId })).resolves.toEqual(
-      [],
+    expect(created.statusCode).toBe(201);
+    expect(created.json().email.deliveryReceipt).toMatchObject({
+      status: "pending",
+      requestedAt: expect.any(String),
+    });
+    expect(JSON.stringify(created.json())).not.toContain("tokenHash");
+    const [stored] = await repository.listEmailOutbox("firm-west-legal", {
+      matterId: "matter-001",
+    });
+    const receiptToken = extractReceiptToken(stored.textBody);
+    expect(stored.htmlBody).toContain("https://practice.example.test/api/portal/email-receipts/");
+    expect(stored.metadata.deliveryReceipt).toMatchObject({
+      requested: true,
+      requestedAt: expect.any(String),
+    });
+    expect(stored.metadata.deliveryReceipt).not.toHaveProperty("tokenHash");
+    expect(stored.metadata.deliveryReceipt).not.toHaveProperty("expiresAt");
+    expect(stored.metadata.deliveryReceipt).not.toHaveProperty("recordedAt");
+    expect(stored.metadata.deliveryReceipt).not.toHaveProperty("status");
+    const [storedReceiptToken] = await repository.listEmailReceiptTokens("firm-west-legal", {
+      emailId: stored.id,
+    });
+    expect(storedReceiptToken).toMatchObject({
+      emailId: stored.id,
+      matterId: "matter-001",
+      purpose: "delivery_receipt",
+      tokenHash: expect.any(String),
+    });
+    expect(storedReceiptToken?.tokenHash).not.toBe(receiptToken);
+    expect(storedReceiptToken?.tokenHash).toHaveLength(64);
+    expect(JSON.stringify(queuedJobs)).not.toContain(receiptToken);
+    expect(JSON.stringify(queuedJobs)).not.toContain("tokenHash");
+    expect(JSON.stringify(queuedJobs)).not.toContain("client@example.test");
+    expect(JSON.stringify(queuedJobs)).not.toContain("Synthetic private subject");
+    expect(JSON.stringify(queuedJobs)).not.toContain("Synthetic private body");
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "email",
+    });
+    expect(JSON.stringify(job?.metadata)).not.toContain(receiptToken);
+    expect(JSON.stringify(job?.metadata)).not.toContain("tokenHash");
+    expect(JSON.stringify(job?.metadata)).not.toContain("client@example.test");
+    expect(JSON.stringify(job?.metadata)).not.toContain("Synthetic private subject");
+    expect(JSON.stringify(job?.metadata)).not.toContain("Synthetic private body");
+    const auditBeforeReceipt = await repository.listAuditEvents("firm-west-legal");
+    expect(JSON.stringify(auditBeforeReceipt.events)).not.toContain(receiptToken);
+    expect(JSON.stringify(auditBeforeReceipt.events)).not.toContain("tokenHash");
+    expect(JSON.stringify(auditBeforeReceipt.events)).not.toContain("client@example.test");
+    expect(JSON.stringify(auditBeforeReceipt.events)).not.toContain("Synthetic private subject");
+    expect(JSON.stringify(auditBeforeReceipt.events)).not.toContain("Synthetic private body");
+
+    const historyBefore = await server.inject({
+      method: "GET",
+      url: "/api/mail/outbox?matterId=matter-001",
+    });
+    expect(historyBefore.statusCode).toBe(200);
+    expect(historyBefore.json().emails[0].deliveryReceipt).toMatchObject({
+      status: "pending",
+      requestedAt: expect.any(String),
+    });
+    expect(JSON.stringify(historyBefore.json())).not.toContain(receiptToken);
+    expect(JSON.stringify(historyBefore.json())).not.toContain("tokenHash");
+    expect(JSON.stringify(historyBefore.json())).not.toContain("Synthetic private body");
+
+    const confirmation = await server.inject({
+      method: "GET",
+      url: `/api/portal/email-receipts/${receiptToken}`,
+    });
+    expect(confirmation.statusCode).toBe(200);
+    expect(confirmation.headers["cache-control"]).toBe("no-store");
+    expect(confirmation.headers["content-type"]).toContain("text/html");
+    expect(confirmation.body).toContain("Email Receipt Confirmation");
+    expect(confirmation.body).toContain(
+      `form method="post" action="/api/portal/email-receipts/${receiptToken}"`,
     );
+    expect(confirmation.body).not.toContain(stored.id);
+    expect(confirmation.body).not.toContain("matter-001");
+    expect(confirmation.body).not.toContain("client@example.test");
+    const [receiptTokenAfterGet] = await repository.listEmailReceiptTokens("firm-west-legal", {
+      emailId: stored.id,
+    });
+    expect(receiptTokenAfterGet?.recordedAt).toBeUndefined();
+    const historyAfterGet = await server.inject({
+      method: "GET",
+      url: "/api/mail/outbox?matterId=matter-001",
+    });
+    expect(historyAfterGet.json().emails[0].deliveryReceipt).toMatchObject({
+      status: "pending",
+    });
+
+    const legacyConfirmation = await server.inject({
+      method: "GET",
+      url: `/api/portal/mail/receipts/${receiptToken}`,
+    });
+    expect(legacyConfirmation.statusCode).toBe(200);
+    expect(legacyConfirmation.headers["cache-control"]).toBe("no-store");
+    expect(legacyConfirmation.headers["content-type"]).toContain("text/html");
+    expect(legacyConfirmation.body).toContain(
+      `form method="post" action="/api/portal/mail/receipts/${receiptToken}"`,
+    );
+    const [receiptTokenAfterLegacyGet] = await repository.listEmailReceiptTokens(
+      "firm-west-legal",
+      { emailId: stored.id },
+    );
+    expect(receiptTokenAfterLegacyGet?.recordedAt).toBeUndefined();
+
+    const recorded = await server.inject({
+      method: "POST",
+      url: `/api/portal/email-receipts/${receiptToken}`,
+    });
+    expect(recorded.statusCode).toBe(200);
+    expect(recorded.json()).toMatchObject({
+      recorded: true,
+      receipt: { status: "received", recordedAt: expect.any(String) },
+    });
+    expect(JSON.stringify(recorded.json())).not.toContain("matter-001");
+    expect(JSON.stringify(recorded.json())).not.toContain(stored.id);
+    expect(JSON.stringify(recorded.json())).not.toContain(receiptToken);
+
+    const replay = await server.inject({
+      method: "POST",
+      url: `/api/portal/email-receipts/${receiptToken}`,
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json()).toMatchObject({
+      recorded: false,
+      receipt: { status: "received", recordedAt: recorded.json().receipt.recordedAt },
+    });
+
+    const historyAfter = await server.inject({
+      method: "GET",
+      url: "/api/mail/outbox?matterId=matter-001",
+    });
+    expect(historyAfter.json().emails[0].deliveryReceipt).toMatchObject({
+      status: "received",
+      recordedAt: recorded.json().receipt.recordedAt,
+    });
+    expect(JSON.stringify(historyAfter.json())).not.toContain(receiptToken);
+    expect(JSON.stringify(historyAfter.json())).not.toContain("tokenHash");
   });
 
-  it("keeps public receipt token failures generic and free of hashes", async () => {
+  it("rejects receipt-token opt-in when token signing is not configured", async () => {
     const repository = new InMemoryOpenPracticeRepository();
-    const jwtSecret = "test-email-receipt-secret-at-least-32-chars";
-    const token = "expired-email-receipt-token-value-for-test";
-    await repository.createEmailReceiptLink({
-      id: "expired-receipt-link",
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-mailpit",
       firmId: "firm-west-legal",
-      matterId: "matter-001",
-      emailId: "email-expired-receipt",
-      tokenHash: hashToken(token, jwtSecret),
-      purpose: "delivery_receipt",
-      createdByUserId: "user-licensee",
+      kind: "smtp",
+      key: "mailpit",
+      enabled: true,
+      encryptedConfig: "local-mailpit-profile",
       createdAt: "2026-05-01T00:00:00.000Z",
-      expiresAt: "2026-05-01T00:00:00.000Z",
-      recordCount: 0,
-      metadata: {},
-    });
-    const response = await testServer({ repository, jwtSecret }).inject({
-      method: "GET",
-      url: `/api/portal/mail/receipts/${token}`,
+      updatedAt: "2026-05-01T00:00:00.000Z",
     });
 
-    expect(response.statusCode).toBe(404);
-    expect(response.json()).toMatchObject({ code: "EMAIL_RECEIPT_NOT_FOUND" });
-    expect(response.body).not.toContain(hashToken(token, jwtSecret));
-    expect(response.body).not.toContain("tokenHash");
-    expect(response.body).not.toContain("email-expired-receipt");
+    const response = await testServer({ repository, authUser: user("licensee") }).inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "client.update",
+        to: ["client@example.test"],
+        subject: "Synthetic private subject",
+        textBody: "Synthetic private body.",
+        deliveryConfirmation: deliveryConfirmation(),
+        deliveryReceipt: { requested: true },
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      code: "EMAIL_RECEIPT_TOKEN_SIGNING_NOT_CONFIGURED",
+    });
+    await expect(repository.listEmailOutbox("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listJobLifecycleRecords("firm-west-legal")).resolves.toEqual([]);
+  });
+
+  it("rejects expired public receipt tokens without recording receipt state", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-mailpit",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "mailpit",
+      enabled: true,
+      encryptedConfig: "local-mailpit-profile",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const server = testServer({
+      repository,
+      authUser: user("licensee"),
+      jwtSecret: "receipt-token-test-secret-at-least-32-characters",
+      publicWebBaseUrl: "https://practice.example.test",
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "client.update",
+        to: ["client@example.test"],
+        subject: "Synthetic private subject",
+        textBody: "Synthetic private body.",
+        deliveryConfirmation: deliveryConfirmation(),
+        deliveryReceipt: {
+          requested: true,
+          expiresAt: "2020-01-01T00:00:00.000Z",
+        },
+      },
+    });
+
+    expect(created.statusCode).toBe(201);
+    const [stored] = await repository.listEmailOutbox("firm-west-legal", {
+      matterId: "matter-001",
+    });
+    const receiptToken = extractReceiptToken(stored.textBody);
+    const expired = await server.inject({
+      method: "POST",
+      url: `/api/portal/email-receipts/${receiptToken}`,
+    });
+    expect(expired.statusCode).toBe(410);
+    expect(expired.json()).toMatchObject({
+      code: "EMAIL_RECEIPT_EXPIRED",
+    });
+    const [storedReceiptToken] = await repository.listEmailReceiptTokens("firm-west-legal", {
+      emailId: stored.id,
+    });
+    expect(storedReceiptToken).toMatchObject({
+      expiresAt: "2020-01-01T00:00:00.000Z",
+    });
+    expect(storedReceiptToken?.recordedAt).toBeUndefined();
+    const history = await server.inject({
+      method: "GET",
+      url: "/api/mail/outbox?matterId=matter-001",
+    });
+    expect(history.json().emails[0].deliveryReceipt).toMatchObject({
+      status: "pending",
+    });
+    expect(JSON.stringify(history.json())).not.toContain(receiptToken);
+    expect(JSON.stringify(history.json())).not.toContain("tokenHash");
   });
 
   it("marks a durable email job failed when BullMQ enqueue fails", async () => {

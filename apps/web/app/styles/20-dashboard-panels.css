@@ -268,6 +268,24 @@
   text-align: right;
 }
 
+.matter-view-preset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.matter-view-preset-select {
+  width: min(190px, 44vw);
+  margin-bottom: 0;
+}
+
+.matter-view-preset-select select {
+  min-height: 36px;
+}
+
 .lane-refresh-panel {
   display: flex;
   justify-content: space-between;
@@ -544,9 +562,47 @@
   min-width: 0;
 }
 
+.contact-dossier-list .party-row,
+.contact-dossier-detail .party-row {
+  flex-wrap: wrap;
+}
+
+.contact-dossier-list .party-row span,
+.contact-dossier-detail .party-row span {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.contact-dossier-list .party-row strong,
+.contact-dossier-detail .party-row strong {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.contact-dossier-list .party-row em,
+.contact-dossier-detail .party-row em {
+  flex: 0 1 16rem;
+  max-width: min(18rem, 42vw);
+  overflow-wrap: break-word;
+  text-align: right;
+  white-space: normal;
+}
+
 .contact-dossier-detail {
   border-left: 1px solid var(--line);
   padding-left: 14px;
+}
+
+.contact-resolution-actions {
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.contact-resolution-actions .compact-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .compact-detail-grid {

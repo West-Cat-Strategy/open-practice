@@ -1,4 +1,4 @@
-import type { BillingStatus } from "./billing.js";
+import type { BillingRateSnapshot, BillingStatus } from "./billing.js";
 
 export type Province = "BC" | "ON" | "CANADA" | "OTHER";
 
@@ -195,6 +195,8 @@ export interface TimeEntry {
   performedAt: string;
   minutes: number;
   rateCents: number;
+  rateRuleId?: string;
+  rateSnapshot?: BillingRateSnapshot;
   narrative: string;
   billable: boolean;
   billingStatus: BillingStatus;

@@ -6,11 +6,13 @@ import type {
   ConversationThreadRecord,
   EmailEventRecord,
   EmailOutboxRecord,
+  EmailReceiptTokenRecord,
   InboundEmailMessageRecord,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import { emailDeliveryReceiptStatus } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const inboxQuerySchema = z.object({
@@ -52,7 +54,11 @@ function serializeInboundEmail(message: InboundEmailMessageRecord, attachmentCou
   };
 }
 
-function serializeOutboundEmail(email: EmailOutboxRecord, events: EmailEventRecord[]) {
+function serializeOutboundEmail(
+  email: EmailOutboxRecord,
+  events: EmailEventRecord[],
+  receiptToken?: EmailReceiptTokenRecord,
+) {
   const latestFailure = [...events].reverse().find((event) => event.eventType === "failed");
   return {
     id: email.id,
@@ -71,6 +77,7 @@ function serializeOutboundEmail(email: EmailOutboxRecord, events: EmailEventReco
     failureSummary:
       sanitizeFailureSummary(email.terminalFailureReason) ??
       sanitizeFailureSummary(latestFailure?.errorMessage),
+    deliveryReceipt: emailDeliveryReceiptStatus(email, receiptToken),
     events: events.map((event) => ({
       id: event.id,
       eventType: event.eventType,
@@ -218,6 +225,12 @@ export function registerCommunicationsRoutes(
         events: await repository.listEmailEvents(request.auth.firmId, { emailId: email.id }),
       })),
     );
+    const receiptTokens = await repository.listEmailReceiptTokens(request.auth.firmId, {
+      matterId: query.matterId,
+    });
+    const receiptTokenByEmailId = new Map(
+      receiptTokens.map((receiptToken) => [receiptToken.emailId, receiptToken]),
+    );
     const conversationMessageSummaries = await Promise.all(
       conversationThreads.map(async (thread) => ({
         thread,
@@ -249,7 +262,7 @@ export function registerCommunicationsRoutes(
         serializeInboundEmail(message, attachments.length),
       ),
       outboundDeliveryHistory: outboundEvents.map(({ email, events }) =>
-        serializeOutboundEmail(email, events),
+        serializeOutboundEmail(email, events, receiptTokenByEmailId.get(email.id)),
       ),
       conversations: conversationMessageSummaries.map(({ thread, messages }) =>
         serializeConversationThread(

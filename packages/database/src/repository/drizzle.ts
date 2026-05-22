@@ -15,6 +15,8 @@ import {
   buildBasicDraftTemplates,
   buildContactDossiers,
   buildPracticePresetTemplates,
+  billingPeriodLocksOverlap,
+  billingRateRulesOverlapAtSameActiveScope,
   calculateInvoiceTotals,
   clientTrustBalanceByMatter,
   clientTrustBalanceDeltas,
@@ -26,14 +28,16 @@ import {
   postLedgerTransaction,
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
-  validateContactQualityReviewDecisionRecord,
+  validateBillingPeriodLock,
+  validateBillingRateRule,
+  validateContactDataQualityResolutionRecord,
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
   verifyAuditChain,
   type AccessLogRecord,
   type AuditEvent,
   type BillingPeriodLockRecord,
-  type BillingRatePresetRecord,
+  type BillingRateRuleRecord,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
@@ -44,8 +48,8 @@ import {
   type ConnectorOutboxRecord,
   type ConnectorRecord,
   type Contact,
+  type ContactDataQualityResolutionRecord,
   type ContactDossier,
-  type ContactQualityReviewDecisionRecord,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -54,7 +58,7 @@ import {
   type DraftTemplateRecord,
   type EmailEventRecord,
   type EmailOutboxRecord,
-  type EmailReceiptLinkRecord,
+  type EmailReceiptTokenRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type FirmSettings,
@@ -141,16 +145,17 @@ import {
 import {
   accessLogInsert,
   applyVariableProposalWithTx,
+  billingPeriodLockInsert,
+  billingRateRuleInsert,
   buildActivityTimeline,
   calendarGuestLinkInsert,
   calendarMeetingSessionInsert,
-  contactQualityReviewDecisionInsert,
   connectorDeliveryAttemptInsert,
   connectorInsert,
   connectorOutboxInsert,
   emailEventInsert,
   emailOutboxInsert,
-  emailReceiptLinkInsert,
+  emailReceiptTokenInsert,
   externalUploadLinkInsert,
   intakeFormItemActionInsert,
   intakeFormLinkInsert,
@@ -165,7 +170,7 @@ import {
   mapAuthChallengeRow,
   mapAuthSessionRow,
   mapBillingPeriodLockRow,
-  mapBillingRatePresetRow,
+  mapBillingRateRuleRow,
   mapCalendarCredentialRow,
   mapCalendarEventAttendeeRow,
   mapCalendarEventReminderRow,
@@ -176,7 +181,7 @@ import {
   mapConnectorDeliveryAttemptRow,
   mapConnectorOutboxRow,
   mapConnectorRow,
-  mapContactQualityReviewDecisionRow,
+  mapContactDataQualityResolutionRow,
   mapContactRow,
   mapConversationMessageRow,
   mapConversationThreadRow,
@@ -187,7 +192,7 @@ import {
   mapDraftTemplateRow,
   mapEmailEventRow,
   mapEmailOutboxRow,
-  mapEmailReceiptLinkRow,
+  mapEmailReceiptTokenRow,
   mapExpenseEntryRow,
   mapExternalUploadLinkRow,
   mapFirmSettingsRow,
@@ -896,60 +901,100 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return rows.map(mapEmailOutboxRow);
   }
 
-  async createEmailReceiptLink(link: EmailReceiptLinkRecord): Promise<EmailReceiptLinkRecord> {
-    const [row] = await this.db
-      .insert(schema.emailReceiptLinks)
-      .values(emailReceiptLinkInsert(link))
-      .returning();
-    return mapEmailReceiptLinkRow(row);
+  async getEmailOutboxByReceiptTokenHash(
+    receiptTokenHash: string,
+  ): Promise<EmailOutboxRecord | undefined> {
+    const token = await this.getEmailReceiptTokenByHash(receiptTokenHash);
+    if (!token) return undefined;
+    return this.getEmailOutbox(token.firmId, token.emailId);
   }
 
-  async listEmailReceiptLinks(
+  async recordEmailDeliveryReceipt(input: {
+    firmId: string;
+    emailId: string;
+    receiptTokenHash: string;
+    recordedAt: string;
+  }): Promise<{ email: EmailOutboxRecord; recorded: boolean }> {
+    const token = await this.recordEmailReceiptToken({
+      tokenHash: input.receiptTokenHash,
+      recordedAt: input.recordedAt,
+    });
+    if (token) {
+      if (token.firmId !== input.firmId || token.emailId !== input.emailId) {
+        throw new Error(`Email outbox receipt ${input.emailId} was not found`);
+      }
+      const email = await this.getEmailOutbox(token.firmId, token.emailId);
+      if (!email) throw new Error(`Email outbox record ${token.emailId} was not found`);
+      return { email, recorded: token.recordedAt === input.recordedAt };
+    }
+    throw new Error(`Email outbox receipt ${input.emailId} was not found`);
+  }
+
+  async createEmailReceiptToken(token: EmailReceiptTokenRecord): Promise<EmailReceiptTokenRecord> {
+    await this.db.insert(schema.emailReceiptTokens).values(emailReceiptTokenInsert(token));
+    return clone(token);
+  }
+
+  async getEmailReceiptTokenByHash(
+    tokenHash: string,
+  ): Promise<EmailReceiptTokenRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.emailReceiptTokens)
+      .where(eq(schema.emailReceiptTokens.tokenHash, tokenHash));
+    return row ? mapEmailReceiptTokenRow(row) : undefined;
+  }
+
+  async recordEmailReceiptToken(input: {
+    tokenHash: string;
+    recordedAt: string;
+  }): Promise<EmailReceiptTokenRecord | undefined> {
+    return this.db.transaction(async (tx) => {
+      const [existingRow] = await tx
+        .select()
+        .from(schema.emailReceiptTokens)
+        .where(eq(schema.emailReceiptTokens.tokenHash, input.tokenHash));
+      if (!existingRow) return undefined;
+      const existing = mapEmailReceiptTokenRow(existingRow);
+      if (existing.recordedAt) return existing;
+
+      const [tokenRow] = await tx
+        .update(schema.emailReceiptTokens)
+        .set({ recordedAt: new Date(input.recordedAt) })
+        .where(eq(schema.emailReceiptTokens.tokenHash, input.tokenHash))
+        .returning();
+      await tx.insert(schema.emailEvents).values(
+        emailEventInsert({
+          id: crypto.randomUUID(),
+          firmId: existing.firmId,
+          emailId: existing.emailId,
+          eventType: "receipt_recorded",
+          occurredAt: input.recordedAt,
+          source: "api",
+          metadata: {
+            receiptTokenId: existing.id,
+            matterId: existing.matterId,
+            purpose: existing.purpose,
+          },
+        }),
+      );
+      return mapEmailReceiptTokenRow(tokenRow);
+    });
+  }
+
+  async listEmailReceiptTokens(
     firmId: string,
     options: { emailId?: string; matterId?: string } = {},
-  ): Promise<EmailReceiptLinkRecord[]> {
-    const conditions = [eq(schema.emailReceiptLinks.firmId, firmId)];
-    if (options.emailId) conditions.push(eq(schema.emailReceiptLinks.emailId, options.emailId));
-    if (options.matterId) conditions.push(eq(schema.emailReceiptLinks.matterId, options.matterId));
+  ): Promise<EmailReceiptTokenRecord[]> {
+    const filters = [eq(schema.emailReceiptTokens.firmId, firmId)];
+    if (options.emailId) filters.push(eq(schema.emailReceiptTokens.emailId, options.emailId));
+    if (options.matterId) filters.push(eq(schema.emailReceiptTokens.matterId, options.matterId));
     const rows = await this.db
       .select()
-      .from(schema.emailReceiptLinks)
-      .where(and(...conditions))
-      .orderBy(desc(schema.emailReceiptLinks.createdAt));
-    return rows.map(mapEmailReceiptLinkRow);
-  }
-
-  async getEmailReceiptLinkByTokenHash(
-    tokenHash: string,
-  ): Promise<EmailReceiptLinkRecord | undefined> {
-    const [row] = await this.db
-      .select()
-      .from(schema.emailReceiptLinks)
-      .where(eq(schema.emailReceiptLinks.tokenHash, tokenHash));
-    return row ? mapEmailReceiptLinkRow(row) : undefined;
-  }
-
-  async recordEmailReceiptLinkAccess(input: {
-    firmId: string;
-    id: string;
-    recordedAt: string;
-  }): Promise<EmailReceiptLinkRecord | undefined> {
-    const recordedAt = new Date(input.recordedAt);
-    const [row] = await this.db
-      .update(schema.emailReceiptLinks)
-      .set({
-        firstRecordedAt: sql`coalesce(${schema.emailReceiptLinks.firstRecordedAt}, ${recordedAt})`,
-        lastRecordedAt: recordedAt,
-        recordCount: sql`${schema.emailReceiptLinks.recordCount} + 1`,
-      })
-      .where(
-        and(
-          eq(schema.emailReceiptLinks.firmId, input.firmId),
-          eq(schema.emailReceiptLinks.id, input.id),
-        ),
-      )
-      .returning();
-    return row ? mapEmailReceiptLinkRow(row) : undefined;
+      .from(schema.emailReceiptTokens)
+      .where(and(...filters))
+      .orderBy(asc(schema.emailReceiptTokens.createdAt));
+    return rows.map(mapEmailReceiptTokenRow);
   }
 
   async recordEmailDeliveryResult(input: {
@@ -1708,49 +1753,51 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     });
   }
 
-  async listContactQualityReviewDecisionsForUser(
-    user: User,
-  ): Promise<ContactQualityReviewDecisionRecord[]> {
-    const dossiers = await this.listContactDossiersForUser(user);
-    const visibleContactIds = new Set(dossiers.map((dossier) => dossier.contact.id));
-    const visibleMatterIds = new Set(
-      dossiers.flatMap((dossier) => dossier.matters.map((matter) => matter.matterId)),
-    );
-    if (visibleContactIds.size === 0) return [];
-
-    const rows = await this.db
-      .select()
-      .from(schema.contactQualityReviewDecisions)
-      .where(
-        and(
-          eq(schema.contactQualityReviewDecisions.firmId, user.firmId),
-          inArray(schema.contactQualityReviewDecisions.contactId, [...visibleContactIds]),
-        ),
-      )
-      .orderBy(desc(schema.contactQualityReviewDecisions.decidedAt));
-
-    return rows
-      .map(mapContactQualityReviewDecisionRow)
-      .filter((decision) => !decision.matterId || visibleMatterIds.has(decision.matterId));
-  }
-
-  async createContactQualityReviewDecision(
-    record: ContactQualityReviewDecisionRecord,
-  ): Promise<ContactQualityReviewDecisionRecord> {
-    const validated = validateContactQualityReviewDecisionRecord(record);
-    const [row] = await this.db
-      .insert(schema.contactQualityReviewDecisions)
-      .values(contactQualityReviewDecisionInsert(validated))
-      .returning();
-    return mapContactQualityReviewDecisionRow(row);
-  }
-
   async getContact(firmId: string, contactId: string): Promise<Contact | undefined> {
     const [row] = await this.db
       .select()
       .from(schema.contacts)
       .where(and(eq(schema.contacts.firmId, firmId), eq(schema.contacts.id, contactId)));
     return row ? mapContactRow(row) : undefined;
+  }
+
+  async createContactDataQualityResolution(
+    resolution: ContactDataQualityResolutionRecord,
+  ): Promise<ContactDataQualityResolutionRecord> {
+    validateContactDataQualityResolutionRecord(resolution);
+    await this.db.insert(schema.contactDataQualityResolutions).values({
+      id: resolution.id,
+      firmId: resolution.firmId,
+      contactId: resolution.contactId,
+      signalKind: resolution.signalKind,
+      decision: resolution.decision,
+      resolutionNote: resolution.resolutionNote,
+      matterId: resolution.matterId ?? null,
+      relatedContactId: resolution.relatedContactId ?? null,
+      sourceRecordId: resolution.sourceRecordId ?? null,
+      recordedByUserId: resolution.recordedByUserId,
+      recordedAt: new Date(resolution.recordedAt),
+    });
+    return resolution;
+  }
+
+  async listContactDataQualityResolutions(
+    firmId: string,
+    options: { contactId?: string; matterId?: string } = {},
+  ): Promise<ContactDataQualityResolutionRecord[]> {
+    const filters = [eq(schema.contactDataQualityResolutions.firmId, firmId)];
+    if (options.contactId) {
+      filters.push(eq(schema.contactDataQualityResolutions.contactId, options.contactId));
+    }
+    if (options.matterId) {
+      filters.push(eq(schema.contactDataQualityResolutions.matterId, options.matterId));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.contactDataQualityResolutions)
+      .where(and(...filters))
+      .orderBy(desc(schema.contactDataQualityResolutions.recordedAt));
+    return rows.map(mapContactDataQualityResolutionRow);
   }
 
   async getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined> {
@@ -4362,116 +4409,6 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return rows.map(mapLedgerReconciliationExceptionResolutionRow);
   }
 
-  async createBillingRatePreset(preset: BillingRatePresetRecord): Promise<BillingRatePresetRecord> {
-    await this.db.insert(schema.billingRatePresets).values({
-      ...preset,
-      matterId: preset.matterId ?? null,
-      userId: preset.userId ?? null,
-      effectiveFrom: new Date(preset.effectiveFrom),
-      effectiveTo: preset.effectiveTo ? new Date(preset.effectiveTo) : null,
-      createdAt: new Date(preset.createdAt),
-    });
-    return clone(preset);
-  }
-
-  async listBillingRatePresets(
-    firmId: string,
-    options: { matterId?: string; userId?: string } = {},
-  ): Promise<BillingRatePresetRecord[]> {
-    const filters = [eq(schema.billingRatePresets.firmId, firmId)];
-    if (options.matterId) filters.push(eq(schema.billingRatePresets.matterId, options.matterId));
-    if (options.userId) filters.push(eq(schema.billingRatePresets.userId, options.userId));
-    const rows = await this.db
-      .select()
-      .from(schema.billingRatePresets)
-      .where(and(...filters))
-      .orderBy(asc(schema.billingRatePresets.effectiveFrom));
-    return rows.map(mapBillingRatePresetRow);
-  }
-
-  async getBillingRatePreset(
-    firmId: string,
-    presetId: string,
-  ): Promise<BillingRatePresetRecord | undefined> {
-    const [row] = await this.db
-      .select()
-      .from(schema.billingRatePresets)
-      .where(
-        and(
-          eq(schema.billingRatePresets.firmId, firmId),
-          eq(schema.billingRatePresets.id, presetId),
-        ),
-      );
-    return row ? mapBillingRatePresetRow(row) : undefined;
-  }
-
-  async createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord> {
-    await this.db.insert(schema.billingPeriodLocks).values({
-      ...lock,
-      matterId: lock.matterId ?? null,
-      lockedAt: new Date(lock.lockedAt),
-      releasedByUserId: lock.releasedByUserId ?? null,
-      releasedAt: lock.releasedAt ? new Date(lock.releasedAt) : null,
-      reason: lock.reason ?? null,
-    });
-    return clone(lock);
-  }
-
-  async listBillingPeriodLocks(
-    firmId: string,
-    options: { matterId?: string; status?: BillingPeriodLockRecord["status"] } = {},
-  ): Promise<BillingPeriodLockRecord[]> {
-    const filters = [eq(schema.billingPeriodLocks.firmId, firmId)];
-    if (options.matterId) {
-      const scopeFilter = or(
-        eq(schema.billingPeriodLocks.matterId, options.matterId),
-        isNull(schema.billingPeriodLocks.matterId),
-      );
-      if (scopeFilter) filters.push(scopeFilter);
-    }
-    if (options.status) filters.push(eq(schema.billingPeriodLocks.status, options.status));
-    const rows = await this.db
-      .select()
-      .from(schema.billingPeriodLocks)
-      .where(and(...filters))
-      .orderBy(asc(schema.billingPeriodLocks.startsOn));
-    return rows.map(mapBillingPeriodLockRow);
-  }
-
-  async getBillingPeriodLock(
-    firmId: string,
-    lockId: string,
-  ): Promise<BillingPeriodLockRecord | undefined> {
-    const [row] = await this.db
-      .select()
-      .from(schema.billingPeriodLocks)
-      .where(
-        and(eq(schema.billingPeriodLocks.firmId, firmId), eq(schema.billingPeriodLocks.id, lockId)),
-      );
-    return row ? mapBillingPeriodLockRow(row) : undefined;
-  }
-
-  async updateBillingPeriodLock(
-    firmId: string,
-    lockId: string,
-    updates: Partial<BillingPeriodLockRecord>,
-  ): Promise<BillingPeriodLockRecord> {
-    const [row] = await this.db
-      .update(schema.billingPeriodLocks)
-      .set({
-        status: updates.status,
-        releasedByUserId: updates.releasedByUserId,
-        releasedAt: updates.releasedAt ? new Date(updates.releasedAt) : undefined,
-        metadata: updates.metadata,
-      })
-      .where(
-        and(eq(schema.billingPeriodLocks.firmId, firmId), eq(schema.billingPeriodLocks.id, lockId)),
-      )
-      .returning();
-    if (!row) throw new Error("Billing period lock was not found");
-    return mapBillingPeriodLockRow(row);
-  }
-
   private async listUsers(firmId: string): Promise<User[]> {
     const rows = await this.db.select().from(schema.users).where(eq(schema.users.firmId, firmId));
     return Promise.all(rows.map((row) => this.getUser(row.firmId, row.id))).then((users) =>
@@ -4516,6 +4453,55 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return rows.map(mapTimeEntryRow);
   }
 
+  async listBillingPeriodLocks(firmId: string): Promise<BillingPeriodLockRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.billingPeriodLocks)
+      .where(eq(schema.billingPeriodLocks.firmId, firmId))
+      .orderBy(asc(schema.billingPeriodLocks.periodStart));
+    return rows.map(mapBillingPeriodLockRow);
+  }
+
+  async createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord> {
+    validateBillingPeriodLock(lock);
+    const overlaps = (await this.listBillingPeriodLocks(lock.firmId)).some((candidate) =>
+      billingPeriodLocksOverlap(candidate, lock),
+    );
+    if (overlaps) throw new Error("Billing period lock overlaps an existing lock");
+    await this.db.insert(schema.billingPeriodLocks).values(billingPeriodLockInsert(lock));
+    return clone(lock);
+  }
+
+  async listBillingRateRules(
+    firmId: string,
+    options: { activeOnly?: boolean; matterId?: string; userId?: string } = {},
+  ): Promise<BillingRateRuleRecord[]> {
+    const filters = [eq(schema.billingRateRules.firmId, firmId)];
+    if (options.activeOnly) filters.push(eq(schema.billingRateRules.active, true));
+    const rows = await this.db
+      .select()
+      .from(schema.billingRateRules)
+      .where(and(...filters))
+      .orderBy(desc(schema.billingRateRules.effectiveFrom));
+    return rows
+      .map(mapBillingRateRuleRow)
+      .filter(
+        (rule) =>
+          (!options.matterId || !rule.matterId || rule.matterId === options.matterId) &&
+          (!options.userId || !rule.userId || rule.userId === options.userId),
+      );
+  }
+
+  async createBillingRateRule(rule: BillingRateRuleRecord): Promise<BillingRateRuleRecord> {
+    validateBillingRateRule(rule);
+    const overlaps = (await this.listBillingRateRules(rule.firmId, { activeOnly: true })).some(
+      (candidate) => billingRateRulesOverlapAtSameActiveScope(candidate, rule),
+    );
+    if (overlaps) throw new Error("Billing rate rule overlaps an active rule at the same scope");
+    await this.db.insert(schema.billingRateRules).values(billingRateRuleInsert(rule));
+    return clone(rule);
+  }
+
   async getTimeEntry(firmId: string, entryId: string): Promise<TimeEntry | undefined> {
     const [row] = await this.db
       .select()
@@ -4542,6 +4528,8 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .set({
         ...updates,
         performedAt: updates.performedAt ? new Date(updates.performedAt) : undefined,
+        rateRuleId: "rateRuleId" in updates ? (updates.rateRuleId ?? null) : undefined,
+        rateSnapshot: "rateSnapshot" in updates ? (updates.rateSnapshot ?? null) : undefined,
       })
       .where(and(eq(schema.timeEntries.firmId, firmId), eq(schema.timeEntries.id, entryId)))
       .returning();

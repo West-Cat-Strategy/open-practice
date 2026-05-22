@@ -330,44 +330,106 @@ describe("repository providers, jobs, and email delivery", () => {
     expect(events.at(-1)?.errorMessage?.length).toBeLessThanOrEqual(240);
   });
 
-  it("stores email receipt token hashes and acknowledgement counters", async () => {
+  it("looks up and records delivery receipts idempotently by hashed token", async () => {
     const repository = new InMemoryOpenPracticeRepository();
-    const link = await repository.createEmailReceiptLink({
-      id: "email-receipt-link-001",
+    await repository.createQueuedEmailOutbox({
+      email: {
+        id: "email-receipt-001",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        templateKey: "client.update",
+        status: "queued",
+        to: ["client@example.test"],
+        cc: [],
+        bcc: [],
+        from: "Open Practice <no-reply@open-practice.local>",
+        subject: "Synthetic update",
+        htmlBody: "",
+        textBody: "Synthetic body with a receipt endpoint.",
+        queuedAt: now,
+        attemptCount: 0,
+        metadata: {
+          matterId: "matter-001",
+          deliveryReceipt: {
+            requested: true,
+            status: "pending",
+            requestedAt: now,
+          },
+        },
+      },
+      event: {
+        id: "email-event-receipt-queued",
+        firmId: "firm-west-legal",
+        emailId: "email-receipt-001",
+        eventType: "queued",
+        occurredAt: now,
+        source: "api",
+        metadata: {},
+      },
+      job: {
+        id: "job-email-receipt-001",
+        firmId: "firm-west-legal",
+        queueName: "email",
+        jobName: "send_email",
+        status: "queued",
+        targetResourceType: "email_outbox",
+        targetResourceId: "email-receipt-001",
+        attemptsMade: 0,
+        maxAttempts: 5,
+        queuedAt: now,
+        metadata: { emailId: "email-receipt-001", matterId: "matter-001" },
+      },
+    });
+    await repository.createEmailReceiptToken({
+      id: "receipt-token-001",
       firmId: "firm-west-legal",
       matterId: "matter-001",
-      emailId: "email-history-001",
-      tokenHash: "hashed-token-only",
+      emailId: "email-receipt-001",
+      tokenHash: "hashed-receipt-token",
       purpose: "delivery_receipt",
-      createdByUserId: "user-licensee",
+      expiresAt: "2026-05-25T12:00:00.000Z",
       createdAt: now,
-      expiresAt: "2026-04-30T12:00:00.000Z",
-      recordCount: 0,
-      metadata: { correlationId: "receipt-correlation" },
+      metadata: { includeInBody: true },
     });
-
-    expect(link).toMatchObject({
-      tokenHash: "hashed-token-only",
-      recordCount: 0,
-    });
-    await expect(repository.getEmailReceiptLinkByTokenHash("raw-token")).resolves.toBeUndefined();
-    await expect(repository.getEmailReceiptLinkByTokenHash("hashed-token-only")).resolves.toEqual(
-      expect.objectContaining({ id: "email-receipt-link-001" }),
-    );
 
     await expect(
-      repository.recordEmailReceiptLinkAccess({
-        firmId: "firm-west-legal",
-        id: "email-receipt-link-001",
-        recordedAt: "2026-04-25T13:00:00.000Z",
-      }),
+      repository.getEmailReceiptTokenByHash("hashed-receipt-token"),
+    ).resolves.toMatchObject({ id: "receipt-token-001", emailId: "email-receipt-001" });
+
+    const recorded = await repository.recordEmailReceiptToken({
+      tokenHash: "hashed-receipt-token",
+      recordedAt: "2026-04-25T12:30:00.000Z",
+    });
+    expect(recorded).toMatchObject({
+      id: "receipt-token-001",
+      recordedAt: "2026-04-25T12:30:00.000Z",
+    });
+    await expect(
+      repository.getEmailOutboxByReceiptTokenHash("hashed-receipt-token"),
     ).resolves.toMatchObject({
-      firstRecordedAt: "2026-04-25T13:00:00.000Z",
-      lastRecordedAt: "2026-04-25T13:00:00.000Z",
-      recordCount: 1,
+      id: "email-receipt-001",
+      metadata: {
+        deliveryReceipt: expect.not.objectContaining({
+          tokenHash: expect.any(String),
+          expiresAt: expect.any(String),
+          recordedAt: expect.any(String),
+          status: expect.any(String),
+        }),
+      },
     });
     await expect(
-      repository.listEmailReceiptLinks("firm-west-legal", { emailId: "email-history-001" }),
-    ).resolves.toEqual([expect.objectContaining({ recordCount: 1 })]);
+      repository.listEmailReceiptTokens("firm-west-legal", { emailId: "email-receipt-001" }),
+    ).resolves.toMatchObject([{ id: "receipt-token-001", recordedAt: "2026-04-25T12:30:00.000Z" }]);
+
+    const replay = await repository.recordEmailReceiptToken({
+      tokenHash: "hashed-receipt-token",
+      recordedAt: "2026-04-25T12:45:00.000Z",
+    });
+    expect(replay).toMatchObject({
+      recordedAt: "2026-04-25T12:30:00.000Z",
+    });
+    await expect(repository.getEmailReceiptTokenByHash("raw-receipt-token")).resolves.toBe(
+      undefined,
+    );
   });
 });

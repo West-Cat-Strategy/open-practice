@@ -14,8 +14,6 @@ import {
   type AccessLogRecord,
   type ActivityTimelineEntry,
   type AuditEvent,
-  type BillingPeriodLockRecord,
-  type BillingRatePresetRecord,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
@@ -24,12 +22,14 @@ import {
   type CalendarGuestLinkStatus,
   type CalendarMeetingSessionRecord,
   type CalendarMeetingSessionStatus,
+  type BillingPeriodLockRecord,
+  type BillingRateRuleRecord,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
   type ConnectorRecord,
   type Contact,
+  type ContactDataQualityResolutionRecord,
   type ContactDossier,
-  type ContactQualityReviewDecisionRecord,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -38,7 +38,7 @@ import {
   type DraftTemplateRecord,
   type EmailEventRecord,
   type EmailOutboxRecord,
-  type EmailReceiptLinkRecord,
+  type EmailReceiptTokenRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type Firm,
@@ -471,17 +471,15 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { matterId?: string; limit?: number },
   ): Promise<EmailOutboxRecord[]>;
-  createEmailReceiptLink(link: EmailReceiptLinkRecord): Promise<EmailReceiptLinkRecord>;
-  listEmailReceiptLinks(
-    firmId: string,
-    options?: { emailId?: string; matterId?: string },
-  ): Promise<EmailReceiptLinkRecord[]>;
-  getEmailReceiptLinkByTokenHash(tokenHash: string): Promise<EmailReceiptLinkRecord | undefined>;
-  recordEmailReceiptLinkAccess(input: {
+  getEmailOutboxByReceiptTokenHash(
+    receiptTokenHash: string,
+  ): Promise<EmailOutboxRecord | undefined>;
+  recordEmailDeliveryReceipt(input: {
     firmId: string;
-    id: string;
+    emailId: string;
+    receiptTokenHash: string;
     recordedAt: string;
-  }): Promise<EmailReceiptLinkRecord | undefined>;
+  }): Promise<{ email: EmailOutboxRecord; recorded: boolean }>;
   recordEmailDeliveryResult(input: {
     firmId: string;
     emailId: string;
@@ -504,6 +502,16 @@ export interface OpenPracticeRepository {
     metadata?: Record<string, unknown>;
   }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord; job: JobLifecycleRecord }>;
   listEmailEvents(firmId: string, options?: { emailId?: string }): Promise<EmailEventRecord[]>;
+  createEmailReceiptToken(token: EmailReceiptTokenRecord): Promise<EmailReceiptTokenRecord>;
+  getEmailReceiptTokenByHash(tokenHash: string): Promise<EmailReceiptTokenRecord | undefined>;
+  recordEmailReceiptToken(input: {
+    tokenHash: string;
+    recordedAt: string;
+  }): Promise<EmailReceiptTokenRecord | undefined>;
+  listEmailReceiptTokens(
+    firmId: string,
+    options?: { emailId?: string; matterId?: string },
+  ): Promise<EmailReceiptTokenRecord[]>;
   updateJobLifecycleRecord(
     firmId: string,
     id: string,
@@ -573,13 +581,14 @@ export interface OpenPracticeRepository {
   getOverview(firmId: string): Promise<PracticeOverview>;
   listMattersForUser(user: User): Promise<MatterSummary[]>;
   listContactDossiersForUser(user: User): Promise<ContactDossier[]>;
-  listContactQualityReviewDecisionsForUser(
-    user: User,
-  ): Promise<ContactQualityReviewDecisionRecord[]>;
-  createContactQualityReviewDecision(
-    record: ContactQualityReviewDecisionRecord,
-  ): Promise<ContactQualityReviewDecisionRecord>;
   getContact(firmId: string, contactId: string): Promise<Contact | undefined>;
+  createContactDataQualityResolution(
+    resolution: ContactDataQualityResolutionRecord,
+  ): Promise<ContactDataQualityResolutionRecord>;
+  listContactDataQualityResolutions(
+    firmId: string,
+    options?: { contactId?: string; matterId?: string },
+  ): Promise<ContactDataQualityResolutionRecord[]>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
   listMatterDocuments(firmId: string, matterId: string): Promise<DocumentRecord[]>;
   listTaskDeadlines(
@@ -999,35 +1008,17 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { accountId?: string },
   ): Promise<LedgerReconciliationExceptionResolutionRecord[]>;
-  createBillingRatePreset(preset: BillingRatePresetRecord): Promise<BillingRatePresetRecord>;
-  listBillingRatePresets(
-    firmId: string,
-    options?: { matterId?: string; userId?: string },
-  ): Promise<BillingRatePresetRecord[]>;
-  getBillingRatePreset(
-    firmId: string,
-    presetId: string,
-  ): Promise<BillingRatePresetRecord | undefined>;
-  createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord>;
-  listBillingPeriodLocks(
-    firmId: string,
-    options?: { matterId?: string; status?: BillingPeriodLockRecord["status"] },
-  ): Promise<BillingPeriodLockRecord[]>;
-  getBillingPeriodLock(
-    firmId: string,
-    lockId: string,
-  ): Promise<BillingPeriodLockRecord | undefined>;
-  updateBillingPeriodLock(
-    firmId: string,
-    lockId: string,
-    updates: Partial<
-      Pick<BillingPeriodLockRecord, "status" | "releasedByUserId" | "releasedAt" | "metadata">
-    >,
-  ): Promise<BillingPeriodLockRecord>;
   listTimeEntries(
     firmId: string,
     options?: { matterId?: string; status?: TimeEntry["billingStatus"] },
   ): Promise<TimeEntry[]>;
+  listBillingPeriodLocks(firmId: string): Promise<BillingPeriodLockRecord[]>;
+  createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord>;
+  listBillingRateRules(
+    firmId: string,
+    options?: { activeOnly?: boolean; matterId?: string; userId?: string },
+  ): Promise<BillingRateRuleRecord[]>;
+  createBillingRateRule(rule: BillingRateRuleRecord): Promise<BillingRateRuleRecord>;
   getTimeEntry(firmId: string, entryId: string): Promise<TimeEntry | undefined>;
   createTimeEntry(entry: TimeEntry): Promise<TimeEntry>;
   updateTimeEntry(
@@ -1036,7 +1027,14 @@ export interface OpenPracticeRepository {
     updates: Partial<
       Pick<
         TimeEntry,
-        "performedAt" | "minutes" | "rateCents" | "narrative" | "billable" | "billingStatus"
+        | "performedAt"
+        | "minutes"
+        | "rateCents"
+        | "rateRuleId"
+        | "rateSnapshot"
+        | "narrative"
+        | "billable"
+        | "billingStatus"
       >
     >,
   ): Promise<TimeEntry>;

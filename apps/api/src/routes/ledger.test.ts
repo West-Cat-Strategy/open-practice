@@ -7,12 +7,16 @@ import {
 } from "@open-practice/database";
 import type { LedgerReconciliationRecord } from "@open-practice/domain";
 import { registerLedgerRoutes } from "./ledger.js";
+import type { ApiJobQueue } from "./types.js";
 
 const servers: FastifyInstance[] = [];
 
 interface TestServerOptions {
   repository?: OpenPracticeRepository;
+  reportJobQueue?: ApiJobQueue;
 }
+
+type QueuedReportJob = { name: string; data: unknown; jobId?: string };
 
 async function authenticateTestRequest(
   repository: OpenPracticeRepository,
@@ -29,13 +33,16 @@ async function authenticateTestRequest(
   return { user, firmId };
 }
 
-function testServer({ repository = new InMemoryOpenPracticeRepository() }: TestServerOptions = {}) {
+function testServer({
+  repository = new InMemoryOpenPracticeRepository(),
+  reportJobQueue,
+}: TestServerOptions = {}) {
   const server = Fastify({ logger: false });
   server.register(rateLimit, { global: true, max: 1_000, timeWindow: "1 minute" });
   server.addHook("preHandler", async (request) => {
     request.auth = await authenticateTestRequest(repository, request.headers);
   });
-  registerLedgerRoutes(server, { repository });
+  registerLedgerRoutes(server, { repository, reportJobQueue });
   server.setErrorHandler((error, _request, reply) => {
     const normalizedError = error as Error & { statusCode?: number };
     const statusCode =
@@ -47,6 +54,15 @@ function testServer({ repository = new InMemoryOpenPracticeRepository() }: TestS
   });
   servers.push(server);
   return server;
+}
+
+function fakeReportQueue(jobs: QueuedReportJob[] = []): ApiJobQueue {
+  return {
+    async add(name, data, options) {
+      jobs.push({ name, data, jobId: options?.jobId });
+      return { id: options?.jobId ?? "report-job" };
+    },
+  };
 }
 
 function ledgerTransactionPayload(overrides: Record<string, unknown> = {}) {
@@ -289,6 +305,123 @@ describe("ledger routes", () => {
     expect(JSON.stringify(response.json())).not.toContain("synthetic-april-trust.pdf");
   });
 
+  it("queues jurisdictional trust exports and downloads only after worker completion", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const queuedReports: QueuedReportJob[] = [];
+    await seedMatterTwoLedgerControls(repository);
+    await repository.createLedgerReconciliation({
+      ...reconciliationRecord({
+        id: "reconciliation-export-private-evidence",
+        expectedBalanceCents: 152500,
+        status: "exception",
+        varianceExplanation: "Synthetic statement is short one manual review item.",
+        evidence: { statement: "synthetic-april-trust.pdf" },
+      }),
+    });
+    const server = testServer({
+      repository,
+      reportJobQueue: fakeReportQueue(queuedReports),
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reports/jurisdictional-trust/export-requests",
+      payload: {
+        jurisdiction: "BC",
+        idempotencyKey: "jurisdictional-trust-export-route-test",
+      },
+    });
+
+    expect(created.statusCode).toBe(202);
+    const exportRequest = created.json<{
+      exportRequest: { jobId: string; status: string; pollUrl: string; downloadUrl: string };
+    }>().exportRequest;
+    expect(exportRequest).toMatchObject({
+      status: "queued",
+      pollUrl: `/api/ledger/reports/jurisdictional-trust/export-requests/${exportRequest.jobId}`,
+      downloadUrl: `/api/ledger/reports/jurisdictional-trust/export-requests/${exportRequest.jobId}/download`,
+    });
+    expect(queuedReports).toEqual([
+      expect.objectContaining({
+        name: "jurisdictional_trust_export",
+        jobId: exportRequest.jobId,
+      }),
+    ]);
+    expect(JSON.stringify(queuedReports)).not.toContain("synthetic-april-trust.pdf");
+
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    expect(job).toMatchObject({
+      id: exportRequest.jobId,
+      jobName: "jurisdictional_trust_export",
+      status: "queued",
+      targetResourceType: "jurisdictional_trust_export",
+      metadata: {
+        reportType: "jurisdictional_trust",
+        reportScope: "firm",
+        jurisdiction: "BC",
+        requestedByUserId: "user-admin",
+        enqueueStatus: "queued_for_local_report_worker",
+      },
+    });
+    expect(JSON.stringify(job.metadata)).not.toContain("synthetic-april-trust.pdf");
+
+    const earlyDownload = await server.inject({
+      method: "GET",
+      url: `/api/ledger/reports/jurisdictional-trust/export-requests/${exportRequest.jobId}/download`,
+    });
+    expect(earlyDownload.statusCode).toBe(409);
+    expect(earlyDownload.json()).toMatchObject({
+      message: "Jurisdictional trust export is not ready yet",
+    });
+
+    await repository.updateJobLifecycleRecord("firm-west-legal", exportRequest.jobId, {
+      status: "completed",
+      finishedAt: "2026-05-19T12:00:00.000Z",
+      metadata: {
+        reportType: "jurisdictional_trust",
+        reportScope: "firm",
+        jurisdiction: "BC",
+        requestedByUserId: "user-admin",
+        summaryCount: 1,
+      },
+    });
+
+    const status = await server.inject({
+      method: "GET",
+      url: `/api/ledger/reports/jurisdictional-trust/export-requests/${exportRequest.jobId}`,
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toMatchObject({
+      exportRequest: { jobId: exportRequest.jobId, status: "completed" },
+    });
+
+    const downloaded = await server.inject({
+      method: "GET",
+      url: `/api/ledger/reports/jurisdictional-trust/export-requests/${exportRequest.jobId}/download`,
+    });
+    expect(downloaded.statusCode).toBe(200);
+    expect(downloaded.json()).toMatchObject({
+      exportRequest: { jobId: exportRequest.jobId, status: "completed" },
+      export: {
+        compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+        summaries: [
+          expect.objectContaining({
+            jurisdiction: "BC",
+            exceptionReconciliationCount: 1,
+          }),
+        ],
+      },
+    });
+
+    const serializedAuditAndJobs = JSON.stringify({
+      audit: await repository.listAuditEvents("firm-west-legal"),
+      jobs: await repository.listJobLifecycleRecords("firm-west-legal"),
+    });
+    expect(serializedAuditAndJobs).not.toContain("synthetic-april-trust.pdf");
+  });
+
   it("denies jurisdictional trust reports to matter-scoped users", async () => {
     const response = await testServer().inject({
       method: "GET",
@@ -297,6 +430,23 @@ describe("ledger routes", () => {
         "x-open-practice-user-id": "user-licensee",
         "x-open-practice-firm-id": "firm-west-legal",
       },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      message: "Trust ledger access required",
+    });
+  });
+
+  it("denies jurisdictional trust export requests to matter-scoped users", async () => {
+    const response = await testServer().inject({
+      method: "POST",
+      url: "/api/ledger/reports/jurisdictional-trust/export-requests",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: { jurisdiction: "BC" },
     });
 
     expect(response.statusCode).toBe(403);

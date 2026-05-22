@@ -101,16 +101,15 @@ import DraftEditor from "./drafting/DraftEditor";
 import {
   applySavedQueueFocus,
   applySavedMatterFocus,
-  buildSavedMatterOperationalViewDefinitionPayload,
   dashboardLaneFreshnessCue,
   describeSavedMatterFocus,
   describeSavedQueueFocus,
   filterMatters,
-  savedMatterOperationalViewPresetLabel,
-  SAVED_MATTER_OPERATIONAL_VIEW_PRESETS,
+  getSavedMatterPresetDefinition,
+  savedMatterPresetOptions,
   summarizeQueues,
   type DashboardLaneRefreshState,
-  type SavedMatterOperationalViewPreset,
+  type SavedMatterPresetFamily,
 } from "./dashboard-utils";
 import {
   buildConflictCheckPayload,
@@ -158,8 +157,12 @@ import {
   summarizeDocumentProcessingWorkbench,
 } from "./document-processing-dashboard";
 import {
+  buildContactDataQualityResolutionPayload,
   buildContactDossierConflictCheckPrefill,
+  contactDataQualitySignalKey,
   filterContactDossiers,
+  formatContactDataQualityResolutionDecision,
+  formatContactReviewSignalKind,
 } from "./contact-dossiers-dashboard";
 import {
   formatCalendarAttendeeRoleLabel,
@@ -246,6 +249,7 @@ import {
 import {
   buildEmailDeliveryConfirmation,
   buildIntakeSessionCreatePayload,
+  canRecordContactDataQualityResolutions,
   upsertIntakeSession,
 } from "./types";
 import type {
@@ -268,6 +272,8 @@ import type {
   ConnectorOperationsResponse,
   ConflictResponse,
   ContactDossiersResponse,
+  ContactDataQualityResolutionRecord,
+  ContactDataQualityResolutionsResponse,
   ContactReviewQueueResponse,
   DocumentProcessingDashboardResponse,
   DocumentProcessingWorkbenchResponse,
@@ -320,6 +326,7 @@ interface DashboardClientProps {
   capabilities: CapabilitiesResponse;
   communicationsInbox: CommunicationsInboxDashboardResponse;
   connectorOperations: ConnectorOperationsResponse;
+  contactDataQualityResolutions: ContactDataQualityResolutionsResponse;
   contactDossiers: ContactDossiersResponse;
   contactReviewQueue: ContactReviewQueueResponse;
   devHeaders: Record<string, string>;
@@ -402,7 +409,9 @@ function formatSavedOperationalViewDefinition(definition: SavedOperationalViewDe
 }
 
 function formatSavedMatterViewDefinition(definition: SavedOperationalViewDefinition): string {
-  return `${savedMatterOperationalViewPresetLabel(definition)} · ${definition.rowLimit} matters · ${definition.permissionScope.join(", ")}`;
+  const preset = getSavedMatterPresetDefinition(definition.filters.presetFamily);
+  const presetLabel = preset?.summaryLabel ?? "no preset focus";
+  return `${presetLabel} · ${definition.rowLimit} matters · ${definition.permissionScope.join(", ")}`;
 }
 
 export default function DashboardClient({
@@ -413,6 +422,7 @@ export default function DashboardClient({
   capabilities,
   communicationsInbox,
   connectorOperations,
+  contactDataQualityResolutions: initialContactDataQualityResolutions,
   contactDossiers,
   contactReviewQueue,
   devHeaders,
@@ -486,12 +496,21 @@ export default function DashboardClient({
   const [archivingMatterViewId, setArchivingMatterViewId] = useState("");
   const [activeSavedOperationalViewId, setActiveSavedOperationalViewId] = useState("");
   const [activeSavedMatterViewId, setActiveSavedMatterViewId] = useState("");
+  const [selectedMatterViewPresetFamily, setSelectedMatterViewPresetFamily] =
+    useState<SavedMatterPresetFamily>("matter_follow_up");
   const [matterSearch, setMatterSearch] = useState("");
   const [activityKindFilter, setActivityKindFilter] = useState<MatterActivityKindFilter>("all");
   const [activityStatusFilter, setActivityStatusFilter] =
     useState<MatterActivityStatusFilter>("all");
   const [contactSearch, setContactSearch] = useState("");
   const [activeContactId, setActiveContactId] = useState(contactDossiers[0]?.contact.id ?? "");
+  const [contactDataQualityResolutions, setContactDataQualityResolutions] = useState(
+    initialContactDataQualityResolutions,
+  );
+  const [contactDataQualityStatus, setContactDataQualityStatus] = useState(
+    "No contact resolution recorded in this session.",
+  );
+  const [recordingContactResolutionKey, setRecordingContactResolutionKey] = useState("");
   const [conflictName, setConflictName] = useState("");
   const [conflictAliases, setConflictAliases] = useState("");
   const [conflictIdentifiers, setConflictIdentifiers] = useState("");
@@ -715,6 +734,14 @@ export default function DashboardClient({
     filteredContactDossiers.find((dossier) => dossier.contact.id === activeContactId) ??
     filteredContactDossiers[0] ??
     contactDossiers[0];
+  const activeContactDataQualityResolutions = activeContactDossier
+    ? contactDataQualityResolutions.filter(
+        (resolution) => resolution.contactId === activeContactDossier.contact.id,
+      )
+    : [];
+  const canRecordContactDataQualityResolution = Boolean(
+    canRecordContactDataQualityResolutions(capabilities.sections),
+  );
   const activeMatter = matters.find((matter) => matter.id === activeMatterId) ?? matters[0];
   const activeSignatures = signatures.filter(
     (signature) => signature.matterId === activeMatter?.id,
@@ -1384,6 +1411,46 @@ export default function DashboardClient({
         prefill.matterId ? ` on matter ${prefill.matterId}` : ""
       }.`,
     );
+  }
+
+  async function recordContactDataQualityResolution(
+    signal: ContactDossiersResponse[number]["qualityReview"]["signals"][number],
+    decision: ContactDataQualityResolutionRecord["decision"],
+  ): Promise<void> {
+    if (!activeContactDossier) return;
+    const payload = buildContactDataQualityResolutionPayload(
+      activeContactDossier,
+      signal,
+      decision,
+    );
+    const signalKey = contactDataQualitySignalKey(activeContactDossier.contact.id, signal);
+    setRecordingContactResolutionKey(signalKey);
+    setContactDataQualityStatus("Recording contact resolution...");
+    try {
+      const created = await requestDashboardJson<ContactDataQualityResolutionRecord>(
+        apiBaseUrl,
+        "/api/contacts/data-quality-resolutions",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload,
+        },
+      );
+      setContactDataQualityResolutions((current) =>
+        [created, ...current].sort(
+          (left, right) => Date.parse(right.recordedAt) - Date.parse(left.recordedAt),
+        ),
+      );
+      setContactDataQualityStatus(
+        `Recorded ${formatContactDataQualityResolutionDecision(
+          created.decision,
+        )} for ${formatContactReviewSignalKind(created.signalKind)}.`,
+      );
+    } catch (error) {
+      setContactDataQualityStatus(`Resolution failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setRecordingContactResolutionKey("");
+    }
   }
 
   async function createDraftFromTemplate(
@@ -2953,22 +3020,34 @@ export default function DashboardClient({
     }
   }
 
-  async function saveMatterOperationalViewDefinition(
-    preset: SavedMatterOperationalViewPreset,
-  ): Promise<void> {
+  async function saveMatterPresetViewDefinition(): Promise<void> {
+    const preset =
+      getSavedMatterPresetDefinition(selectedMatterViewPresetFamily) ??
+      savedMatterPresetOptions[0]!;
     setSavingMatterView(true);
-    setSavedMatterViewStatus(`Saving ${preset.statusLabel} view...`);
+    setSavedMatterViewStatus(`Saving matter ${preset.summaryLabel} view...`);
     try {
-      const sameFamilyCount = matterOperationalViewDefinitions.filter(
-        (definition) => definition.filters.presetFamily === preset.id,
-      ).length;
       const payload = await requestDashboardJson<{ definition: SavedOperationalViewDefinition }>(
         apiBaseUrl,
         "/api/operational-views/definitions",
         {
           method: "POST",
           headers: devHeaders,
-          payload: buildSavedMatterOperationalViewDefinitionPayload(preset, sameFamilyCount + 1),
+          payload: {
+            surface: "matters",
+            name: `${preset.namePrefix} ${matterOperationalViewDefinitions.length + 1}`,
+            filters: {
+              source: "dashboard-matters",
+              presetFamily: preset.family,
+              operationalViewKeys: [...preset.operationalViewKeys],
+              statuses: [...preset.statuses],
+            },
+            columns: ["number", "practiceArea", "status"],
+            sort: preset.sort,
+            rowLimit: 12,
+            dashboardBehavior: { pinToMatterContext: true },
+            permissionScope: ["matter:read"],
+          },
         },
       );
       setSavedOperationalViewDefinitions((current) => [payload.definition, ...current]);
@@ -3111,15 +3190,17 @@ export default function DashboardClient({
           filteredMatters={filteredMatters}
           formatSavedMatterViewDefinition={formatSavedMatterViewDefinition}
           matterSearch={matterSearch}
+          matterPresetOptions={savedMatterPresetOptions}
           onArchiveSavedMatterView={archiveMatterOperationalViewDefinition}
           onApplySavedMatterView={applyMatterOperationalViewDefinition}
           onMatterSearchChange={setMatterSearch}
+          onMatterPresetFamilyChange={setSelectedMatterViewPresetFamily}
           onSelectMatter={selectMatter}
-          onSaveMatterPreset={saveMatterOperationalViewDefinition}
+          onSaveMatterView={saveMatterPresetViewDefinition}
           savedMatterViewDefinitions={matterOperationalViewDefinitions}
-          savedMatterViewPresets={SAVED_MATTER_OPERATIONAL_VIEW_PRESETS}
           savedMatterViewStatus={savedMatterViewStatus}
           savingMatterView={savingMatterView}
+          selectedMatterPresetFamily={selectedMatterViewPresetFamily}
         />
 
         <section className="main-grid matter-workspace-grid">
@@ -3158,15 +3239,20 @@ export default function DashboardClient({
             {activeSection === "contacts" ? (
               <ContactsSection
                 activeContactDossier={activeContactDossier}
+                canRecordContactDataQualityResolution={canRecordContactDataQualityResolution}
                 compactStatus={compactStatus}
                 contactDossiers={contactDossiers}
+                contactDataQualityResolutions={activeContactDataQualityResolutions}
+                contactDataQualityStatus={contactDataQualityStatus}
                 contactReviewQueue={contactReviewQueue}
                 contactSearch={contactSearch}
                 filteredContactDossiers={filteredContactDossiers}
+                onRecordContactDataQualityResolution={recordContactDataQualityResolution}
                 onContactSearchChange={setContactSearch}
                 onPrepareConflictCheckFromContact={prepareConflictCheckFromContact}
                 onSelectContact={setActiveContactId}
                 onSelectMatter={selectMatter}
+                recordingContactResolutionKey={recordingContactResolutionKey}
               />
             ) : null}
 
@@ -3414,6 +3500,56 @@ export default function DashboardClient({
                       <span className="field-label">Balance due</span>
                       <strong>{cents(activeBalanceDueCents)}</strong>
                     </div>
+                    <div>
+                      <span className="field-label">Locked periods</span>
+                      <strong>
+                        {billingDashboard.summary.activeLockedPeriodCount}/
+                        {billingDashboard.summary.lockedPeriodCount}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="field-label">Active rate rules</span>
+                      <strong>{billingDashboard.summary.activeRateRuleCount}</strong>
+                    </div>
+                  </div>
+
+                  <div className="section-title">
+                    <h3>Billing controls</h3>
+                    <span>
+                      {billingDashboard.periodLocks.length + billingDashboard.rateRules.length}{" "}
+                      records
+                    </span>
+                  </div>
+                  <div className="party-list">
+                    {billingDashboard.periodLocks.map((lock) => (
+                      <div className="party-row" key={lock.id}>
+                        <span>
+                          <strong>{lock.reason ?? "Locked billing period"}</strong>
+                          <small>
+                            {new Date(lock.periodStart).toLocaleDateString("en-CA")} -{" "}
+                            {new Date(lock.periodEnd).toLocaleDateString("en-CA")}
+                          </small>
+                        </span>
+                        <em>locked</em>
+                      </div>
+                    ))}
+                    {billingDashboard.rateRules.map((rule) => (
+                      <div className="party-row" key={rule.id}>
+                        <span>
+                          <strong>{rule.label}</strong>
+                          <small>
+                            {rule.scope}
+                            {rule.matterId ? ` · ${rule.matterId}` : ""}
+                            {rule.userId ? ` · ${rule.userId}` : ""}
+                          </small>
+                        </span>
+                        <em>{cents(rule.rateCents)}/hr</em>
+                      </div>
+                    ))}
+                    {billingDashboard.periodLocks.length === 0 &&
+                    billingDashboard.rateRules.length === 0 ? (
+                      <p className="inline-empty">No billing locks or rate rules are active.</p>
+                    ) : null}
                   </div>
 
                   <div className="section-title">
@@ -3476,6 +3612,9 @@ export default function DashboardClient({
                           <strong>{entry.narrative}</strong>
                           <small>
                             {minutes(entry.minutes)} · {cents(entry.rateCents)}/hr
+                            {entry.rateSnapshot?.source === "rate_rule"
+                              ? ` · ${entry.rateSnapshot.label ?? "rate rule"}`
+                              : " · manual rate"}
                           </small>
                         </span>
                         <em>{cents(entry.amountCents)}</em>

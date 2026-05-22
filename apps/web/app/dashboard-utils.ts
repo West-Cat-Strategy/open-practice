@@ -8,111 +8,6 @@ import type {
 
 export type DashboardRefreshLane = "queues" | "providers" | "audit";
 export type DashboardLaneFreshnessTone = "neutral" | "ready" | "risk";
-export type SavedMatterOperationalViewPresetId =
-  | "matter_follow_up"
-  | "overdue_filings"
-  | "uncontacted_intake_clients"
-  | "expiring_upload_links";
-
-export interface SavedMatterOperationalViewPreset {
-  id: SavedMatterOperationalViewPresetId;
-  name: string;
-  saveLabel: string;
-  statusLabel: string;
-  filters: {
-    source: "dashboard-matters";
-    presetFamily: SavedMatterOperationalViewPresetId;
-    operationalViewKeys: string[];
-    statuses?: string[];
-  };
-  columns: string[];
-  sort: Record<string, string>;
-  rowLimit: number;
-  dashboardBehavior: Record<string, boolean>;
-  permissionScope: string[];
-}
-
-export interface SavedMatterOperationalViewDefinitionPayload {
-  surface: "matters";
-  name: string;
-  filters: SavedMatterOperationalViewPreset["filters"];
-  columns: string[];
-  sort: Record<string, string>;
-  rowLimit: number;
-  dashboardBehavior: Record<string, boolean>;
-  permissionScope: string[];
-}
-
-export const SAVED_MATTER_OPERATIONAL_VIEW_PRESETS: SavedMatterOperationalViewPreset[] = [
-  {
-    id: "matter_follow_up",
-    name: "Matter follow-up",
-    saveLabel: "Save follow-up",
-    statusLabel: "matter follow-up",
-    filters: {
-      source: "dashboard-matters",
-      presetFamily: "matter_follow_up",
-      operationalViewKeys: ["stale_matters", "uncontacted_clients"],
-      statuses: ["intake", "open", "paused"],
-    },
-    columns: ["number", "practiceArea", "status"],
-    sort: { priority: "desc", lastActivityAt: "asc" },
-    rowLimit: 12,
-    dashboardBehavior: { pinToMatterContext: true },
-    permissionScope: ["matter:read"],
-  },
-  {
-    id: "overdue_filings",
-    name: "Overdue filings",
-    saveLabel: "Save filings",
-    statusLabel: "overdue filings",
-    filters: {
-      source: "dashboard-matters",
-      presetFamily: "overdue_filings",
-      operationalViewKeys: ["overdue_tasks_deadlines"],
-      statuses: ["intake", "open", "paused"],
-    },
-    columns: ["number", "practiceArea", "status"],
-    sort: { dueAt: "asc", priority: "desc" },
-    rowLimit: 12,
-    dashboardBehavior: { pinToMatterContext: true },
-    permissionScope: ["matter:read", "calendar_event:read"],
-  },
-  {
-    id: "uncontacted_intake_clients",
-    name: "Uncontacted intake clients",
-    saveLabel: "Save intake clients",
-    statusLabel: "uncontacted intake clients",
-    filters: {
-      source: "dashboard-matters",
-      presetFamily: "uncontacted_intake_clients",
-      operationalViewKeys: ["uncontacted_clients"],
-      statuses: ["intake"],
-    },
-    columns: ["number", "practiceArea", "status"],
-    sort: { priority: "desc", lastActivityAt: "asc" },
-    rowLimit: 12,
-    dashboardBehavior: { pinToMatterContext: true },
-    permissionScope: ["matter:read", "intake_session:read"],
-  },
-  {
-    id: "expiring_upload_links",
-    name: "Expiring upload links",
-    saveLabel: "Save upload links",
-    statusLabel: "expiring upload links",
-    filters: {
-      source: "dashboard-matters",
-      presetFamily: "expiring_upload_links",
-      operationalViewKeys: ["external_uploads_expiring"],
-      statuses: ["intake", "open", "paused"],
-    },
-    columns: ["number", "practiceArea", "status"],
-    sort: { dueAt: "asc", priority: "desc" },
-    rowLimit: 12,
-    dashboardBehavior: { pinToMatterContext: true },
-    permissionScope: ["matter:read", "external_upload:read"],
-  },
-];
 
 export interface DashboardLaneRefreshState {
   loadedAt?: string;
@@ -256,55 +151,86 @@ export function describeSavedQueueFocus(
   return `${definition.name} applies ${itemCount} ${itemCount === 1 ? "item" : "items"} across ${sectionCount} ${sectionCount === 1 ? "section" : "sections"}.`;
 }
 
-function cloneMatterPresetFilters(
-  filters: SavedMatterOperationalViewPreset["filters"],
-): SavedMatterOperationalViewPreset["filters"] {
-  return {
-    ...filters,
-    operationalViewKeys: [...filters.operationalViewKeys],
-    ...(filters.statuses ? { statuses: [...filters.statuses] } : {}),
-  };
+export type SavedMatterPresetFamily =
+  | "matter_follow_up"
+  | "matter_risk_review"
+  | "matter_action_required";
+
+export interface SavedMatterPresetDefinition {
+  family: SavedMatterPresetFamily;
+  label: string;
+  namePrefix: string;
+  summaryLabel: string;
+  operationalViewKeys: string[];
+  statuses: string[];
+  sort: Record<string, string>;
 }
 
-export function buildSavedMatterOperationalViewDefinitionPayload(
-  preset: SavedMatterOperationalViewPreset,
-  sequence: number,
-): SavedMatterOperationalViewDefinitionPayload {
-  return {
-    surface: "matters",
-    name: `${preset.name} ${sequence}`,
-    filters: cloneMatterPresetFilters(preset.filters),
-    columns: [...preset.columns],
-    sort: { ...preset.sort },
-    rowLimit: preset.rowLimit,
-    dashboardBehavior: { ...preset.dashboardBehavior },
-    permissionScope: [...preset.permissionScope],
-  };
-}
+const savedMatterPresetDefinitionsByFamily: Record<
+  SavedMatterPresetFamily,
+  SavedMatterPresetDefinition
+> = {
+  matter_follow_up: {
+    family: "matter_follow_up",
+    label: "Follow-up",
+    namePrefix: "Matter follow-up",
+    summaryLabel: "follow-up",
+    operationalViewKeys: ["stale_matters", "uncontacted_clients"],
+    statuses: ["intake", "open", "paused"],
+    sort: { priority: "desc", lastActivityAt: "asc" },
+  },
+  matter_risk_review: {
+    family: "matter_risk_review",
+    label: "Risk review",
+    namePrefix: "Matter risk review",
+    summaryLabel: "risk review",
+    operationalViewKeys: ["conflicts_pending_review", "external_uploads_expiring"],
+    statuses: ["intake", "open", "paused"],
+    sort: { priority: "desc", dueAt: "asc" },
+  },
+  matter_action_required: {
+    family: "matter_action_required",
+    label: "Action required",
+    namePrefix: "Matter action required",
+    summaryLabel: "action required",
+    operationalViewKeys: ["awaiting_signature", "overdue_tasks_deadlines"],
+    statuses: ["intake", "open", "paused"],
+    sort: { priority: "desc", dueAt: "asc" },
+  },
+};
 
-export function savedMatterOperationalViewPresetForDefinition(
-  definition: SavedOperationalViewDefinition,
-): SavedMatterOperationalViewPreset | undefined {
-  const presetFamily = definition.filters.presetFamily;
-  if (typeof presetFamily !== "string") return undefined;
-  return SAVED_MATTER_OPERATIONAL_VIEW_PRESETS.find((preset) => preset.id === presetFamily);
-}
+export const savedMatterPresetOptions = Object.values(savedMatterPresetDefinitionsByFamily);
 
-export function savedMatterOperationalViewPresetLabel(
-  definition: SavedOperationalViewDefinition,
-): string {
-  return savedMatterOperationalViewPresetForDefinition(definition)?.name ?? "Matter command centre";
+export function getSavedMatterPresetDefinition(value: unknown): SavedMatterPresetDefinition | null {
+  if (
+    typeof value !== "string" ||
+    !Object.prototype.hasOwnProperty.call(savedMatterPresetDefinitionsByFamily, value)
+  ) {
+    return null;
+  }
+  return savedMatterPresetDefinitionsByFamily[value as SavedMatterPresetFamily];
 }
 
 function savedMatterViewKeys(definition: SavedOperationalViewDefinition): Set<string> {
   const rawKeys = definition.filters.operationalViewKeys;
+  const rawFamily = definition.filters.presetFamily;
+  if (typeof rawFamily === "string") {
+    const presetDefinition = getSavedMatterPresetDefinition(rawFamily);
+    if (!presetDefinition) return new Set();
+    if (Array.isArray(rawKeys)) {
+      const keys = rawKeys.filter(
+        (key): key is string => typeof key === "string" && key.length > 0,
+      );
+      if (keys.length > 0) return new Set(keys);
+    }
+    return new Set(presetDefinition.operationalViewKeys);
+  }
   if (Array.isArray(rawKeys)) {
     return new Set(
       rawKeys.filter((key): key is string => typeof key === "string" && key.length > 0),
     );
   }
-  const preset = savedMatterOperationalViewPresetForDefinition(definition);
-  return new Set(preset?.filters.operationalViewKeys ?? []);
+  return new Set();
 }
 
 function savedMatterStatuses(definition: SavedOperationalViewDefinition): Set<string> {
@@ -341,6 +267,7 @@ export function applySavedMatterFocus(
 ): MatterSummary[] {
   if (!definition || definition.surface !== "matters") return matters;
   const viewKeys = savedMatterViewKeys(definition);
+  if (viewKeys.size === 0) return [];
   const scopedMatterIds = matterIdsForSavedFocus(definition, operationalViews);
   const statuses = savedMatterStatuses(definition);
   const rowLimit = Math.max(0, definition.rowLimit);

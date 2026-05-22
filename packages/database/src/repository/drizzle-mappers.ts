@@ -16,20 +16,20 @@ import {
   type AccessLogRecord,
   type ActivityTimelineEntry,
   type AuditEvent,
-  type BillingPeriodLockRecord,
-  type BillingRatePresetRecord,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
   type CalendarEventReminderRecord,
   type CalendarGuestLinkRecord,
   type CalendarMeetingSessionRecord,
+  type BillingPeriodLockRecord,
+  type BillingRateRuleRecord,
   type ConflictCheckRecord,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
   type ConnectorRecord,
   type Contact,
-  type ContactQualityReviewDecisionRecord,
+  type ContactDataQualityResolutionRecord,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -38,7 +38,7 @@ import {
   type DraftTemplateRecord,
   type EmailEventRecord,
   type EmailOutboxRecord,
-  type EmailReceiptLinkRecord,
+  type EmailReceiptTokenRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type FirmSettings,
@@ -612,40 +612,6 @@ export function emailOutboxInsert(
   };
 }
 
-export function mapEmailReceiptLinkRow(
-  row: typeof schema.emailReceiptLinks.$inferSelect,
-): EmailReceiptLinkRecord {
-  return {
-    id: row.id,
-    firmId: row.firmId,
-    matterId: row.matterId,
-    emailId: row.emailId,
-    tokenHash: row.tokenHash,
-    purpose: row.purpose,
-    createdByUserId: row.createdByUserId,
-    createdAt: row.createdAt.toISOString(),
-    expiresAt: dateToIso(row.expiresAt),
-    revokedAt: dateToIso(row.revokedAt),
-    firstRecordedAt: dateToIso(row.firstRecordedAt),
-    lastRecordedAt: dateToIso(row.lastRecordedAt),
-    recordCount: row.recordCount,
-    metadata: row.metadata,
-  };
-}
-
-export function emailReceiptLinkInsert(
-  record: EmailReceiptLinkRecord,
-): typeof schema.emailReceiptLinks.$inferInsert {
-  return {
-    ...record,
-    createdAt: new Date(record.createdAt),
-    expiresAt: record.expiresAt ? new Date(record.expiresAt) : null,
-    revokedAt: record.revokedAt ? new Date(record.revokedAt) : null,
-    firstRecordedAt: record.firstRecordedAt ? new Date(record.firstRecordedAt) : null,
-    lastRecordedAt: record.lastRecordedAt ? new Date(record.lastRecordedAt) : null,
-  };
-}
-
 export function mapEmailEventRow(row: typeof schema.emailEvents.$inferSelect): EmailEventRecord {
   return {
     id: row.id,
@@ -670,6 +636,34 @@ export function emailEventInsert(record: EmailEventRecord): typeof schema.emailE
     jobId: record.jobId ?? null,
     source: record.source,
     errorMessage: record.errorMessage ?? null,
+  };
+}
+
+export function mapEmailReceiptTokenRow(
+  row: typeof schema.emailReceiptTokens.$inferSelect,
+): EmailReceiptTokenRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    emailId: row.emailId,
+    tokenHash: row.tokenHash,
+    purpose: row.purpose as EmailReceiptTokenRecord["purpose"],
+    expiresAt: row.expiresAt.toISOString(),
+    recordedAt: dateToIso(row.recordedAt),
+    createdAt: row.createdAt.toISOString(),
+    metadata: row.metadata,
+  };
+}
+
+export function emailReceiptTokenInsert(
+  record: EmailReceiptTokenRecord,
+): typeof schema.emailReceiptTokens.$inferInsert {
+  return {
+    ...record,
+    expiresAt: new Date(record.expiresAt),
+    recordedAt: record.recordedAt ? new Date(record.recordedAt) : null,
+    createdAt: new Date(record.createdAt),
   };
 }
 
@@ -729,39 +723,6 @@ export function mapContactRow(row: typeof schema.contacts.$inferSelect): Contact
     aliases: row.aliases,
     identifiers: row.identifiers as Contact["identifiers"],
     notes: row.notes ?? undefined,
-  };
-}
-
-export function mapContactQualityReviewDecisionRow(
-  row: typeof schema.contactQualityReviewDecisions.$inferSelect,
-): ContactQualityReviewDecisionRecord {
-  return {
-    id: row.id,
-    firmId: row.firmId,
-    contactId: row.contactId,
-    signalKind: row.signalKind,
-    decision: row.decision,
-    matterId: row.matterId ?? undefined,
-    relatedContactIds: row.relatedContactIds,
-    sourceRecordId: row.sourceRecordId ?? undefined,
-    decidedByUserId: row.decidedByUserId,
-    decidedAt: row.decidedAt.toISOString(),
-    reason: row.reason ?? undefined,
-    evidence: row.evidence,
-    createdAt: row.createdAt.toISOString(),
-  };
-}
-
-export function contactQualityReviewDecisionInsert(
-  record: ContactQualityReviewDecisionRecord,
-): typeof schema.contactQualityReviewDecisions.$inferInsert {
-  return {
-    ...record,
-    matterId: record.matterId ?? null,
-    sourceRecordId: record.sourceRecordId ?? null,
-    reason: record.reason ?? null,
-    decidedAt: new Date(record.decidedAt),
-    createdAt: new Date(record.createdAt),
   };
 }
 
@@ -1992,44 +1953,6 @@ export function mapMatter(row: typeof schema.matters.$inferSelect): Matter {
   };
 }
 
-export function mapBillingRatePresetRow(
-  row: typeof schema.billingRatePresets.$inferSelect,
-): BillingRatePresetRecord {
-  return {
-    id: row.id,
-    firmId: row.firmId,
-    matterId: row.matterId ?? undefined,
-    userId: row.userId ?? undefined,
-    label: row.label,
-    rateCents: row.rateCents,
-    currency: row.currency,
-    effectiveFrom: row.effectiveFrom.toISOString(),
-    effectiveTo: dateToIso(row.effectiveTo),
-    createdByUserId: row.createdByUserId,
-    createdAt: row.createdAt.toISOString(),
-    metadata: row.metadata,
-  };
-}
-
-export function mapBillingPeriodLockRow(
-  row: typeof schema.billingPeriodLocks.$inferSelect,
-): BillingPeriodLockRecord {
-  return {
-    id: row.id,
-    firmId: row.firmId,
-    matterId: row.matterId ?? undefined,
-    startsOn: row.startsOn,
-    endsOn: row.endsOn,
-    status: row.status as BillingPeriodLockRecord["status"],
-    lockedByUserId: row.lockedByUserId,
-    lockedAt: row.lockedAt.toISOString(),
-    releasedByUserId: row.releasedByUserId ?? undefined,
-    releasedAt: dateToIso(row.releasedAt),
-    reason: row.reason ?? undefined,
-    metadata: row.metadata,
-  };
-}
-
 export function mapTimeEntryRow(row: typeof schema.timeEntries.$inferSelect): TimeEntry {
   return {
     id: row.id,
@@ -2039,6 +1962,8 @@ export function mapTimeEntryRow(row: typeof schema.timeEntries.$inferSelect): Ti
     performedAt: row.performedAt.toISOString(),
     minutes: row.minutes,
     rateCents: row.rateCents,
+    rateRuleId: row.rateRuleId ?? undefined,
+    rateSnapshot: row.rateSnapshot ?? undefined,
     narrative: row.narrative,
     billable: row.billable,
     billingStatus: row.billingStatus as TimeEntry["billingStatus"],
@@ -2056,6 +1981,82 @@ export function mapExpenseEntryRow(row: typeof schema.expenseEntries.$inferSelec
     description: row.description,
     reimbursable: row.reimbursable,
     billingStatus: row.billingStatus as ExpenseEntry["billingStatus"],
+  };
+}
+
+export function mapContactDataQualityResolutionRow(
+  row: typeof schema.contactDataQualityResolutions.$inferSelect,
+): ContactDataQualityResolutionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    contactId: row.contactId,
+    signalKind: row.signalKind as ContactDataQualityResolutionRecord["signalKind"],
+    decision: row.decision as ContactDataQualityResolutionRecord["decision"],
+    resolutionNote: row.resolutionNote,
+    matterId: row.matterId ?? undefined,
+    relatedContactId: row.relatedContactId ?? undefined,
+    sourceRecordId: row.sourceRecordId ?? undefined,
+    recordedByUserId: row.recordedByUserId,
+    recordedAt: row.recordedAt.toISOString(),
+  };
+}
+
+export function mapBillingPeriodLockRow(
+  row: typeof schema.billingPeriodLocks.$inferSelect,
+): BillingPeriodLockRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    periodStart: row.periodStart.toISOString(),
+    periodEnd: row.periodEnd.toISOString(),
+    reason: row.reason ?? undefined,
+    lockedByUserId: row.lockedByUserId,
+    lockedAt: row.lockedAt.toISOString(),
+  };
+}
+
+export function billingPeriodLockInsert(
+  lock: BillingPeriodLockRecord,
+): typeof schema.billingPeriodLocks.$inferInsert {
+  return {
+    ...lock,
+    periodStart: new Date(lock.periodStart),
+    periodEnd: new Date(lock.periodEnd),
+    lockedAt: new Date(lock.lockedAt),
+  };
+}
+
+export function mapBillingRateRuleRow(
+  row: typeof schema.billingRateRules.$inferSelect,
+): BillingRateRuleRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    label: row.label,
+    matterId: row.matterId ?? undefined,
+    userId: row.userId ?? undefined,
+    role: row.role ?? undefined,
+    scope: row.scope,
+    rateCents: row.rateCents,
+    effectiveFrom: row.effectiveFrom.toISOString(),
+    effectiveUntil: dateToIso(row.effectiveUntil),
+    active: row.active,
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function billingRateRuleInsert(
+  rule: BillingRateRuleRecord,
+): typeof schema.billingRateRules.$inferInsert {
+  return {
+    ...rule,
+    effectiveFrom: new Date(rule.effectiveFrom),
+    effectiveUntil: rule.effectiveUntil ? new Date(rule.effectiveUntil) : null,
+    createdAt: new Date(rule.createdAt),
+    updatedAt: new Date(rule.updatedAt),
   };
 }
 

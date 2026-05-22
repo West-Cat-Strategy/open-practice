@@ -14,11 +14,12 @@ import {
   buildBasicDraftTemplates,
   buildContactDossiers,
   buildPracticePresetTemplates,
+  billingPeriodLocksOverlap,
+  billingRateRulesOverlapAtSameActiveScope,
   calculateInvoiceTotals,
   clientTrustBalanceByMatter,
   transitionCalendarGuestLinkStatus,
   transitionCalendarMeetingSessionStatus,
-  validateContactQualityReviewDecisionRecord,
   invoiceStatusForPayment,
   ledgerBalanceByMatter,
   postLedgerTransaction,
@@ -26,24 +27,27 @@ import {
   shouldUpdateSignatureRequestStatus,
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
+  validateBillingPeriodLock,
+  validateBillingRateRule,
+  validateContactDataQualityResolutionRecord,
   verifyAuditChain,
   type AccessLogRecord,
   type AuditEvent,
-  type BillingPeriodLockRecord,
-  type BillingRatePresetRecord,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
   type CalendarEventReminderRecord,
   type CalendarGuestLinkRecord,
   type CalendarMeetingSessionRecord,
+  type BillingPeriodLockRecord,
+  type BillingRateRuleRecord,
   type ConflictCheckRecord,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
   type ConnectorRecord,
   type Contact,
+  type ContactDataQualityResolutionRecord,
   type ContactDossier,
-  type ContactQualityReviewDecisionRecord,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -52,7 +56,7 @@ import {
   type DraftTemplateRecord,
   type EmailEventRecord,
   type EmailOutboxRecord,
-  type EmailReceiptLinkRecord,
+  type EmailReceiptTokenRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type Firm,
@@ -178,7 +182,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private firms: Firm[];
   private users: User[];
   private contacts: Contact[];
-  private contactQualityReviewDecisions: ContactQualityReviewDecisionRecord[] = [];
+  private contactDataQualityResolutions: ContactDataQualityResolutionRecord[] = [];
   private matters: Matter[];
   private matterParties: MatterParty[];
   private documents: DocumentRecord[];
@@ -193,10 +197,10 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private portalGrants: PortalGrant[];
   private externalUploadLinks: ExternalUploadLinkRecord[] = [];
   private savedOperationalViewDefinitions: SavedOperationalViewDefinition[] = [];
-  private billingRatePresets: BillingRatePresetRecord[] = [];
-  private billingPeriodLocks: BillingPeriodLockRecord[] = [];
   private timeEntries: TimeEntry[];
   private expenseEntries: ExpenseEntry[];
+  private billingPeriodLocks: BillingPeriodLockRecord[] = [];
+  private billingRateRules: BillingRateRuleRecord[] = [];
   private invoices: InvoiceRecord[];
   private invoiceLines: InvoiceLineRecord[];
   private manualPayments: ManualPaymentRecord[];
@@ -228,7 +232,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private jobLifecycleRecords: JobLifecycleRecord[] = [];
   private emailOutbox: EmailOutboxRecord[] = [];
   private emailEvents: EmailEventRecord[] = [];
-  private emailReceiptLinks: EmailReceiptLinkRecord[] = [];
+  private emailReceiptTokens: EmailReceiptTokenRecord[] = [];
   private authAccounts: AuthAccountRecord[] = [];
   private authSessions: AuthSessionRecord[] = [];
   private calendarCredentials: CalendarCredentialRecord[] = [];
@@ -737,52 +741,37 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     );
   }
 
-  async createEmailReceiptLink(link: EmailReceiptLinkRecord): Promise<EmailReceiptLinkRecord> {
-    if (this.emailReceiptLinks.some((candidate) => candidate.tokenHash === link.tokenHash)) {
-      throw new Error("Email receipt token hash already exists");
-    }
-    this.emailReceiptLinks.push(clone(link));
-    return clone(link);
-  }
-
-  async listEmailReceiptLinks(
-    firmId: string,
-    options: { emailId?: string; matterId?: string } = {},
-  ): Promise<EmailReceiptLinkRecord[]> {
+  async getEmailOutboxByReceiptTokenHash(
+    receiptTokenHash: string,
+  ): Promise<EmailOutboxRecord | undefined> {
+    const token = this.emailReceiptTokens.find(
+      (candidate) => candidate.tokenHash === receiptTokenHash,
+    );
+    if (!token) return undefined;
     return clone(
-      this.emailReceiptLinks.filter(
-        (link) =>
-          link.firmId === firmId &&
-          (!options.emailId || link.emailId === options.emailId) &&
-          (!options.matterId || link.matterId === options.matterId),
-      ),
+      this.emailOutbox.find((email) => email.firmId === token.firmId && email.id === token.emailId),
     );
   }
 
-  async getEmailReceiptLinkByTokenHash(
-    tokenHash: string,
-  ): Promise<EmailReceiptLinkRecord | undefined> {
-    return clone(this.emailReceiptLinks.find((link) => link.tokenHash === tokenHash));
-  }
-
-  async recordEmailReceiptLinkAccess(input: {
+  async recordEmailDeliveryReceipt(input: {
     firmId: string;
-    id: string;
+    emailId: string;
+    receiptTokenHash: string;
     recordedAt: string;
-  }): Promise<EmailReceiptLinkRecord | undefined> {
-    const index = this.emailReceiptLinks.findIndex(
-      (link) => link.firmId === input.firmId && link.id === input.id,
-    );
-    if (index === -1) return undefined;
-    const existing = this.emailReceiptLinks[index]!;
-    const updated: EmailReceiptLinkRecord = {
-      ...existing,
-      firstRecordedAt: existing.firstRecordedAt ?? input.recordedAt,
-      lastRecordedAt: input.recordedAt,
-      recordCount: existing.recordCount + 1,
-    };
-    this.emailReceiptLinks[index] = clone(updated);
-    return clone(updated);
+  }): Promise<{ email: EmailOutboxRecord; recorded: boolean }> {
+    const token = await this.recordEmailReceiptToken({
+      tokenHash: input.receiptTokenHash,
+      recordedAt: input.recordedAt,
+    });
+    if (token) {
+      if (token.firmId !== input.firmId || token.emailId !== input.emailId) {
+        throw new Error(`Email outbox receipt ${input.emailId} was not found`);
+      }
+      const email = await this.getEmailOutbox(token.firmId, token.emailId);
+      if (!email) throw new Error(`Email outbox record ${token.emailId} was not found`);
+      return { email, recorded: token.recordedAt === input.recordedAt };
+    }
+    throw new Error(`Email outbox receipt ${input.emailId} was not found`);
   }
 
   async recordEmailDeliveryResult(input: {
@@ -937,6 +926,69 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
             event.firmId === firmId && (!options.emailId || event.emailId === options.emailId),
         )
         .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt)),
+    );
+  }
+
+  async createEmailReceiptToken(token: EmailReceiptTokenRecord): Promise<EmailReceiptTokenRecord> {
+    const email = this.emailOutbox.find(
+      (candidate) => candidate.firmId === token.firmId && candidate.id === token.emailId,
+    );
+    if (!email) throw new Error("Email receipt token email was not found");
+    if (email.matterId !== token.matterId) {
+      throw new Error("Email receipt token matter must match the email outbox matter");
+    }
+    this.emailReceiptTokens = [...this.emailReceiptTokens, clone(token)];
+    return clone(token);
+  }
+
+  async getEmailReceiptTokenByHash(
+    tokenHash: string,
+  ): Promise<EmailReceiptTokenRecord | undefined> {
+    return clone(this.emailReceiptTokens.find((token) => token.tokenHash === tokenHash));
+  }
+
+  async recordEmailReceiptToken(input: {
+    tokenHash: string;
+    recordedAt: string;
+  }): Promise<EmailReceiptTokenRecord | undefined> {
+    const index = this.emailReceiptTokens.findIndex((token) => token.tokenHash === input.tokenHash);
+    if (index === -1) return undefined;
+    const existing = this.emailReceiptTokens[index]!;
+    if (existing.recordedAt) return clone(existing);
+    const updated: EmailReceiptTokenRecord = {
+      ...existing,
+      recordedAt: input.recordedAt,
+    };
+    this.emailReceiptTokens[index] = clone(updated);
+    this.emailEvents.push({
+      id: crypto.randomUUID(),
+      firmId: updated.firmId,
+      emailId: updated.emailId,
+      eventType: "receipt_recorded",
+      occurredAt: input.recordedAt,
+      source: "api",
+      metadata: {
+        receiptTokenId: updated.id,
+        matterId: updated.matterId,
+        purpose: updated.purpose,
+      },
+    });
+    return clone(updated);
+  }
+
+  async listEmailReceiptTokens(
+    firmId: string,
+    options: { emailId?: string; matterId?: string } = {},
+  ): Promise<EmailReceiptTokenRecord[]> {
+    return clone(
+      this.emailReceiptTokens
+        .filter(
+          (token) =>
+            token.firmId === firmId &&
+            (!options.emailId || token.emailId === options.emailId) &&
+            (!options.matterId || token.matterId === options.matterId),
+        )
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
     );
   }
 
@@ -1288,41 +1340,52 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     });
   }
 
-  async listContactQualityReviewDecisionsForUser(
-    user: User,
-  ): Promise<ContactQualityReviewDecisionRecord[]> {
-    const dossiers = await this.listContactDossiersForUser(user);
-    const visibleContactIds = new Set(dossiers.map((dossier) => dossier.contact.id));
-    const visibleMatterIds = new Set(
-      dossiers.flatMap((dossier) => dossier.matters.map((matter) => matter.matterId)),
-    );
-
-    return clone(
-      this.contactQualityReviewDecisions
-        .filter(
-          (decision) =>
-            decision.firmId === user.firmId &&
-            visibleContactIds.has(decision.contactId) &&
-            (!decision.matterId || visibleMatterIds.has(decision.matterId)),
-        )
-        .sort((left, right) => right.decidedAt.localeCompare(left.decidedAt)),
-    );
-  }
-
-  async createContactQualityReviewDecision(
-    record: ContactQualityReviewDecisionRecord,
-  ): Promise<ContactQualityReviewDecisionRecord> {
-    const validated = validateContactQualityReviewDecisionRecord(record);
-    if (this.contactQualityReviewDecisions.some((decision) => decision.id === validated.id)) {
-      throw new Error("Contact quality review decision already exists");
-    }
-    this.contactQualityReviewDecisions = [...this.contactQualityReviewDecisions, clone(validated)];
-    return clone(validated);
-  }
-
   async getContact(firmId: string, contactId: string): Promise<Contact | undefined> {
     return clone(
       this.contacts.find((contact) => contact.firmId === firmId && contact.id === contactId),
+    );
+  }
+
+  async createContactDataQualityResolution(
+    resolution: ContactDataQualityResolutionRecord,
+  ): Promise<ContactDataQualityResolutionRecord> {
+    const contact = this.contacts.find(
+      (candidate) =>
+        candidate.firmId === resolution.firmId && candidate.id === resolution.contactId,
+    );
+    if (!contact) throw new Error("Contact quality resolution contact was not found");
+    if (resolution.matterId) {
+      const matter = this.matters.find(
+        (candidate) =>
+          candidate.firmId === resolution.firmId && candidate.id === resolution.matterId,
+      );
+      if (!matter) throw new Error("Contact quality resolution matter was not found");
+    }
+    if (resolution.relatedContactId) {
+      const related = this.contacts.find(
+        (candidate) =>
+          candidate.firmId === resolution.firmId && candidate.id === resolution.relatedContactId,
+      );
+      if (!related) throw new Error("Related contact was not found");
+    }
+    validateContactDataQualityResolutionRecord(resolution);
+    this.contactDataQualityResolutions = [...this.contactDataQualityResolutions, clone(resolution)];
+    return clone(resolution);
+  }
+
+  async listContactDataQualityResolutions(
+    firmId: string,
+    options: { contactId?: string; matterId?: string } = {},
+  ): Promise<ContactDataQualityResolutionRecord[]> {
+    return clone(
+      this.contactDataQualityResolutions
+        .filter(
+          (resolution) =>
+            resolution.firmId === firmId &&
+            (!options.contactId || resolution.contactId === options.contactId) &&
+            (!options.matterId || resolution.matterId === options.matterId),
+        )
+        .sort((left, right) => Date.parse(right.recordedAt) - Date.parse(left.recordedAt)),
     );
   }
 
@@ -3140,82 +3203,6 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     );
   }
 
-  async createBillingRatePreset(preset: BillingRatePresetRecord): Promise<BillingRatePresetRecord> {
-    this.billingRatePresets = [...this.billingRatePresets, clone(preset)];
-    return clone(preset);
-  }
-
-  async listBillingRatePresets(
-    firmId: string,
-    options: { matterId?: string; userId?: string } = {},
-  ): Promise<BillingRatePresetRecord[]> {
-    return clone(
-      this.billingRatePresets
-        .filter(
-          (preset) =>
-            preset.firmId === firmId &&
-            (!options.matterId || preset.matterId === options.matterId) &&
-            (!options.userId || preset.userId === options.userId),
-        )
-        .sort((left, right) => Date.parse(left.effectiveFrom) - Date.parse(right.effectiveFrom)),
-    );
-  }
-
-  async getBillingRatePreset(
-    firmId: string,
-    presetId: string,
-  ): Promise<BillingRatePresetRecord | undefined> {
-    return clone(
-      this.billingRatePresets.find((preset) => preset.firmId === firmId && preset.id === presetId),
-    );
-  }
-
-  async createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord> {
-    this.billingPeriodLocks = [...this.billingPeriodLocks, clone(lock)];
-    return clone(lock);
-  }
-
-  async listBillingPeriodLocks(
-    firmId: string,
-    options: { matterId?: string; status?: BillingPeriodLockRecord["status"] } = {},
-  ): Promise<BillingPeriodLockRecord[]> {
-    return clone(
-      this.billingPeriodLocks
-        .filter(
-          (lock) =>
-            lock.firmId === firmId &&
-            (!options.matterId || lock.matterId === options.matterId || !lock.matterId) &&
-            (!options.status || lock.status === options.status),
-        )
-        .sort((left, right) => left.startsOn.localeCompare(right.startsOn)),
-    );
-  }
-
-  async getBillingPeriodLock(
-    firmId: string,
-    lockId: string,
-  ): Promise<BillingPeriodLockRecord | undefined> {
-    return clone(
-      this.billingPeriodLocks.find((lock) => lock.firmId === firmId && lock.id === lockId),
-    );
-  }
-
-  async updateBillingPeriodLock(
-    firmId: string,
-    lockId: string,
-    updates: Partial<BillingPeriodLockRecord>,
-  ): Promise<BillingPeriodLockRecord> {
-    const index = this.billingPeriodLocks.findIndex(
-      (lock) => lock.firmId === firmId && lock.id === lockId,
-    );
-    if (index === -1) throw new Error("Billing period lock was not found");
-    const updated = { ...this.billingPeriodLocks[index]!, ...updates };
-    this.billingPeriodLocks = this.billingPeriodLocks.map((lock, candidateIndex) =>
-      candidateIndex === index ? updated : lock,
-    );
-    return clone(updated);
-  }
-
   async listTimeEntries(
     firmId: string,
     options: { matterId?: string; status?: TimeEntry["billingStatus"] } = {},
@@ -3294,6 +3281,51 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       candidateIndex === index ? updated : entry,
     );
     return clone(updated);
+  }
+
+  async listBillingPeriodLocks(firmId: string): Promise<BillingPeriodLockRecord[]> {
+    return clone(
+      this.billingPeriodLocks
+        .filter((lock) => lock.firmId === firmId)
+        .sort((left, right) => left.periodStart.localeCompare(right.periodStart)),
+    );
+  }
+
+  async createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord> {
+    validateBillingPeriodLock(lock);
+    const overlaps = this.billingPeriodLocks.some((candidate) =>
+      billingPeriodLocksOverlap(candidate, lock),
+    );
+    if (overlaps) throw new Error("Billing period lock overlaps an existing lock");
+    this.billingPeriodLocks = [...this.billingPeriodLocks, clone(lock)];
+    return clone(lock);
+  }
+
+  async listBillingRateRules(
+    firmId: string,
+    options: { activeOnly?: boolean; matterId?: string; userId?: string } = {},
+  ): Promise<BillingRateRuleRecord[]> {
+    return clone(
+      this.billingRateRules
+        .filter(
+          (rule) =>
+            rule.firmId === firmId &&
+            (!options.activeOnly || rule.active) &&
+            (!options.matterId || !rule.matterId || rule.matterId === options.matterId) &&
+            (!options.userId || !rule.userId || rule.userId === options.userId),
+        )
+        .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom)),
+    );
+  }
+
+  async createBillingRateRule(rule: BillingRateRuleRecord): Promise<BillingRateRuleRecord> {
+    validateBillingRateRule(rule);
+    const overlaps = this.billingRateRules.some((candidate) =>
+      billingRateRulesOverlapAtSameActiveScope(candidate, rule),
+    );
+    if (overlaps) throw new Error("Billing rate rule overlaps an active rule at the same scope");
+    this.billingRateRules = [...this.billingRateRules, clone(rule)];
+    return clone(rule);
   }
 
   async listInvoices(

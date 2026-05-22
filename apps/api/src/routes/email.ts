@@ -1,12 +1,11 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   sanitizeDraftHtml,
   type AccessRequest,
   type EmailEventRecord,
   type EmailOutboxRecord,
-  type EmailReceiptLinkPurpose,
-  type EmailReceiptLinkRecord,
+  type EmailReceiptTokenRecord,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { createSessionToken, hashToken } from "../http/auth-helpers.js";
@@ -25,6 +24,8 @@ import {
 } from "./idempotency.js";
 import {
   EMAIL_JOB_MAX_ATTEMPTS,
+  emailDeliveryReceiptStatus,
+  emailReceiptTokenStatus,
   enqueueFailureError,
   markJobEnqueueFailed,
   queueRouteEmailOutbox,
@@ -81,37 +82,20 @@ const emailRetryParamsSchema = z.object({
   emailId: z.string().min(1),
 });
 
-const emailReceiptLinkParamsSchema = z.object({
-  emailId: z.string().min(1),
-});
-
-const emailReceiptTokenParamsSchema = z.object({
+const publicReceiptParamsSchema = z.object({
   token: z.string().min(32),
 });
-
-const emailReceiptLinkPurposeSchema = z.enum([
-  "delivery_receipt",
-  "read_receipt",
-  "client_acknowledgement",
-]);
-
-const emailReceiptLinkBodySchema = z.preprocess(
-  (value) => value ?? {},
-  z.object({
-    purpose: emailReceiptLinkPurposeSchema.default("delivery_receipt"),
-    expiresAt: z.string().datetime().optional(),
-    metadata: z
-      .object({
-        correlationId: z.string().min(1).max(128).optional(),
-      })
-      .default({}),
-  }),
-);
 
 const emailRetryBodySchema = z.object({
   matterId: z.string().min(1).optional(),
   idempotencyKey: z.string().min(8).max(180).optional(),
   deliveryConfirmation: deliveryConfirmationSchema.optional(),
+});
+
+const deliveryReceiptRequestSchema = z.object({
+  requested: z.boolean().default(true),
+  expiresAt: z.string().datetime().optional(),
+  includeInBody: z.boolean().default(true),
 });
 
 const emailOutboxBodySchema = z
@@ -129,6 +113,8 @@ const emailOutboxBodySchema = z
     relatedResourceId: z.string().min(1).optional(),
     idempotencyKey: z.string().min(8).max(180).optional(),
     deliveryConfirmation: deliveryConfirmationSchema.optional(),
+    deliveryReceipt: deliveryReceiptRequestSchema.optional(),
+    receipt: deliveryReceiptRequestSchema.optional(),
     metadata: z
       .object({
         correlationId: z.string().min(1).max(128).optional(),
@@ -140,10 +126,6 @@ const emailOutboxBodySchema = z
     message: "Either htmlBody or textBody is required",
   });
 
-type RegisterEmailRouteOptions = ApiRouteDependencies & {
-  jwtSecret?: string;
-};
-
 function emailMatterId(email: EmailOutboxRecord): string | undefined {
   return (
     email.matterId ||
@@ -152,6 +134,10 @@ function emailMatterId(email: EmailOutboxRecord): string | undefined {
 }
 
 type RelatedResourceType = z.infer<typeof relatedResourceTypeSchema>;
+type RegisterEmailRouteOptions = ApiRouteDependencies & {
+  jwtSecret?: string;
+  publicWebBaseUrl?: string;
+};
 
 function sanitizeDeliveryFailureSummary(message: string | undefined): string | undefined {
   if (!message) return undefined;
@@ -215,7 +201,11 @@ function serializeDeliveryEvent(event: EmailEventRecord): Record<string, unknown
   };
 }
 
-function serializeDeliveryHistory(email: EmailOutboxRecord, events: EmailEventRecord[]) {
+function serializeDeliveryHistory(
+  email: EmailOutboxRecord,
+  events: EmailEventRecord[],
+  receiptToken?: Parameters<typeof emailDeliveryReceiptStatus>[1],
+) {
   const latestFailure = [...events].reverse().find((event) => event.eventType === "failed");
   return {
     id: email.id,
@@ -234,58 +224,9 @@ function serializeDeliveryHistory(email: EmailOutboxRecord, events: EmailEventRe
     failureSummary:
       sanitizeDeliveryFailureSummary(email.terminalFailureReason) ??
       sanitizeDeliveryFailureSummary(latestFailure?.errorMessage),
+    deliveryReceipt: emailDeliveryReceiptStatus(email, receiptToken),
     events: events.map(serializeDeliveryEvent),
   };
-}
-
-function requireEmailReceiptSecret(jwtSecret: string | undefined): string {
-  if (jwtSecret) return jwtSecret;
-  throw new ApiHttpError(
-    503,
-    "EMAIL_RECEIPT_TOKEN_SIGNING_NOT_CONFIGURED",
-    "Email receipt token signing is not configured",
-  );
-}
-
-function defaultReceiptExpiry(now: Date): string {
-  return new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
-}
-
-function sanitizeEmailReceiptLink(link: EmailReceiptLinkRecord) {
-  return {
-    id: link.id,
-    matterId: link.matterId,
-    emailId: link.emailId,
-    purpose: link.purpose,
-    createdByUserId: link.createdByUserId,
-    createdAt: link.createdAt,
-    expiresAt: link.expiresAt,
-    revokedAt: link.revokedAt,
-    firstRecordedAt: link.firstRecordedAt,
-    lastRecordedAt: link.lastRecordedAt,
-    recordCount: link.recordCount,
-    metadata: link.metadata,
-  };
-}
-
-function publicEmailReceiptResponse(
-  link: EmailReceiptLinkRecord,
-  status: "available" | "acknowledged",
-) {
-  return {
-    receipt: {
-      status,
-      purpose: link.purpose,
-      expiresAt: link.expiresAt,
-      acknowledgedAt: status === "acknowledged" ? link.lastRecordedAt : undefined,
-    },
-  };
-}
-
-function assertPublicReceiptAvailable(link: EmailReceiptLinkRecord, now: string): void {
-  if (link.revokedAt || (link.expiresAt && Date.parse(link.expiresAt) <= Date.parse(now))) {
-    throw new ApiHttpError(404, "EMAIL_RECEIPT_NOT_FOUND", "Email receipt link was not found");
-  }
 }
 
 function assertEmailAccess(
@@ -378,9 +319,91 @@ async function assertRelatedResourceMatchesMatter(
   }
 }
 
+function requireReceiptSecret(jwtSecret: string | undefined): string {
+  if (jwtSecret) return jwtSecret;
+  throw new ApiHttpError(
+    503,
+    "EMAIL_RECEIPT_TOKEN_SIGNING_NOT_CONFIGURED",
+    "Email receipt token signing is not configured",
+  );
+}
+
+function buildReceiptRecordUrl(publicWebBaseUrl: string | undefined, token: string): string {
+  const baseUrl = (publicWebBaseUrl ?? "http://localhost:3000").replace(/\/+$/, "");
+  return `${baseUrl}/api/portal/email-receipts/${encodeURIComponent(token)}`;
+}
+
+function buildDeliveryReceiptPayload(input: {
+  receipt: z.infer<typeof deliveryReceiptRequestSchema> | undefined;
+  jwtSecret: string | undefined;
+  publicWebBaseUrl: string | undefined;
+}):
+  | {
+      tokenHash: string;
+      requestedAt: string;
+      expiresAt: string;
+      recordUrl: string;
+      includeInBody: boolean;
+    }
+  | undefined {
+  if (!input.receipt?.requested) return undefined;
+  const secret = requireReceiptSecret(input.jwtSecret);
+  const token = createSessionToken();
+  const requestedAt = new Date();
+  const expiresAt =
+    input.receipt.expiresAt ??
+    new Date(requestedAt.getTime() + 1000 * 60 * 60 * 24 * 30).toISOString();
+  return {
+    tokenHash: hashToken(token, secret),
+    requestedAt: requestedAt.toISOString(),
+    expiresAt,
+    recordUrl: buildReceiptRecordUrl(input.publicWebBaseUrl, token),
+    includeInBody: input.receipt.includeInBody,
+  };
+}
+
+function escapeReceiptPageHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function buildReceiptActionPath(routeUrl: string | undefined, token: string): string {
+  const basePath = routeUrl?.includes("/api/portal/mail/receipts/")
+    ? "/api/portal/mail/receipts"
+    : "/api/portal/email-receipts";
+  return `${basePath}/${encodeURIComponent(token)}`;
+}
+
+function renderReceiptConfirmationPage(input: { actionPath: string; alreadyRecorded: boolean }) {
+  const actionPath = escapeReceiptPageHtml(input.actionPath);
+  const message = input.alreadyRecorded
+    ? "This email receipt has already been confirmed."
+    : "Confirm that this email was received.";
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Email Receipt Confirmation</title>
+  </head>
+  <body>
+    <main>
+      <h1>Email Receipt Confirmation</h1>
+      <p>${message}</p>
+      <form method="post" action="${actionPath}" autocomplete="off">
+        <button type="submit">Confirm Receipt</button>
+      </form>
+    </main>
+  </body>
+</html>`;
+}
+
 export function registerEmailRoutes(
   server: FastifyInstance,
-  { repository, emailJobQueue, jwtSecret }: RegisterEmailRouteOptions,
+  { repository, emailJobQueue, jwtSecret, publicWebBaseUrl }: RegisterEmailRouteOptions,
 ): void {
   server.get("/api/email/status", async (request) => {
     return buildEmailStatus({ repository, firmId: request.auth.firmId });
@@ -407,10 +430,20 @@ export function registerEmailRoutes(
         );
       }),
     );
+    const receiptTokens = await repository.listEmailReceiptTokens(request.auth.firmId, {
+      matterId: query.matterId,
+    });
+    const receiptTokenByEmailId = new Map(
+      receiptTokens.map((receiptToken) => [receiptToken.emailId, receiptToken]),
+    );
 
     return {
       emails: emails.map((email) =>
-        serializeDeliveryHistory(email, eventsByEmailId.get(email.id) ?? []),
+        serializeDeliveryHistory(
+          email,
+          eventsByEmailId.get(email.id) ?? [],
+          receiptTokenByEmailId.get(email.id),
+        ),
       ),
     };
   });
@@ -481,6 +514,11 @@ export function registerEmailRoutes(
     requireEmailDeliveryConfirmation(body.deliveryConfirmation, {
       recipientCount: body.to.length + body.cc.length + body.bcc.length,
     });
+    const deliveryReceipt = buildDeliveryReceiptPayload({
+      receipt: body.receipt ?? body.deliveryReceipt,
+      jwtSecret,
+      publicWebBaseUrl,
+    });
 
     const queued = await queueRouteEmailOutbox(repository, emailJobQueue, request.auth, {
       matterId: body.matterId,
@@ -496,6 +534,7 @@ export function registerEmailRoutes(
       relatedResourceId: body.relatedResourceId,
       idempotencyKey: body.idempotencyKey,
       metadata: body.metadata,
+      deliveryReceipt,
       source: "api.mail_outbox",
       required: true,
     });
@@ -514,6 +553,7 @@ export function registerEmailRoutes(
         attemptCount: queued.email.attemptCount,
         queuedAt: queued.email.queuedAt,
         idempotencyKeyPresent: Boolean(queued.email.idempotencyKey),
+        deliveryReceipt: emailDeliveryReceiptStatus(queued.email),
       },
       event: {
         id: queued.event.id,
@@ -532,109 +572,73 @@ export function registerEmailRoutes(
     };
   });
 
-  server.post("/api/mail/outbox/:emailId/receipt-links", async (request, reply) => {
-    const secret = requireEmailReceiptSecret(jwtSecret);
-    const params = parseRequestPart(emailReceiptLinkParamsSchema, request.params, "params");
-    const body = parseRequestPart(emailReceiptLinkBodySchema, request.body, "body");
-    const email = await repository.getEmailOutbox(request.auth.firmId, params.emailId);
-    if (!email) {
-      throw new ApiHttpError(404, "EMAIL_OUTBOX_NOT_FOUND", "Email outbox record was not found");
+  const readReceiptToken = async (
+    request: FastifyRequest,
+  ): Promise<{
+    token: string;
+    tokenHash: string;
+    receiptToken: EmailReceiptTokenRecord;
+  }> => {
+    const secret = requireReceiptSecret(jwtSecret);
+    const params = parseRequestPart(publicReceiptParamsSchema, request.params, "params");
+    const tokenHash = hashToken(params.token, secret);
+    const receiptToken = await repository.getEmailReceiptTokenByHash(tokenHash);
+    if (!receiptToken) {
+      throw new ApiHttpError(404, "EMAIL_RECEIPT_NOT_FOUND", "Email receipt was not found");
     }
-    assertEmailAccess(request.auth, {
-      resource: "email",
-      action: "create",
-      matterId: email.matterId,
-    });
-
-    const now = new Date();
-    const expiresAt = body.expiresAt ?? defaultReceiptExpiry(now);
-    if (Date.parse(expiresAt) <= now.getTime()) {
-      throw new ApiHttpError(
-        400,
-        "EMAIL_RECEIPT_EXPIRED",
-        "Email receipt link expiry must be in the future",
-      );
+    if (Date.parse(receiptToken.expiresAt) <= Date.now()) {
+      throw new ApiHttpError(410, "EMAIL_RECEIPT_EXPIRED", "Email receipt has expired");
     }
+    return { token: params.token, tokenHash, receiptToken };
+  };
 
-    const token = createSessionToken();
-    const link = await repository.createEmailReceiptLink({
-      id: crypto.randomUUID(),
-      firmId: request.auth.firmId,
-      matterId: email.matterId,
-      emailId: email.id,
-      tokenHash: hashToken(token, secret),
-      purpose: body.purpose as EmailReceiptLinkPurpose,
-      createdByUserId: request.auth.user.id,
-      createdAt: now.toISOString(),
-      expiresAt,
-      recordCount: 0,
-      metadata: body.metadata,
+  const renderReceiptConfirmation = async (request: FastifyRequest, reply: FastifyReply) => {
+    reply.header("Cache-Control", "no-store");
+    reply.header("X-Robots-Tag", "noindex, nofollow");
+    const { token, receiptToken } = await readReceiptToken(request);
+    return reply.type("text/html; charset=utf-8").send(
+      renderReceiptConfirmationPage({
+        actionPath: buildReceiptActionPath(request.routeOptions.url, token),
+        alreadyRecorded: Boolean(receiptToken.recordedAt),
+      }),
+    );
+  };
+
+  const recordReceipt = async (request: FastifyRequest) => {
+    const { tokenHash, receiptToken } = await readReceiptToken(request);
+    const token = await repository.recordEmailReceiptToken({
+      tokenHash,
+      recordedAt: new Date().toISOString(),
     });
-
-    await appendWorkflowAuditEvent(repository, request.auth, {
-      action: "email_receipt_link.created",
-      resourceType: "email_receipt_link",
-      resourceId: link.id,
-      occurredAt: link.createdAt,
-      metadata: {
-        matterId: link.matterId,
-        emailId: link.emailId,
-        receiptLinkId: link.id,
-        purpose: link.purpose,
-        expiresAt: link.expiresAt,
-      },
-      workflow: {
-        requestId: request.id,
-        matterId: link.matterId,
-        matterIds: [link.matterId],
-        status: "succeeded",
-      },
-    });
-
-    reply.code(201);
+    const email = token ? await repository.getEmailOutbox(token.firmId, token.emailId) : undefined;
+    if (!token || !email) {
+      throw new ApiHttpError(404, "EMAIL_RECEIPT_NOT_FOUND", "Email receipt was not found");
+    }
     return {
-      receiptLink: sanitizeEmailReceiptLink(link),
-      token,
+      receipt: emailReceiptTokenStatus(token),
+      recorded: !receiptToken.recordedAt,
     };
-  });
+  };
 
+  server.get(
+    "/api/portal/email-receipts/:token",
+    publicTokenPolicyOptions("email-receipt", "view"),
+    renderReceiptConfirmation,
+  );
   server.get(
     "/api/portal/mail/receipts/:token",
     publicTokenPolicyOptions("email-receipt", "view"),
-    async (request) => {
-      const secret = requireEmailReceiptSecret(jwtSecret);
-      const params = parseRequestPart(emailReceiptTokenParamsSchema, request.params, "params");
-      const link = await repository.getEmailReceiptLinkByTokenHash(hashToken(params.token, secret));
-      if (!link) {
-        throw new ApiHttpError(404, "EMAIL_RECEIPT_NOT_FOUND", "Email receipt link was not found");
-      }
-      assertPublicReceiptAvailable(link, new Date().toISOString());
-      return publicEmailReceiptResponse(link, "available");
-    },
+    renderReceiptConfirmation,
   );
-
   server.post(
-    "/api/portal/mail/receipts/:token/acknowledge",
+    "/api/portal/email-receipts/:token",
     publicTokenPolicyOptions("email-receipt", "mutation"),
-    async (request) => {
-      const secret = requireEmailReceiptSecret(jwtSecret);
-      const params = parseRequestPart(emailReceiptTokenParamsSchema, request.params, "params");
-      const link = await repository.getEmailReceiptLinkByTokenHash(hashToken(params.token, secret));
-      if (!link) {
-        throw new ApiHttpError(404, "EMAIL_RECEIPT_NOT_FOUND", "Email receipt link was not found");
-      }
-      const now = new Date().toISOString();
-      assertPublicReceiptAvailable(link, now);
-      const recorded = await repository.recordEmailReceiptLinkAccess({
-        firmId: link.firmId,
-        id: link.id,
-        recordedAt: now,
-      });
-      if (!recorded) {
-        throw new ApiHttpError(404, "EMAIL_RECEIPT_NOT_FOUND", "Email receipt link was not found");
-      }
-      return publicEmailReceiptResponse(recorded, "acknowledged");
-    },
+    recordReceipt,
+  );
+  server.post(
+    "/api/portal/mail/receipts/:token",
+    publicTokenPolicyOptions("email-receipt", "mutation"),
+    recordReceipt,
   );
 
   server.post("/api/mail/outbox/:emailId/retry", async (request, reply) => {
@@ -799,6 +803,11 @@ export function registerEmailRoutes(
       email: serializeDeliveryHistory(
         retried.email,
         await repository.listEmailEvents(request.auth.firmId, { emailId: email.id }),
+        (
+          await repository.listEmailReceiptTokens(request.auth.firmId, {
+            emailId: email.id,
+          })
+        ).at(-1),
       ),
       event: serializeDeliveryEvent(retried.event),
       job: {

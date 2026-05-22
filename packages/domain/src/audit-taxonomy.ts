@@ -6,6 +6,7 @@ export type AuditEventCategory =
   | "billing"
   | "calendar"
   | "communications"
+  | "contacts"
   | "conflicts"
   | "contacts"
   | "documents"
@@ -589,6 +590,38 @@ export const auditEventTaxonomyDefinitions = [
     actorHint: "authenticated_user",
   }),
   define({
+    action: "billing_period_lock.created",
+    category: "billing",
+    resourceType: "billing_period_lock",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["billingPeriodLockId", "periodStart", "periodEnd", "reasonPresent"],
+  }),
+  define({
+    action: "billing_rate_rule.created",
+    category: "billing",
+    resourceType: "billing_rate_rule",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "billingRateRuleId",
+      "scope",
+      "matterId",
+      "userId",
+      "role",
+      "rateCents",
+      "active",
+    ],
+  }),
+  define({
+    action: "billing_export.requested",
+    category: "billing",
+    resourceType: "billing_export",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["jobId", "reportType", "reportScope", "idempotencyKeyPresent"],
+  }),
+  define({
     action: "manual_payment.created",
     category: "billing",
     resourceType: "manual_payment",
@@ -699,6 +732,21 @@ export const auditEventTaxonomyDefinitions = [
     actorMetadataKeys: ["actorId", "actorType"],
   }),
   define({
+    action: "jurisdictional_trust_export.requested",
+    category: "trust",
+    resourceType: "jurisdictional_trust_export",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    matterMetadataKeys: [],
+    resourceMetadataKeys: [
+      "jobId",
+      "reportType",
+      "reportScope",
+      "jurisdiction",
+      "idempotencyKeyPresent",
+    ],
+  }),
+  define({
     action: "ledger.transaction_approval.decided",
     category: "trust",
     resourceType: "ledger_transaction_approval",
@@ -726,6 +774,22 @@ export const auditEventTaxonomyDefinitions = [
       "accountId",
       "statementRowId",
       "varianceDecision",
+      "resolutionNotePresent",
+    ],
+  }),
+  define({
+    action: "contact.data_quality_resolution.recorded",
+    category: "contacts",
+    resourceType: "contact_data_quality_resolution",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    matterMetadataKeys: ["matterId"],
+    resourceMetadataKeys: [
+      "contactId",
+      "signalKind",
+      "decision",
+      "relatedContactPresent",
+      "sourceRecordPresent",
       "resolutionNotePresent",
     ],
   }),

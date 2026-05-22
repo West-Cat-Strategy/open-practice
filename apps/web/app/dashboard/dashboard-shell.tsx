@@ -11,7 +11,11 @@ import {
 } from "lucide-react";
 import type { ConflictCandidate } from "@open-practice/domain";
 import type { OpenPracticeSidebarNavigationSection } from "../../routes/routeCatalog";
-import { describeDisabledNavigationReason } from "../dashboard-utils";
+import {
+  describeDisabledNavigationReason,
+  type SavedMatterPresetDefinition,
+  type SavedMatterPresetFamily,
+} from "../dashboard-utils";
 import { focusItemToneClass, type OperationalFocusSummary } from "../operational-focus-panel";
 import {
   describeConflictResult,
@@ -24,7 +28,6 @@ import type {
   SavedOperationalViewDefinition,
   SessionResponse,
 } from "../types";
-import type { SavedMatterOperationalViewPreset } from "../dashboard-utils";
 
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 
@@ -198,15 +201,17 @@ export function MatterContextPanel({
   filteredMatters,
   formatSavedMatterViewDefinition,
   matterSearch,
+  matterPresetOptions,
   onArchiveSavedMatterView,
   onApplySavedMatterView,
   onMatterSearchChange,
+  onMatterPresetFamilyChange,
   onSelectMatter,
-  onSaveMatterPreset,
+  onSaveMatterView,
   savedMatterViewDefinitions,
-  savedMatterViewPresets,
   savedMatterViewStatus,
   savingMatterView,
+  selectedMatterPresetFamily,
 }: {
   activeMatter: MatterSummary;
   activeSavedMatterViewId?: string;
@@ -214,15 +219,17 @@ export function MatterContextPanel({
   filteredMatters: MatterSummary[];
   formatSavedMatterViewDefinition: (definition: SavedOperationalViewDefinition) => string;
   matterSearch: string;
+  matterPresetOptions: SavedMatterPresetDefinition[];
   onArchiveSavedMatterView: (definition: SavedOperationalViewDefinition) => void;
   onApplySavedMatterView: (definition: SavedOperationalViewDefinition) => void;
   onMatterSearchChange: (value: string) => void;
+  onMatterPresetFamilyChange: (family: SavedMatterPresetFamily) => void;
   onSelectMatter: (matterId: string) => void;
-  onSaveMatterPreset: (preset: SavedMatterOperationalViewPreset) => void;
+  onSaveMatterView: () => void;
   savedMatterViewDefinitions: SavedOperationalViewDefinition[];
-  savedMatterViewPresets: SavedMatterOperationalViewPreset[];
   savedMatterViewStatus: string;
   savingMatterView: boolean;
+  selectedMatterPresetFamily: SavedMatterPresetFamily;
 }) {
   return (
     <section
@@ -265,21 +272,33 @@ export function MatterContextPanel({
       </div>
       <div className="section-title">
         <h3>Saved matter views</h3>
-        <span className="row-actions" aria-label="Save matter view presets">
-          {savedMatterViewPresets.map((preset) => (
-            <button
-              aria-label={`Save ${preset.name}`}
-              className="secondary-button compact-button row-button"
-              disabled={savingMatterView}
-              key={preset.id}
-              onClick={() => onSaveMatterPreset(preset)}
-              type="button"
+        <div className="matter-view-preset-actions">
+          <label className="search-field compact matter-view-preset-select">
+            <span>Preset</span>
+            <select
+              aria-label="Saved matter view preset"
+              onChange={(event) =>
+                onMatterPresetFamilyChange(event.target.value as SavedMatterPresetFamily)
+              }
+              value={selectedMatterPresetFamily}
             >
-              <Save aria-hidden="true" size={16} />
-              {savingMatterView ? "Saving" : preset.saveLabel}
-            </button>
-          ))}
-        </span>
+              {matterPresetOptions.map((preset) => (
+                <option key={preset.family} value={preset.family}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="secondary-button compact-button row-button"
+            disabled={savingMatterView}
+            onClick={onSaveMatterView}
+            type="button"
+          >
+            <Save aria-hidden="true" size={16} />
+            {savingMatterView ? "Saving" : "Save view"}
+          </button>
+        </div>
       </div>
       <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
         {savedMatterViewStatus}

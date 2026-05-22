@@ -257,92 +257,161 @@ describe("operational view routes", () => {
     expect(otherUserList.json<SavedOperationalViewDefinitionsResponse>().definitions).toEqual([]);
   });
 
-  it("persists additional saved matter operational view presets through existing definitions", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
-    const ownerServer = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
-    const presetPayloads = [
+  it("accepts dashboard matter preset family filters for saved matter views", async () => {
+    const server = testServer({ repository: new InMemoryOpenPracticeRepository() });
+    const presets = [
       {
-        name: "Overdue filings 1",
-        filters: {
-          source: "dashboard-matters",
-          presetFamily: "overdue_filings",
-          operationalViewKeys: ["overdue_tasks_deadlines"],
-          statuses: ["intake", "open", "paused"],
-        },
-        sort: { dueAt: "asc", priority: "desc" },
-        permissionScope: ["matter:read", "calendar_event:read"],
+        family: "matter_risk_review",
+        name: "Matter risk review",
+        operationalViewKeys: ["conflicts_pending_review", "external_uploads_expiring"],
       },
       {
-        name: "Uncontacted intake clients 1",
-        filters: {
-          source: "dashboard-matters",
-          presetFamily: "uncontacted_intake_clients",
-          operationalViewKeys: ["uncontacted_clients"],
-          statuses: ["intake"],
-        },
-        sort: { priority: "desc", lastActivityAt: "asc" },
-        permissionScope: ["matter:read", "intake_session:read"],
-      },
-      {
-        name: "Expiring upload links 1",
-        filters: {
-          source: "dashboard-matters",
-          presetFamily: "expiring_upload_links",
-          operationalViewKeys: ["external_uploads_expiring"],
-          statuses: ["intake", "open", "paused"],
-        },
-        sort: { dueAt: "asc", priority: "desc" },
-        permissionScope: ["matter:read", "external_upload:read"],
+        family: "matter_action_required",
+        name: "Matter action required",
+        operationalViewKeys: ["awaiting_signature", "overdue_tasks_deadlines"],
       },
     ];
 
-    for (const payload of presetPayloads) {
-      const response = await ownerServer.inject({
+    for (const preset of presets) {
+      const response = await server.inject({
         method: "POST",
         url: "/api/operational-views/definitions",
         payload: {
           surface: "matters",
+          name: preset.name,
+          filters: {
+            source: "dashboard-matters",
+            presetFamily: preset.family,
+            operationalViewKeys: preset.operationalViewKeys,
+            statuses: ["intake", "open", "paused"],
+          },
           columns: ["number", "practiceArea", "status"],
+          sort: { priority: "desc", dueAt: "asc" },
           rowLimit: 12,
           dashboardBehavior: { pinToMatterContext: true },
-          ...payload,
+          permissionScope: ["matter:read"],
         },
       });
+
       expect(response.statusCode).toBe(200);
+      expect(
+        response.json<{
+          definition: SavedOperationalViewDefinitionsResponse["definitions"][number];
+        }>().definition,
+      ).toMatchObject({
+        surface: "matters",
+        name: preset.name,
+        filters: expect.objectContaining({
+          presetFamily: preset.family,
+          operationalViewKeys: preset.operationalViewKeys,
+        }),
+      });
     }
 
-    const listedMatterViews = await ownerServer.inject({
+    const listed = await server.inject({
       method: "GET",
       url: "/api/operational-views/definitions?surface=matters",
     });
 
-    expect(listedMatterViews.json<SavedOperationalViewDefinitionsResponse>().definitions).toEqual([
-      expect.objectContaining({
-        name: "Expiring upload links 1",
-        filters: expect.objectContaining({
-          presetFamily: "expiring_upload_links",
-          operationalViewKeys: ["external_uploads_expiring"],
+    expect(listed.json<SavedOperationalViewDefinitionsResponse>().definitions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Matter risk review",
+          filters: expect.objectContaining({ presetFamily: "matter_risk_review" }),
         }),
-        permissionScope: ["matter:read", "external_upload:read"],
-      }),
-      expect.objectContaining({
-        name: "Overdue filings 1",
-        filters: expect.objectContaining({
-          presetFamily: "overdue_filings",
-          operationalViewKeys: ["overdue_tasks_deadlines"],
+        expect.objectContaining({
+          name: "Matter action required",
+          filters: expect.objectContaining({ presetFamily: "matter_action_required" }),
         }),
-        permissionScope: ["matter:read", "calendar_event:read"],
-      }),
-      expect.objectContaining({
-        name: "Uncontacted intake clients 1",
-        filters: expect.objectContaining({
-          presetFamily: "uncontacted_intake_clients",
-          operationalViewKeys: ["uncontacted_clients"],
-          statuses: ["intake"],
-        }),
-        permissionScope: ["matter:read", "intake_session:read"],
-      }),
-    ]);
+      ]),
+    );
+  });
+
+  it("rejects invalid dashboard matter preset filters for saved matter view creation and patching", async () => {
+    const server = testServer({ repository: new InMemoryOpenPracticeRepository() });
+    const invalidFilters = [
+      { label: "missing", filters: { source: "dashboard-matters" } },
+      { label: "empty", filters: { source: "dashboard-matters", presetFamily: "" } },
+      {
+        label: "unsupported",
+        filters: { source: "dashboard-matters", presetFamily: "matter_everything" },
+      },
+    ];
+    const basePayload = {
+      surface: "matters",
+      name: "Matter preset",
+      columns: ["number", "practiceArea", "status"],
+      sort: { priority: "desc" },
+      rowLimit: 12,
+      dashboardBehavior: { pinToMatterContext: true },
+      permissionScope: ["matter:read"],
+    };
+
+    for (const invalid of invalidFilters) {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/operational-views/definitions",
+        payload: {
+          ...basePayload,
+          name: `Matter preset ${invalid.label}`,
+          filters: invalid.filters,
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        error: { code: "INVALID_MATTER_PRESET_FILTER" },
+      });
+    }
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/operational-views/definitions",
+      payload: {
+        ...basePayload,
+        name: "Matter follow-up",
+        filters: {
+          source: "dashboard-matters",
+          presetFamily: "matter_follow_up",
+          operationalViewKeys: ["stale_matters", "uncontacted_clients"],
+        },
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    const id = created.json<{ definition: { id: string } }>().definition.id;
+
+    const patchWithoutFilters = await server.inject({
+      method: "PATCH",
+      url: `/api/operational-views/definitions/${id}`,
+      payload: { name: "Matter follow-up renamed" },
+    });
+    expect(patchWithoutFilters.statusCode).toBe(200);
+
+    const allowedPatch = await server.inject({
+      method: "PATCH",
+      url: `/api/operational-views/definitions/${id}`,
+      payload: {
+        filters: {
+          source: "dashboard-matters",
+          presetFamily: "matter_action_required",
+          operationalViewKeys: ["awaiting_signature", "overdue_tasks_deadlines"],
+        },
+      },
+    });
+    expect(allowedPatch.statusCode).toBe(200);
+
+    for (const invalid of invalidFilters) {
+      const response = await server.inject({
+        method: "PATCH",
+        url: `/api/operational-views/definitions/${id}`,
+        payload: { filters: invalid.filters },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        error: { code: "INVALID_MATTER_PRESET_FILTER" },
+      });
+    }
   });
 
   it("updates and archives saved operational view definitions without showing archived rows by default", async () => {

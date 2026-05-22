@@ -74,6 +74,7 @@ import type {
   ConnectorOperationsResponse,
   ConnectorOutboxResponse,
   ConnectorsResponse,
+  ContactDataQualityResolutionsResponse,
   ContactDossiersResponse,
   ContactReviewQueueResponse,
   DocumentProcessingDashboardResponse,
@@ -257,6 +258,8 @@ function buildBillingFallback(
         userId: entry.userId,
         minutes: entry.minutes,
         rateCents: entry.rateCents,
+        rateRuleId: entry.rateRuleId,
+        rateSnapshot: entry.rateSnapshot,
         amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
         narrative: entry.narrative,
         status: "approved" as const,
@@ -297,7 +300,12 @@ function buildBillingFallback(
       ),
       draftInvoiceCents: 0,
       issuedBalanceDueCents: 0,
+      lockedPeriodCount: 0,
+      activeLockedPeriodCount: 0,
+      activeRateRuleCount: 0,
     },
+    periodLocks: [],
+    rateRules: [],
     matters: billingMatters,
   };
 }
@@ -373,6 +381,12 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       },
       items: [],
     },
+  );
+  const contactDataQualityResolutions = await apiGetOptional<ContactDataQualityResolutionsResponse>(
+    "/api/contacts/data-quality-resolutions",
+    [],
+    headers,
+    [],
   );
   const billingFallback = buildBillingFallback(matters, session);
   const taskWorkbench = await apiGetOptional<TaskDeadlineWorkbenchResponse>(
@@ -645,6 +659,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       capabilities={capabilities}
       communicationsInbox={communicationsInbox}
       connectorOperations={connectorOperations}
+      contactDataQualityResolutions={contactDataQualityResolutions}
       contactDossiers={contactDossiers}
       contactReviewQueue={contactReviewQueue}
       devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}

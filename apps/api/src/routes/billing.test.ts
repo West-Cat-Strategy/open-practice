@@ -4,17 +4,7 @@ import { createApiServer } from "../server.js";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
-
-function fakeReportQueue(
-  jobs: Array<{ name: string; data: unknown; jobId?: string }> = [],
-): NonNullable<CreateServerOptions["reportJobQueue"]> {
-  return {
-    async add(name, data, options) {
-      jobs.push({ name, data, jobId: options?.jobId });
-      return { id: options?.jobId ?? "report-job" };
-    },
-  };
-}
+type QueuedReportJob = { name: string; data: unknown; jobId?: string };
 
 function testServer(overrides: Partial<CreateServerOptions> = {}) {
   const repository = overrides.repository ?? new InMemoryOpenPracticeRepository();
@@ -39,6 +29,17 @@ afterEach(async () => {
 
 async function auditEvents(repository: InMemoryOpenPracticeRepository) {
   return (await repository.listAuditEvents("firm-west-legal")).events;
+}
+
+function fakeReportQueue(
+  jobs: QueuedReportJob[] = [],
+): NonNullable<CreateServerOptions["reportJobQueue"]> {
+  return {
+    async add(name, data, options) {
+      jobs.push({ name, data, jobId: options?.jobId });
+      return { id: options?.jobId ?? "report-job" };
+    },
+  };
 }
 
 type SyntheticLedgerOptions = {
@@ -182,6 +183,39 @@ describe("billing routes", () => {
     });
   });
 
+  it("denies non-billing roles from billing period-lock and rate-rule controls", async () => {
+    const headers = {
+      "x-open-practice-user-id": "user-staff",
+      "x-open-practice-firm-id": "firm-west-legal",
+    };
+    const server = testServer();
+
+    for (const request of [
+      { method: "GET", url: "/api/billing/period-locks" },
+      {
+        method: "POST",
+        url: "/api/billing/period-locks",
+        payload: {
+          periodStart: "2026-04-01T00:00:00.000Z",
+          periodEnd: "2026-05-01T00:00:00.000Z",
+        },
+      },
+      { method: "GET", url: "/api/billing/rate-rules" },
+      {
+        method: "POST",
+        url: "/api/billing/rate-rules",
+        payload: {
+          label: "Synthetic denied rate",
+          rateCents: 18000,
+        },
+      },
+    ] as const) {
+      const response = await server.inject({ ...request, headers });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ message: "Trust ledger access required" });
+    }
+  });
+
   it("returns the direct payload shape for successful migrated routes", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const response = await testServer({ repository }).inject({
@@ -228,226 +262,280 @@ describe("billing routes", () => {
     });
   });
 
-  it("applies rate presets as immutable time-entry snapshots and enforces period locks", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
-    const server = testServer({ repository });
+  it("resolves rate rules when rate cents are omitted and preserves manual override snapshots", async () => {
+    const server = testServer();
 
-    const preset = await server.inject({
+    const rule = await server.inject({
       method: "POST",
-      url: "/api/billing/rate-presets",
+      url: "/api/billing/rate-rules",
       payload: {
-        id: "rate-preset-route-test",
+        id: "billing-rate-matter-user",
+        label: "Synthetic matter user rate",
         matterId: "matter-001",
-        userId: "user-admin",
-        label: "Synthetic hearing rate",
-        rateCents: 22500,
-        effectiveFrom: "2026-05-01T00:00:00.000Z",
-        metadata: { test: "rate-snapshot" },
+        userId: "user-licensee",
+        rateCents: 21000,
+        effectiveFrom: "2026-04-01T00:00:00.000Z",
       },
     });
-    expect(preset.statusCode).toBe(200);
+    expect(rule.statusCode).toBe(200);
+    expect(rule.json()).toMatchObject({
+      id: "billing-rate-matter-user",
+      scope: "matter_user",
+      rateCents: 21000,
+    });
 
-    const presetTime = await server.inject({
+    const resolved = await server.inject({
       method: "POST",
       url: "/api/time-entries",
       payload: {
-        id: "time-rate-preset-route-test",
+        id: "time-rate-rule-resolution",
         matterId: "matter-001",
-        performedAt: "2026-05-10T16:00:00.000Z",
+        userId: "user-licensee",
+        performedAt: "2026-04-15T16:00:00.000Z",
         minutes: 60,
-        ratePresetId: "rate-preset-route-test",
-        narrative: "Synthetic rate preset time entry.",
-      },
-    });
-    expect(presetTime.statusCode).toBe(200);
-    expect(presetTime.json()).toMatchObject({
-      id: "time-rate-preset-route-test",
-      rateCents: 22500,
-    });
-    const submittedLockedTime = await server.inject({
-      method: "POST",
-      url: "/api/time-entries",
-      payload: {
-        id: "time-submitted-locked-transition-test",
-        matterId: "matter-001",
-        performedAt: "2026-05-11T16:00:00.000Z",
-        minutes: 30,
-        rateCents: 22500,
-        narrative: "Synthetic locked submitted time entry.",
-        billingStatus: "submitted",
-      },
-    });
-    expect(submittedLockedTime.statusCode).toBe(200);
-    const approvedLockedExpense = await server.inject({
-      method: "POST",
-      url: "/api/expense-entries",
-      payload: {
-        id: "expense-approved-locked-transition-test",
-        matterId: "matter-001",
-        incurredAt: "2026-05-11T16:00:00.000Z",
-        amountCents: 4500,
-        category: "Filing",
-        description: "Synthetic locked approved expense.",
+        narrative: "Synthetic rate-rule resolved work.",
         billingStatus: "approved",
       },
     });
-    expect(approvedLockedExpense.statusCode).toBe(200);
+    expect(resolved.statusCode).toBe(200);
+    expect(resolved.json()).toMatchObject({
+      id: "time-rate-rule-resolution",
+      rateCents: 21000,
+      rateRuleId: "billing-rate-matter-user",
+      rateSnapshot: expect.objectContaining({
+        source: "rate_rule",
+        rateRuleId: "billing-rate-matter-user",
+        label: "Synthetic matter user rate",
+        rateCents: 21000,
+      }),
+    });
 
-    const laterPreset = await server.inject({
+    const manual = await server.inject({
       method: "POST",
-      url: "/api/billing/rate-presets",
+      url: "/api/time-entries",
       payload: {
-        id: "rate-preset-later-route-test",
+        id: "time-rate-manual-override",
         matterId: "matter-001",
-        userId: "user-admin",
-        label: "Synthetic later hearing rate",
-        rateCents: 27500,
-        effectiveFrom: "2026-06-01T00:00:00.000Z",
+        userId: "user-licensee",
+        performedAt: "2026-04-15T17:00:00.000Z",
+        minutes: 30,
+        rateCents: 18000,
+        narrative: "Synthetic manual override work.",
       },
     });
-    expect(laterPreset.statusCode).toBe(200);
-    await expect(
-      repository.getTimeEntry("firm-west-legal", "time-rate-preset-route-test"),
-    ).resolves.toMatchObject({ rateCents: 22500 });
+    expect(manual.statusCode).toBe(200);
+    expect(manual.json()).toMatchObject({
+      id: "time-rate-manual-override",
+      rateCents: 18000,
+      rateSnapshot: expect.objectContaining({ source: "manual", rateCents: 18000 }),
+    });
+    expect(manual.json()).not.toHaveProperty("rateRuleId");
+
+    const dashboard = await server.inject({ method: "GET", url: "/api/billing/dashboard" });
+    expect(dashboard.statusCode).toBe(200);
+    expect(dashboard.json()).toMatchObject({
+      summary: expect.objectContaining({ activeRateRuleCount: 1 }),
+      rateRules: [expect.objectContaining({ id: "billing-rate-matter-user" })],
+      matters: expect.arrayContaining([
+        expect.objectContaining({
+          matterId: "matter-001",
+          unbilledTime: expect.arrayContaining([
+            expect.objectContaining({
+              id: "time-rate-rule-resolution",
+              rateSnapshot: expect.objectContaining({ source: "rate_rule" }),
+            }),
+          ]),
+        }),
+      ]),
+    });
+  });
+
+  it("rejects omitted rate cents when no active rate rule matches", async () => {
+    const response = await testServer().inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-rate-missing-rule",
+        matterId: "matter-001",
+        performedAt: "2026-04-15T16:00:00.000Z",
+        minutes: 15,
+        narrative: "Synthetic missing rate rule work.",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      message: "Rate cents is required when no billing rate rule matches",
+    });
+  });
+
+  it("guards time and expense mutations inside locked billing periods", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
 
     const lock = await server.inject({
       method: "POST",
       url: "/api/billing/period-locks",
       payload: {
-        id: "billing-lock-route-test",
-        matterId: "matter-001",
-        startsOn: "2026-05-01",
-        endsOn: "2026-05-31",
-        reason: "Synthetic month-end close",
+        id: "billing-lock-april",
+        periodStart: "2026-04-01T00:00:00.000Z",
+        periodEnd: "2026-05-01T00:00:00.000Z",
+        reason: "Synthetic April close.",
       },
     });
     expect(lock.statusCode).toBe(200);
 
-    const lockedTime = await server.inject({
+    const blockedTimeCreate = await server.inject({
       method: "POST",
       url: "/api/time-entries",
       payload: {
-        id: "time-locked-route-test",
+        id: "time-locked-create",
         matterId: "matter-001",
-        performedAt: "2026-05-12T16:00:00.000Z",
-        minutes: 15,
-        rateCents: 22500,
-        narrative: "Synthetic locked time entry.",
+        performedAt: "2026-04-15T16:00:00.000Z",
+        minutes: 30,
+        rateCents: 18000,
+        narrative: "Synthetic locked time.",
       },
     });
-    expect(lockedTime.statusCode).toBe(409);
-    expect(lockedTime.json()).toMatchObject({
-      error: "ApiHttpError",
-      message: "Billing period is locked",
-    });
+    expect(blockedTimeCreate.statusCode).toBe(409);
 
-    const lockedExpense = await server.inject({
+    const blockedExpenseCreate = await server.inject({
       method: "POST",
       url: "/api/expense-entries",
       payload: {
-        id: "expense-locked-route-test",
+        id: "expense-locked-create",
         matterId: "matter-001",
-        incurredAt: "2026-05-12T16:00:00.000Z",
-        amountCents: 3500,
-        category: "Filing",
+        incurredAt: "2026-04-15T16:00:00.000Z",
+        amountCents: 1200,
+        category: "Courier",
         description: "Synthetic locked expense.",
       },
     });
-    expect(lockedExpense.statusCode).toBe(409);
+    expect(blockedExpenseCreate.statusCode).toBe(409);
 
-    const lockedTimeApproval = await server.inject({
-      method: "POST",
-      url: "/api/time-entries/time-submitted-locked-transition-test/approve",
+    await repository.createTimeEntry({
+      id: "time-locked-existing",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      userId: "user-admin",
+      performedAt: "2026-04-15T16:00:00.000Z",
+      minutes: 30,
+      rateCents: 18000,
+      narrative: "Synthetic existing locked time.",
+      billable: true,
+      billingStatus: "draft",
     });
-    expect(lockedTimeApproval.statusCode).toBe(409);
-    expect(lockedTimeApproval.json()).toMatchObject({
-      error: "ApiHttpError",
-      message: "Billing period is locked",
+    await repository.createTimeEntry({
+      id: "time-unlocked-existing",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      userId: "user-admin",
+      performedAt: "2026-05-05T16:00:00.000Z",
+      minutes: 30,
+      rateCents: 18000,
+      narrative: "Synthetic existing unlocked time.",
+      billable: true,
+      billingStatus: "draft",
+    });
+    await repository.createExpenseEntry({
+      id: "expense-locked-existing",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      incurredAt: "2026-04-15T16:00:00.000Z",
+      amountCents: 1200,
+      category: "Courier",
+      description: "Synthetic existing locked expense.",
+      reimbursable: true,
+      billingStatus: "draft",
+    });
+    await repository.createExpenseEntry({
+      id: "expense-unlocked-existing",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      incurredAt: "2026-05-05T16:00:00.000Z",
+      amountCents: 1200,
+      category: "Courier",
+      description: "Synthetic existing unlocked expense.",
+      reimbursable: true,
+      billingStatus: "draft",
     });
 
-    const lockedExpenseWriteOff = await server.inject({
-      method: "POST",
-      url: "/api/expense-entries/expense-approved-locked-transition-test/write-off",
-    });
-    expect(lockedExpenseWriteOff.statusCode).toBe(409);
-    expect(lockedExpenseWriteOff.json()).toMatchObject({
-      error: "ApiHttpError",
-      message: "Billing period is locked",
-    });
-
-    const release = await server.inject({
-      method: "POST",
-      url: "/api/billing/period-locks/billing-lock-route-test/release",
-      payload: { metadata: { releasedFor: "synthetic correction" } },
-    });
-    expect(release.statusCode).toBe(200);
-    expect(release.json()).toMatchObject({ status: "released" });
-
-    const unlockedTime = await server.inject({
-      method: "POST",
-      url: "/api/time-entries",
-      payload: {
-        id: "time-unlocked-route-test",
-        matterId: "matter-001",
-        performedAt: "2026-05-12T16:00:00.000Z",
-        minutes: 15,
-        rateCents: 22500,
-        narrative: "Synthetic unlocked correction.",
-      },
-    });
-    expect(unlockedTime.statusCode).toBe(200);
-  });
-
-  it("rejects mutable entry edits after submitted and approved billing states", async () => {
-    const server = testServer();
-
-    const submittedTime = await server.inject({
-      method: "POST",
-      url: "/api/time-entries",
-      payload: {
-        id: "time-submitted-mutation-denial",
-        matterId: "matter-001",
-        minutes: 30,
-        rateCents: 18000,
-        narrative: "Synthetic submitted time.",
-        billingStatus: "submitted",
-      },
-    });
-    expect(submittedTime.statusCode).toBe(200);
-    const submittedPatch = await server.inject({
+    const blockedTimeUpdate = await server.inject({
       method: "PATCH",
-      url: "/api/time-entries/time-submitted-mutation-denial",
-      payload: { rateCents: 22500 },
+      url: "/api/time-entries/time-locked-existing",
+      payload: { minutes: 45 },
     });
-    expect(submittedPatch.statusCode).toBe(409);
-    expect(submittedPatch.json()).toMatchObject({
-      error: "ApiHttpError",
-      message: "Time entries that are submitted, approved, billed, or written off cannot be edited",
+    const blockedTimeMoveOut = await server.inject({
+      method: "PATCH",
+      url: "/api/time-entries/time-locked-existing",
+      payload: { performedAt: "2026-05-05T16:00:00.000Z" },
+    });
+    const blockedTimeMoveIn = await server.inject({
+      method: "PATCH",
+      url: "/api/time-entries/time-unlocked-existing",
+      payload: { performedAt: "2026-04-15T16:00:00.000Z" },
+    });
+    const blockedExpenseStatus = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries/expense-locked-existing/submit",
+    });
+    const blockedTimeStatus = await server.inject({
+      method: "POST",
+      url: "/api/time-entries/time-locked-existing/submit",
+    });
+    const blockedExpenseUpdate = await server.inject({
+      method: "PATCH",
+      url: "/api/expense-entries/expense-locked-existing",
+      payload: { amountCents: 1500 },
+    });
+    const blockedExpenseMoveOut = await server.inject({
+      method: "PATCH",
+      url: "/api/expense-entries/expense-locked-existing",
+      payload: { incurredAt: "2026-05-05T16:00:00.000Z" },
+    });
+    const blockedExpenseMoveIn = await server.inject({
+      method: "PATCH",
+      url: "/api/expense-entries/expense-unlocked-existing",
+      payload: { incurredAt: "2026-04-15T16:00:00.000Z" },
     });
 
-    const approvedExpense = await server.inject({
+    expect(blockedTimeUpdate.statusCode).toBe(409);
+    expect(blockedTimeMoveOut.statusCode).toBe(409);
+    expect(blockedTimeMoveIn.statusCode).toBe(409);
+    expect(blockedTimeStatus.statusCode).toBe(409);
+    expect(blockedExpenseUpdate.statusCode).toBe(409);
+    expect(blockedExpenseMoveOut.statusCode).toBe(409);
+    expect(blockedExpenseMoveIn.statusCode).toBe(409);
+    expect(blockedExpenseStatus.statusCode).toBe(409);
+
+    await repository.updateTimeEntry("firm-west-legal", "time-locked-existing", {
+      billingStatus: "approved",
+    });
+    const invoice = await server.inject({
       method: "POST",
-      url: "/api/expense-entries",
+      url: "/api/invoices",
       payload: {
-        id: "expense-approved-mutation-denial",
+        id: "invoice-locked-source",
         matterId: "matter-001",
-        amountCents: 5000,
-        category: "Filing",
-        description: "Synthetic approved expense.",
-        billingStatus: "approved",
+        timeEntryIds: ["time-locked-existing"],
+        taxRateBps: 0,
       },
     });
-    expect(approvedExpense.statusCode).toBe(200);
-    const expensePatch = await server.inject({
-      method: "PATCH",
-      url: "/api/expense-entries/expense-approved-mutation-denial",
-      payload: { amountCents: 5500 },
+    expect(invoice.statusCode).toBe(200);
+
+    const approve = await server.inject({
+      method: "POST",
+      url: "/api/invoices/invoice-locked-source/approve",
     });
-    expect(expensePatch.statusCode).toBe(409);
-    expect(expensePatch.json()).toMatchObject({
-      error: "ApiHttpError",
-      message:
-        "Expense entries that are submitted, approved, billed, or written off cannot be edited",
+    expect(approve.statusCode).toBe(409);
+    expect(approve.json()).toMatchObject({
+      message: expect.stringContaining("locked billing period"),
+    });
+
+    const dashboard = await server.inject({ method: "GET", url: "/api/billing/dashboard" });
+    expect(dashboard.json()).toMatchObject({
+      summary: expect.objectContaining({ lockedPeriodCount: 1 }),
+      periodLocks: [expect.objectContaining({ id: "billing-lock-april" })],
     });
   });
 
@@ -535,6 +623,141 @@ describe("billing routes", () => {
       ]),
     });
     expect(ledgerAfter.json<{ entries: unknown[] }>().entries).toHaveLength(beforeEntryCount);
+  });
+
+  it("queues billing export requests, gates downloads, and keeps job metadata redacted", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const queuedReports: QueuedReportJob[] = [];
+    const server = testServer({
+      repository,
+      reportJobQueue: fakeReportQueue(queuedReports),
+    });
+    await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-billing-export-private-body",
+        matterId: "matter-001",
+        minutes: 15,
+        rateCents: 18000,
+        narrative: "Synthetic private billing export body",
+        billingStatus: "approved",
+      },
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/billing/export-requests",
+      payload: {
+        matterId: "matter-001",
+        idempotencyKey: "billing-export-route-test",
+      },
+    });
+
+    expect(created.statusCode).toBe(202);
+    const exportRequest = created.json<{
+      exportRequest: { jobId: string; status: string; pollUrl: string; downloadUrl: string };
+    }>().exportRequest;
+    expect(exportRequest).toMatchObject({
+      status: "queued",
+      pollUrl: `/api/billing/export-requests/${exportRequest.jobId}`,
+      downloadUrl: `/api/billing/export-requests/${exportRequest.jobId}/download`,
+    });
+    expect(queuedReports).toEqual([
+      expect.objectContaining({
+        name: "billing_export",
+        jobId: exportRequest.jobId,
+      }),
+    ]);
+    expect(JSON.stringify(queuedReports)).not.toContain("Synthetic private billing export body");
+
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    expect(job).toMatchObject({
+      id: exportRequest.jobId,
+      jobName: "billing_export",
+      status: "queued",
+      targetResourceType: "billing_export",
+      metadata: {
+        reportType: "billing",
+        reportScope: "matter",
+        matterId: "matter-001",
+        requestedByUserId: "user-admin",
+        enqueueStatus: "queued_for_local_report_worker",
+      },
+    });
+    expect(JSON.stringify(job.metadata)).not.toContain("Synthetic private billing export body");
+
+    const earlyDownload = await server.inject({
+      method: "GET",
+      url: `/api/billing/export-requests/${exportRequest.jobId}/download`,
+    });
+    expect(earlyDownload.statusCode).toBe(409);
+    expect(earlyDownload.json()).toMatchObject({ code: "BILLING_EXPORT_NOT_READY" });
+
+    await repository.updateJobLifecycleRecord("firm-west-legal", exportRequest.jobId, {
+      status: "completed",
+      finishedAt: "2026-05-19T12:00:00.000Z",
+      metadata: {
+        reportType: "billing",
+        reportScope: "matter",
+        matterId: "matter-001",
+        requestedByUserId: "user-admin",
+        timeEntryCount: 1,
+      },
+    });
+
+    const status = await server.inject({
+      method: "GET",
+      url: `/api/billing/export-requests/${exportRequest.jobId}`,
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toMatchObject({
+      exportRequest: { jobId: exportRequest.jobId, status: "completed" },
+    });
+
+    const downloaded = await server.inject({
+      method: "GET",
+      url: `/api/billing/export-requests/${exportRequest.jobId}/download`,
+    });
+    expect(downloaded.statusCode).toBe(200);
+    expect(downloaded.json()).toMatchObject({
+      exportRequest: { jobId: exportRequest.jobId, status: "completed" },
+      export: {
+        reportType: "billing",
+        reportScope: "matter",
+        matterId: "matter-001",
+        timeEntries: expect.arrayContaining([
+          expect.objectContaining({
+            id: "time-billing-export-private-body",
+            narrative: "Synthetic private billing export body",
+          }),
+        ]),
+        invoices: expect.any(Array),
+        trustTransferRequests: expect.any(Array),
+      },
+    });
+
+    const serializedAuditAndJobs = JSON.stringify({
+      events: await auditEvents(repository),
+      jobs: await repository.listJobLifecycleRecords("firm-west-legal"),
+    });
+    expect(serializedAuditAndJobs).not.toContain("Synthetic private billing export body");
+  });
+
+  it("denies billing export requests to non-billing roles", async () => {
+    const response = await testServer().inject({
+      method: "POST",
+      url: "/api/billing/export-requests",
+      headers: {
+        "x-open-practice-user-id": "user-staff",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: { matterId: "matter-001" },
+    });
+
+    expect(response.statusCode).toBe(403);
   });
 
   it("keeps trust transfer request creation review-gated and unlinked", async () => {
@@ -978,217 +1201,6 @@ describe("billing routes", () => {
       id: "invoice-duplicate-source-after-void",
       status: "draft",
     });
-  });
-
-  it("creates queued async billing export requests with count-only job and audit metadata", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
-    const queuedReports: Array<{ name: string; data: unknown; jobId?: string }> = [];
-    const server = testServer({
-      repository,
-      reportJobQueue: fakeReportQueue(queuedReports),
-    });
-
-    const time = await server.inject({
-      method: "POST",
-      url: "/api/time-entries",
-      payload: {
-        id: "time-async-billing-export",
-        matterId: "matter-001",
-        minutes: 30,
-        rateCents: 18000,
-        narrative: "Synthetic private async billing export narrative",
-        billingStatus: "approved",
-      },
-    });
-    expect(time.statusCode).toBe(200);
-
-    const created = await server.inject({
-      method: "POST",
-      url: "/api/billing/export-requests",
-      payload: {
-        exportKind: "billing",
-        matterId: "matter-001",
-        idempotencyKey: "billing-export-route-test",
-      },
-    });
-
-    expect(created.statusCode).toBe(202);
-    expect(created.json()).toMatchObject({
-      exportRequest: {
-        exportKind: "billing",
-        matterId: "matter-001",
-        status: "queued",
-        pollUrl: expect.stringContaining("/api/billing/export-requests/"),
-        downloadUrl: expect.stringContaining("/api/billing/export-requests/"),
-      },
-    });
-    const jobId = created.json<{ exportRequest: { jobId: string } }>().exportRequest.jobId;
-    expect(queuedReports).toEqual([
-      expect.objectContaining({
-        name: "billing_export",
-        jobId,
-        data: expect.objectContaining({
-          resourceType: "billing_export",
-          resourceId: jobId,
-          metadata: expect.objectContaining({
-            exportKind: "billing",
-            matterId: "matter-001",
-            recordCount: expect.any(Number),
-            timeEntryCount: expect.any(Number),
-          }),
-        }),
-      }),
-    ]);
-
-    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
-      queueName: "reports",
-    });
-    expect(job).toMatchObject({
-      id: jobId,
-      jobName: "billing_export",
-      targetResourceType: "billing_export",
-      status: "queued",
-      metadata: expect.objectContaining({
-        exportKind: "billing",
-        matterId: "matter-001",
-        recordCount: expect.any(Number),
-        timeEntryCount: expect.any(Number),
-        expenseEntryCount: expect.any(Number),
-        invoiceCount: expect.any(Number),
-        paymentCount: expect.any(Number),
-        enqueueStatus: "queued_for_local_report_worker",
-      }),
-    });
-    const events = await auditEvents(repository);
-    const requested = events.find((event) => event.action === "billing_export.requested");
-    expect(requested?.metadata).toMatchObject({
-      jobId,
-      exportKind: "billing",
-      matterId: "matter-001",
-      recordCount: expect.any(Number),
-      timeEntryCount: expect.any(Number),
-    });
-    const serializedMetadata = JSON.stringify({
-      queuedReports,
-      job,
-      auditMetadata: requested?.metadata,
-    });
-    expect(serializedMetadata).not.toContain("Synthetic private async billing export narrative");
-    expect(serializedMetadata).not.toContain("Reviewed tenancy branch materials");
-    expect(serializedMetadata).not.toContain("Initial tenancy dispute invoice");
-
-    const status = await server.inject({
-      method: "GET",
-      url: `/api/billing/export-requests/${jobId}`,
-    });
-    expect(status.statusCode).toBe(200);
-    expect(status.json()).toMatchObject({ exportRequest: { jobId, status: "queued" } });
-
-    const earlyDownload = await server.inject({
-      method: "GET",
-      url: `/api/billing/export-requests/${jobId}/download`,
-    });
-    expect(earlyDownload.statusCode).toBe(409);
-    expect(earlyDownload.json()).toMatchObject({ code: "BILLING_EXPORT_NOT_READY" });
-  });
-
-  it("downloads completed async trust exports without persisting ledger detail in metadata", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
-    const server = testServer({ repository });
-
-    const created = await server.inject({
-      method: "POST",
-      url: "/api/billing/export-requests",
-      payload: {
-        exportKind: "trust",
-        matterId: "matter-001",
-        idempotencyKey: "trust-export-route-test",
-      },
-    });
-
-    expect(created.statusCode).toBe(202);
-    const jobId = created.json<{ exportRequest: { jobId: string } }>().exportRequest.jobId;
-    expect(created.json()).toMatchObject({
-      exportRequest: { jobId, exportKind: "trust", matterId: "matter-001", status: "completed" },
-    });
-
-    const downloaded = await server.inject({
-      method: "GET",
-      url: `/api/billing/export-requests/${jobId}/download`,
-    });
-    expect(downloaded.statusCode).toBe(200);
-    expect(downloaded.json()).toMatchObject({
-      exportRequest: { jobId, exportKind: "trust", status: "completed" },
-      export: {
-        exportKind: "trust",
-        matterId: "matter-001",
-        counts: {
-          trustTransferRequestCount: expect.any(Number),
-          ledgerAccountCount: expect.any(Number),
-          ledgerEntryCount: expect.any(Number),
-        },
-        trust: {
-          entries: expect.arrayContaining([
-            expect.objectContaining({ memo: "Retainer received into pooled trust" }),
-          ]),
-        },
-      },
-    });
-
-    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
-      queueName: "reports",
-    });
-    const events = await auditEvents(repository);
-    const serializedMetadata = JSON.stringify({
-      jobMetadata: job?.metadata,
-      auditMetadata: events.find((event) => event.action === "trust_export.requested")?.metadata,
-    });
-    expect(serializedMetadata).not.toContain("Retainer received into pooled trust");
-    expect(serializedMetadata).not.toContain("Client trust liability");
-    expect(serializedMetadata).not.toContain("Apply trust funds to issued invoice");
-  });
-
-  it("denies async billing export create, status, and download to users without export access", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
-    const server = testServer({ repository });
-
-    const deniedCreate = await server.inject({
-      method: "POST",
-      url: "/api/billing/export-requests",
-      headers: {
-        "x-open-practice-user-id": "user-staff",
-        "x-open-practice-firm-id": "firm-west-legal",
-      },
-      payload: { exportKind: "billing", matterId: "matter-001" },
-    });
-    expect(deniedCreate.statusCode).toBe(403);
-
-    const created = await server.inject({
-      method: "POST",
-      url: "/api/billing/export-requests",
-      payload: {
-        exportKind: "billing",
-        matterId: "matter-001",
-        idempotencyKey: "billing-export-denial-route-test",
-      },
-    });
-    expect(created.statusCode).toBe(202);
-    const jobId = created.json<{ exportRequest: { jobId: string } }>().exportRequest.jobId;
-
-    for (const url of [
-      `/api/billing/export-requests/${jobId}`,
-      `/api/billing/export-requests/${jobId}/download`,
-    ]) {
-      const response = await server.inject({
-        method: "GET",
-        url,
-        headers: {
-          "x-open-practice-user-id": "user-staff",
-          "x-open-practice-firm-id": "firm-west-legal",
-        },
-      });
-      expect(response.statusCode).toBe(403);
-    }
   });
 
   it("records concise audit events for billing mutation routes", async () => {

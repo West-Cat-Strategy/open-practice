@@ -11,7 +11,7 @@ import {
   authActionTokens,
   authChallenges,
   billingPeriodLocks,
-  billingRatePresets,
+  billingRateRules,
   billingTrustTransferRequests,
   calendarCredentials,
   calendarEventAttendees,
@@ -19,7 +19,6 @@ import {
   calendarEvents,
   calendarGuestLinks,
   calendarMeetingSessions,
-  contactQualityReviewDecisions,
   connectorDeliveryAttempts,
   connectorOutbox,
   connectors,
@@ -33,7 +32,6 @@ import {
   draftTemplates,
   emailEvents,
   emailOutbox,
-  emailReceiptLinks,
   externalUploadLinks,
   firmSettings,
   inboundEmailAddresses,
@@ -67,6 +65,7 @@ import {
   trustLedgerEntries,
   trustTransactionApprovals,
   trustTransactions,
+  timeEntries,
 } from "../src/schema.js";
 
 describe("database schema hardening", () => {
@@ -279,50 +278,6 @@ describe("database schema hardening", () => {
     );
     expect(guestLinkConfig.checks.map((check) => check.name)).toContain(
       "calendar_guest_links_status_value",
-    );
-  });
-
-  it("persists review-only contact quality decisions", () => {
-    const config = getTableConfig(contactQualityReviewDecisions);
-    const columns = config.columns.map((column) => column.name);
-
-    expect(columns).toEqual(
-      expect.arrayContaining([
-        "firm_id",
-        "contact_id",
-        "signal_kind",
-        "decision",
-        "matter_id",
-        "related_contact_ids",
-        "source_record_id",
-        "decided_by_user_id",
-        "decided_at",
-        "reason",
-        "evidence",
-        "created_at",
-      ]),
-    );
-    expect(columns).not.toEqual(
-      expect.arrayContaining([
-        "matched_value",
-        "merge_contact_id",
-        "target_contact_id",
-        "conflict_disposition",
-      ]),
-    );
-    expect(config.indexes.map((index) => index.config.name)).toEqual(
-      expect.arrayContaining([
-        "contact_quality_review_decisions_contact_signal_idx",
-        "contact_quality_review_decisions_matter_signal_idx",
-      ]),
-    );
-    expect(config.checks.map((check) => check.name)).toEqual(
-      expect.arrayContaining([
-        "contact_quality_review_decisions_signal_kind_value",
-        "contact_quality_review_decisions_decision_pairing",
-        "contact_quality_review_decisions_signal_reference_shape",
-        "contact_quality_review_decisions_review_only_evidence",
-      ]),
     );
   });
 
@@ -641,17 +596,6 @@ describe("database schema hardening", () => {
         "metadata",
       ]),
     );
-    expect(getTableConfig(emailReceiptLinks).columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining([
-        "email_id",
-        "token_hash",
-        "purpose",
-        "expires_at",
-        "first_recorded_at",
-        "last_recorded_at",
-        "record_count",
-      ]),
-    );
     expect(getTableConfig(inboundEmailAddresses).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["firm_id", "address", "matter_id", "enabled"]),
     );
@@ -883,6 +827,33 @@ describe("database schema hardening", () => {
   });
 
   it("persists native billing workflow tables", () => {
+    expect(getTableConfig(timeEntries).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["rate_rule_id", "rate_snapshot"]),
+    );
+    expect(getTableConfig(billingPeriodLocks).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "period_start",
+        "period_end",
+        "reason",
+        "locked_by_user_id",
+        "locked_at",
+      ]),
+    );
+    expect(getTableConfig(billingRateRules).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "label",
+        "matter_id",
+        "user_id",
+        "role",
+        "scope",
+        "rate_cents",
+        "effective_from",
+        "effective_until",
+        "active",
+      ]),
+    );
     expect(getTableConfig(invoices).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
         "matter_id",
@@ -916,45 +887,6 @@ describe("database schema hardening", () => {
       getTableConfig(billingTrustTransferRequests).columns.map((column) => column.name),
     ).toEqual(
       expect.arrayContaining(["invoice_id", "amount_cents", "status", "ledger_transaction_id"]),
-    );
-    expect(getTableConfig(billingRatePresets).columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining([
-        "matter_id",
-        "user_id",
-        "label",
-        "rate_cents",
-        "currency",
-        "effective_from",
-        "effective_to",
-        "created_by_user_id",
-        "metadata",
-      ]),
-    );
-    expect(getTableConfig(billingRatePresets).checks.map((check) => check.name)).toEqual(
-      expect.arrayContaining([
-        "billing_rate_presets_non_negative_rate",
-        "billing_rate_presets_valid_effective_range",
-      ]),
-    );
-    expect(getTableConfig(billingPeriodLocks).columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining([
-        "matter_id",
-        "starts_on",
-        "ends_on",
-        "status",
-        "locked_by_user_id",
-        "locked_at",
-        "released_by_user_id",
-        "released_at",
-        "reason",
-        "metadata",
-      ]),
-    );
-    expect(getTableConfig(billingPeriodLocks).checks.map((check) => check.name)).toEqual(
-      expect.arrayContaining([
-        "billing_period_locks_valid_period",
-        "billing_period_locks_status_value",
-      ]),
     );
   });
 });

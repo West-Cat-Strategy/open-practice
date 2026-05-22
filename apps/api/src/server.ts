@@ -365,7 +365,10 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerCommunicationsRoutes(server, { repository: options.repository });
   registerConversationThreadRoutes(server, { repository: options.repository });
   registerLegalClinicRoutes(server, { repository: options.repository });
-  registerLedgerRoutes(server, { repository: options.repository });
+  registerLedgerRoutes(server, {
+    repository: options.repository,
+    reportJobQueue: options.reportJobQueue,
+  });
   registerBillingRoutes(server, {
     repository: options.repository,
     reportJobQueue: options.reportJobQueue,
@@ -416,6 +419,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     repository: options.repository,
     emailJobQueue: options.emailJobQueue,
     jwtSecret: options.jwtSecret,
+    publicWebBaseUrl: options.publicWebBaseUrl,
   });
   registerInboundEmailRoutes(server, {
     repository: options.repository,

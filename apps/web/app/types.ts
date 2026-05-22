@@ -1,5 +1,8 @@
 import type {
   AuditEventTaxonomySummary,
+  BillingPeriodLockRecord,
+  BillingRateRuleRecord,
+  BillingRateSnapshot,
   Contact,
   ConflictCandidate,
   DocumentRecord,
@@ -14,7 +17,8 @@ import type {
   CalendarEventAttendeeRecord,
   CalendarEventReminderRecord,
   CalendarMeetingInvitationBoundary,
-  ContactDossier as DomainContactDossier,
+  ContactDossier,
+  ContactDataQualityResolutionRecord,
   DashboardSectionCapability,
   IntakeSessionRecord,
   IntakeTemplateRecord,
@@ -37,18 +41,8 @@ import type {
   User,
 } from "@open-practice/domain";
 
-type RedactedContactDossierQualitySignal = Omit<
-  DomainContactDossier["qualityReview"]["signals"][number],
-  "matchedValue"
-> & {
-  matchedValueRedacted: boolean;
-};
-
-export type ContactDossier = Omit<DomainContactDossier, "qualityReview"> & {
-  qualityReview: Omit<DomainContactDossier["qualityReview"], "signals"> & {
-    signals: RedactedContactDossierQualitySignal[];
-  };
-};
+export type { ContactDossier };
+export type { ContactDataQualityResolutionRecord };
 
 export interface MatterSummary extends Matter {
   parties: Array<MatterParty & { contact: Contact }>;
@@ -89,9 +83,23 @@ export interface CapabilitiesResponse {
   sections: DashboardSectionCapability[];
 }
 
+export function canRecordContactDataQualityResolutions(
+  sections: DashboardSectionCapability[],
+): boolean {
+  return sections.some(
+    (section) =>
+      section.key === "contacts" && section.enabled && section.actions.includes("update"),
+  );
+}
+
 export type ContactDossiersResponse = ContactDossier[];
 
-export type ContactReviewQueueSignal = ContactDossier["qualityReview"]["signals"][number];
+export type ContactReviewQueueSignal = Omit<
+  ContactDossier["qualityReview"]["signals"][number],
+  "matchedValue"
+> & {
+  matchedValueRedacted: boolean;
+};
 
 export interface ContactReviewQueueItem {
   contact: {
@@ -117,6 +125,8 @@ export interface ContactReviewQueueResponse {
   };
   items: ContactReviewQueueItem[];
 }
+
+export type ContactDataQualityResolutionsResponse = ContactDataQualityResolutionRecord[];
 
 export interface IntakeSessionsResponse {
   templates: IntakeTemplateRecord[];
@@ -857,6 +867,8 @@ export interface BillingTimeItem {
   userId?: string;
   minutes: number;
   rateCents: number;
+  rateRuleId?: string;
+  rateSnapshot?: BillingRateSnapshot;
   amountCents: number;
   narrative: string;
   status: BillingEntryStatus;
@@ -907,7 +919,12 @@ export interface BillingDashboardResponse {
     unbilledExpenseCents: number;
     draftInvoiceCents: number;
     issuedBalanceDueCents: number;
+    lockedPeriodCount: number;
+    activeLockedPeriodCount: number;
+    activeRateRuleCount: number;
   };
+  periodLocks: BillingPeriodLockRecord[];
+  rateRules: BillingRateRuleRecord[];
   matters: MatterBillingSummary[];
 }
 

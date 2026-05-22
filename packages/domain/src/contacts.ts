@@ -32,29 +32,35 @@ export type ContactDossierQualitySignalKind =
   | "protected_party_cue"
   | "conflict_revalidation";
 
-export type ContactQualityReviewDecision =
-  | "duplicate_confirmed"
-  | "not_duplicate"
-  | "protected_party_handling_confirmed"
-  | "protected_party_handling_not_required"
-  | "conflict_revalidation_required"
-  | "conflict_revalidation_not_required"
-  | "needs_more_review";
+export const contactDossierQualitySignalKinds = [
+  "duplicate_candidate",
+  "protected_party_cue",
+  "conflict_revalidation",
+] as const satisfies ContactDossierQualitySignalKind[];
 
-export interface ContactQualityReviewDecisionRecord {
+export const contactDataQualityResolutionDecisions = [
+  "acknowledged",
+  "false_positive",
+  "needs_follow_up",
+  "revalidation_requested",
+  "revalidation_completed",
+] as const;
+
+export type ContactDataQualityResolutionDecision =
+  (typeof contactDataQualityResolutionDecisions)[number];
+
+export interface ContactDataQualityResolutionRecord {
   id: string;
   firmId: string;
   contactId: string;
   signalKind: ContactDossierQualitySignalKind;
-  decision: ContactQualityReviewDecision;
+  decision: ContactDataQualityResolutionDecision;
   matterId?: string;
-  relatedContactIds: string[];
+  relatedContactId?: string;
   sourceRecordId?: string;
-  decidedByUserId: string;
-  decidedAt: string;
-  reason?: string;
-  evidence: Record<string, unknown>;
-  createdAt: string;
+  resolutionNote: string;
+  recordedByUserId: string;
+  recordedAt: string;
 }
 
 export interface ContactDossierQualitySignal {
@@ -78,114 +84,40 @@ export interface ContactDossierQualityReview {
   signals: ContactDossierQualitySignal[];
 }
 
-const contactQualityReviewDecisionsBySignal: Record<
+const contactDataQualityResolutionDecisionsByKind: Record<
   ContactDossierQualitySignalKind,
-  ReadonlySet<ContactQualityReviewDecision>
+  ReadonlySet<ContactDataQualityResolutionDecision>
 > = {
-  duplicate_candidate: new Set(["duplicate_confirmed", "not_duplicate", "needs_more_review"]),
-  protected_party_cue: new Set([
-    "protected_party_handling_confirmed",
-    "protected_party_handling_not_required",
-    "needs_more_review",
-  ]),
+  duplicate_candidate: new Set(["acknowledged", "false_positive", "needs_follow_up"]),
+  protected_party_cue: new Set(["acknowledged", "needs_follow_up"]),
   conflict_revalidation: new Set([
-    "conflict_revalidation_required",
-    "conflict_revalidation_not_required",
-    "needs_more_review",
+    "revalidation_requested",
+    "revalidation_completed",
+    "needs_follow_up",
   ]),
 };
 
-const unsafeContactQualityEvidenceKeys = new Set([
-  "conflictcheckdisposition",
-  "conflictdisposition",
-  "contactnotes",
-  "contactpatch",
-  "contactrewrite",
-  "contactupdate",
-  "disposition",
-  "matchedvalue",
-  "mergecontactid",
-  "rawmatchedvalue",
-  "sourcecontactid",
-  "targetcontactid",
-]);
-
-function normalizedEvidenceKey(key: string): string {
-  return key.replaceAll(/[^a-zA-Z0-9]/g, "").toLowerCase();
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function evidenceContainsUnsafeKey(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some((item) => evidenceContainsUnsafeKey(item));
-  if (!isPlainRecord(value)) return false;
-
-  return Object.entries(value).some(
-    ([key, item]) =>
-      unsafeContactQualityEvidenceKeys.has(normalizedEvidenceKey(key)) ||
-      evidenceContainsUnsafeKey(item),
-  );
-}
-
-function assertNonEmpty(value: string | undefined, label: string): void {
-  if (!value || value.trim().length === 0) {
-    throw new Error(`${label} is required`);
+export function validateContactDataQualityResolutionRecord(
+  resolution: ContactDataQualityResolutionRecord,
+): void {
+  if (!resolution.firmId.trim()) throw new Error("Contact quality resolution requires a firm id");
+  if (!resolution.contactId.trim()) {
+    throw new Error("Contact quality resolution requires a contact id");
   }
-}
-
-export function isContactQualityReviewDecisionAllowed(
-  signalKind: ContactDossierQualitySignalKind,
-  decision: ContactQualityReviewDecision,
-): boolean {
-  return contactQualityReviewDecisionsBySignal[signalKind]?.has(decision) ?? false;
-}
-
-export function validateContactQualityReviewDecisionRecord(
-  record: ContactQualityReviewDecisionRecord,
-): ContactQualityReviewDecisionRecord {
-  assertNonEmpty(record.id, "Contact quality review decision id");
-  assertNonEmpty(record.firmId, "Contact quality review decision firm id");
-  assertNonEmpty(record.contactId, "Contact quality review decision contact id");
-  assertNonEmpty(record.decidedByUserId, "Contact quality review decision reviewer id");
-  assertNonEmpty(record.decidedAt, "Contact quality review decision decided timestamp");
-  assertNonEmpty(record.createdAt, "Contact quality review decision created timestamp");
-
-  if (!isContactQualityReviewDecisionAllowed(record.signalKind, record.decision)) {
-    throw new Error("Contact quality review decision is not valid for the signal kind");
+  if (!contactDossierQualitySignalKinds.includes(resolution.signalKind)) {
+    throw new Error("Contact data-quality resolution signal kind is invalid");
   }
-
-  const relatedContactIds = record.relatedContactIds.filter((contactId) => contactId.trim());
-  if (new Set(relatedContactIds).size !== relatedContactIds.length) {
-    throw new Error("Contact quality review related contact ids must be unique");
+  if (
+    !contactDataQualityResolutionDecisionsByKind[resolution.signalKind].has(resolution.decision)
+  ) {
+    throw new Error("Contact data-quality resolution decision is invalid for the signal kind");
   }
-
-  if (record.signalKind === "duplicate_candidate") {
-    if (relatedContactIds.length === 0 || record.matterId || record.sourceRecordId) {
-      throw new Error("Duplicate candidate decisions must reference related contacts only");
-    }
+  if (!resolution.resolutionNote.trim()) {
+    throw new Error("Contact data-quality resolution note is required");
   }
-
-  if (record.signalKind === "protected_party_cue") {
-    if (!record.matterId || relatedContactIds.length > 0 || record.sourceRecordId) {
-      throw new Error("Protected-party decisions must reference one matter cue only");
-    }
+  if (Number.isNaN(new Date(resolution.recordedAt).getTime())) {
+    throw new Error("Contact data-quality resolution timestamp is invalid");
   }
-
-  if (record.signalKind === "conflict_revalidation") {
-    if (!record.matterId || !record.sourceRecordId || relatedContactIds.length > 0) {
-      throw new Error(
-        "Conflict revalidation decisions must reference one source record and matter",
-      );
-    }
-  }
-
-  if (!isPlainRecord(record.evidence) || evidenceContainsUnsafeKey(record.evidence)) {
-    throw new Error("Contact quality review decision evidence must stay review-only");
-  }
-
-  return { ...record, relatedContactIds };
 }
 
 export interface ContactDossierConflictHistoryEntry {

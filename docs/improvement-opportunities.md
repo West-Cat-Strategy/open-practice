@@ -12,8 +12,9 @@ row should not stay here as future work.
 These candidates name the next smallest useful unimplemented slice. Each row also states the shipped
 surface it must not duplicate.
 
-No active candidate rows are waiting here after OP-T109 through OP-T112. Add new candidate rows only
-after confirming the next smallest unimplemented slice and the shipped surface it must not duplicate.
+No active candidate rows. The OP-T108 through OP-T112 improvement batch closed the previously
+tracked candidate set; add future candidates here only after comparing against the shipped workboard
+rows and proof.
 
 ## Implementation Guardrails
 

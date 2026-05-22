@@ -1,68 +1,156 @@
 import { describe, expect, it } from "vitest";
 import {
-  isBillingEntrySnapshotMutable,
-  isBillingPeriodLockActiveForEntry,
-  isBillingRatePresetEffectiveForDate,
-  summarizeBillingTrustExportCounts,
+  billingDateFallsInsideLock,
+  billingPeriodLocksOverlap,
+  billingRateRulesOverlapAtSameActiveScope,
+  billingRuleScope,
+  resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
   trustTransferRequestAvailableBalanceCents,
+  type BillingRateRuleRecord,
 } from "./billing.js";
 
-describe("billing lock and rate helpers", () => {
-  it("treats submitted and later entry snapshots as immutable", () => {
-    expect(isBillingEntrySnapshotMutable("draft")).toBe(true);
-    for (const status of ["submitted", "approved", "billed", "written_off"] as const) {
-      expect(isBillingEntrySnapshotMutable(status)).toBe(false);
-    }
+describe("billing period locks and rate rules", () => {
+  it("treats billing period locks as start-inclusive and end-exclusive", () => {
+    const lock = {
+      periodStart: "2026-04-01T00:00:00.000Z",
+      periodEnd: "2026-05-01T00:00:00.000Z",
+    };
+
+    expect(billingDateFallsInsideLock("2026-04-01T00:00:00.000Z", lock)).toBe(true);
+    expect(billingDateFallsInsideLock("2026-04-30T23:59:59.999Z", lock)).toBe(true);
+    expect(billingDateFallsInsideLock("2026-05-01T00:00:00.000Z", lock)).toBe(false);
   });
 
-  it("matches rate presets and active period locks by effective date", () => {
+  it("detects same-firm billing period lock overlaps without blocking adjacent locks", () => {
+    const existing = {
+      firmId: "firm-west-legal",
+      periodStart: "2026-04-01T00:00:00.000Z",
+      periodEnd: "2026-05-01T00:00:00.000Z",
+    };
+
     expect(
-      isBillingRatePresetEffectiveForDate(
+      billingPeriodLocksOverlap(existing, {
+        firmId: "firm-west-legal",
+        periodStart: "2026-04-15T00:00:00.000Z",
+        periodEnd: "2026-05-15T00:00:00.000Z",
+      }),
+    ).toBe(true);
+    expect(
+      billingPeriodLocksOverlap(existing, {
+        firmId: "firm-west-legal",
+        periodStart: "2026-05-01T00:00:00.000Z",
+        periodEnd: "2026-06-01T00:00:00.000Z",
+      }),
+    ).toBe(false);
+    expect(
+      billingPeriodLocksOverlap(existing, {
+        firmId: "firm-north-legal",
+        periodStart: "2026-04-15T00:00:00.000Z",
+        periodEnd: "2026-05-15T00:00:00.000Z",
+      }),
+    ).toBe(false);
+  });
+
+  it("resolves the most specific active rate rule for a time entry snapshot", () => {
+    const baseRule = {
+      firmId: "firm-west-legal",
+      active: true,
+      createdByUserId: "user-admin",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+    };
+    const rules: BillingRateRuleRecord[] = [
+      {
+        ...baseRule,
+        id: "firm-default-rate",
+        label: "Firm default",
+        scope: "firm",
+        rateCents: 15000,
+      },
+      {
+        ...baseRule,
+        id: "matter-rate",
+        label: "Matter rate",
+        matterId: "matter-001",
+        scope: billingRuleScope({ matterId: "matter-001" }),
+        rateCents: 20000,
+      },
+      {
+        ...baseRule,
+        id: "matter-user-rate",
+        label: "Matter user rate",
+        matterId: "matter-001",
+        userId: "user-licensee",
+        scope: billingRuleScope({ matterId: "matter-001", userId: "user-licensee" }),
+        rateCents: 25000,
+      },
+      {
+        ...baseRule,
+        id: "inactive-rate",
+        label: "Inactive rate",
+        scope: "firm",
+        rateCents: 99999,
+        active: false,
+      },
+    ];
+
+    expect(
+      resolveBillingRateRule(rules, {
+        matterId: "matter-001",
+        userId: "user-licensee",
+        performedAt: "2026-04-01T12:00:00.000Z",
+      }),
+    ).toMatchObject({ id: "matter-user-rate", rateCents: 25000 });
+  });
+
+  it("detects active same-scope billing rate rule overlaps", () => {
+    const baseRule = {
+      id: "matter-user-rate",
+      firmId: "firm-west-legal",
+      label: "Synthetic matter user rate",
+      matterId: "matter-001",
+      userId: "user-licensee",
+      scope: billingRuleScope({ matterId: "matter-001", userId: "user-licensee" }),
+      rateCents: 20000,
+      effectiveFrom: "2026-04-01T00:00:00.000Z",
+      active: true,
+      createdByUserId: "user-admin",
+      createdAt: "2026-04-01T00:00:00.000Z",
+      updatedAt: "2026-04-01T00:00:00.000Z",
+    } satisfies BillingRateRuleRecord;
+
+    expect(
+      billingRateRulesOverlapAtSameActiveScope(baseRule, {
+        ...baseRule,
+        id: "overlapping-rate",
+        effectiveFrom: "2026-04-15T00:00:00.000Z",
+      }),
+    ).toBe(true);
+    expect(
+      billingRateRulesOverlapAtSameActiveScope(baseRule, {
+        ...baseRule,
+        id: "later-open-ended-rate",
+        effectiveFrom: "2026-05-01T00:00:00.000Z",
+      }),
+    ).toBe(true);
+    expect(
+      billingRateRulesOverlapAtSameActiveScope(
+        { ...baseRule, effectiveUntil: "2026-05-01T00:00:00.000Z" },
         {
+          ...baseRule,
+          id: "next-period-rate",
           effectiveFrom: "2026-05-01T00:00:00.000Z",
-          effectiveTo: "2026-05-31T23:59:59.000Z",
         },
-        "2026-05-19T16:00:00.000Z",
-      ),
-    ).toBe(true);
-    expect(
-      isBillingRatePresetEffectiveForDate(
-        { effectiveFrom: "2026-06-01T00:00:00.000Z" },
-        "2026-05-19T16:00:00.000Z",
       ),
     ).toBe(false);
     expect(
-      isBillingPeriodLockActiveForEntry(
-        {
-          matterId: "matter-001",
-          startsOn: "2026-05-01",
-          endsOn: "2026-05-31",
-          status: "active",
-        },
-        { matterId: "matter-001", occurredAt: "2026-05-19T16:00:00.000Z" },
-      ),
-    ).toBe(true);
-    expect(
-      isBillingPeriodLockActiveForEntry(
-        {
-          matterId: "matter-002",
-          startsOn: "2026-05-01",
-          endsOn: "2026-05-31",
-          status: "active",
-        },
-        { matterId: "matter-001", occurredAt: "2026-05-19T16:00:00.000Z" },
-      ),
-    ).toBe(false);
-    expect(
-      isBillingPeriodLockActiveForEntry(
-        {
-          startsOn: "2026-05-01",
-          endsOn: "2026-05-31",
-          status: "released",
-        },
-        { matterId: "matter-001", occurredAt: "2026-05-19T16:00:00.000Z" },
-      ),
+      billingRateRulesOverlapAtSameActiveScope(baseRule, {
+        ...baseRule,
+        id: "different-user-rate",
+        userId: "user-staff",
+      }),
     ).toBe(false);
   });
 });
@@ -94,79 +182,6 @@ describe("trust transfer request billing helpers", () => {
         trustBalances,
       }),
     ).toBe(0);
-  });
-
-  it("summarizes async billing and trust export counts without inspecting private fields", () => {
-    expect(
-      summarizeBillingTrustExportCounts({
-        exportKind: "billing",
-        billing: {
-          timeEntries: [
-            {
-              id: "time-export-count",
-              firmId: "firm-west-legal",
-              matterId: "matter-001",
-              userId: "user-admin",
-              performedAt: "2026-05-18T10:00:00.000Z",
-              minutes: 30,
-              rateCents: 18000,
-              narrative: "Synthetic private billing export narrative",
-              billable: true,
-              billingStatus: "approved",
-            },
-          ],
-          expenseEntries: [],
-          invoices: [],
-          payments: [],
-        },
-      }),
-    ).toEqual({
-      recordCount: 1,
-      timeEntryCount: 1,
-      expenseEntryCount: 0,
-      invoiceCount: 0,
-      paymentCount: 0,
-    });
-
-    expect(
-      summarizeBillingTrustExportCounts({
-        exportKind: "trust",
-        trust: {
-          accounts: [
-            {
-              id: "acct-trust-bank",
-              firmId: "firm-west-legal",
-              name: "Trust",
-              type: "trust_asset",
-            },
-          ],
-          entries: [
-            {
-              id: "ledger-export-count",
-              transactionId: "trust-retainer",
-              firmId: "firm-west-legal",
-              matterId: "matter-001",
-              clientId: "contact-ada",
-              accountId: "acct-trust-bank",
-              debitCents: 100,
-              creditCents: 0,
-              memo: "Synthetic private ledger export memo",
-              postedAt: "2026-05-18T10:00:00.000Z",
-            },
-          ],
-          balances: { "matter-001": 100 },
-          trustBalances: { "contact-ada:matter-001": 100 },
-          trustTransferRequests: [],
-        },
-      }),
-    ).toEqual({
-      recordCount: 4,
-      trustTransferRequestCount: 0,
-      ledgerAccountCount: 1,
-      ledgerEntryCount: 1,
-      balanceCount: 1,
-      trustBalanceCount: 1,
-    });
   });
 
   it("summarizes whether a ledger transaction matches a trust transfer request", () => {

@@ -159,25 +159,16 @@ export interface EmailOutboxRecord {
   metadata: Record<string, unknown>;
 }
 
-export type EmailReceiptLinkPurpose =
-  | "delivery_receipt"
-  | "read_receipt"
-  | "client_acknowledgement";
-
-export interface EmailReceiptLinkRecord {
+export interface EmailReceiptTokenRecord {
   id: string;
   firmId: string;
   matterId: string;
   emailId: string;
   tokenHash: string;
-  purpose: EmailReceiptLinkPurpose;
-  createdByUserId: string;
+  purpose: "delivery_receipt";
+  expiresAt: string;
+  recordedAt?: string;
   createdAt: string;
-  expiresAt?: string;
-  revokedAt?: string;
-  firstRecordedAt?: string;
-  lastRecordedAt?: string;
-  recordCount: number;
   metadata: Record<string, unknown>;
 }
 
@@ -193,7 +184,8 @@ export interface EmailEventRecord {
     | "bounced"
     | "complained"
     | "opened"
-    | "clicked";
+    | "clicked"
+    | "receipt_recorded";
   occurredAt: string;
   providerMessageId?: string;
   attemptNumber?: number;

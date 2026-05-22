@@ -2,7 +2,6 @@ import { createHmac } from "node:crypto";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type {
   ConnectorOutboxRecord,
-  BillingTrustExportKind,
   DocumentTextExtractionRecord,
   DraftAssistProvider,
   DraftAssistRecord,
@@ -13,8 +12,6 @@ import type {
 } from "@open-practice/domain";
 import {
   assertDraftAssistTask,
-  billingTrustExportResourceType,
-  summarizeBillingTrustExportCounts,
   buildDraftAssistAuditMetadata,
   extractTipTapPlainText,
   outboundWebhookEventAllowlist,
@@ -177,6 +174,13 @@ function compactMetadata(metadata: Record<string, unknown>): Record<string, unkn
 function metadataString(metadata: Record<string, unknown>, key: string): string | undefined {
   const value = metadata[key];
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function metadataJurisdiction(metadata: Record<string, unknown>): string | undefined {
+  const value = metadataString(metadata, "jurisdiction");
+  return value === "BC" || value === "ON" || value === "CANADA" || value === "OTHER"
+    ? value
+    : undefined;
 }
 
 async function enabledAiProviderKey(
@@ -431,8 +435,59 @@ async function processReportJob(input: {
     };
   }
 
-  if (input.jobName === "billing_export" || input.jobName === "trust_export") {
-    return processBillingTrustExportJob(input);
+  if (input.jobName === "billing_export" && data.resourceType === "billing_export") {
+    const matterId = metadataString(data.metadata ?? {}, "matterId");
+    const [timeEntries, expenseEntries, invoices, payments, trustTransferRequests] =
+      await Promise.all([
+        repository.listTimeEntries(data.firmId, matterId ? { matterId } : {}),
+        repository.listExpenseEntries(data.firmId, matterId ? { matterId } : {}),
+        repository.listInvoices(data.firmId, matterId ? { matterId } : {}),
+        repository.listPayments(data.firmId, matterId ? { matterId } : {}),
+        repository.listTrustTransferRequests(data.firmId, matterId ? { matterId } : {}),
+      ]);
+    const recordCount =
+      timeEntries.length +
+      expenseEntries.length +
+      invoices.length +
+      payments.length +
+      trustTransferRequests.length;
+    return {
+      status: "completed",
+      metadata: compactMetadata({
+        firmId: data.firmId,
+        resourceType: "billing_export",
+        resourceId: data.resourceId,
+        reportType: "billing",
+        reportScope: matterId ? "matter" : "firm",
+        matterId,
+        recordCount,
+        timeEntryCount: timeEntries.length,
+        expenseEntryCount: expenseEntries.length,
+        invoiceCount: invoices.length,
+        paymentCount: payments.length,
+        trustTransferRequestCount: trustTransferRequests.length,
+        generatedAt: new Date().toISOString(),
+      }),
+    };
+  }
+
+  if (
+    input.jobName === "jurisdictional_trust_export" &&
+    data.resourceType === "jurisdictional_trust_export"
+  ) {
+    const jurisdiction = metadataJurisdiction(data.metadata ?? {});
+    return {
+      status: "completed",
+      metadata: compactMetadata({
+        firmId: data.firmId,
+        resourceType: "jurisdictional_trust_export",
+        resourceId: data.resourceId,
+        reportType: "jurisdictional_trust",
+        reportScope: "firm",
+        jurisdiction,
+        generatedAt: new Date().toISOString(),
+      }),
+    };
   }
 
   return {
@@ -444,102 +499,6 @@ async function processReportJob(input: {
       resourceId: data.resourceId,
       reportStatus: "unsupported",
     },
-  };
-}
-
-function billingTrustCountMetadata(
-  counts: ReturnType<typeof summarizeBillingTrustExportCounts>,
-): Record<string, number | undefined> {
-  return {
-    recordCount: counts.recordCount,
-    timeEntryCount: counts.timeEntryCount,
-    expenseEntryCount: counts.expenseEntryCount,
-    invoiceCount: counts.invoiceCount,
-    paymentCount: counts.paymentCount,
-    trustTransferRequestCount: counts.trustTransferRequestCount,
-    ledgerAccountCount: counts.ledgerAccountCount,
-    ledgerEntryCount: counts.ledgerEntryCount,
-    balanceCount: counts.balanceCount,
-    trustBalanceCount: counts.trustBalanceCount,
-  };
-}
-
-async function processBillingTrustExportJob(input: {
-  jobName: string;
-  data: WorkerJobEnvelope;
-  repository: OpenPracticeRepository;
-}): Promise<WorkerJobResult> {
-  const { data, repository } = input;
-  const exportKind: BillingTrustExportKind =
-    input.jobName === "trust_export" || data.resourceType === "trust_export" ? "trust" : "billing";
-  const expectedResourceType = billingTrustExportResourceType(exportKind);
-  if (data.resourceType !== expectedResourceType) {
-    return {
-      status: "skipped",
-      reason: "Unsupported report export job",
-      metadata: {
-        firmId: data.firmId,
-        resourceType: data.resourceType,
-        resourceId: data.resourceId,
-        reportStatus: "unsupported",
-      },
-    };
-  }
-
-  const matterId = metadataString(data.metadata ?? {}, "matterId");
-  const requestedByUserId = metadataString(data.metadata ?? {}, "requestedByUserId");
-  if (exportKind === "billing") {
-    const [timeEntries, expenseEntries, invoices, payments] = await Promise.all([
-      repository.listTimeEntries(data.firmId, { matterId }),
-      repository.listExpenseEntries(data.firmId, { matterId }),
-      repository.listInvoices(data.firmId, { matterId }),
-      repository.listPayments(data.firmId, { matterId }),
-    ]);
-    const counts = summarizeBillingTrustExportCounts({
-      exportKind,
-      matterId,
-      billing: { timeEntries, expenseEntries, invoices, payments },
-    });
-    return {
-      status: "completed",
-      metadata: compactMetadata({
-        firmId: data.firmId,
-        resourceType: expectedResourceType,
-        resourceId: data.resourceId,
-        exportKind,
-        matterId,
-        requestedByUserId,
-        ...billingTrustCountMetadata(counts),
-      }),
-    };
-  }
-
-  const [ledger, trustTransferRequests] = await Promise.all([
-    repository.getLedger(data.firmId, { matterId }),
-    repository.listTrustTransferRequests(data.firmId, { matterId }),
-  ]);
-  const counts = summarizeBillingTrustExportCounts({
-    exportKind,
-    matterId,
-    trust: {
-      accounts: ledger.accounts,
-      entries: ledger.entries,
-      balances: ledger.balances,
-      trustBalances: ledger.trustBalances,
-      trustTransferRequests,
-    },
-  });
-  return {
-    status: "completed",
-    metadata: compactMetadata({
-      firmId: data.firmId,
-      resourceType: expectedResourceType,
-      resourceId: data.resourceId,
-      exportKind,
-      matterId,
-      requestedByUserId,
-      ...billingTrustCountMetadata(counts),
-    }),
   };
 }
 
