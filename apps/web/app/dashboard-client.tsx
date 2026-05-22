@@ -3751,6 +3751,9 @@ export default function DashboardClient({
                   formatSavedOperationalViewDefinition={formatSavedOperationalViewDefinition}
                   formatWorkerRunAttempts={formatWorkerRunAttempts}
                   formatWorkerRunTiming={formatWorkerRunTiming}
+                  canManageDocumentProcessingProvider={canManageDocumentProcessingProvider}
+                  ocrProviderUpdateStatus={ocrProviderUpdateStatus}
+                  ocrProviderUpdating={ocrProviderUpdating}
                   onApplyQueueOperationalViewDefinition={applyQueueOperationalViewDefinition}
                   onArchiveQueueOperationalViewDefinition={archiveQueueOperationalViewDefinition}
                   onClearQueueOperationalViewDefinition={clearQueueOperationalViewDefinition}
@@ -3758,6 +3761,7 @@ export default function DashboardClient({
                   onRefreshQueues={() => void refreshQueueLane()}
                   onSaveQueueOperationalViewDefinition={saveQueueOperationalViewDefinition}
                   onSelectMatter={selectMatter}
+                  onSetOcrProviderEnabled={(enabled) => void setOcrProviderEnabled(enabled)}
                   onWorkerRunFilterChange={setWorkerRunFilter}
                   providerFreshnessCue={providerFreshnessCue}
                   providerRows={providerRows}
