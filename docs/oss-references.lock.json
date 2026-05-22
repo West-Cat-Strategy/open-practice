@@ -16,12 +16,8 @@
       "committedAt": "2026-05-22 00:01:12 +0200",
       "centralPath": "../reference-repos/repos/activepieces__activepieces",
       "compatibilityPath": ".references/oss/activepieces__activepieces",
-      "compatibilityPaths": [
-        ".references/oss/activepieces__activepieces"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/activepieces__activepieces"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "architecture_only",
       "license": "MIT core with enterprise directories",
       "licenseRisk": "medium",
@@ -33,12 +29,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "workflow-automation",
-        "integrations",
-        "connector-delivery",
-        "secret-handling"
-      ],
+      "domains": ["workflow-automation", "integrations", "connector-delivery", "secret-handling"],
       "guardrail": "Use core workflow and connector concepts only after file-level license review; do not copy enterprise-directory code"
     },
     {
@@ -51,13 +42,8 @@
       "committedAt": "2026-05-21 16:25:21 +0100",
       "centralPath": "../reference-repos/repos/apache__fineract",
       "compatibilityPath": ".references/oss/apache__fineract",
-      "compatibilityPaths": [
-        ".references/oss/apache__fineract"
-      ],
-      "sourceFamilies": [
-        "open-practice",
-        "nonprofit-manager"
-      ],
+      "compatibilityPaths": [".references/oss/apache__fineract"],
+      "sourceFamilies": ["open-practice", "nonprofit-manager"],
       "reuseClass": "adopt_selectively",
       "license": "Apache-2.0",
       "licenseRisk": "low",
@@ -69,11 +55,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "trust-funds",
-        "accounting-controls",
-        "finance-ledger"
-      ]
+      "domains": ["trust-funds", "accounting-controls", "finance-ledger"]
     },
     {
       "id": "arkcase__arkcase",
@@ -85,12 +67,8 @@
       "committedAt": "2023-05-10 07:57:35 -0600",
       "centralPath": "../reference-repos/repos/arkcase__arkcase",
       "compatibilityPath": ".references/oss/ArkCase__ArkCase",
-      "compatibilityPaths": [
-        ".references/oss/ArkCase__ArkCase"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/ArkCase__ArkCase"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "reference_only",
       "license": "LGPL-3.0",
       "licenseRisk": "medium",
@@ -102,10 +80,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "case-records",
-        "enterprise-workflow"
-      ]
+      "domains": ["case-records", "enterprise-workflow"]
     },
     {
       "id": "automatisch__automatisch",
@@ -117,13 +92,8 @@
       "committedAt": "2026-01-15 10:57:39 +0100",
       "centralPath": "../reference-repos/repos/automatisch__automatisch",
       "compatibilityPath": ".references/oss/automatisch__automatisch",
-      "compatibilityPaths": [
-        ".references/oss/automatisch__automatisch"
-      ],
-      "sourceFamilies": [
-        "open-practice",
-        "nonprofit-manager"
-      ],
+      "compatibilityPaths": [".references/oss/automatisch__automatisch"],
+      "sourceFamilies": ["open-practice", "nonprofit-manager"],
       "reuseClass": "reference_only",
       "license": "AGPL-3.0 with enterprise files",
       "licenseRisk": "high",
@@ -135,11 +105,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "workflow-automation",
-        "integrations",
-        "job-orchestration"
-      ]
+      "domains": ["workflow-automation", "integrations", "job-orchestration"]
     },
     {
       "id": "blnkfinance__blnk",
@@ -151,13 +117,8 @@
       "committedAt": "2026-05-18 13:51:03 +0100",
       "centralPath": "../reference-repos/repos/blnkfinance__blnk",
       "compatibilityPath": ".references/oss/blnkfinance__blnk",
-      "compatibilityPaths": [
-        ".references/oss/blnkfinance__blnk"
-      ],
-      "sourceFamilies": [
-        "open-practice",
-        "nonprofit-manager"
-      ],
+      "compatibilityPaths": [".references/oss/blnkfinance__blnk"],
+      "sourceFamilies": ["open-practice", "nonprofit-manager"],
       "reuseClass": "adopt_selectively",
       "license": "Apache-2.0",
       "licenseRisk": "low",
@@ -169,11 +130,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "ledger",
-        "balances",
-        "idempotency"
-      ]
+      "domains": ["ledger", "balances", "idempotency"]
     },
     {
       "id": "calcom__cal.diy",
@@ -185,13 +142,8 @@
       "committedAt": "2026-05-14 19:30:21 +0000",
       "centralPath": "../reference-repos/repos/calcom__cal.diy",
       "compatibilityPath": ".references/oss/calcom__cal.diy",
-      "compatibilityPaths": [
-        ".references/oss/calcom__cal.diy"
-      ],
-      "sourceFamilies": [
-        "open-practice",
-        "nonprofit-manager"
-      ],
+      "compatibilityPaths": [".references/oss/calcom__cal.diy"],
+      "sourceFamilies": ["open-practice", "nonprofit-manager"],
       "reuseClass": "adapt_with_attribution",
       "license": "MIT",
       "licenseRisk": "low",
@@ -203,11 +155,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "scheduling",
-        "calendar",
-        "availability"
-      ]
+      "domains": ["scheduling", "calendar", "availability"]
     },
     {
       "id": "civicrm__civicrm-core",
@@ -219,13 +167,8 @@
       "committedAt": "2026-05-21 17:55:21 +0200",
       "centralPath": "../reference-repos/repos/civicrm__civicrm-core",
       "compatibilityPath": ".references/oss/civicrm__civicrm-core",
-      "compatibilityPaths": [
-        ".references/oss/civicrm__civicrm-core"
-      ],
-      "sourceFamilies": [
-        "open-practice",
-        "nonprofit-manager"
-      ],
+      "compatibilityPaths": [".references/oss/civicrm__civicrm-core"],
+      "sourceFamilies": ["open-practice", "nonprofit-manager"],
       "reuseClass": "architecture_only",
       "license": "AGPL-3.0 with exception",
       "licenseRisk": "high",
@@ -237,11 +180,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "nonprofit-crm",
-        "saved-audiences",
-        "membership"
-      ]
+      "domains": ["nonprofit-crm", "saved-audiences", "membership"]
     },
     {
       "id": "documenso__documenso",
@@ -253,12 +192,8 @@
       "committedAt": "2026-05-21 15:49:41 +1000",
       "centralPath": "../reference-repos/repos/documenso__documenso",
       "compatibilityPath": ".references/oss/documenso__documenso",
-      "compatibilityPaths": [
-        ".references/oss/documenso__documenso"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/documenso__documenso"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "reference_only",
       "license": "AGPL-3.0",
       "licenseRisk": "high",
@@ -270,12 +205,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "e-signature",
-        "pdf-signing",
-        "recipient-workflow",
-        "evidence"
-      ],
+      "domains": ["e-signature", "pdf-signing", "recipient-workflow", "evidence"],
       "guardrail": "AGPL reference only; compare evidence and recipient workflow concepts without copying implementation"
     },
     {
@@ -288,13 +218,8 @@
       "committedAt": "2026-05-18 13:45:07 +0300",
       "centralPath": "../reference-repos/repos/docusealco__docuseal",
       "compatibilityPath": ".references/oss/docusealco__docuseal",
-      "compatibilityPaths": [
-        ".references/oss/docusealco__docuseal"
-      ],
-      "sourceFamilies": [
-        "open-practice",
-        "nonprofit-manager"
-      ],
+      "compatibilityPaths": [".references/oss/docusealco__docuseal"],
+      "sourceFamilies": ["open-practice", "nonprofit-manager"],
       "reuseClass": "reference_only",
       "license": "AGPL-3.0 with additional terms",
       "licenseRisk": "high",
@@ -306,10 +231,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "e-signature",
-        "evidence"
-      ]
+      "domains": ["e-signature", "evidence"]
     },
     {
       "id": "getomni-ai__zerox",
@@ -321,12 +243,8 @@
       "committedAt": "2025-05-19 17:39:03 -0700",
       "centralPath": "../reference-repos/repos/getomni-ai__zerox",
       "compatibilityPath": ".references/oss/getomni-ai__zerox",
-      "compatibilityPaths": [
-        ".references/oss/getomni-ai__zerox"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/getomni-ai__zerox"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "reference_only",
       "license": "MIT",
       "licenseRisk": "medium",
@@ -338,11 +256,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "document-extraction",
-        "ocr",
-        "vision-models"
-      ],
+      "domains": ["document-extraction", "ocr", "vision-models"],
       "guardrail": "Research-only until privacy, model-provider, and local-processing posture are documented"
     },
     {
@@ -355,12 +269,8 @@
       "committedAt": "2026-05-11 22:33:40 -0400",
       "centralPath": "../reference-repos/repos/jhpyle__docassemble",
       "compatibilityPath": ".references/oss/jhpyle__docassemble",
-      "compatibilityPaths": [
-        ".references/oss/jhpyle__docassemble"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/jhpyle__docassemble"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "reference_only",
       "license": "MIT",
       "licenseRisk": "low",
@@ -372,10 +282,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "legal-intake",
-        "document-automation"
-      ]
+      "domains": ["legal-intake", "document-automation"]
     },
     {
       "id": "jitsi__jitsi-meet",
@@ -387,12 +294,8 @@
       "committedAt": "2026-05-21 16:50:52 +0300",
       "centralPath": "../reference-repos/repos/jitsi__jitsi-meet",
       "compatibilityPath": ".references/oss/jitsi__jitsi-meet",
-      "compatibilityPaths": [
-        ".references/oss/jitsi__jitsi-meet"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/jitsi__jitsi-meet"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "adopt_selectively",
       "license": "Apache-2.0",
       "licenseRisk": "low",
@@ -404,12 +307,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "video-meetings",
-        "webrtc",
-        "guest-session",
-        "lobby"
-      ],
+      "domains": ["video-meetings", "webrtc", "guest-session", "lobby"],
       "guardrail": "Use meeting boundary and hosted-service concepts only; keep Open Practice native media disabled until separately scoped"
     },
     {
@@ -422,12 +320,8 @@
       "committedAt": "2026-05-06 12:50:28 +0200",
       "centralPath": "../reference-repos/repos/jlawyerorg__j-lawyer-org",
       "compatibilityPath": ".references/oss/jlawyerorg__j-lawyer-org",
-      "compatibilityPaths": [
-        ".references/oss/jlawyerorg__j-lawyer-org"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/jlawyerorg__j-lawyer-org"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "reference_only",
       "license": "AGPL-3.0",
       "licenseRisk": "high",
@@ -439,10 +333,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "legal-practice",
-        "matter-workflows"
-      ]
+      "domains": ["legal-practice", "matter-workflows"]
     },
     {
       "id": "kimai__kimai",
@@ -454,12 +345,8 @@
       "committedAt": "2026-05-21 22:22:11 +0200",
       "centralPath": "../reference-repos/repos/kimai__kimai",
       "compatibilityPath": ".references/oss/kimai__kimai",
-      "compatibilityPaths": [
-        ".references/oss/kimai__kimai"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/kimai__kimai"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "reference_only",
       "license": "AGPL-3.0",
       "licenseRisk": "high",
@@ -471,11 +358,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "time",
-        "rates",
-        "invoicing"
-      ]
+      "domains": ["time", "rates", "invoicing"]
     },
     {
       "id": "ledgersmb__ledgersmb",
@@ -487,13 +370,8 @@
       "committedAt": "2026-05-18 01:36:29 +0000",
       "centralPath": "../reference-repos/repos/ledgersmb__ledgersmb",
       "compatibilityPath": ".references/oss/ledgersmb__LedgerSMB",
-      "compatibilityPaths": [
-        ".references/oss/ledgersmb__LedgerSMB"
-      ],
-      "sourceFamilies": [
-        "open-practice",
-        "nonprofit-manager"
-      ],
+      "compatibilityPaths": [".references/oss/ledgersmb__LedgerSMB"],
+      "sourceFamilies": ["open-practice", "nonprofit-manager"],
       "reuseClass": "reference_only",
       "license": "GPL-2.0",
       "licenseRisk": "high",
@@ -505,10 +383,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "general-ledger",
-        "reconciliation"
-      ]
+      "domains": ["general-ledger", "reconciliation"]
     },
     {
       "id": "lerianstudio__midaz",
@@ -520,12 +395,8 @@
       "committedAt": "2026-05-07 16:35:05 -0300",
       "centralPath": "../reference-repos/repos/lerianstudio__midaz",
       "compatibilityPath": ".references/oss/LerianStudio__midaz",
-      "compatibilityPaths": [
-        ".references/oss/LerianStudio__midaz"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/LerianStudio__midaz"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "reference_only",
       "license": "Elastic-2.0",
       "licenseRisk": "high_source_available",
@@ -537,9 +408,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "ledger-architecture"
-      ]
+      "domains": ["ledger-architecture"]
     },
     {
       "id": "microsoft__markitdown",
@@ -551,12 +420,8 @@
       "committedAt": "2026-04-20 10:52:17 -0700",
       "centralPath": "../reference-repos/repos/microsoft__markitdown",
       "compatibilityPath": ".references/oss/microsoft__markitdown",
-      "compatibilityPaths": [
-        ".references/oss/microsoft__markitdown"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/microsoft__markitdown"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "reference_only",
       "license": "MIT",
       "licenseRisk": "medium",
@@ -568,11 +433,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "document-conversion",
-        "markdown-extraction",
-        "office-documents"
-      ],
+      "domains": ["document-conversion", "markdown-extraction", "office-documents"],
       "guardrail": "Research-only until document privacy, extraction fidelity, dependency, and provider posture are reviewed"
     },
     {
@@ -585,12 +446,8 @@
       "committedAt": "2026-05-18 00:23:00 +0000",
       "centralPath": "../reference-repos/repos/nextcloud__server",
       "compatibilityPath": ".references/oss/nextcloud__server",
-      "compatibilityPaths": [
-        ".references/oss/nextcloud__server"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/nextcloud__server"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "reference_only",
       "license": "AGPL-3.0-or-later",
       "licenseRisk": "high",
@@ -602,12 +459,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "secure-sharing",
-        "external-upload",
-        "file-activity",
-        "audit"
-      ],
+      "domains": ["secure-sharing", "external-upload", "file-activity", "audit"],
       "guardrail": "AGPL reference only; study share/upload lifecycle and activity vocabulary without copying code or schema"
     },
     {
@@ -620,12 +472,8 @@
       "committedAt": "2026-05-21 21:19:09 -0500",
       "centralPath": "../reference-repos/repos/open-source-legal__opencontracts",
       "compatibilityPath": ".references/oss/open-source-legal__opencontracts",
-      "compatibilityPaths": [
-        ".references/oss/open-source-legal__opencontracts"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/open-source-legal__opencontracts"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "reference_only",
       "license": "MIT",
       "licenseRisk": "medium",
@@ -637,12 +485,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "legal-document-review",
-        "annotations",
-        "semantic-search",
-        "redaction"
-      ],
+      "domains": ["legal-document-review", "annotations", "semantic-search", "redaction"],
       "guardrail": "Reference-only until AI, privacy, and legal-document review posture are explicitly scoped"
     },
     {
@@ -655,12 +498,8 @@
       "committedAt": "2026-05-06 08:48:23 +0200",
       "centralPath": "../reference-repos/repos/opencollective__opencollective",
       "compatibilityPath": ".references/oss/opencollective__opencollective",
-      "compatibilityPaths": [
-        ".references/oss/opencollective__opencollective"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/opencollective__opencollective"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "defer_reference_only",
       "license": "MIT",
       "licenseRisk": "low",
@@ -672,10 +511,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "fiscal-host",
-        "transparent-reporting"
-      ]
+      "domains": ["fiscal-host", "transparent-reporting"]
     },
     {
       "id": "opencollective__opencollective-api",
@@ -687,13 +523,8 @@
       "committedAt": "2026-05-21 16:50:15 +0200",
       "centralPath": "../reference-repos/repos/opencollective__opencollective-api",
       "compatibilityPath": ".references/oss/opencollective__opencollective-api",
-      "compatibilityPaths": [
-        ".references/oss/opencollective__opencollective-api"
-      ],
-      "sourceFamilies": [
-        "open-practice",
-        "nonprofit-manager"
-      ],
+      "compatibilityPaths": [".references/oss/opencollective__opencollective-api"],
+      "sourceFamilies": ["open-practice", "nonprofit-manager"],
       "reuseClass": "architecture_only",
       "license": "MIT",
       "licenseRisk": "low",
@@ -705,10 +536,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "events-finance",
-        "fiscal-host"
-      ]
+      "domains": ["events-finance", "fiscal-host"]
     },
     {
       "id": "opencollective__opencollective-frontend",
@@ -720,13 +548,8 @@
       "committedAt": "2026-05-21 08:30:56 +0200",
       "centralPath": "../reference-repos/repos/opencollective__opencollective-frontend",
       "compatibilityPath": ".references/oss/opencollective__opencollective-frontend",
-      "compatibilityPaths": [
-        ".references/oss/opencollective__opencollective-frontend"
-      ],
-      "sourceFamilies": [
-        "open-practice",
-        "nonprofit-manager"
-      ],
+      "compatibilityPaths": [".references/oss/opencollective__opencollective-frontend"],
+      "sourceFamilies": ["open-practice", "nonprofit-manager"],
       "reuseClass": "architecture_only",
       "license": "MIT",
       "licenseRisk": "low",
@@ -738,10 +561,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "fiscal-host-ui",
-        "transparent-reporting"
-      ]
+      "domains": ["fiscal-host-ui", "transparent-reporting"]
     },
     {
       "id": "openfga__openfga",
@@ -753,12 +573,8 @@
       "committedAt": "2026-05-21 14:16:50 +0000",
       "centralPath": "../reference-repos/repos/openfga__openfga",
       "compatibilityPath": ".references/oss/openfga__openfga",
-      "compatibilityPaths": [
-        ".references/oss/openfga__openfga"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/openfga__openfga"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "architecture_only",
       "license": "Apache-2.0",
       "licenseRisk": "low",
@@ -770,12 +586,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "authorization",
-        "rebac",
-        "access-control",
-        "matter-scoping"
-      ],
+      "domains": ["authorization", "rebac", "access-control", "matter-scoping"],
       "guardrail": "Use authori"
     },
     {
@@ -788,12 +599,8 @@
       "committedAt": "2026-05-08 22:42:12 -0700",
       "centralPath": "../reference-repos/repos/paperless-ngx__paperless-ngx",
       "compatibilityPath": ".references/oss/paperless-ngx__paperless-ngx",
-      "compatibilityPaths": [
-        ".references/oss/paperless-ngx__paperless-ngx"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/paperless-ngx__paperless-ngx"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "reference_only",
       "license": "GPL-3.0",
       "licenseRisk": "high",
@@ -805,11 +612,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "document-ingest",
-        "ocr",
-        "archive"
-      ]
+      "domains": ["document-ingest", "ocr", "archive"]
     },
     {
       "id": "papermerge__papermerge-core",
@@ -821,12 +624,8 @@
       "committedAt": "2026-03-17 05:58:01 +0000",
       "centralPath": "../reference-repos/repos/papermerge__papermerge-core",
       "compatibilityPath": ".references/oss/papermerge__papermerge-core",
-      "compatibilityPaths": [
-        ".references/oss/papermerge__papermerge-core"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/papermerge__papermerge-core"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "adopt_selectively",
       "license": "Apache-2.0",
       "licenseRisk": "low",
@@ -838,12 +637,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "document-ingest",
-        "ocr",
-        "metadata-review",
-        "document-lifecycle"
-      ],
+      "domains": ["document-ingest", "ocr", "metadata-review", "document-lifecycle"],
       "guardrail": "Use document lifecycle and metadata-review concepts; keep Open Practice implementation original unless reuse is separately documented"
     },
     {
@@ -856,12 +650,8 @@
       "committedAt": "2026-05-21 16:27:35 -0700",
       "centralPath": "../reference-repos/repos/temporalio__temporal",
       "compatibilityPath": ".references/oss/temporalio__temporal",
-      "compatibilityPaths": [
-        ".references/oss/temporalio__temporal"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/temporalio__temporal"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "adopt_selectively",
       "license": "MIT",
       "licenseRisk": "low",
@@ -873,12 +663,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "durable-workflows",
-        "job-history",
-        "retries",
-        "worker-visibility"
-      ],
+      "domains": ["durable-workflows", "job-history", "retries", "worker-visibility"],
       "guardrail": "Use workflow semantics as design input; defer service adoption unless a future runtime lane explicitly opens it"
     },
     {
@@ -891,12 +676,8 @@
       "committedAt": "2026-05-17 13:28:24 +0000",
       "centralPath": "../reference-repos/repos/unstructured-io__unstructured",
       "compatibilityPath": ".references/oss/unstructured-io__unstructured",
-      "compatibilityPaths": [
-        ".references/oss/unstructured-io__unstructured"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/unstructured-io__unstructured"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "reference_only",
       "license": "Apache-2.0",
       "licenseRisk": "medium",
@@ -908,12 +689,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "document-etl",
-        "structured-extraction",
-        "chunking",
-        "ai-pipeline"
-      ],
+      "domains": ["document-etl", "structured-extraction", "chunking", "ai-pipeline"],
       "guardrail": "Research-only until local/private processing, dependency, and model-boundary posture are documented"
     },
     {
@@ -926,12 +702,8 @@
       "committedAt": "2026-05-21 21:24:04 +0530",
       "centralPath": "../reference-repos/repos/zulip__zulip",
       "compatibilityPath": ".references/oss/zulip__zulip",
-      "compatibilityPaths": [
-        ".references/oss/zulip__zulip"
-      ],
-      "sourceFamilies": [
-        "open-practice"
-      ],
+      "compatibilityPaths": [".references/oss/zulip__zulip"],
+      "sourceFamilies": ["open-practice"],
       "reuseClass": "adopt_selectively",
       "license": "Apache-2.0",
       "licenseRisk": "low",
@@ -943,12 +715,7 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": [
-        "threaded-messaging",
-        "topics",
-        "retention",
-        "notifications"
-      ],
+      "domains": ["threaded-messaging", "topics", "retention", "notifications"],
       "guardrail": "Use topic/message semantics as a clean-room reference; do not add realtime chat or federation in the first Open Practice slice"
     }
   ]
