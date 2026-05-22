@@ -1503,6 +1503,15 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "/api/portal/external-uploads/:token/documents/:documentId/complete",
     "external-upload:mutation",
   ),
+  authRoute(
+    "registerE2ESupportRoutes",
+    "apps/api/src/routes/e2e-support.test.ts",
+    "POST",
+    "/api/e2e/shareable-document",
+    "document",
+    "create",
+    "required",
+  ),
 
   authRoute(
     "registerAuthExtensionRoutes",

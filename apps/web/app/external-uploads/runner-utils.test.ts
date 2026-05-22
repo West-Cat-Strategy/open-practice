@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildExternalUploadIntentPayload,
+  buildExternalUploadPutHeaders,
   buildPublicExternalUploadCompletePath,
   buildPublicExternalUploadIntentPath,
   buildPublicExternalUploadPath,
@@ -155,6 +156,19 @@ describe("public external upload runner helpers", () => {
       contentType: "application/pdf",
       classification: "privileged",
       legalHold: true,
+    });
+    expect(
+      buildExternalUploadPutHeaders({
+        file: { type: "text/plain" },
+        requiredHeaders: {
+          "x-amz-checksum-sha256": "signed-base64-checksum",
+          "x-amz-meta-open-practice-upload-scope": "external-upload",
+        },
+      }),
+    ).toEqual({
+      "Content-Type": "text/plain",
+      "x-amz-checksum-sha256": "signed-base64-checksum",
+      "x-amz-meta-open-practice-upload-scope": "external-upload",
     });
     expect(describeExternalUploadPutFailure(500)).toBe("Upload failed: 500");
     expect(

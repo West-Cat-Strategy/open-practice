@@ -17,6 +17,8 @@ export const COMMANDS = {
   docsCheck: "pnpm docs:check",
   domainTest: "pnpm --filter @open-practice/domain test",
   domainTypecheck: "pnpm --filter @open-practice/domain typecheck",
+  e2eDocker: "pnpm e2e:docker",
+  e2eHost: "pnpm e2e:host",
   formatCheck: "pnpm format:check",
   migrationsCheck: "pnpm migrations:check",
   policyCheck: "pnpm policy:check",
@@ -35,6 +37,8 @@ export const COMMAND_ORDER = [
   COMMANDS.ciLocal,
   COMMANDS.depsAudit,
   COMMANDS.depsLicenses,
+  COMMANDS.e2eHost,
+  COMMANDS.e2eDocker,
   COMMANDS.formatCheck,
   COMMANDS.docsCheck,
   COMMANDS.policyCheck,
@@ -182,6 +186,7 @@ function isRootConfig(path) {
     /^tsconfig(?:\.[^/]+)?\.json$/.test(path) ||
     /^eslint\.config\.[cm]?js$/.test(path) ||
     /^prettier\.config\.[cm]?js$/.test(path) ||
+    /^playwright\.config\.(?:[cm]?[jt]s)$/.test(path) ||
     path === ".prettierrc" ||
     path.startsWith(".prettierrc.") ||
     path === ".npmrc" ||
@@ -213,6 +218,12 @@ function isMigration(path) {
 
 function isDomainSource(path) {
   return path.startsWith("packages/domain/src/");
+}
+
+function isE2EPath(path) {
+  return (
+    path === "e2e" || path.startsWith("e2e/") || /^playwright\.config\.(?:[cm]?[jt]s)$/.test(path)
+  );
 }
 
 export function normalizePaths(paths, cwd = process.cwd()) {
@@ -267,6 +278,11 @@ export function classifyPath(path) {
     commands.add(COMMANDS.webTest);
     commands.add(COMMANDS.webTypecheck);
     commands.add(COMMANDS.build);
+  }
+
+  if (isE2EPath(path)) {
+    commands.add(COMMANDS.e2eHost);
+    commands.add(COMMANDS.e2eDocker);
   }
 
   if (path.startsWith("docs/")) {

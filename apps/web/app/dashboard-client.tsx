@@ -364,6 +364,15 @@ const currency = new Intl.NumberFormat("en-CA", {
   style: "currency",
   currency: "CAD",
 });
+const compactDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
 const dashboardLaneStaleAfterMs = 5 * 60 * 1000;
 
 const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
@@ -399,7 +408,7 @@ function compactStatus(value?: string): string {
 function compactDate(value?: string): string {
   if (!value) return "none";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("en-CA");
+  return Number.isNaN(date.getTime()) ? value : compactDateFormatter.format(date);
 }
 
 function formatSavedOperationalViewDefinition(definition: SavedOperationalViewDefinition): string {

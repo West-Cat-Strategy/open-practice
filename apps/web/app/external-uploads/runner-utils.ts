@@ -128,6 +128,16 @@ export function buildExternalUploadIntentPayload(input: {
   };
 }
 
+export function buildExternalUploadPutHeaders(input: {
+  file: Pick<File, "type">;
+  requiredHeaders?: Record<string, string>;
+}): Record<string, string> {
+  return {
+    "Content-Type": input.file.type || "application/octet-stream",
+    ...(input.requiredHeaders ?? {}),
+  };
+}
+
 export function describeExternalUploadPutFailure(status: number): string {
   return `Upload failed: ${status}`;
 }

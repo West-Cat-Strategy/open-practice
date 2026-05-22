@@ -1,4 +1,5 @@
 import { S3Client } from "@aws-sdk/client-s3";
+import { Buffer } from "node:buffer";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { hashToken } from "../http/auth-helpers.js";
@@ -481,6 +482,18 @@ describe("external upload routes", () => {
     expect(intent.json().document).not.toHaveProperty("storageKey");
     expect(intent.json().document).not.toHaveProperty("supersedesDocumentId");
     expect(intent.json().uploadUrl).toContain("open-practice-test-documents");
+    expect(intent.json().requiredHeaders).toMatchObject({
+      "x-amz-meta-open-practice-upload-scope": "external-upload",
+      "x-amz-meta-open-practice-scan": "required-before-share",
+      "x-amz-checksum-sha256": Buffer.from(checksum, "hex").toString("base64"),
+    });
+    expect(intent.json().requiredHeaders["x-amz-checksum-sha256"]).not.toBe(checksum);
+    const uploadUrl = new URL(intent.json().uploadUrl);
+    const signedHeaders = uploadUrl.searchParams.get("X-Amz-SignedHeaders")?.split(";") ?? [];
+    expect(signedHeaders).toEqual(
+      expect.arrayContaining(Object.keys(intent.json().requiredHeaders)),
+    );
+    expect(uploadUrl.searchParams.has("x-amz-checksum-sha256")).toBe(false);
     await expect(repository.getDocument("firm-west-legal", "doc-001")).resolves.not.toHaveProperty(
       "supersededAt",
     );
@@ -597,6 +610,32 @@ describe("external upload routes", () => {
       ]),
       valid: true,
     });
+  });
+
+  it("rejects public upload intents when checksum input is not hex SHA-256", async () => {
+    const { server } = testServer({ s3: s3Config() });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/external-uploads",
+      payload: {
+        matterId: "matter-001",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      },
+    });
+    const token = created.json().token as string;
+
+    const intent = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${token}/intents`,
+      payload: {
+        filename: "external evidence.pdf",
+        checksumSha256: "not-a-sha256",
+      },
+    });
+
+    expect(intent.statusCode).toBe(400);
+    expect(intent.body).not.toContain(token);
+    expect(intent.body).not.toContain("tokenHash");
   });
 
   it("loads safe public external upload link metadata before file selection", async () => {

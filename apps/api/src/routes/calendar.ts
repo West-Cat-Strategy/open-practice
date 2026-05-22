@@ -448,7 +448,6 @@ function publicGuestSessionAccessLog(input: {
   return {
     id: `access-log-${createSessionToken().slice(0, 16)}`,
     firmId: input.link.firmId,
-    actorId: `public:calendar_guest_link:${input.link.id}`,
     resourceType: "calendar_guest_link",
     resourceId: input.link.id,
     action: input.action,
