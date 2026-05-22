@@ -1,36 +1,58 @@
-import { Search } from "lucide-react";
+import { Check, ClipboardCheck, Search } from "lucide-react";
 import {
+  contactDataQualityResolutionActions,
+  contactDataQualitySignalKey,
   contactDossierRiskClass,
+  formatContactDataQualityResolutionDecision,
   contactReviewQueueRiskClass,
   formatContactReviewSignalKind,
+  latestContactDataQualityResolutionForSignal,
   summarizeContactDossier,
   summarizeContactReviewQueueItem,
 } from "../contact-dossiers-dashboard";
 import { formatMatterPartyRoleLabel } from "../participant-role-labels";
-import type { ContactDossier, ContactDossiersResponse, ContactReviewQueueResponse } from "../types";
+import type {
+  ContactDataQualityResolutionRecord,
+  ContactDossier,
+  ContactDossiersResponse,
+  ContactReviewQueueResponse,
+} from "../types";
 
 export function ContactsSection({
   activeContactDossier,
+  canRecordContactDataQualityResolution,
   compactStatus,
+  contactDataQualityResolutions,
+  contactDataQualityStatus,
   contactDossiers,
   contactReviewQueue,
   contactSearch,
   filteredContactDossiers,
+  onRecordContactDataQualityResolution,
   onContactSearchChange,
   onPrepareConflictCheckFromContact,
   onSelectContact,
   onSelectMatter,
+  recordingContactResolutionKey,
 }: {
   activeContactDossier?: ContactDossier;
+  canRecordContactDataQualityResolution: boolean;
   compactStatus: (value?: string) => string;
+  contactDataQualityResolutions: ContactDataQualityResolutionRecord[];
+  contactDataQualityStatus: string;
   contactDossiers: ContactDossiersResponse;
   contactReviewQueue?: ContactReviewQueueResponse;
   contactSearch: string;
   filteredContactDossiers: ContactDossiersResponse;
+  onRecordContactDataQualityResolution: (
+    signal: ContactDossier["qualityReview"]["signals"][number],
+    decision: ContactDataQualityResolutionRecord["decision"],
+  ) => void;
   onContactSearchChange: (value: string) => void;
   onPrepareConflictCheckFromContact: () => void;
   onSelectContact: (contactId: string) => void;
   onSelectMatter: (matterId: string) => void;
+  recordingContactResolutionKey: string;
 }) {
   return (
     <>
@@ -312,29 +334,101 @@ export function ContactsSection({
 
               <div className="section-title">
                 <h3>Quality review</h3>
-                <span>{activeContactDossier.qualityReview.signals.length}</span>
+                <span>{contactDataQualityStatus}</span>
               </div>
               <div className="party-list">
-                {activeContactDossier.qualityReview.signals.map((signal, index) => (
-                  <div
-                    className="party-row"
-                    key={`${activeContactDossier.contact.id}-quality-${index}`}
-                  >
-                    <span>
-                      <strong>{signal.reason}</strong>
-                      <small>
-                        {[signal.matchedValue, signal.matterId, signal.changedAt]
-                          .filter(Boolean)
-                          .join(" · ") || "contact-level"}
-                      </small>
-                    </span>
-                    <em className={signal.severity === "blocker" ? "risk" : undefined}>
-                      {signal.kind.replaceAll("_", " ")}
-                    </em>
-                  </div>
-                ))}
+                {activeContactDossier.qualityReview.signals.map((signal, index) => {
+                  const signalKey = contactDataQualitySignalKey(
+                    activeContactDossier.contact.id,
+                    signal,
+                  );
+                  const latestResolution = latestContactDataQualityResolutionForSignal(
+                    contactDataQualityResolutions,
+                    activeContactDossier.contact.id,
+                    signal,
+                  );
+                  return (
+                    <div
+                      className="party-row"
+                      key={`${activeContactDossier.contact.id}-quality-${index}`}
+                    >
+                      <span>
+                        <strong>{signal.reason}</strong>
+                        <small>
+                          {[signal.matchedOn, signal.matterId, signal.changedAt]
+                            .filter(Boolean)
+                            .join(" · ") || "contact-level"}
+                        </small>
+                        {latestResolution ? (
+                          <small>
+                            Latest decision:{" "}
+                            {formatContactDataQualityResolutionDecision(latestResolution.decision)}{" "}
+                            · {latestResolution.recordedAt}
+                          </small>
+                        ) : null}
+                        {canRecordContactDataQualityResolution ? (
+                          <span className="row-actions contact-resolution-actions">
+                            {contactDataQualityResolutionActions[signal.kind].map((action) => (
+                              <button
+                                className="secondary-button compact-button row-button"
+                                disabled={recordingContactResolutionKey === signalKey}
+                                key={`${signalKey}-${action.decision}`}
+                                onClick={() =>
+                                  onRecordContactDataQualityResolution(signal, action.decision)
+                                }
+                                type="button"
+                              >
+                                {action.decision === "needs_follow_up" ||
+                                action.decision === "revalidation_requested" ? (
+                                  <ClipboardCheck size={14} aria-hidden="true" />
+                                ) : (
+                                  <Check size={14} aria-hidden="true" />
+                                )}
+                                {action.label}
+                              </button>
+                            ))}
+                          </span>
+                        ) : null}
+                      </span>
+                      <em className={signal.severity === "blocker" ? "risk" : undefined}>
+                        {formatContactReviewSignalKind(signal.kind)}
+                      </em>
+                    </div>
+                  );
+                })}
                 {activeContactDossier.qualityReview.signals.length === 0 ? (
                   <p className="inline-empty">No quality review signals.</p>
+                ) : null}
+              </div>
+
+              <div className="section-title">
+                <h3>Resolution history</h3>
+                <span>{contactDataQualityResolutions.length}</span>
+              </div>
+              <div className="party-list">
+                {contactDataQualityResolutions.map((resolution) => (
+                  <div className="party-row" key={resolution.id}>
+                    <span>
+                      <strong>
+                        {formatContactDataQualityResolutionDecision(resolution.decision)}
+                      </strong>
+                      <small>
+                        {[
+                          formatContactReviewSignalKind(resolution.signalKind),
+                          resolution.matterId,
+                          resolution.relatedContactId ? "related contact noted" : null,
+                          resolution.sourceRecordId ? "source record noted" : null,
+                          resolution.recordedAt,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </small>
+                    </span>
+                    <em>{resolution.recordedByUserId}</em>
+                  </div>
+                ))}
+                {contactDataQualityResolutions.length === 0 ? (
+                  <p className="inline-empty">No reviewer decisions recorded.</p>
                 ) : null}
               </div>
             </>

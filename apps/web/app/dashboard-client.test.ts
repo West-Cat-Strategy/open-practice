@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import type {
   ActivityTimelineEntry,
   CalendarEventRecord,
@@ -105,11 +107,16 @@ import {
   upsertCalendarEventReminder,
 } from "./calendar-dashboard";
 import {
+  buildContactDataQualityResolutionPayload,
   buildContactDossierConflictCheckPrefill,
+  contactDataQualityResolutionActions,
+  contactDataQualityResolutionMatchesSignal,
   contactDossierRiskClass,
   contactReviewQueueRiskClass,
   filterContactDossiers,
+  formatContactDataQualityResolutionDecision,
   formatContactReviewSignalKind,
+  latestContactDataQualityResolutionForSignal,
   summarizeContactDossier,
   summarizeContactReviewQueueItem,
 } from "./contact-dossiers-dashboard";
@@ -221,8 +228,10 @@ import {
 import {
   buildEmailDeliveryConfirmation,
   buildIntakeSessionCreatePayload,
+  canRecordContactDataQualityResolutions,
   upsertIntakeSession,
 } from "./types";
+import { ContactsSection } from "./dashboard/contacts-section";
 import type {
   ExternalUploadLinkRecord,
   ExternalUploadReviewItem,
@@ -230,6 +239,8 @@ import type {
   CommunicationsInboxMatterResponse,
   BillingDashboardResponse,
   ConnectorOperationsResponse,
+  ContactDataQualityResolutionRecord,
+  ContactDossier,
   IntakeFormLinkSummary,
   MatterSummary,
   OperationalViewsResponse,
@@ -287,6 +298,70 @@ function matter(overrides: Partial<MatterSummary>): MatterSummary {
     trustBalanceCents: 0,
     ...overrides,
   } as MatterSummary;
+}
+
+function contactDossierWithResolutionSignal(): ContactDossier {
+  return {
+    contact: {
+      id: "contact-river",
+      firmId: "firm-west-legal",
+      kind: "organization",
+      displayName: "River City Rentals Inc.",
+      aliases: [],
+      identifiers: [{ type: "email", value: "legal@rivercity.example" }],
+    },
+    matters: [
+      {
+        matterId: "matter-001",
+        matterNumber: "2026-0001",
+        matterTitle: "Morgan tenancy dispute",
+        matterStatus: "open",
+        practiceArea: "Residential tenancy",
+        role: "opposing_party",
+        adverse: true,
+        confidential: false,
+        portalActive: false,
+        portalPermissions: [],
+      },
+    ],
+    portal: { activeGrantCount: 0, permissionLabels: [] },
+    conflictCues: [],
+    qualityReview: {
+      summary: {
+        duplicateCandidateCount: 1,
+        sensitivePartyCueCount: 0,
+        revalidationPromptCount: 0,
+      },
+      signals: [
+        {
+          kind: "duplicate_candidate",
+          severity: "review",
+          reason: "Possible duplicate contact identifier",
+          relatedContactIds: ["contact-river-duplicate"],
+          matchedOn: "identifier",
+          matchedValue: "email:legal@rivercity.example",
+        },
+      ],
+    },
+    conflictHistory: [],
+  };
+}
+
+function contactDataQualityResolutionRecord(
+  overrides: Partial<ContactDataQualityResolutionRecord> = {},
+): ContactDataQualityResolutionRecord {
+  return {
+    id: "resolution-river",
+    firmId: "firm-west-legal",
+    contactId: "contact-river",
+    signalKind: "duplicate_candidate",
+    decision: "false_positive",
+    relatedContactId: "contact-river-duplicate",
+    resolutionNote: "Synthetic reviewer decision.",
+    recordedByUserId: "user-licensee",
+    recordedAt: "2026-05-01T12:30:00.000Z",
+    ...overrides,
+  };
 }
 
 const editorJson = {
@@ -1190,6 +1265,201 @@ describe("dashboard client behavior", () => {
     expect(JSON.stringify(item)).not.toContain("legal@rivercity.example");
   });
 
+  it("builds contact data-quality resolution payloads and matches history without contact rewrites", () => {
+    const dossier = {
+      contact: {
+        id: "contact-river",
+        firmId: "firm-west-legal",
+        kind: "organization" as const,
+        displayName: "River City Rentals Inc.",
+        aliases: [],
+        identifiers: [{ type: "email" as const, value: "legal@rivercity.example" }],
+      },
+      matters: [
+        {
+          matterId: "matter-001",
+          matterNumber: "2026-0001",
+          matterTitle: "Morgan tenancy dispute",
+          matterStatus: "open" as const,
+          practiceArea: "Residential tenancy",
+          role: "opposing_party" as const,
+          adverse: true,
+          confidential: false,
+          portalActive: false,
+          portalPermissions: [],
+        },
+      ],
+      portal: { activeGrantCount: 0, permissionLabels: [] },
+      conflictCues: [],
+      qualityReview: {
+        summary: {
+          duplicateCandidateCount: 1,
+          sensitivePartyCueCount: 1,
+          revalidationPromptCount: 1,
+        },
+        signals: [
+          {
+            kind: "duplicate_candidate" as const,
+            severity: "review" as const,
+            reason: "Possible duplicate contact identifier",
+            relatedContactIds: ["contact-river-duplicate"],
+            matchedOn: "identifier" as const,
+            matchedValue: "email:legal@rivercity.example",
+          },
+          {
+            kind: "conflict_revalidation" as const,
+            severity: "review" as const,
+            reason: "Approved contact name change should prompt manual conflict-check revalidation",
+            matterId: "matter-001",
+            sourceRecordId: "proposal-river-name",
+            changedAt: "2026-05-01T11:00:00.000Z",
+          },
+        ],
+      },
+      conflictHistory: [],
+    };
+    const duplicateSignal = dossier.qualityReview.signals[0]!;
+    const revalidationSignal = dossier.qualityReview.signals[1]!;
+
+    expect(
+      contactDataQualityResolutionActions.duplicate_candidate.map((action) => action.label),
+    ).toEqual(["Not duplicate", "Needs review"]);
+    expect(
+      buildContactDataQualityResolutionPayload(dossier, duplicateSignal, "false_positive"),
+    ).toMatchObject({
+      contactId: "contact-river",
+      signalKind: "duplicate_candidate",
+      decision: "false_positive",
+      relatedContactId: "contact-river-duplicate",
+    });
+    expect(
+      buildContactDataQualityResolutionPayload(
+        dossier,
+        revalidationSignal,
+        "revalidation_completed",
+      ),
+    ).toMatchObject({
+      matterId: "matter-001",
+      sourceRecordId: "proposal-river-name",
+      resolutionNote: "Contacts dashboard reviewer marked revalidated for conflict revalidation.",
+    });
+    const resolutions = [
+      {
+        id: "resolution-older",
+        firmId: "firm-west-legal",
+        contactId: "contact-river",
+        signalKind: "conflict_revalidation" as const,
+        decision: "revalidation_requested" as const,
+        matterId: "matter-001",
+        sourceRecordId: "proposal-river-name",
+        resolutionNote: "Synthetic older resolution.",
+        recordedByUserId: "user-licensee",
+        recordedAt: "2026-05-01T11:30:00.000Z",
+      },
+      {
+        id: "resolution-latest",
+        firmId: "firm-west-legal",
+        contactId: "contact-river",
+        signalKind: "conflict_revalidation" as const,
+        decision: "revalidation_completed" as const,
+        matterId: "matter-001",
+        sourceRecordId: "proposal-river-name",
+        resolutionNote: "Synthetic latest resolution.",
+        recordedByUserId: "user-licensee",
+        recordedAt: "2026-05-01T12:30:00.000Z",
+      },
+    ];
+    expect(contactDataQualityResolutionMatchesSignal(resolutions[1]!, revalidationSignal)).toBe(
+      true,
+    );
+    expect(
+      latestContactDataQualityResolutionForSignal(resolutions, "contact-river", revalidationSignal)
+        ?.id,
+    ).toBe("resolution-latest");
+    expect(formatContactDataQualityResolutionDecision("false_positive")).toBe("not duplicate");
+    expect(
+      JSON.stringify(
+        buildContactDataQualityResolutionPayload(dossier, duplicateSignal, "false_positive"),
+      ),
+    ).not.toContain("legal@rivercity.example");
+  });
+
+  it("keeps contact resolution history visible while read-only contact capabilities hide controls", () => {
+    const dossier = contactDossierWithResolutionSignal();
+    const resolutions = [contactDataQualityResolutionRecord()];
+    const signal = dossier.qualityReview.signals[0]!;
+    const latestResolution = latestContactDataQualityResolutionForSignal(
+      resolutions,
+      dossier.contact.id,
+      signal,
+    );
+    const historyRowText = [
+      formatContactDataQualityResolutionDecision(resolutions[0]!.decision),
+      formatContactReviewSignalKind(resolutions[0]!.signalKind),
+      resolutions[0]!.relatedContactId ? "related contact noted" : null,
+      resolutions[0]!.recordedAt,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const visibleSignalText = [signal.reason, signal.matchedOn, signal.matterId, signal.changedAt]
+      .filter(Boolean)
+      .join(" · ");
+
+    expect(
+      canRecordContactDataQualityResolutions([capability("contacts", { actions: ["read"] })]),
+    ).toBe(false);
+    expect(
+      canRecordContactDataQualityResolutions([
+        capability("contacts", { actions: ["read", "update"] }),
+      ]),
+    ).toBe(true);
+    expect(latestResolution?.decision).toBe("false_positive");
+    expect(historyRowText).toContain("not duplicate");
+    expect(historyRowText).toContain("duplicate candidate");
+    expect(historyRowText).toContain("related contact noted");
+    expect(historyRowText).toContain("2026-05-01T12:30:00.000Z");
+    expect(JSON.stringify({ visibleSignalText, latestResolution, historyRowText })).not.toContain(
+      "legal@rivercity.example",
+    );
+
+    const commonProps = {
+      activeContactDossier: dossier,
+      compactStatus: (value?: string) => value ?? "",
+      contactDataQualityResolutions: resolutions,
+      contactDataQualityStatus: "1 resolution loaded.",
+      contactDossiers: [dossier],
+      contactSearch: "",
+      filteredContactDossiers: [dossier],
+      onContactSearchChange: () => {},
+      onPrepareConflictCheckFromContact: () => {},
+      onRecordContactDataQualityResolution: () => {},
+      onSelectContact: () => {},
+      onSelectMatter: () => {},
+      recordingContactResolutionKey: "",
+    };
+    const readOnlyHtml = renderToStaticMarkup(
+      createElement(ContactsSection, {
+        ...commonProps,
+        canRecordContactDataQualityResolution: false,
+      }),
+    );
+    const writableHtml = renderToStaticMarkup(
+      createElement(ContactsSection, {
+        ...commonProps,
+        canRecordContactDataQualityResolution: true,
+      }),
+    );
+
+    expect(readOnlyHtml).toContain("Resolution history");
+    expect(readOnlyHtml).toContain("Latest decision");
+    expect(readOnlyHtml).toContain("not duplicate");
+    expect(readOnlyHtml).toContain("related contact noted");
+    expect(readOnlyHtml).not.toContain("contact-resolution-actions");
+    expect(readOnlyHtml).not.toContain("legal@rivercity.example");
+    expect(writableHtml).toContain("contact-resolution-actions");
+    expect(writableHtml).toContain("Needs review");
+  });
+
   it("filters matters by API-backed matter fields", () => {
     const matters = [
       matter({ id: "matter-001", title: "Morgan tenancy dispute" }),
@@ -1427,7 +1697,12 @@ describe("dashboard client behavior", () => {
         unbilledExpenseCents: 2500,
         draftInvoiceCents: 0,
         issuedBalanceDueCents: 1000,
+        lockedPeriodCount: 0,
+        activeLockedPeriodCount: 0,
+        activeRateRuleCount: 0,
       },
+      periodLocks: [],
+      rateRules: [],
       matters: [
         {
           matterId: "matter-001",
@@ -1477,6 +1752,9 @@ describe("dashboard client behavior", () => {
       unbilledExpenseCents: 0,
       draftInvoiceCents: 20500,
       issuedBalanceDueCents: 1000,
+      lockedPeriodCount: 0,
+      activeLockedPeriodCount: 0,
+      activeRateRuleCount: 0,
     });
     expect(updated.matters[0]!.unbilledTime).toEqual([]);
     expect(updated.matters[0]!.unbilledExpenses).toEqual([]);
@@ -1814,6 +2092,147 @@ describe("dashboard client behavior", () => {
     ]);
     expect(describeSavedMatterFocus(savedFocus, matters, operationalViews)).toBe(
       "Matter follow-up applies 2 matters to the matter command centre.",
+    );
+  });
+
+  it("maps saved matter risk and action preset families to operational view results", () => {
+    const matters = [
+      matter({ id: "matter-001", status: "open" }),
+      matter({ id: "matter-002", status: "paused" }),
+      matter({ id: "matter-003", status: "open" }),
+      matter({ id: "matter-004", status: "intake" }),
+    ];
+    const operationalViews: OperationalViewsResponse = {
+      views: [
+        {
+          definition: {
+            key: "conflicts_pending_review",
+            label: "Conflicts pending review",
+            defaultPriority: "high",
+          },
+          resultCount: 1,
+          results: [{ matterId: "matter-001", priority: "high" }],
+        },
+        {
+          definition: {
+            key: "external_uploads_expiring",
+            label: "External uploads expiring",
+            defaultPriority: "medium",
+          },
+          resultCount: 1,
+          results: [{ matterId: "matter-002", priority: "medium" }],
+        },
+        {
+          definition: {
+            key: "awaiting_signature",
+            label: "Awaiting signature",
+            defaultPriority: "medium",
+          },
+          resultCount: 1,
+          results: [{ matterId: "matter-003", priority: "medium" }],
+        },
+        {
+          definition: {
+            key: "overdue_tasks_deadlines",
+            label: "Overdue tasks and deadlines",
+            defaultPriority: "high",
+          },
+          resultCount: 1,
+          results: [{ matterId: "matter-004", priority: "high" }],
+        },
+      ],
+    };
+    const baseFocus: SavedOperationalViewDefinition = {
+      id: "saved-matter-preset",
+      firmId: "firm-west-legal",
+      ownerUserId: "user-001",
+      surface: "matters",
+      name: "Matter preset",
+      filters: { source: "dashboard-matters" },
+      columns: ["number", "practiceArea", "status"],
+      sort: { priority: "desc" },
+      rowLimit: 10,
+      dashboardBehavior: { pinToMatterContext: true },
+      permissionScope: ["matter:read"],
+      status: "active",
+      createdAt: "2026-05-17T12:00:00.000Z",
+      updatedAt: "2026-05-17T12:00:00.000Z",
+    };
+
+    expect(
+      applySavedMatterFocus(
+        matters,
+        {
+          ...baseFocus,
+          id: "saved-matter-risk-review",
+          name: "Matter risk review",
+          filters: { ...baseFocus.filters, presetFamily: "matter_risk_review" },
+        },
+        operationalViews,
+      ),
+    ).toEqual([matters[0], matters[1]]);
+    expect(
+      applySavedMatterFocus(
+        matters,
+        {
+          ...baseFocus,
+          id: "saved-matter-action-required",
+          name: "Matter action required",
+          filters: { ...baseFocus.filters, presetFamily: "matter_action_required" },
+        },
+        operationalViews,
+      ),
+    ).toEqual([matters[2], matters[3]]);
+  });
+
+  it("does not broaden matter focus for unknown or empty saved matter preset families", () => {
+    const matters = [
+      matter({ id: "matter-001", status: "open" }),
+      matter({ id: "matter-002", status: "open" }),
+    ];
+    const operationalViews: OperationalViewsResponse = {
+      views: [
+        {
+          definition: {
+            key: "stale_matters",
+            label: "Stale matters",
+            defaultPriority: "medium",
+          },
+          resultCount: 1,
+          results: [{ matterId: "matter-001", priority: "medium" }],
+        },
+      ],
+    };
+    const baseFocus: SavedOperationalViewDefinition = {
+      id: "saved-matter-invalid",
+      firmId: "firm-west-legal",
+      ownerUserId: "user-001",
+      surface: "matters",
+      name: "Invalid matter preset",
+      filters: { source: "dashboard-matters", statuses: ["open"] },
+      columns: ["number", "practiceArea", "status"],
+      sort: { priority: "desc" },
+      rowLimit: 10,
+      dashboardBehavior: { pinToMatterContext: true },
+      permissionScope: ["matter:read"],
+      status: "active",
+      createdAt: "2026-05-17T12:00:00.000Z",
+      updatedAt: "2026-05-17T12:00:00.000Z",
+    };
+    const unknownFamily = {
+      ...baseFocus,
+      filters: { ...baseFocus.filters, presetFamily: "unknown_family" },
+    };
+    const emptyFamily = {
+      ...baseFocus,
+      id: "saved-matter-empty-preset",
+      filters: { ...baseFocus.filters, presetFamily: "" },
+    };
+
+    expect(applySavedMatterFocus(matters, unknownFamily, operationalViews)).toEqual([]);
+    expect(applySavedMatterFocus(matters, emptyFamily, operationalViews)).toEqual([]);
+    expect(describeSavedMatterFocus(unknownFamily, matters, operationalViews)).toBe(
+      "Invalid matter preset applies 0 matters to the matter command centre.",
     );
   });
 

@@ -22,10 +22,13 @@ import {
   type CalendarGuestLinkStatus,
   type CalendarMeetingSessionRecord,
   type CalendarMeetingSessionStatus,
+  type BillingPeriodLockRecord,
+  type BillingRateRuleRecord,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
   type ConnectorRecord,
   type Contact,
+  type ContactDataQualityResolutionRecord,
   type ContactDossier,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
@@ -35,6 +38,7 @@ import {
   type DraftTemplateRecord,
   type EmailEventRecord,
   type EmailOutboxRecord,
+  type EmailReceiptTokenRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type Firm,
@@ -467,6 +471,15 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { matterId?: string; limit?: number },
   ): Promise<EmailOutboxRecord[]>;
+  getEmailOutboxByReceiptTokenHash(
+    receiptTokenHash: string,
+  ): Promise<EmailOutboxRecord | undefined>;
+  recordEmailDeliveryReceipt(input: {
+    firmId: string;
+    emailId: string;
+    receiptTokenHash: string;
+    recordedAt: string;
+  }): Promise<{ email: EmailOutboxRecord; recorded: boolean }>;
   recordEmailDeliveryResult(input: {
     firmId: string;
     emailId: string;
@@ -489,6 +502,16 @@ export interface OpenPracticeRepository {
     metadata?: Record<string, unknown>;
   }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord; job: JobLifecycleRecord }>;
   listEmailEvents(firmId: string, options?: { emailId?: string }): Promise<EmailEventRecord[]>;
+  createEmailReceiptToken(token: EmailReceiptTokenRecord): Promise<EmailReceiptTokenRecord>;
+  getEmailReceiptTokenByHash(tokenHash: string): Promise<EmailReceiptTokenRecord | undefined>;
+  recordEmailReceiptToken(input: {
+    tokenHash: string;
+    recordedAt: string;
+  }): Promise<EmailReceiptTokenRecord | undefined>;
+  listEmailReceiptTokens(
+    firmId: string,
+    options?: { emailId?: string; matterId?: string },
+  ): Promise<EmailReceiptTokenRecord[]>;
   updateJobLifecycleRecord(
     firmId: string,
     id: string,
@@ -559,6 +582,13 @@ export interface OpenPracticeRepository {
   listMattersForUser(user: User): Promise<MatterSummary[]>;
   listContactDossiersForUser(user: User): Promise<ContactDossier[]>;
   getContact(firmId: string, contactId: string): Promise<Contact | undefined>;
+  createContactDataQualityResolution(
+    resolution: ContactDataQualityResolutionRecord,
+  ): Promise<ContactDataQualityResolutionRecord>;
+  listContactDataQualityResolutions(
+    firmId: string,
+    options?: { contactId?: string; matterId?: string },
+  ): Promise<ContactDataQualityResolutionRecord[]>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
   listMatterDocuments(firmId: string, matterId: string): Promise<DocumentRecord[]>;
   listTaskDeadlines(
@@ -982,6 +1012,13 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { matterId?: string; status?: TimeEntry["billingStatus"] },
   ): Promise<TimeEntry[]>;
+  listBillingPeriodLocks(firmId: string): Promise<BillingPeriodLockRecord[]>;
+  createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord>;
+  listBillingRateRules(
+    firmId: string,
+    options?: { activeOnly?: boolean; matterId?: string; userId?: string },
+  ): Promise<BillingRateRuleRecord[]>;
+  createBillingRateRule(rule: BillingRateRuleRecord): Promise<BillingRateRuleRecord>;
   getTimeEntry(firmId: string, entryId: string): Promise<TimeEntry | undefined>;
   createTimeEntry(entry: TimeEntry): Promise<TimeEntry>;
   updateTimeEntry(
@@ -990,7 +1027,14 @@ export interface OpenPracticeRepository {
     updates: Partial<
       Pick<
         TimeEntry,
-        "performedAt" | "minutes" | "rateCents" | "narrative" | "billable" | "billingStatus"
+        | "performedAt"
+        | "minutes"
+        | "rateCents"
+        | "rateRuleId"
+        | "rateSnapshot"
+        | "narrative"
+        | "billable"
+        | "billingStatus"
       >
     >,
   ): Promise<TimeEntry>;

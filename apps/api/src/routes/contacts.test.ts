@@ -141,6 +141,7 @@ describe("contact routes", () => {
     ]);
     expect(JSON.stringify(payload)).not.toContain("North Star Holdings");
     expect(JSON.stringify(payload)).not.toContain("matter-002");
+    expect(JSON.stringify(payload)).not.toContain('"matchedValue":');
   });
 
   it("returns an audit-safe contact review queue without widening matter visibility", async () => {
@@ -204,6 +205,212 @@ describe("contact routes", () => {
     expect(serialized).not.toContain('"matchedValue":');
   });
 
+  it("records contact data-quality decisions for visible cues without mutating contact or conflict state", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const visibleContacts = (repository as unknown as { contacts: Contact[] }).contacts;
+    const riverContact = visibleContacts.find((contact) => contact.id === "contact-river");
+    if (!riverContact) throw new Error("Expected sample contact-river fixture");
+    riverContact.identifiers = [{ type: "email", value: "ada@example.test" }];
+    await repository.createIntakeVariableProposals([
+      {
+        id: "proposal-contact-name",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        intakeSessionId: "intake-001",
+        answerSnapshotId: "snapshot-001",
+        sourceQuestionId: "client_display_name",
+        targetScope: "client",
+        targetField: "displayName",
+        targetRecordId: "contact-ada",
+        proposedValue: "Ada M. Nguyen",
+        status: "approved",
+        createdAt: "2026-05-01T10:00:00.000Z",
+        reviewedByUserId: "user-licensee",
+        reviewedAt: "2026-05-01T11:00:00.000Z",
+        appliedAt: "2026-05-01T11:00:00.000Z",
+      },
+    ]);
+    await repository.runConflictCheck({
+      firmId: "firm-west-legal",
+      actorId: "user-licensee",
+      prospectiveName: "River City Rentals",
+      includeClosedMatters: true,
+    });
+    const authUser = user("licensee", ["matter-001"]);
+    const beforeContact = await repository.getContact("firm-west-legal", "contact-ada");
+    const beforeRiverHistory = (await repository.listContactDossiersForUser(authUser)).find(
+      (dossier) => dossier.contact.id === "contact-river",
+    )?.conflictHistory;
+    const server = testServer({ repository, user: authUser });
+
+    const duplicate = await server.inject({
+      method: "POST",
+      url: "/api/contacts/data-quality-resolutions",
+      payload: {
+        contactId: "contact-ada",
+        signalKind: "duplicate_candidate",
+        decision: "false_positive",
+        relatedContactId: "contact-river",
+        resolutionNote: "Synthetic private duplicate note should stay out of audit metadata.",
+      },
+    });
+    const protectedParty = await server.inject({
+      method: "POST",
+      url: "/api/contacts/data-quality-resolutions",
+      payload: {
+        contactId: "contact-ada",
+        signalKind: "protected_party_cue",
+        decision: "acknowledged",
+        matterId: "matter-001",
+        resolutionNote: "Synthetic private protected-party note should stay out of audit metadata.",
+      },
+    });
+    const revalidation = await server.inject({
+      method: "POST",
+      url: "/api/contacts/data-quality-resolutions",
+      payload: {
+        contactId: "contact-ada",
+        signalKind: "conflict_revalidation",
+        decision: "revalidation_completed",
+        matterId: "matter-001",
+        sourceRecordId: "proposal-contact-name",
+        resolutionNote: "Synthetic private revalidation note should stay out of audit metadata.",
+      },
+    });
+
+    expect(duplicate.statusCode).toBe(200);
+    expect(protectedParty.statusCode).toBe(200);
+    expect(revalidation.statusCode).toBe(200);
+    expect(duplicate.json()).toMatchObject({
+      contactId: "contact-ada",
+      signalKind: "duplicate_candidate",
+      decision: "false_positive",
+      relatedContactId: "contact-river",
+      recordedByUserId: "user-licensee",
+    });
+    const listResponse = await server.inject({
+      method: "GET",
+      url: "/api/contacts/data-quality-resolutions?contactId=contact-ada",
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ signalKind: "duplicate_candidate", decision: "false_positive" }),
+        expect.objectContaining({ signalKind: "protected_party_cue", decision: "acknowledged" }),
+        expect.objectContaining({
+          signalKind: "conflict_revalidation",
+          decision: "revalidation_completed",
+        }),
+      ]),
+    );
+    await expect(repository.getContact("firm-west-legal", "contact-ada")).resolves.toEqual(
+      beforeContact,
+    );
+    const afterRiverHistory = (await repository.listContactDossiersForUser(authUser)).find(
+      (dossier) => dossier.contact.id === "contact-river",
+    )?.conflictHistory;
+    expect(afterRiverHistory).toEqual(beforeRiverHistory);
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const resolutionAudit = audit.events.filter(
+      (event) => event.action === "contact.data_quality_resolution.recorded",
+    );
+    expect(resolutionAudit).toHaveLength(3);
+    const auditJson = JSON.stringify(resolutionAudit);
+    expect(auditJson).not.toContain("Synthetic private");
+    expect(auditJson).not.toContain("ada@example.test");
+    expect(auditJson).not.toContain("Possible duplicate");
+  });
+
+  it("allows read-only contact data-quality history while denying decisions without update access", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createContactDataQualityResolution({
+      id: "resolution-visible-auditor",
+      firmId: "firm-west-legal",
+      contactId: "contact-ada",
+      signalKind: "protected_party_cue",
+      decision: "acknowledged",
+      matterId: "matter-001",
+      resolutionNote: "Synthetic visible resolution.",
+      recordedByUserId: "user-licensee",
+      recordedAt: "2026-05-01T12:00:00.000Z",
+    });
+    await repository.createContactDataQualityResolution({
+      id: "resolution-hidden-auditor",
+      firmId: "firm-west-legal",
+      contactId: "contact-northstar",
+      signalKind: "protected_party_cue",
+      decision: "acknowledged",
+      matterId: "matter-002",
+      resolutionNote: "Synthetic hidden resolution.",
+      recordedByUserId: "user-admin",
+      recordedAt: "2026-05-01T13:00:00.000Z",
+    });
+    const auditorList = await testServer({
+      repository,
+      user: user("auditor", ["matter-001"]),
+    }).inject({ method: "GET", url: "/api/contacts/data-quality-resolutions" });
+    const auditorPost = await testServer({
+      repository,
+      user: user("auditor", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: "/api/contacts/data-quality-resolutions",
+      payload: {
+        contactId: "contact-ada",
+        signalKind: "protected_party_cue",
+        decision: "acknowledged",
+        matterId: "matter-001",
+        resolutionNote: "Synthetic denied note.",
+      },
+    });
+    const invisibleMatter = await testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: "/api/contacts/data-quality-resolutions",
+      payload: {
+        contactId: "contact-northstar",
+        signalKind: "protected_party_cue",
+        decision: "acknowledged",
+        matterId: "matter-002",
+        resolutionNote: "Synthetic denied note.",
+      },
+    });
+    const invalidDecision = await testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: "/api/contacts/data-quality-resolutions",
+      payload: {
+        contactId: "contact-ada",
+        signalKind: "protected_party_cue",
+        decision: "false_positive",
+        matterId: "matter-001",
+        resolutionNote: "Synthetic invalid decision note.",
+      },
+    });
+
+    expect(auditorList.statusCode).toBe(200);
+    expect(auditorList.json()).toEqual([
+      expect.objectContaining({
+        id: "resolution-visible-auditor",
+        contactId: "contact-ada",
+        matterId: "matter-001",
+        signalKind: "protected_party_cue",
+        decision: "acknowledged",
+      }),
+    ]);
+    expect(auditorPost.statusCode).toBe(403);
+    expect(invisibleMatter.statusCode).toBe(403);
+    expect(invalidDecision.statusCode).toBe(400);
+    await expect(repository.listContactDataQualityResolutions("firm-west-legal")).resolves.toEqual([
+      expect.objectContaining({ id: "resolution-hidden-auditor" }),
+      expect.objectContaining({ id: "resolution-visible-auditor" }),
+    ]);
+  });
+
   it("rejects users without contact read access", async () => {
     const dossiers = await testServer({
       user: user("client_external", ["matter-001"]),
@@ -211,6 +418,9 @@ describe("contact routes", () => {
     const reviewQueue = await testServer({
       user: user("client_external", ["matter-001"]),
     }).inject({ method: "GET", url: "/api/contacts/review-queue" });
+    const resolutions = await testServer({
+      user: user("client_external", ["matter-001"]),
+    }).inject({ method: "GET", url: "/api/contacts/data-quality-resolutions" });
 
     expect(dossiers.statusCode).toBe(403);
     expect(dossiers.json()).toMatchObject({
@@ -218,6 +428,10 @@ describe("contact routes", () => {
     });
     expect(reviewQueue.statusCode).toBe(403);
     expect(reviewQueue.json()).toMatchObject({
+      message: "Contact access required",
+    });
+    expect(resolutions.statusCode).toBe(403);
+    expect(resolutions.json()).toMatchObject({
       message: "Contact access required",
     });
   });

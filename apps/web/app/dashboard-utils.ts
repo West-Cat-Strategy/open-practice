@@ -151,18 +151,86 @@ export function describeSavedQueueFocus(
   return `${definition.name} applies ${itemCount} ${itemCount === 1 ? "item" : "items"} across ${sectionCount} ${sectionCount === 1 ? "section" : "sections"}.`;
 }
 
-const matterFollowUpViewKeys = new Set(["stale_matters", "uncontacted_clients"]);
+export type SavedMatterPresetFamily =
+  | "matter_follow_up"
+  | "matter_risk_review"
+  | "matter_action_required";
+
+export interface SavedMatterPresetDefinition {
+  family: SavedMatterPresetFamily;
+  label: string;
+  namePrefix: string;
+  summaryLabel: string;
+  operationalViewKeys: string[];
+  statuses: string[];
+  sort: Record<string, string>;
+}
+
+const savedMatterPresetDefinitionsByFamily: Record<
+  SavedMatterPresetFamily,
+  SavedMatterPresetDefinition
+> = {
+  matter_follow_up: {
+    family: "matter_follow_up",
+    label: "Follow-up",
+    namePrefix: "Matter follow-up",
+    summaryLabel: "follow-up",
+    operationalViewKeys: ["stale_matters", "uncontacted_clients"],
+    statuses: ["intake", "open", "paused"],
+    sort: { priority: "desc", lastActivityAt: "asc" },
+  },
+  matter_risk_review: {
+    family: "matter_risk_review",
+    label: "Risk review",
+    namePrefix: "Matter risk review",
+    summaryLabel: "risk review",
+    operationalViewKeys: ["conflicts_pending_review", "external_uploads_expiring"],
+    statuses: ["intake", "open", "paused"],
+    sort: { priority: "desc", dueAt: "asc" },
+  },
+  matter_action_required: {
+    family: "matter_action_required",
+    label: "Action required",
+    namePrefix: "Matter action required",
+    summaryLabel: "action required",
+    operationalViewKeys: ["awaiting_signature", "overdue_tasks_deadlines"],
+    statuses: ["intake", "open", "paused"],
+    sort: { priority: "desc", dueAt: "asc" },
+  },
+};
+
+export const savedMatterPresetOptions = Object.values(savedMatterPresetDefinitionsByFamily);
+
+export function getSavedMatterPresetDefinition(value: unknown): SavedMatterPresetDefinition | null {
+  if (
+    typeof value !== "string" ||
+    !Object.prototype.hasOwnProperty.call(savedMatterPresetDefinitionsByFamily, value)
+  ) {
+    return null;
+  }
+  return savedMatterPresetDefinitionsByFamily[value as SavedMatterPresetFamily];
+}
 
 function savedMatterViewKeys(definition: SavedOperationalViewDefinition): Set<string> {
   const rawKeys = definition.filters.operationalViewKeys;
+  const rawFamily = definition.filters.presetFamily;
+  if (typeof rawFamily === "string") {
+    const presetDefinition = getSavedMatterPresetDefinition(rawFamily);
+    if (!presetDefinition) return new Set();
+    if (Array.isArray(rawKeys)) {
+      const keys = rawKeys.filter(
+        (key): key is string => typeof key === "string" && key.length > 0,
+      );
+      if (keys.length > 0) return new Set(keys);
+    }
+    return new Set(presetDefinition.operationalViewKeys);
+  }
   if (Array.isArray(rawKeys)) {
     return new Set(
       rawKeys.filter((key): key is string => typeof key === "string" && key.length > 0),
     );
   }
-  return definition.filters.presetFamily === "matter_follow_up"
-    ? new Set(matterFollowUpViewKeys)
-    : new Set();
+  return new Set();
 }
 
 function savedMatterStatuses(definition: SavedOperationalViewDefinition): Set<string> {
@@ -199,6 +267,7 @@ export function applySavedMatterFocus(
 ): MatterSummary[] {
   if (!definition || definition.surface !== "matters") return matters;
   const viewKeys = savedMatterViewKeys(definition);
+  if (viewKeys.size === 0) return [];
   const scopedMatterIds = matterIdsForSavedFocus(definition, operationalViews);
   const statuses = savedMatterStatuses(definition);
   const rowLimit = Math.max(0, definition.rowLimit);

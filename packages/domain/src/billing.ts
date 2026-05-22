@@ -18,6 +18,47 @@ export type TrustTransferRequestStatus =
   | "linked"
   | "cancelled";
 
+export interface BillingPeriodLockRecord {
+  id: string;
+  firmId: string;
+  periodStart: string;
+  periodEnd: string;
+  reason?: string;
+  lockedByUserId: string;
+  lockedAt: string;
+}
+
+export type BillingRateRuleScope = "firm" | "role" | "user" | "matter" | "matter_user";
+
+export interface BillingRateRuleRecord {
+  id: string;
+  firmId: string;
+  label: string;
+  matterId?: string;
+  userId?: string;
+  role?: string;
+  scope: BillingRateRuleScope;
+  rateCents: number;
+  effectiveFrom: string;
+  effectiveUntil?: string;
+  active: boolean;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BillingRateSnapshot {
+  source: "manual" | "rate_rule";
+  rateCents: number;
+  resolvedAt: string;
+  rateRuleId?: string;
+  label?: string;
+  scope?: BillingRateRuleScope;
+  matterId?: string;
+  userId?: string;
+  role?: string;
+}
+
 export interface InvoiceRecord {
   id: string;
   firmId: string;
@@ -189,6 +230,140 @@ export function assertBillingStatusTransition(from: BillingStatus, to: BillingSt
   if (!allowed[from].includes(to)) {
     throw new Error(`Invalid billing status transition: ${from} to ${to}`);
   }
+}
+
+export function billingRuleScope(input: {
+  matterId?: string;
+  userId?: string;
+  role?: string;
+}): BillingRateRuleScope {
+  if (input.matterId && input.userId) return "matter_user";
+  if (input.matterId) return "matter";
+  if (input.userId) return "user";
+  if (input.role) return "role";
+  return "firm";
+}
+
+export function billingRateRuleSpecificity(scope: BillingRateRuleScope): number {
+  switch (scope) {
+    case "matter_user":
+      return 5;
+    case "matter":
+      return 4;
+    case "user":
+      return 3;
+    case "role":
+      return 2;
+    case "firm":
+      return 1;
+  }
+}
+
+export function validateBillingPeriodLock(record: BillingPeriodLockRecord): void {
+  if (!record.firmId.trim()) throw new Error("Billing period lock requires a firm id");
+  if (Number.isNaN(Date.parse(record.periodStart)) || Number.isNaN(Date.parse(record.periodEnd))) {
+    throw new Error("Billing period lock dates must be valid timestamps");
+  }
+  if (Date.parse(record.periodEnd) <= Date.parse(record.periodStart)) {
+    throw new Error("Billing period lock end must be after start");
+  }
+  if (!record.lockedByUserId.trim()) throw new Error("Billing period lock requires an actor");
+}
+
+export function validateBillingRateRule(record: BillingRateRuleRecord): void {
+  if (!record.firmId.trim()) throw new Error("Billing rate rule requires a firm id");
+  if (!record.label.trim()) throw new Error("Billing rate rule label is required");
+  if (!Number.isInteger(record.rateCents) || record.rateCents < 0) {
+    throw new Error("Billing rate rule rate must be a non-negative integer");
+  }
+  if (record.scope !== billingRuleScope(record)) {
+    throw new Error("Billing rate rule scope does not match identifiers");
+  }
+  if (Number.isNaN(Date.parse(record.effectiveFrom))) {
+    throw new Error("Billing rate rule effectiveFrom must be a valid timestamp");
+  }
+  if (record.effectiveUntil) {
+    if (Number.isNaN(Date.parse(record.effectiveUntil))) {
+      throw new Error("Billing rate rule effectiveUntil must be a valid timestamp");
+    }
+    if (Date.parse(record.effectiveUntil) <= Date.parse(record.effectiveFrom)) {
+      throw new Error("Billing rate rule effectiveUntil must be after effectiveFrom");
+    }
+  }
+}
+
+export function billingDateFallsInsideLock(
+  dateIso: string,
+  lock: Pick<BillingPeriodLockRecord, "periodStart" | "periodEnd">,
+): boolean {
+  const value = Date.parse(dateIso);
+  return value >= Date.parse(lock.periodStart) && value < Date.parse(lock.periodEnd);
+}
+
+export function billingPeriodLocksOverlap(
+  left: Pick<BillingPeriodLockRecord, "firmId" | "periodStart" | "periodEnd">,
+  right: Pick<BillingPeriodLockRecord, "firmId" | "periodStart" | "periodEnd">,
+): boolean {
+  return (
+    left.firmId === right.firmId &&
+    Date.parse(left.periodStart) < Date.parse(right.periodEnd) &&
+    Date.parse(right.periodStart) < Date.parse(left.periodEnd)
+  );
+}
+
+export function billingRateRuleEffectivePeriodsOverlap(
+  left: Pick<BillingRateRuleRecord, "effectiveFrom" | "effectiveUntil">,
+  right: Pick<BillingRateRuleRecord, "effectiveFrom" | "effectiveUntil">,
+): boolean {
+  const leftEnd = left.effectiveUntil ? Date.parse(left.effectiveUntil) : Number.POSITIVE_INFINITY;
+  const rightEnd = right.effectiveUntil
+    ? Date.parse(right.effectiveUntil)
+    : Number.POSITIVE_INFINITY;
+  return Date.parse(left.effectiveFrom) < rightEnd && Date.parse(right.effectiveFrom) < leftEnd;
+}
+
+export function billingRateRulesOverlapAtSameActiveScope(
+  left: BillingRateRuleRecord,
+  right: BillingRateRuleRecord,
+): boolean {
+  return (
+    left.firmId === right.firmId &&
+    left.active &&
+    right.active &&
+    left.scope === right.scope &&
+    (left.matterId ?? "") === (right.matterId ?? "") &&
+    (left.userId ?? "") === (right.userId ?? "") &&
+    (left.role ?? "") === (right.role ?? "") &&
+    billingRateRuleEffectivePeriodsOverlap(left, right)
+  );
+}
+
+export function billingRateRuleApplies(
+  rule: BillingRateRuleRecord,
+  input: { matterId: string; userId: string; role?: string; performedAt: string },
+): boolean {
+  if (!rule.active) return false;
+  const performedAt = Date.parse(input.performedAt);
+  if (performedAt < Date.parse(rule.effectiveFrom)) return false;
+  if (rule.effectiveUntil && performedAt >= Date.parse(rule.effectiveUntil)) return false;
+  if (rule.matterId && rule.matterId !== input.matterId) return false;
+  if (rule.userId && rule.userId !== input.userId) return false;
+  if (rule.role && rule.role !== input.role) return false;
+  return true;
+}
+
+export function resolveBillingRateRule(
+  rules: BillingRateRuleRecord[],
+  input: { matterId: string; userId: string; role?: string; performedAt: string },
+): BillingRateRuleRecord | undefined {
+  return rules
+    .filter((rule) => billingRateRuleApplies(rule, input))
+    .sort((left, right) => {
+      const specificity =
+        billingRateRuleSpecificity(right.scope) - billingRateRuleSpecificity(left.scope);
+      if (specificity !== 0) return specificity;
+      return Date.parse(right.effectiveFrom) - Date.parse(left.effectiveFrom);
+    })[0];
 }
 
 export function trustTransferRequestCanPost(

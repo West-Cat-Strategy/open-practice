@@ -3,6 +3,69 @@ import { type User } from "@open-practice/domain";
 import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
 
 describe("repository contact dossier quality review", () => {
+  it("records append-only contact data-quality resolutions without mutating dossiers", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const user: User = {
+      id: "user-licensee",
+      firmId: "firm-west-legal",
+      displayName: "Test Licensee",
+      email: "licensee@example.test",
+      role: "licensee",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    };
+    const beforeContact = await repository.getContact("firm-west-legal", "contact-river");
+    const beforeDossiers = await repository.listContactDossiersForUser(user);
+
+    await repository.createContactDataQualityResolution({
+      id: "contact-resolution-001",
+      firmId: "firm-west-legal",
+      contactId: "contact-river",
+      signalKind: "protected_party_cue",
+      decision: "acknowledged",
+      matterId: "matter-001",
+      resolutionNote: "Synthetic reviewer noted the protected-party cue.",
+      recordedByUserId: "user-licensee",
+      recordedAt: "2026-05-19T12:00:00.000Z",
+    });
+    await repository.createContactDataQualityResolution({
+      id: "contact-resolution-002",
+      firmId: "firm-west-legal",
+      contactId: "contact-river",
+      signalKind: "protected_party_cue",
+      decision: "needs_follow_up",
+      matterId: "matter-001",
+      resolutionNote: "Synthetic follow-up decision for the same cue.",
+      recordedByUserId: "user-licensee",
+      recordedAt: "2026-05-19T12:05:00.000Z",
+    });
+
+    await expect(
+      repository.listContactDataQualityResolutions("firm-west-legal", {
+        contactId: "contact-river",
+      }),
+    ).resolves.toMatchObject([
+      { id: "contact-resolution-002", decision: "needs_follow_up" },
+      { id: "contact-resolution-001", decision: "acknowledged" },
+    ]);
+    await expect(repository.getContact("firm-west-legal", "contact-river")).resolves.toEqual(
+      beforeContact,
+    );
+    await expect(repository.listContactDossiersForUser(user)).resolves.toEqual(beforeDossiers);
+    await expect(
+      repository.createContactDataQualityResolution({
+        id: "contact-resolution-invalid",
+        firmId: "firm-west-legal",
+        contactId: "contact-river",
+        signalKind: "duplicate_candidate",
+        decision: "revalidation_completed",
+        resolutionNote: "Synthetic invalid decision.",
+        recordedByUserId: "user-licensee",
+        recordedAt: "2026-05-19T12:10:00.000Z",
+      }),
+    ).rejects.toThrow("Contact data-quality resolution decision is invalid");
+  });
+
   it("surfaces conflict-check revalidation prompts only from accessible applied contact changes", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const user: User = {

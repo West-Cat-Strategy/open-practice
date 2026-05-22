@@ -10,6 +10,8 @@ import {
   aiTriageRecords,
   authActionTokens,
   authChallenges,
+  billingPeriodLocks,
+  billingRateRules,
   billingTrustTransferRequests,
   calendarCredentials,
   calendarEventAttendees,
@@ -63,6 +65,7 @@ import {
   trustLedgerEntries,
   trustTransactionApprovals,
   trustTransactions,
+  timeEntries,
 } from "../src/schema.js";
 
 describe("database schema hardening", () => {
@@ -824,6 +827,33 @@ describe("database schema hardening", () => {
   });
 
   it("persists native billing workflow tables", () => {
+    expect(getTableConfig(timeEntries).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["rate_rule_id", "rate_snapshot"]),
+    );
+    expect(getTableConfig(billingPeriodLocks).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "period_start",
+        "period_end",
+        "reason",
+        "locked_by_user_id",
+        "locked_at",
+      ]),
+    );
+    expect(getTableConfig(billingRateRules).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "label",
+        "matter_id",
+        "user_id",
+        "role",
+        "scope",
+        "rate_cents",
+        "effective_from",
+        "effective_until",
+        "active",
+      ]),
+    );
     expect(getTableConfig(invoices).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
         "matter_id",

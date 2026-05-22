@@ -2,6 +2,7 @@ import type { OpenPracticeRepository } from "@open-practice/database";
 import type {
   EmailEventRecord,
   EmailOutboxRecord,
+  EmailReceiptTokenRecord,
   JobLifecycleRecord,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
@@ -32,6 +33,13 @@ export interface QueueRouteEmailInput {
   relatedResourceId?: string;
   idempotencyKey?: string;
   metadata?: Record<string, unknown>;
+  deliveryReceipt?: {
+    tokenHash: string;
+    requestedAt: string;
+    expiresAt: string;
+    recordUrl: string;
+    includeInBody: boolean;
+  };
   source?: string;
   required?: boolean;
 }
@@ -49,6 +57,12 @@ export interface QueuedRouteEmailSummary {
   queuedAt: string;
   jobId: string;
   idempotencyKeyPresent: boolean;
+}
+
+export interface EmailDeliveryReceiptStatus {
+  status: "pending" | "received";
+  requestedAt?: string;
+  recordedAt?: string;
 }
 
 const enqueueFailureMessage = "Job enqueue failed; retry after the worker queue is available.";
@@ -90,6 +104,55 @@ export function summarizeQueuedRouteEmail(
   };
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+export function emailDeliveryReceiptStatus(
+  email: EmailOutboxRecord,
+  receiptToken?: EmailReceiptTokenRecord,
+): EmailDeliveryReceiptStatus | undefined {
+  const tokenStatus = emailReceiptTokenStatus(receiptToken);
+  if (tokenStatus) return tokenStatus;
+  const receipt = email.metadata.deliveryReceipt;
+  if (!isObject(receipt) || receipt.requested !== true) return undefined;
+  const recordedAt = typeof receipt.recordedAt === "string" ? receipt.recordedAt : undefined;
+  return {
+    status: recordedAt ? "received" : "pending",
+    requestedAt: typeof receipt.requestedAt === "string" ? receipt.requestedAt : undefined,
+    recordedAt,
+  };
+}
+
+export function emailReceiptTokenStatus(
+  receiptToken: EmailReceiptTokenRecord | undefined,
+): EmailDeliveryReceiptStatus | undefined {
+  if (!receiptToken) return undefined;
+  return {
+    status: receiptToken.recordedAt ? "received" : "pending",
+    requestedAt: receiptToken.createdAt,
+    recordedAt: receiptToken.recordedAt,
+  };
+}
+
+function appendTextReceipt(textBody: string, recordUrl: string): string {
+  const suffix = `\n\nDelivery receipt endpoint: ${recordUrl}`;
+  return textBody.trimEnd().length > 0 ? `${textBody.trimEnd()}${suffix}` : textBody;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function appendHtmlReceipt(htmlBody: string, recordUrl: string): string {
+  if (!htmlBody.trim()) return htmlBody;
+  return `${htmlBody.trimEnd()}\n<p>Delivery receipt endpoint: ${escapeHtml(recordUrl)}</p>`;
+}
+
 export async function queueRouteEmailOutbox(
   repository: OpenPracticeRepository,
   emailJobQueue: ApiJobQueue | undefined,
@@ -124,8 +187,17 @@ export async function queueRouteEmailOutbox(
   const to = [...input.to];
   const cc = [...(input.cc ?? [])];
   const bcc = [...(input.bcc ?? [])];
-  const htmlBody = input.htmlBody?.trim() ? input.htmlBody : "";
-  const textBody = input.textBody?.trim() ? input.textBody : "";
+  const requestedHtmlBody = input.htmlBody?.trim() ? input.htmlBody : "";
+  const requestedTextBody = input.textBody?.trim() ? input.textBody : "";
+  const appendReceiptLink = Boolean(input.deliveryReceipt?.includeInBody);
+  const htmlBody =
+    input.deliveryReceipt && appendReceiptLink
+      ? appendHtmlReceipt(requestedHtmlBody, input.deliveryReceipt.recordUrl)
+      : requestedHtmlBody;
+  const textBody =
+    input.deliveryReceipt && appendReceiptLink
+      ? appendTextReceipt(requestedTextBody, input.deliveryReceipt.recordUrl)
+      : requestedTextBody;
   if (!htmlBody && !textBody) {
     throw new ApiHttpError(
       400,
@@ -139,6 +211,13 @@ export async function queueRouteEmailOutbox(
     provider: enabledProvider.key,
     source: input.source,
     createdByUserId: auth.user.id,
+    deliveryReceipt: input.deliveryReceipt
+      ? {
+          requested: true,
+          requestedAt: input.deliveryReceipt.requestedAt,
+          includeInBody: input.deliveryReceipt.includeInBody,
+        }
+      : undefined,
   };
   const idempotencyKey = buildIdempotencyKey({
     scope: "email",
@@ -162,6 +241,7 @@ export async function queueRouteEmailOutbox(
     relatedResourceType: input.relatedResourceType,
     relatedResourceId: input.relatedResourceId,
     source: input.source ?? "api.route",
+    deliveryReceiptRequested: Boolean(input.deliveryReceipt),
   });
   const safeJobMetadata = {
     ...fingerprint,
@@ -173,6 +253,7 @@ export async function queueRouteEmailOutbox(
     recipientCount: to.length + cc.length + bcc.length,
     relatedResourceType: input.relatedResourceType,
     relatedResourceId: input.relatedResourceId,
+    deliveryReceiptRequested: Boolean(input.deliveryReceipt),
   };
   let queued: QueuedRouteEmail;
   try {
@@ -232,6 +313,22 @@ export async function queueRouteEmailOutbox(
   }
   const created = queued.email.id === emailId && queued.job.id === jobId;
   if (!created) return queued;
+  if (input.deliveryReceipt) {
+    await repository.createEmailReceiptToken({
+      id: crypto.randomUUID(),
+      firmId: auth.firmId,
+      matterId: input.matterId,
+      emailId,
+      tokenHash: input.deliveryReceipt.tokenHash,
+      purpose: "delivery_receipt",
+      expiresAt: input.deliveryReceipt.expiresAt,
+      createdAt: input.deliveryReceipt.requestedAt,
+      metadata: {
+        requestedByUserId: auth.user.id,
+        includeInBody: input.deliveryReceipt.includeInBody,
+      },
+    });
+  }
   let bullJobId: string | undefined;
   try {
     const bullJob = await emailJobQueue.add(

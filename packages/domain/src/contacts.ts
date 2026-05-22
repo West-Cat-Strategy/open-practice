@@ -32,6 +32,37 @@ export type ContactDossierQualitySignalKind =
   | "protected_party_cue"
   | "conflict_revalidation";
 
+export const contactDossierQualitySignalKinds = [
+  "duplicate_candidate",
+  "protected_party_cue",
+  "conflict_revalidation",
+] as const satisfies ContactDossierQualitySignalKind[];
+
+export const contactDataQualityResolutionDecisions = [
+  "acknowledged",
+  "false_positive",
+  "needs_follow_up",
+  "revalidation_requested",
+  "revalidation_completed",
+] as const;
+
+export type ContactDataQualityResolutionDecision =
+  (typeof contactDataQualityResolutionDecisions)[number];
+
+export interface ContactDataQualityResolutionRecord {
+  id: string;
+  firmId: string;
+  contactId: string;
+  signalKind: ContactDossierQualitySignalKind;
+  decision: ContactDataQualityResolutionDecision;
+  matterId?: string;
+  relatedContactId?: string;
+  sourceRecordId?: string;
+  resolutionNote: string;
+  recordedByUserId: string;
+  recordedAt: string;
+}
+
 export interface ContactDossierQualitySignal {
   kind: ContactDossierQualitySignalKind;
   severity: "blocker" | "review" | "info";
@@ -51,6 +82,42 @@ export interface ContactDossierQualityReview {
     revalidationPromptCount: number;
   };
   signals: ContactDossierQualitySignal[];
+}
+
+const contactDataQualityResolutionDecisionsByKind: Record<
+  ContactDossierQualitySignalKind,
+  ReadonlySet<ContactDataQualityResolutionDecision>
+> = {
+  duplicate_candidate: new Set(["acknowledged", "false_positive", "needs_follow_up"]),
+  protected_party_cue: new Set(["acknowledged", "needs_follow_up"]),
+  conflict_revalidation: new Set([
+    "revalidation_requested",
+    "revalidation_completed",
+    "needs_follow_up",
+  ]),
+};
+
+export function validateContactDataQualityResolutionRecord(
+  resolution: ContactDataQualityResolutionRecord,
+): void {
+  if (!resolution.firmId.trim()) throw new Error("Contact quality resolution requires a firm id");
+  if (!resolution.contactId.trim()) {
+    throw new Error("Contact quality resolution requires a contact id");
+  }
+  if (!contactDossierQualitySignalKinds.includes(resolution.signalKind)) {
+    throw new Error("Contact data-quality resolution signal kind is invalid");
+  }
+  if (
+    !contactDataQualityResolutionDecisionsByKind[resolution.signalKind].has(resolution.decision)
+  ) {
+    throw new Error("Contact data-quality resolution decision is invalid for the signal kind");
+  }
+  if (!resolution.resolutionNote.trim()) {
+    throw new Error("Contact data-quality resolution note is required");
+  }
+  if (Number.isNaN(new Date(resolution.recordedAt).getTime())) {
+    throw new Error("Contact data-quality resolution timestamp is invalid");
+  }
 }
 
 export interface ContactDossierConflictHistoryEntry {

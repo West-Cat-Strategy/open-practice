@@ -1,8 +1,159 @@
 import { describe, expect, it } from "vitest";
 import {
+  billingDateFallsInsideLock,
+  billingPeriodLocksOverlap,
+  billingRateRulesOverlapAtSameActiveScope,
+  billingRuleScope,
+  resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
   trustTransferRequestAvailableBalanceCents,
+  type BillingRateRuleRecord,
 } from "./billing.js";
+
+describe("billing period locks and rate rules", () => {
+  it("treats billing period locks as start-inclusive and end-exclusive", () => {
+    const lock = {
+      periodStart: "2026-04-01T00:00:00.000Z",
+      periodEnd: "2026-05-01T00:00:00.000Z",
+    };
+
+    expect(billingDateFallsInsideLock("2026-04-01T00:00:00.000Z", lock)).toBe(true);
+    expect(billingDateFallsInsideLock("2026-04-30T23:59:59.999Z", lock)).toBe(true);
+    expect(billingDateFallsInsideLock("2026-05-01T00:00:00.000Z", lock)).toBe(false);
+  });
+
+  it("detects same-firm billing period lock overlaps without blocking adjacent locks", () => {
+    const existing = {
+      firmId: "firm-west-legal",
+      periodStart: "2026-04-01T00:00:00.000Z",
+      periodEnd: "2026-05-01T00:00:00.000Z",
+    };
+
+    expect(
+      billingPeriodLocksOverlap(existing, {
+        firmId: "firm-west-legal",
+        periodStart: "2026-04-15T00:00:00.000Z",
+        periodEnd: "2026-05-15T00:00:00.000Z",
+      }),
+    ).toBe(true);
+    expect(
+      billingPeriodLocksOverlap(existing, {
+        firmId: "firm-west-legal",
+        periodStart: "2026-05-01T00:00:00.000Z",
+        periodEnd: "2026-06-01T00:00:00.000Z",
+      }),
+    ).toBe(false);
+    expect(
+      billingPeriodLocksOverlap(existing, {
+        firmId: "firm-north-legal",
+        periodStart: "2026-04-15T00:00:00.000Z",
+        periodEnd: "2026-05-15T00:00:00.000Z",
+      }),
+    ).toBe(false);
+  });
+
+  it("resolves the most specific active rate rule for a time entry snapshot", () => {
+    const baseRule = {
+      firmId: "firm-west-legal",
+      active: true,
+      createdByUserId: "user-admin",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      effectiveFrom: "2026-01-01T00:00:00.000Z",
+    };
+    const rules: BillingRateRuleRecord[] = [
+      {
+        ...baseRule,
+        id: "firm-default-rate",
+        label: "Firm default",
+        scope: "firm",
+        rateCents: 15000,
+      },
+      {
+        ...baseRule,
+        id: "matter-rate",
+        label: "Matter rate",
+        matterId: "matter-001",
+        scope: billingRuleScope({ matterId: "matter-001" }),
+        rateCents: 20000,
+      },
+      {
+        ...baseRule,
+        id: "matter-user-rate",
+        label: "Matter user rate",
+        matterId: "matter-001",
+        userId: "user-licensee",
+        scope: billingRuleScope({ matterId: "matter-001", userId: "user-licensee" }),
+        rateCents: 25000,
+      },
+      {
+        ...baseRule,
+        id: "inactive-rate",
+        label: "Inactive rate",
+        scope: "firm",
+        rateCents: 99999,
+        active: false,
+      },
+    ];
+
+    expect(
+      resolveBillingRateRule(rules, {
+        matterId: "matter-001",
+        userId: "user-licensee",
+        performedAt: "2026-04-01T12:00:00.000Z",
+      }),
+    ).toMatchObject({ id: "matter-user-rate", rateCents: 25000 });
+  });
+
+  it("detects active same-scope billing rate rule overlaps", () => {
+    const baseRule = {
+      id: "matter-user-rate",
+      firmId: "firm-west-legal",
+      label: "Synthetic matter user rate",
+      matterId: "matter-001",
+      userId: "user-licensee",
+      scope: billingRuleScope({ matterId: "matter-001", userId: "user-licensee" }),
+      rateCents: 20000,
+      effectiveFrom: "2026-04-01T00:00:00.000Z",
+      active: true,
+      createdByUserId: "user-admin",
+      createdAt: "2026-04-01T00:00:00.000Z",
+      updatedAt: "2026-04-01T00:00:00.000Z",
+    } satisfies BillingRateRuleRecord;
+
+    expect(
+      billingRateRulesOverlapAtSameActiveScope(baseRule, {
+        ...baseRule,
+        id: "overlapping-rate",
+        effectiveFrom: "2026-04-15T00:00:00.000Z",
+      }),
+    ).toBe(true);
+    expect(
+      billingRateRulesOverlapAtSameActiveScope(baseRule, {
+        ...baseRule,
+        id: "later-open-ended-rate",
+        effectiveFrom: "2026-05-01T00:00:00.000Z",
+      }),
+    ).toBe(true);
+    expect(
+      billingRateRulesOverlapAtSameActiveScope(
+        { ...baseRule, effectiveUntil: "2026-05-01T00:00:00.000Z" },
+        {
+          ...baseRule,
+          id: "next-period-rate",
+          effectiveFrom: "2026-05-01T00:00:00.000Z",
+        },
+      ),
+    ).toBe(false);
+    expect(
+      billingRateRulesOverlapAtSameActiveScope(baseRule, {
+        ...baseRule,
+        id: "different-user-rate",
+        userId: "user-staff",
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("trust transfer request billing helpers", () => {
   it("calculates matter trust balance for client-scoped and matter-scoped requests", () => {

@@ -1,4 +1,8 @@
-import type { ContactDossier, ContactReviewQueueItem } from "./types";
+import type {
+  ContactDataQualityResolutionRecord,
+  ContactDossier,
+  ContactReviewQueueItem,
+} from "./types";
 
 export interface ContactDossierConflictCheckPrefill {
   prospectiveName: string;
@@ -62,7 +66,6 @@ export function filterContactDossiers(
       ...dossier.qualityReview.signals.flatMap((signal) => [
         signal.kind,
         signal.reason,
-        signal.matchedValue ?? "",
         signal.sourceRecordId ?? "",
         signal.changedAt ?? "",
       ]),
@@ -110,4 +113,114 @@ export function contactReviewQueueRiskClass(item: ContactReviewQueueItem): "risk
 
 export function formatContactReviewSignalKind(kind: string): string {
   return kind.replaceAll("_", " ");
+}
+
+export type ContactDataQualityResolutionPayload = {
+  contactId: string;
+  signalKind: ContactDossier["qualityReview"]["signals"][number]["kind"];
+  decision: ContactDataQualityResolutionRecord["decision"];
+  matterId?: string;
+  relatedContactId?: string;
+  sourceRecordId?: string;
+  resolutionNote: string;
+};
+
+export interface ContactDataQualityResolutionAction {
+  decision: ContactDataQualityResolutionRecord["decision"];
+  label: string;
+}
+
+export const contactDataQualityResolutionActions: Record<
+  ContactDossier["qualityReview"]["signals"][number]["kind"],
+  ContactDataQualityResolutionAction[]
+> = {
+  duplicate_candidate: [
+    { decision: "false_positive", label: "Not duplicate" },
+    { decision: "needs_follow_up", label: "Needs review" },
+  ],
+  protected_party_cue: [
+    { decision: "acknowledged", label: "Acknowledge" },
+    { decision: "needs_follow_up", label: "Follow up" },
+  ],
+  conflict_revalidation: [
+    { decision: "revalidation_completed", label: "Revalidated" },
+    { decision: "revalidation_requested", label: "Request recheck" },
+  ],
+};
+
+export function formatContactDataQualityResolutionDecision(
+  decision: ContactDataQualityResolutionRecord["decision"],
+): string {
+  switch (decision) {
+    case "false_positive":
+      return "not duplicate";
+    case "needs_follow_up":
+      return "needs follow-up";
+    case "revalidation_completed":
+      return "revalidated";
+    case "revalidation_requested":
+      return "recheck requested";
+    case "acknowledged":
+      return "acknowledged";
+  }
+}
+
+export function contactDataQualitySignalKey(
+  contactId: string,
+  signal: ContactDossier["qualityReview"]["signals"][number],
+): string {
+  return [
+    contactId,
+    signal.kind,
+    signal.matterId ?? "contact",
+    signal.relatedContactIds?.[0] ?? "no-related-contact",
+    signal.sourceRecordId ?? "no-source-record",
+  ].join(":");
+}
+
+export function contactDataQualityResolutionMatchesSignal(
+  resolution: ContactDataQualityResolutionRecord,
+  signal: ContactDossier["qualityReview"]["signals"][number],
+): boolean {
+  if (resolution.signalKind !== signal.kind) return false;
+  if ((resolution.matterId ?? undefined) !== (signal.matterId ?? undefined)) return false;
+  if ((resolution.sourceRecordId ?? undefined) !== (signal.sourceRecordId ?? undefined)) {
+    return false;
+  }
+  if (resolution.relatedContactId) {
+    return (signal.relatedContactIds ?? []).includes(resolution.relatedContactId);
+  }
+  return !signal.relatedContactIds?.length;
+}
+
+export function latestContactDataQualityResolutionForSignal(
+  resolutions: ContactDataQualityResolutionRecord[],
+  contactId: string,
+  signal: ContactDossier["qualityReview"]["signals"][number],
+): ContactDataQualityResolutionRecord | undefined {
+  return resolutions
+    .filter(
+      (resolution) =>
+        resolution.contactId === contactId &&
+        contactDataQualityResolutionMatchesSignal(resolution, signal),
+    )
+    .sort((left, right) => Date.parse(right.recordedAt) - Date.parse(left.recordedAt))[0];
+}
+
+export function buildContactDataQualityResolutionPayload(
+  dossier: ContactDossier,
+  signal: ContactDossier["qualityReview"]["signals"][number],
+  decision: ContactDataQualityResolutionRecord["decision"],
+): ContactDataQualityResolutionPayload {
+  return {
+    contactId: dossier.contact.id,
+    signalKind: signal.kind,
+    decision,
+    matterId: signal.matterId,
+    relatedContactId: signal.relatedContactIds?.[0],
+    sourceRecordId: signal.sourceRecordId,
+    resolutionNote: `Contacts dashboard reviewer marked ${formatContactDataQualityResolutionDecision(
+      decision,
+    )} for ${formatContactReviewSignalKind(signal.kind)}.`,
+  };
 }

@@ -957,6 +957,158 @@ describe("worker processors", () => {
     expect(job.metadata).not.toHaveProperty("rawBody");
   });
 
+  it("completes billing and jurisdictional trust report jobs with bounded metadata only", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-billing-export-worker-test",
+      firmId: "firm-west-legal",
+      queueName: "reports",
+      jobName: "billing_export",
+      status: "queued",
+      targetResourceType: "billing_export",
+      targetResourceId: "billing-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-05-19T12:00:00.000Z",
+      metadata: {
+        reportType: "billing",
+        reportScope: "matter",
+        matterId: "matter-001",
+        requestedByUserId: "user-admin",
+        rawBody: "Synthetic billing export body must not survive job metadata",
+      },
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-jurisdictional-trust-export-worker-test",
+      firmId: "firm-west-legal",
+      queueName: "reports",
+      jobName: "jurisdictional_trust_export",
+      status: "queued",
+      targetResourceType: "jurisdictional_trust_export",
+      targetResourceId: "jurisdictional-trust-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-05-19T12:01:00.000Z",
+      metadata: {
+        reportType: "jurisdictional_trust",
+        reportScope: "firm",
+        jurisdiction: "BC",
+        requestedByUserId: "user-admin",
+        statementEvidence: "synthetic-april-trust.pdf",
+      },
+    });
+
+    const billingResult = await processOpenPracticeJob({
+      queueName: "reports",
+      jobName: "billing_export",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "billing_export",
+        resourceId: "billing-export-worker-test",
+        metadata: {
+          reportType: "billing",
+          reportScope: "matter",
+          matterId: "matter-001",
+          requestedByUserId: "user-admin",
+          rawBody: "Synthetic billing export body must not survive job metadata",
+        },
+      },
+      jobLifecycleId: "job-billing-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+    const trustResult = await processOpenPracticeJob({
+      queueName: "reports",
+      jobName: "jurisdictional_trust_export",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "jurisdictional_trust_export",
+        resourceId: "jurisdictional-trust-export-worker-test",
+        metadata: {
+          reportType: "jurisdictional_trust",
+          reportScope: "firm",
+          jurisdiction: "BC",
+          requestedByUserId: "user-admin",
+          statementEvidence: "synthetic-april-trust.pdf",
+        },
+      },
+      jobLifecycleId: "job-jurisdictional-trust-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(billingResult).toMatchObject({
+      status: "completed",
+      metadata: {
+        firmId: "firm-west-legal",
+        resourceType: "billing_export",
+        resourceId: "billing-export-worker-test",
+        reportType: "billing",
+        reportScope: "matter",
+        matterId: "matter-001",
+        recordCount: expect.any(Number),
+        timeEntryCount: expect.any(Number),
+        invoiceCount: expect.any(Number),
+      },
+    });
+    expect(trustResult).toMatchObject({
+      status: "completed",
+      metadata: {
+        firmId: "firm-west-legal",
+        resourceType: "jurisdictional_trust_export",
+        resourceId: "jurisdictional-trust-export-worker-test",
+        reportType: "jurisdictional_trust",
+        reportScope: "firm",
+        jurisdiction: "BC",
+      },
+    });
+
+    const jobs = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    expect(jobs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "job-billing-export-worker-test",
+          status: "completed",
+          metadata: expect.objectContaining({
+            reportType: "billing",
+            matterId: "matter-001",
+            recordCount: expect.any(Number),
+            timeEntryCount: expect.any(Number),
+          }),
+        }),
+        expect.objectContaining({
+          id: "job-jurisdictional-trust-export-worker-test",
+          status: "completed",
+          metadata: expect.objectContaining({
+            reportType: "jurisdictional_trust",
+            jurisdiction: "BC",
+          }),
+        }),
+      ]),
+    );
+    const serializedJobs = JSON.stringify(jobs);
+    expect(serializedJobs).not.toContain("Synthetic billing export body");
+    expect(serializedJobs).not.toContain("synthetic-april-trust.pdf");
+    expect(
+      jobs.find((job) => job.id === "job-billing-export-worker-test")?.metadata,
+    ).not.toHaveProperty("rawBody");
+    expect(
+      jobs.find((job) => job.id === "job-jurisdictional-trust-export-worker-test")?.metadata,
+    ).not.toHaveProperty("statementEvidence");
+  });
+
   it("runs OCR jobs from document storage and completes lifecycle records", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const requestedObjects: string[] = [];

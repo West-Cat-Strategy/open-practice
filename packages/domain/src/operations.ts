@@ -159,6 +159,19 @@ export interface EmailOutboxRecord {
   metadata: Record<string, unknown>;
 }
 
+export interface EmailReceiptTokenRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  emailId: string;
+  tokenHash: string;
+  purpose: "delivery_receipt";
+  expiresAt: string;
+  recordedAt?: string;
+  createdAt: string;
+  metadata: Record<string, unknown>;
+}
+
 export interface EmailEventRecord {
   id: string;
   firmId: string;
@@ -171,7 +184,8 @@ export interface EmailEventRecord {
     | "bounced"
     | "complained"
     | "opened"
-    | "clicked";
+    | "clicked"
+    | "receipt_recorded";
   occurredAt: string;
   providerMessageId?: string;
   attemptNumber?: number;

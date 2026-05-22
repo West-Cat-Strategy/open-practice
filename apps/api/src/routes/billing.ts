@@ -2,24 +2,32 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   assertBillingStatusTransition,
+  billingDateFallsInsideLock,
+  billingRuleScope,
   calculateInvoiceTotals,
   clientTrustBalanceByMatter,
   createInvoiceLineTotals,
   isBillableUnbilled,
+  resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
   trustTransferRequestAvailableBalanceCents,
   type AccessRequest,
 } from "@open-practice/domain";
 import type {
+  BillingPeriodLockRecord,
+  BillingRateRuleRecord,
+  BillingRateSnapshot,
   ExpenseEntry,
   InvoiceLineRecord,
   InvoiceRecord,
+  JobLifecycleRecord,
   ManualPaymentRecord,
   PaymentAllocationRecord,
   TimeEntry,
   TrustTransferRequestRecord,
 } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
+import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
@@ -31,7 +39,7 @@ const timeEntryBodySchema = z.object({
   userId: z.string().min(1).optional(),
   performedAt: z.string().datetime().optional(),
   minutes: z.number().int().positive(),
-  rateCents: z.number().int().nonnegative(),
+  rateCents: z.number().int().nonnegative().optional(),
   narrative: z.string().min(1),
   billable: z.boolean().default(true),
   billingStatus: z
@@ -140,6 +148,40 @@ const trustTransferRequestLinkBodySchema = z.object({
   evidence: z.record(z.string(), z.unknown()).default({}),
 });
 
+const billingPeriodLockBodySchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    periodStart: z.string().datetime(),
+    periodEnd: z.string().datetime(),
+    reason: z.string().min(1).optional(),
+  })
+  .strict();
+
+const billingRateRuleBodySchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    label: z.string().min(1),
+    matterId: z.string().min(1).optional(),
+    userId: z.string().min(1).optional(),
+    role: z.string().min(1).optional(),
+    rateCents: z.number().int().nonnegative(),
+    effectiveFrom: z.string().datetime().optional(),
+    effectiveUntil: z.string().datetime().optional(),
+    active: z.boolean().default(true),
+  })
+  .strict();
+
+const billingExportRequestBodySchema = z
+  .object({
+    idempotencyKey: z.string().min(1).max(160).optional(),
+    matterId: z.string().min(1).optional(),
+  })
+  .strict();
+
+const billingExportParamsSchema = z.object({
+  exportJobId: z.string().min(1),
+});
+
 const idParamsSchema = z.object({ id: z.string().min(1) });
 
 function assertMatterAccess(
@@ -152,6 +194,198 @@ function assertMatterAccess(
 
 function hasEvidence(evidence: Record<string, unknown>): boolean {
   return Object.keys(evidence).length > 0;
+}
+
+function compactMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined));
+}
+
+function billingExportJobId(): string {
+  return `billing-export-${crypto.randomUUID()}`;
+}
+
+function billingExportScope(matterId: string | undefined): "firm" | "matter" {
+  return matterId ? "matter" : "firm";
+}
+
+function billingExportRequestFingerprint(auth: ApiAuthContext, matterId: string | undefined) {
+  return `billing:${auth.firmId}:${auth.user.id}:${matterId ?? "firm"}`;
+}
+
+function assertBillingExportAccess(context: ApiAuthContext, matterId: string | undefined): void {
+  const access = requireAccess(context, {
+    resource: "trust_ledger",
+    action: "export",
+    matterId,
+  });
+  if (!access.ok) throw access.error;
+  if (!matterId && !hasFirmWideLedgerAccess(context.user)) {
+    throw new ApiHttpError(403, "BILLING_EXPORT_ACCESS_REQUIRED", "Billing export access required");
+  }
+}
+
+async function findBillingExportJob(
+  repository: ApiRouteDependencies["repository"],
+  firmId: string,
+  jobId: string,
+): Promise<JobLifecycleRecord | undefined> {
+  return (await repository.listJobLifecycleRecords(firmId, { queueName: "reports" })).find(
+    (record) => record.id === jobId && record.jobName === "billing_export",
+  );
+}
+
+function billingExportMatterId(job: JobLifecycleRecord): string | undefined {
+  const value = job.metadata.matterId;
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function serializeBillingExportRequest(job: JobLifecycleRecord) {
+  return {
+    id: job.id,
+    jobId: job.id,
+    status: job.status,
+    queuedAt: job.queuedAt,
+    finishedAt: job.finishedAt,
+    failedAt: job.failedAt,
+    pollUrl: `/api/billing/export-requests/${job.id}`,
+    downloadUrl: `/api/billing/export-requests/${job.id}/download`,
+  };
+}
+
+async function serializeBillingExport(
+  repository: ApiRouteDependencies["repository"],
+  firmId: string,
+  matterId: string | undefined,
+) {
+  const scope = billingExportScope(matterId);
+  const [timeEntries, expenseEntries, invoices, payments, trustTransferRequests] =
+    await Promise.all([
+      repository.listTimeEntries(firmId, matterId ? { matterId } : {}),
+      repository.listExpenseEntries(firmId, matterId ? { matterId } : {}),
+      repository.listInvoices(firmId, matterId ? { matterId } : {}),
+      repository.listPayments(firmId, matterId ? { matterId } : {}),
+      repository.listTrustTransferRequests(firmId, matterId ? { matterId } : {}),
+    ]);
+
+  return compactMetadata({
+    generatedAt: new Date().toISOString(),
+    reportType: "billing",
+    reportScope: scope,
+    matterId,
+    billingPosture: "operational_records_only_no_live_payment_processing_or_tax_advice",
+    trustTransferPolicy: "review_only_no_automatic_trust_ledger_posting",
+    timeEntries,
+    expenseEntries,
+    invoices,
+    payments,
+    trustTransferRequests,
+  });
+}
+
+function assertBillingControlAccess(context: ApiAuthContext, action: "read" | "create"): void {
+  const access = requireAccess(context, { resource: "trust_ledger", action });
+  if (!access.ok) throw access.error;
+  if (!hasFirmWideLedgerAccess(context.user)) {
+    throw new ApiHttpError(
+      403,
+      "BILLING_CONTROLS_ACCESS_REQUIRED",
+      "Billing controls access required",
+    );
+  }
+}
+
+function lockedBillingPeriodForTimestamp(
+  timestamp: string,
+  locks: BillingPeriodLockRecord[],
+): BillingPeriodLockRecord | undefined {
+  return locks.find((lock) => billingDateFallsInsideLock(timestamp, lock));
+}
+
+async function assertBillingTimestampUnlocked(
+  repository: ApiRouteDependencies["repository"],
+  firmId: string,
+  timestamp: string,
+  label: string,
+): Promise<void> {
+  const lockedPeriod = lockedBillingPeriodForTimestamp(
+    timestamp,
+    await repository.listBillingPeriodLocks(firmId),
+  );
+  if (!lockedPeriod) return;
+  throw Object.assign(
+    new Error(
+      `${label} is inside locked billing period ${lockedPeriod.periodStart} to ${lockedPeriod.periodEnd}`,
+    ),
+    { statusCode: 409 },
+  );
+}
+
+function snapshotFromRateRule(
+  rule: BillingRateRuleRecord,
+  resolvedAt: string,
+): BillingRateSnapshot {
+  return {
+    source: "rate_rule",
+    rateCents: rule.rateCents,
+    resolvedAt,
+    rateRuleId: rule.id,
+    label: rule.label,
+    scope: rule.scope,
+    matterId: rule.matterId,
+    userId: rule.userId,
+    role: rule.role,
+  };
+}
+
+async function resolveTimeEntryRate(input: {
+  repository: ApiRouteDependencies["repository"];
+  auth: ApiAuthContext;
+  matterId: string;
+  userId: string;
+  performedAt: string;
+  rateCents?: number;
+  resolvedAt: string;
+}): Promise<Pick<TimeEntry, "rateCents" | "rateRuleId" | "rateSnapshot">> {
+  if (input.rateCents !== undefined) {
+    return {
+      rateCents: input.rateCents,
+      rateSnapshot: {
+        source: "manual",
+        rateCents: input.rateCents,
+        resolvedAt: input.resolvedAt,
+      },
+    };
+  }
+
+  const timekeeper =
+    input.userId === input.auth.user.id
+      ? input.auth.user
+      : await input.repository.getUser(input.auth.firmId, input.userId);
+  const rule = resolveBillingRateRule(
+    await input.repository.listBillingRateRules(input.auth.firmId, {
+      activeOnly: true,
+      matterId: input.matterId,
+      userId: input.userId,
+    }),
+    {
+      matterId: input.matterId,
+      userId: input.userId,
+      role: timekeeper?.role,
+      performedAt: input.performedAt,
+    },
+  );
+
+  if (!rule) {
+    throw Object.assign(new Error("Rate cents is required when no billing rate rule matches"), {
+      statusCode: 400,
+    });
+  }
+
+  return {
+    rateCents: rule.rateCents,
+    rateRuleId: rule.id,
+    rateSnapshot: snapshotFromRateRule(rule, input.resolvedAt),
+  };
 }
 
 function assertTrustTransferInvoiceClientMatches(
@@ -178,8 +412,84 @@ function assertTrustTransferAmountWithinInvoiceBalance(
 
 export function registerBillingRoutes(
   server: FastifyInstance,
-  { repository }: ApiRouteDependencies,
+  { repository, reportJobQueue }: ApiRouteDependencies,
 ): void {
+  server.get("/api/billing/period-locks", async (request) => {
+    assertBillingControlAccess(request.auth, "read");
+    return { locks: await repository.listBillingPeriodLocks(request.auth.firmId) };
+  });
+
+  server.post("/api/billing/period-locks", async (request) => {
+    assertBillingControlAccess(request.auth, "create");
+    const body = parseRequestPart(billingPeriodLockBodySchema, request.body, "body");
+    const now = new Date().toISOString();
+    const lock: BillingPeriodLockRecord = {
+      id: body.id ?? crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      periodStart: body.periodStart,
+      periodEnd: body.periodEnd,
+      reason: body.reason,
+      lockedByUserId: request.auth.user.id,
+      lockedAt: now,
+    };
+    const created = await repository.createBillingPeriodLock(lock);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "billing_period_lock.created",
+      resourceType: "billing_period_lock",
+      resourceId: created.id,
+      metadata: {
+        billingPeriodLockId: created.id,
+        periodStart: created.periodStart,
+        periodEnd: created.periodEnd,
+        reasonPresent: Boolean(created.reason),
+      },
+    });
+    return created;
+  });
+
+  server.get("/api/billing/rate-rules", async (request) => {
+    assertBillingControlAccess(request.auth, "read");
+    return { rules: await repository.listBillingRateRules(request.auth.firmId) };
+  });
+
+  server.post("/api/billing/rate-rules", async (request) => {
+    assertBillingControlAccess(request.auth, "create");
+    const body = parseRequestPart(billingRateRuleBodySchema, request.body, "body");
+    const now = new Date().toISOString();
+    const rule: BillingRateRuleRecord = {
+      id: body.id ?? crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      label: body.label,
+      matterId: body.matterId,
+      userId: body.userId,
+      role: body.role,
+      scope: billingRuleScope(body),
+      rateCents: body.rateCents,
+      effectiveFrom: body.effectiveFrom ?? now,
+      effectiveUntil: body.effectiveUntil,
+      active: body.active,
+      createdByUserId: request.auth.user.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const created = await repository.createBillingRateRule(rule);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "billing_rate_rule.created",
+      resourceType: "billing_rate_rule",
+      resourceId: created.id,
+      metadata: {
+        billingRateRuleId: created.id,
+        scope: created.scope,
+        matterId: created.matterId,
+        userId: created.userId,
+        role: created.role,
+        rateCents: created.rateCents,
+        active: created.active,
+      },
+    });
+    return created;
+  });
+
   server.get("/api/time-entries", async (request) => {
     const query = parseRequestPart(billingEntryQuerySchema, request.query, "query");
     if (query.matterId) {
@@ -212,17 +522,35 @@ export function registerBillingRoutes(
       action: "create",
       matterId: body.matterId,
     });
+    const now = new Date().toISOString();
+    const performedAt = body.performedAt ?? now;
+    await assertBillingTimestampUnlocked(
+      repository,
+      request.auth.firmId,
+      performedAt,
+      "Time entry",
+    );
+    const userId = body.userId ?? request.auth.user.id;
+    const rate = await resolveTimeEntryRate({
+      repository,
+      auth: request.auth,
+      matterId: body.matterId,
+      userId,
+      performedAt,
+      rateCents: body.rateCents,
+      resolvedAt: now,
+    });
     const entry: TimeEntry = {
       id: body.id ?? crypto.randomUUID(),
       firmId: request.auth.firmId,
       matterId: body.matterId,
-      userId: body.userId ?? request.auth.user.id,
-      performedAt: body.performedAt ?? new Date().toISOString(),
+      userId,
+      performedAt,
       minutes: body.minutes,
-      rateCents: body.rateCents,
       narrative: body.narrative,
       billable: body.billable,
       billingStatus: body.billingStatus,
+      ...rate,
     };
     const created = await repository.createTimeEntry(entry);
     await appendRouteAuditEvent(repository, request.auth, {
@@ -235,6 +563,8 @@ export function registerBillingRoutes(
         status: created.billingStatus,
         minutes: created.minutes,
         rateCents: created.rateCents,
+        rateRuleId: created.rateRuleId,
+        rateSource: created.rateSnapshot?.source,
       },
     });
     return created;
@@ -255,7 +585,30 @@ export function registerBillingRoutes(
       });
     }
     const body = parseRequestPart(timeEntryPatchBodySchema, request.body, "body");
-    const updated = await repository.updateTimeEntry(request.auth.firmId, params.id, body);
+    await assertBillingTimestampUnlocked(
+      repository,
+      request.auth.firmId,
+      existing.performedAt,
+      "Time entry",
+    );
+    if (body.performedAt) {
+      await assertBillingTimestampUnlocked(
+        repository,
+        request.auth.firmId,
+        body.performedAt,
+        "Time entry",
+      );
+    }
+    const updates: Parameters<typeof repository.updateTimeEntry>[2] = { ...body };
+    if (body.rateCents !== undefined) {
+      updates.rateRuleId = undefined;
+      updates.rateSnapshot = {
+        source: "manual",
+        rateCents: body.rateCents,
+        resolvedAt: new Date().toISOString(),
+      };
+    }
+    const updated = await repository.updateTimeEntry(request.auth.firmId, params.id, updates);
     await appendRouteAuditEvent(repository, request.auth, {
       action: "time_entry.updated",
       resourceType: "time_entry",
@@ -267,6 +620,8 @@ export function registerBillingRoutes(
         status: updated.billingStatus,
         minutes: updated.minutes,
         rateCents: updated.rateCents,
+        rateRuleId: updated.rateRuleId,
+        rateSource: updated.rateSnapshot?.source,
       },
     });
     return updated;
@@ -287,6 +642,12 @@ export function registerBillingRoutes(
         action: route === "approve" ? "approve" : "update",
         matterId: existing.matterId,
       });
+      await assertBillingTimestampUnlocked(
+        repository,
+        request.auth.firmId,
+        existing.performedAt,
+        "Time entry",
+      );
       assertBillingStatusTransition(existing.billingStatus, nextStatus);
       const updated = await repository.updateTimeEntry(request.auth.firmId, params.id, {
         billingStatus: nextStatus,
@@ -338,11 +699,18 @@ export function registerBillingRoutes(
       action: "create",
       matterId: body.matterId,
     });
+    const incurredAt = body.incurredAt ?? new Date().toISOString();
+    await assertBillingTimestampUnlocked(
+      repository,
+      request.auth.firmId,
+      incurredAt,
+      "Expense entry",
+    );
     const entry: ExpenseEntry = {
       id: body.id ?? crypto.randomUUID(),
       firmId: request.auth.firmId,
       matterId: body.matterId,
-      incurredAt: body.incurredAt ?? new Date().toISOString(),
+      incurredAt,
       amountCents: body.amountCents,
       category: body.category,
       description: body.description,
@@ -380,6 +748,20 @@ export function registerBillingRoutes(
       });
     }
     const body = parseRequestPart(expenseEntryPatchBodySchema, request.body, "body");
+    await assertBillingTimestampUnlocked(
+      repository,
+      request.auth.firmId,
+      existing.incurredAt,
+      "Expense entry",
+    );
+    if (body.incurredAt) {
+      await assertBillingTimestampUnlocked(
+        repository,
+        request.auth.firmId,
+        body.incurredAt,
+        "Expense entry",
+      );
+    }
     const updated = await repository.updateExpenseEntry(request.auth.firmId, params.id, body);
     await appendRouteAuditEvent(repository, request.auth, {
       action: "expense_entry.updated",
@@ -411,6 +793,12 @@ export function registerBillingRoutes(
         action: route === "approve" ? "approve" : "update",
         matterId: existing.matterId,
       });
+      await assertBillingTimestampUnlocked(
+        repository,
+        request.auth.firmId,
+        existing.incurredAt,
+        "Expense entry",
+      );
       assertBillingStatusTransition(existing.billingStatus, nextStatus);
       const updated = await repository.updateExpenseEntry(request.auth.firmId, params.id, {
         billingStatus: nextStatus,
@@ -636,6 +1024,30 @@ export function registerBillingRoutes(
     });
     if (invoice.status !== "draft") {
       throw Object.assign(new Error("Only draft invoices can be approved"), { statusCode: 409 });
+    }
+    for (const line of invoice.lines) {
+      if (line.timeEntryId) {
+        const entry = await repository.getTimeEntry(request.auth.firmId, line.timeEntryId);
+        if (entry) {
+          await assertBillingTimestampUnlocked(
+            repository,
+            request.auth.firmId,
+            entry.performedAt,
+            "Time entry",
+          );
+        }
+      }
+      if (line.expenseEntryId) {
+        const entry = await repository.getExpenseEntry(request.auth.firmId, line.expenseEntryId);
+        if (entry) {
+          await assertBillingTimestampUnlocked(
+            repository,
+            request.auth.firmId,
+            entry.incurredAt,
+            "Expense entry",
+          );
+        }
+      }
     }
     for (const line of invoice.lines) {
       if (line.timeEntryId) {
@@ -1138,12 +1550,16 @@ export function registerBillingRoutes(
     if (!access.ok) throw access.error;
     const matters = await repository.listMattersForUser(request.auth.user);
     const matterIds = matters.map((matter) => matter.id);
-    const [timeEntries, expenseEntries, invoices, payments] = await Promise.all([
-      repository.listTimeEntries(request.auth.firmId),
-      repository.listExpenseEntries(request.auth.firmId),
-      repository.listInvoices(request.auth.firmId),
-      repository.listPayments(request.auth.firmId),
-    ]);
+    const [timeEntries, expenseEntries, invoices, payments, periodLocks, rateRules] =
+      await Promise.all([
+        repository.listTimeEntries(request.auth.firmId),
+        repository.listExpenseEntries(request.auth.firmId),
+        repository.listInvoices(request.auth.firmId),
+        repository.listPayments(request.auth.firmId),
+        repository.listBillingPeriodLocks(request.auth.firmId),
+        repository.listBillingRateRules(request.auth.firmId),
+      ]);
+    const now = new Date().toISOString();
     const matterSummaries = matterIds.map((matterId) => {
       const unbilledTime = timeEntries
         .filter((entry) => entry.matterId === matterId && entry.billingStatus === "approved")
@@ -1153,6 +1569,8 @@ export function registerBillingRoutes(
           userId: entry.userId,
           minutes: entry.minutes,
           rateCents: entry.rateCents,
+          rateRuleId: entry.rateRuleId,
+          rateSnapshot: entry.rateSnapshot,
           amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
           narrative: entry.narrative,
           status: entry.billingStatus,
@@ -1217,8 +1635,124 @@ export function registerBillingRoutes(
         issuedBalanceDueCents: invoices
           .filter((invoice) => ["issued", "partially_paid"].includes(invoice.status))
           .reduce((sum, invoice) => sum + invoice.balanceDueCents, 0),
+        lockedPeriodCount: periodLocks.length,
+        activeLockedPeriodCount: periodLocks.filter((lock) => billingDateFallsInsideLock(now, lock))
+          .length,
+        activeRateRuleCount: rateRules.filter((rule) => rule.active).length,
       },
+      periodLocks,
+      rateRules,
       matters: matterSummaries,
+    };
+  });
+
+  server.post("/api/billing/export-requests", async (request, reply) => {
+    const body = parseRequestPart(billingExportRequestBodySchema, request.body, "body");
+    assertBillingExportAccess(request.auth, body.matterId);
+    const jobId = billingExportJobId();
+    const queueConfigured = Boolean(reportJobQueue);
+    const scope = billingExportScope(body.matterId);
+    const now = new Date().toISOString();
+    const idempotencyKey =
+      body.idempotencyKey ??
+      `billing-export:${request.auth.user.id}:${body.matterId ?? "firm"}:${now.slice(0, 10)}`;
+    const metadata = compactMetadata({
+      reportType: "billing",
+      reportScope: scope,
+      matterId: body.matterId,
+      requestedByUserId: request.auth.user.id,
+      enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
+      idempotencyFingerprint: billingExportRequestFingerprint(request.auth, body.matterId),
+    });
+
+    const job = await repository.createJobLifecycleRecord({
+      id: jobId,
+      firmId: request.auth.firmId,
+      queueName: "reports",
+      jobName: "billing_export",
+      bullJobId: queueConfigured ? jobId : undefined,
+      idempotencyKey,
+      status: queueConfigured ? "queued" : "completed",
+      targetResourceType: "billing_export",
+      targetResourceId: jobId,
+      attemptsMade: 0,
+      maxAttempts: queueConfigured ? 2 : 1,
+      queuedAt: now,
+      finishedAt: queueConfigured ? undefined : now,
+      metadata,
+    });
+
+    if (reportJobQueue && job.id === jobId) {
+      try {
+        await reportJobQueue.add(
+          "billing_export",
+          {
+            firmId: request.auth.firmId,
+            resourceType: "billing_export",
+            resourceId: job.id,
+            metadata: compactMetadata({
+              reportType: "billing",
+              reportScope: scope,
+              matterId: body.matterId,
+              requestedByUserId: request.auth.user.id,
+            }),
+          },
+          { jobId: job.id },
+        );
+      } catch (error) {
+        await repository.updateJobLifecycleRecord(request.auth.firmId, job.id, {
+          status: "failed",
+          failedAt: new Date().toISOString(),
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+    }
+
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "billing_export.requested",
+      resourceType: "billing_export",
+      resourceId: job.id,
+      metadata: compactMetadata({
+        jobId: job.id,
+        reportType: "billing",
+        reportScope: scope,
+        matterId: body.matterId,
+        idempotencyKeyPresent: Boolean(body.idempotencyKey),
+        enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
+      }),
+    });
+
+    reply.status(202);
+    return { exportRequest: serializeBillingExportRequest(job) };
+  });
+
+  server.get("/api/billing/export-requests/:exportJobId", async (request) => {
+    const params = parseRequestPart(billingExportParamsSchema, request.params, "params");
+    const job = await findBillingExportJob(repository, request.auth.firmId, params.exportJobId);
+    if (!job)
+      throw new ApiHttpError(404, "BILLING_EXPORT_NOT_FOUND", "Billing export was not found");
+    assertBillingExportAccess(request.auth, billingExportMatterId(job));
+    return { exportRequest: serializeBillingExportRequest(job) };
+  });
+
+  server.get("/api/billing/export-requests/:exportJobId/download", async (request) => {
+    const params = parseRequestPart(billingExportParamsSchema, request.params, "params");
+    const job = await findBillingExportJob(repository, request.auth.firmId, params.exportJobId);
+    if (!job)
+      throw new ApiHttpError(404, "BILLING_EXPORT_NOT_FOUND", "Billing export was not found");
+    const matterId = billingExportMatterId(job);
+    assertBillingExportAccess(request.auth, matterId);
+    if (job.status === "failed" || job.status === "dead_letter") {
+      throw new ApiHttpError(409, "BILLING_EXPORT_FAILED", "Billing export did not complete");
+    }
+    if (job.status !== "completed") {
+      throw new ApiHttpError(409, "BILLING_EXPORT_NOT_READY", "Billing export is not ready yet");
+    }
+
+    return {
+      exportRequest: serializeBillingExportRequest(job),
+      export: await serializeBillingExport(repository, request.auth.firmId, matterId),
     };
   });
 }

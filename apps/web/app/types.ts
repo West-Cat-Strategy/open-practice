@@ -1,5 +1,8 @@
 import type {
   AuditEventTaxonomySummary,
+  BillingPeriodLockRecord,
+  BillingRateRuleRecord,
+  BillingRateSnapshot,
   Contact,
   ConflictCandidate,
   DocumentRecord,
@@ -15,6 +18,7 @@ import type {
   CalendarEventReminderRecord,
   CalendarMeetingInvitationBoundary,
   ContactDossier,
+  ContactDataQualityResolutionRecord,
   DashboardSectionCapability,
   IntakeSessionRecord,
   IntakeTemplateRecord,
@@ -38,6 +42,7 @@ import type {
 } from "@open-practice/domain";
 
 export type { ContactDossier };
+export type { ContactDataQualityResolutionRecord };
 
 export interface MatterSummary extends Matter {
   parties: Array<MatterParty & { contact: Contact }>;
@@ -78,6 +83,15 @@ export interface CapabilitiesResponse {
   sections: DashboardSectionCapability[];
 }
 
+export function canRecordContactDataQualityResolutions(
+  sections: DashboardSectionCapability[],
+): boolean {
+  return sections.some(
+    (section) =>
+      section.key === "contacts" && section.enabled && section.actions.includes("update"),
+  );
+}
+
 export type ContactDossiersResponse = ContactDossier[];
 
 export type ContactReviewQueueSignal = Omit<
@@ -111,6 +125,8 @@ export interface ContactReviewQueueResponse {
   };
   items: ContactReviewQueueItem[];
 }
+
+export type ContactDataQualityResolutionsResponse = ContactDataQualityResolutionRecord[];
 
 export interface IntakeSessionsResponse {
   templates: IntakeTemplateRecord[];
@@ -851,6 +867,8 @@ export interface BillingTimeItem {
   userId?: string;
   minutes: number;
   rateCents: number;
+  rateRuleId?: string;
+  rateSnapshot?: BillingRateSnapshot;
   amountCents: number;
   narrative: string;
   status: BillingEntryStatus;
@@ -901,7 +919,12 @@ export interface BillingDashboardResponse {
     unbilledExpenseCents: number;
     draftInvoiceCents: number;
     issuedBalanceDueCents: number;
+    lockedPeriodCount: number;
+    activeLockedPeriodCount: number;
+    activeRateRuleCount: number;
   };
+  periodLocks: BillingPeriodLockRecord[];
+  rateRules: BillingRateRuleRecord[];
   matters: MatterBillingSummary[];
 }
 

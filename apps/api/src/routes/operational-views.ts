@@ -31,7 +31,14 @@ const definitionPayloadSchema = z.object({
   dashboardBehavior: z.record(z.string(), z.unknown()).default({}),
   permissionScope: z.array(permissionScopeSchema).min(1).max(20).default(["matter:read"]),
 });
-const definitionPatchSchema = definitionPayloadSchema.partial().extend({
+const definitionPatchSchema = z.object({
+  surface: savedOperationalViewSurfaceSchema.optional(),
+  name: z.string().trim().min(1).max(120).optional(),
+  filters: z.record(z.string(), z.unknown()).optional(),
+  columns: z.array(z.unknown()).optional(),
+  sort: z.record(z.string(), z.unknown()).optional(),
+  rowLimit: z.number().int().min(1).max(250).optional(),
+  dashboardBehavior: z.record(z.string(), z.unknown()).optional(),
   permissionScope: z.array(permissionScopeSchema).min(1).max(20).optional(),
 });
 const definitionParamsSchema = z.object({
@@ -44,6 +51,11 @@ const definitionQuerySchema = z.object({
     .optional()
     .transform((value) => value === "true"),
 });
+const matterDashboardPresetFamilies = new Set([
+  "matter_follow_up",
+  "matter_risk_review",
+  "matter_action_required",
+]);
 
 const actions = new Set<Action>(["create", "read", "update", "delete", "approve", "export"]);
 
@@ -135,6 +147,21 @@ function assertCanUseDefinition(
   }
 }
 
+function assertValidMatterPresetFilters(
+  surface: SavedOperationalViewDefinition["surface"],
+  filters: Record<string, unknown>,
+): void {
+  if (surface !== "matters") return;
+  const presetFamily = filters.presetFamily;
+  if (typeof presetFamily !== "string" || !matterDashboardPresetFamilies.has(presetFamily)) {
+    throw new ApiHttpError(
+      400,
+      "INVALID_MATTER_PRESET_FILTER",
+      "Matter dashboard preset filters require a supported preset family",
+    );
+  }
+}
+
 export function registerOperationalViewRoutes(
   server: FastifyInstance,
   { repository }: ApiRouteDependencies,
@@ -153,6 +180,7 @@ export function registerOperationalViewRoutes(
 
   server.post("/api/operational-views/definitions", async (request) => {
     const body = parseRequestPart(definitionPayloadSchema, request.body, "body");
+    assertValidMatterPresetFilters(body.surface, body.filters);
     assertCanUseDefinition(request, body);
     const now = new Date().toISOString();
     const definition = await repository.createSavedOperationalViewDefinition({
@@ -173,6 +201,10 @@ export function registerOperationalViewRoutes(
       await repository.getSavedOperationalViewDefinition(request.auth.firmId, params.id),
     );
     const permissionScope = body.permissionScope ?? existing.permissionScope;
+    assertValidMatterPresetFilters(
+      body.surface ?? existing.surface,
+      body.filters ?? existing.filters,
+    );
     assertCanUseDefinition(request, { permissionScope });
     const updated = await repository.updateSavedOperationalViewDefinition(
       request.auth.firmId,
