@@ -19,6 +19,9 @@ export function describePublicGuestSessionStatus(
   if (payload.session.status === "expired") return "Guest access has expired.";
   if (payload.session.status === "ended") return "The session has ended.";
   if (payload.session.status === "locked") return "The lobby is locked.";
+  if (payload.meetingAccess?.status === "staff_controlled") {
+    return "You have been admitted. Staff will provide meeting access through the calendar invitation or staff handoff.";
+  }
   if (payload.guest?.status === "admitted") return "You have been admitted.";
   if (payload.guest?.status === "denied") return "Guest access was denied.";
   if (payload.guest?.status === "revoked") return "Guest access was revoked.";

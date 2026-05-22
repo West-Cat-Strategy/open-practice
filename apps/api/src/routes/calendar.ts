@@ -381,6 +381,15 @@ function publicGuestSessionResponse(input: {
   const counts = guestCounts(input.links);
   const sessionStatus = expired ? "expired" : sessionStatusForResponse(input.session);
   const guestStatus = expired ? "revoked" : input.link.status;
+  const meetingAccessStatus =
+    sessionStatus === "expired" ||
+    sessionStatus === "ended" ||
+    guestStatus === "denied" ||
+    guestStatus === "revoked"
+      ? "unavailable"
+      : guestStatus === "admitted"
+        ? "staff_controlled"
+        : "pending_lobby_review";
   return {
     session: {
       status: sessionStatus,
@@ -402,6 +411,11 @@ function publicGuestSessionResponse(input: {
       admittedCount: counts.admittedCount,
       deniedCount: counts.deniedCount,
       revokedCount: counts.revokedCount,
+    },
+    meetingAccess: {
+      status: meetingAccessStatus,
+      deliveryBoundary: "calendar_invitation_or_staff_handoff",
+      meetingUrlAvailable: false,
     },
   };
 }

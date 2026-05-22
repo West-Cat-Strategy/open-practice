@@ -450,6 +450,11 @@ export interface PublicGuestSessionResponse {
     deniedCount?: number;
     revokedCount?: number;
   };
+  meetingAccess?: {
+    status: "pending_lobby_review" | "staff_controlled" | "unavailable";
+    deliveryBoundary: "calendar_invitation_or_staff_handoff";
+    meetingUrlAvailable: false;
+  };
   guest?: {
     status: CalendarGuestAccessStatus;
     checkedInAt?: string;
