@@ -14,7 +14,14 @@ export interface OperationalFocusItem {
   detail: string;
   value: string;
   tone: OperationalFocusTone;
-  section: "Tasks" | "Workers" | "Queues" | "Providers" | "Active matter" | "Operational views";
+  section:
+    | "Tasks"
+    | "Workers"
+    | "Queues"
+    | "Providers"
+    | "Portal access"
+    | "Active matter"
+    | "Operational views";
 }
 
 export interface OperationalFocusSummary {
@@ -159,11 +166,73 @@ function activeMatterItems(input: {
   return railItems.slice(0, 3);
 }
 
+const portalAccessViewKeys = new Set([
+  "portal_access_activity",
+  "portal_access_anomalies",
+  "portal_links_expiring",
+]);
+
+function metadataString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function portalAccessItems(operationalViews: OperationalViewsResponse): OperationalFocusItem[] {
+  const byKey = new Map(operationalViews.views.map((view) => [view.definition.key, view]));
+  const activity = byKey.get("portal_access_activity");
+  const anomalies = byKey.get("portal_access_anomalies");
+  const expiring = byKey.get("portal_links_expiring");
+  const latestActivity = activity?.results?.[0];
+  const latestFamily = metadataString(latestActivity?.metadata?.family);
+  const latestReason = metadataString(latestActivity?.metadata?.reason);
+  const expiringHighPriority =
+    expiring?.results?.some((result) => result.priority === "high") ?? false;
+  const items: OperationalFocusItem[] = [];
+
+  if (activity && activity.resultCount > 0) {
+    items.push({
+      key: "portal-access-activity",
+      label: "Portal access activity",
+      value: activity.resultCount.toString(),
+      detail: latestActivity
+        ? `Latest ${compactStatus(latestActivity.status)} ${compactStatus(
+            latestFamily,
+          )} access; ${compactStatus(latestReason)}.`
+        : "Latest public-token access events are summarized without network details.",
+      tone: latestActivity?.status === "denied" ? "risk" : "neutral",
+      section: "Portal access",
+    });
+  }
+
+  if (anomalies && anomalies.resultCount > 0) {
+    items.push({
+      key: "portal-access-anomalies",
+      label: "Repeated denied attempts",
+      value: anomalies.resultCount.toString(),
+      detail: "Three or more denied or blocked attempts on the same public link in 24 hours.",
+      tone: "risk",
+      section: "Portal access",
+    });
+  }
+
+  if (expiring && expiring.resultCount > 0) {
+    items.push({
+      key: "portal-links-expiring",
+      label: "Portal links expiring",
+      value: expiring.resultCount.toString(),
+      detail: "Active share, upload, intake, and guest-session links expiring within 7 days.",
+      tone: expiringHighPriority ? "risk" : "neutral",
+      section: "Portal access",
+    });
+  }
+
+  return items;
+}
+
 function operationalViewItems(operationalViews: OperationalViewsResponse): OperationalFocusItem[] {
   const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
   return operationalViews.views
-    .filter((view) => view.resultCount > 0)
+    .filter((view) => view.resultCount > 0 && !portalAccessViewKeys.has(view.definition.key))
     .sort((left, right) => {
       const leftPriority = priorityRank[left.definition.defaultPriority ?? "medium"] ?? 3;
       const rightPriority = priorityRank[right.definition.defaultPriority ?? "medium"] ?? 3;
@@ -247,6 +316,7 @@ export function buildOperationalFocusSummary(input: {
           },
         ]
       : []),
+    ...portalAccessItems(input.operationalViews),
     ...operationalViewItems(input.operationalViews),
     ...queueAttentionItems(input.queues),
     ...providerItems,

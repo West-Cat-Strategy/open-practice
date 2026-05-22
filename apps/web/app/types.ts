@@ -1087,6 +1087,21 @@ export interface ConnectorOperationsResponse {
   status: "available" | "access_denied" | "unavailable";
 }
 
+export interface OperationalViewResult {
+  [key: string]: unknown;
+  id?: string;
+  viewKey?: string;
+  matterId?: string;
+  title?: string;
+  status?: string;
+  priority?: "high" | "medium" | "low" | string;
+  reason?: string;
+  lastActivityAt?: string;
+  dueAt?: string;
+  occurredAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface OperationalViewsResponse {
   generatedAt?: string;
   views: Array<{
@@ -1096,7 +1111,7 @@ export interface OperationalViewsResponse {
       defaultPriority?: "high" | "medium" | "low" | string;
     };
     resultCount: number;
-    results?: unknown[];
+    results?: OperationalViewResult[];
   }>;
 }
 

@@ -3188,6 +3188,139 @@ describe("dashboard client behavior", () => {
     expect(JSON.stringify(focus.items)).not.toContain("matter-cross-scope");
   });
 
+  it("surfaces compact portal access activity without raw token or network details", () => {
+    const emptyStatus = emptyProvidersStatusResponse();
+    const providerStatus: ProvidersStatusResponse = {
+      ...emptyStatus,
+      email: {
+        ...emptyStatus.email,
+        status: "configured",
+        provider: "smtp",
+        queue: { queueName: "email", status: "configured" },
+      },
+      documentProcessing: {
+        ...emptyStatus.documentProcessing,
+        status: "configured",
+        workerQueues: [{ queueName: "ocr", status: "configured" }],
+      },
+    };
+    const focus = buildOperationalFocusSummary({
+      taskWorkbench: {
+        tasks: [],
+        counters: {
+          my: { overdue: 0, today: 0, upcoming: 0 },
+          team: { overdue: 0, today: 0, upcoming: 0 },
+          matterQueues: [],
+          contactQueues: [],
+        },
+        focusQueues: {
+          myOverdueTaskIds: [],
+          teamTodayTaskIds: [],
+          upcomingTaskIds: [],
+          unassignedTaskIds: [],
+        },
+      },
+      queues: { sections: [] },
+      operationalViews: {
+        generatedAt: "2026-06-20T12:00:00.000Z",
+        views: [
+          {
+            definition: {
+              key: "portal_access_activity",
+              label: "Portal access activity",
+              defaultPriority: "medium",
+            },
+            resultCount: 4,
+            results: [
+              {
+                status: "denied",
+                occurredAt: "2026-06-20T11:30:00.000Z",
+                metadata: {
+                  family: "share",
+                  reason: "expired",
+                  tokenHash: "raw-token-hash",
+                  ipAddress: "203.0.113.44",
+                },
+              },
+            ],
+          },
+          {
+            definition: {
+              key: "portal_access_anomalies",
+              label: "Portal access anomalies",
+              defaultPriority: "high",
+            },
+            resultCount: 1,
+            results: [
+              {
+                metadata: {
+                  family: "share",
+                  deniedCount: 3,
+                  userAgent: "Private Browser",
+                },
+              },
+            ],
+          },
+          {
+            definition: {
+              key: "portal_links_expiring",
+              label: "Portal links expiring",
+              defaultPriority: "medium",
+            },
+            resultCount: 2,
+            results: [{ priority: "high", metadata: { token: "raw-token" } }],
+          },
+          {
+            definition: {
+              key: "conflicts_pending_review",
+              label: "Conflicts pending review",
+              defaultPriority: "high",
+            },
+            resultCount: 2,
+          },
+        ],
+      },
+      workerRuns: {
+        all: emptyWorkerRunsResponse("loaded"),
+        email: emptyWorkerRunsResponse("loaded"),
+        ocr: emptyWorkerRunsResponse("loaded"),
+      },
+      providerStatus,
+    });
+
+    expect(
+      focus.items
+        .filter((item) => item.section === "Portal access")
+        .map((item) => [item.key, item.label, item.value, item.tone, item.detail]),
+    ).toEqual([
+      [
+        "portal-access-activity",
+        "Portal access activity",
+        "4",
+        "risk",
+        "Latest denied share access; expired.",
+      ],
+      [
+        "portal-access-anomalies",
+        "Repeated denied attempts",
+        "1",
+        "risk",
+        "Three or more denied or blocked attempts on the same public link in 24 hours.",
+      ],
+      [
+        "portal-links-expiring",
+        "Portal links expiring",
+        "2",
+        "risk",
+        "Active share, upload, intake, and guest-session links expiring within 7 days.",
+      ],
+    ]);
+    expect(focus.attentionCount).toBe(3);
+    expect(JSON.stringify(focus.items)).not.toContain("raw-token");
+    expect(JSON.stringify(focus.items)).not.toContain("203.0.113.44");
+    expect(JSON.stringify(focus.items)).not.toContain("Private Browser");
+  });
+
   it("returns an empty operations focus message when no attention signals exist", () => {
     const emptyStatus = emptyProvidersStatusResponse();
     const providerStatus: ProvidersStatusResponse = {

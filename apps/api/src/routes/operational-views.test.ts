@@ -90,6 +90,17 @@ afterEach(async () => {
 describe("operational view routes", () => {
   it("returns built-in saved operational view results from visible matter data", async () => {
     const repository = new InMemoryOpenPracticeRepository();
+    await repository.createShareLink({
+      id: "share-link-expiring",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      tokenHash: "hidden-share-token-hash",
+      grantedByUserId: "user-licensee",
+      permissions: ["view_documents"],
+      expiresAt: "2026-06-21T12:00:00.000Z",
+      requireEmailVerification: false,
+      createdAt: "2026-06-01T12:00:00.000Z",
+    });
     await repository.createExternalUploadLink({
       id: "external-upload-expiring",
       firmId: "firm-west-legal",
@@ -100,6 +111,72 @@ describe("operational view routes", () => {
       maxUploads: 2,
       usedUploads: 0,
       createdAt: "2026-06-01T12:00:00.000Z",
+    });
+    await repository.createIntakeFormLink({
+      id: "intake-form-link-expiring",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      intakeSessionId: "intake-session-001",
+      tokenHash: "hidden-intake-token-hash",
+      requestedByUserId: "user-licensee",
+      clientContactId: "contact-ada",
+      expiresAt: "2026-06-22T12:00:00.000Z",
+      createdAt: "2026-06-01T12:00:00.000Z",
+    });
+    await repository.createCalendarMeetingSession({
+      id: "meeting-session-portal-activity",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-001",
+      status: "lobby_open",
+      createdAt: "2026-06-01T12:00:00.000Z",
+      updatedAt: "2026-06-01T12:00:00.000Z",
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+      metadata: {},
+    });
+    await repository.createCalendarGuestLink({
+      id: "guest-link-expiring",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-001",
+      sessionId: "meeting-session-portal-activity",
+      tokenHash: "hidden-guest-token-hash",
+      status: "issued",
+      expiresAt: "2026-06-22T12:00:00.000Z",
+      createdAt: "2026-06-01T12:00:00.000Z",
+      updatedAt: "2026-06-01T12:00:00.000Z",
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+      metadata: {},
+    });
+    for (const [index, occurredAt] of [
+      "2026-06-20T10:00:00.000Z",
+      "2026-06-20T10:30:00.000Z",
+      "2026-06-20T11:00:00.000Z",
+    ].entries()) {
+      await repository.createAccessLog({
+        id: `share-denied-${index}`,
+        firmId: "firm-west-legal",
+        shareLinkId: "share-link-expiring",
+        resourceType: "share_link",
+        resourceId: "share-link-expiring",
+        action: "view",
+        occurredAt,
+        ipAddress: `203.0.113.${index + 10}`,
+        userAgent: "Private Synthetic Browser",
+        metadata: { outcome: "denied", reason: "email_verification_required" },
+      });
+    }
+    await repository.createAccessLog({
+      id: "external-upload-granted-latest",
+      firmId: "firm-west-legal",
+      externalUploadLinkId: "external-upload-expiring",
+      resourceType: "external_upload_link",
+      resourceId: "external-upload-expiring",
+      action: "upload",
+      occurredAt: "2026-06-20T11:30:00.000Z",
+      metadata: { outcome: "granted", status: "active" },
     });
 
     const response = await testServer({ repository }).inject({
@@ -117,9 +194,12 @@ describe("operational view routes", () => {
       "external_uploads_expiring",
       "conflicts_pending_review",
       "overdue_tasks_deadlines",
+      "portal_access_activity",
+      "portal_access_anomalies",
+      "portal_links_expiring",
     ]);
     expect(view(payload, "stale_matters").results).toEqual(
-      expect.arrayContaining([expect.objectContaining({ matterId: "matter-001" })]),
+      expect.arrayContaining([expect.objectContaining({ matterId: "matter-002" })]),
     );
     expect(view(payload, "uncontacted_clients").results).toEqual(
       expect.arrayContaining([expect.objectContaining({ matterId: "matter-002" })]),
@@ -140,7 +220,41 @@ describe("operational view routes", () => {
         expect.objectContaining({ id: "calendar:calendar-event-001", matterId: "matter-001" }),
       ]),
     );
+    expect(view(payload, "portal_access_activity").results[0]).toEqual(
+      expect.objectContaining({
+        id: "portal-access:external-upload-granted-latest",
+        matterId: "matter-001",
+        metadata: expect.objectContaining({
+          family: "external_upload",
+          linkId: "external-upload-expiring",
+        }),
+      }),
+    );
+    expect(view(payload, "portal_access_anomalies").results).toEqual([
+      expect.objectContaining({
+        matterId: "matter-001",
+        metadata: expect.objectContaining({
+          family: "share",
+          deniedCount: 3,
+        }),
+      }),
+    ]);
+    expect(view(payload, "portal_links_expiring").results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "portal-expiring:share:share-link-expiring" }),
+        expect.objectContaining({
+          id: "portal-expiring:external_upload:external-upload-expiring",
+        }),
+        expect.objectContaining({ id: "portal-expiring:intake_form:intake-form-link-expiring" }),
+        expect.objectContaining({ id: "portal-expiring:guest_session:guest-link-expiring" }),
+      ]),
+    );
     expect(JSON.stringify(payload)).not.toContain("hidden-token-hash");
+    expect(JSON.stringify(payload)).not.toContain("hidden-share-token-hash");
+    expect(JSON.stringify(payload)).not.toContain("hidden-intake-token-hash");
+    expect(JSON.stringify(payload)).not.toContain("hidden-guest-token-hash");
+    expect(JSON.stringify(payload)).not.toContain("203.0.113.");
+    expect(JSON.stringify(payload)).not.toContain("Private Synthetic Browser");
   });
 
   it("keeps matter-scoped users limited to their assigned matter results", async () => {
