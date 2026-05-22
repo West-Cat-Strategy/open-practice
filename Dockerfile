@@ -18,6 +18,7 @@ WORKDIR /app
 # Don't run production as root
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
+RUN chown nextjs:nodejs /app
 USER nextjs
 
 COPY --from=builder --chown=nextjs:nodejs /prod .

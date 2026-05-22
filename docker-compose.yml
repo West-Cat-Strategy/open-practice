@@ -61,6 +61,7 @@ services:
       args:
         APP_NAME: "@open-practice/api"
         APP_PATH: "apps/api"
+    command: ["node", "dist/server.js"]
     environment:
       - NODE_ENV=development
       - API_PORT=4000
@@ -97,6 +98,7 @@ services:
       args:
         APP_NAME: "@open-practice/web"
         APP_PATH: "apps/web"
+    command: ["node", "node_modules/next/dist/bin/next", "start", "--port", "3000"]
     environment:
       - NODE_ENV=development
       - WEB_PORT=3000
@@ -115,6 +117,7 @@ services:
       args:
         APP_NAME: "@open-practice/worker"
         APP_PATH: "apps/worker"
+    command: ["node", "dist/worker.js"]
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://open_practice:open_practice@postgres:5432/open_practice
