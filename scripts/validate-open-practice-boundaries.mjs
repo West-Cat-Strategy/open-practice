@@ -108,6 +108,12 @@ export const ROUTE_REGISTRARS = [
     "registerDocumentRoutes",
   ],
   [
+    "e2e support",
+    "apps/api/src/routes/e2e-support.ts",
+    "./routes/e2e-support.js",
+    "registerE2ESupportRoutes",
+  ],
+  [
     "document processing",
     "apps/api/src/routes/document-processing.ts",
     "./routes/document-processing.js",
@@ -190,6 +196,7 @@ export const ROUTE_REGISTRAR_TEST_FILES = {
   registerConversationThreadRoutes: ["apps/api/src/routes/conversation-threads.test.ts"],
   registerDocumentProcessingRoutes: ["apps/api/src/routes/document-processing.test.ts"],
   registerDocumentRoutes: ["apps/api/src/routes/documents.test.ts"],
+  registerE2ESupportRoutes: ["apps/api/src/routes/e2e-support.test.ts"],
   registerDraftAssistRoutes: ["apps/api/src/routes/draft-assist.test.ts"],
   registerDraftRoutes: ["apps/api/src/routes/drafts.test.ts"],
   registerEmailRoutes: ["apps/api/src/routes/email.test.ts"],

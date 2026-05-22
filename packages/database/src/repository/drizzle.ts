@@ -98,7 +98,7 @@ import {
   type WebAuthnChallengeRecord,
   type WebAuthnCredentialRecord,
 } from "@open-practice/domain";
-import { and, asc, desc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../runtime.js";
 import * as schema from "../schema.js";
 
@@ -3550,7 +3550,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           eq(schema.externalUploadLinks.firmId, input.firmId),
           eq(schema.externalUploadLinks.id, input.id),
           isNull(schema.externalUploadLinks.revokedAt),
-          sql`${schema.externalUploadLinks.expiresAt} > ${usedAt}`,
+          gt(schema.externalUploadLinks.expiresAt, usedAt),
           sql`${schema.externalUploadLinks.usedUploads} < ${schema.externalUploadLinks.maxUploads}`,
         ),
       )

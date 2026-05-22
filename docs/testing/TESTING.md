@@ -17,6 +17,8 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Static lint            | `pnpm lint`                                      | Runs Turbo package lint tasks.                                                                                                                                           |
 | Type checking          | `pnpm typecheck`                                 | Runs Turbo package type checks.                                                                                                                                          |
 | Tests                  | `pnpm test`                                      | Runs package test suites.                                                                                                                                                |
+| Host browser E2E       | `pnpm e2e:host`                                  | Runs Playwright against a synthetic memory-backed API plus Next.js web runtime across Chromium desktop/mobile, Firefox, and WebKit.                                      |
+| Docker browser E2E     | `pnpm e2e:docker`                                | Runs Playwright against a disposable PostgreSQL-backed runtime with Redis, MinIO, and Mailpit infrastructure.                                                            |
 | Database schema check  | `pnpm --filter @open-practice/database db:check` | Required for schema or migration changes.                                                                                                                                |
 | Migration parity       | `pnpm migrations:check`                          | Verifies SQL migration files and Drizzle journal entries stay in lockstep.                                                                                               |
 | Migration replay       | `pnpm migrations:replay`                         | Applies migrations to a disposable local PostgreSQL database and cleans it up.                                                                                           |
@@ -62,6 +64,7 @@ Selection rules:
 | `packages/database/**` or any `migrations/` path | `pnpm --filter @open-practice/database test`, `pnpm --filter @open-practice/database db:check`, `pnpm --filter @open-practice/database typecheck`, `pnpm --filter @open-practice/api test`                            |
 | `packages/providers/**`                          | `pnpm --filter @open-practice/providers test`, `pnpm --filter @open-practice/providers typecheck`, `pnpm --filter @open-practice/providers build`, `pnpm --filter @open-practice/api test`, worker test and typecheck |
 | `apps/web/**`                                    | `pnpm --filter @open-practice/web test`, `pnpm --filter @open-practice/web typecheck`, `pnpm build`                                                                                                                   |
+| `e2e/**` or `playwright.config.*`                | `pnpm e2e:host`, `pnpm e2e:docker`                                                                                                                                                                                    |
 | `docs/**`                                        | `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`                                                                                                                                                           |
 | `scripts/**`                                     | `pnpm policy:check`, `pnpm test`                                                                                                                                                                                      |
 | Root config, local gate, Turbo, TS config        | `pnpm ci:local`                                                                                                                                                                                                       |
@@ -118,19 +121,40 @@ pnpm --filter @open-practice/providers typecheck
 pnpm --filter @open-practice/worker typecheck
 ```
 
+## Browser E2E
+
+Use the committed Playwright lanes for browser-rendered workflow proof:
+
+```bash
+pnpm e2e:host
+pnpm e2e:docker
+```
+
+`pnpm e2e`, `pnpm playwright`, and `pnpm e2e:host` all run the fast host suite. The host suite starts
+a synthetic in-memory API and the Next.js web app on isolated local ports, then covers dashboard
+smoke/navigation, secure-share verification, public intake draft/incomplete behavior, and hosted
+guest-session check-in/admission states.
+
+`pnpm e2e:docker` starts Compose infrastructure for PostgreSQL, Redis, MinIO, and Mailpit, creates a
+disposable e2e database, runs migrations, prepares the MinIO bucket, starts host API/web/worker
+processes against those services, and cleans up the disposable database after Playwright exits. Use
+this tier for external upload, object-storage, queue, and release-readiness browser proof. If Docker
+or a required local port is unavailable, report the skipped Docker check with the blocker.
+
 ## Change-Type Guidance
 
 - API route, auth, permission, or lifecycle changes: run API tests, typecheck, policy checks, and `pnpm ci:local` before handoff.
 - Domain invariants, trust/funds, conflicts, signatures, or billing rules: run the owning package tests plus API tests if routes expose the behavior.
 - Database schema or repository behavior: run database tests, `db:check`, API tests, and the full verification lane.
-- Web dashboard, route catalog, or UI state changes: run web tests and typecheck; use `pnpm build` for Next app integration proof.
+- Web dashboard, route catalog, or UI state changes: run web tests and typecheck; use `pnpm build` for Next app integration proof, and `pnpm e2e:host` when rendered browser behavior changes.
+- External upload, public-token, object-storage, or release browser proof: run `pnpm e2e:docker` when Docker is available.
 - Documentation-only changes: run `pnpm format:check`, `pnpm docs:check`, and `pnpm policy:check`.
 
 ## Current Gaps
 
-Open Practice does not yet have a Playwright smoke suite, Docker-backed browser matrix, or
-dependency/dead-code review. The disposable migration replay lane exists, but it requires a local
-PostgreSQL service reachable through `DATABASE_URL` or `MIGRATION_REPLAY_DATABASE_URL`.
+Dependency/dead-code review is not yet part of the default selector. The disposable migration replay
+lane exists, but it requires a local PostgreSQL service reachable through `DATABASE_URL` or
+`MIGRATION_REPLAY_DATABASE_URL`.
 
 ## Local Release Proof
 

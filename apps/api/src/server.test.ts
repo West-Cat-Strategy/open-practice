@@ -672,6 +672,9 @@ describe("API auth and persistence boundaries", () => {
     expect(() =>
       validateProductionReadiness(productionEnv({ OPEN_PRACTICE_DEV_SEED: true })),
     ).toThrow(/OPEN_PRACTICE_DEV_SEED/);
+    expect(() => validateProductionReadiness(productionEnv({ E2E_MODE: "host" }))).toThrow(
+      /E2E_MODE/,
+    );
     expect(() =>
       validateProductionReadiness(productionEnv({ AUTH_JWT_SECRET: "too-short" })),
     ).toThrow(/AUTH_JWT_SECRET/);

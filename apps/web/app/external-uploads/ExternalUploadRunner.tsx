@@ -7,6 +7,7 @@ import { PublicTokenNeedsAttention } from "../publicTokenActions";
 import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
 import {
   buildExternalUploadIntentPayload,
+  buildExternalUploadPutHeaders,
   buildPublicExternalUploadCompletePath,
   buildPublicExternalUploadIntentPath,
   buildPublicExternalUploadPath,
@@ -102,10 +103,10 @@ export default function ExternalUploadRunner({ apiBaseUrl, token }: ExternalUplo
     setStatus(`Uploading ${file.name}...`);
     const put = await fetch(intentPayload.uploadUrl, {
       method: intentPayload.method,
-      headers: {
-        "Content-Type": file.type || "application/octet-stream",
-        "x-amz-checksum-sha256": checksumSha256,
-      },
+      headers: buildExternalUploadPutHeaders({
+        file,
+        requiredHeaders: intentPayload.requiredHeaders,
+      }),
       body: file,
     });
     if (!put.ok) {

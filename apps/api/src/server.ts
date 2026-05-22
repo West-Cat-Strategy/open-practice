@@ -33,6 +33,7 @@ import { registerDocumentProcessingRoutes } from "./routes/document-processing.j
 import { registerDocumentRoutes } from "./routes/documents.js";
 import { registerDraftAssistRoutes } from "./routes/draft-assist.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
+import { registerE2ESupportRoutes } from "./routes/e2e-support.js";
 import { registerEmailRoutes } from "./routes/email.js";
 import { registerExternalUploadRoutes } from "./routes/external-uploads.js";
 import { registerInboundEmailRoutes } from "./routes/inbound-email.js";
@@ -82,6 +83,7 @@ export const envSchema = z.object({
   DATABASE_URL: optionalString,
   OPEN_PRACTICE_USE_MEMORY_REPO: z.coerce.boolean().default(false),
   OPEN_PRACTICE_DEV_SEED: z.coerce.boolean().default(false),
+  E2E_MODE: z.enum(["host", "docker"]).optional(),
   AUTH_JWT_SECRET: optionalString,
   DEV_AUTH_USER_ID: z.string().default("user-admin"),
   DEV_AUTH_FIRM_ID: z.string().default("firm-west-legal"),
@@ -151,6 +153,7 @@ interface ApiOptions {
     client: S3Client;
     bucket: string;
   };
+  e2eSupport?: boolean;
   webAuthn: {
     rpName: string;
     rpID: string;
@@ -207,6 +210,9 @@ export function validateProductionReadiness(env: ApiEnv): void {
   }
   if (env.OPEN_PRACTICE_DEV_SEED) {
     throw new Error("OPEN_PRACTICE_DEV_SEED cannot be true in production");
+  }
+  if (env.E2E_MODE) {
+    throw new Error("E2E_MODE cannot be configured in production");
   }
   if (!env.AUTH_JWT_SECRET || env.AUTH_JWT_SECRET.length < 32) {
     throw new Error("AUTH_JWT_SECRET must be at least 32 characters in production");
@@ -382,6 +388,9 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     meetingLinks: options.meetingLinks,
   });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
+  if (options.e2eSupport) {
+    registerE2ESupportRoutes(server, { repository: options.repository });
+  }
   registerDocumentProcessingRoutes(server, {
     repository: options.repository,
     s3: options.s3,
@@ -658,6 +667,7 @@ if (process.env.NODE_ENV !== "test") {
     meetingLinks: createMeetingLinksFromEnv(env),
     setupKey: env.OPEN_PRACTICE_SETUP_KEY,
     s3: createS3FromEnv(env),
+    e2eSupport: Boolean(env.E2E_MODE),
     webAuthn: {
       rpName: env.WEBAUTHN_RP_NAME,
       rpID: env.WEBAUTHN_RP_ID,

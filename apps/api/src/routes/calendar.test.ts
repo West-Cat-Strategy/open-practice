@@ -745,17 +745,17 @@ describe("calendar routes", () => {
     expect(auditJson).not.toContain(token);
     expect(auditJson).not.toContain("tokenHash");
     expect(auditJson).not.toContain("meet.example.test");
-    await expect(
-      repository.listAccessLogs("firm-west-legal", {
-        resourceType: "calendar_guest_link",
-        resourceId: guestId,
-      }),
-    ).resolves.toEqual(
+    const publicGuestAccessLogs = await repository.listAccessLogs("firm-west-legal", {
+      resourceType: "calendar_guest_link",
+      resourceId: guestId,
+    });
+    expect(publicGuestAccessLogs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ action: "view" }),
         expect.objectContaining({ action: "submit" }),
       ]),
     );
+    expect(publicGuestAccessLogs.every((log) => log.actorId === undefined)).toBe(true);
   });
 
   it("blocks hosted guest-session controls outside the matter or without hosted guest access", async () => {

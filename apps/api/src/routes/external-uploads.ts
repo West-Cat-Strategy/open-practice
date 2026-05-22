@@ -1,6 +1,7 @@
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { Buffer } from "node:buffer";
 import { z } from "zod";
 import type {
   AccessLogRecord,
@@ -35,6 +36,10 @@ const publicExternalUploadClassifications = [
   "financial",
   "identity",
 ] as const;
+const checksumSha256HexSchema = z
+  .string()
+  .regex(/^[a-fA-F0-9]{64}$/, "checksumSha256 must be a 64-character hex SHA-256 digest")
+  .transform((value) => value.toLowerCase());
 
 type ExternalUploadRepository = ApiRouteDependencies["repository"] & {
   listExternalUploadLinks: (
@@ -76,13 +81,13 @@ const publicCompleteParamsSchema = z.object({
 
 const publicIntentBodySchema = z.object({
   filename: z.string().min(1),
-  checksumSha256: z.string().min(16),
+  checksumSha256: checksumSha256HexSchema,
   classification: z.enum(publicExternalUploadClassifications).default("general"),
   legalHold: z.coerce.boolean().default(false),
 });
 
 const publicCompleteBodySchema = z.object({
-  checksumSha256: z.string().min(16),
+  checksumSha256: checksumSha256HexSchema,
 });
 
 const reviewDecisionSchema = z.enum(["accept", "request_metadata", "request_retry", "discard"]);
@@ -147,6 +152,10 @@ function requireJwtSecret(jwtSecret?: string): string {
 
 function sanitizeFilename(filename: string): string {
   return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function sha256HexToBase64(checksumSha256: string): string {
+  return Buffer.from(checksumSha256, "hex").toString("base64");
 }
 
 function linkStatus(link: ExternalUploadLinkRecord, now = new Date()): string {
@@ -734,10 +743,16 @@ export function registerExternalUploadRoutes(
       });
       const documentId = crypto.randomUUID();
       const storageKey = `external-uploads/${link.id}/${documentId}-${sanitizeFilename(body.filename)}`;
+      const checksumSha256Base64 = sha256HexToBase64(body.checksumSha256);
+      const requiredHeaders = {
+        "x-amz-meta-open-practice-upload-scope": "external-upload",
+        "x-amz-meta-open-practice-scan": "required-before-share",
+        "x-amz-checksum-sha256": checksumSha256Base64,
+      };
       const command = new PutObjectCommand({
         Bucket: s3.bucket,
         Key: storageKey,
-        ChecksumSHA256: body.checksumSha256,
+        ChecksumSHA256: checksumSha256Base64,
         Metadata: {
           "open-practice-upload-scope": "external-upload",
           "open-practice-scan": "required-before-share",
@@ -745,6 +760,7 @@ export function registerExternalUploadRoutes(
       });
       const uploadUrl = await getSignedUrl(s3.client, command, {
         expiresIn: SIGNED_URL_EXPIRES_IN_SECONDS,
+        unhoistableHeaders: new Set(Object.keys(requiredHeaders)),
       });
       const document = await repository.createDocumentUploadIntent({
         id: documentId,
@@ -786,9 +802,7 @@ export function registerExternalUploadRoutes(
         uploadUrl,
         expiresInSeconds: SIGNED_URL_EXPIRES_IN_SECONDS,
         document: serializePublicDocument(document),
-        requiredHeaders: {
-          "x-open-practice-malware-scan": "required-before-share",
-        },
+        requiredHeaders,
       };
     },
   );
