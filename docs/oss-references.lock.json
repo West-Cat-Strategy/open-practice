@@ -11,13 +11,17 @@
       "name": "activepieces__activepieces",
       "displayName": "Activepieces",
       "url": "https://github.com/activepieces/activepieces.git",
-      "commit": "2d0dfdcefceb783013ef76b8ca81c850f0bc4b76",
+      "commit": "e498667107bd73b55768652c409edf83d2db1118",
       "branch": "main",
-      "committedAt": "2026-05-15 21:12:31 +0300",
+      "committedAt": "2026-05-22 00:01:12 +0200",
       "centralPath": "../reference-repos/repos/activepieces__activepieces",
       "compatibilityPath": ".references/oss/activepieces__activepieces",
-      "compatibilityPaths": [".references/oss/activepieces__activepieces"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/activepieces__activepieces"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "architecture_only",
       "license": "MIT core with enterprise directories",
       "licenseRisk": "medium",
@@ -29,7 +33,12 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["workflow-automation", "integrations", "connector-delivery", "secret-handling"],
+      "domains": [
+        "workflow-automation",
+        "integrations",
+        "connector-delivery",
+        "secret-handling"
+      ],
       "guardrail": "Use core workflow and connector concepts only after file-level license review; do not copy enterprise-directory code"
     },
     {
@@ -37,13 +46,18 @@
       "name": "apache__fineract",
       "displayName": "Apache Fineract",
       "url": "https://github.com/apache/fineract.git",
-      "commit": "be4d8f2dcb501714fe758b316045c810c0d740a8",
+      "commit": "ac947776f61d1b3f9ffb3de4cc0f4e8577b53af0",
       "branch": "develop",
-      "committedAt": "2026-05-15 18:18:44 +0200",
+      "committedAt": "2026-05-21 16:25:21 +0100",
       "centralPath": "../reference-repos/repos/apache__fineract",
       "compatibilityPath": ".references/oss/apache__fineract",
-      "compatibilityPaths": [".references/oss/apache__fineract"],
-      "sourceFamilies": ["open-practice", "nonprofit-manager"],
+      "compatibilityPaths": [
+        ".references/oss/apache__fineract"
+      ],
+      "sourceFamilies": [
+        "open-practice",
+        "nonprofit-manager"
+      ],
       "reuseClass": "adopt_selectively",
       "license": "Apache-2.0",
       "licenseRisk": "low",
@@ -55,7 +69,11 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["trust-funds", "accounting-controls", "finance-ledger"]
+      "domains": [
+        "trust-funds",
+        "accounting-controls",
+        "finance-ledger"
+      ]
     },
     {
       "id": "arkcase__arkcase",
@@ -67,8 +85,12 @@
       "committedAt": "2023-05-10 07:57:35 -0600",
       "centralPath": "../reference-repos/repos/arkcase__arkcase",
       "compatibilityPath": ".references/oss/ArkCase__ArkCase",
-      "compatibilityPaths": [".references/oss/ArkCase__ArkCase"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/ArkCase__ArkCase"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "reference_only",
       "license": "LGPL-3.0",
       "licenseRisk": "medium",
@@ -80,7 +102,10 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["case-records", "enterprise-workflow"]
+      "domains": [
+        "case-records",
+        "enterprise-workflow"
+      ]
     },
     {
       "id": "automatisch__automatisch",
@@ -92,8 +117,13 @@
       "committedAt": "2026-01-15 10:57:39 +0100",
       "centralPath": "../reference-repos/repos/automatisch__automatisch",
       "compatibilityPath": ".references/oss/automatisch__automatisch",
-      "compatibilityPaths": [".references/oss/automatisch__automatisch"],
-      "sourceFamilies": ["open-practice", "nonprofit-manager"],
+      "compatibilityPaths": [
+        ".references/oss/automatisch__automatisch"
+      ],
+      "sourceFamilies": [
+        "open-practice",
+        "nonprofit-manager"
+      ],
       "reuseClass": "reference_only",
       "license": "AGPL-3.0 with enterprise files",
       "licenseRisk": "high",
@@ -105,20 +135,29 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["workflow-automation", "integrations", "job-orchestration"]
+      "domains": [
+        "workflow-automation",
+        "integrations",
+        "job-orchestration"
+      ]
     },
     {
       "id": "blnkfinance__blnk",
       "name": "blnkfinance__blnk",
       "displayName": "Blnk",
       "url": "https://github.com/blnkfinance/blnk.git",
-      "commit": "0881ded778cc0fb55059240090245f129b0ec981",
+      "commit": "e0f867635c4f294068b47331a1affd10ec0a0c92",
       "branch": "main",
-      "committedAt": "2026-05-15 19:46:24 +0100",
+      "committedAt": "2026-05-18 13:51:03 +0100",
       "centralPath": "../reference-repos/repos/blnkfinance__blnk",
       "compatibilityPath": ".references/oss/blnkfinance__blnk",
-      "compatibilityPaths": [".references/oss/blnkfinance__blnk"],
-      "sourceFamilies": ["open-practice", "nonprofit-manager"],
+      "compatibilityPaths": [
+        ".references/oss/blnkfinance__blnk"
+      ],
+      "sourceFamilies": [
+        "open-practice",
+        "nonprofit-manager"
+      ],
       "reuseClass": "adopt_selectively",
       "license": "Apache-2.0",
       "licenseRisk": "low",
@@ -130,7 +169,11 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["ledger", "balances", "idempotency"]
+      "domains": [
+        "ledger",
+        "balances",
+        "idempotency"
+      ]
     },
     {
       "id": "calcom__cal.diy",
@@ -142,8 +185,13 @@
       "committedAt": "2026-05-14 19:30:21 +0000",
       "centralPath": "../reference-repos/repos/calcom__cal.diy",
       "compatibilityPath": ".references/oss/calcom__cal.diy",
-      "compatibilityPaths": [".references/oss/calcom__cal.diy"],
-      "sourceFamilies": ["open-practice", "nonprofit-manager"],
+      "compatibilityPaths": [
+        ".references/oss/calcom__cal.diy"
+      ],
+      "sourceFamilies": [
+        "open-practice",
+        "nonprofit-manager"
+      ],
       "reuseClass": "adapt_with_attribution",
       "license": "MIT",
       "licenseRisk": "low",
@@ -155,20 +203,29 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["scheduling", "calendar", "availability"]
+      "domains": [
+        "scheduling",
+        "calendar",
+        "availability"
+      ]
     },
     {
       "id": "civicrm__civicrm-core",
       "name": "civicrm__civicrm-core",
       "displayName": "CiviCRM Core",
       "url": "https://github.com/civicrm/civicrm-core.git",
-      "commit": "15385c0f54c0531200a516c0d90929ec25f9409b",
+      "commit": "f88c595b4fac68287a4cf515ee016bd487317671",
       "branch": "master",
-      "committedAt": "2026-05-15 09:30:55 -0400",
+      "committedAt": "2026-05-21 17:55:21 +0200",
       "centralPath": "../reference-repos/repos/civicrm__civicrm-core",
       "compatibilityPath": ".references/oss/civicrm__civicrm-core",
-      "compatibilityPaths": [".references/oss/civicrm__civicrm-core"],
-      "sourceFamilies": ["open-practice", "nonprofit-manager"],
+      "compatibilityPaths": [
+        ".references/oss/civicrm__civicrm-core"
+      ],
+      "sourceFamilies": [
+        "open-practice",
+        "nonprofit-manager"
+      ],
       "reuseClass": "architecture_only",
       "license": "AGPL-3.0 with exception",
       "licenseRisk": "high",
@@ -180,20 +237,28 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["nonprofit-crm", "saved-audiences", "membership"]
+      "domains": [
+        "nonprofit-crm",
+        "saved-audiences",
+        "membership"
+      ]
     },
     {
       "id": "documenso__documenso",
       "name": "documenso__documenso",
       "displayName": "Documenso",
       "url": "https://github.com/documenso/documenso.git",
-      "commit": "8f6be474a9ce44f88a5d175fb3130ca7fe3bbf5f",
+      "commit": "f93a98e9a5e1b90e4f9713f5f762ffd83461893a",
       "branch": "main",
-      "committedAt": "2026-05-15 13:41:35 +1000",
+      "committedAt": "2026-05-21 15:49:41 +1000",
       "centralPath": "../reference-repos/repos/documenso__documenso",
       "compatibilityPath": ".references/oss/documenso__documenso",
-      "compatibilityPaths": [".references/oss/documenso__documenso"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/documenso__documenso"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "reference_only",
       "license": "AGPL-3.0",
       "licenseRisk": "high",
@@ -205,7 +270,12 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["e-signature", "pdf-signing", "recipient-workflow", "evidence"],
+      "domains": [
+        "e-signature",
+        "pdf-signing",
+        "recipient-workflow",
+        "evidence"
+      ],
       "guardrail": "AGPL reference only; compare evidence and recipient workflow concepts without copying implementation"
     },
     {
@@ -213,13 +283,18 @@
       "name": "docusealco__docuseal",
       "displayName": "DocuSeal",
       "url": "https://github.com/docusealco/docuseal.git",
-      "commit": "528a1216f8e282ed6521a4114e01f97012f4d5a2",
+      "commit": "60082655d4365e38007a8cb710d727bf72fc0dd2",
       "branch": "master",
-      "committedAt": "2026-05-11 13:52:58 +0300",
+      "committedAt": "2026-05-18 13:45:07 +0300",
       "centralPath": "../reference-repos/repos/docusealco__docuseal",
       "compatibilityPath": ".references/oss/docusealco__docuseal",
-      "compatibilityPaths": [".references/oss/docusealco__docuseal"],
-      "sourceFamilies": ["open-practice", "nonprofit-manager"],
+      "compatibilityPaths": [
+        ".references/oss/docusealco__docuseal"
+      ],
+      "sourceFamilies": [
+        "open-practice",
+        "nonprofit-manager"
+      ],
       "reuseClass": "reference_only",
       "license": "AGPL-3.0 with additional terms",
       "licenseRisk": "high",
@@ -231,7 +306,10 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["e-signature", "evidence"]
+      "domains": [
+        "e-signature",
+        "evidence"
+      ]
     },
     {
       "id": "getomni-ai__zerox",
@@ -243,8 +321,12 @@
       "committedAt": "2025-05-19 17:39:03 -0700",
       "centralPath": "../reference-repos/repos/getomni-ai__zerox",
       "compatibilityPath": ".references/oss/getomni-ai__zerox",
-      "compatibilityPaths": [".references/oss/getomni-ai__zerox"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/getomni-ai__zerox"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "reference_only",
       "license": "MIT",
       "licenseRisk": "medium",
@@ -256,7 +338,11 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["document-extraction", "ocr", "vision-models"],
+      "domains": [
+        "document-extraction",
+        "ocr",
+        "vision-models"
+      ],
       "guardrail": "Research-only until privacy, model-provider, and local-processing posture are documented"
     },
     {
@@ -269,8 +355,12 @@
       "committedAt": "2026-05-11 22:33:40 -0400",
       "centralPath": "../reference-repos/repos/jhpyle__docassemble",
       "compatibilityPath": ".references/oss/jhpyle__docassemble",
-      "compatibilityPaths": [".references/oss/jhpyle__docassemble"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/jhpyle__docassemble"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "reference_only",
       "license": "MIT",
       "licenseRisk": "low",
@@ -282,20 +372,27 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["legal-intake", "document-automation"]
+      "domains": [
+        "legal-intake",
+        "document-automation"
+      ]
     },
     {
       "id": "jitsi__jitsi-meet",
       "name": "jitsi__jitsi-meet",
       "displayName": "Jitsi Meet",
       "url": "https://github.com/jitsi/jitsi-meet.git",
-      "commit": "5fe11411f7d65ce155fafb63d60a58751ffe80db",
+      "commit": "1814e37e2aa04df253a7fe3ff3acbe543989ad57",
       "branch": "master",
-      "committedAt": "2026-05-15 16:46:40 -0500",
+      "committedAt": "2026-05-21 16:50:52 +0300",
       "centralPath": "../reference-repos/repos/jitsi__jitsi-meet",
       "compatibilityPath": ".references/oss/jitsi__jitsi-meet",
-      "compatibilityPaths": [".references/oss/jitsi__jitsi-meet"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/jitsi__jitsi-meet"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "adopt_selectively",
       "license": "Apache-2.0",
       "licenseRisk": "low",
@@ -307,7 +404,12 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["video-meetings", "webrtc", "guest-session", "lobby"],
+      "domains": [
+        "video-meetings",
+        "webrtc",
+        "guest-session",
+        "lobby"
+      ],
       "guardrail": "Use meeting boundary and hosted-service concepts only; keep Open Practice native media disabled until separately scoped"
     },
     {
@@ -320,8 +422,12 @@
       "committedAt": "2026-05-06 12:50:28 +0200",
       "centralPath": "../reference-repos/repos/jlawyerorg__j-lawyer-org",
       "compatibilityPath": ".references/oss/jlawyerorg__j-lawyer-org",
-      "compatibilityPaths": [".references/oss/jlawyerorg__j-lawyer-org"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/jlawyerorg__j-lawyer-org"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "reference_only",
       "license": "AGPL-3.0",
       "licenseRisk": "high",
@@ -333,20 +439,27 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["legal-practice", "matter-workflows"]
+      "domains": [
+        "legal-practice",
+        "matter-workflows"
+      ]
     },
     {
       "id": "kimai__kimai",
       "name": "kimai__kimai",
       "displayName": "Kimai",
       "url": "https://github.com/kimai/kimai.git",
-      "commit": "f0ce1c7bd6bea4ea43f6dd3d0e72b13ab5a6f8ac",
+      "commit": "09b7adaa062d4843afa882fc1343800467a6125d",
       "branch": "main",
-      "committedAt": "2026-05-12 10:16:14 +0200",
+      "committedAt": "2026-05-21 22:22:11 +0200",
       "centralPath": "../reference-repos/repos/kimai__kimai",
       "compatibilityPath": ".references/oss/kimai__kimai",
-      "compatibilityPaths": [".references/oss/kimai__kimai"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/kimai__kimai"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "reference_only",
       "license": "AGPL-3.0",
       "licenseRisk": "high",
@@ -358,20 +471,29 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["time", "rates", "invoicing"]
+      "domains": [
+        "time",
+        "rates",
+        "invoicing"
+      ]
     },
     {
       "id": "ledgersmb__ledgersmb",
       "name": "ledgersmb__LedgerSMB",
       "displayName": "LedgerSMB",
       "url": "https://github.com/ledgersmb/LedgerSMB.git",
-      "commit": "43172accf5b9ba88a00941bd51c01ae05e36b52e",
+      "commit": "ebf54deb42dda34c9dcd54651b82f8232d271648",
       "branch": "master",
-      "committedAt": "2026-05-15 10:13:30 +0200",
+      "committedAt": "2026-05-18 01:36:29 +0000",
       "centralPath": "../reference-repos/repos/ledgersmb__ledgersmb",
       "compatibilityPath": ".references/oss/ledgersmb__LedgerSMB",
-      "compatibilityPaths": [".references/oss/ledgersmb__LedgerSMB"],
-      "sourceFamilies": ["open-practice", "nonprofit-manager"],
+      "compatibilityPaths": [
+        ".references/oss/ledgersmb__LedgerSMB"
+      ],
+      "sourceFamilies": [
+        "open-practice",
+        "nonprofit-manager"
+      ],
       "reuseClass": "reference_only",
       "license": "GPL-2.0",
       "licenseRisk": "high",
@@ -383,7 +505,10 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["general-ledger", "reconciliation"]
+      "domains": [
+        "general-ledger",
+        "reconciliation"
+      ]
     },
     {
       "id": "lerianstudio__midaz",
@@ -395,8 +520,12 @@
       "committedAt": "2026-05-07 16:35:05 -0300",
       "centralPath": "../reference-repos/repos/lerianstudio__midaz",
       "compatibilityPath": ".references/oss/LerianStudio__midaz",
-      "compatibilityPaths": [".references/oss/LerianStudio__midaz"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/LerianStudio__midaz"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "reference_only",
       "license": "Elastic-2.0",
       "licenseRisk": "high_source_available",
@@ -408,7 +537,9 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["ledger-architecture"]
+      "domains": [
+        "ledger-architecture"
+      ]
     },
     {
       "id": "microsoft__markitdown",
@@ -420,8 +551,12 @@
       "committedAt": "2026-04-20 10:52:17 -0700",
       "centralPath": "../reference-repos/repos/microsoft__markitdown",
       "compatibilityPath": ".references/oss/microsoft__markitdown",
-      "compatibilityPaths": [".references/oss/microsoft__markitdown"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/microsoft__markitdown"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "reference_only",
       "license": "MIT",
       "licenseRisk": "medium",
@@ -433,7 +568,11 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["document-conversion", "markdown-extraction", "office-documents"],
+      "domains": [
+        "document-conversion",
+        "markdown-extraction",
+        "office-documents"
+      ],
       "guardrail": "Research-only until document privacy, extraction fidelity, dependency, and provider posture are reviewed"
     },
     {
@@ -441,13 +580,17 @@
       "name": "nextcloud__server",
       "displayName": "Nextcloud Server",
       "url": "https://github.com/nextcloud/server.git",
-      "commit": "7d0b0d8a83689cdbfc6449a022f90d2d3a2f7b0f",
+      "commit": "2c47ef43a96750e854ce33ed9daed974cc8d816b",
       "branch": "master",
-      "committedAt": "2026-05-16 00:24:00 +0000",
+      "committedAt": "2026-05-18 00:23:00 +0000",
       "centralPath": "../reference-repos/repos/nextcloud__server",
       "compatibilityPath": ".references/oss/nextcloud__server",
-      "compatibilityPaths": [".references/oss/nextcloud__server"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/nextcloud__server"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "reference_only",
       "license": "AGPL-3.0-or-later",
       "licenseRisk": "high",
@@ -459,7 +602,12 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["secure-sharing", "external-upload", "file-activity", "audit"],
+      "domains": [
+        "secure-sharing",
+        "external-upload",
+        "file-activity",
+        "audit"
+      ],
       "guardrail": "AGPL reference only; study share/upload lifecycle and activity vocabulary without copying code or schema"
     },
     {
@@ -467,13 +615,17 @@
       "name": "open-source-legal__opencontracts",
       "displayName": "OpenContracts",
       "url": "https://github.com/Open-Source-Legal/OpenContracts.git",
-      "commit": "732e308e3ffc13bda20653a85c6169b8d80b09f1",
+      "commit": "42f2e7332788d6d02d56a0322e98865a244cf5f1",
       "branch": "main",
-      "committedAt": "2026-05-15 03:01:35 -0500",
+      "committedAt": "2026-05-21 21:19:09 -0500",
       "centralPath": "../reference-repos/repos/open-source-legal__opencontracts",
       "compatibilityPath": ".references/oss/open-source-legal__opencontracts",
-      "compatibilityPaths": [".references/oss/open-source-legal__opencontracts"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/open-source-legal__opencontracts"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "reference_only",
       "license": "MIT",
       "licenseRisk": "medium",
@@ -485,7 +637,12 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["legal-document-review", "annotations", "semantic-search", "redaction"],
+      "domains": [
+        "legal-document-review",
+        "annotations",
+        "semantic-search",
+        "redaction"
+      ],
       "guardrail": "Reference-only until AI, privacy, and legal-document review posture are explicitly scoped"
     },
     {
@@ -498,8 +655,12 @@
       "committedAt": "2026-05-06 08:48:23 +0200",
       "centralPath": "../reference-repos/repos/opencollective__opencollective",
       "compatibilityPath": ".references/oss/opencollective__opencollective",
-      "compatibilityPaths": [".references/oss/opencollective__opencollective"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/opencollective__opencollective"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "defer_reference_only",
       "license": "MIT",
       "licenseRisk": "low",
@@ -511,20 +672,28 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["fiscal-host", "transparent-reporting"]
+      "domains": [
+        "fiscal-host",
+        "transparent-reporting"
+      ]
     },
     {
       "id": "opencollective__opencollective-api",
       "name": "opencollective__opencollective-api",
       "displayName": "Open Collective API",
       "url": "https://github.com/opencollective/opencollective-api.git",
-      "commit": "bf67f9b0707bfb161038f1cadcc3ec0389e31d30",
+      "commit": "efdb617d76eb5a312fe2a03ba63b22e4f79f2a2b",
       "branch": "main",
-      "committedAt": "2026-05-16 01:06:41 +0200",
+      "committedAt": "2026-05-21 16:50:15 +0200",
       "centralPath": "../reference-repos/repos/opencollective__opencollective-api",
       "compatibilityPath": ".references/oss/opencollective__opencollective-api",
-      "compatibilityPaths": [".references/oss/opencollective__opencollective-api"],
-      "sourceFamilies": ["open-practice", "nonprofit-manager"],
+      "compatibilityPaths": [
+        ".references/oss/opencollective__opencollective-api"
+      ],
+      "sourceFamilies": [
+        "open-practice",
+        "nonprofit-manager"
+      ],
       "reuseClass": "architecture_only",
       "license": "MIT",
       "licenseRisk": "low",
@@ -536,20 +705,28 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["events-finance", "fiscal-host"]
+      "domains": [
+        "events-finance",
+        "fiscal-host"
+      ]
     },
     {
       "id": "opencollective__opencollective-frontend",
       "name": "opencollective__opencollective-frontend",
       "displayName": "Open Collective Frontend",
       "url": "https://github.com/opencollective/opencollective-frontend.git",
-      "commit": "5f74eaf0cc26316ad186dc9a0dc920c7f85d3e66",
+      "commit": "13055bb3fd4785ca0cea24e77999e16705467744",
       "branch": "main",
-      "committedAt": "2026-05-16 01:06:45 +0200",
+      "committedAt": "2026-05-21 08:30:56 +0200",
       "centralPath": "../reference-repos/repos/opencollective__opencollective-frontend",
       "compatibilityPath": ".references/oss/opencollective__opencollective-frontend",
-      "compatibilityPaths": [".references/oss/opencollective__opencollective-frontend"],
-      "sourceFamilies": ["open-practice", "nonprofit-manager"],
+      "compatibilityPaths": [
+        ".references/oss/opencollective__opencollective-frontend"
+      ],
+      "sourceFamilies": [
+        "open-practice",
+        "nonprofit-manager"
+      ],
       "reuseClass": "architecture_only",
       "license": "MIT",
       "licenseRisk": "low",
@@ -561,20 +738,27 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["fiscal-host-ui", "transparent-reporting"]
+      "domains": [
+        "fiscal-host-ui",
+        "transparent-reporting"
+      ]
     },
     {
       "id": "openfga__openfga",
       "name": "openfga__openfga",
       "displayName": "OpenFGA",
       "url": "https://github.com/openfga/openfga.git",
-      "commit": "b6d0028e02c9d3df3f5c93633f736f5192d9b2b6",
+      "commit": "c0f5c138883acc9633ba75f55ad5574e7f547d66",
       "branch": "main",
-      "committedAt": "2026-05-14 21:40:41 +0000",
+      "committedAt": "2026-05-21 14:16:50 +0000",
       "centralPath": "../reference-repos/repos/openfga__openfga",
       "compatibilityPath": ".references/oss/openfga__openfga",
-      "compatibilityPaths": [".references/oss/openfga__openfga"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/openfga__openfga"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "architecture_only",
       "license": "Apache-2.0",
       "licenseRisk": "low",
@@ -586,7 +770,12 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["authorization", "rebac", "access-control", "matter-scoping"],
+      "domains": [
+        "authorization",
+        "rebac",
+        "access-control",
+        "matter-scoping"
+      ],
       "guardrail": "Use authori"
     },
     {
@@ -599,8 +788,12 @@
       "committedAt": "2026-05-08 22:42:12 -0700",
       "centralPath": "../reference-repos/repos/paperless-ngx__paperless-ngx",
       "compatibilityPath": ".references/oss/paperless-ngx__paperless-ngx",
-      "compatibilityPaths": [".references/oss/paperless-ngx__paperless-ngx"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/paperless-ngx__paperless-ngx"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "reference_only",
       "license": "GPL-3.0",
       "licenseRisk": "high",
@@ -612,7 +805,11 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["document-ingest", "ocr", "archive"]
+      "domains": [
+        "document-ingest",
+        "ocr",
+        "archive"
+      ]
     },
     {
       "id": "papermerge__papermerge-core",
@@ -624,8 +821,12 @@
       "committedAt": "2026-03-17 05:58:01 +0000",
       "centralPath": "../reference-repos/repos/papermerge__papermerge-core",
       "compatibilityPath": ".references/oss/papermerge__papermerge-core",
-      "compatibilityPaths": [".references/oss/papermerge__papermerge-core"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/papermerge__papermerge-core"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "adopt_selectively",
       "license": "Apache-2.0",
       "licenseRisk": "low",
@@ -637,7 +838,12 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["document-ingest", "ocr", "metadata-review", "document-lifecycle"],
+      "domains": [
+        "document-ingest",
+        "ocr",
+        "metadata-review",
+        "document-lifecycle"
+      ],
       "guardrail": "Use document lifecycle and metadata-review concepts; keep Open Practice implementation original unless reuse is separately documented"
     },
     {
@@ -645,13 +851,17 @@
       "name": "temporalio__temporal",
       "displayName": "Temporal",
       "url": "https://github.com/temporalio/temporal.git",
-      "commit": "16d78187f248e2977bfe30bb150ef78d867b59e1",
+      "commit": "0386366e1580d2932972eed7c8647dca933b4019",
       "branch": "main",
-      "committedAt": "2026-05-15 23:14:12 +0000",
+      "committedAt": "2026-05-21 16:27:35 -0700",
       "centralPath": "../reference-repos/repos/temporalio__temporal",
       "compatibilityPath": ".references/oss/temporalio__temporal",
-      "compatibilityPaths": [".references/oss/temporalio__temporal"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/temporalio__temporal"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "adopt_selectively",
       "license": "MIT",
       "licenseRisk": "low",
@@ -663,7 +873,12 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["durable-workflows", "job-history", "retries", "worker-visibility"],
+      "domains": [
+        "durable-workflows",
+        "job-history",
+        "retries",
+        "worker-visibility"
+      ],
       "guardrail": "Use workflow semantics as design input; defer service adoption unless a future runtime lane explicitly opens it"
     },
     {
@@ -671,13 +886,17 @@
       "name": "unstructured-io__unstructured",
       "displayName": "Unstructured",
       "url": "https://github.com/Unstructured-IO/unstructured.git",
-      "commit": "238657f6b44c8f1f9250f6b12e392384031c1031",
+      "commit": "bfd78b267859ddab4c2840c0d98c4078364d65e1",
       "branch": "main",
-      "committedAt": "2026-05-13 00:31:01 +0000",
+      "committedAt": "2026-05-17 13:28:24 +0000",
       "centralPath": "../reference-repos/repos/unstructured-io__unstructured",
       "compatibilityPath": ".references/oss/unstructured-io__unstructured",
-      "compatibilityPaths": [".references/oss/unstructured-io__unstructured"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/unstructured-io__unstructured"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "reference_only",
       "license": "Apache-2.0",
       "licenseRisk": "medium",
@@ -689,7 +908,12 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["document-etl", "structured-extraction", "chunking", "ai-pipeline"],
+      "domains": [
+        "document-etl",
+        "structured-extraction",
+        "chunking",
+        "ai-pipeline"
+      ],
       "guardrail": "Research-only until local/private processing, dependency, and model-boundary posture are documented"
     },
     {
@@ -697,13 +921,17 @@
       "name": "zulip__zulip",
       "displayName": "Zulip",
       "url": "https://github.com/zulip/zulip.git",
-      "commit": "9e0b71f9a00bdc4312464e88b4742a31bb9205b3",
+      "commit": "d01ff0cae8e33ab920173835f0a8a1ad4c25987b",
       "branch": "main",
-      "committedAt": "2026-05-15 10:26:21 -0400",
+      "committedAt": "2026-05-21 21:24:04 +0530",
       "centralPath": "../reference-repos/repos/zulip__zulip",
       "compatibilityPath": ".references/oss/zulip__zulip",
-      "compatibilityPaths": [".references/oss/zulip__zulip"],
-      "sourceFamilies": ["open-practice"],
+      "compatibilityPaths": [
+        ".references/oss/zulip__zulip"
+      ],
+      "sourceFamilies": [
+        "open-practice"
+      ],
       "reuseClass": "adopt_selectively",
       "license": "Apache-2.0",
       "licenseRisk": "low",
@@ -715,7 +943,12 @@
         "sourceFamily": "open-practice",
         "includeMetadataOnly": false
       },
-      "domains": ["threaded-messaging", "topics", "retention", "notifications"],
+      "domains": [
+        "threaded-messaging",
+        "topics",
+        "retention",
+        "notifications"
+      ],
       "guardrail": "Use topic/message semantics as a clean-room reference; do not add realtime chat or federation in the first Open Practice slice"
     }
   ]
