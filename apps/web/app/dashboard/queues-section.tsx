@@ -1,4 +1,4 @@
-import { Clock3, RotateCcw, Save, X } from "lucide-react";
+import { Clock3, Power, RotateCcw, Save, X } from "lucide-react";
 import type { DashboardLaneFreshnessCue } from "../dashboard-utils";
 import type {
   ConnectorOperationsResponse,
@@ -45,6 +45,9 @@ export interface QueuesSectionProps {
   formatSavedOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => string;
   formatWorkerRunAttempts: (job: WorkerRunSummaryItem) => string;
   formatWorkerRunTiming: (job: WorkerRunSummaryItem) => string;
+  canManageDocumentProcessingProvider: boolean;
+  ocrProviderUpdateStatus: string;
+  ocrProviderUpdating: boolean;
   onApplyQueueOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => void;
   onArchiveQueueOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => void;
   onClearQueueOperationalViewDefinition: () => void;
@@ -52,6 +55,7 @@ export interface QueuesSectionProps {
   onRefreshQueues: () => void;
   onSaveQueueOperationalViewDefinition: () => void;
   onSelectMatter: (matterId: string) => void;
+  onSetOcrProviderEnabled: (enabled: boolean) => void;
   onWorkerRunFilterChange: (filter: WorkerRunQueueFilter) => void;
   providerFreshnessCue: DashboardLaneFreshnessCue;
   providerRows: ProviderPostureRow[];
@@ -90,6 +94,9 @@ export function QueuesSection({
   formatSavedOperationalViewDefinition,
   formatWorkerRunAttempts,
   formatWorkerRunTiming,
+  canManageDocumentProcessingProvider,
+  ocrProviderUpdateStatus,
+  ocrProviderUpdating,
   onApplyQueueOperationalViewDefinition,
   onArchiveQueueOperationalViewDefinition,
   onClearQueueOperationalViewDefinition,
@@ -97,6 +104,7 @@ export function QueuesSection({
   onRefreshQueues,
   onSaveQueueOperationalViewDefinition,
   onSelectMatter,
+  onSetOcrProviderEnabled,
   onWorkerRunFilterChange,
   providerFreshnessCue,
   providerRows,
@@ -180,6 +188,10 @@ export function QueuesSection({
         providerStatus={providerStatus}
         providerStatusSummary={providerStatusSummary}
         providerRefreshing={providerRefreshing}
+        canManageDocumentProcessingProvider={canManageDocumentProcessingProvider}
+        ocrProviderUpdateStatus={ocrProviderUpdateStatus}
+        ocrProviderUpdating={ocrProviderUpdating}
+        onSetOcrProviderEnabled={onSetOcrProviderEnabled}
       />
 
       <WorkerHealthBlock
@@ -447,7 +459,11 @@ function SavedQueueViewsBlock({
 }
 
 function ProviderPostureBlock({
+  canManageDocumentProcessingProvider,
   compactProviderStatus,
+  ocrProviderUpdateStatus,
+  ocrProviderUpdating,
+  onSetOcrProviderEnabled,
   providerFreshnessCue: freshnessCue,
   onRefreshProviders: onRefresh,
   providerRows,
@@ -457,6 +473,10 @@ function ProviderPostureBlock({
 }: Pick<
   QueuesSectionProps,
   | "compactProviderStatus"
+  | "canManageDocumentProcessingProvider"
+  | "ocrProviderUpdateStatus"
+  | "ocrProviderUpdating"
+  | "onSetOcrProviderEnabled"
   | "providerFreshnessCue"
   | "onRefreshProviders"
   | "providerRows"
@@ -464,6 +484,11 @@ function ProviderPostureBlock({
   | "providerStatusSummary"
   | "providerRefreshing"
 >) {
+  const ocrProviderEnabled = providerStatus.documentProcessing.status === "configured";
+  const ocrQueue = providerStatus.documentProcessing.workerQueues.find(
+    (queue) => queue.queueName === "ocr",
+  );
+
   return (
     <>
       <DashboardLaneRefreshPanel
@@ -477,6 +502,33 @@ function ProviderPostureBlock({
         <span>{compactProviderStatus(providerStatus.liveHealth.status)}</span>
       </div>
       <p className="inline-empty">{providerStatusSummary}</p>
+      <div className="party-row">
+        <span>
+          <strong>Local OCR provider</strong>
+          <small>
+            Provider {compactProviderStatus(providerStatus.documentProcessing.status)} · OCR queue{" "}
+            {compactProviderStatus(ocrQueue?.status)}
+          </small>
+          <small>{ocrProviderUpdateStatus}</small>
+        </span>
+        {canManageDocumentProcessingProvider ? (
+          <button
+            className="secondary-button compact-button row-button"
+            disabled={ocrProviderUpdating || refreshing}
+            onClick={() => onSetOcrProviderEnabled(!ocrProviderEnabled)}
+            type="button"
+          >
+            <Power aria-hidden="true" size={16} />
+            {ocrProviderUpdating
+              ? "Updating OCR"
+              : ocrProviderEnabled
+                ? "Disable OCR"
+                : "Enable OCR"}
+          </button>
+        ) : (
+          <em>Read only</em>
+        )}
+      </div>
       <div className="detail-grid queue-summary-grid">
         <div>
           <span className="field-label">Object storage</span>
@@ -674,20 +726,30 @@ function QueueRowsBlock({
             <h3>{section.label}</h3>
             <span>{section.items.length} items</span>
           </div>
-          {section.items.map((item) => (
-            <button
-              className="party-row queue-item-row"
-              key={item.id}
-              onClick={() => item.matterId && onSelectMatter(item.matterId)}
-              type="button"
-            >
-              <span>
-                <strong>{item.title}</strong>
-                <small>{item.status}</small>
-              </span>
-              <em className={item.priority === "high" ? "risk" : undefined}>{item.priority}</em>
-            </button>
-          ))}
+          {section.items.map((item) =>
+            item.matterId ? (
+              <button
+                className="party-row queue-item-row"
+                key={item.id}
+                onClick={() => onSelectMatter(item.matterId!)}
+                type="button"
+              >
+                <span>
+                  <strong>{item.title}</strong>
+                  <small>{item.status}</small>
+                </span>
+                <em className={item.priority === "high" ? "risk" : undefined}>{item.priority}</em>
+              </button>
+            ) : (
+              <div className="party-row queue-item-row static-row" key={item.id}>
+                <span>
+                  <strong>{item.title}</strong>
+                  <small>{item.status} · no linked matter</small>
+                </span>
+                <em className={item.priority === "high" ? "risk" : undefined}>{item.priority}</em>
+              </div>
+            ),
+          )}
           {section.items.length === 0 ? (
             <p className="inline-empty">No items in this queue.</p>
           ) : null}

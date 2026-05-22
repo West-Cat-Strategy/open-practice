@@ -94,6 +94,19 @@ function fakeOcrQueue() {
   return { queue, jobs };
 }
 
+async function enableOcrProvider(repository: InMemoryOpenPracticeRepository): Promise<void> {
+  await repository.upsertProviderSetting({
+    id: "provider-ocr-enabled",
+    firmId,
+    kind: "ocr",
+    key: "local-tesseract",
+    enabled: true,
+    encryptedConfig: "synthetic-ocr-config-not-returned",
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -574,6 +587,7 @@ describe("inbound email routes", () => {
 
   it("promotes a matter-scoped attachment to a document", async () => {
     const repository = new InMemoryOpenPracticeRepository();
+    await enableOcrProvider(repository);
     await repository.createInboundEmailMessage(message());
     await repository.createInboundEmailAttachment(attachment());
     const { queue, jobs } = fakeOcrQueue();
@@ -718,6 +732,30 @@ describe("inbound email routes", () => {
       url: "/api/inbound-email/messages/inbound-message-001",
     });
     expect(detail.json().attachments[0]).not.toHaveProperty("documentId");
+  });
+
+  it("keeps default OCR queueing atomic when no OCR provider is enabled", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message());
+    await repository.createInboundEmailAttachment(attachment());
+    const { queue, jobs } = fakeOcrQueue();
+
+    const response = await testServer(repository, user("licensee", ["matter-001"]), queue).inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-001/promote-document",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ message: "OCR provider is not configured" });
+    expect(jobs).toEqual([]);
+    const detail = await testServer(repository).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages/inbound-message-001",
+    });
+    expect(detail.json().attachments[0]).not.toHaveProperty("documentId");
+    await expect(repository.listJobLifecycleRecords(firmId, { queueName: "ocr" })).resolves.toEqual(
+      [],
+    );
   });
 
   it("returns 409 for unscoped messages and attachments without checksums", async () => {

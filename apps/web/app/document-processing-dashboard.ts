@@ -5,6 +5,9 @@ import type {
   DocumentProcessingGroup,
   DocumentProcessingLatestExtraction,
   DocumentProcessingLatestJob,
+  DocumentMetadataSearchFilters,
+  DocumentMetadataSearchPosture,
+  DocumentMetadataTag,
   DocumentProcessingWorkbenchItem,
   DocumentProcessingWorkbenchResponse,
   DocumentReviewSuggestionCue,
@@ -36,12 +39,44 @@ export const documentReviewSuggestionGroupOrder: DocumentReviewSuggestionGroup[]
   "missing_metadata",
 ];
 
-export function buildDocumentProcessingWorkbenchPath(matterId: string): string {
-  return `/api/document-processing/workbench?matterId=${encodeURIComponent(matterId)}`;
+export function buildDocumentProcessingWorkbenchPath(
+  matterId: string,
+  filters: DocumentMetadataSearchFilters = {},
+): string {
+  const params = new URLSearchParams({ matterId });
+  for (const [key, value] of Object.entries(filters)) {
+    const normalized = typeof value === "string" ? value.trim() : value;
+    if (normalized) params.set(key, String(normalized));
+  }
+  return `/api/document-processing/workbench?${params.toString()}`;
 }
 
 export function buildDocumentProcessingQueuePath(documentId: string): string {
   return `/api/document-processing/documents/${encodeURIComponent(documentId)}/queue`;
+}
+
+export function buildDocumentProcessingOcrProviderPath(): string {
+  return "/api/document-processing/ocr-provider";
+}
+
+export function emptyDocumentMetadataSearch(
+  filters: DocumentMetadataSearchFilters = {},
+): DocumentMetadataSearchPosture {
+  return {
+    reviewOnly: true,
+    mutating: false,
+    filters,
+    totalCount: 0,
+    matchedCount: 0,
+    tags: [],
+    ocrPosture: {
+      rawTextSearch: false,
+      rawTextReturned: false,
+      searchableFields: ["document_title", "op_authored_metadata", "reviewer_cue_labels"],
+      statusCounts: { not_available: 0, queued: 0, completed: 0, failed: 0 },
+    },
+    results: [],
+  };
 }
 
 export function emptyDocumentProcessingWorkbench(
@@ -63,6 +98,7 @@ export function emptyDocumentProcessingWorkbench(
       supersessionCount: 0,
       failedScanCount: 0,
     },
+    metadataSearch: emptyDocumentMetadataSearch(),
     summary: emptySummary,
     documents: [],
   };
@@ -247,6 +283,33 @@ export function summarizeDocumentReviewSuggestions(
   );
   if (total === 0) return "No reviewer suggestion cues.";
   return `${total} reviewer suggestion cues. ${duplicateOrSupersession} duplicate or supersession. ${missingMetadata} missing metadata.`;
+}
+
+export function documentMetadataSearchFilterCount(
+  filters: DocumentMetadataSearchFilters = {},
+): number {
+  return Object.values(filters).filter((value) =>
+    typeof value === "string" ? value.trim() : value,
+  ).length;
+}
+
+export function summarizeDocumentMetadataSearch(
+  search: DocumentMetadataSearchPosture | undefined,
+): string {
+  if (!search) return "Metadata search posture unavailable.";
+  const filterCount = documentMetadataSearchFilterCount(search.filters);
+  const rawTextPosture = search.ocrPosture.rawTextSearch
+    ? "Raw OCR search enabled."
+    : "Raw OCR text is not searched or returned.";
+  if (filterCount === 0) {
+    return `${search.totalCount} documents indexed by OP-authored metadata. ${search.tags.length} tag cues. ${rawTextPosture}`;
+  }
+  return `${search.matchedCount}/${search.totalCount} document metadata matches across ${filterCount} filters. ${rawTextPosture}`;
+}
+
+export function compactDocumentMetadataTag(tag: DocumentMetadataTag): string {
+  const count = typeof tag.count === "number" ? ` (${tag.count})` : "";
+  return `${tag.label}${count}`;
 }
 
 function isReservedWorkerQueue(queue: { status?: string }): boolean {

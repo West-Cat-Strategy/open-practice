@@ -16,7 +16,11 @@ export type OpenPracticeRouteId =
   | "queues";
 
 export type OpenPracticeRouteArea = "workspace" | "operations" | "finance" | "review";
-export type OpenPracticeDashboardSectionKey = DashboardSectionKey | "externalUploads" | "queues";
+export type OpenPracticeDashboardSectionKey =
+  | DashboardSectionKey
+  | "shares"
+  | "externalUploads"
+  | "queues";
 
 export interface OpenPracticeRouteCatalogEntry {
   id: OpenPracticeRouteId;
@@ -35,12 +39,15 @@ export interface RouteCatalogSectionCapability {
   enabled: boolean;
 }
 
-export type OpenPracticeSidebarSectionKey = OpenPracticeDashboardSectionKey | "shares";
+export type OpenPracticeSidebarSectionKey = OpenPracticeDashboardSectionKey;
 
 export interface OpenPracticeSidebarNavigationSection {
   key: OpenPracticeSidebarSectionKey;
   label: string;
+  title: string;
+  area: OpenPracticeRouteArea;
   enabled: boolean;
+  requiresMatterContext: boolean;
 }
 
 export type DashboardNavigationSectionKey = OpenPracticeSidebarNavigationSection["key"];
@@ -120,6 +127,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     title: "Share Links",
     shortLabel: "Shares",
     path: "/?section=shares",
+    sectionKey: "shares",
     area: "operations",
     requiresMatterContext: true,
     order: 42,
@@ -241,14 +249,20 @@ export function buildSidebarNavigationSections(input: {
   const hasBillingCapability = input.capabilitySections.some(
     (section) => section.key === "billing",
   );
+  const hasShareLinksCapability = input.capabilitySections.some(
+    (section) => section.key === "shares",
+  );
   const hasExternalUploadsCapability = input.capabilitySections.some(
     (section) => section.key === "externalUploads",
   );
   const displayCandidates: Array<{
     key: OpenPracticeSidebarSectionKey;
     label: string;
+    title: string;
+    area: OpenPracticeRouteArea;
     enabled: boolean;
     order: number;
+    requiresMatterContext: boolean;
   }> = input.capabilitySections.map((section) => {
     const entry = sidebarEntryBySectionKey.get(section.key);
     if (!entry) {
@@ -257,8 +271,18 @@ export function buildSidebarNavigationSections(input: {
     return {
       key: section.key,
       label: entry.shortLabel,
-      enabled: section.key === "billing" ? input.billingCanView : section.enabled,
+      title: entry.title,
+      area: entry.area,
+      enabled:
+        section.key === "billing"
+          ? input.billingCanView
+          : section.key === "shares"
+            ? section.enabled && (input.shareLinksEnabled ?? false)
+            : section.key === "externalUploads"
+              ? section.enabled && (input.externalUploadsEnabled ?? false)
+              : section.enabled,
       order: entry.order,
+      requiresMatterContext: entry.requiresMatterContext,
     };
   });
 
@@ -268,18 +292,26 @@ export function buildSidebarNavigationSections(input: {
       displayCandidates.push({
         key: "billing",
         label: billingEntry.shortLabel,
+        title: billingEntry.title,
+        area: billingEntry.area,
         enabled: input.billingCanView,
         order: billingEntry.order,
+        requiresMatterContext: billingEntry.requiresMatterContext,
       });
     }
   }
-  const shareLinksEntry = getRouteCatalogEntry("shares");
-  displayCandidates.push({
-    key: "shares",
-    label: shareLinksEntry.shortLabel,
-    enabled: input.shareLinksEnabled ?? false,
-    order: shareLinksEntry.order,
-  });
+  if (!hasShareLinksCapability) {
+    const shareLinksEntry = getRouteCatalogEntry("shares");
+    displayCandidates.push({
+      key: "shares",
+      label: shareLinksEntry.shortLabel,
+      title: shareLinksEntry.title,
+      area: shareLinksEntry.area,
+      enabled: input.shareLinksEnabled ?? false,
+      order: shareLinksEntry.order,
+      requiresMatterContext: shareLinksEntry.requiresMatterContext,
+    });
+  }
 
   if (!hasExternalUploadsCapability) {
     const externalUploadsEntry = sidebarEntryBySectionKey.get("externalUploads");
@@ -287,8 +319,11 @@ export function buildSidebarNavigationSections(input: {
       displayCandidates.push({
         key: "externalUploads",
         label: externalUploadsEntry.shortLabel,
+        title: externalUploadsEntry.title,
+        area: externalUploadsEntry.area,
         enabled: input.externalUploadsEnabled ?? false,
         order: externalUploadsEntry.order,
+        requiresMatterContext: externalUploadsEntry.requiresMatterContext,
       });
     }
   }
@@ -298,14 +333,24 @@ export function buildSidebarNavigationSections(input: {
     displayCandidates.push({
       key: "queues",
       label: queuesEntry.shortLabel,
+      title: queuesEntry.title,
+      area: queuesEntry.area,
       enabled: true,
       order: queuesEntry.order,
+      requiresMatterContext: queuesEntry.requiresMatterContext,
     });
   }
 
   return displayCandidates
     .sort((left, right) => left.order - right.order)
-    .map(({ key, label, enabled }) => ({ key, label, enabled }));
+    .map(({ key, label, title, area, enabled, requiresMatterContext }) => ({
+      key,
+      label,
+      title,
+      area,
+      enabled,
+      requiresMatterContext,
+    }));
 }
 
 function findRouteCatalogEntryBySection(section: string): OpenPracticeRouteCatalogEntry | null {

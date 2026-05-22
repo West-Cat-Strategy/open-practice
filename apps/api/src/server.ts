@@ -310,6 +310,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   server.register(cors, {
     origin: [/^http:\/\/localhost:\d+$/],
     credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
 
   server.get("/health", async () => ({

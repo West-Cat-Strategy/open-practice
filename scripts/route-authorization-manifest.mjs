@@ -1088,8 +1088,17 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "apps/api/src/routes/document-processing.test.ts",
     "GET",
     "/api/document-processing/status",
-    "document_processing",
+    "provider_setting",
     "read",
+    "none",
+  ),
+  authRoute(
+    "registerDocumentProcessingRoutes",
+    "apps/api/src/routes/document-processing.test.ts",
+    "PUT",
+    "/api/document-processing/ocr-provider",
+    "provider_setting",
+    "update",
     "none",
   ),
   authRoute(

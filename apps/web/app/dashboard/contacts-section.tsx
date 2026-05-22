@@ -172,6 +172,9 @@ export function ContactsSection({
         <div className="party-list contact-dossier-list">
           {filteredContactDossiers.map((dossier) => (
             <button
+              aria-current={
+                dossier.contact.id === activeContactDossier?.contact.id ? "true" : undefined
+              }
               className={
                 dossier.contact.id === activeContactDossier?.contact.id
                   ? "party-row draft-row selected-template"

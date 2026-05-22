@@ -31,6 +31,22 @@ function fakeOcrQueue() {
   return { queue, jobs };
 }
 
+async function enableOcrProvider(
+  repository: InMemoryOpenPracticeRepository,
+  enabled = true,
+): Promise<void> {
+  await repository.upsertProviderSetting({
+    id: "provider-ocr-enabled",
+    firmId,
+    kind: "ocr",
+    key: "local-tesseract",
+    enabled,
+    encryptedConfig: "synthetic-config-not-returned",
+    createdAt: "2026-05-02T12:00:00.000Z",
+    updatedAt: "2026-05-02T12:00:00.000Z",
+  });
+}
+
 function testServer(
   input: {
     repository?: InMemoryOpenPracticeRepository;
@@ -86,6 +102,96 @@ describe("document processing routes", () => {
         }),
       ]),
     });
+  });
+
+  it("requires operator provider-setting read access for firm-wide OCR posture", async () => {
+    const denied = await testServer({ authUser: user("firm_member", ["matter-001"]) }).inject({
+      method: "GET",
+      url: "/api/document-processing/status",
+    });
+    const auditor = await testServer({ authUser: user("auditor", []) }).inject({
+      method: "GET",
+      url: "/api/document-processing/status",
+    });
+
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json()).toMatchObject({
+      code: "PROVIDER_SETTING_ACCESS_REQUIRED",
+      message: "Provider setting access required",
+    });
+    expect(auditor.statusCode).toBe(200);
+    expect(auditor.json()).toMatchObject({ status: "disabled", reason: "not_configured" });
+  });
+
+  it("lets owner admins enable and disable the local OCR provider without exposing config", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { queue } = fakeOcrQueue();
+    const server = testServer({ repository, ocrJobQueue: queue });
+
+    const enabled = await server.inject({
+      method: "PUT",
+      url: "/api/document-processing/ocr-provider",
+      payload: { enabled: true },
+    });
+    const denied = await testServer({
+      repository,
+      authUser: user("licensee", ["matter-001"]),
+      ocrJobQueue: queue,
+    }).inject({
+      method: "PUT",
+      url: "/api/document-processing/ocr-provider",
+      payload: { enabled: false },
+    });
+    const disabled = await server.inject({
+      method: "PUT",
+      url: "/api/document-processing/ocr-provider",
+      payload: { enabled: false },
+    });
+
+    expect(enabled.statusCode).toBe(200);
+    expect(enabled.json()).toMatchObject({
+      status: "configured",
+      providers: [{ kind: "ocr", key: "local-tesseract" }],
+      providerStatus: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "ocr",
+          status: "configured",
+          providers: [expect.objectContaining({ key: "local-tesseract", enabled: true })],
+        }),
+      ]),
+      workerQueues: expect.arrayContaining([{ queueName: "ocr", status: "configured" }]),
+    });
+    expect(JSON.stringify(enabled.json())).not.toContain("synthetic-config-not-returned");
+    expect(JSON.stringify(enabled.json())).not.toContain("encryptedConfig");
+    expect(denied.statusCode).toBe(403);
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json()).toMatchObject({
+      status: "disabled",
+      reason: "provider_disabled",
+      providers: [],
+    });
+    await expect(repository.listProviderSettings(firmId, { kind: "ocr" })).resolves.toEqual([
+      expect.objectContaining({
+        key: "local-tesseract",
+        enabled: false,
+        encryptedConfig: "local-tesseract:no-secret",
+      }),
+    ]);
+    const audit = await repository.listAuditEvents(firmId);
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "document_processing.ocr_provider.updated",
+          resourceType: "provider_setting",
+          metadata: { providerKind: "ocr", providerKey: "local-tesseract", enabled: true },
+        }),
+        expect.objectContaining({
+          action: "document_processing.ocr_provider.updated",
+          resourceType: "provider_setting",
+          metadata: { providerKind: "ocr", providerKey: "local-tesseract", enabled: false },
+        }),
+      ]),
+    );
   });
 
   it("reports disabled providers, worker queue availability, and redacted job summaries", async () => {
@@ -222,6 +328,7 @@ describe("document processing routes", () => {
 
   it("queues OCR jobs with durable redacted lifecycle metadata", async () => {
     const repository = new InMemoryOpenPracticeRepository();
+    await enableOcrProvider(repository);
     const { queue, jobs } = fakeOcrQueue();
     const response = await testServer({ repository, ocrJobQueue: queue }).inject({
       method: "POST",
@@ -543,6 +650,155 @@ describe("document processing routes", () => {
     expect(JSON.stringify(documentItem.reviewSuggestions)).not.toContain("providerPayload");
   });
 
+  it("filters metadata search posture with tag cues while redacting raw OCR text", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createDocumentUploadIntent({
+      id: "doc-search-unmatched",
+      firmId,
+      matterId: "matter-001",
+      title: "Lease photos.pdf",
+      storageKey: "matters/matter-001/lease-photos.pdf",
+      checksumSha256: "6".repeat(64),
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-search-unmatched",
+      checksumSha256: "6".repeat(64),
+      scanStatus: "passed",
+    });
+    await repository.createDocumentUploadIntent({
+      id: "doc-other-matter-search",
+      firmId,
+      matterId: "matter-002",
+      title: "Other matter financial memo.pdf",
+      storageKey: "matters/matter-002/financial-memo.pdf",
+      checksumSha256: "7".repeat(64),
+      classification: "financial",
+      legalHold: true,
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-other-matter-search",
+      checksumSha256: "7".repeat(64),
+      scanStatus: "passed",
+    });
+    await repository.createDocumentTextExtraction({
+      id: "extraction-doc-001-search",
+      firmId,
+      documentId: "doc-001",
+      engine: "tesseract",
+      status: "completed",
+      language: "eng",
+      confidence: 0.84,
+      textStorageKey: "matters/matter-001/doc-001-private.txt",
+      extractedText: "Hidden raw OCR body needle must not match or render.",
+      metadata: {
+        suggestedClassification: "financial",
+        classificationConfidence: 0.84,
+        storageKey: "matters/matter-001/doc-001-private.txt",
+        token: "private-token",
+        arbitraryPrivateNeedle: "metadata-only-secret",
+      },
+      createdAt: "2026-05-02T13:00:00.000Z",
+      completedAt: "2026-05-02T13:01:00.000Z",
+    });
+    await repository.createDocumentTextExtraction({
+      id: "extraction-other-matter-search",
+      firmId,
+      documentId: "doc-other-matter-search",
+      engine: "tesseract",
+      status: "completed",
+      language: "eng",
+      confidence: 0.99,
+      extractedText: "Other matter text must stay out of matter-001 posture.",
+      metadata: { suggestedClassification: "financial" },
+      createdAt: "2026-05-02T13:00:00.000Z",
+      completedAt: "2026-05-02T13:01:00.000Z",
+    });
+
+    const filtered = await testServer({ repository, ocrJobQueue: fakeOcrQueue().queue }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001&q=financial&classification=privileged&ocrStatus=completed&cueGroup=classification&tag=cue%3Aclassification",
+    });
+    const rawTextSearch = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001&q=Hidden%20raw%20OCR%20body%20needle",
+    });
+    const privateMetadataSearch = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001&q=metadata-only-secret",
+    });
+
+    expect(filtered.statusCode).toBe(200);
+    expect(filtered.json()).toMatchObject({
+      matterId: "matter-001",
+      metadataSearch: {
+        reviewOnly: true,
+        mutating: false,
+        filters: {
+          q: "financial",
+          classification: "privileged",
+          ocrStatus: "completed",
+          cueGroup: "classification",
+          tag: "cue:classification",
+        },
+        totalCount: 2,
+        matchedCount: 1,
+        ocrPosture: {
+          rawTextSearch: false,
+          rawTextReturned: false,
+          statusCounts: {
+            completed: 1,
+            not_available: 1,
+          },
+        },
+        results: [
+          expect.objectContaining({
+            documentId: "doc-001",
+            title: "Retainer agreement.pdf",
+            classification: "privileged",
+            ocrStatus: "completed",
+            tagKeys: expect.arrayContaining([
+              "classification:privileged",
+              "ocr:completed",
+              "ocr_confidence:medium",
+              "cue:classification",
+            ]),
+            matchedFields: expect.arrayContaining([
+              "Classification",
+              "Metadata tag",
+              "OCR status",
+              "Reviewer cue",
+            ]),
+            cueCounts: expect.objectContaining({ classification: 1 }),
+          }),
+        ],
+      },
+      documents: expect.arrayContaining([
+        expect.objectContaining({
+          document: expect.objectContaining({ id: "doc-001" }),
+          metadataTags: expect.arrayContaining([
+            expect.objectContaining({ key: "classification:privileged" }),
+            expect.objectContaining({ key: "ocr:completed" }),
+            expect.objectContaining({ key: "cue:classification" }),
+          ]),
+        }),
+      ]),
+    });
+    expect(rawTextSearch.json().metadataSearch).toMatchObject({ totalCount: 2, matchedCount: 0 });
+    expect(privateMetadataSearch.json().metadataSearch).toMatchObject({
+      totalCount: 2,
+      matchedCount: 0,
+    });
+    expect(JSON.stringify(filtered.json())).not.toContain("Hidden raw OCR body needle");
+    expect(JSON.stringify(filtered.json())).not.toContain("metadata-only-secret");
+    expect(JSON.stringify(filtered.json())).not.toContain("doc-001-private.txt");
+    expect(JSON.stringify(filtered.json())).not.toContain("private-token");
+    expect(JSON.stringify(filtered.json())).not.toContain("doc-other-matter-search");
+  });
+
   it("summarizes visible document review queue states without cross-matter counts", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createDocumentUploadIntent({
@@ -703,6 +959,7 @@ describe("document processing routes", () => {
 
   it("marks a durable OCR job failed when BullMQ enqueue fails", async () => {
     const repository = new InMemoryOpenPracticeRepository();
+    await enableOcrProvider(repository);
     const failingQueue: ApiJobQueue = {
       async add() {
         throw new Error("Redis unavailable with private connection details");
@@ -732,8 +989,34 @@ describe("document processing routes", () => {
     expect(job.errorMessage).not.toContain("private connection details");
   });
 
+  it("requires an enabled OCR provider before creating durable OCR jobs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { queue, jobs } = fakeOcrQueue();
+    const notConfigured = await testServer({ repository, ocrJobQueue: queue }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/queue",
+      payload: { language: "eng" },
+    });
+    await enableOcrProvider(repository, false);
+    const disabled = await testServer({ repository, ocrJobQueue: queue }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/queue",
+      payload: { language: "eng" },
+    });
+
+    expect(notConfigured.statusCode).toBe(503);
+    expect(notConfigured.json()).toMatchObject({ message: "OCR provider is not configured" });
+    expect(disabled.statusCode).toBe(503);
+    expect(disabled.json()).toMatchObject({ message: "OCR provider is disabled" });
+    expect(jobs).toEqual([]);
+    await expect(repository.listJobLifecycleRecords(firmId, { queueName: "ocr" })).resolves.toEqual(
+      [],
+    );
+  });
+
   it("allows duplicate-checksum verified documents to queue OCR", async () => {
     const repository = new InMemoryOpenPracticeRepository();
+    await enableOcrProvider(repository);
     const { queue, jobs } = fakeOcrQueue();
     await repository.createDocumentUploadIntent({
       id: "doc-duplicate",
@@ -772,6 +1055,7 @@ describe("document processing routes", () => {
 
   it("replays OCR queue requests for the same document without adding duplicate jobs", async () => {
     const repository = new InMemoryOpenPracticeRepository();
+    await enableOcrProvider(repository);
     const { queue, jobs } = fakeOcrQueue();
     const server = testServer({ repository, ocrJobQueue: queue });
 
@@ -798,6 +1082,7 @@ describe("document processing routes", () => {
 
   it("rejects cross-matter and unverified document processing", async () => {
     const repository = new InMemoryOpenPracticeRepository();
+    await enableOcrProvider(repository);
     const { queue } = fakeOcrQueue();
     const wrongMatter = await testServer({
       repository,

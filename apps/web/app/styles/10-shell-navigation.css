@@ -69,6 +69,24 @@ small,
 
 .nav-list {
   display: grid;
+  gap: 13px;
+}
+
+.nav-group {
+  display: grid;
+  gap: 6px;
+}
+
+.nav-group-label {
+  margin: 0;
+  color: rgba(247, 242, 232, 0.48);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.nav-group-items {
+  display: grid;
   gap: 6px;
 }
 
@@ -100,7 +118,7 @@ small,
 }
 
 .nav-item.active,
-.nav-item:hover:not(:disabled) {
+.nav-item:hover:not(:disabled, .disabled) {
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.075);
   color: #fffdfa;
@@ -116,7 +134,8 @@ small,
   content: "";
 }
 
-.nav-item:disabled {
+.nav-item:disabled,
+.nav-item.disabled {
   cursor: default;
   background: rgba(255, 255, 255, 0.025);
   color: rgba(247, 242, 232, 0.54);

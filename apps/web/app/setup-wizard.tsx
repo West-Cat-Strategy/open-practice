@@ -241,16 +241,20 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
               const Icon = item.icon;
               const isCompleted = index < step;
               const isActive = index === step;
+              const isFutureStep = index > step;
               const errorCount = stepErrors[index]?.length ?? 0;
               return (
                 <button
                   className={`setup-step ${isActive ? "active" : ""} ${isCompleted ? "completed" : ""}`}
                   aria-current={isActive ? "step" : undefined}
+                  aria-disabled={isFutureStep}
                   aria-label={`${item.label}: step ${index + 1} of ${steps.length}${
-                    isCompleted ? ", complete" : isActive ? ", current" : ""
+                    isCompleted ? ", complete" : isActive ? ", current" : ", future step"
                   }`}
                   key={item.label}
-                  onClick={() => index <= step && setStep(index)}
+                  onClick={() => {
+                    if (!isFutureStep) setStep(index);
+                  }}
                   type="button"
                 >
                   {isCompleted ? (
@@ -583,10 +587,13 @@ function TextField({
   hint?: string;
   error?: string;
 }) {
+  const messageId = hint || error ? `${id}-message` : undefined;
   return (
     <label className={`form-field ${className} ${error ? "has-error" : ""}`}>
       <span>{label}</span>
       <input
+        aria-describedby={messageId}
+        aria-errormessage={error ? messageId : undefined}
         aria-invalid={Boolean(error)}
         autoComplete={autoComplete}
         id={id}
@@ -602,14 +609,24 @@ function TextField({
         type={type}
         value={value}
       />
-      <FieldMessage hint={hint} error={error} />
+      <FieldMessage id={messageId} hint={hint} error={error} />
     </label>
   );
 }
 
-function FieldMessage({ hint, error }: { hint?: string; error?: string }) {
-  if (error) return <em className="field-error">{error}</em>;
-  if (hint) return <small className="field-hint">{hint}</small>;
+function FieldMessage({ id, hint, error }: { id?: string; hint?: string; error?: string }) {
+  if (error)
+    return (
+      <em className="field-error" id={id}>
+        {error}
+      </em>
+    );
+  if (hint)
+    return (
+      <small className="field-hint" id={id}>
+        {hint}
+      </small>
+    );
   return null;
 }
 

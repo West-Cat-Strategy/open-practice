@@ -814,6 +814,65 @@ export interface DocumentReviewSuggestions {
   groups: Record<DocumentReviewSuggestionGroup, DocumentReviewSuggestionCue[]>;
 }
 
+export type DocumentMetadataTagGroup =
+  | "classification"
+  | "review_status"
+  | "scan_status"
+  | "legal_hold"
+  | "ocr"
+  | "reviewer_cue";
+
+export type DocumentMetadataOcrStatus = "not_available" | "queued" | "completed" | "failed";
+
+export interface DocumentMetadataTag {
+  key: string;
+  label: string;
+  value: string;
+  group: DocumentMetadataTagGroup;
+  tone: "neutral" | "ready" | "risk";
+  count?: number;
+}
+
+export interface DocumentMetadataSearchFilters {
+  q?: string;
+  classification?: DocumentRecord["classification"];
+  reviewStatus?: DocumentRecord["reviewStatus"];
+  scanStatus?: DocumentRecord["scanStatus"];
+  ocrStatus?: DocumentMetadataOcrStatus;
+  cueGroup?: DocumentReviewSuggestionGroup;
+  tag?: string;
+}
+
+export interface DocumentMetadataSearchResultSummary {
+  documentId: string;
+  title: string;
+  matterId: string;
+  classification: DocumentRecord["classification"];
+  reviewStatus: DocumentRecord["reviewStatus"];
+  scanStatus: DocumentRecord["scanStatus"];
+  legalHold: boolean;
+  ocrStatus: DocumentMetadataOcrStatus;
+  tagKeys: string[];
+  matchedFields: string[];
+  cueCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
+}
+
+export interface DocumentMetadataSearchPosture {
+  reviewOnly: true;
+  mutating: false;
+  filters: DocumentMetadataSearchFilters;
+  totalCount: number;
+  matchedCount: number;
+  tags: DocumentMetadataTag[];
+  ocrPosture: {
+    rawTextSearch: false;
+    rawTextReturned: false;
+    searchableFields: string[];
+    statusCounts: Record<DocumentMetadataOcrStatus, number>;
+  };
+  results: DocumentMetadataSearchResultSummary[];
+}
+
 export interface DocumentProcessingWorkbenchItem {
   document: DocumentProcessingDocumentSummary;
   group: DocumentProcessingGroup;
@@ -824,6 +883,7 @@ export interface DocumentProcessingWorkbenchItem {
   latestJob?: DocumentProcessingLatestJob;
   latestExtraction?: DocumentProcessingLatestExtraction;
   reviewSuggestions?: DocumentReviewSuggestions;
+  metadataTags?: DocumentMetadataTag[];
 }
 
 export interface DocumentProcessingWorkbenchResponse {
@@ -841,6 +901,7 @@ export interface DocumentProcessingWorkbenchResponse {
     supersessionCount: number;
     failedScanCount: number;
   };
+  metadataSearch?: DocumentMetadataSearchPosture;
   summary: DocumentProcessingSummary;
   documents: DocumentProcessingWorkbenchItem[];
 }
