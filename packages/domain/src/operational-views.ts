@@ -1,9 +1,18 @@
 import type { ContactDossier } from "./contacts.js";
-import type { ActivityTimelineEntry, CalendarEventRecord, Matter, MatterParty } from "./models.js";
 import type {
+  ActivityTimelineEntry,
+  CalendarEventRecord,
+  CalendarGuestLinkRecord,
+  Matter,
+  MatterParty,
+} from "./models.js";
+import type { IntakeFormLinkRecord } from "./intake.js";
+import type {
+  AccessLogRecord,
   EmailOutboxRecord,
   ExternalUploadLinkRecord,
   InboundEmailMessageRecord,
+  ShareLinkRecord,
 } from "./operations.js";
 import type { Action, ResourceKind } from "./permissions.js";
 import type { SignatureRequestRecord } from "./signatures.js";
@@ -14,7 +23,10 @@ export type BuiltInOperationalViewKey =
   | "awaiting_signature"
   | "external_uploads_expiring"
   | "conflicts_pending_review"
-  | "overdue_tasks_deadlines";
+  | "overdue_tasks_deadlines"
+  | "portal_access_activity"
+  | "portal_access_anomalies"
+  | "portal_links_expiring";
 
 export type OperationalViewPriority = "high" | "medium" | "low";
 export type SavedOperationalViewSurface = "queues" | "matters";
@@ -95,7 +107,11 @@ export interface OperationalMatterInput extends Pick<
 export interface BuildBuiltInOperationalViewsInput {
   matters: OperationalMatterInput[];
   signatures?: SignatureRequestRecord[];
+  shareLinks?: ShareLinkRecord[];
   externalUploadLinks?: ExternalUploadLinkRecord[];
+  intakeFormLinks?: IntakeFormLinkRecord[];
+  calendarGuestLinks?: CalendarGuestLinkRecord[];
+  accessLogs?: AccessLogRecord[];
   calendarEvents?: CalendarEventRecord[];
   contactDossiers?: ContactDossier[];
   emailOutbox?: Array<
@@ -107,6 +123,8 @@ export interface BuildBuiltInOperationalViewsInput {
   now?: string;
   staleAfterDays?: number;
   externalUploadExpiryWindowDays?: number;
+  portalLinkExpiryWindowDays?: number;
+  portalDeniedAttemptWindowHours?: number;
 }
 
 export const BUILT_IN_OPERATIONAL_VIEW_DEFINITIONS: BuiltInOperationalViewDefinition[] = [
@@ -146,6 +164,24 @@ export const BUILT_IN_OPERATIONAL_VIEW_DEFINITIONS: BuiltInOperationalViewDefini
     description: "Visible past calendar task or deadline signals that are still active.",
     defaultPriority: "high",
   },
+  {
+    key: "portal_access_activity",
+    label: "Portal access activity",
+    description: "Latest safe granted and denied public-token access events.",
+    defaultPriority: "medium",
+  },
+  {
+    key: "portal_access_anomalies",
+    label: "Portal access anomalies",
+    description: "Repeated denied or blocked public-token access attempts.",
+    defaultPriority: "high",
+  },
+  {
+    key: "portal_links_expiring",
+    label: "Portal links expiring",
+    description: "Active public-token links across portal families that expire soon.",
+    defaultPriority: "medium",
+  },
 ];
 
 const activeMatterStatuses = new Set<Matter["status"]>(["intake", "open", "paused"]);
@@ -168,6 +204,38 @@ const terminalSignatureStatuses = new Set<SignatureRequestRecord["status"]>([
   "declined",
 ]);
 const deadlineTerms = ["deadline", "due", "filing", "hearing", "limitation", "review", "task"];
+type PortalAccessFamily = "share" | "external_upload" | "intake_form" | "guest_session";
+type NormalizedPortalAccessOutcome = "granted" | "denied";
+
+interface PortalLinkContext {
+  family: PortalAccessFamily;
+  id: string;
+  matterId: string;
+  label: string;
+  expiresAt?: string;
+  active: boolean;
+  metadata: Record<string, unknown>;
+}
+
+interface PortalAccessEvent {
+  log: AccessLogRecord;
+  context: PortalLinkContext;
+  outcome: NormalizedPortalAccessOutcome;
+  reason: string;
+}
+
+const deniedPortalOutcomes = new Set([
+  "denied",
+  "expired",
+  "revoked",
+  "unavailable",
+  "email_verification_required",
+  "submission_conflict",
+  "upload_limit",
+  "document_scope",
+  "locked",
+  "ended",
+]);
 
 function toTime(value: string | undefined): number | undefined {
   if (!value) return undefined;
@@ -216,6 +284,14 @@ function hasDerivedClientContactActivity(input: {
 }
 
 function resultSort(left: OperationalViewResult, right: OperationalViewResult): number {
+  if (
+    left.viewKey === right.viewKey &&
+    (left.viewKey === "portal_access_activity" || left.viewKey === "portal_access_anomalies")
+  ) {
+    const leftTime = toTime(left.occurredAt ?? left.lastActivityAt ?? left.dueAt) ?? 0;
+    const rightTime = toTime(right.occurredAt ?? right.lastActivityAt ?? right.dueAt) ?? 0;
+    if (leftTime !== rightTime) return rightTime - leftTime;
+  }
   const priorityRank: Record<OperationalViewPriority, number> = { high: 0, medium: 1, low: 2 };
   if (priorityRank[left.priority] !== priorityRank[right.priority]) {
     return priorityRank[left.priority] - priorityRank[right.priority];
@@ -224,6 +300,243 @@ function resultSort(left: OperationalViewResult, right: OperationalViewResult): 
   const rightTime = toTime(right.dueAt ?? right.lastActivityAt ?? right.occurredAt) ?? 0;
   if (leftTime !== rightTime) return leftTime - rightTime;
   return left.id.localeCompare(right.id);
+}
+
+function portalLinkKey(family: PortalAccessFamily, id: string): string {
+  return `${family}:${id}`;
+}
+
+function portalFamilyLabel(family: PortalAccessFamily): string {
+  if (family === "external_upload") return "external upload";
+  if (family === "intake_form") return "intake form";
+  if (family === "guest_session") return "guest session";
+  return "share";
+}
+
+function metadataText(metadata: Record<string, unknown>, key: string): string | undefined {
+  const value = metadata[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function normalizePortalAccessOutcome(log: AccessLogRecord): {
+  outcome: NormalizedPortalAccessOutcome;
+  reason: string;
+} {
+  const outcome = metadataText(log.metadata, "outcome");
+  const reason = metadataText(log.metadata, "reason");
+  const status = metadataText(log.metadata, "status");
+  const normalized = outcome?.toLowerCase();
+  const normalizedStatus = status?.toLowerCase();
+  const denied =
+    (normalized ? deniedPortalOutcomes.has(normalized) : false) ||
+    (normalizedStatus ? deniedPortalOutcomes.has(normalizedStatus) : false);
+  return {
+    outcome: denied ? "denied" : "granted",
+    reason: reason ?? status ?? outcome ?? log.action,
+  };
+}
+
+function portalLinkContexts(
+  input: BuildBuiltInOperationalViewsInput,
+  nowMs: number,
+): Map<string, PortalLinkContext> {
+  const contexts = new Map<string, PortalLinkContext>();
+  for (const link of input.shareLinks ?? []) {
+    const expiresAt = toTime(link.expiresAt);
+    const active = !link.revokedAt && (expiresAt === undefined || expiresAt > nowMs);
+    contexts.set(portalLinkKey("share", link.id), {
+      family: "share",
+      id: link.id,
+      matterId: link.matterId,
+      label: "share link",
+      expiresAt: link.expiresAt,
+      active,
+      metadata: {},
+    });
+  }
+  for (const link of input.externalUploadLinks ?? []) {
+    const expiresAt = toTime(link.expiresAt);
+    const remainingUploads = Math.max(link.maxUploads - link.usedUploads, 0);
+    contexts.set(portalLinkKey("external_upload", link.id), {
+      family: "external_upload",
+      id: link.id,
+      matterId: link.matterId,
+      label: "external upload link",
+      expiresAt: link.expiresAt,
+      active:
+        !link.revokedAt && expiresAt !== undefined && expiresAt > nowMs && remainingUploads > 0,
+      metadata: {
+        remainingUploads,
+        maxUploads: link.maxUploads,
+        usedUploads: link.usedUploads,
+      },
+    });
+  }
+  for (const link of input.intakeFormLinks ?? []) {
+    const expiresAt = toTime(link.expiresAt);
+    contexts.set(portalLinkKey("intake_form", link.id), {
+      family: "intake_form",
+      id: link.id,
+      matterId: link.matterId,
+      label: "intake form link",
+      expiresAt: link.expiresAt,
+      active: !link.revokedAt && !link.submittedAt && expiresAt !== undefined && expiresAt > nowMs,
+      metadata: {},
+    });
+  }
+  for (const link of input.calendarGuestLinks ?? []) {
+    const expiresAt = toTime(link.expiresAt);
+    contexts.set(portalLinkKey("guest_session", link.id), {
+      family: "guest_session",
+      id: link.id,
+      matterId: link.matterId,
+      label: "guest session link",
+      expiresAt: link.expiresAt,
+      active:
+        !link.revokedAt &&
+        link.status !== "revoked" &&
+        link.status !== "denied" &&
+        expiresAt !== undefined &&
+        expiresAt > nowMs,
+      metadata: {
+        status: link.status,
+      },
+    });
+  }
+  return contexts;
+}
+
+function contextForAccessLog(
+  log: AccessLogRecord,
+  contexts: Map<string, PortalLinkContext>,
+): PortalLinkContext | undefined {
+  if (log.shareLinkId) return contexts.get(portalLinkKey("share", log.shareLinkId));
+  if (log.externalUploadLinkId) {
+    return contexts.get(portalLinkKey("external_upload", log.externalUploadLinkId));
+  }
+  if (log.intakeFormLinkId) return contexts.get(portalLinkKey("intake_form", log.intakeFormLinkId));
+  if (log.resourceType === "calendar_guest_link") {
+    return contexts.get(portalLinkKey("guest_session", log.resourceId));
+  }
+  return undefined;
+}
+
+function portalAccessEvents(input: {
+  accessLogs?: AccessLogRecord[];
+  contexts: Map<string, PortalLinkContext>;
+  mattersById: Map<string, OperationalMatterInput>;
+}): PortalAccessEvent[] {
+  return (input.accessLogs ?? []).flatMap((log): PortalAccessEvent[] => {
+    const context = contextForAccessLog(log, input.contexts);
+    if (!context || !input.mattersById.has(context.matterId)) return [];
+    const normalized = normalizePortalAccessOutcome(log);
+    return [{ log, context, ...normalized }];
+  });
+}
+
+function buildPortalAccessActivityResults(input: {
+  events: PortalAccessEvent[];
+  mattersById: Map<string, OperationalMatterInput>;
+}): OperationalViewResult[] {
+  return input.events.map((event) => {
+    const matter = input.mattersById.get(event.context.matterId);
+    return {
+      id: `portal-access:${event.log.id}`,
+      viewKey: "portal_access_activity",
+      matterId: event.context.matterId,
+      title: `${matter ? matterLabel(matter) : "Matter"} ${event.context.label} access`,
+      status: event.outcome,
+      priority: event.outcome === "denied" ? "high" : "low",
+      reason: `${portalFamilyLabel(event.context.family)} ${event.reason.replaceAll("_", " ")}`,
+      occurredAt: event.log.occurredAt,
+      metadata: {
+        family: event.context.family,
+        linkId: event.context.id,
+        outcome: event.outcome,
+        reason: event.reason,
+      },
+    };
+  });
+}
+
+function buildPortalAccessAnomalyResults(input: {
+  events: PortalAccessEvent[];
+  mattersById: Map<string, OperationalMatterInput>;
+  nowMs: number;
+  windowHours: number;
+}): OperationalViewResult[] {
+  const windowMs = input.windowHours * 3_600_000;
+  const grouped = new Map<string, PortalAccessEvent[]>();
+  for (const event of input.events) {
+    const occurredAt = toTime(event.log.occurredAt);
+    if (event.outcome !== "denied" || occurredAt === undefined) continue;
+    if (occurredAt > input.nowMs || input.nowMs - occurredAt > windowMs) continue;
+    const key = portalLinkKey(event.context.family, event.context.id);
+    grouped.set(key, [...(grouped.get(key) ?? []), event]);
+  }
+
+  return Array.from(grouped.entries()).flatMap(([key, events]): OperationalViewResult[] => {
+    if (events.length < 3) return [];
+    const latest = [...events].sort(
+      (left, right) => (toTime(right.log.occurredAt) ?? 0) - (toTime(left.log.occurredAt) ?? 0),
+    )[0]!;
+    const matter = input.mattersById.get(latest.context.matterId);
+    return [
+      {
+        id: `portal-anomaly:${key}`,
+        viewKey: "portal_access_anomalies",
+        matterId: latest.context.matterId,
+        title: `${matter ? matterLabel(matter) : "Matter"} repeated denied portal access`,
+        status: "denied",
+        priority: "high",
+        reason: `${events.length} denied or blocked ${portalFamilyLabel(
+          latest.context.family,
+        )} attempts in ${input.windowHours} hours`,
+        occurredAt: latest.log.occurredAt,
+        metadata: {
+          family: latest.context.family,
+          linkId: latest.context.id,
+          deniedCount: events.length,
+          latestReason: latest.reason,
+          windowHours: input.windowHours,
+        },
+      },
+    ];
+  });
+}
+
+function buildPortalLinksExpiringResults(input: {
+  contexts: Map<string, PortalLinkContext>;
+  mattersById: Map<string, OperationalMatterInput>;
+  nowMs: number;
+  windowDays: number;
+}): OperationalViewResult[] {
+  const windowMs = input.windowDays * 86_400_000;
+  return Array.from(input.contexts.values()).flatMap((context): OperationalViewResult[] => {
+    const matter = input.mattersById.get(context.matterId);
+    const expiresAt = toTime(context.expiresAt);
+    if (!matter || !context.active || expiresAt === undefined) return [];
+    if (expiresAt <= input.nowMs || expiresAt - input.nowMs > windowMs) return [];
+    const hoursUntilExpiry = Math.ceil((expiresAt - input.nowMs) / 3_600_000);
+    return [
+      {
+        id: `portal-expiring:${context.family}:${context.id}`,
+        viewKey: "portal_links_expiring",
+        matterId: context.matterId,
+        title: `${matter.number} ${context.label}`,
+        status: "active",
+        priority: hoursUntilExpiry <= 48 ? "high" : "medium",
+        reason: `${portalFamilyLabel(context.family)} link expires in ${hoursUntilExpiry} hours`,
+        dueAt: context.expiresAt,
+        metadata: {
+          family: context.family,
+          linkId: context.id,
+          hoursUntilExpiry,
+          ...context.metadata,
+        },
+      },
+    ];
+  });
 }
 
 function buildStaleMatterResults(
@@ -424,6 +737,12 @@ export function buildBuiltInOperationalViews(
   const now = input.now ?? new Date().toISOString();
   const nowMs = toTime(now) ?? Date.now();
   const mattersById = visibleMatterMap(input.matters);
+  const portalContexts = portalLinkContexts(input, nowMs);
+  const portalEvents = portalAccessEvents({
+    accessLogs: input.accessLogs,
+    contexts: portalContexts,
+    mattersById,
+  });
   const results = [
     ...buildStaleMatterResults(input, nowMs),
     ...buildUncontactedClientResults(input),
@@ -431,6 +750,19 @@ export function buildBuiltInOperationalViews(
     ...buildExternalUploadExpiryResults(input, nowMs, mattersById),
     ...buildConflictReviewResults(input, mattersById),
     ...buildOverdueTaskDeadlineResults(input, nowMs, mattersById),
+    ...buildPortalAccessActivityResults({ events: portalEvents, mattersById }),
+    ...buildPortalAccessAnomalyResults({
+      events: portalEvents,
+      mattersById,
+      nowMs,
+      windowHours: input.portalDeniedAttemptWindowHours ?? 24,
+    }),
+    ...buildPortalLinksExpiringResults({
+      contexts: portalContexts,
+      mattersById,
+      nowMs,
+      windowDays: input.portalLinkExpiryWindowDays ?? 7,
+    }),
   ];
 
   return BUILT_IN_OPERATIONAL_VIEW_DEFINITIONS.map((definition) => {
