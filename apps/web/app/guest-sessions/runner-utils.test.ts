@@ -11,6 +11,7 @@ function guestSessionPayload(
   overrides: {
     session?: Partial<PublicGuestSessionResponse["session"]>;
     guest?: Partial<NonNullable<PublicGuestSessionResponse["guest"]>>;
+    meetingAccess?: PublicGuestSessionResponse["meetingAccess"];
     lobby?: Partial<NonNullable<PublicGuestSessionResponse["lobby"]>>;
   } = {},
 ): PublicGuestSessionResponse {
@@ -26,6 +27,7 @@ function guestSessionPayload(
       revokedCount: 0,
       ...overrides.session,
     },
+    meetingAccess: overrides.meetingAccess,
     guest: { status: "issued", ...overrides.guest },
     lobby: {
       status: "open",
@@ -54,9 +56,19 @@ describe("guest session runner utilities", () => {
     ).toBe("You are waiting in the lobby.");
     expect(
       describePublicGuestSessionStatus(
-        guestSessionPayload({ guest: { status: "admitted" }, session: { status: "open" } }),
+        guestSessionPayload({
+          guest: { status: "admitted" },
+          meetingAccess: {
+            status: "staff_controlled",
+            deliveryBoundary: "calendar_invitation_or_staff_handoff",
+            meetingUrlAvailable: false,
+          },
+          session: { status: "open" },
+        }),
       ),
-    ).toBe("You have been admitted.");
+    ).toBe(
+      "You have been admitted. Staff will provide meeting access through the calendar invitation or staff handoff.",
+    );
     expect(
       describePublicGuestSessionStatus(
         guestSessionPayload({ session: { status: "expired" }, guest: { status: "revoked" } }),

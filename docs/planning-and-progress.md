@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-05-19
+**Last Updated:** 2026-05-22
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -8,22 +8,23 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                             |
-| --------------------- | --------------------------------------------------------------------------------- |
-| Current focus         | OP-T109 through OP-T112 improvement batch is closed with local integration proof. |
-| Next recommended pick | Re-run the review harvest to identify the next post-batch operational slice.      |
-| Ready rows            | 0                                                                                 |
-| Candidate rows        | 0                                                                                 |
-| In progress rows      | 0                                                                                 |
-| Review rows           | 0                                                                                 |
-| Blocked rows          | 0                                                                                 |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).              |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                  |
+| Snapshot              | Value                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| Current focus         | OP-T113 guest-session admitted handoff boundary is handoff-ready.    |
+| Next recommended pick | Re-review the current repo before promoting any new candidate work.  |
+| Ready rows            | 0                                                                    |
+| Candidate rows        | 0                                                                    |
+| In progress rows      | 0                                                                    |
+| Review rows           | 0                                                                    |
+| Blocked rows          | 0                                                                    |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Forward Development Plan
 
 | Status | ID      | Task                                              | Immediate Next Move                                                                                                                                                                                                                                                                                                                                                                                                                                   | Validation Plan                                                                                                                                                                                                                                                              |
 | ------ | ------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Done   | OP-T113 | Guest-session admitted handoff boundary           | Re-reviewed the finalized OP-T108 through OP-T112 improvement-batch base and added the smallest hosted-meeting follow-through inside the existing public guest-session and calendar invitation boundary: admitted guests now get a status-only staff-controlled meeting-access handoff without public room URLs, signaling, chat, recordings, uploads, media previews, or new dependencies.                                                           | Done proof recorded in [OP-T113 guest-session admitted handoff proof](validation/OP-T113_GUEST_SESSION_ADMITTED_HANDOFF_PROOF_2026-05-22.md).                                                                                                                                |
 | Done   | OP-T89  | Validation proof index and client action hub      | Browser review confirmed the secure-share, external-upload, and intake public-token `Needs attention` summaries render cleanly at desktop and mobile widths with synthetic token data.                                                                                                                                                                                                                                                                | 2026-05-15 proof recorded in [OP-T89 validation note](validation/OP-T89_NONPROFIT_HARVEST_CLIENT_ACTION_HUB_PROOF_2026-05-12.md).                                                                                                                                            |
 | Done   | OP-T90  | Worker-owned async report/export requests         | End-to-end review proof confirmed API create, queued not-ready download, real reports worker completion, job polling, and redacted audit export download with synthetic data only.                                                                                                                                                                                                                                                                    | 2026-05-15 proof recorded in [OP-T90 validation note](validation/OP-T90_ASYNC_AUDIT_EXPORT_REQUESTS_PROOF_2026-05-15.md).                                                                                                                                                    |
 | Done   | OP-T91  | Dashboard lane freshness and error-state controls | Added explicit refresh, freshness, stale, and error-state cues for queue, provider, and audit lanes using existing authorized dashboard endpoints; no backend contract changes.                                                                                                                                                                                                                                                                       | 2026-05-16 proof recorded in [OP-T91 validation note](validation/OP-T91_DASHBOARD_FRESHNESS_PROOF_2026-05-16.md).                                                                                                                                                            |

@@ -710,8 +710,11 @@ revoke guest access. Guest links store HMAC token hashes only; the raw token/sta
 once. Public guest-session pages are status-only and may show lobby state, time bounds, counts, and
 the guest access state; they do not expose matter/client details, attendee email, token hashes,
 stored meeting URLs, or room identifiers. Actual meeting-link delivery remains the existing calendar
-invitation/meeting-link path. Native Open Practice media rooms, WebRTC signaling, chat, recordings,
-temporary room uploads, and public media previews remain deferred.
+invitation/meeting-link path. Public guest-session responses include only a status-only
+meeting-access handoff marker that points admitted guests back to staff-controlled calendar
+invitation or handoff workflows and always reports that no meeting URL is available on the public
+status page. Native Open Practice media rooms, WebRTC signaling, chat, recordings, temporary room
+uploads, and public media previews remain deferred.
 Calendar event lifecycle writes are staff-controlled matter-scoped records. Create/update/cancel
 and reschedule increment the event sequence whenever an existing event changes, preserve attendees,
 reminders, iCalendar/CalDAV export behavior, and stored meeting-link fields, and record audit

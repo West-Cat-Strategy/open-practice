@@ -660,6 +660,11 @@ describe("calendar routes", () => {
     expect(publicStatus.statusCode).toBe(200);
     expect(publicStatus.json()).toMatchObject({
       session: { status: "open", lobbyStatus: "open" },
+      meetingAccess: {
+        status: "pending_lobby_review",
+        deliveryBoundary: "calendar_invitation_or_staff_handoff",
+        meetingUrlAvailable: false,
+      },
       guest: { status: "issued" },
       lobby: { waitingCount: 0 },
     });
@@ -690,6 +695,23 @@ describe("calendar routes", () => {
       session: { admittedCount: 1 },
     });
 
+    const publicAdmitted = await server.inject({
+      method: "GET",
+      url: `/api/portal/guest-sessions/${token}`,
+    });
+    expect(publicAdmitted.statusCode).toBe(200);
+    expect(publicAdmitted.json()).toMatchObject({
+      session: { status: "open" },
+      meetingAccess: {
+        status: "staff_controlled",
+        deliveryBoundary: "calendar_invitation_or_staff_handoff",
+        meetingUrlAvailable: false,
+      },
+      guest: { status: "admitted", admittedAt: expect.any(String) },
+    });
+    expect(JSON.stringify(publicAdmitted.json())).not.toContain("meet.example.test");
+    expect(JSON.stringify(publicAdmitted.json())).not.toContain("calendar-event-002");
+
     const ended = await server.inject({
       method: "POST",
       url: `/api/calendar/events/calendar-event-002/guest-sessions/${sessionId}/end`,
@@ -705,6 +727,7 @@ describe("calendar routes", () => {
     expect(publicEnded.statusCode).toBe(200);
     expect(publicEnded.json()).toMatchObject({
       session: { status: "ended" },
+      meetingAccess: { status: "unavailable", meetingUrlAvailable: false },
       guest: { status: "revoked" },
     });
 
