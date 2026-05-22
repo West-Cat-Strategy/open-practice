@@ -18,6 +18,42 @@ export type TrustTransferRequestStatus =
   | "linked"
   | "cancelled";
 
+export const billingTrustExportKinds = ["billing", "trust"] as const;
+
+export type BillingTrustExportKind = (typeof billingTrustExportKinds)[number];
+
+export type BillingPeriodLockStatus = "active" | "released";
+
+export interface BillingRatePresetRecord {
+  id: string;
+  firmId: string;
+  matterId?: string;
+  userId?: string;
+  label: string;
+  rateCents: number;
+  currency: string;
+  effectiveFrom: string;
+  effectiveTo?: string;
+  createdByUserId: string;
+  createdAt: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface BillingPeriodLockRecord {
+  id: string;
+  firmId: string;
+  matterId?: string;
+  startsOn: string;
+  endsOn: string;
+  status: BillingPeriodLockStatus;
+  lockedByUserId: string;
+  lockedAt: string;
+  releasedByUserId?: string;
+  releasedAt?: string;
+  reason?: string;
+  metadata: Record<string, unknown>;
+}
+
 export interface InvoiceRecord {
   id: string;
   firmId: string;
@@ -191,6 +227,45 @@ export function assertBillingStatusTransition(from: BillingStatus, to: BillingSt
   }
 }
 
+const immutableEntryStatuses = new Set<BillingStatus>([
+  "submitted",
+  "approved",
+  "billed",
+  "written_off",
+]);
+
+function billingDateOnly(isoTimestamp: string): string {
+  const timestamp = Date.parse(isoTimestamp);
+  if (!Number.isFinite(timestamp)) {
+    throw new Error("Invalid billing timestamp");
+  }
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+export function isBillingEntrySnapshotMutable(status: BillingStatus): boolean {
+  return !immutableEntryStatuses.has(status);
+}
+
+export function isBillingRatePresetEffectiveForDate(
+  preset: Pick<BillingRatePresetRecord, "effectiveFrom" | "effectiveTo">,
+  performedAt: string,
+): boolean {
+  const performedOn = billingDateOnly(performedAt);
+  const effectiveFrom = billingDateOnly(preset.effectiveFrom);
+  const effectiveTo = preset.effectiveTo ? billingDateOnly(preset.effectiveTo) : undefined;
+  return performedOn >= effectiveFrom && (!effectiveTo || performedOn <= effectiveTo);
+}
+
+export function isBillingPeriodLockActiveForEntry(
+  lock: Pick<BillingPeriodLockRecord, "matterId" | "startsOn" | "endsOn" | "status">,
+  input: { matterId: string; occurredAt: string },
+): boolean {
+  if (lock.status !== "active") return false;
+  if (lock.matterId && lock.matterId !== input.matterId) return false;
+  const occurredOn = billingDateOnly(input.occurredAt);
+  return occurredOn >= lock.startsOn && occurredOn <= lock.endsOn;
+}
+
 export function trustTransferRequestCanPost(
   request: Pick<TrustTransferRequestRecord, "status" | "ledgerTransactionId">,
 ): boolean {
@@ -220,6 +295,80 @@ export interface TrustTransferLedgerLinkSummary {
   trustAssetCreditCents: number;
   clientLiabilityDebitCents: number;
   amountMatches: boolean;
+}
+
+export interface BillingTrustExportCounts {
+  recordCount: number;
+  timeEntryCount?: number;
+  expenseEntryCount?: number;
+  invoiceCount?: number;
+  paymentCount?: number;
+  trustTransferRequestCount?: number;
+  ledgerAccountCount?: number;
+  ledgerEntryCount?: number;
+  balanceCount?: number;
+  trustBalanceCount?: number;
+}
+
+export interface BillingTrustExportSnapshot {
+  generatedAt: string;
+  exportKind: BillingTrustExportKind;
+  matterId?: string;
+  counts: BillingTrustExportCounts;
+  billing?: {
+    timeEntries: TimeEntry[];
+    expenseEntries: ExpenseEntry[];
+    invoices: Array<InvoiceRecord & { lines: InvoiceLineRecord[] }>;
+    payments: Array<ManualPaymentRecord & { allocations: PaymentAllocationRecord[] }>;
+  };
+  trust?: {
+    accounts: LedgerAccount[];
+    entries: LedgerEntry[];
+    balances: Record<string, number>;
+    trustBalances: Record<string, number>;
+    trustTransferRequests: TrustTransferRequestRecord[];
+  };
+}
+
+export function billingTrustExportResourceType(exportKind: BillingTrustExportKind): string {
+  return exportKind === "billing" ? "billing_export" : "trust_export";
+}
+
+export function summarizeBillingTrustExportCounts(
+  snapshot: Omit<BillingTrustExportSnapshot, "generatedAt" | "counts">,
+): BillingTrustExportCounts {
+  if (snapshot.exportKind === "billing") {
+    const timeEntryCount = snapshot.billing?.timeEntries.length ?? 0;
+    const expenseEntryCount = snapshot.billing?.expenseEntries.length ?? 0;
+    const invoiceCount = snapshot.billing?.invoices.length ?? 0;
+    const paymentCount = snapshot.billing?.payments.length ?? 0;
+    return {
+      recordCount: timeEntryCount + expenseEntryCount + invoiceCount + paymentCount,
+      timeEntryCount,
+      expenseEntryCount,
+      invoiceCount,
+      paymentCount,
+    };
+  }
+
+  const trustTransferRequestCount = snapshot.trust?.trustTransferRequests.length ?? 0;
+  const ledgerAccountCount = snapshot.trust?.accounts.length ?? 0;
+  const ledgerEntryCount = snapshot.trust?.entries.length ?? 0;
+  const balanceCount = Object.keys(snapshot.trust?.balances ?? {}).length;
+  const trustBalanceCount = Object.keys(snapshot.trust?.trustBalances ?? {}).length;
+  return {
+    recordCount:
+      trustTransferRequestCount +
+      ledgerAccountCount +
+      ledgerEntryCount +
+      balanceCount +
+      trustBalanceCount,
+    trustTransferRequestCount,
+    ledgerAccountCount,
+    ledgerEntryCount,
+    balanceCount,
+    trustBalanceCount,
+  };
 }
 
 export function summarizeTrustTransferLedgerLink(input: {

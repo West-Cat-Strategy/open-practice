@@ -26,10 +26,14 @@ import {
   postLedgerTransaction,
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
+  validateContactQualityReviewDecisionRecord,
+  validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
   verifyAuditChain,
   type AccessLogRecord,
   type AuditEvent,
+  type BillingPeriodLockRecord,
+  type BillingRatePresetRecord,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
@@ -41,6 +45,7 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDossier,
+  type ContactQualityReviewDecisionRecord,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -49,6 +54,7 @@ import {
   type DraftTemplateRecord,
   type EmailEventRecord,
   type EmailOutboxRecord,
+  type EmailReceiptLinkRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type FirmSettings,
@@ -64,6 +70,7 @@ import {
   type JobLifecycleRecord,
   type LedgerAccount,
   type LedgerEntry,
+  type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
@@ -137,11 +144,13 @@ import {
   buildActivityTimeline,
   calendarGuestLinkInsert,
   calendarMeetingSessionInsert,
+  contactQualityReviewDecisionInsert,
   connectorDeliveryAttemptInsert,
   connectorInsert,
   connectorOutboxInsert,
   emailEventInsert,
   emailOutboxInsert,
+  emailReceiptLinkInsert,
   externalUploadLinkInsert,
   intakeFormItemActionInsert,
   intakeFormLinkInsert,
@@ -155,6 +164,8 @@ import {
   mapAuthAccountRow,
   mapAuthChallengeRow,
   mapAuthSessionRow,
+  mapBillingPeriodLockRow,
+  mapBillingRatePresetRow,
   mapCalendarCredentialRow,
   mapCalendarEventAttendeeRow,
   mapCalendarEventReminderRow,
@@ -165,6 +176,7 @@ import {
   mapConnectorDeliveryAttemptRow,
   mapConnectorOutboxRow,
   mapConnectorRow,
+  mapContactQualityReviewDecisionRow,
   mapContactRow,
   mapConversationMessageRow,
   mapConversationThreadRow,
@@ -175,6 +187,7 @@ import {
   mapDraftTemplateRow,
   mapEmailEventRow,
   mapEmailOutboxRow,
+  mapEmailReceiptLinkRow,
   mapExpenseEntryRow,
   mapExternalUploadLinkRow,
   mapFirmSettingsRow,
@@ -192,6 +205,7 @@ import {
   mapInvoiceRow,
   mapJobLifecycleRow,
   mapLedgerApprovalRow,
+  mapLedgerReconciliationExceptionResolutionRow,
   mapLedgerReconciliationRow,
   mapLegalClinicMatterProfileRow,
   mapLegalClinicProgramRow,
@@ -880,6 +894,62 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .orderBy(desc(schema.emailOutbox.queuedAt))
       .limit(options.limit ?? 50);
     return rows.map(mapEmailOutboxRow);
+  }
+
+  async createEmailReceiptLink(link: EmailReceiptLinkRecord): Promise<EmailReceiptLinkRecord> {
+    const [row] = await this.db
+      .insert(schema.emailReceiptLinks)
+      .values(emailReceiptLinkInsert(link))
+      .returning();
+    return mapEmailReceiptLinkRow(row);
+  }
+
+  async listEmailReceiptLinks(
+    firmId: string,
+    options: { emailId?: string; matterId?: string } = {},
+  ): Promise<EmailReceiptLinkRecord[]> {
+    const conditions = [eq(schema.emailReceiptLinks.firmId, firmId)];
+    if (options.emailId) conditions.push(eq(schema.emailReceiptLinks.emailId, options.emailId));
+    if (options.matterId) conditions.push(eq(schema.emailReceiptLinks.matterId, options.matterId));
+    const rows = await this.db
+      .select()
+      .from(schema.emailReceiptLinks)
+      .where(and(...conditions))
+      .orderBy(desc(schema.emailReceiptLinks.createdAt));
+    return rows.map(mapEmailReceiptLinkRow);
+  }
+
+  async getEmailReceiptLinkByTokenHash(
+    tokenHash: string,
+  ): Promise<EmailReceiptLinkRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.emailReceiptLinks)
+      .where(eq(schema.emailReceiptLinks.tokenHash, tokenHash));
+    return row ? mapEmailReceiptLinkRow(row) : undefined;
+  }
+
+  async recordEmailReceiptLinkAccess(input: {
+    firmId: string;
+    id: string;
+    recordedAt: string;
+  }): Promise<EmailReceiptLinkRecord | undefined> {
+    const recordedAt = new Date(input.recordedAt);
+    const [row] = await this.db
+      .update(schema.emailReceiptLinks)
+      .set({
+        firstRecordedAt: sql`coalesce(${schema.emailReceiptLinks.firstRecordedAt}, ${recordedAt})`,
+        lastRecordedAt: recordedAt,
+        recordCount: sql`${schema.emailReceiptLinks.recordCount} + 1`,
+      })
+      .where(
+        and(
+          eq(schema.emailReceiptLinks.firmId, input.firmId),
+          eq(schema.emailReceiptLinks.id, input.id),
+        ),
+      )
+      .returning();
+    return row ? mapEmailReceiptLinkRow(row) : undefined;
   }
 
   async recordEmailDeliveryResult(input: {
@@ -1636,6 +1706,43 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       intakeVariableProposals,
       conflictChecks,
     });
+  }
+
+  async listContactQualityReviewDecisionsForUser(
+    user: User,
+  ): Promise<ContactQualityReviewDecisionRecord[]> {
+    const dossiers = await this.listContactDossiersForUser(user);
+    const visibleContactIds = new Set(dossiers.map((dossier) => dossier.contact.id));
+    const visibleMatterIds = new Set(
+      dossiers.flatMap((dossier) => dossier.matters.map((matter) => matter.matterId)),
+    );
+    if (visibleContactIds.size === 0) return [];
+
+    const rows = await this.db
+      .select()
+      .from(schema.contactQualityReviewDecisions)
+      .where(
+        and(
+          eq(schema.contactQualityReviewDecisions.firmId, user.firmId),
+          inArray(schema.contactQualityReviewDecisions.contactId, [...visibleContactIds]),
+        ),
+      )
+      .orderBy(desc(schema.contactQualityReviewDecisions.decidedAt));
+
+    return rows
+      .map(mapContactQualityReviewDecisionRow)
+      .filter((decision) => !decision.matterId || visibleMatterIds.has(decision.matterId));
+  }
+
+  async createContactQualityReviewDecision(
+    record: ContactQualityReviewDecisionRecord,
+  ): Promise<ContactQualityReviewDecisionRecord> {
+    const validated = validateContactQualityReviewDecisionRecord(record);
+    const [row] = await this.db
+      .insert(schema.contactQualityReviewDecisions)
+      .values(contactQualityReviewDecisionInsert(validated))
+      .returning();
+    return mapContactQualityReviewDecisionRow(row);
   }
 
   async getContact(firmId: string, contactId: string): Promise<Contact | undefined> {
@@ -4209,6 +4316,160 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .where(eq(schema.trustReconciliations.firmId, firmId))
       .orderBy(asc(schema.trustReconciliations.createdAt));
     return rows.map(mapLedgerReconciliationRow);
+  }
+
+  async createLedgerReconciliationExceptionResolution(
+    resolution: LedgerReconciliationExceptionResolutionRecord,
+  ): Promise<LedgerReconciliationExceptionResolutionRecord> {
+    const [account] = await this.db
+      .select()
+      .from(schema.ledgerAccounts)
+      .where(
+        and(
+          eq(schema.ledgerAccounts.firmId, resolution.firmId),
+          eq(schema.ledgerAccounts.id, resolution.accountId),
+        ),
+      );
+    if (!account || account.type !== "trust_asset") {
+      throw new Error(
+        "Reconciliation exception resolutions require an existing trust asset account",
+      );
+    }
+    validateLedgerReconciliationExceptionResolutionRecord(resolution);
+    await this.db.insert(schema.trustReconciliationExceptionResolutions).values({
+      ...resolution,
+      recordedAt: new Date(resolution.recordedAt),
+    });
+    return resolution;
+  }
+
+  async listLedgerReconciliationExceptionResolutions(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerReconciliationExceptionResolutionRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.trustReconciliationExceptionResolutions)
+      .where(
+        options.accountId
+          ? and(
+              eq(schema.trustReconciliationExceptionResolutions.firmId, firmId),
+              eq(schema.trustReconciliationExceptionResolutions.accountId, options.accountId),
+            )
+          : eq(schema.trustReconciliationExceptionResolutions.firmId, firmId),
+      )
+      .orderBy(asc(schema.trustReconciliationExceptionResolutions.recordedAt));
+    return rows.map(mapLedgerReconciliationExceptionResolutionRow);
+  }
+
+  async createBillingRatePreset(preset: BillingRatePresetRecord): Promise<BillingRatePresetRecord> {
+    await this.db.insert(schema.billingRatePresets).values({
+      ...preset,
+      matterId: preset.matterId ?? null,
+      userId: preset.userId ?? null,
+      effectiveFrom: new Date(preset.effectiveFrom),
+      effectiveTo: preset.effectiveTo ? new Date(preset.effectiveTo) : null,
+      createdAt: new Date(preset.createdAt),
+    });
+    return clone(preset);
+  }
+
+  async listBillingRatePresets(
+    firmId: string,
+    options: { matterId?: string; userId?: string } = {},
+  ): Promise<BillingRatePresetRecord[]> {
+    const filters = [eq(schema.billingRatePresets.firmId, firmId)];
+    if (options.matterId) filters.push(eq(schema.billingRatePresets.matterId, options.matterId));
+    if (options.userId) filters.push(eq(schema.billingRatePresets.userId, options.userId));
+    const rows = await this.db
+      .select()
+      .from(schema.billingRatePresets)
+      .where(and(...filters))
+      .orderBy(asc(schema.billingRatePresets.effectiveFrom));
+    return rows.map(mapBillingRatePresetRow);
+  }
+
+  async getBillingRatePreset(
+    firmId: string,
+    presetId: string,
+  ): Promise<BillingRatePresetRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.billingRatePresets)
+      .where(
+        and(
+          eq(schema.billingRatePresets.firmId, firmId),
+          eq(schema.billingRatePresets.id, presetId),
+        ),
+      );
+    return row ? mapBillingRatePresetRow(row) : undefined;
+  }
+
+  async createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord> {
+    await this.db.insert(schema.billingPeriodLocks).values({
+      ...lock,
+      matterId: lock.matterId ?? null,
+      lockedAt: new Date(lock.lockedAt),
+      releasedByUserId: lock.releasedByUserId ?? null,
+      releasedAt: lock.releasedAt ? new Date(lock.releasedAt) : null,
+      reason: lock.reason ?? null,
+    });
+    return clone(lock);
+  }
+
+  async listBillingPeriodLocks(
+    firmId: string,
+    options: { matterId?: string; status?: BillingPeriodLockRecord["status"] } = {},
+  ): Promise<BillingPeriodLockRecord[]> {
+    const filters = [eq(schema.billingPeriodLocks.firmId, firmId)];
+    if (options.matterId) {
+      const scopeFilter = or(
+        eq(schema.billingPeriodLocks.matterId, options.matterId),
+        isNull(schema.billingPeriodLocks.matterId),
+      );
+      if (scopeFilter) filters.push(scopeFilter);
+    }
+    if (options.status) filters.push(eq(schema.billingPeriodLocks.status, options.status));
+    const rows = await this.db
+      .select()
+      .from(schema.billingPeriodLocks)
+      .where(and(...filters))
+      .orderBy(asc(schema.billingPeriodLocks.startsOn));
+    return rows.map(mapBillingPeriodLockRow);
+  }
+
+  async getBillingPeriodLock(
+    firmId: string,
+    lockId: string,
+  ): Promise<BillingPeriodLockRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.billingPeriodLocks)
+      .where(
+        and(eq(schema.billingPeriodLocks.firmId, firmId), eq(schema.billingPeriodLocks.id, lockId)),
+      );
+    return row ? mapBillingPeriodLockRow(row) : undefined;
+  }
+
+  async updateBillingPeriodLock(
+    firmId: string,
+    lockId: string,
+    updates: Partial<BillingPeriodLockRecord>,
+  ): Promise<BillingPeriodLockRecord> {
+    const [row] = await this.db
+      .update(schema.billingPeriodLocks)
+      .set({
+        status: updates.status,
+        releasedByUserId: updates.releasedByUserId,
+        releasedAt: updates.releasedAt ? new Date(updates.releasedAt) : undefined,
+        metadata: updates.metadata,
+      })
+      .where(
+        and(eq(schema.billingPeriodLocks.firmId, firmId), eq(schema.billingPeriodLocks.id, lockId)),
+      )
+      .returning();
+    if (!row) throw new Error("Billing period lock was not found");
+    return mapBillingPeriodLockRow(row);
   }
 
   private async listUsers(firmId: string): Promise<User[]> {

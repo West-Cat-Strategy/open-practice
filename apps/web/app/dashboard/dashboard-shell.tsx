@@ -24,6 +24,7 @@ import type {
   SavedOperationalViewDefinition,
   SessionResponse,
 } from "../types";
+import type { SavedMatterOperationalViewPreset } from "../dashboard-utils";
 
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 
@@ -201,8 +202,9 @@ export function MatterContextPanel({
   onApplySavedMatterView,
   onMatterSearchChange,
   onSelectMatter,
-  onSaveMatterFollowUpView,
+  onSaveMatterPreset,
   savedMatterViewDefinitions,
+  savedMatterViewPresets,
   savedMatterViewStatus,
   savingMatterView,
 }: {
@@ -216,8 +218,9 @@ export function MatterContextPanel({
   onApplySavedMatterView: (definition: SavedOperationalViewDefinition) => void;
   onMatterSearchChange: (value: string) => void;
   onSelectMatter: (matterId: string) => void;
-  onSaveMatterFollowUpView: () => void;
+  onSaveMatterPreset: (preset: SavedMatterOperationalViewPreset) => void;
   savedMatterViewDefinitions: SavedOperationalViewDefinition[];
+  savedMatterViewPresets: SavedMatterOperationalViewPreset[];
   savedMatterViewStatus: string;
   savingMatterView: boolean;
 }) {
@@ -262,15 +265,21 @@ export function MatterContextPanel({
       </div>
       <div className="section-title">
         <h3>Saved matter views</h3>
-        <button
-          className="secondary-button compact-button row-button"
-          disabled={savingMatterView}
-          onClick={onSaveMatterFollowUpView}
-          type="button"
-        >
-          <Save aria-hidden="true" size={16} />
-          {savingMatterView ? "Saving" : "Save follow-up"}
-        </button>
+        <span className="row-actions" aria-label="Save matter view presets">
+          {savedMatterViewPresets.map((preset) => (
+            <button
+              aria-label={`Save ${preset.name}`}
+              className="secondary-button compact-button row-button"
+              disabled={savingMatterView}
+              key={preset.id}
+              onClick={() => onSaveMatterPreset(preset)}
+              type="button"
+            >
+              <Save aria-hidden="true" size={16} />
+              {savingMatterView ? "Saving" : preset.saveLabel}
+            </button>
+          ))}
+        </span>
       </div>
       <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
         {savedMatterViewStatus}

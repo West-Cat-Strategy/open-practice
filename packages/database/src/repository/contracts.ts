@@ -14,6 +14,8 @@ import {
   type AccessLogRecord,
   type ActivityTimelineEntry,
   type AuditEvent,
+  type BillingPeriodLockRecord,
+  type BillingRatePresetRecord,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
@@ -27,6 +29,7 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDossier,
+  type ContactQualityReviewDecisionRecord,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -35,6 +38,7 @@ import {
   type DraftTemplateRecord,
   type EmailEventRecord,
   type EmailOutboxRecord,
+  type EmailReceiptLinkRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type Firm,
@@ -51,6 +55,7 @@ import {
   type JobLifecycleRecord,
   type LedgerAccount,
   type LedgerEntry,
+  type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
@@ -466,6 +471,17 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { matterId?: string; limit?: number },
   ): Promise<EmailOutboxRecord[]>;
+  createEmailReceiptLink(link: EmailReceiptLinkRecord): Promise<EmailReceiptLinkRecord>;
+  listEmailReceiptLinks(
+    firmId: string,
+    options?: { emailId?: string; matterId?: string },
+  ): Promise<EmailReceiptLinkRecord[]>;
+  getEmailReceiptLinkByTokenHash(tokenHash: string): Promise<EmailReceiptLinkRecord | undefined>;
+  recordEmailReceiptLinkAccess(input: {
+    firmId: string;
+    id: string;
+    recordedAt: string;
+  }): Promise<EmailReceiptLinkRecord | undefined>;
   recordEmailDeliveryResult(input: {
     firmId: string;
     emailId: string;
@@ -557,6 +573,12 @@ export interface OpenPracticeRepository {
   getOverview(firmId: string): Promise<PracticeOverview>;
   listMattersForUser(user: User): Promise<MatterSummary[]>;
   listContactDossiersForUser(user: User): Promise<ContactDossier[]>;
+  listContactQualityReviewDecisionsForUser(
+    user: User,
+  ): Promise<ContactQualityReviewDecisionRecord[]>;
+  createContactQualityReviewDecision(
+    record: ContactQualityReviewDecisionRecord,
+  ): Promise<ContactQualityReviewDecisionRecord>;
   getContact(firmId: string, contactId: string): Promise<Contact | undefined>;
   getDocument(firmId: string, documentId: string): Promise<DocumentRecord | undefined>;
   listMatterDocuments(firmId: string, matterId: string): Promise<DocumentRecord[]>;
@@ -970,6 +992,38 @@ export interface OpenPracticeRepository {
     reconciliation: LedgerReconciliationRecord,
   ): Promise<LedgerReconciliationRecord>;
   listLedgerReconciliations(firmId: string): Promise<LedgerReconciliationRecord[]>;
+  createLedgerReconciliationExceptionResolution(
+    resolution: LedgerReconciliationExceptionResolutionRecord,
+  ): Promise<LedgerReconciliationExceptionResolutionRecord>;
+  listLedgerReconciliationExceptionResolutions(
+    firmId: string,
+    options?: { accountId?: string },
+  ): Promise<LedgerReconciliationExceptionResolutionRecord[]>;
+  createBillingRatePreset(preset: BillingRatePresetRecord): Promise<BillingRatePresetRecord>;
+  listBillingRatePresets(
+    firmId: string,
+    options?: { matterId?: string; userId?: string },
+  ): Promise<BillingRatePresetRecord[]>;
+  getBillingRatePreset(
+    firmId: string,
+    presetId: string,
+  ): Promise<BillingRatePresetRecord | undefined>;
+  createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord>;
+  listBillingPeriodLocks(
+    firmId: string,
+    options?: { matterId?: string; status?: BillingPeriodLockRecord["status"] },
+  ): Promise<BillingPeriodLockRecord[]>;
+  getBillingPeriodLock(
+    firmId: string,
+    lockId: string,
+  ): Promise<BillingPeriodLockRecord | undefined>;
+  updateBillingPeriodLock(
+    firmId: string,
+    lockId: string,
+    updates: Partial<
+      Pick<BillingPeriodLockRecord, "status" | "releasedByUserId" | "releasedAt" | "metadata">
+    >,
+  ): Promise<BillingPeriodLockRecord>;
   listTimeEntries(
     firmId: string,
     options?: { matterId?: string; status?: TimeEntry["billingStatus"] },

@@ -19,6 +19,9 @@ trust accounting software, accounting software, or tax-advice tooling.
 - Statement import previews are non-persistent review aids only. They can dedupe imported rows and
   propose matches against existing trust-ledger entries, but they do not post ledger entries, create
   reconciliation records, approve transactions, or move funds.
+- Reconciliation exception resolution records can store staff notes and variance decisions for
+  unmatched statement-preview rows. They are review notes only: they do not mutate posted ledger
+  entries, create reconciliation records, move funds, or certify accounting conclusions.
 - The trust controls workbench is a read-only operator review surface for existing balances,
   approvals, reconciliations, statement-row counts, variance notes, recent postings, and diagnostics.
   It does not post, approve, reconcile, certify, or move funds.

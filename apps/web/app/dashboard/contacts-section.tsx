@@ -323,7 +323,11 @@ export function ContactsSection({
                     <span>
                       <strong>{signal.reason}</strong>
                       <small>
-                        {[signal.matchedValue, signal.matterId, signal.changedAt]
+                        {[
+                          signal.matchedValueRedacted ? "value redacted" : undefined,
+                          signal.matterId,
+                          signal.changedAt,
+                        ]
                           .filter(Boolean)
                           .join(" · ") || "contact-level"}
                       </small>

@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
+import { hashToken } from "../http/auth-helpers.js";
 import { registerEmailRoutes } from "./email.js";
 import type { ApiJobQueue } from "./types.js";
 
@@ -32,6 +33,7 @@ function testServer(input: {
   repository: InMemoryOpenPracticeRepository;
   authUser?: User;
   emailJobQueue?: ApiJobQueue;
+  jwtSecret?: string;
 }): FastifyInstance {
   const server = Fastify({ logger: false });
   const authUser = input.authUser ?? user("owner_admin", ["matter-001", "matter-002"]);
@@ -41,6 +43,7 @@ function testServer(input: {
   registerEmailRoutes(server, {
     repository: input.repository,
     emailJobQueue: input.emailJobQueue ?? emailJobQueue,
+    jwtSecret: input.jwtSecret ?? "test-email-receipt-secret-at-least-32-chars",
   });
   servers.push(server);
   return server;
@@ -319,6 +322,173 @@ describe("email routes", () => {
         }),
       ]),
     });
+  });
+
+  it("creates purpose-scoped receipt links and records public acknowledgements without leaking email content", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const jwtSecret = "test-email-receipt-secret-at-least-32-chars";
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-mailpit",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "mailpit",
+      enabled: true,
+      encryptedConfig: "local-mailpit-profile",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const server = testServer({ repository, authUser: user("licensee"), jwtSecret });
+    const createdEmail = await server.inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "matter.update",
+        to: ["client@example.test"],
+        subject: "Synthetic private subject",
+        textBody: "Synthetic private delivery body.",
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+    const emailId = createdEmail.json().email.id as string;
+
+    const receipt = await server.inject({
+      method: "POST",
+      url: `/api/mail/outbox/${emailId}/receipt-links`,
+      payload: {
+        purpose: "client_acknowledgement",
+        expiresAt: "2026-05-30T12:00:00.000Z",
+        metadata: { correlationId: "receipt-test" },
+      },
+    });
+
+    expect(receipt.statusCode).toBe(201);
+    const receiptPayload = receipt.json();
+    const token = receiptPayload.token as string;
+    expect(receiptPayload.receiptLink).toMatchObject({
+      emailId,
+      matterId: "matter-001",
+      purpose: "client_acknowledgement",
+      recordCount: 0,
+    });
+    expect(receiptPayload.receiptLink).not.toHaveProperty("tokenHash");
+    const [storedLink] = await repository.listEmailReceiptLinks("firm-west-legal", { emailId });
+    expect(storedLink?.tokenHash).toBe(hashToken(token, jwtSecret));
+    expect(storedLink?.tokenHash).not.toBe(token);
+
+    const viewed = await server.inject({
+      method: "GET",
+      url: `/api/portal/mail/receipts/${token}`,
+    });
+    expect(viewed.statusCode).toBe(200);
+    expect(viewed.json()).toEqual({
+      receipt: {
+        status: "available",
+        purpose: "client_acknowledgement",
+        expiresAt: "2026-05-30T12:00:00.000Z",
+      },
+    });
+
+    const acknowledged = await server.inject({
+      method: "POST",
+      url: `/api/portal/mail/receipts/${token}/acknowledge`,
+    });
+    expect(acknowledged.statusCode).toBe(200);
+    expect(acknowledged.json()).toMatchObject({
+      receipt: {
+        status: "acknowledged",
+        purpose: "client_acknowledgement",
+        acknowledgedAt: expect.any(String),
+      },
+    });
+    await expect(repository.listEmailReceiptLinks("firm-west-legal", { emailId })).resolves.toEqual(
+      [expect.objectContaining({ recordCount: 1, firstRecordedAt: expect.any(String) })],
+    );
+
+    const serialized = JSON.stringify({
+      created: receipt.json(),
+      viewed: viewed.json(),
+      acknowledged: acknowledged.json(),
+      audit: await repository.listAuditEvents("firm-west-legal"),
+    });
+    expect(serialized).not.toContain("Synthetic private subject");
+    expect(serialized).not.toContain("Synthetic private delivery body");
+    expect(serialized).not.toContain("client@example.test");
+    expect(serialized).not.toContain("tokenHash");
+    expect(serialized).not.toContain(storedLink?.tokenHash);
+  });
+
+  it("requires matter access before creating receipt links for outbound email", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-mailpit",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "mailpit",
+      enabled: true,
+      encryptedConfig: "local-mailpit-profile",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const ownerServer = testServer({ repository, authUser: user("owner_admin") });
+    const createdEmail = await ownerServer.inject({
+      method: "POST",
+      url: "/api/mail/outbox",
+      payload: {
+        matterId: "matter-001",
+        templateKey: "matter.update",
+        to: ["client@example.test"],
+        subject: "Synthetic private subject",
+        textBody: "Synthetic private delivery body.",
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+    const emailId = createdEmail.json().email.id as string;
+    const restrictedServer = testServer({
+      repository,
+      authUser: user("firm_member", ["matter-002"]),
+    });
+
+    const denied = await restrictedServer.inject({
+      method: "POST",
+      url: `/api/mail/outbox/${emailId}/receipt-links`,
+      payload: { purpose: "delivery_receipt" },
+    });
+
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json()).toMatchObject({ code: "EMAIL_ACCESS_REQUIRED" });
+    await expect(repository.listEmailReceiptLinks("firm-west-legal", { emailId })).resolves.toEqual(
+      [],
+    );
+  });
+
+  it("keeps public receipt token failures generic and free of hashes", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const jwtSecret = "test-email-receipt-secret-at-least-32-chars";
+    const token = "expired-email-receipt-token-value-for-test";
+    await repository.createEmailReceiptLink({
+      id: "expired-receipt-link",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      emailId: "email-expired-receipt",
+      tokenHash: hashToken(token, jwtSecret),
+      purpose: "delivery_receipt",
+      createdByUserId: "user-licensee",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      expiresAt: "2026-05-01T00:00:00.000Z",
+      recordCount: 0,
+      metadata: {},
+    });
+    const response = await testServer({ repository, jwtSecret }).inject({
+      method: "GET",
+      url: `/api/portal/mail/receipts/${token}`,
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ code: "EMAIL_RECEIPT_NOT_FOUND" });
+    expect(response.body).not.toContain(hashToken(token, jwtSecret));
+    expect(response.body).not.toContain("tokenHash");
+    expect(response.body).not.toContain("email-expired-receipt");
   });
 
   it("marks a durable email job failed when BullMQ enqueue fails", async () => {

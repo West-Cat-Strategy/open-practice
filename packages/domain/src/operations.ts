@@ -159,6 +159,28 @@ export interface EmailOutboxRecord {
   metadata: Record<string, unknown>;
 }
 
+export type EmailReceiptLinkPurpose =
+  | "delivery_receipt"
+  | "read_receipt"
+  | "client_acknowledgement";
+
+export interface EmailReceiptLinkRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  emailId: string;
+  tokenHash: string;
+  purpose: EmailReceiptLinkPurpose;
+  createdByUserId: string;
+  createdAt: string;
+  expiresAt?: string;
+  revokedAt?: string;
+  firstRecordedAt?: string;
+  lastRecordedAt?: string;
+  recordCount: number;
+  metadata: Record<string, unknown>;
+}
+
 export interface EmailEventRecord {
   id: string;
   firmId: string;

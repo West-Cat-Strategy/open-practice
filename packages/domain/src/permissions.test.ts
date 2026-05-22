@@ -139,4 +139,56 @@ describe("job metadata redaction", () => {
       summaryLength: 16,
     });
   });
+
+  it("keeps async billing and trust export counts while dropping export bodies", () => {
+    expect(
+      redactJobMetadata({
+        exportKind: "billing",
+        matterId: "matter-001",
+        requestedByUserId: "user-admin",
+        recordCount: 4,
+        timeEntryCount: 1,
+        expenseEntryCount: 1,
+        invoiceCount: 1,
+        paymentCount: 1,
+        enqueueStatus: "queued_for_local_report_worker",
+        narrative: "Synthetic private billing narrative",
+        ledgerMemo: "Synthetic private ledger memo",
+        recipientEmail: "client@example.test",
+        exportBody: [{ private: "Synthetic export content" }],
+      }),
+    ).toEqual({
+      exportKind: "billing",
+      matterId: "matter-001",
+      requestedByUserId: "user-admin",
+      recordCount: 4,
+      timeEntryCount: 1,
+      expenseEntryCount: 1,
+      invoiceCount: 1,
+      paymentCount: 1,
+      enqueueStatus: "queued_for_local_report_worker",
+    });
+
+    expect(
+      redactJobMetadata({
+        exportKind: "trust",
+        recordCount: 7,
+        trustTransferRequestCount: 1,
+        ledgerAccountCount: 3,
+        ledgerEntryCount: 2,
+        balanceCount: 1,
+        trustBalanceCount: 1,
+        accountNames: ["Synthetic private account name"],
+        ledgerEntries: [{ memo: "Synthetic private ledger memo" }],
+      }),
+    ).toEqual({
+      exportKind: "trust",
+      recordCount: 7,
+      trustTransferRequestCount: 1,
+      ledgerAccountCount: 3,
+      ledgerEntryCount: 2,
+      balanceCount: 1,
+      trustBalanceCount: 1,
+    });
+  });
 });

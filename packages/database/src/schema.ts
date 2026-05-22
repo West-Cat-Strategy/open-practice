@@ -16,6 +16,9 @@ import { sql } from "drizzle-orm";
 import type {
   CalendarGuestLinkRecord,
   CalendarMeetingSessionRecord,
+  BillingPeriodLockRecord,
+  BillingRatePresetRecord,
+  ContactQualityReviewDecisionRecord,
   ConnectorSecretReference,
   ConversationThreadRecord,
   DraftAssistRecord,
@@ -25,8 +28,10 @@ import type {
   IntakeResolutionSnapshot,
   IntakeVariableProposal,
   ConversationMessageRecord,
+  EmailReceiptLinkRecord,
   LegalClinicMatterProfile,
   LegalClinicProgram,
+  LedgerReconciliationExceptionResolutionStatementRow,
   LedgerReconciliationStatementRow,
   SavedOperationalViewDefinition,
 } from "@open-practice/domain";
@@ -719,6 +724,83 @@ export const matterParties = pgTable("matter_parties", {
   confidential: boolean("confidential").notNull().default(false),
 });
 
+export const contactQualityReviewDecisions = pgTable(
+  "contact_quality_review_decisions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    contactId: text("contact_id")
+      .notNull()
+      .references(() => contacts.id),
+    signalKind: text("signal_kind")
+      .$type<ContactQualityReviewDecisionRecord["signalKind"]>()
+      .notNull(),
+    decision: text("decision").$type<ContactQualityReviewDecisionRecord["decision"]>().notNull(),
+    matterId: text("matter_id").references(() => matters.id),
+    relatedContactIds: jsonb("related_contact_ids").$type<string[]>().notNull().default([]),
+    sourceRecordId: text("source_record_id"),
+    decidedByUserId: text("decided_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
+    reason: text("reason"),
+    evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    contactSignal: index("contact_quality_review_decisions_contact_signal_idx").on(
+      table.firmId,
+      table.contactId,
+      table.signalKind,
+      table.decidedAt,
+    ),
+    matterSignal: index("contact_quality_review_decisions_matter_signal_idx").on(
+      table.firmId,
+      table.matterId,
+      table.signalKind,
+    ),
+    signalKindValue: check(
+      "contact_quality_review_decisions_signal_kind_value",
+      sql`${table.signalKind} in ('duplicate_candidate', 'protected_party_cue', 'conflict_revalidation')`,
+    ),
+    decisionPairing: check(
+      "contact_quality_review_decisions_decision_pairing",
+      sql`(
+        (${table.signalKind} = 'duplicate_candidate' and ${table.decision} in ('duplicate_confirmed', 'not_duplicate', 'needs_more_review')) or
+        (${table.signalKind} = 'protected_party_cue' and ${table.decision} in ('protected_party_handling_confirmed', 'protected_party_handling_not_required', 'needs_more_review')) or
+        (${table.signalKind} = 'conflict_revalidation' and ${table.decision} in ('conflict_revalidation_required', 'conflict_revalidation_not_required', 'needs_more_review'))
+      )`,
+    ),
+    signalReferenceShape: check(
+      "contact_quality_review_decisions_signal_reference_shape",
+      sql`(
+        (${table.signalKind} = 'duplicate_candidate' and jsonb_array_length(${table.relatedContactIds}) > 0 and ${table.matterId} is null and ${table.sourceRecordId} is null) or
+        (${table.signalKind} = 'protected_party_cue' and jsonb_array_length(${table.relatedContactIds}) = 0 and ${table.matterId} is not null and ${table.sourceRecordId} is null) or
+        (${table.signalKind} = 'conflict_revalidation' and jsonb_array_length(${table.relatedContactIds}) = 0 and ${table.matterId} is not null and ${table.sourceRecordId} is not null)
+      )`,
+    ),
+    reviewOnlyEvidence: check(
+      "contact_quality_review_decisions_review_only_evidence",
+      sql`not (${table.evidence} ?| array[
+        'matchedValue',
+        'rawMatchedValue',
+        'mergeContactId',
+        'targetContactId',
+        'sourceContactId',
+        'contactPatch',
+        'contactRewrite',
+        'contactUpdate',
+        'contactNotes',
+        'conflictDisposition',
+        'conflictCheckDisposition',
+        'disposition'
+      ])`,
+    ),
+  }),
+);
+
 export const legalClinicPrograms = pgTable(
   "legal_clinic_programs",
   {
@@ -1295,6 +1377,43 @@ export const trustReconciliations = pgTable(
   }),
 );
 
+export const trustReconciliationExceptionResolutions = pgTable(
+  "trust_reconciliation_exception_resolutions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id),
+    statementRow: jsonb("statement_row")
+      .$type<LedgerReconciliationExceptionResolutionStatementRow>()
+      .notNull(),
+    varianceDecision: text("variance_decision").notNull(),
+    resolutionNote: text("resolution_note").notNull(),
+    recordedByUserId: text("recorded_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    accountRecordedAt: index("trust_reconciliation_exception_resolutions_account_recorded_idx").on(
+      table.firmId,
+      table.accountId,
+      table.recordedAt,
+    ),
+    varianceDecisionValue: check(
+      "trust_reconciliation_exception_resolutions_variance_decision_value",
+      sql`${table.varianceDecision} in ('ledger_entry_expected', 'statement_duplicate', 'statement_source_issue', 'operational_variance_acknowledged', 'needs_follow_up')`,
+    ),
+    resolutionNotePresent: check(
+      "trust_reconciliation_exception_resolutions_note_present",
+      sql`length(trim(${table.resolutionNote})) > 0`,
+    ),
+  }),
+);
+
 export const auditEvents = pgTable("audit_events", {
   id: text("id").primaryKey(),
   firmId: text("firm_id")
@@ -1385,6 +1504,54 @@ export const emailOutbox = pgTable(
       table.firmId,
       table.matterId,
       table.queuedAt,
+    ),
+  }),
+);
+
+export const emailReceiptLinks = pgTable(
+  "email_receipt_links",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    emailId: text("email_id")
+      .notNull()
+      .references(() => emailOutbox.id),
+    tokenHash: text("token_hash").notNull(),
+    purpose: text("purpose").$type<EmailReceiptLinkRecord["purpose"]>().notNull(),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    firstRecordedAt: timestamp("first_recorded_at", { withTimezone: true }),
+    lastRecordedAt: timestamp("last_recorded_at", { withTimezone: true }),
+    recordCount: integer("record_count").notNull().default(0),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    tokenHash: uniqueIndex("email_receipt_links_token_hash_idx").on(table.tokenHash),
+    emailPurpose: index("email_receipt_links_email_purpose_idx").on(
+      table.firmId,
+      table.emailId,
+      table.purpose,
+    ),
+    matterExpiry: index("email_receipt_links_matter_expiry_idx").on(
+      table.matterId,
+      table.expiresAt,
+    ),
+    purposeValue: check(
+      "email_receipt_links_purpose_value",
+      sql`${table.purpose} in ('delivery_receipt', 'read_receipt', 'client_acknowledgement')`,
+    ),
+    nonNegativeRecordCount: check(
+      "email_receipt_links_non_negative_record_count",
+      sql`${table.recordCount} >= 0`,
     ),
   }),
 );
@@ -1509,6 +1676,80 @@ export const aiTriageRecords = pgTable(
       table.firmId,
       table.sourceType,
       table.sourceId,
+    ),
+  }),
+);
+
+export const billingRatePresets = pgTable(
+  "billing_rate_presets",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id").references(() => matters.id),
+    userId: text("user_id").references(() => users.id),
+    label: text("label").notNull(),
+    rateCents: integer("rate_cents").notNull(),
+    currency: text("currency").notNull().default("CAD"),
+    effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull(),
+    effectiveTo: timestamp("effective_to", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<BillingRatePresetRecord["metadata"]>().notNull().default({}),
+  },
+  (table) => ({
+    matterUserEffective: index("billing_rate_presets_scope_effective_idx").on(
+      table.firmId,
+      table.matterId,
+      table.userId,
+      table.effectiveFrom,
+    ),
+    nonNegativeRate: check("billing_rate_presets_non_negative_rate", sql`${table.rateCents} >= 0`),
+    validEffectiveRange: check(
+      "billing_rate_presets_valid_effective_range",
+      sql`${table.effectiveTo} is null or ${table.effectiveTo} >= ${table.effectiveFrom}`,
+    ),
+  }),
+);
+
+export const billingPeriodLocks = pgTable(
+  "billing_period_locks",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id").references(() => matters.id),
+    startsOn: text("starts_on").notNull(),
+    endsOn: text("ends_on").notNull(),
+    status: text("status").notNull().default("active"),
+    lockedByUserId: text("locked_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    lockedAt: timestamp("locked_at", { withTimezone: true }).notNull().defaultNow(),
+    releasedByUserId: text("released_by_user_id").references(() => users.id),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    reason: text("reason"),
+    metadata: jsonb("metadata").$type<BillingPeriodLockRecord["metadata"]>().notNull().default({}),
+  },
+  (table) => ({
+    activeScope: index("billing_period_locks_active_scope_idx").on(
+      table.firmId,
+      table.matterId,
+      table.status,
+      table.startsOn,
+      table.endsOn,
+    ),
+    validPeriod: check(
+      "billing_period_locks_valid_period",
+      sql`${table.startsOn} <= ${table.endsOn}`,
+    ),
+    statusValue: check(
+      "billing_period_locks_status_value",
+      sql`${table.status} in ('active', 'released')`,
     ),
   }),
 );

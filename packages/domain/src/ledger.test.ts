@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildLedgerReconciliationExceptionResolutionStatementRow,
   buildJurisdictionalTrustReport,
   ledgerControlsDiagnostics,
   ledgerReconciliationReviewSummary,
   previewLedgerStatementImport,
+  validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
 } from "./ledger.js";
 import type {
@@ -335,5 +337,54 @@ describe("ledger controls diagnostics", () => {
       reviewDecision: "unmatched",
       proposedMatches: [],
     });
+  });
+
+  it("builds and validates review-only reconciliation exception resolution rows", () => {
+    const statementRow = buildLedgerReconciliationExceptionResolutionStatementRow({
+      id: "statement-import-unmatched",
+      postedAt: "2026-05-02T12:00:00.000Z",
+      description: "Synthetic bank fee pending review",
+      amountCents: -125,
+      reviewDecision: "unmatched",
+    });
+
+    expect(statementRow).toEqual({
+      id: "statement-import-unmatched",
+      postedAt: "2026-05-02T12:00:00.000Z",
+      description: "Synthetic bank fee pending review",
+      amountCents: -125,
+      duplicateKey: "2026-05-02|-125|synthetic bank fee pending review|",
+      reviewDecision: "unmatched",
+    });
+    expect(() =>
+      validateLedgerReconciliationExceptionResolutionRecord({
+        id: "resolution-001",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        statementRow,
+        varianceDecision: "needs_follow_up",
+        resolutionNote: "Synthetic staff note for later ledger review.",
+        recordedByUserId: "user-admin",
+        recordedAt: "2026-05-02T13:00:00.000Z",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      buildLedgerReconciliationExceptionResolutionStatementRow({
+        ...statementRow,
+        reviewDecision: "matched",
+      }),
+    ).toThrow(/unmatched rows/);
+    expect(() =>
+      validateLedgerReconciliationExceptionResolutionRecord({
+        id: "resolution-001",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        statementRow: { ...statementRow, duplicateKey: "trusted-client-value" },
+        varianceDecision: "needs_follow_up",
+        resolutionNote: "Synthetic staff note for later ledger review.",
+        recordedByUserId: "user-admin",
+        recordedAt: "2026-05-02T13:00:00.000Z",
+      }),
+    ).toThrow(/duplicate key/);
   });
 });

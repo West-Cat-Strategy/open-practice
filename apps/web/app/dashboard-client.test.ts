@@ -12,11 +12,14 @@ import { buildSidebarNavigationSections } from "../routes/routeCatalog";
 import {
   applySavedMatterFocus,
   applySavedQueueFocus,
+  buildSavedMatterOperationalViewDefinitionPayload,
   dashboardLaneFreshnessCue,
   describeSavedMatterFocus,
   describeSavedQueueFocus,
   describeDisabledNavigationReason,
   filterMatters,
+  savedMatterOperationalViewPresetLabel,
+  SAVED_MATTER_OPERATIONAL_VIEW_PRESETS,
   summarizeQueues,
 } from "./dashboard-utils";
 import {
@@ -1019,12 +1022,14 @@ describe("dashboard client behavior", () => {
               severity: "review" as const,
               reason: "Confidential party link requires scoped handling",
               matterId: "matter-001",
+              matchedValueRedacted: false,
             },
             {
               kind: "protected_party_cue" as const,
               severity: "review" as const,
               reason: "Active portal access protects contact-matter communications",
               matterId: "matter-001",
+              matchedValueRedacted: false,
             },
           ],
         },
@@ -1074,13 +1079,14 @@ describe("dashboard client behavior", () => {
               reason: "Possible duplicate contact identifier",
               relatedContactIds: ["contact-river-duplicate"],
               matchedOn: "identifier" as const,
-              matchedValue: "email:legal@rivercity.example",
+              matchedValueRedacted: true,
             },
             {
               kind: "protected_party_cue" as const,
               severity: "blocker" as const,
               reason: "Adverse party link requires sensitive-party caution",
               matterId: "matter-001",
+              matchedValueRedacted: false,
             },
             {
               kind: "conflict_revalidation" as const,
@@ -1090,6 +1096,7 @@ describe("dashboard client behavior", () => {
               matterId: "matter-001",
               sourceRecordId: "proposal-river-name",
               changedAt: "2026-05-01T11:00:00.000Z",
+              matchedValueRedacted: false,
             },
           ],
         },
@@ -1815,6 +1822,90 @@ describe("dashboard client behavior", () => {
     expect(describeSavedMatterFocus(savedFocus, matters, operationalViews)).toBe(
       "Matter follow-up applies 2 matters to the matter command centre.",
     );
+  });
+
+  it("builds additional saved matter preset payloads and applies their operational keys", () => {
+    const matters = [
+      matter({ id: "matter-filing", status: "open" }),
+      matter({ id: "matter-intake", status: "intake" }),
+      matter({ id: "matter-upload", status: "paused" }),
+      matter({ id: "matter-closed", status: "closed" }),
+    ];
+    const operationalViews: OperationalViewsResponse = {
+      views: [
+        {
+          definition: {
+            key: "overdue_tasks_deadlines",
+            label: "Overdue tasks and deadlines",
+            defaultPriority: "high",
+          },
+          resultCount: 2,
+          results: [
+            { matterId: "matter-filing", priority: "high" },
+            { matterId: "matter-closed", priority: "medium" },
+          ],
+        },
+        {
+          definition: {
+            key: "uncontacted_clients",
+            label: "Uncontacted clients",
+            defaultPriority: "medium",
+          },
+          resultCount: 2,
+          results: [
+            { matterId: "matter-intake", priority: "high" },
+            { matterId: "matter-filing", priority: "medium" },
+          ],
+        },
+        {
+          definition: {
+            key: "external_uploads_expiring",
+            label: "External uploads expiring",
+            defaultPriority: "medium",
+          },
+          resultCount: 1,
+          results: [{ matterId: "matter-upload", priority: "medium" }],
+        },
+      ],
+    };
+
+    const definitionFor = (presetId: string, index: number): SavedOperationalViewDefinition => {
+      const preset = SAVED_MATTER_OPERATIONAL_VIEW_PRESETS.find(
+        (candidate) => candidate.id === presetId,
+      );
+      expect(preset).toBeDefined();
+      const payload = buildSavedMatterOperationalViewDefinitionPayload(preset!, index);
+      return {
+        id: `saved-${presetId}`,
+        firmId: "firm-west-legal",
+        ownerUserId: "user-001",
+        status: "active",
+        createdAt: "2026-05-19T12:00:00.000Z",
+        updatedAt: "2026-05-19T12:00:00.000Z",
+        ...payload,
+      };
+    };
+
+    const overdue = definitionFor("overdue_filings", 1);
+    const uncontactedIntake = definitionFor("uncontacted_intake_clients", 1);
+    const expiringUploads = definitionFor("expiring_upload_links", 1);
+
+    expect(overdue).toMatchObject({
+      name: "Overdue filings 1",
+      filters: {
+        source: "dashboard-matters",
+        presetFamily: "overdue_filings",
+        operationalViewKeys: ["overdue_tasks_deadlines"],
+        statuses: ["intake", "open", "paused"],
+      },
+      permissionScope: ["matter:read", "calendar_event:read"],
+    });
+    expect(applySavedMatterFocus(matters, overdue, operationalViews)).toEqual([matters[0]]);
+    expect(applySavedMatterFocus(matters, uncontactedIntake, operationalViews)).toEqual([
+      matters[1],
+    ]);
+    expect(applySavedMatterFocus(matters, expiringUploads, operationalViews)).toEqual([matters[2]]);
+    expect(savedMatterOperationalViewPresetLabel(expiringUploads)).toBe("Expiring upload links");
   });
 
   it("loads document-processing workbenches and preserves sanitized document fallbacks", async () => {

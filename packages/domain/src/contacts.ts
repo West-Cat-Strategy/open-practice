@@ -32,6 +32,31 @@ export type ContactDossierQualitySignalKind =
   | "protected_party_cue"
   | "conflict_revalidation";
 
+export type ContactQualityReviewDecision =
+  | "duplicate_confirmed"
+  | "not_duplicate"
+  | "protected_party_handling_confirmed"
+  | "protected_party_handling_not_required"
+  | "conflict_revalidation_required"
+  | "conflict_revalidation_not_required"
+  | "needs_more_review";
+
+export interface ContactQualityReviewDecisionRecord {
+  id: string;
+  firmId: string;
+  contactId: string;
+  signalKind: ContactDossierQualitySignalKind;
+  decision: ContactQualityReviewDecision;
+  matterId?: string;
+  relatedContactIds: string[];
+  sourceRecordId?: string;
+  decidedByUserId: string;
+  decidedAt: string;
+  reason?: string;
+  evidence: Record<string, unknown>;
+  createdAt: string;
+}
+
 export interface ContactDossierQualitySignal {
   kind: ContactDossierQualitySignalKind;
   severity: "blocker" | "review" | "info";
@@ -51,6 +76,116 @@ export interface ContactDossierQualityReview {
     revalidationPromptCount: number;
   };
   signals: ContactDossierQualitySignal[];
+}
+
+const contactQualityReviewDecisionsBySignal: Record<
+  ContactDossierQualitySignalKind,
+  ReadonlySet<ContactQualityReviewDecision>
+> = {
+  duplicate_candidate: new Set(["duplicate_confirmed", "not_duplicate", "needs_more_review"]),
+  protected_party_cue: new Set([
+    "protected_party_handling_confirmed",
+    "protected_party_handling_not_required",
+    "needs_more_review",
+  ]),
+  conflict_revalidation: new Set([
+    "conflict_revalidation_required",
+    "conflict_revalidation_not_required",
+    "needs_more_review",
+  ]),
+};
+
+const unsafeContactQualityEvidenceKeys = new Set([
+  "conflictcheckdisposition",
+  "conflictdisposition",
+  "contactnotes",
+  "contactpatch",
+  "contactrewrite",
+  "contactupdate",
+  "disposition",
+  "matchedvalue",
+  "mergecontactid",
+  "rawmatchedvalue",
+  "sourcecontactid",
+  "targetcontactid",
+]);
+
+function normalizedEvidenceKey(key: string): string {
+  return key.replaceAll(/[^a-zA-Z0-9]/g, "").toLowerCase();
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function evidenceContainsUnsafeKey(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some((item) => evidenceContainsUnsafeKey(item));
+  if (!isPlainRecord(value)) return false;
+
+  return Object.entries(value).some(
+    ([key, item]) =>
+      unsafeContactQualityEvidenceKeys.has(normalizedEvidenceKey(key)) ||
+      evidenceContainsUnsafeKey(item),
+  );
+}
+
+function assertNonEmpty(value: string | undefined, label: string): void {
+  if (!value || value.trim().length === 0) {
+    throw new Error(`${label} is required`);
+  }
+}
+
+export function isContactQualityReviewDecisionAllowed(
+  signalKind: ContactDossierQualitySignalKind,
+  decision: ContactQualityReviewDecision,
+): boolean {
+  return contactQualityReviewDecisionsBySignal[signalKind]?.has(decision) ?? false;
+}
+
+export function validateContactQualityReviewDecisionRecord(
+  record: ContactQualityReviewDecisionRecord,
+): ContactQualityReviewDecisionRecord {
+  assertNonEmpty(record.id, "Contact quality review decision id");
+  assertNonEmpty(record.firmId, "Contact quality review decision firm id");
+  assertNonEmpty(record.contactId, "Contact quality review decision contact id");
+  assertNonEmpty(record.decidedByUserId, "Contact quality review decision reviewer id");
+  assertNonEmpty(record.decidedAt, "Contact quality review decision decided timestamp");
+  assertNonEmpty(record.createdAt, "Contact quality review decision created timestamp");
+
+  if (!isContactQualityReviewDecisionAllowed(record.signalKind, record.decision)) {
+    throw new Error("Contact quality review decision is not valid for the signal kind");
+  }
+
+  const relatedContactIds = record.relatedContactIds.filter((contactId) => contactId.trim());
+  if (new Set(relatedContactIds).size !== relatedContactIds.length) {
+    throw new Error("Contact quality review related contact ids must be unique");
+  }
+
+  if (record.signalKind === "duplicate_candidate") {
+    if (relatedContactIds.length === 0 || record.matterId || record.sourceRecordId) {
+      throw new Error("Duplicate candidate decisions must reference related contacts only");
+    }
+  }
+
+  if (record.signalKind === "protected_party_cue") {
+    if (!record.matterId || relatedContactIds.length > 0 || record.sourceRecordId) {
+      throw new Error("Protected-party decisions must reference one matter cue only");
+    }
+  }
+
+  if (record.signalKind === "conflict_revalidation") {
+    if (!record.matterId || !record.sourceRecordId || relatedContactIds.length > 0) {
+      throw new Error(
+        "Conflict revalidation decisions must reference one source record and matter",
+      );
+    }
+  }
+
+  if (!isPlainRecord(record.evidence) || evidenceContainsUnsafeKey(record.evidence)) {
+    throw new Error("Contact quality review decision evidence must stay review-only");
+  }
+
+  return { ...record, relatedContactIds };
 }
 
 export interface ContactDossierConflictHistoryEntry {

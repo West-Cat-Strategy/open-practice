@@ -329,4 +329,45 @@ describe("repository providers, jobs, and email delivery", () => {
     });
     expect(events.at(-1)?.errorMessage?.length).toBeLessThanOrEqual(240);
   });
+
+  it("stores email receipt token hashes and acknowledgement counters", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const link = await repository.createEmailReceiptLink({
+      id: "email-receipt-link-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      emailId: "email-history-001",
+      tokenHash: "hashed-token-only",
+      purpose: "delivery_receipt",
+      createdByUserId: "user-licensee",
+      createdAt: now,
+      expiresAt: "2026-04-30T12:00:00.000Z",
+      recordCount: 0,
+      metadata: { correlationId: "receipt-correlation" },
+    });
+
+    expect(link).toMatchObject({
+      tokenHash: "hashed-token-only",
+      recordCount: 0,
+    });
+    await expect(repository.getEmailReceiptLinkByTokenHash("raw-token")).resolves.toBeUndefined();
+    await expect(repository.getEmailReceiptLinkByTokenHash("hashed-token-only")).resolves.toEqual(
+      expect.objectContaining({ id: "email-receipt-link-001" }),
+    );
+
+    await expect(
+      repository.recordEmailReceiptLinkAccess({
+        firmId: "firm-west-legal",
+        id: "email-receipt-link-001",
+        recordedAt: "2026-04-25T13:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({
+      firstRecordedAt: "2026-04-25T13:00:00.000Z",
+      lastRecordedAt: "2026-04-25T13:00:00.000Z",
+      recordCount: 1,
+    });
+    await expect(
+      repository.listEmailReceiptLinks("firm-west-legal", { emailId: "email-history-001" }),
+    ).resolves.toEqual([expect.objectContaining({ recordCount: 1 })]);
+  });
 });

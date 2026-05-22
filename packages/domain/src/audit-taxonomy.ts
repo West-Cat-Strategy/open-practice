@@ -7,6 +7,7 @@ export type AuditEventCategory =
   | "calendar"
   | "communications"
   | "conflicts"
+  | "contacts"
   | "documents"
   | "drafting"
   | "intake"
@@ -86,6 +87,7 @@ const RESOURCE_ID_KEYS = [
   "jobId",
   "linkId",
   "packageId",
+  "ratePresetId",
   "providerEventId",
   "providerRequestId",
   "retryOfJobId",
@@ -93,6 +95,7 @@ const RESOURCE_ID_KEYS = [
   "signatureRequestId",
   "templateId",
   "deliveryId",
+  "billingPeriodLockId",
   "transactionId",
   "uploadId",
 ] as const;
@@ -167,6 +170,22 @@ export const auditEventTaxonomyDefinitions = [
     matterScope: "optional_matter",
     actorHint: "authenticated_user",
     resourceMetadataKeys: ["resultCount", "includeClosedMatters", "partyRole"],
+  }),
+  define({
+    action: "contact_quality_decision.recorded",
+    category: "contacts",
+    resourceType: "contact_quality_review_decision",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    matterMetadataKeys: ["matterId"],
+    resourceMetadataKeys: [
+      "contactId",
+      "signalKind",
+      "decision",
+      "relatedContactCount",
+      "sourceRecordId",
+      "evidenceKeyCount",
+    ],
   }),
   define({
     action: "portal.grant.created",
@@ -448,6 +467,37 @@ export const auditEventTaxonomyDefinitions = [
     actorHint: "authenticated_user",
   }),
   define({
+    action: "billing_rate_preset.created",
+    category: "billing",
+    resourceType: "billing_rate_preset",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "ratePresetId",
+      "userId",
+      "rateCents",
+      "currency",
+      "effectiveFrom",
+      "effectiveTo",
+    ],
+  }),
+  define({
+    action: "billing_period_lock.created",
+    category: "billing",
+    resourceType: "billing_period_lock",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["billingPeriodLockId", "startsOn", "endsOn", "status"],
+  }),
+  define({
+    action: "billing_period_lock.released",
+    category: "billing",
+    resourceType: "billing_period_lock",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["billingPeriodLockId", "startsOn", "endsOn", "status"],
+  }),
+  define({
     action: "time_entry.updated",
     category: "billing",
     resourceType: "time_entry",
@@ -547,6 +597,23 @@ export const auditEventTaxonomyDefinitions = [
     resourceMetadataKeys: ["invoiceId", "paymentId", "amountCents", "method"],
   }),
   define({
+    action: "billing_export.requested",
+    category: "billing",
+    resourceType: "billing_export",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "jobId",
+      "exportKind",
+      "recordCount",
+      "timeEntryCount",
+      "expenseEntryCount",
+      "invoiceCount",
+      "paymentCount",
+      "enqueueStatus",
+    ],
+  }),
+  define({
     action: "trust_transfer_request.created",
     category: "trust",
     resourceType: "trust_transfer_request",
@@ -605,6 +672,24 @@ export const auditEventTaxonomyDefinitions = [
     ],
   }),
   define({
+    action: "trust_export.requested",
+    category: "trust",
+    resourceType: "trust_export",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "jobId",
+      "exportKind",
+      "recordCount",
+      "trustTransferRequestCount",
+      "ledgerAccountCount",
+      "ledgerEntryCount",
+      "balanceCount",
+      "trustBalanceCount",
+      "enqueueStatus",
+    ],
+  }),
+  define({
     action: "ledger.transaction.posted",
     category: "trust",
     resourceType: "ledger_transaction",
@@ -631,6 +716,20 @@ export const auditEventTaxonomyDefinitions = [
     resourceMetadataKeys: ["accountId", "statementDate", "balanced"],
   }),
   define({
+    action: "ledger.reconciliation_exception_resolution.recorded",
+    category: "trust",
+    resourceType: "ledger_reconciliation_exception_resolution",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    matterMetadataKeys: [],
+    resourceMetadataKeys: [
+      "accountId",
+      "statementRowId",
+      "varianceDecision",
+      "resolutionNotePresent",
+    ],
+  }),
+  define({
     action: "email_outbox.queued",
     category: "communications",
     resourceType: "email_outbox",
@@ -645,6 +744,15 @@ export const auditEventTaxonomyDefinitions = [
     matterScope: "optional_matter",
     actorHint: "authenticated_user",
     resourceMetadataKeys: WORKFLOW_RESOURCE_KEYS,
+    actorMetadataKeys: ["actorId", "actorType"],
+  }),
+  define({
+    action: "email_receipt_link.created",
+    category: "communications",
+    resourceType: "email_receipt_link",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["emailId", "receiptLinkId", "purpose", "expiresAt"],
     actorMetadataKeys: ["actorId", "actorType"],
   }),
   define({

@@ -246,6 +246,34 @@
       "when": 1779081240000,
       "tag": "0034_hosted_calendar_meeting_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1779226736086,
+      "tag": "0035_reconciliation_exception_resolutions",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1779226736087,
+      "tag": "0036_contact_quality_review_decisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1779236000000,
+      "tag": "0037_email_receipt_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1779237000000,
+      "tag": "0038_billing_locks_rate_rules",
+      "breakpoints": true
     }
   ]
 }

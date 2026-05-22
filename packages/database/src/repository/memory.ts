@@ -18,15 +18,19 @@ import {
   clientTrustBalanceByMatter,
   transitionCalendarGuestLinkStatus,
   transitionCalendarMeetingSessionStatus,
+  validateContactQualityReviewDecisionRecord,
   invoiceStatusForPayment,
   ledgerBalanceByMatter,
   postLedgerTransaction,
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
+  validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
   verifyAuditChain,
   type AccessLogRecord,
   type AuditEvent,
+  type BillingPeriodLockRecord,
+  type BillingRatePresetRecord,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
   type CalendarEventRecord,
@@ -39,6 +43,7 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDossier,
+  type ContactQualityReviewDecisionRecord,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -47,6 +52,7 @@ import {
   type DraftTemplateRecord,
   type EmailEventRecord,
   type EmailOutboxRecord,
+  type EmailReceiptLinkRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
   type Firm,
@@ -63,6 +69,7 @@ import {
   type JobLifecycleRecord,
   type LedgerAccount,
   type LedgerEntry,
+  type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
@@ -171,6 +178,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private firms: Firm[];
   private users: User[];
   private contacts: Contact[];
+  private contactQualityReviewDecisions: ContactQualityReviewDecisionRecord[] = [];
   private matters: Matter[];
   private matterParties: MatterParty[];
   private documents: DocumentRecord[];
@@ -185,6 +193,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private portalGrants: PortalGrant[];
   private externalUploadLinks: ExternalUploadLinkRecord[] = [];
   private savedOperationalViewDefinitions: SavedOperationalViewDefinition[] = [];
+  private billingRatePresets: BillingRatePresetRecord[] = [];
+  private billingPeriodLocks: BillingPeriodLockRecord[] = [];
   private timeEntries: TimeEntry[];
   private expenseEntries: ExpenseEntry[];
   private invoices: InvoiceRecord[];
@@ -195,6 +205,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private ledgerAccounts: LedgerAccount[];
   private ledgerApprovals: LedgerTransactionApprovalRecord[] = [];
   private ledgerReconciliations: LedgerReconciliationRecord[] = [];
+  private ledgerReconciliationExceptionResolutions: LedgerReconciliationExceptionResolutionRecord[] =
+    [];
   private intakeTemplates: IntakeTemplateRecord[];
   private signatureRequestSigners: SignatureRequestSignerRecord[];
   private signatureProviderEvents: SignatureProviderEventRecord[];
@@ -216,6 +228,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private jobLifecycleRecords: JobLifecycleRecord[] = [];
   private emailOutbox: EmailOutboxRecord[] = [];
   private emailEvents: EmailEventRecord[] = [];
+  private emailReceiptLinks: EmailReceiptLinkRecord[] = [];
   private authAccounts: AuthAccountRecord[] = [];
   private authSessions: AuthSessionRecord[] = [];
   private calendarCredentials: CalendarCredentialRecord[] = [];
@@ -724,6 +737,54 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     );
   }
 
+  async createEmailReceiptLink(link: EmailReceiptLinkRecord): Promise<EmailReceiptLinkRecord> {
+    if (this.emailReceiptLinks.some((candidate) => candidate.tokenHash === link.tokenHash)) {
+      throw new Error("Email receipt token hash already exists");
+    }
+    this.emailReceiptLinks.push(clone(link));
+    return clone(link);
+  }
+
+  async listEmailReceiptLinks(
+    firmId: string,
+    options: { emailId?: string; matterId?: string } = {},
+  ): Promise<EmailReceiptLinkRecord[]> {
+    return clone(
+      this.emailReceiptLinks.filter(
+        (link) =>
+          link.firmId === firmId &&
+          (!options.emailId || link.emailId === options.emailId) &&
+          (!options.matterId || link.matterId === options.matterId),
+      ),
+    );
+  }
+
+  async getEmailReceiptLinkByTokenHash(
+    tokenHash: string,
+  ): Promise<EmailReceiptLinkRecord | undefined> {
+    return clone(this.emailReceiptLinks.find((link) => link.tokenHash === tokenHash));
+  }
+
+  async recordEmailReceiptLinkAccess(input: {
+    firmId: string;
+    id: string;
+    recordedAt: string;
+  }): Promise<EmailReceiptLinkRecord | undefined> {
+    const index = this.emailReceiptLinks.findIndex(
+      (link) => link.firmId === input.firmId && link.id === input.id,
+    );
+    if (index === -1) return undefined;
+    const existing = this.emailReceiptLinks[index]!;
+    const updated: EmailReceiptLinkRecord = {
+      ...existing,
+      firstRecordedAt: existing.firstRecordedAt ?? input.recordedAt,
+      lastRecordedAt: input.recordedAt,
+      recordCount: existing.recordCount + 1,
+    };
+    this.emailReceiptLinks[index] = clone(updated);
+    return clone(updated);
+  }
+
   async recordEmailDeliveryResult(input: {
     firmId: string;
     emailId: string;
@@ -1225,6 +1286,38 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       intakeVariableProposals,
       conflictChecks: this.conflictChecks,
     });
+  }
+
+  async listContactQualityReviewDecisionsForUser(
+    user: User,
+  ): Promise<ContactQualityReviewDecisionRecord[]> {
+    const dossiers = await this.listContactDossiersForUser(user);
+    const visibleContactIds = new Set(dossiers.map((dossier) => dossier.contact.id));
+    const visibleMatterIds = new Set(
+      dossiers.flatMap((dossier) => dossier.matters.map((matter) => matter.matterId)),
+    );
+
+    return clone(
+      this.contactQualityReviewDecisions
+        .filter(
+          (decision) =>
+            decision.firmId === user.firmId &&
+            visibleContactIds.has(decision.contactId) &&
+            (!decision.matterId || visibleMatterIds.has(decision.matterId)),
+        )
+        .sort((left, right) => right.decidedAt.localeCompare(left.decidedAt)),
+    );
+  }
+
+  async createContactQualityReviewDecision(
+    record: ContactQualityReviewDecisionRecord,
+  ): Promise<ContactQualityReviewDecisionRecord> {
+    const validated = validateContactQualityReviewDecisionRecord(record);
+    if (this.contactQualityReviewDecisions.some((decision) => decision.id === validated.id)) {
+      throw new Error("Contact quality review decision already exists");
+    }
+    this.contactQualityReviewDecisions = [...this.contactQualityReviewDecisions, clone(validated)];
+    return clone(validated);
   }
 
   async getContact(firmId: string, contactId: string): Promise<Contact | undefined> {
@@ -3003,6 +3096,124 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(
       this.ledgerReconciliations.filter((reconciliation) => reconciliation.firmId === firmId),
     );
+  }
+
+  async createLedgerReconciliationExceptionResolution(
+    resolution: LedgerReconciliationExceptionResolutionRecord,
+  ): Promise<LedgerReconciliationExceptionResolutionRecord> {
+    const account = this.ledgerAccounts.find(
+      (candidate) =>
+        candidate.firmId === resolution.firmId && candidate.id === resolution.accountId,
+    );
+    if (!account || account.type !== "trust_asset") {
+      throw new Error(
+        "Reconciliation exception resolutions require an existing trust asset account",
+      );
+    }
+    const reviewer = this.users.find(
+      (candidate) =>
+        candidate.firmId === resolution.firmId && candidate.id === resolution.recordedByUserId,
+    );
+    if (!reviewer) {
+      throw new Error(`Unknown user ${resolution.recordedByUserId}`);
+    }
+    validateLedgerReconciliationExceptionResolutionRecord(resolution);
+    this.ledgerReconciliationExceptionResolutions = [
+      ...this.ledgerReconciliationExceptionResolutions,
+      clone(resolution),
+    ];
+    return clone(resolution);
+  }
+
+  async listLedgerReconciliationExceptionResolutions(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerReconciliationExceptionResolutionRecord[]> {
+    return clone(
+      this.ledgerReconciliationExceptionResolutions
+        .filter(
+          (resolution) =>
+            resolution.firmId === firmId &&
+            (!options.accountId || resolution.accountId === options.accountId),
+        )
+        .sort((left, right) => Date.parse(left.recordedAt) - Date.parse(right.recordedAt)),
+    );
+  }
+
+  async createBillingRatePreset(preset: BillingRatePresetRecord): Promise<BillingRatePresetRecord> {
+    this.billingRatePresets = [...this.billingRatePresets, clone(preset)];
+    return clone(preset);
+  }
+
+  async listBillingRatePresets(
+    firmId: string,
+    options: { matterId?: string; userId?: string } = {},
+  ): Promise<BillingRatePresetRecord[]> {
+    return clone(
+      this.billingRatePresets
+        .filter(
+          (preset) =>
+            preset.firmId === firmId &&
+            (!options.matterId || preset.matterId === options.matterId) &&
+            (!options.userId || preset.userId === options.userId),
+        )
+        .sort((left, right) => Date.parse(left.effectiveFrom) - Date.parse(right.effectiveFrom)),
+    );
+  }
+
+  async getBillingRatePreset(
+    firmId: string,
+    presetId: string,
+  ): Promise<BillingRatePresetRecord | undefined> {
+    return clone(
+      this.billingRatePresets.find((preset) => preset.firmId === firmId && preset.id === presetId),
+    );
+  }
+
+  async createBillingPeriodLock(lock: BillingPeriodLockRecord): Promise<BillingPeriodLockRecord> {
+    this.billingPeriodLocks = [...this.billingPeriodLocks, clone(lock)];
+    return clone(lock);
+  }
+
+  async listBillingPeriodLocks(
+    firmId: string,
+    options: { matterId?: string; status?: BillingPeriodLockRecord["status"] } = {},
+  ): Promise<BillingPeriodLockRecord[]> {
+    return clone(
+      this.billingPeriodLocks
+        .filter(
+          (lock) =>
+            lock.firmId === firmId &&
+            (!options.matterId || lock.matterId === options.matterId || !lock.matterId) &&
+            (!options.status || lock.status === options.status),
+        )
+        .sort((left, right) => left.startsOn.localeCompare(right.startsOn)),
+    );
+  }
+
+  async getBillingPeriodLock(
+    firmId: string,
+    lockId: string,
+  ): Promise<BillingPeriodLockRecord | undefined> {
+    return clone(
+      this.billingPeriodLocks.find((lock) => lock.firmId === firmId && lock.id === lockId),
+    );
+  }
+
+  async updateBillingPeriodLock(
+    firmId: string,
+    lockId: string,
+    updates: Partial<BillingPeriodLockRecord>,
+  ): Promise<BillingPeriodLockRecord> {
+    const index = this.billingPeriodLocks.findIndex(
+      (lock) => lock.firmId === firmId && lock.id === lockId,
+    );
+    if (index === -1) throw new Error("Billing period lock was not found");
+    const updated = { ...this.billingPeriodLocks[index]!, ...updates };
+    this.billingPeriodLocks = this.billingPeriodLocks.map((lock, candidateIndex) =>
+      candidateIndex === index ? updated : lock,
+    );
+    return clone(updated);
   }
 
   async listTimeEntries(

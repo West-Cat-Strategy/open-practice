@@ -101,12 +101,16 @@ import DraftEditor from "./drafting/DraftEditor";
 import {
   applySavedQueueFocus,
   applySavedMatterFocus,
+  buildSavedMatterOperationalViewDefinitionPayload,
   dashboardLaneFreshnessCue,
   describeSavedMatterFocus,
   describeSavedQueueFocus,
   filterMatters,
+  savedMatterOperationalViewPresetLabel,
+  SAVED_MATTER_OPERATIONAL_VIEW_PRESETS,
   summarizeQueues,
   type DashboardLaneRefreshState,
+  type SavedMatterOperationalViewPreset,
 } from "./dashboard-utils";
 import {
   buildConflictCheckPayload,
@@ -398,9 +402,7 @@ function formatSavedOperationalViewDefinition(definition: SavedOperationalViewDe
 }
 
 function formatSavedMatterViewDefinition(definition: SavedOperationalViewDefinition): string {
-  const preset =
-    definition.filters.presetFamily === "matter_follow_up" ? "follow-up" : "matter command centre";
-  return `${preset} · ${definition.rowLimit} matters · ${definition.permissionScope.join(", ")}`;
+  return `${savedMatterOperationalViewPresetLabel(definition)} · ${definition.rowLimit} matters · ${definition.permissionScope.join(", ")}`;
 }
 
 export default function DashboardClient({
@@ -2951,31 +2953,22 @@ export default function DashboardClient({
     }
   }
 
-  async function saveMatterFollowUpViewDefinition(): Promise<void> {
+  async function saveMatterOperationalViewDefinition(
+    preset: SavedMatterOperationalViewPreset,
+  ): Promise<void> {
     setSavingMatterView(true);
-    setSavedMatterViewStatus("Saving matter follow-up view...");
+    setSavedMatterViewStatus(`Saving ${preset.statusLabel} view...`);
     try {
+      const sameFamilyCount = matterOperationalViewDefinitions.filter(
+        (definition) => definition.filters.presetFamily === preset.id,
+      ).length;
       const payload = await requestDashboardJson<{ definition: SavedOperationalViewDefinition }>(
         apiBaseUrl,
         "/api/operational-views/definitions",
         {
           method: "POST",
           headers: devHeaders,
-          payload: {
-            surface: "matters",
-            name: `Matter follow-up ${matterOperationalViewDefinitions.length + 1}`,
-            filters: {
-              source: "dashboard-matters",
-              presetFamily: "matter_follow_up",
-              operationalViewKeys: ["stale_matters", "uncontacted_clients"],
-              statuses: ["intake", "open", "paused"],
-            },
-            columns: ["number", "practiceArea", "status"],
-            sort: { priority: "desc", lastActivityAt: "asc" },
-            rowLimit: 12,
-            dashboardBehavior: { pinToMatterContext: true },
-            permissionScope: ["matter:read"],
-          },
+          payload: buildSavedMatterOperationalViewDefinitionPayload(preset, sameFamilyCount + 1),
         },
       );
       setSavedOperationalViewDefinitions((current) => [payload.definition, ...current]);
@@ -3122,8 +3115,9 @@ export default function DashboardClient({
           onApplySavedMatterView={applyMatterOperationalViewDefinition}
           onMatterSearchChange={setMatterSearch}
           onSelectMatter={selectMatter}
-          onSaveMatterFollowUpView={saveMatterFollowUpViewDefinition}
+          onSaveMatterPreset={saveMatterOperationalViewDefinition}
           savedMatterViewDefinitions={matterOperationalViewDefinitions}
+          savedMatterViewPresets={SAVED_MATTER_OPERATIONAL_VIEW_PRESETS}
           savedMatterViewStatus={savedMatterViewStatus}
           savingMatterView={savingMatterView}
         />

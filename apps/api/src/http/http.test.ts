@@ -107,5 +107,7 @@ describe("API HTTP helpers", () => {
     expect(isPublicRoute("POST", "/api/portal/intake-forms/token-001/draft")).toBe(true);
     expect(isPublicRoute("GET", "/api/portal/guest-sessions/token-001")).toBe(true);
     expect(isPublicRoute("POST", "/api/portal/guest-sessions/token-001/check-in")).toBe(true);
+    expect(isPublicRoute("GET", "/api/portal/mail/receipts/token-001")).toBe(true);
+    expect(isPublicRoute("POST", "/api/portal/mail/receipts/token-001/acknowledge")).toBe(true);
   });
 });

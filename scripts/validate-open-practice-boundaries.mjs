@@ -258,6 +258,7 @@ export const FORBIDDEN_SERVER_ROUTE_GROUPS = [
       "/api/ledger/transactions",
       "/api/ledger/transactions/:id/approvals",
       "/api/ledger/reconciliations/preview",
+      "/api/ledger/reconciliation-exception-resolutions",
       "/api/ledger/reconciliations",
     ],
   },

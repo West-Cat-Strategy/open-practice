@@ -63,6 +63,17 @@ export type LedgerReconciliationStatus = "draft" | "matched" | "exception" | "re
 
 export type LedgerStatementRowReviewDecision = "matched" | "unmatched";
 
+export const ledgerReconciliationExceptionVarianceDecisions = [
+  "ledger_entry_expected",
+  "statement_duplicate",
+  "statement_source_issue",
+  "operational_variance_acknowledged",
+  "needs_follow_up",
+] as const;
+
+export type LedgerReconciliationExceptionVarianceDecision =
+  (typeof ledgerReconciliationExceptionVarianceDecisions)[number];
+
 export interface LedgerReconciliationStatementRow {
   id: string;
   postedAt: string;
@@ -92,6 +103,33 @@ export interface LedgerReconciliationRecord {
   varianceExplanation?: string;
   evidence: Record<string, unknown>;
   createdAt: string;
+}
+
+export interface LedgerReconciliationExceptionResolutionStatementRow {
+  id: string;
+  postedAt: string;
+  description: string;
+  amountCents: number;
+  reference?: string;
+  duplicateKey: string;
+  duplicateOfRowId?: string;
+  reviewDecision: "unmatched";
+}
+
+export interface LedgerReconciliationExceptionResolutionStatementRowInput extends LedgerStatementImportPreviewRowInput {
+  duplicateOfRowId?: string;
+  reviewDecision: LedgerStatementRowReviewDecision;
+}
+
+export interface LedgerReconciliationExceptionResolutionRecord {
+  id: string;
+  firmId: string;
+  accountId: string;
+  statementRow: LedgerReconciliationExceptionResolutionStatementRow;
+  varianceDecision: LedgerReconciliationExceptionVarianceDecision;
+  resolutionNote: string;
+  recordedByUserId: string;
+  recordedAt: string;
 }
 
 export interface LedgerReconciliationReviewSummary {
@@ -544,6 +582,34 @@ export function previewLedgerStatementImport(input: {
   };
 }
 
+export function ledgerStatementRowDuplicateKey(row: LedgerStatementImportPreviewRowInput): string {
+  return [
+    statementDateKey(row.postedAt),
+    row.amountCents.toString(),
+    normalizeStatementText(row.description),
+    normalizeStatementText(row.reference ?? ""),
+  ].join("|");
+}
+
+export function buildLedgerReconciliationExceptionResolutionStatementRow(
+  row: LedgerReconciliationExceptionResolutionStatementRowInput,
+): LedgerReconciliationExceptionResolutionStatementRow {
+  if (row.reviewDecision !== "unmatched") {
+    throw new Error("Reconciliation exception resolutions can only reference unmatched rows");
+  }
+
+  return {
+    id: row.id,
+    postedAt: row.postedAt,
+    description: row.description,
+    amountCents: row.amountCents,
+    reference: row.reference,
+    duplicateKey: ledgerStatementRowDuplicateKey(row),
+    duplicateOfRowId: row.duplicateOfRowId,
+    reviewDecision: "unmatched",
+  };
+}
+
 export function buildJurisdictionalTrustReport(input: {
   matters: Array<Pick<Matter, "id" | "jurisdiction">>;
   ledger: LedgerControlsLedgerSnapshot;
@@ -679,17 +745,34 @@ export function validateLedgerReconciliationRecord(
   }
 }
 
+export function validateLedgerReconciliationExceptionResolutionRecord(
+  resolution: LedgerReconciliationExceptionResolutionRecord,
+): void {
+  if (resolution.statementRow.reviewDecision !== "unmatched") {
+    throw new Error("Reconciliation exception resolutions can only reference unmatched rows");
+  }
+  if (!resolution.resolutionNote.trim()) {
+    throw new Error("Reconciliation exception resolution note is required");
+  }
+  if (!ledgerReconciliationExceptionVarianceDecisions.includes(resolution.varianceDecision)) {
+    throw new Error("Reconciliation exception variance decision is invalid");
+  }
+  if (
+    resolution.statementRow.duplicateKey !== ledgerStatementRowDuplicateKey(resolution.statementRow)
+  ) {
+    throw new Error("Reconciliation exception statement-row duplicate key is invalid");
+  }
+  if (Number.isNaN(new Date(resolution.recordedAt).getTime())) {
+    throw new Error("Reconciliation exception resolution timestamp is invalid");
+  }
+}
+
 function uniqueInOrder<T extends string>(values: T[]): T[] {
   return [...new Set(values)];
 }
 
 function statementRowDuplicateKey(row: LedgerStatementImportPreviewRowInput): string {
-  return [
-    statementDateKey(row.postedAt),
-    row.amountCents.toString(),
-    normalizeStatementText(row.description),
-    normalizeStatementText(row.reference ?? ""),
-  ].join("|");
+  return ledgerStatementRowDuplicateKey(row);
 }
 
 function proposedStatementLedgerMatches(

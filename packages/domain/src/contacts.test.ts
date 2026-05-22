@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildContactDossiers } from "./contacts.js";
+import {
+  buildContactDossiers,
+  isContactQualityReviewDecisionAllowed,
+  validateContactQualityReviewDecisionRecord,
+} from "./contacts.js";
 import {
   sampleContacts,
   sampleMatterParties,
@@ -218,5 +222,54 @@ describe("contact dossiers", () => {
         }),
       ]),
     );
+  });
+
+  it("validates non-destructive contact quality review decision records", () => {
+    const decision = validateContactQualityReviewDecisionRecord({
+      id: "contact-quality-decision-001",
+      firmId: "firm-west-legal",
+      contactId: "contact-river",
+      signalKind: "duplicate_candidate",
+      decision: "duplicate_confirmed",
+      relatedContactIds: ["contact-river-duplicate"],
+      decidedByUserId: "user-licensee",
+      decidedAt: "2026-05-19T12:00:00.000Z",
+      evidence: { reviewedSource: "contact_review_queue", syntheticReview: true },
+      createdAt: "2026-05-19T12:00:00.000Z",
+    });
+
+    expect(decision.relatedContactIds).toEqual(["contact-river-duplicate"]);
+    expect(isContactQualityReviewDecisionAllowed("protected_party_cue", "not_duplicate")).toBe(
+      false,
+    );
+    expect(() =>
+      validateContactQualityReviewDecisionRecord({
+        ...decision,
+        id: "contact-quality-decision-invalid-pair",
+        signalKind: "protected_party_cue",
+        decision: "duplicate_confirmed",
+        relatedContactIds: [],
+        matterId: "matter-001",
+      }),
+    ).toThrow("not valid for the signal kind");
+    expect(() =>
+      validateContactQualityReviewDecisionRecord({
+        ...decision,
+        id: "contact-quality-decision-unsafe",
+        evidence: { contactPatch: { displayName: "Do not rewrite" } },
+      }),
+    ).toThrow("evidence must stay review-only");
+    expect(() =>
+      validateContactQualityReviewDecisionRecord({
+        ...decision,
+        id: "contact-quality-decision-conflict-mutation",
+        signalKind: "conflict_revalidation",
+        decision: "conflict_revalidation_required",
+        relatedContactIds: [],
+        matterId: "matter-001",
+        sourceRecordId: "proposal-contact-name",
+        evidence: { conflictDisposition: "cleared" },
+      }),
+    ).toThrow("evidence must stay review-only");
   });
 });
