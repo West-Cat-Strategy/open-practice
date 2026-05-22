@@ -27,6 +27,7 @@ import {
   shouldUpdateSignatureRequestStatus,
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
+  validateLedgerStatementImportBatchRecord,
   validateBillingPeriodLock,
   validateBillingRateRule,
   validateContactDataQualityResolutionRecord,
@@ -75,6 +76,7 @@ import {
   type LedgerEntry,
   type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
+  type LedgerStatementImportBatchRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
@@ -209,6 +211,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private ledgerAccounts: LedgerAccount[];
   private ledgerApprovals: LedgerTransactionApprovalRecord[] = [];
   private ledgerReconciliations: LedgerReconciliationRecord[] = [];
+  private ledgerStatementImportBatches: LedgerStatementImportBatchRecord[] = [];
   private ledgerReconciliationExceptionResolutions: LedgerReconciliationExceptionResolutionRecord[] =
     [];
   private intakeTemplates: IntakeTemplateRecord[];
@@ -3158,6 +3161,41 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   async listLedgerReconciliations(firmId: string): Promise<LedgerReconciliationRecord[]> {
     return clone(
       this.ledgerReconciliations.filter((reconciliation) => reconciliation.firmId === firmId),
+    );
+  }
+
+  async createLedgerStatementImportBatch(
+    batch: LedgerStatementImportBatchRecord,
+  ): Promise<LedgerStatementImportBatchRecord> {
+    const account = this.ledgerAccounts.find(
+      (candidate) => candidate.firmId === batch.firmId && candidate.id === batch.accountId,
+    );
+    if (!account || account.type !== "trust_asset") {
+      throw new Error("Statement import batches require an existing trust asset account");
+    }
+    const creator = this.users.find(
+      (candidate) => candidate.firmId === batch.firmId && candidate.id === batch.createdByUserId,
+    );
+    if (!creator) {
+      throw new Error(`Unknown user ${batch.createdByUserId}`);
+    }
+    validateLedgerStatementImportBatchRecord(batch);
+    this.ledgerStatementImportBatches = [...this.ledgerStatementImportBatches, clone(batch)];
+    return clone(batch);
+  }
+
+  async listLedgerStatementImportBatches(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerStatementImportBatchRecord[]> {
+    return clone(
+      this.ledgerStatementImportBatches
+        .filter(
+          (batch) =>
+            batch.firmId === firmId &&
+            (!options.accountId || batch.accountId === options.accountId),
+        )
+        .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)),
     );
   }
 

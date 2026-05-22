@@ -57,6 +57,7 @@ import {
   type LedgerEntry,
   type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
+  type LedgerStatementImportBatchRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
@@ -1001,6 +1002,13 @@ export interface OpenPracticeRepository {
     reconciliation: LedgerReconciliationRecord,
   ): Promise<LedgerReconciliationRecord>;
   listLedgerReconciliations(firmId: string): Promise<LedgerReconciliationRecord[]>;
+  createLedgerStatementImportBatch(
+    batch: LedgerStatementImportBatchRecord,
+  ): Promise<LedgerStatementImportBatchRecord>;
+  listLedgerStatementImportBatches(
+    firmId: string,
+    options?: { accountId?: string },
+  ): Promise<LedgerStatementImportBatchRecord[]>;
   createLedgerReconciliationExceptionResolution(
     resolution: LedgerReconciliationExceptionResolutionRecord,
   ): Promise<LedgerReconciliationExceptionResolutionRecord>;

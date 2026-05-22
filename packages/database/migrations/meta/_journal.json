@@ -260,6 +260,13 @@
       "when": 1779226800000,
       "tag": "0036_operational_improvement_records",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1779451200000,
+      "tag": "0037_trust_statement_import_batches",
+      "breakpoints": true
     }
   ]
 }

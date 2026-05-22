@@ -19,6 +19,10 @@ trust accounting software, accounting software, or tax-advice tooling.
 - Statement import previews are non-persistent review aids only. They can dedupe imported rows and
   propose matches against existing trust-ledger entries, but they do not post ledger entries, create
   reconciliation records, approve transactions, or move funds.
+- Statement import batch records persist source label, checksum, row count, duplicate count, status,
+  optional matching profile ID, creator, and timestamp for operational tracking. They do not store
+  statement rows, statement evidence, posting payloads, reconciliation records, approvals, or fund
+  movement instructions.
 - Reconciliation exception resolution records can store staff notes and variance decisions for
   unmatched statement-preview rows. They are review notes only: they do not mutate posted ledger
   entries, create reconciliation records, move funds, or certify accounting conclusions.

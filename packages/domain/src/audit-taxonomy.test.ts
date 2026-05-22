@@ -211,6 +211,44 @@ describe("audit event taxonomy", () => {
     ]);
   });
 
+  it("classifies statement import batch events without source or checksum detail hints", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "ledger.statement_import_batch.recorded",
+        resourceType: "ledger_statement_import_batch",
+        resourceId: "statement-import-batch-001",
+        metadata: {
+          accountId: "acct-trust-bank",
+          importedStatementRowCount: 12,
+          duplicateStatementRowCount: 2,
+          status: "previewed",
+          sourceLabelPresent: true,
+          checksumPresent: true,
+          matchingProfilePresent: true,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "trust",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual([
+      "accountId",
+      "importedStatementRowCount",
+      "duplicateStatementRowCount",
+      "status",
+      "sourceLabelPresent",
+      "checksumPresent",
+      "matchingProfilePresent",
+    ]);
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["sourceLabel", "checksumSha256", "statementRows"]),
+    );
+  });
+
   it("classifies communications triage note and follow-up metadata as safe resource hints", () => {
     const classification = classifyAuditEvent(
       auditEvent({

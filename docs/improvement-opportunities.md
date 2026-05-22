@@ -13,8 +13,10 @@ These candidates name the next smallest useful unimplemented slice. Each row als
 surface it must not duplicate.
 
 No active candidate rows. The OP-T108 through OP-T112 improvement batch closed the previously
-tracked candidate set; add future candidates here only after comparing against the shipped workboard
-rows and proof.
+tracked candidate set, and OP-T115 closed the persistent trust statement import batch metadata gap.
+Future trust statement match-rule profiles should be promoted as their own candidate only after
+comparing against the shipped OP-T104 preview, OP-T107 exception-resolution, and OP-T115 batch
+metadata proof.
 
 ## Implementation Guardrails
 

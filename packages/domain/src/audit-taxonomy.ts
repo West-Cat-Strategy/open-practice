@@ -778,6 +778,23 @@ export const auditEventTaxonomyDefinitions = [
     ],
   }),
   define({
+    action: "ledger.statement_import_batch.recorded",
+    category: "trust",
+    resourceType: "ledger_statement_import_batch",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    matterMetadataKeys: [],
+    resourceMetadataKeys: [
+      "accountId",
+      "importedStatementRowCount",
+      "duplicateStatementRowCount",
+      "status",
+      "sourceLabelPresent",
+      "checksumPresent",
+      "matchingProfilePresent",
+    ],
+  }),
+  define({
     action: "contact.data_quality_resolution.recorded",
     category: "contacts",
     resourceType: "contact_data_quality_resolution",

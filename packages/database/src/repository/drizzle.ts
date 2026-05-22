@@ -33,6 +33,7 @@ import {
   validateContactDataQualityResolutionRecord,
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
+  validateLedgerStatementImportBatchRecord,
   verifyAuditChain,
   type AccessLogRecord,
   type AuditEvent,
@@ -76,6 +77,7 @@ import {
   type LedgerEntry,
   type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
+  type LedgerStatementImportBatchRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
@@ -212,6 +214,7 @@ import {
   mapLedgerApprovalRow,
   mapLedgerReconciliationExceptionResolutionRow,
   mapLedgerReconciliationRow,
+  mapLedgerStatementImportBatchRow,
   mapLegalClinicMatterProfileRow,
   mapLegalClinicProgramRow,
   mapMatter,
@@ -4363,6 +4366,49 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .where(eq(schema.trustReconciliations.firmId, firmId))
       .orderBy(asc(schema.trustReconciliations.createdAt));
     return rows.map(mapLedgerReconciliationRow);
+  }
+
+  async createLedgerStatementImportBatch(
+    batch: LedgerStatementImportBatchRecord,
+  ): Promise<LedgerStatementImportBatchRecord> {
+    const [account] = await this.db
+      .select()
+      .from(schema.ledgerAccounts)
+      .where(
+        and(
+          eq(schema.ledgerAccounts.firmId, batch.firmId),
+          eq(schema.ledgerAccounts.id, batch.accountId),
+        ),
+      );
+    if (!account || account.type !== "trust_asset") {
+      throw new Error("Statement import batches require an existing trust asset account");
+    }
+    validateLedgerStatementImportBatchRecord(batch);
+    await this.db.insert(schema.trustStatementImportBatches).values({
+      ...batch,
+      matchingProfileId: batch.matchingProfileId ?? null,
+      createdAt: new Date(batch.createdAt),
+    });
+    return batch;
+  }
+
+  async listLedgerStatementImportBatches(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerStatementImportBatchRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.trustStatementImportBatches)
+      .where(
+        options.accountId
+          ? and(
+              eq(schema.trustStatementImportBatches.firmId, firmId),
+              eq(schema.trustStatementImportBatches.accountId, options.accountId),
+            )
+          : eq(schema.trustStatementImportBatches.firmId, firmId),
+      )
+      .orderBy(asc(schema.trustStatementImportBatches.createdAt));
+    return rows.map(mapLedgerStatementImportBatchRow);
   }
 
   async createLedgerReconciliationExceptionResolution(
