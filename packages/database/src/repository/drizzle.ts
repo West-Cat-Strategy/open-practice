@@ -81,6 +81,7 @@ import {
   type LegalClinicMatterProfile,
   type LegalClinicProgram,
   type ManualPaymentRecord,
+  type Matter,
   type MatterParty,
   type NewAuditEvent,
   type PaymentAllocationRecord,
@@ -111,6 +112,7 @@ import type {
   CalendarEventReminderUpsertInput,
   CalendarEventUpsertInput,
   CalendarMeetingSessionCreateInput,
+  CreateMatterWithClientInput,
   DocumentUploadIntent,
   FirstRunSetupInput,
   FirstRunSetupResult,
@@ -240,6 +242,26 @@ import {
   trustTransferRequestInsert,
   userHasFirmWideLedgerAccess,
 } from "./drizzle-mappers.js";
+
+function isFirmWideMatterReader(user: User): boolean {
+  return user.role === "owner_admin" || user.role === "auditor";
+}
+
+function nextMatterNumber(
+  matters: Array<Pick<Matter, "firmId" | "number">>,
+  firmId: string,
+  openedOn: string,
+): string {
+  const year = new Date(openedOn).getUTCFullYear();
+  const prefix = `${year}-`;
+  const maxExisting = matters
+    .filter((matter) => matter.firmId === firmId && matter.number.startsWith(prefix))
+    .reduce((max, matter) => {
+      const value = Number.parseInt(matter.number.slice(prefix.length), 10);
+      return Number.isFinite(value) ? Math.max(max, value) : max;
+    }, 0);
+  return `${prefix}${String(maxExisting + 1).padStart(4, "0")}`;
+}
 
 export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   constructor(private readonly db: OpenPracticeDatabase) {}
@@ -1617,11 +1639,16 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   }
 
   async listMattersForUser(user: User): Promise<MatterSummary[]> {
-    if (user.assignedMatterIds.length === 0) return [];
-    const matterRows = await this.db
-      .select()
-      .from(schema.matters)
-      .where(inArray(schema.matters.id, user.assignedMatterIds));
+    const firmWide = isFirmWideMatterReader(user);
+    if (!firmWide && user.assignedMatterIds.length === 0) return [];
+    const matterRows = firmWide
+      ? await this.db.select().from(schema.matters).where(eq(schema.matters.firmId, user.firmId))
+      : await this.db
+          .select()
+          .from(schema.matters)
+          .where(inArray(schema.matters.id, user.assignedMatterIds));
+    const visibleMatterIds = matterRows.map((matter) => matter.id);
+    if (visibleMatterIds.length === 0) return [];
     const ledger = await this.getLedger(user.firmId);
     const allParties = await this.listMatterParties(user.firmId);
     const contacts = await this.listContacts(user.firmId);
@@ -1639,7 +1666,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .where(
         and(
           eq(schema.emailOutbox.firmId, user.firmId),
-          inArray(schema.emailOutbox.matterId, user.assignedMatterIds),
+          inArray(schema.emailOutbox.matterId, visibleMatterIds),
         ),
       );
     const emailOutbox = emailRows.map(mapEmailOutboxRow);
@@ -1651,13 +1678,13 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .where(
         and(
           eq(schema.calendarEvents.firmId, user.firmId),
-          inArray(schema.calendarEvents.matterId, user.assignedMatterIds),
+          inArray(schema.calendarEvents.matterId, visibleMatterIds),
           isNull(schema.calendarEvents.deletedAt),
         ),
       );
     const calendarEvents = calendarRows.map(mapCalendarEventRow);
     const taskDeadlines = await this.listTaskDeadlines(user.firmId, {
-      matterIds: user.assignedMatterIds,
+      matterIds: visibleMatterIds,
       includeCompleted: true,
     });
     const generatedDocumentRows = await this.db
@@ -1711,6 +1738,95 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         trustBalanceCents: matterTrustBalance(ledger.entries, ledger.accounts, matter, allParties),
       };
     });
+  }
+
+  async createMatterWithClient(input: CreateMatterWithClientInput): Promise<MatterSummary> {
+    await this.db.transaction(async (tx) => {
+      const existingMatters = await tx
+        .select()
+        .from(schema.matters)
+        .where(eq(schema.matters.firmId, input.firmId));
+      const matter: Matter = {
+        id: input.matterId,
+        firmId: input.firmId,
+        number: nextMatterNumber(existingMatters.map(mapMatter), input.firmId, input.openedOn),
+        title: input.title,
+        practiceArea: input.practiceArea,
+        status: "intake",
+        jurisdiction: input.jurisdiction,
+        responsibleUserId: input.actorUserId,
+        openedOn: input.openedOn,
+      };
+
+      await tx.insert(schema.contacts).values({
+        id: input.contactId,
+        firmId: input.firmId,
+        kind: input.client.kind,
+        displayName: input.client.displayName,
+        aliases: [],
+        identifiers: input.client.identifiers,
+      });
+      await tx.insert(schema.matters).values({
+        ...matter,
+        openedOn: new Date(input.openedOn),
+        closedOn: null,
+      });
+      await tx.insert(schema.matterAssignments).values({
+        matterId: input.matterId,
+        userId: input.actorUserId,
+      });
+      await tx.insert(schema.matterParties).values({
+        id: input.partyId,
+        firmId: input.firmId,
+        matterId: input.matterId,
+        contactId: input.contactId,
+        role: "prospective_client",
+        adverse: false,
+        confidential: true,
+      });
+
+      const [previousRow] = await tx
+        .select()
+        .from(schema.auditEvents)
+        .where(eq(schema.auditEvents.firmId, input.firmId))
+        .orderBy(desc(schema.auditEvents.occurredAt))
+        .limit(1);
+      const previous = previousRow
+        ? {
+            ...previousRow,
+            occurredAt: previousRow.occurredAt.toISOString(),
+            metadata: previousRow.metadata as Record<string, unknown>,
+          }
+        : undefined;
+      const audit = appendAuditEvent(previous, {
+        id: input.auditEventId,
+        firmId: input.firmId,
+        actorId: input.actorUserId,
+        action: "matter.opened",
+        resourceType: "matter",
+        resourceId: input.matterId,
+        occurredAt: input.occurredAt,
+        metadata: {
+          matterId: input.matterId,
+          source: "dashboard_zero_matter",
+          clientContactCreated: true,
+          partyRole: "prospective_client",
+        },
+      });
+      await tx.insert(schema.auditEvents).values({
+        ...audit,
+        occurredAt: new Date(audit.occurredAt),
+        metadata: audit.metadata,
+      });
+    });
+
+    const actor = await this.getUser(input.firmId, input.actorUserId);
+    if (!actor) throw new Error(`Unknown user ${input.actorUserId}`);
+    const created = (await this.listMattersForUser(actor)).find(
+      (matter) => matter.id === input.matterId,
+    );
+    if (!created) throw new Error(`Created matter ${input.matterId} was not visible`);
+    return created;
   }
 
   async listContactDossiersForUser(user: User): Promise<ContactDossier[]> {

@@ -12,13 +12,18 @@ import type {
 import { sampleResidentialTenancyIntakeDefinition } from "@open-practice/domain/sample-data";
 import { buildSidebarNavigationSections } from "../routes/routeCatalog";
 import {
+  applyMatterAvailabilityToNavigation,
   applySavedMatterFocus,
   applySavedQueueFocus,
+  buildCreateMatterPayload,
+  canSubmitFirstMatter,
   dashboardLaneFreshnessCue,
   describeSavedMatterFocus,
   describeSavedQueueFocus,
   describeDisabledNavigationReason,
+  enableMatterScopedCapabilitiesForLocalMatter,
   filterMatters,
+  initialFirstMatterFormState,
   summarizeQueues,
 } from "./dashboard-utils";
 import {
@@ -1873,6 +1878,14 @@ describe("dashboard client behavior", () => {
     ).toBe("Billing is unavailable for your current role.");
     expect(
       describeDisabledNavigationReason({
+        key: "documents",
+        label: "Documents",
+        enabled: false,
+        disabledReason: "Create or assign a matter to enable this matter-scoped section.",
+      }),
+    ).toBe("Create or assign a matter to enable this matter-scoped section.");
+    expect(
+      describeDisabledNavigationReason({
         key: "externalUploads",
         label: "Uploads",
         enabled: false,
@@ -1904,6 +1917,101 @@ describe("dashboard client behavior", () => {
       }),
     ).toBe("2 queue items need attention. 1 high priority item.");
     expect(summarizeQueues({ sections: [] })).toBe("No queue items need attention.");
+  });
+
+  it("keeps operational navigation available while disabling matter-scoped surfaces", () => {
+    const navigation = applyMatterAvailabilityToNavigation(
+      buildSidebarNavigationSections({
+        billingCanView: true,
+        shareLinksEnabled: true,
+        externalUploadsEnabled: true,
+        capabilitySections: [
+          { key: "matters", enabled: false },
+          { key: "contacts", enabled: true },
+          { key: "documents", enabled: true },
+          { key: "audit", enabled: true },
+          { key: "queues", enabled: true },
+        ],
+      }),
+      false,
+      true,
+    );
+
+    expect(navigation.find((section) => section.key === "matters")).toMatchObject({
+      enabled: true,
+    });
+    expect(navigation.find((section) => section.key === "documents")).toMatchObject({
+      enabled: false,
+      disabledReason: "Create or assign a matter to enable this matter-scoped section.",
+    });
+    expect(navigation.find((section) => section.key === "contacts")).toMatchObject({
+      enabled: true,
+    });
+    expect(navigation.find((section) => section.key === "audit")).toMatchObject({
+      enabled: true,
+    });
+    expect(navigation.find((section) => section.key === "queues")).toMatchObject({
+      enabled: true,
+    });
+  });
+
+  it("reenables matter-scoped navigation from local created-matter state", () => {
+    const capabilitySections = enableMatterScopedCapabilitiesForLocalMatter(
+      [
+        capability("matters", { enabled: false, actions: ["create", "read"] }),
+        capability("contacts", { enabled: true, actions: ["read"] }),
+        capability("documents", { enabled: false, actions: ["read"] }),
+        capability("audit", { enabled: true, actions: ["read"] }),
+      ],
+      true,
+    );
+
+    const navigation = buildSidebarNavigationSections({
+      billingCanView: false,
+      shareLinksEnabled: false,
+      externalUploadsEnabled: false,
+      capabilitySections,
+    });
+
+    expect(navigation.find((section) => section.key === "matters")).toMatchObject({
+      enabled: true,
+    });
+    expect(navigation.find((section) => section.key === "documents")).toMatchObject({
+      enabled: true,
+    });
+    expect(navigation.find((section) => section.key === "audit")).toMatchObject({
+      enabled: true,
+    });
+  });
+
+  it("builds first-matter creation payloads with trimmed optional client identifiers", () => {
+    const form = {
+      ...initialFirstMatterFormState,
+      title: "  Synthetic starter intake  ",
+      practiceArea: "  Residential tenancy  ",
+      clientDisplayName: "  Synthetic Client  ",
+      clientEmail: "  synthetic.client@example.test  ",
+      clientPhone: "  ",
+    };
+
+    expect(canSubmitFirstMatter(form)).toBe(true);
+    expect(buildCreateMatterPayload(form)).toEqual({
+      title: "Synthetic starter intake",
+      practiceArea: "Residential tenancy",
+      jurisdiction: "BC",
+      client: {
+        kind: "person",
+        displayName: "Synthetic Client",
+        email: "synthetic.client@example.test",
+      },
+    });
+    expect(
+      canSubmitFirstMatter({
+        ...initialFirstMatterFormState,
+        title: "Synthetic starter intake",
+        clientDisplayName: "",
+      }),
+    ).toBe(false);
   });
 
   it("labels dashboard lane freshness without exposing response bodies", () => {

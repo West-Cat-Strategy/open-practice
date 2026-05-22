@@ -29,6 +29,8 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDataQualityResolutionRecord,
+  type ContactIdentifier,
+  type ContactKind,
   type ContactDossier,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
@@ -67,6 +69,7 @@ import {
   type NewAuditEvent,
   type PaymentAllocationRecord,
   type PortalGrant,
+  type Province,
   type PostedLedgerTransaction,
   type ProviderSettingRecord,
   type RecoveryCodeRecord,
@@ -379,6 +382,25 @@ export interface FirstRunSetupResult {
   firstMatter?: Matter;
 }
 
+export interface CreateMatterWithClientInput {
+  firmId: string;
+  actorUserId: string;
+  matterId: string;
+  contactId: string;
+  partyId: string;
+  title: string;
+  practiceArea: string;
+  jurisdiction: Province;
+  openedOn: string;
+  occurredAt: string;
+  auditEventId: string;
+  client: {
+    kind: ContactKind;
+    displayName: string;
+    identifiers: ContactIdentifier[];
+  };
+}
+
 export class FirstRunSetupConflictError extends Error {
   constructor(message = "First-run setup is not available") {
     super(message);
@@ -580,6 +602,7 @@ export interface OpenPracticeRepository {
   listRecoveryCodes(firmId: string, userId: string): Promise<RecoveryCodeRecord[]>;
   getOverview(firmId: string): Promise<PracticeOverview>;
   listMattersForUser(user: User): Promise<MatterSummary[]>;
+  createMatterWithClient(input: CreateMatterWithClientInput): Promise<MatterSummary>;
   listContactDossiersForUser(user: User): Promise<ContactDossier[]>;
   getContact(firmId: string, contactId: string): Promise<Contact | undefined>;
   createContactDataQualityResolution(

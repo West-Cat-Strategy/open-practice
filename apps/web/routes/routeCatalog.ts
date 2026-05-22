@@ -41,6 +41,7 @@ export interface OpenPracticeSidebarNavigationSection {
   key: OpenPracticeSidebarSectionKey;
   label: string;
   enabled: boolean;
+  disabledReason?: string;
 }
 
 export type DashboardNavigationSectionKey = OpenPracticeSidebarNavigationSection["key"];

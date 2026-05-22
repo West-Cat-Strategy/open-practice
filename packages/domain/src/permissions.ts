@@ -310,6 +310,10 @@ export function canAccess(request: AccessRequest): boolean {
     return hasActivePortalGrant(request);
   }
 
+  if (request.resource === "matter" && request.action === "create") {
+    return true;
+  }
+
   if (matterScopedResources.has(request.resource) && !request.matterId) {
     return false;
   }

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type {
@@ -5,8 +6,32 @@ import type {
   OpenPracticeRepository,
   PracticeOverview,
 } from "@open-practice/database";
-import type { User } from "@open-practice/domain";
+import type { ContactIdentifier, User } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
+
+const provinceSchema = z.enum(["BC", "ON", "CANADA", "OTHER"]);
+
+const optionalEmailSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().trim().email().optional(),
+);
+
+const optionalPhoneSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().trim().min(1).optional(),
+);
+
+const createMatterBodySchema = z.object({
+  title: z.string().trim().min(1),
+  practiceArea: z.string().trim().min(1),
+  jurisdiction: provinceSchema,
+  client: z.object({
+    kind: z.enum(["person", "organization"]),
+    displayName: z.string().trim().min(1),
+    email: optionalEmailSchema,
+    phone: optionalPhoneSchema,
+  }),
+});
 
 const conflictBodySchema = z.object({
   prospectiveName: z.string().min(1),
@@ -40,6 +65,17 @@ function scopedOverview(input: {
   };
 }
 
+function prefixedId(prefix: string): string {
+  return `${prefix}-${randomUUID()}`;
+}
+
+function contactIdentifiers(input: { email?: string; phone?: string }): ContactIdentifier[] {
+  const identifiers: ContactIdentifier[] = [];
+  if (input.email) identifiers.push({ type: "email", value: input.email });
+  if (input.phone) identifiers.push({ type: "phone", value: input.phone });
+  return identifiers;
+}
+
 export function registerMatterRoutes(
   server: FastifyInstance,
   options: { repository: OpenPracticeRepository },
@@ -56,6 +92,38 @@ export function registerMatterRoutes(
   server.get("/api/matters", async (request) =>
     options.repository.listMattersForUser(request.auth.user),
   );
+
+  server.post("/api/matters", async (request, reply) => {
+    const access = requireAccess(request.auth, { resource: "matter", action: "create" });
+    if (!access.ok) throw access.error;
+    const contactAccess = requireAccess(request.auth, { resource: "contact", action: "create" });
+    if (!contactAccess.ok) throw contactAccess.error;
+
+    const body = createMatterBodySchema.parse(request.body);
+    const occurredAt = new Date();
+    const openedOn = occurredAt.toISOString().slice(0, 10);
+    const matter = await options.repository.createMatterWithClient({
+      firmId: request.auth.firmId,
+      actorUserId: request.auth.user.id,
+      matterId: prefixedId("matter"),
+      contactId: prefixedId("contact"),
+      partyId: prefixedId("party"),
+      title: body.title,
+      practiceArea: body.practiceArea,
+      jurisdiction: body.jurisdiction,
+      openedOn,
+      occurredAt: occurredAt.toISOString(),
+      auditEventId: prefixedId("audit"),
+      client: {
+        kind: body.client.kind,
+        displayName: body.client.displayName,
+        identifiers: contactIdentifiers(body.client),
+      },
+    });
+
+    reply.code(201);
+    return matter;
+  });
 
   server.post("/api/conflicts/check", async (request) => {
     const access = requireAccess(request.auth, { resource: "contact", action: "read" });

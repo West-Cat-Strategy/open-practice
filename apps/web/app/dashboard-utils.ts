@@ -1,4 +1,4 @@
-import type { OpenPracticeSidebarNavigationSection } from "../routes/routeCatalog";
+import { routeCatalog, type OpenPracticeSidebarNavigationSection } from "../routes/routeCatalog";
 import type {
   MatterSummary,
   OperationalViewsResponse,
@@ -8,6 +8,47 @@ import type {
 
 export type DashboardRefreshLane = "queues" | "providers" | "audit";
 export type DashboardLaneFreshnessTone = "neutral" | "ready" | "risk";
+type FirstMatterClientKind = "person" | "organization";
+type FirstMatterJurisdiction = MatterSummary["jurisdiction"];
+
+export interface FirstMatterFormState {
+  title: string;
+  practiceArea: string;
+  jurisdiction: FirstMatterJurisdiction;
+  clientKind: FirstMatterClientKind;
+  clientDisplayName: string;
+  clientEmail: string;
+  clientPhone: string;
+}
+
+export interface CreateMatterPayload {
+  title: string;
+  practiceArea: string;
+  jurisdiction: FirstMatterJurisdiction;
+  client: {
+    kind: FirstMatterClientKind;
+    displayName: string;
+    email?: string;
+    phone?: string;
+  };
+}
+
+export const initialFirstMatterFormState: FirstMatterFormState = {
+  title: "",
+  practiceArea: "Residential tenancy",
+  jurisdiction: "BC",
+  clientKind: "person",
+  clientDisplayName: "",
+  clientEmail: "",
+  clientPhone: "",
+};
+
+export const firstMatterJurisdictionOptions: FirstMatterJurisdiction[] = [
+  "BC",
+  "ON",
+  "CANADA",
+  "OTHER",
+];
 
 export interface DashboardLaneRefreshState {
   loadedAt?: string;
@@ -84,16 +125,89 @@ export function filterMatters(matters: MatterSummary[], query: string): MatterSu
   );
 }
 
+export function canSubmitFirstMatter(form: FirstMatterFormState): boolean {
+  return Boolean(form.title.trim() && form.practiceArea.trim() && form.clientDisplayName.trim());
+}
+
+export function buildCreateMatterPayload(form: FirstMatterFormState): CreateMatterPayload {
+  const payload: CreateMatterPayload = {
+    title: form.title.trim(),
+    practiceArea: form.practiceArea.trim(),
+    jurisdiction: form.jurisdiction,
+    client: {
+      kind: form.clientKind,
+      displayName: form.clientDisplayName.trim(),
+    },
+  };
+  const email = form.clientEmail.trim();
+  const phone = form.clientPhone.trim();
+  if (email) payload.client.email = email;
+  if (phone) payload.client.phone = phone;
+  return payload;
+}
+
 export function describeDisabledNavigationReason(
-  section: Pick<OpenPracticeSidebarNavigationSection, "key" | "label" | "enabled">,
+  section: Pick<
+    OpenPracticeSidebarNavigationSection,
+    "key" | "label" | "enabled" | "disabledReason"
+  >,
 ): string | null {
   if (section.enabled) return null;
+  if (section.disabledReason) return section.disabledReason;
   if (section.key === "billing") return "Billing is unavailable for your current role.";
   if (section.key === "shares") return "Share links are unavailable in this environment.";
   if (section.key === "externalUploads") {
     return "External uploads are unavailable until the storage provider is configured.";
   }
   return `${section.label} is unavailable for your current permissions.`;
+}
+
+const matterRequiredNavigationKeys = new Set<OpenPracticeSidebarNavigationSection["key"]>(
+  routeCatalog
+    .filter((entry) => entry.showInSidebar && entry.requiresMatterContext)
+    .map((entry) => (entry.sectionKey ?? entry.id) as OpenPracticeSidebarNavigationSection["key"]),
+);
+
+export function applyMatterAvailabilityToNavigation(
+  sections: OpenPracticeSidebarNavigationSection[],
+  hasAccessibleMatter: boolean,
+  canCreateMatter = false,
+): OpenPracticeSidebarNavigationSection[] {
+  if (hasAccessibleMatter) return sections;
+
+  return sections.map((section) => {
+    if (section.key === "matters" && canCreateMatter) {
+      return { ...section, enabled: true, disabledReason: undefined };
+    }
+    if (!matterRequiredNavigationKeys.has(section.key)) return section;
+    return {
+      ...section,
+      enabled: false,
+      disabledReason: "Create or assign a matter to enable this matter-scoped section.",
+    };
+  });
+}
+
+export function enableMatterScopedCapabilitiesForLocalMatter<
+  Section extends {
+    key: string;
+    enabled: boolean;
+    actions?: string[];
+  },
+>(sections: Section[], hasAccessibleMatter: boolean): Section[] {
+  if (!hasAccessibleMatter) return sections;
+
+  return sections.map((section) => {
+    if (
+      !matterRequiredNavigationKeys.has(
+        section.key as OpenPracticeSidebarNavigationSection["key"],
+      ) ||
+      !section.actions?.includes("read")
+    ) {
+      return section;
+    }
+    return { ...section, enabled: true };
+  });
 }
 
 export function summarizeQueues(queues: QueuesResponse): string {
