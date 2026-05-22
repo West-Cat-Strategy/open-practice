@@ -5,13 +5,19 @@ import type {
   DocumentRecord,
   DocumentTextExtractionRecord,
   JobLifecycleRecord,
+  ProviderSettingRecord,
 } from "@open-practice/domain";
-import { buildDocumentReviewSuggestions, redactJobMetadata } from "@open-practice/domain";
+import {
+  buildDocumentMetadataSearchPosture,
+  buildDocumentMetadataTags,
+  buildDocumentReviewSuggestions,
+  redactJobMetadata,
+} from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
-import { appendWorkflowAuditEvent } from "./audit-events.js";
+import { appendRouteAuditEvent, appendWorkflowAuditEvent } from "./audit-events.js";
 import {
   buildIdempotencyKey,
   idempotencyMetadata,
@@ -31,11 +37,51 @@ import { enqueueFailureError, markJobEnqueueFailed } from "./outbound-email.js";
 import type { ApiJobQueue, ApiRouteDependencies } from "./types.js";
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
-const workbenchQuerySchema = z.object({ matterId: z.string().min(1) });
+const documentClassificationSchema = z.enum([
+  "general",
+  "privileged",
+  "work_product",
+  "financial",
+  "identity",
+]);
+const documentReviewStatusSchema = z.enum([
+  "not_required",
+  "pending_review",
+  "needs_metadata",
+  "accepted",
+  "retry_requested",
+  "discarded",
+]);
+const documentScanStatusSchema = z.enum(["pending", "queued", "passed", "failed", "not_required"]);
+const documentOcrStatusSchema = z.enum(["not_available", "queued", "completed", "failed"]);
+const documentCueGroupSchema = z.enum([
+  "classification",
+  "duplicate_or_supersession",
+  "matter_contact",
+  "missing_metadata",
+]);
+const workbenchQuerySchema = z.object({
+  matterId: z.string().min(1),
+  q: z.string().trim().max(80).optional(),
+  classification: documentClassificationSchema.optional(),
+  reviewStatus: documentReviewStatusSchema.optional(),
+  scanStatus: documentScanStatusSchema.optional(),
+  ocrStatus: documentOcrStatusSchema.optional(),
+  cueGroup: documentCueGroupSchema.optional(),
+  tag: z.string().trim().max(80).optional(),
+});
 const queueDocumentProcessingBodySchema = z.object({
   task: z.enum(["ocr"]).default("ocr"),
   language: z.string().trim().min(2).max(24).default("eng"),
 });
+const ocrProviderBodySchema = z.object({ enabled: z.boolean() });
+
+const localOcrProviderKey = "local-tesseract";
+const localOcrProviderEncryptedConfig = "local-tesseract:no-secret";
+
+function localOcrProviderId(firmId: string): string {
+  return `provider-ocr-local-tesseract-${firmId}`;
+}
 
 type DocumentWorkbenchGroup = "ready_to_process" | "queued_or_active" | "needs_review" | "blocked";
 
@@ -243,6 +289,41 @@ function documentReviewQueueSummary(documents: DocumentRecord[]): {
   };
 }
 
+export async function assertOcrProviderConfigured(input: {
+  repository: OpenPracticeRepository;
+  firmId: string;
+}): Promise<void> {
+  const providers = await input.repository.listProviderSettings(input.firmId, { kind: "ocr" });
+  const state = providerStatus("ocr", providers);
+  if (state.status === "configured") return;
+
+  throw Object.assign(
+    new Error(
+      state.reason === "provider_disabled"
+        ? "OCR provider is disabled"
+        : "OCR provider is not configured",
+    ),
+    { statusCode: 503 },
+  );
+}
+
+function localOcrProviderSetting(input: {
+  firmId: string;
+  enabled: boolean;
+  now: string;
+}): ProviderSettingRecord {
+  return {
+    id: localOcrProviderId(input.firmId),
+    firmId: input.firmId,
+    kind: "ocr",
+    key: localOcrProviderKey,
+    enabled: input.enabled,
+    encryptedConfig: localOcrProviderEncryptedConfig,
+    createdAt: input.now,
+    updatedAt: input.now,
+  };
+}
+
 export async function queueDocumentOcr(
   input: QueueDocumentOcrInput,
 ): Promise<QueueDocumentOcrResult> {
@@ -250,6 +331,7 @@ export async function queueDocumentOcr(
   if (!ocrJobQueue) {
     throw Object.assign(new Error("OCR queue is not configured"), { statusCode: 503 });
   }
+  await assertOcrProviderConfigured({ repository, firmId: auth.firmId });
   assertDocumentProcessable(document);
 
   const language = input.language?.trim() || "eng";
@@ -418,6 +500,46 @@ export function registerDocumentProcessingRoutes(
   { repository, ocrJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/document-processing/status", async (request) => {
+    const access = requireAccess(request.auth, {
+      resource: "provider_setting",
+      action: "read",
+    });
+    if (!access.ok) throw access.error;
+
+    return buildDocumentProcessingStatus({
+      repository,
+      firmId: request.auth.firmId,
+      ocrJobQueue,
+    });
+  });
+
+  server.put("/api/document-processing/ocr-provider", async (request) => {
+    const access = requireAccess(request.auth, {
+      resource: "provider_setting",
+      action: "update",
+    });
+    if (!access.ok) throw access.error;
+
+    const body = parseRequestPart(ocrProviderBodySchema, request.body ?? {}, "body");
+    const now = new Date().toISOString();
+    const setting = await repository.upsertProviderSetting(
+      localOcrProviderSetting({
+        firmId: request.auth.firmId,
+        enabled: body.enabled,
+        now,
+      }),
+    );
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "document_processing.ocr_provider.updated",
+      resourceType: "provider_setting",
+      resourceId: setting.id,
+      metadata: {
+        providerKind: "ocr",
+        providerKey: setting.key,
+        enabled: setting.enabled,
+      },
+    });
+
     return buildDocumentProcessingStatus({
       repository,
       firmId: request.auth.firmId,
@@ -466,7 +588,7 @@ export function registerDocumentProcessingRoutes(
       (candidate) => candidate.id === query.matterId,
     );
 
-    const documentItems = await Promise.all(
+    const documentEntries = await Promise.all(
       documents.map(async (document) => {
         const latestJob = latestDocumentJob(document, jobs);
         const eligibility = queueEligibility({
@@ -478,21 +600,40 @@ export function registerDocumentProcessingRoutes(
         const latestExtraction = latestTextExtraction(
           await repository.getDocumentTextExtractions(request.auth.firmId, document.id),
         );
+        const reviewSuggestions = buildDocumentReviewSuggestions({
+          document,
+          sameMatterDocuments: documents,
+          latestExtraction,
+          matter,
+        });
+        const sanitizedDocument = sanitizeDocument(document);
+        const metadataTags = buildDocumentMetadataTags({
+          document: sanitizedDocument,
+          latestExtraction,
+          latestJobStatus: latestJob?.status,
+          reviewSuggestions,
+        });
         return {
-          document: sanitizeDocument(document),
-          group: documentWorkbenchGroup({ document, latestJob, eligibility }),
-          queueEligibility: eligibility,
-          latestJob: latestJob ? serializeJobRun(latestJob) : undefined,
-          latestExtraction: sanitizeTextExtraction(latestExtraction),
-          reviewSuggestions: buildDocumentReviewSuggestions({
-            document,
-            sameMatterDocuments: documents,
+          item: {
+            document: sanitizedDocument,
+            group: documentWorkbenchGroup({ document, latestJob, eligibility }),
+            queueEligibility: eligibility,
+            latestJob: latestJob ? serializeJobRun(latestJob) : undefined,
+            latestExtraction: sanitizeTextExtraction(latestExtraction),
+            reviewSuggestions,
+            metadataTags,
+          },
+          searchEntry: {
+            document: sanitizedDocument,
             latestExtraction,
-            matter,
-          }),
+            latestJobStatus: latestJob?.status,
+            reviewSuggestions,
+            metadataTags,
+          },
         };
       }),
     );
+    const documentItems = documentEntries.map((entry) => entry.item);
 
     return {
       matterId: query.matterId,
@@ -509,6 +650,18 @@ export function registerDocumentProcessingRoutes(
       actionableTasks: actionableDocumentProcessingTasks,
       reservedTasks: reservedDocumentProcessingTasks,
       reviewQueue: documentReviewQueueSummary(documents),
+      metadataSearch: buildDocumentMetadataSearchPosture({
+        entries: documentEntries.map((entry) => entry.searchEntry),
+        filters: {
+          q: query.q,
+          classification: query.classification,
+          reviewStatus: query.reviewStatus,
+          scanStatus: query.scanStatus,
+          ocrStatus: query.ocrStatus,
+          cueGroup: query.cueGroup,
+          tag: query.tag,
+        },
+      }),
       summary: summarizeJobRuns(jobs),
       documents: documentItems,
     };

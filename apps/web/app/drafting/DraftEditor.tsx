@@ -93,10 +93,11 @@ export default function DraftEditor({
   return (
     <div className="draft-editor">
       {!readOnly ? (
-        <div className="draft-editor-toolbar" aria-label="Draft editor toolbar">
+        <div className="draft-editor-toolbar" role="toolbar" aria-label="Draft editor toolbar">
           <div className="toolbar-group">
             <button
               aria-label="Bold"
+              aria-pressed={editor.isActive("bold")}
               className={editor.isActive("bold") ? "is-active" : ""}
               onClick={() => editor.chain().focus().toggleBold().run()}
               title="Bold"
@@ -106,6 +107,7 @@ export default function DraftEditor({
             </button>
             <button
               aria-label="Italic"
+              aria-pressed={editor.isActive("italic")}
               className={editor.isActive("italic") ? "is-active" : ""}
               onClick={() => editor.chain().focus().toggleItalic().run()}
               title="Italic"
@@ -115,6 +117,7 @@ export default function DraftEditor({
             </button>
             <button
               aria-label="Underline"
+              aria-pressed={editor.isActive("underline")}
               className={editor.isActive("underline") ? "is-active" : ""}
               onClick={() => editor.chain().focus().toggleUnderline().run()}
               title="Underline"
@@ -127,6 +130,7 @@ export default function DraftEditor({
           <div className="toolbar-group">
             <button
               aria-label="Heading 1"
+              aria-pressed={editor.isActive("heading", { level: 1 })}
               className={editor.isActive("heading", { level: 1 }) ? "is-active" : ""}
               onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
               title="Heading 1"
@@ -136,6 +140,7 @@ export default function DraftEditor({
             </button>
             <button
               aria-label="Heading 2"
+              aria-pressed={editor.isActive("heading", { level: 2 })}
               className={editor.isActive("heading", { level: 2 }) ? "is-active" : ""}
               onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
               title="Heading 2"
@@ -148,6 +153,7 @@ export default function DraftEditor({
           <div className="toolbar-group">
             <button
               aria-label="Bullet list"
+              aria-pressed={editor.isActive("bulletList")}
               className={editor.isActive("bulletList") ? "is-active" : ""}
               onClick={() => editor.chain().focus().toggleBulletList().run()}
               title="Bullet list"
@@ -157,6 +163,7 @@ export default function DraftEditor({
             </button>
             <button
               aria-label="Ordered list"
+              aria-pressed={editor.isActive("orderedList")}
               className={editor.isActive("orderedList") ? "is-active" : ""}
               onClick={() => editor.chain().focus().toggleOrderedList().run()}
               title="Ordered list"
@@ -169,6 +176,7 @@ export default function DraftEditor({
           <div className="toolbar-group">
             <button
               aria-label="Link"
+              aria-pressed={editor.isActive("link")}
               className={editor.isActive("link") ? "is-active" : ""}
               onClick={toggleLink}
               title="Link"
@@ -178,6 +186,7 @@ export default function DraftEditor({
             </button>
             <button
               aria-label="Block quote"
+              aria-pressed={editor.isActive("blockquote")}
               className={editor.isActive("blockquote") ? "is-active" : ""}
               onClick={() => editor.chain().focus().toggleBlockquote().run()}
               title="Block quote"

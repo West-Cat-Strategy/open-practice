@@ -19,6 +19,7 @@ import {
   Plus,
   RotateCcw,
   Save,
+  Search,
   ShieldCheck,
   Sparkles,
   Upload,
@@ -138,13 +139,16 @@ import {
   upsertCalendarGuestSession,
 } from "./calendar-dashboard";
 import {
+  buildDocumentProcessingOcrProviderPath,
   buildDocumentProcessingQueuePath,
   buildDocumentProcessingWorkbenchPath,
+  compactDocumentMetadataTag,
   compactDocumentProcessingReason,
   describeDocumentReviewSuggestion,
   describeDocumentQueueAction,
   describeLatestDocumentJob,
   describeLatestExtraction,
+  documentMetadataSearchFilterCount,
   documentProcessingGroupLabel,
   documentProcessingGroupOrder,
   documentReviewSuggestionGroupLabel,
@@ -153,6 +157,7 @@ import {
   emptyDocumentReviewSuggestions,
   emptyDocumentProcessingWorkbench,
   replaceDocumentProcessingWorkbench,
+  summarizeDocumentMetadataSearch,
   summarizeDocumentReviewSuggestions,
   summarizeDocumentProcessingWorkbench,
 } from "./document-processing-dashboard";
@@ -276,6 +281,8 @@ import type {
   ContactDataQualityResolutionsResponse,
   ContactReviewQueueResponse,
   DocumentProcessingDashboardResponse,
+  DocumentMetadataSearchFilters,
+  DocumentProcessingStatusResponse,
   DocumentProcessingWorkbenchResponse,
   DraftingDashboardResponse,
   DraftExportResponse,
@@ -359,6 +366,41 @@ type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][numb
 type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
 type DashboardIntakeVariableProposal = IntakeVariableProposalsResponse["proposals"][number];
 type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
+
+const documentMetadataClassificationOptions = [
+  "general",
+  "privileged",
+  "work_product",
+  "financial",
+  "identity",
+] as const;
+const documentMetadataReviewStatusOptions = [
+  "not_required",
+  "pending_review",
+  "needs_metadata",
+  "accepted",
+  "retry_requested",
+  "discarded",
+] as const;
+const documentMetadataScanStatusOptions = [
+  "pending",
+  "queued",
+  "passed",
+  "failed",
+  "not_required",
+] as const;
+const documentMetadataOcrStatusOptions = [
+  "not_available",
+  "queued",
+  "completed",
+  "failed",
+] as const;
+const documentMetadataCueGroupOptions = [
+  "classification",
+  "duplicate_or_supersession",
+  "matter_contact",
+  "missing_metadata",
+] as const;
 
 const currency = new Intl.NumberFormat("en-CA", {
   style: "currency",
@@ -474,6 +516,10 @@ export default function DashboardClient({
   const [providerRefreshState, setProviderRefreshState] = useState<DashboardLaneRefreshState>({
     refreshing: false,
   });
+  const [ocrProviderUpdating, setOcrProviderUpdating] = useState(false);
+  const [ocrProviderUpdateStatus, setOcrProviderUpdateStatus] = useState(
+    "OCR provider posture has not changed.",
+  );
   const [auditRefreshState, setAuditRefreshState] = useState<DashboardLaneRefreshState>({
     refreshing: false,
   });
@@ -584,6 +630,14 @@ export default function DashboardClient({
   const [documentProcessingStatus, setDocumentProcessingStatus] = useState(
     "Document processing workbench loaded.",
   );
+  const [documentMetadataQuery, setDocumentMetadataQuery] = useState("");
+  const [documentMetadataClassificationFilter, setDocumentMetadataClassificationFilter] =
+    useState("");
+  const [documentMetadataReviewStatusFilter, setDocumentMetadataReviewStatusFilter] = useState("");
+  const [documentMetadataScanStatusFilter, setDocumentMetadataScanStatusFilter] = useState("");
+  const [documentMetadataOcrStatusFilter, setDocumentMetadataOcrStatusFilter] = useState("");
+  const [documentMetadataCueGroupFilter, setDocumentMetadataCueGroupFilter] = useState("");
+  const [documentMetadataTagFilter, setDocumentMetadataTagFilter] = useState("");
   const [queueingDocumentId, setQueueingDocumentId] = useState("");
   const [trustControlsByMatterId, setTrustControlsByMatterId] = useState<
     Record<string, TrustControlsDashboardResponse>
@@ -767,6 +821,39 @@ export default function DashboardClient({
     () => documentProcessingRowsForMatter(activeDocuments, activeDocumentProcessing),
     [activeDocuments, activeDocumentProcessing],
   );
+  const activeDocumentMetadataSearchFilters = useMemo<DocumentMetadataSearchFilters>(
+    () => ({
+      q: documentMetadataQuery.trim() || undefined,
+      classification:
+        (documentMetadataClassificationFilter as DocumentMetadataSearchFilters["classification"]) ||
+        undefined,
+      reviewStatus:
+        (documentMetadataReviewStatusFilter as DocumentMetadataSearchFilters["reviewStatus"]) ||
+        undefined,
+      scanStatus:
+        (documentMetadataScanStatusFilter as DocumentMetadataSearchFilters["scanStatus"]) ||
+        undefined,
+      ocrStatus:
+        (documentMetadataOcrStatusFilter as DocumentMetadataSearchFilters["ocrStatus"]) ||
+        undefined,
+      cueGroup:
+        (documentMetadataCueGroupFilter as DocumentMetadataSearchFilters["cueGroup"]) || undefined,
+      tag: documentMetadataTagFilter.trim() || undefined,
+    }),
+    [
+      documentMetadataClassificationFilter,
+      documentMetadataCueGroupFilter,
+      documentMetadataOcrStatusFilter,
+      documentMetadataQuery,
+      documentMetadataReviewStatusFilter,
+      documentMetadataScanStatusFilter,
+      documentMetadataTagFilter,
+    ],
+  );
+  const activeDocumentMetadataFilterCount = useMemo(
+    () => documentMetadataSearchFilterCount(activeDocumentMetadataSearchFilters),
+    [activeDocumentMetadataSearchFilters],
+  );
   const activeMatterCommandCenter = useMemo(
     () =>
       activeMatter
@@ -807,6 +894,12 @@ export default function DashboardClient({
     () => summarizeDocumentReviewSuggestions(activeDocumentProcessingRows),
     [activeDocumentProcessingRows],
   );
+  const documentMetadataSearchSummary = useMemo(
+    () => summarizeDocumentMetadataSearch(activeDocumentProcessing.metadataSearch),
+    [activeDocumentProcessing.metadataSearch],
+  );
+  const activeDocumentMetadataTags =
+    activeDocumentProcessing.metadataSearch?.tags.slice(0, 10) ?? [];
   const activeShares = activeMatter ? (sharesByMatterId[activeMatter.id] ?? []) : [];
   const activeDrafts = activeMatter ? (draftsByMatterId[activeMatter.id] ?? []) : [];
   const activeExternalUploads = activeMatter
@@ -944,11 +1037,12 @@ export default function DashboardClient({
   const activeSectionLabel =
     activeSection === "matters"
       ? activeMatter?.title
-      : (navigationSections.find((section) => section.key === activeSection)?.label ?? "Dashboard");
+      : (navigationSections.find((section) => section.key === activeSection)?.title ?? "Dashboard");
   const matterActionSections = useMemo(
     () =>
-      navigationSections.filter((section) =>
-        ["drafting", "shares", "externalUploads", "queues"].includes(section.key),
+      navigationSections.filter(
+        (section) =>
+          section.key !== "matters" && (section.requiresMatterContext || section.key === "queues"),
       ),
     [navigationSections],
   );
@@ -973,6 +1067,7 @@ export default function DashboardClient({
     [providerStatus],
   );
   const providerRows = useMemo(() => providerPostureRows(providerStatus), [providerStatus]);
+  const canManageDocumentProcessingProvider = session.user.role === "owner_admin";
   const activeWorkerRuns = useMemo(
     () => workerRunsForFilter(workerRuns, workerRunFilter),
     [workerRuns, workerRunFilter],
@@ -1291,6 +1386,42 @@ export default function DashboardClient({
         error: String(dashboardApiStatus(error)),
       }));
       setFreshnessNow(new Date());
+    }
+  }
+
+  async function setOcrProviderEnabled(enabled: boolean): Promise<void> {
+    if (!canManageDocumentProcessingProvider) return;
+    setOcrProviderUpdating(true);
+    setOcrProviderUpdateStatus(
+      enabled ? "Enabling local OCR provider..." : "Disabling local OCR provider...",
+    );
+    try {
+      const documentProcessingStatus = await requestDashboardJson<DocumentProcessingStatusResponse>(
+        apiBaseUrl,
+        buildDocumentProcessingOcrProviderPath(),
+        {
+          method: "PUT",
+          headers: devHeaders,
+          payload: { enabled },
+        },
+      );
+      setProviderStatus((current) => ({
+        ...current,
+        documentProcessing: documentProcessingStatus,
+      }));
+      await refreshProviderLane();
+      if (activeMatter) {
+        await refreshDocumentProcessingWorkbench(activeMatter.id);
+      }
+      setOcrProviderUpdateStatus(
+        enabled
+          ? "Local OCR provider enabled; queue readiness still depends on Redis and worker configuration."
+          : "Local OCR provider disabled; existing OCR job history remains visible.",
+      );
+    } catch (error) {
+      setOcrProviderUpdateStatus(`OCR provider update failed: ${dashboardApiStatus(error)}.`);
+    } finally {
+      setOcrProviderUpdating(false);
     }
   }
 
@@ -1836,11 +1967,15 @@ export default function DashboardClient({
 
   async function refreshDocumentProcessingWorkbench(
     matterId: string,
+    filters: DocumentMetadataSearchFilters = activeDocumentMetadataSearchFilters,
   ): Promise<DocumentProcessingWorkbenchResponse | null> {
-    const response = await fetch(`${apiBaseUrl}${buildDocumentProcessingWorkbenchPath(matterId)}`, {
-      credentials: "include",
-      headers: devHeaders,
-    });
+    const response = await fetch(
+      `${apiBaseUrl}${buildDocumentProcessingWorkbenchPath(matterId, filters)}`,
+      {
+        credentials: "include",
+        headers: devHeaders,
+      },
+    );
 
     if (!response.ok) {
       const fallback = emptyDocumentProcessingWorkbench(
@@ -1858,6 +1993,35 @@ export default function DashboardClient({
       replaceDocumentProcessingWorkbench(current, payload),
     );
     return payload;
+  }
+
+  async function refreshDocumentMetadataSearch(
+    filters: DocumentMetadataSearchFilters = activeDocumentMetadataSearchFilters,
+  ): Promise<void> {
+    if (!activeMatter) return;
+    setDocumentProcessingStatus("Refreshing metadata search...");
+    const refreshed = await refreshDocumentProcessingWorkbench(activeMatter.id, filters);
+    setDocumentProcessingStatus(
+      refreshed ? "Metadata search refreshed." : "Metadata search unavailable.",
+    );
+  }
+
+  async function selectDocumentMetadataTag(tag: string): Promise<void> {
+    const filters = { ...activeDocumentMetadataSearchFilters, tag };
+    setDocumentMetadataTagFilter(tag);
+    await refreshDocumentMetadataSearch(filters);
+  }
+
+  async function clearDocumentMetadataSearch(): Promise<void> {
+    const filters: DocumentMetadataSearchFilters = {};
+    setDocumentMetadataQuery("");
+    setDocumentMetadataClassificationFilter("");
+    setDocumentMetadataReviewStatusFilter("");
+    setDocumentMetadataScanStatusFilter("");
+    setDocumentMetadataOcrStatusFilter("");
+    setDocumentMetadataCueGroupFilter("");
+    setDocumentMetadataTagFilter("");
+    await refreshDocumentMetadataSearch(filters);
   }
 
   async function queueDocumentOcr(documentId: string): Promise<void> {
@@ -3752,6 +3916,153 @@ export default function DashboardClient({
                   {documentProcessingStatus} {documentProcessingSummary}{" "}
                   {documentReviewSuggestionsSummary}
                 </p>
+                <div className="document-metadata-search-panel">
+                  <label className="search-field compact">
+                    <span>Metadata search</span>
+                    <input
+                      onChange={(event) => setDocumentMetadataQuery(event.target.value)}
+                      placeholder="title, cue, status"
+                      value={documentMetadataQuery}
+                    />
+                  </label>
+                  <label className="search-field compact">
+                    <span>Classification</span>
+                    <select
+                      onChange={(event) =>
+                        setDocumentMetadataClassificationFilter(event.target.value)
+                      }
+                      value={documentMetadataClassificationFilter}
+                    >
+                      <option value="">Any</option>
+                      {documentMetadataClassificationOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {compactDocumentProcessingReason(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="search-field compact">
+                    <span>Review</span>
+                    <select
+                      onChange={(event) =>
+                        setDocumentMetadataReviewStatusFilter(event.target.value)
+                      }
+                      value={documentMetadataReviewStatusFilter}
+                    >
+                      <option value="">Any</option>
+                      {documentMetadataReviewStatusOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {compactDocumentProcessingReason(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="search-field compact">
+                    <span>Scan</span>
+                    <select
+                      onChange={(event) => setDocumentMetadataScanStatusFilter(event.target.value)}
+                      value={documentMetadataScanStatusFilter}
+                    >
+                      <option value="">Any</option>
+                      {documentMetadataScanStatusOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {compactDocumentProcessingReason(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="search-field compact">
+                    <span>OCR</span>
+                    <select
+                      onChange={(event) => setDocumentMetadataOcrStatusFilter(event.target.value)}
+                      value={documentMetadataOcrStatusFilter}
+                    >
+                      <option value="">Any</option>
+                      {documentMetadataOcrStatusOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {compactDocumentProcessingReason(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="search-field compact">
+                    <span>Cue</span>
+                    <select
+                      onChange={(event) => setDocumentMetadataCueGroupFilter(event.target.value)}
+                      value={documentMetadataCueGroupFilter}
+                    >
+                      <option value="">Any</option>
+                      {documentMetadataCueGroupOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {compactDocumentProcessingReason(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="document-metadata-search-actions">
+                    <span>{activeDocumentMetadataFilterCount} active filters</span>
+                    <button
+                      className="secondary-button compact-button"
+                      onClick={() => void refreshDocumentMetadataSearch()}
+                      type="button"
+                    >
+                      <Search aria-hidden="true" size={16} />
+                      Search
+                    </button>
+                    <button
+                      className="secondary-button compact-button"
+                      disabled={activeDocumentMetadataFilterCount === 0}
+                      onClick={() => void clearDocumentMetadataSearch()}
+                      type="button"
+                    >
+                      <X aria-hidden="true" size={16} />
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <p className="inline-empty">{documentMetadataSearchSummary}</p>
+                {activeDocumentMetadataTags.length > 0 ? (
+                  <div className="document-metadata-tags" aria-label="Document metadata tags">
+                    {activeDocumentMetadataTags.map((tag) => (
+                      <button
+                        className={`metadata-tag ${tag.tone}`}
+                        key={tag.key}
+                        onClick={() => void selectDocumentMetadataTag(tag.key)}
+                        type="button"
+                      >
+                        {compactDocumentMetadataTag(tag)}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {activeDocumentMetadataFilterCount > 0 ? (
+                  <div className="party-list document-metadata-results">
+                    {(activeDocumentProcessing.metadataSearch?.results ?? []).map((result) => (
+                      <div className="party-row" key={result.documentId}>
+                        <span>
+                          <strong>{result.title}</strong>
+                          <small>
+                            {compactDocumentProcessingReason(result.classification)} · review{" "}
+                            {compactDocumentProcessingReason(result.reviewStatus)} · scan{" "}
+                            {compactDocumentProcessingReason(result.scanStatus)} · OCR{" "}
+                            {compactDocumentProcessingReason(result.ocrStatus)}
+                          </small>
+                          <small>
+                            {result.matchedFields.length > 0
+                              ? `Matched ${result.matchedFields.join(", ")}`
+                              : "Metadata posture match"}{" "}
+                            · {result.tagKeys.length} tag cues · {result.cueCounts.total} reviewer
+                            cues
+                          </small>
+                        </span>
+                        <em>{result.legalHold ? "legal hold" : "review only"}</em>
+                      </div>
+                    ))}
+                    {activeDocumentProcessing.metadataSearch?.results.length === 0 ? (
+                      <p className="inline-empty">No document metadata matches.</p>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 {activeDocumentProcessing.providerStatus.length > 0 ? (
                   <>
@@ -3845,6 +4156,15 @@ export default function DashboardClient({
                                     ? ` · ${item.latestJob.errorSummary}`
                                     : ""}
                                 </small>
+                                {item.metadataTags?.length ? (
+                                  <small>
+                                    Tags{" "}
+                                    {item.metadataTags
+                                      .slice(0, 5)
+                                      .map((tag) => tag.label)
+                                      .join(" · ")}
+                                  </small>
+                                ) : null}
                                 {action.disabledReason ? (
                                   <small>Disabled: {action.disabledReason}</small>
                                 ) : null}
@@ -6029,7 +6349,11 @@ export default function DashboardClient({
                 onRefreshQueues={() => void refreshQueueLane()}
                 onSaveQueueOperationalViewDefinition={saveQueueOperationalViewDefinition}
                 onSelectMatter={selectMatter}
+                onSetOcrProviderEnabled={(enabled) => void setOcrProviderEnabled(enabled)}
                 onWorkerRunFilterChange={setWorkerRunFilter}
+                canManageDocumentProcessingProvider={canManageDocumentProcessingProvider}
+                ocrProviderUpdateStatus={ocrProviderUpdateStatus}
+                ocrProviderUpdating={ocrProviderUpdating}
                 providerFreshnessCue={providerFreshnessCue}
                 providerRows={providerRows}
                 providerStatus={providerStatus}

@@ -4,10 +4,12 @@ import {
   Clock3,
   CreditCard,
   FileSignature,
+  FilePenLine,
   Files,
   FileText,
   Link2,
   Upload,
+  type LucideIcon,
 } from "lucide-react";
 import type { OpenPracticeSidebarNavigationSection } from "../../routes/routeCatalog";
 import {
@@ -41,6 +43,19 @@ import type {
 } from "../types";
 
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
+
+const commandJumpIcons: Partial<Record<LocalDashboardSectionKey, LucideIcon>> = {
+  funds: Banknote,
+  billing: CreditCard,
+  documents: Files,
+  shares: Link2,
+  externalUploads: Upload,
+  drafting: FilePenLine,
+  calendar: CalendarDays,
+  signatures: FileSignature,
+  intake: FileText,
+  queues: Clock3,
+};
 
 export function MatterOverviewSection({
   activeActivitySummary,
@@ -204,33 +219,30 @@ export function MatterOverviewSection({
             ))}
           </div>
           <div className="command-jump-actions" aria-label="Command center shortcuts">
-            {[
-              { key: "documents", label: "Documents/OCR", icon: Files },
-              { key: "shares", label: "Share Links", icon: Link2 },
-              { key: "externalUploads", label: "Uploads", icon: Upload },
-              { key: "calendar", label: "Calendar", icon: CalendarDays },
-              { key: "billing", label: "Billing", icon: CreditCard },
-              { key: "intake", label: "Intake", icon: FileText },
-              { key: "signatures", label: "Signatures", icon: FileSignature },
-              { key: "queues", label: "Tasks", icon: Clock3 },
-            ].map((action) => {
-              const enabled = navigationSections.some(
-                (section) => section.key === action.key && section.enabled,
-              );
-              const Icon = action.icon;
-              return (
-                <button
-                  className="secondary-button compact-button command-jump-button"
-                  disabled={!enabled}
-                  key={action.key}
-                  onClick={() => onSelectSection(action.key as LocalDashboardSectionKey)}
-                  type="button"
-                >
-                  <Icon size={15} />
-                  {action.label}
-                </button>
-              );
-            })}
+            {navigationSections
+              .filter(
+                (section) =>
+                  section.key !== "matters" &&
+                  section.key !== "contacts" &&
+                  section.key !== "audit" &&
+                  (section.requiresMatterContext || section.key === "queues"),
+              )
+              .map((section) => {
+                const Icon = commandJumpIcons[section.key] ?? Clock3;
+                return (
+                  <button
+                    className="secondary-button compact-button command-jump-button"
+                    disabled={!section.enabled}
+                    key={section.key}
+                    onClick={() => onSelectSection(section.key)}
+                    title={section.title}
+                    type="button"
+                  >
+                    <Icon size={15} />
+                    {section.label}
+                  </button>
+                );
+              })}
           </div>
         </aside>
       </div>

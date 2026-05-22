@@ -272,6 +272,14 @@ export const auditEventTaxonomyDefinitions = [
     actorMetadataKeys: ["actorId", "actorType"],
   }),
   define({
+    action: "document_processing.ocr_provider.updated",
+    category: "operations",
+    resourceType: "provider_setting",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["providerKind", "providerKey", "enabled"],
+  }),
+  define({
     action: "intake_session.created",
     category: "intake",
     resourceType: "intake_session",

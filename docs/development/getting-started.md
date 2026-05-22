@@ -50,7 +50,10 @@ pnpm --filter @open-practice/web dev
   `OPEN_PRACTICE_SETUP_KEY` and the matching `x-open-practice-setup-key` header.
 - Background workers are scaffolded through `@open-practice/worker`. The local `pnpm dev` lane can run
   the worker against Redis, but provider processors return skipped/not-configured results until setup
-  enables SMTP, inbound email, AI, OCR, transcription, or media processing.
+  enables SMTP, inbound email, AI, OCR, transcription, or media processing. OCR uses the local
+  Tesseract provider; owner/admin users can enable or disable that provider from the Queues provider
+  posture panel, and OCR queue buttons stay disabled until both the provider and Redis-backed OCR
+  queue are ready.
 - Production rejects memory persistence, dev seed data, development auth helpers, deprecated external-provider env, and unsafe local S3 endpoints.
 
 ## Local Services

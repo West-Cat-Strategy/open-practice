@@ -166,6 +166,24 @@ describe("API auth and persistence boundaries", () => {
     });
   });
 
+  it("allows browser preflight for dashboard mutation methods", async () => {
+    const response = await testServer().inject({
+      method: "OPTIONS",
+      url: "/api/document-processing/ocr-provider",
+      headers: {
+        origin: "http://localhost:33000",
+        "access-control-request-method": "PUT",
+        "access-control-request-headers":
+          "content-type,x-open-practice-user-id,x-open-practice-firm-id",
+      },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers["access-control-allow-methods"]).toContain("PUT");
+    expect(response.headers["access-control-allow-methods"]).toContain("PATCH");
+    expect(response.headers["access-control-allow-methods"]).toContain("DELETE");
+  });
+
   it("requires a configured setup key for production setup completion", async () => {
     const response = await testServer({
       repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),

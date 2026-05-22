@@ -18,7 +18,10 @@ function enabledSidebarNavigation(): OpenPracticeSidebarNavigationSection[] {
   return getSidebarRouteCatalogEntries().map((entry) => ({
     key: entry.sectionKey ?? "matters",
     label: entry.shortLabel,
+    title: entry.title,
+    area: entry.area,
     enabled: true,
+    requiresMatterContext: entry.requiresMatterContext,
   }));
 }
 
@@ -71,6 +74,10 @@ describe("Open Practice route catalog", () => {
       "externalUploads",
       "drafting",
       "calendar",
+    ]);
+    expect(getSidebarRouteCatalogEntries().map((entry) => [entry.id, entry.area])).toContainEqual([
+      "documents",
+      "workspace",
     ]);
   });
 
@@ -176,49 +183,74 @@ describe("Open Practice route catalog", () => {
       role: string;
       billingCanView: boolean;
       shareLinksEnabled: boolean;
+      externalUploadsEnabled: boolean;
       capabilitySections: RouteCatalogSectionCapability[];
       expected: Record<string, "matched" | "disabled">;
     }> = [
       {
-        role: "owner",
+        role: "owner-with-provider-config-absent",
         billingCanView: true,
-        shareLinksEnabled: true,
+        shareLinksEnabled: false,
+        externalUploadsEnabled: false,
         capabilitySections: [
           { key: "matters", enabled: true },
+          { key: "funds", enabled: true },
           { key: "documents", enabled: true },
           { key: "intake", enabled: true },
           { key: "billing", enabled: true },
+          { key: "audit", enabled: true },
         ],
-        expected: { matters: "matched", billing: "matched", intake: "matched" },
+        expected: {
+          matters: "matched",
+          funds: "matched",
+          billing: "matched",
+          intake: "matched",
+          audit: "matched",
+          shares: "disabled",
+          externalUploads: "disabled",
+        },
       },
       {
-        role: "reviewer",
+        role: "licensee-with-provider-config-absent",
         billingCanView: false,
         shareLinksEnabled: false,
+        externalUploadsEnabled: false,
         capabilitySections: [
           { key: "matters", enabled: true },
           { key: "documents", enabled: true },
           { key: "intake", enabled: true },
           { key: "audit", enabled: true },
         ],
-        expected: { intake: "matched", audit: "matched", billing: "disabled" },
+        expected: {
+          matters: "matched",
+          documents: "matched",
+          intake: "matched",
+          audit: "matched",
+          billing: "disabled",
+          shares: "disabled",
+          externalUploads: "disabled",
+        },
       },
       {
-        role: "billing",
-        billingCanView: true,
-        shareLinksEnabled: false,
-        capabilitySections: [
-          { key: "matters", enabled: true },
-          { key: "billing", enabled: true },
-        ],
-        expected: { billing: "matched", intake: "disabled" },
-      },
-      {
-        role: "restricted",
+        role: "firm-member-with-provider-config-absent",
         billingCanView: false,
         shareLinksEnabled: false,
-        capabilitySections: [{ key: "matters", enabled: true }],
-        expected: { matters: "matched", billing: "disabled", documents: "disabled" },
+        externalUploadsEnabled: false,
+        capabilitySections: [
+          { key: "matters", enabled: true },
+          { key: "documents", enabled: true },
+          { key: "intake", enabled: true },
+        ],
+        expected: {
+          matters: "matched",
+          funds: "disabled",
+          billing: "disabled",
+          documents: "matched",
+          intake: "matched",
+          shares: "disabled",
+          externalUploads: "disabled",
+          audit: "disabled",
+        },
       },
     ];
 

@@ -99,3 +99,7 @@ must contain only identifiers, small control metadata, and idempotency keys. Opt
 AI/OCR/transcription outputs are drafts with provenance, review state, and retention controls.
 Draft assist records are non-authoritative suggestions; raw source text, prompts, instructions, and
 generated text are excluded from audit/job metadata.
+OCR enablement is firm-scoped provider posture, not an environment-only switch: owner/admin users can
+enable the local Tesseract provider through the Queues provider posture panel, while queueing still
+requires the Redis-backed OCR queue and S3-backed document content. AI triage, transcription, and
+media queues remain reserved/deferred until their provider governance and enqueue surfaces are added.

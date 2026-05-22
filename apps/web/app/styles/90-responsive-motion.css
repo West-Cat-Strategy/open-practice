@@ -26,6 +26,10 @@
     padding-bottom: 4px;
   }
 
+  .nav-group {
+    min-width: min(240px, 72vw);
+  }
+
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -105,6 +109,10 @@
     scrollbar-width: thin;
   }
 
+  .nav-group {
+    flex: 0 0 auto;
+  }
+
   .nav-item {
     flex: 0 0 auto;
     min-width: 132px;
@@ -136,7 +144,10 @@
   .permission-toggle-grid,
   .share-form-row,
   .calendar-attendee-form,
+  .calendar-credential-form,
+  .calendar-meeting-link-form,
   .delivery-confirmation-grid,
+  .draft-assist-controls,
   .upload-create-grid,
   .billing-action-row,
   .intake-builder-grid,
@@ -253,6 +264,7 @@
   .draft-editor-header .save-draft-button,
   .draft-assist-controls .compact-button,
   .share-form-row .compact-button,
+  .calendar-attendee-form .compact-button,
   .calendar-meeting-link-form .compact-button,
   .upload-create-grid .primary-button,
   .billing-action-row .primary-button,
@@ -288,6 +300,7 @@
   }
 
   .section-title,
+  .active-matter-card,
   .lane-refresh-panel,
   .audit-projection-header,
   .audit-projection-details,
@@ -371,13 +384,24 @@
   *,
   *::before,
   *::after {
+    animation: none !important;
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 1ms !important;
   }
 
+  .topbar,
+  .metric-grid,
+  .main-grid,
+  .matter-context-panel,
+  .setup-content-area {
+    animation: none !important;
+  }
+
   .matter-row:hover,
+  .nav-item:hover,
+  .text-button:hover,
   .primary-button:hover:not(:disabled),
   .secondary-button:hover:not(:disabled),
   .passkey-button:hover:not(:disabled) {

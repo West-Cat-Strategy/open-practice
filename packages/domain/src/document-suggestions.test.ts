@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildDocumentReviewSuggestions } from "./document-suggestions.js";
+import {
+  buildDocumentMetadataSearchPosture,
+  buildDocumentMetadataTags,
+  buildDocumentReviewSuggestions,
+} from "./document-suggestions.js";
 import type { DocumentRecord, Matter } from "./models.js";
 import type { DocumentTextExtractionRecord } from "./operations.js";
 
@@ -164,5 +168,105 @@ describe("document review suggestions", () => {
     );
     expect(suggestions.summaryCounts.missing_metadata).toBe(5);
     expect(suggestions.summaryCounts.total).toBe(5);
+  });
+
+  it("builds metadata-only tags and search summaries without OCR body text", () => {
+    const latestExtraction = extraction();
+    const suggestions = buildDocumentReviewSuggestions({
+      document: baseDocument,
+      sameMatterDocuments: [baseDocument],
+      latestExtraction,
+      matter: matter(),
+    });
+    const metadataTags = buildDocumentMetadataTags({
+      document: baseDocument,
+      latestExtraction,
+      latestJobStatus: "completed",
+      reviewSuggestions: suggestions,
+    });
+    const search = buildDocumentMetadataSearchPosture({
+      entries: [
+        {
+          document: baseDocument,
+          latestExtraction,
+          latestJobStatus: "completed",
+          reviewSuggestions: suggestions,
+          metadataTags,
+        },
+      ],
+      filters: { q: "financial", tag: "ocr:completed" },
+    });
+
+    expect(metadataTags).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "classification:general" }),
+        expect.objectContaining({ key: "ocr:completed" }),
+        expect.objectContaining({ key: "ocr_language:eng" }),
+        expect.objectContaining({ key: "ocr_confidence:high" }),
+        expect.objectContaining({ key: "cue:classification" }),
+      ]),
+    );
+    expect(search).toMatchObject({
+      reviewOnly: true,
+      mutating: false,
+      filters: { q: "financial", tag: "ocr:completed" },
+      totalCount: 1,
+      matchedCount: 1,
+      ocrPosture: {
+        rawTextSearch: false,
+        rawTextReturned: false,
+        statusCounts: { completed: 1 },
+      },
+      results: [
+        expect.objectContaining({
+          documentId: "doc-001",
+          title: "Residential tenancy evidence",
+          ocrStatus: "completed",
+          matchedFields: expect.arrayContaining(["Metadata tag", "Reviewer cue"]),
+          cueCounts: expect.objectContaining({ classification: 1, total: 2 }),
+        }),
+      ],
+    });
+    expect(JSON.stringify(search)).not.toContain("Private extracted text");
+    expect(JSON.stringify(search)).not.toContain("textStorageKey");
+    expect(JSON.stringify(search)).not.toContain("storage/key");
+    expect(JSON.stringify(search)).not.toContain("providerPayload");
+    expect(JSON.stringify(search)).not.toContain("arbitraryPrivateNote");
+  });
+
+  it("does not treat raw OCR text or arbitrary metadata as searchable posture", () => {
+    const latestExtraction = extraction({
+      metadata: {
+        suggestedClassification: "financial",
+        privateSearchNeedle: "needle-only-in-private-metadata",
+      },
+    });
+    const suggestions = buildDocumentReviewSuggestions({
+      document: baseDocument,
+      sameMatterDocuments: [baseDocument],
+      latestExtraction,
+    });
+
+    const rawTextSearch = buildDocumentMetadataSearchPosture({
+      entries: [{ document: baseDocument, latestExtraction, reviewSuggestions: suggestions }],
+      filters: { q: "private extracted text" },
+    });
+    const privateMetadataSearch = buildDocumentMetadataSearchPosture({
+      entries: [{ document: baseDocument, latestExtraction, reviewSuggestions: suggestions }],
+      filters: { q: "needle-only-in-private-metadata" },
+    });
+    const safeTagSearch = buildDocumentMetadataSearchPosture({
+      entries: [{ document: baseDocument, latestExtraction, reviewSuggestions: suggestions }],
+      filters: { classification: "general", reviewStatus: "not_required", scanStatus: "passed" },
+    });
+
+    expect(rawTextSearch.matchedCount).toBe(0);
+    expect(privateMetadataSearch.matchedCount).toBe(0);
+    expect(safeTagSearch.matchedCount).toBe(1);
+    expect(safeTagSearch.results[0]?.matchedFields).toEqual([
+      "Classification",
+      "Review status",
+      "Scan status",
+    ]);
   });
 });

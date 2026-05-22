@@ -75,16 +75,20 @@ import {
 } from "./external-uploads-dashboard";
 import {
   buildDocumentProcessingQueuePath,
+  buildDocumentProcessingOcrProviderPath,
   buildDocumentProcessingWorkbenchPath,
+  compactDocumentMetadataTag,
   describeDocumentQueueAction,
   describeDocumentReviewSuggestion,
   describeLatestDocumentJob,
   describeLatestExtraction,
+  documentMetadataSearchFilterCount,
   documentProcessingRowsForMatter,
   emptyDocumentReviewSuggestions,
   emptyDocumentProcessingWorkbench,
   loadDocumentProcessingDashboardData,
   replaceDocumentProcessingWorkbench,
+  summarizeDocumentMetadataSearch,
   summarizeDocumentReviewSuggestions,
   summarizeDocumentProcessingWorkbench,
 } from "./document-processing-dashboard";
@@ -513,6 +517,71 @@ function documentProcessingWorkbench(
       { task: "media", queueName: "media", status: "reserved" },
     ],
     summary: { total: 1, queued: 0, active: 0, failed: 0, terminal: 1, byQueue: [] },
+    metadataSearch: {
+      reviewOnly: true,
+      mutating: false,
+      filters: {},
+      totalCount: 1,
+      matchedCount: 1,
+      tags: [
+        {
+          key: "classification:general",
+          label: "Classification: general",
+          value: "general",
+          group: "classification",
+          tone: "neutral",
+          count: 1,
+        },
+        {
+          key: "ocr:completed",
+          label: "OCR: completed",
+          value: "completed",
+          group: "ocr",
+          tone: "ready",
+          count: 1,
+        },
+        {
+          key: "cue:classification",
+          label: "Cue: classification",
+          value: "classification",
+          group: "reviewer_cue",
+          tone: "neutral",
+          count: 1,
+        },
+      ],
+      ocrPosture: {
+        rawTextSearch: false,
+        rawTextReturned: false,
+        searchableFields: [
+          "document_title",
+          "op_authored_metadata",
+          "reviewer_cue_labels",
+          "ocr_status",
+        ],
+        statusCounts: { not_available: 0, queued: 0, completed: 1, failed: 0 },
+      },
+      results: [
+        {
+          documentId: "doc-001",
+          title: "Residential tenancy evidence",
+          matterId: "matter-001",
+          classification: "general",
+          reviewStatus: "accepted",
+          scanStatus: "passed",
+          legalHold: false,
+          ocrStatus: "completed",
+          tagKeys: ["classification:general", "ocr:completed", "cue:classification"],
+          matchedFields: [],
+          cueCounts: {
+            classification: 1,
+            duplicate_or_supersession: 0,
+            matter_contact: 1,
+            missing_metadata: 0,
+            total: 2,
+          },
+        },
+      ],
+    },
     documents: [
       {
         document: {
@@ -580,6 +649,30 @@ function documentProcessingWorkbench(
             missing_metadata: [],
           },
         },
+        metadataTags: [
+          {
+            key: "classification:general",
+            label: "Classification: general",
+            value: "general",
+            group: "classification",
+            tone: "neutral",
+          },
+          {
+            key: "ocr:completed",
+            label: "OCR: completed",
+            value: "completed",
+            group: "ocr",
+            tone: "ready",
+          },
+          {
+            key: "cue:classification",
+            label: "Cue: classification",
+            value: "classification",
+            group: "reviewer_cue",
+            tone: "neutral",
+            count: 1,
+          },
+        ],
       },
     ],
     ...overrides,
@@ -1490,20 +1583,74 @@ describe("dashboard client behavior", () => {
     });
 
     expect(navigationSections).toEqual([
-      { key: "matters", label: "Matters", enabled: true },
-      { key: "contacts", label: "Contacts", enabled: true },
-      { key: "funds", label: "Funds", enabled: true },
-      { key: "billing", label: "Billing", enabled: true },
-      { key: "documents", label: "Documents", enabled: true },
-      { key: "shares", label: "Shares", enabled: true },
-      { key: "externalUploads", label: "Uploads", enabled: true },
-      { key: "drafting", label: "Drafting", enabled: true },
-      { key: "calendar", label: "Calendar", enabled: true },
-      { key: "signatures", label: "Signatures", enabled: true },
-      { key: "intake", label: "Intake", enabled: true },
-      { key: "audit", label: "Audit", enabled: true },
-      { key: "queues", label: "Queues", enabled: true },
+      expect.objectContaining({
+        key: "matters",
+        label: "Matters",
+        area: "workspace",
+        enabled: true,
+      }),
+      expect.objectContaining({
+        key: "contacts",
+        label: "Contacts",
+        area: "workspace",
+        enabled: true,
+      }),
+      expect.objectContaining({ key: "funds", label: "Funds", area: "finance", enabled: true }),
+      expect.objectContaining({ key: "billing", label: "Billing", area: "finance", enabled: true }),
+      expect.objectContaining({
+        key: "documents",
+        label: "Documents",
+        area: "workspace",
+        enabled: true,
+      }),
+      expect.objectContaining({
+        key: "shares",
+        label: "Shares",
+        area: "operations",
+        enabled: true,
+      }),
+      expect.objectContaining({
+        key: "externalUploads",
+        label: "Uploads",
+        area: "workspace",
+        enabled: true,
+      }),
+      expect.objectContaining({
+        key: "drafting",
+        label: "Drafting",
+        area: "workspace",
+        enabled: true,
+      }),
+      expect.objectContaining({
+        key: "calendar",
+        label: "Calendar",
+        area: "workspace",
+        enabled: true,
+      }),
+      expect.objectContaining({
+        key: "signatures",
+        label: "Signatures",
+        area: "operations",
+        enabled: true,
+      }),
+      expect.objectContaining({
+        key: "intake",
+        label: "Intake",
+        area: "operations",
+        enabled: true,
+      }),
+      expect.objectContaining({ key: "audit", label: "Audit", area: "review", enabled: true }),
+      expect.objectContaining({
+        key: "queues",
+        label: "Queues",
+        area: "operations",
+        enabled: true,
+      }),
     ]);
+    expect(navigationSections.find((section) => section.key === "documents")).toMatchObject({
+      title: "Documents",
+      requiresMatterContext: true,
+    });
   });
 
   it("keeps billing visibility compatible with billing dashboard access", () => {
@@ -1525,29 +1672,44 @@ describe("dashboard client behavior", () => {
     });
 
     expect(navigationSections.find((section) => section.key === "billing")).toEqual({
+      area: "finance",
+      enabled: false,
       key: "billing",
       label: "Billing",
-      enabled: false,
+      requiresMatterContext: true,
+      title: "Billing",
     });
     expect(navigationSections.find((section) => section.key === "shares")).toEqual({
-      key: "shares",
+      area: "operations",
       label: "Shares",
       enabled: false,
+      key: "shares",
+      requiresMatterContext: true,
+      title: "Share Links",
     });
     expect(navigationSections.find((section) => section.key === "externalUploads")).toEqual({
+      area: "workspace",
+      enabled: false,
       key: "externalUploads",
       label: "Uploads",
-      enabled: false,
+      requiresMatterContext: true,
+      title: "External Uploads",
     });
     expect(navigationSections.find((section) => section.key === "calendar")).toEqual({
+      area: "workspace",
+      enabled: false,
       key: "calendar",
       label: "Calendar",
-      enabled: false,
+      requiresMatterContext: true,
+      title: "Calendar Radar",
     });
     expect(navigationSections.find((section) => section.key === "queues")).toEqual({
+      area: "operations",
+      enabled: true,
       key: "queues",
       label: "Queues",
-      enabled: true,
+      requiresMatterContext: false,
+      title: "Operational Queues",
     });
   });
 
@@ -1868,16 +2030,67 @@ describe("dashboard client behavior", () => {
   });
 
   it("describes disabled dashboard navigation and summarizes queues for live regions", () => {
-    expect(
-      describeDisabledNavigationReason({ key: "billing", label: "Billing", enabled: false }),
-    ).toBe("Billing is unavailable for your current role.");
-    expect(
-      describeDisabledNavigationReason({
+    const disabledReasons = [
+      { key: "funds", label: "Funds", expected: "Funds require trust ledger read access." },
+      {
+        key: "billing",
+        label: "Billing",
+        expected: "Billing requires trust ledger and billing read access.",
+      },
+      {
+        key: "audit",
+        label: "Audit",
+        expected: "Audit review requires audit log read access.",
+      },
+      {
+        key: "documents",
+        label: "Documents",
+        expected: "Documents require matter-scoped document read access.",
+      },
+      {
+        key: "drafting",
+        label: "Drafting",
+        expected: "Drafting requires matter-scoped draft read access.",
+      },
+      {
+        key: "calendar",
+        label: "Calendar",
+        expected: "Calendar requires matter-scoped calendar read access.",
+      },
+      {
+        key: "signatures",
+        label: "Signatures",
+        expected: "Signatures require matter-scoped signature request read access.",
+      },
+      {
+        key: "intake",
+        label: "Intake",
+        expected: "Intake requires matter-scoped intake read access.",
+      },
+      {
+        key: "shares",
+        label: "Shares",
+        expected: "Share links require token signing and share-link access.",
+      },
+      {
         key: "externalUploads",
         label: "Uploads",
-        enabled: false,
-      }),
-    ).toBe("External uploads are unavailable until the storage provider is configured.");
+        expected: "External uploads require S3 storage, token signing, and upload access.",
+      },
+    ] as const;
+
+    for (const reason of disabledReasons) {
+      expect(
+        describeDisabledNavigationReason({
+          key: reason.key,
+          label: reason.label,
+          enabled: false,
+        }),
+      ).toBe(reason.expected);
+      expect(reason.expected).not.toContain("unavailable for your current permissions");
+    }
+
+    expect(buildDocumentProcessingOcrProviderPath()).toBe("/api/document-processing/ocr-provider");
     expect(
       summarizeQueues({
         sections: [
@@ -2250,7 +2463,20 @@ describe("dashboard client behavior", () => {
     );
 
     expect(buildDocumentProcessingWorkbenchPath("matter 001")).toBe(
-      "/api/document-processing/workbench?matterId=matter%20001",
+      "/api/document-processing/workbench?matterId=matter+001",
+    );
+    expect(
+      buildDocumentProcessingWorkbenchPath("matter 001", {
+        q: "financial cue",
+        classification: "privileged",
+        reviewStatus: "needs_metadata",
+        scanStatus: "passed",
+        ocrStatus: "completed",
+        cueGroup: "classification",
+        tag: "cue:classification",
+      }),
+    ).toBe(
+      "/api/document-processing/workbench?matterId=matter+001&q=financial+cue&classification=privileged&reviewStatus=needs_metadata&scanStatus=passed&ocrStatus=completed&cueGroup=classification&tag=cue%3Aclassification",
     );
     expect(buildDocumentProcessingQueuePath("doc/001")).toBe(
       "/api/document-processing/documents/doc%2F001/queue",
@@ -2293,6 +2519,28 @@ describe("dashboard client behavior", () => {
     ).toBe("completed · language eng · 3 pages · 88% confidence");
     expect(summarizeDocumentReviewSuggestions(workbench.documents)).toBe(
       "2 reviewer suggestion cues. 0 duplicate or supersession. 0 missing metadata.",
+    );
+    expect(summarizeDocumentMetadataSearch(workbench.metadataSearch)).toBe(
+      "1 documents indexed by OP-authored metadata. 3 tag cues. Raw OCR text is not searched or returned.",
+    );
+    expect(
+      summarizeDocumentMetadataSearch({
+        ...workbench.metadataSearch!,
+        filters: { q: "financial", tag: "cue:classification" },
+        matchedCount: 1,
+      }),
+    ).toBe(
+      "1/1 document metadata matches across 2 filters. Raw OCR text is not searched or returned.",
+    );
+    expect(
+      documentMetadataSearchFilterCount({
+        q: "financial",
+        classification: "general",
+        tag: "",
+      }),
+    ).toBe(2);
+    expect(compactDocumentMetadataTag(workbench.metadataSearch!.tags[0]!)).toBe(
+      "Classification: general (1)",
     );
     expect(
       describeDocumentReviewSuggestion(item.reviewSuggestions!.groups.classification[0]!),

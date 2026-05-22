@@ -10,7 +10,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ConflictCandidate } from "@open-practice/domain";
-import type { OpenPracticeSidebarNavigationSection } from "../../routes/routeCatalog";
+import type {
+  OpenPracticeRouteArea,
+  OpenPracticeSidebarNavigationSection,
+} from "../../routes/routeCatalog";
 import {
   describeDisabledNavigationReason,
   type SavedMatterPresetDefinition,
@@ -31,6 +34,20 @@ import type {
 
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 
+const navigationAreaLabels: Record<OpenPracticeRouteArea, string> = {
+  workspace: "Workspace",
+  finance: "Finance",
+  operations: "Operations",
+  review: "Review",
+};
+
+const navigationAreaOrder: OpenPracticeRouteArea[] = [
+  "workspace",
+  "finance",
+  "operations",
+  "review",
+];
+
 export type DashboardMetric = {
   label: string;
   value: string;
@@ -48,6 +65,13 @@ export function DashboardSidebar({
   navIcons: Record<LocalDashboardSectionKey, LucideIcon>;
   onSelectSection: (section: LocalDashboardSectionKey) => void;
 }) {
+  const groupedNavigationSections = navigationAreaOrder
+    .map((area) => ({
+      area,
+      sections: navigationSections.filter((section) => section.area === area),
+    }))
+    .filter((group) => group.sections.length > 0);
+
   return (
     <aside className="sidebar dashboard-sidebar" aria-label="Primary">
       <div className="brand dashboard-brand">
@@ -58,34 +82,55 @@ export function DashboardSidebar({
         </div>
       </div>
 
-      <nav className="nav-list" aria-label="Dashboard sections">
-        {navigationSections.map(({ key, label, enabled }) => {
-          const Icon = navIcons[key];
-          const disabledReason = describeDisabledNavigationReason({ key, label, enabled });
-          const disabledReasonId = `nav-disabled-${key}`;
-          return (
-            <button
-              aria-current={key === activeSection ? "page" : undefined}
-              aria-describedby={disabledReason ? disabledReasonId : undefined}
-              aria-disabled={!enabled}
-              className={key === activeSection ? "nav-item active" : "nav-item"}
-              disabled={!enabled}
-              key={label}
-              onClick={() => onSelectSection(key)}
-              type="button"
-            >
-              <Icon size={18} />
-              <span>
-                <strong>{label}</strong>
-                {disabledReason ? (
-                  <small className="nav-disabled-reason" id={disabledReasonId}>
-                    {disabledReason}
-                  </small>
-                ) : null}
-              </span>
-            </button>
-          );
-        })}
+      <nav className="nav-list grouped-nav-list" aria-label="Dashboard sections">
+        {groupedNavigationSections.map((group) => (
+          <section
+            className="nav-group"
+            key={group.area}
+            aria-labelledby={`nav-area-${group.area}`}
+          >
+            <p className="nav-group-label" id={`nav-area-${group.area}`}>
+              {navigationAreaLabels[group.area]}
+            </p>
+            <div className="nav-group-items">
+              {group.sections.map(({ key, label, title, enabled }) => {
+                const Icon = navIcons[key];
+                const disabledReason = describeDisabledNavigationReason({ key, label, enabled });
+                const disabledReasonId = `nav-disabled-${key}`;
+                return (
+                  <button
+                    aria-current={key === activeSection ? "page" : undefined}
+                    aria-describedby={disabledReason ? disabledReasonId : undefined}
+                    aria-disabled={!enabled}
+                    className={[
+                      "nav-item",
+                      key === activeSection ? "active" : "",
+                      enabled ? "" : "disabled",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    key={key}
+                    onClick={() => {
+                      if (enabled) onSelectSection(key);
+                    }}
+                    title={disabledReason ?? title}
+                    type="button"
+                  >
+                    <Icon size={18} />
+                    <span>
+                      <strong>{label}</strong>
+                      {disabledReason ? (
+                        <small className="nav-disabled-reason" id={disabledReasonId}>
+                          {disabledReason}
+                        </small>
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
       </nav>
 
       <section className="security-card dashboard-security-card">
@@ -231,6 +276,11 @@ export function MatterContextPanel({
   savingMatterView: boolean;
   selectedMatterPresetFamily: SavedMatterPresetFamily;
 }) {
+  const visibleMatterLimit = 4;
+  const visibleMatters = filteredMatters.slice(0, visibleMatterLimit);
+  const hiddenMatterCount = Math.max(filteredMatters.length - visibleMatters.length, 0);
+  const activeMatterVisible = visibleMatters.some((matter) => matter.id === activeMatter.id);
+
   return (
     <section
       className="panel matter-context-panel dashboard-matter-context"
@@ -251,9 +301,37 @@ export function MatterContextPanel({
           />
         </label>
       </div>
+      <div className="active-matter-card" aria-label="Selected matter">
+        <span>
+          <small>Selected matter</small>
+          <strong>{activeMatter.title}</strong>
+          <small>
+            {activeMatter.number} · {activeMatter.practiceArea} · {activeMatter.jurisdiction}
+          </small>
+        </span>
+        <em>{activeMatter.status}</em>
+      </div>
       <div className="matter-strip">
-        {filteredMatters.map((matter) => (
+        {!activeMatterVisible && filteredMatters.length > 0 ? (
           <button
+            aria-current="true"
+            className="matter-row selected"
+            key={activeMatter.id}
+            onClick={() => onSelectMatter(activeMatter.id)}
+            type="button"
+          >
+            <span>
+              <strong>{activeMatter.title}</strong>
+              <small>
+                {activeMatter.number} · {activeMatter.practiceArea}
+              </small>
+            </span>
+            <em>{activeMatter.status}</em>
+          </button>
+        ) : null}
+        {visibleMatters.map((matter) => (
+          <button
+            aria-current={matter.id === activeMatter.id ? "true" : undefined}
             className={matter.id === activeMatter.id ? "matter-row selected" : "matter-row"}
             key={matter.id}
             onClick={() => onSelectMatter(matter.id)}
@@ -270,74 +348,88 @@ export function MatterContextPanel({
         ))}
         {filteredMatters.length === 0 ? <p className="inline-empty">No matters match.</p> : null}
       </div>
-      <div className="section-title">
-        <h3>Saved matter views</h3>
-        <div className="matter-view-preset-actions">
-          <label className="search-field compact matter-view-preset-select">
-            <span>Preset</span>
-            <select
-              aria-label="Saved matter view preset"
-              onChange={(event) =>
-                onMatterPresetFamilyChange(event.target.value as SavedMatterPresetFamily)
-              }
-              value={selectedMatterPresetFamily}
+      {hiddenMatterCount > 0 ? (
+        <p className="matter-result-note">
+          Showing {visibleMatters.length} of {filteredMatters.length} accessible matters. Refine
+          search to narrow the list.
+        </p>
+      ) : null}
+      <details className="saved-matter-views">
+        <summary>
+          <span>
+            <strong>Saved matter views</strong>
+            <small>{savedMatterViewDefinitions.length} active</small>
+          </span>
+        </summary>
+        <div className="section-title compact-section-title">
+          <h3>Preset focus</h3>
+          <div className="matter-view-preset-actions">
+            <label className="search-field compact matter-view-preset-select">
+              <span>Preset</span>
+              <select
+                aria-label="Saved matter view preset"
+                onChange={(event) =>
+                  onMatterPresetFamilyChange(event.target.value as SavedMatterPresetFamily)
+                }
+                value={selectedMatterPresetFamily}
+              >
+                {matterPresetOptions.map((preset) => (
+                  <option key={preset.family} value={preset.family}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="secondary-button compact-button row-button"
+              disabled={savingMatterView}
+              onClick={onSaveMatterView}
+              type="button"
             >
-              {matterPresetOptions.map((preset) => (
-                <option key={preset.family} value={preset.family}>
-                  {preset.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="secondary-button compact-button row-button"
-            disabled={savingMatterView}
-            onClick={onSaveMatterView}
-            type="button"
-          >
-            <Save aria-hidden="true" size={16} />
-            {savingMatterView ? "Saving" : "Save view"}
-          </button>
-        </div>
-      </div>
-      <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-        {savedMatterViewStatus}
-      </p>
-      <div className="party-list matter-saved-view-list">
-        {savedMatterViewDefinitions.map((definition) => (
-          <div className="party-row" key={definition.id}>
-            <span>
-              <strong>{definition.name}</strong>
-              <small>{formatSavedMatterViewDefinition(definition)}</small>
-            </span>
-            <span className="row-actions">
-              <button
-                aria-label={`Apply ${definition.name}`}
-                className="secondary-button compact-button row-button"
-                disabled={activeSavedMatterViewId === definition.id}
-                onClick={() => onApplySavedMatterView(definition)}
-                type="button"
-              >
-                <Clock3 aria-hidden="true" size={16} />
-                {activeSavedMatterViewId === definition.id ? "Applied" : "Apply"}
-              </button>
-              <button
-                aria-label={`Archive ${definition.name}`}
-                className="secondary-button compact-button row-button"
-                disabled={archivingSavedMatterViewId === definition.id}
-                onClick={() => onArchiveSavedMatterView(definition)}
-                type="button"
-              >
-                <X aria-hidden="true" size={16} />
-                {archivingSavedMatterViewId === definition.id ? "Archiving" : "Archive"}
-              </button>
-            </span>
+              <Save aria-hidden="true" size={16} />
+              {savingMatterView ? "Saving" : "Save view"}
+            </button>
           </div>
-        ))}
-        {savedMatterViewDefinitions.length === 0 ? (
-          <p className="inline-empty">No saved matter views are active.</p>
-        ) : null}
-      </div>
+        </div>
+        <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+          {savedMatterViewStatus}
+        </p>
+        <div className="party-list matter-saved-view-list">
+          {savedMatterViewDefinitions.map((definition) => (
+            <div className="party-row" key={definition.id}>
+              <span>
+                <strong>{definition.name}</strong>
+                <small>{formatSavedMatterViewDefinition(definition)}</small>
+              </span>
+              <span className="row-actions">
+                <button
+                  aria-label={`Apply ${definition.name}`}
+                  className="secondary-button compact-button row-button"
+                  disabled={activeSavedMatterViewId === definition.id}
+                  onClick={() => onApplySavedMatterView(definition)}
+                  type="button"
+                >
+                  <Clock3 aria-hidden="true" size={16} />
+                  {activeSavedMatterViewId === definition.id ? "Applied" : "Apply"}
+                </button>
+                <button
+                  aria-label={`Archive ${definition.name}`}
+                  className="secondary-button compact-button row-button"
+                  disabled={archivingSavedMatterViewId === definition.id}
+                  onClick={() => onArchiveSavedMatterView(definition)}
+                  type="button"
+                >
+                  <X aria-hidden="true" size={16} />
+                  {archivingSavedMatterViewId === definition.id ? "Archiving" : "Archive"}
+                </button>
+              </span>
+            </div>
+          ))}
+          {savedMatterViewDefinitions.length === 0 ? (
+            <p className="inline-empty">No saved matter views are active.</p>
+          ) : null}
+        </div>
+      </details>
     </section>
   );
 }

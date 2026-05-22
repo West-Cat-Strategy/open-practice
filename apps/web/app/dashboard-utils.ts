@@ -88,12 +88,26 @@ export function describeDisabledNavigationReason(
   section: Pick<OpenPracticeSidebarNavigationSection, "key" | "label" | "enabled">,
 ): string | null {
   if (section.enabled) return null;
-  if (section.key === "billing") return "Billing is unavailable for your current role.";
-  if (section.key === "shares") return "Share links are unavailable in this environment.";
-  if (section.key === "externalUploads") {
-    return "External uploads are unavailable until the storage provider is configured.";
+  if (section.key === "matters") return "Matters require assigned matter read access.";
+  if (section.key === "contacts") return "Contacts require contact read access.";
+  if (section.key === "funds") return "Funds require trust ledger read access.";
+  if (section.key === "billing") return "Billing requires trust ledger and billing read access.";
+  if (section.key === "documents") return "Documents require matter-scoped document read access.";
+  if (section.key === "drafting") return "Drafting requires matter-scoped draft read access.";
+  if (section.key === "calendar") return "Calendar requires matter-scoped calendar read access.";
+  if (section.key === "signatures") {
+    return "Signatures require matter-scoped signature request read access.";
   }
-  return `${section.label} is unavailable for your current permissions.`;
+  if (section.key === "intake") return "Intake requires matter-scoped intake read access.";
+  if (section.key === "audit") return "Audit review requires audit log read access.";
+  if (section.key === "queues") return "Operational queues require job or audit read access.";
+  if (section.key === "shares") {
+    return "Share links require token signing and share-link access.";
+  }
+  if (section.key === "externalUploads") {
+    return "External uploads require S3 storage, token signing, and upload access.";
+  }
+  return `${section.label} requires access that is not enabled for this role.`;
 }
 
 export function summarizeQueues(queues: QueuesResponse): string {

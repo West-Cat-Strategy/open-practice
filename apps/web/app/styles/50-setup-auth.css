@@ -108,10 +108,15 @@
 }
 
 .setup-step.active,
-.setup-step:hover {
+.setup-step:hover:not([aria-disabled="true"]) {
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.1);
   color: #fffdfa;
+}
+
+.setup-step[aria-disabled="true"] {
+  cursor: default;
+  color: rgba(247, 242, 232, 0.48);
 }
 
 .setup-step.completed {

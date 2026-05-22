@@ -9,7 +9,7 @@ import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
-import { queueDocumentOcr } from "./document-processing.js";
+import { assertOcrProviderConfigured, queueDocumentOcr } from "./document-processing.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const inboundEmailQuerySchema = z.object({
@@ -499,6 +499,9 @@ export function registerInboundEmailRoutes(
       }
       if (body.queueOcr && !ocrJobQueue) {
         throw Object.assign(new Error("OCR queue is not configured"), { statusCode: 503 });
+      }
+      if (body.queueOcr) {
+        await assertOcrProviderConfigured({ repository, firmId: request.auth.firmId });
       }
 
       const promoted = await repository.promoteInboundEmailAttachmentToDocument({
