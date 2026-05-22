@@ -321,7 +321,7 @@ describe("contact routes", () => {
     expect(auditJson).not.toContain("Possible duplicate");
   });
 
-  it("allows read-only contact data-quality history while denying decisions without update access", async () => {
+  it("allows firm-wide contact data-quality history for auditors while denying decisions", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createContactDataQualityResolution({
       id: "resolution-visible-auditor",
@@ -394,6 +394,13 @@ describe("contact routes", () => {
 
     expect(auditorList.statusCode).toBe(200);
     expect(auditorList.json()).toEqual([
+      expect.objectContaining({
+        id: "resolution-hidden-auditor",
+        contactId: "contact-northstar",
+        matterId: "matter-002",
+        signalKind: "protected_party_cue",
+        decision: "acknowledged",
+      }),
       expect.objectContaining({
         id: "resolution-visible-auditor",
         contactId: "contact-ada",

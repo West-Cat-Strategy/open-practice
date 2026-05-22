@@ -26,7 +26,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ConflictCandidate,
   DraftExportFormat,
@@ -100,16 +100,23 @@ import {
 } from "./intake-forms-dashboard";
 import DraftEditor from "./drafting/DraftEditor";
 import {
+  applyMatterAvailabilityToNavigation,
   applySavedQueueFocus,
   applySavedMatterFocus,
+  buildCreateMatterPayload,
+  canSubmitFirstMatter,
   dashboardLaneFreshnessCue,
   describeSavedMatterFocus,
   describeSavedQueueFocus,
+  enableMatterScopedCapabilitiesForLocalMatter,
   filterMatters,
+  firstMatterJurisdictionOptions,
   getSavedMatterPresetDefinition,
+  initialFirstMatterFormState,
   savedMatterPresetOptions,
   summarizeQueues,
   type DashboardLaneRefreshState,
+  type FirstMatterFormState,
   type SavedMatterPresetFamily,
 } from "./dashboard-utils";
 import {
@@ -465,6 +472,171 @@ function formatSavedMatterViewDefinition(definition: SavedOperationalViewDefinit
   return `${presetLabel} · ${definition.rowLimit} matters · ${definition.permissionScope.join(", ")}`;
 }
 
+function FirstMatterWorkspace({
+  canCreateMatter,
+  creating,
+  form,
+  onChange,
+  onCreate,
+  status,
+}: {
+  canCreateMatter: boolean;
+  creating: boolean;
+  form: FirstMatterFormState;
+  onChange: <Field extends keyof FirstMatterFormState>(
+    field: Field,
+    value: FirstMatterFormState[Field],
+  ) => void;
+  onCreate: () => void;
+  status: string;
+}) {
+  const canSubmit = canCreateMatter && canSubmitFirstMatter(form) && !creating;
+
+  function handleTextChange<Field extends keyof FirstMatterFormState>(field: Field) {
+    return (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      onChange(field, event.currentTarget.value as FirstMatterFormState[Field]);
+    };
+  }
+
+  return (
+    <article
+      aria-labelledby="first-matter-title"
+      className="panel first-matter-panel"
+      id="matter-workspace"
+      tabIndex={-1}
+    >
+      <div className="panel-header first-matter-header">
+        <div>
+          <p className="eyebrow">Matter command centre</p>
+          <h2 id="first-matter-title">Create the first matter</h2>
+        </div>
+        <span className="status-chip">Starter intake</span>
+      </div>
+
+      <div className="first-matter-layout">
+        <div className="first-matter-form-grid">
+          <label>
+            <span className="field-label">Matter title</span>
+            <input
+              className="compact-input first-matter-input"
+              onChange={handleTextChange("title")}
+              placeholder="Synthetic starter intake"
+              value={form.title}
+            />
+          </label>
+          <label>
+            <span className="field-label">Practice area</span>
+            <input
+              className="compact-input first-matter-input"
+              onChange={handleTextChange("practiceArea")}
+              placeholder="Residential tenancy"
+              value={form.practiceArea}
+            />
+          </label>
+          <label>
+            <span className="field-label">Jurisdiction</span>
+            <select
+              className="compact-select first-matter-input"
+              onChange={handleTextChange("jurisdiction")}
+              value={form.jurisdiction}
+            >
+              {firstMatterJurisdictionOptions.map((jurisdiction) => (
+                <option key={jurisdiction} value={jurisdiction}>
+                  {jurisdiction}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <fieldset className="first-matter-kind-field">
+            <legend className="field-label">Client kind</legend>
+            <div className="segmented-control" role="group" aria-label="Client kind">
+              {(["person", "organization"] as const).map((kind) => (
+                <button
+                  aria-pressed={form.clientKind === kind}
+                  className={form.clientKind === kind ? "active" : ""}
+                  key={kind}
+                  onClick={() => onChange("clientKind", kind)}
+                  type="button"
+                >
+                  {kind === "person" ? "Person" : "Organization"}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <label>
+            <span className="field-label">Client display name</span>
+            <input
+              className="compact-input first-matter-input"
+              onChange={handleTextChange("clientDisplayName")}
+              placeholder="Synthetic Client"
+              value={form.clientDisplayName}
+            />
+          </label>
+          <label>
+            <span className="field-label">Client email</span>
+            <input
+              className="compact-input first-matter-input"
+              inputMode="email"
+              onChange={handleTextChange("clientEmail")}
+              placeholder="client@example.test"
+              type="email"
+              value={form.clientEmail}
+            />
+          </label>
+          <label>
+            <span className="field-label">Client phone</span>
+            <input
+              className="compact-input first-matter-input"
+              inputMode="tel"
+              onChange={handleTextChange("clientPhone")}
+              placeholder="+1-555-0100"
+              type="tel"
+              value={form.clientPhone}
+            />
+          </label>
+        </div>
+
+        <aside className="first-matter-controls" aria-label="Created records">
+          <div className="detail-grid compact-detail-grid">
+            <div>
+              <span className="field-label">Matter</span>
+              <strong>Intake</strong>
+            </div>
+            <div>
+              <span className="field-label">Party</span>
+              <strong>Prospective</strong>
+            </div>
+            <div>
+              <span className="field-label">Assignment</span>
+              <strong>Current user</strong>
+            </div>
+            <div>
+              <span className="field-label">Audit</span>
+              <strong>Safe metadata</strong>
+            </div>
+          </div>
+          <button
+            className="primary-button first-matter-submit"
+            disabled={!canSubmit}
+            onClick={onCreate}
+            type="button"
+          >
+            <Plus size={18} aria-hidden="true" />
+            {creating ? "Creating matter" : "Create matter"}
+          </button>
+          <p className="inline-empty" role="status" aria-live="polite">
+            {canCreateMatter
+              ? status
+              : "Your current role can use operational surfaces, but matter creation is not available."}
+          </p>
+        </aside>
+      </div>
+    </article>
+  );
+}
+
 export default function DashboardClient({
   apiBaseUrl,
   auditProjection: initialAuditProjection,
@@ -554,6 +726,13 @@ export default function DashboardClient({
   const [selectedMatterViewPresetFamily, setSelectedMatterViewPresetFamily] =
     useState<SavedMatterPresetFamily>("matter_follow_up");
   const [matterSearch, setMatterSearch] = useState("");
+  const [firstMatterForm, setFirstMatterForm] = useState<FirstMatterFormState>(
+    initialFirstMatterFormState,
+  );
+  const [firstMatterStatus, setFirstMatterStatus] = useState(
+    "No matter has been created in this session.",
+  );
+  const [creatingFirstMatter, setCreatingFirstMatter] = useState(false);
   const [activityKindFilter, setActivityKindFilter] = useState<MatterActivityKindFilter>("all");
   const [activityStatusFilter, setActivityStatusFilter] =
     useState<MatterActivityStatusFilter>("all");
@@ -1021,17 +1200,31 @@ export default function DashboardClient({
     0,
   );
   const canCreateDraftInvoice = activeUnbilledTime.length + activeUnbilledExpenses.length > 0;
+  const hasAccessibleMatter = matters.length > 0;
+  const canCreateMatter = capabilities.sections.some(
+    (section) => section.key === "matters" && section.actions.includes("create"),
+  );
+  const navigationCapabilitySections = useMemo(
+    () => enableMatterScopedCapabilitiesForLocalMatter(capabilities.sections, hasAccessibleMatter),
+    [capabilities.sections, hasAccessibleMatter],
+  );
   const navigationSections = useMemo<OpenPracticeSidebarNavigationSection[]>(() => {
-    return buildSidebarNavigationSections({
-      billingCanView: billingDashboard.canView,
-      capabilitySections: capabilities.sections,
-      shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
-      externalUploadsEnabled: externalUploadCreateAvailable,
-    });
+    return applyMatterAvailabilityToNavigation(
+      buildSidebarNavigationSections({
+        billingCanView: billingDashboard.canView,
+        capabilitySections: navigationCapabilitySections,
+        shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
+        externalUploadsEnabled: externalUploadCreateAvailable,
+      }),
+      hasAccessibleMatter,
+      canCreateMatter,
+    );
   }, [
     billingDashboard.canView,
-    capabilities.sections,
+    canCreateMatter,
     externalUploadCreateAvailable,
+    hasAccessibleMatter,
+    navigationCapabilitySections,
     shareLinksStatus.createStatus,
   ]);
   const activeSectionLabel =
@@ -3073,6 +3266,89 @@ export default function DashboardClient({
     closeDraftEditor();
   }
 
+  function updateFirstMatterForm<Field extends keyof FirstMatterFormState>(
+    field: Field,
+    value: FirstMatterFormState[Field],
+  ): void {
+    setFirstMatterForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function createFirstMatter(): Promise<void> {
+    if (!canCreateMatter || !canSubmitFirstMatter(firstMatterForm)) return;
+
+    setCreatingFirstMatter(true);
+    setFirstMatterStatus("Creating matter...");
+    try {
+      const created = await requestDashboardJson<MatterSummary>(apiBaseUrl, "/api/matters", {
+        method: "POST",
+        headers: devHeaders,
+        payload: buildCreateMatterPayload(firstMatterForm),
+      });
+
+      setMatters((current) => [created, ...current.filter((matter) => matter.id !== created.id)]);
+      setActiveMatterId(created.id);
+      setDraftsByMatterId((current) => ({ ...current, [created.id]: current[created.id] ?? [] }));
+      setExternalUploadsByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? [],
+      }));
+      setExternalUploadDocumentsByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? [],
+      }));
+      setDocumentProcessingByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? emptyDocumentProcessingWorkbench(created.id),
+      }));
+      setCalendarEventsByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? [],
+      }));
+      setIntakeFormLinksByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? [],
+      }));
+      setIntakeVariableProposalsByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? [],
+      }));
+      setTrustControlsByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? emptyTrustControlsDashboard(),
+      }));
+      setBillingDashboard((current) => ({
+        ...current,
+        matters: current.matters.some((matter) => matter.matterId === created.id)
+          ? current.matters
+          : [
+              {
+                matterId: created.id,
+                unbilledTime: [],
+                unbilledExpenses: [],
+                invoices: [],
+                payments: [],
+              },
+              ...current.matters,
+            ],
+      }));
+      setFirstMatterForm(initialFirstMatterFormState);
+      setFirstMatterStatus(`${created.number} created.`);
+      shouldFocusDetailRef.current = true;
+      setActiveSection("matters");
+      if (typeof window !== "undefined") {
+        window.history.pushState(
+          { section: "matters" },
+          "",
+          buildDashboardSectionUrl(window.location.href, "matters"),
+        );
+      }
+    } catch (error) {
+      setFirstMatterStatus(`Matter creation failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setCreatingFirstMatter(false);
+    }
+  }
+
   function toggleSharePermission(permission: ShareLinkPermission): void {
     setSharePermissions((current) => {
       if (current.includes(permission)) {
@@ -3322,9 +3598,223 @@ export default function DashboardClient({
 
   if (!activeMatter) {
     return (
-      <main className="empty-state">
-        <h1>{overview.firm.name}</h1>
-        <p>No accessible matters were returned for {session.user.displayName}.</p>
+      <main className="app-shell dashboard-shell legal-ops-shell" aria-labelledby="dashboard-title">
+        <a className="skip-link" href="#matter-workspace">
+          Skip to workspace
+        </a>
+        <DashboardSidebar
+          activeSection={activeSection}
+          navigationSections={navigationSections}
+          navIcons={navIcons}
+          onSelectSection={selectDashboardSection}
+        />
+
+        <section className="workspace dashboard-workspace zero-matter-workspace">
+          <DashboardTopbar
+            firmName={overview.firm.name}
+            session={session}
+            formatProfessionalRole={formatProfessionalRoleLabel}
+          />
+
+          <DashboardMetrics metrics={metrics} />
+
+          <OperationalFocusPanel
+            operationalFocus={operationalFocus}
+            operationalFocusEmpty={operationalFocusEmpty}
+            onOpenQueues={() => selectDashboardSection("queues")}
+          />
+
+          <section className="main-grid matter-workspace-grid zero-matter-workspace-grid">
+            {activeSection === "contacts" ? (
+              <article
+                aria-labelledby="zero-contacts-title"
+                className="panel matter-detail matter-detail-panel"
+                id="matter-workspace"
+                ref={detailPanelRef}
+                tabIndex={-1}
+              >
+                <div className="panel-header matter-detail-header">
+                  <div>
+                    <p className="eyebrow">Contact operations</p>
+                    <h2 id="zero-contacts-title">Contacts</h2>
+                  </div>
+                  <span className="status-chip">Firm surface</span>
+                </div>
+                <ContactsSection
+                  activeContactDossier={activeContactDossier}
+                  canRecordContactDataQualityResolution={canRecordContactDataQualityResolution}
+                  compactStatus={compactStatus}
+                  contactDossiers={contactDossiers}
+                  contactDataQualityResolutions={activeContactDataQualityResolutions}
+                  contactDataQualityStatus={contactDataQualityStatus}
+                  contactReviewQueue={contactReviewQueue}
+                  contactSearch={contactSearch}
+                  filteredContactDossiers={filteredContactDossiers}
+                  onRecordContactDataQualityResolution={recordContactDataQualityResolution}
+                  onContactSearchChange={setContactSearch}
+                  onPrepareConflictCheckFromContact={prepareConflictCheckFromContact}
+                  onSelectContact={setActiveContactId}
+                  onSelectMatter={selectMatter}
+                  recordingContactResolutionKey={recordingContactResolutionKey}
+                />
+              </article>
+            ) : null}
+
+            {activeSection === "audit" ? (
+              <article
+                aria-labelledby="zero-audit-title"
+                className="panel matter-detail matter-detail-panel"
+                id="matter-workspace"
+                ref={detailPanelRef}
+                tabIndex={-1}
+              >
+                <div className="panel-header matter-detail-header">
+                  <div>
+                    <p className="eyebrow">Audit review</p>
+                    <h2 id="zero-audit-title">Audit activity</h2>
+                  </div>
+                  <span className="status-chip">
+                    {auditProjection.valid === false ? "Chain invalid" : "Read-only"}
+                  </span>
+                </div>
+                <div
+                  className={`lane-refresh-panel ${auditFreshnessCue.tone}`}
+                  data-stale={auditFreshnessCue.stale ? "true" : "false"}
+                >
+                  <span>
+                    <strong>Audit activity</strong>
+                    <small>{auditFreshnessCue.detail}</small>
+                  </span>
+                  <button
+                    aria-label="Refresh audit activity"
+                    className="secondary-button compact-button lane-refresh-button"
+                    disabled={auditRefreshState.refreshing}
+                    onClick={() => void refreshAuditLane()}
+                    type="button"
+                  >
+                    <RotateCcw aria-hidden="true" size={16} />
+                    {auditRefreshState.refreshing ? "Refreshing" : auditFreshnessCue.label}
+                  </button>
+                </div>
+                <div className="audit-projection-summary">
+                  <div className="audit-projection-header">
+                    <span>
+                      <strong>Audit taxonomy projection</strong>
+                      <small>{auditProjectionStatusLabel(auditProjection.status)}</small>
+                    </span>
+                    <em>{auditProjection.valid === false ? "chain invalid" : "read-only"}</em>
+                  </div>
+                  <div className="audit-projection-grid">
+                    <span>
+                      <strong>{auditProjectionIssues.unknownActionCount}</strong>
+                      <small>Unknown actions</small>
+                    </span>
+                    <span>
+                      <strong>{auditProjectionIssues.matterScopeGapCount}</strong>
+                      <small>Matter-scope gaps</small>
+                    </span>
+                    <span>
+                      <strong>{auditProjectionIssues.resourceTypeMismatchCount}</strong>
+                      <small>Resource-type mismatches</small>
+                    </span>
+                  </div>
+                </div>
+              </article>
+            ) : null}
+
+            {activeSection === "queues" ? (
+              <article
+                aria-labelledby="zero-queues-title"
+                className="panel matter-detail matter-detail-panel"
+                id="matter-workspace"
+                ref={detailPanelRef}
+                tabIndex={-1}
+              >
+                <div className="panel-header matter-detail-header">
+                  <div>
+                    <p className="eyebrow">Operational queues</p>
+                    <h2 id="zero-queues-title">Queues</h2>
+                  </div>
+                  <span className="status-chip">Firm surface</span>
+                </div>
+                <QueuesSection
+                  activeSavedOperationalViewDefinition={activeSavedOperationalViewDefinition}
+                  activeSavedOperationalViewId={activeSavedOperationalViewId}
+                  activeWorkerRuns={activeWorkerRuns}
+                  archivingOperationalViewId={archivingOperationalViewId}
+                  compactDate={compactDate}
+                  compactProviderStatus={compactProviderStatus}
+                  compactStatus={compactStatus}
+                  connectorOperations={connectorOperations}
+                  connectorOperationsSummary={connectorOperationsSummary}
+                  displayedQueues={displayedQueues}
+                  formatSavedOperationalViewDefinition={formatSavedOperationalViewDefinition}
+                  formatWorkerRunAttempts={formatWorkerRunAttempts}
+                  formatWorkerRunTiming={formatWorkerRunTiming}
+                  onApplyQueueOperationalViewDefinition={applyQueueOperationalViewDefinition}
+                  onArchiveQueueOperationalViewDefinition={archiveQueueOperationalViewDefinition}
+                  onClearQueueOperationalViewDefinition={clearQueueOperationalViewDefinition}
+                  onRefreshProviders={() => void refreshProviderLane()}
+                  onRefreshQueues={() => void refreshQueueLane()}
+                  onSaveQueueOperationalViewDefinition={saveQueueOperationalViewDefinition}
+                  onSelectMatter={selectMatter}
+                  onWorkerRunFilterChange={setWorkerRunFilter}
+                  providerFreshnessCue={providerFreshnessCue}
+                  providerRows={providerRows}
+                  providerStatus={providerStatus}
+                  providerStatusSummary={providerStatusSummary}
+                  providerRefreshing={providerRefreshState.refreshing}
+                  queueFreshnessCue={queueFreshnessCue}
+                  queueSummary={queueSummary}
+                  queueRefreshing={queueRefreshState.refreshing}
+                  savedOperationalViewDefinitions={queueOperationalViewDefinitions}
+                  savedOperationalViewStatus={savedOperationalViewStatus}
+                  savingOperationalView={savingOperationalView}
+                  taskDeadlineSummary={taskDeadlineSummary}
+                  taskWorkbench={taskWorkbench}
+                  workerHealth={workerHealth}
+                  workerHealthStateTone={workerHealthStateTone}
+                  workerHealthSummary={workerHealthSummary}
+                  workerRunFilter={workerRunFilter}
+                  workerRunFilterOptions={workerRunFilters}
+                  workerRunSafeContext={workerRunSafeContext}
+                  workerRunStatus={describeWorkerRunStatus}
+                  workerRunSummary={workerRunSummary}
+                />
+              </article>
+            ) : null}
+
+            {activeSection !== "contacts" &&
+            activeSection !== "audit" &&
+            activeSection !== "queues" ? (
+              <FirstMatterWorkspace
+                canCreateMatter={canCreateMatter}
+                creating={creatingFirstMatter}
+                form={firstMatterForm}
+                onChange={updateFirstMatterForm}
+                onCreate={() => void createFirstMatter()}
+                status={firstMatterStatus}
+              />
+            ) : null}
+
+            <ContextRail
+              conflictAliases={conflictAliases}
+              conflictIdentifiers={conflictIdentifiers}
+              conflictName={conflictName}
+              conflictProspectiveRole={conflictProspectiveRole}
+              conflictResults={conflictResults}
+              conflictStatus={conflictStatus}
+              queueSummary={queueSummary}
+              queues={queues}
+              taskDeadlineSummary={taskDeadlineSummary}
+              onConflictAliasesChange={setConflictAliases}
+              onConflictIdentifiersChange={setConflictIdentifiers}
+              onConflictNameChange={setConflictName}
+              onConflictProspectiveRoleChange={setConflictProspectiveRole}
+              onRunConflictCheck={runConflictCheck}
+            />
+          </section>
+        </section>
       </main>
     );
   }

@@ -138,6 +138,7 @@ import type {
   CalendarEventReminderUpsertInput,
   CalendarEventUpsertInput,
   CalendarMeetingSessionCreateInput,
+  CreateMatterWithClientInput,
   DocumentUploadIntent,
   FirstRunSetupInput,
   FirstRunSetupResult,
@@ -177,6 +178,22 @@ import {
   setupStatusFromCounts,
   userHasFirmWideLedgerAccess,
 } from "./drizzle-mappers.js";
+
+function isFirmWideMatterReader(user: User): boolean {
+  return user.role === "owner_admin" || user.role === "auditor";
+}
+
+function nextMatterNumber(matters: Matter[], firmId: string, openedOn: string): string {
+  const year = new Date(openedOn).getUTCFullYear();
+  const prefix = `${year}-`;
+  const maxExisting = matters
+    .filter((matter) => matter.firmId === firmId && matter.number.startsWith(prefix))
+    .reduce((max, matter) => {
+      const value = Number.parseInt(matter.number.slice(prefix.length), 10);
+      return Number.isFinite(value) ? Math.max(max, value) : max;
+    }, 0);
+  return `${prefix}${String(maxExisting + 1).padStart(4, "0")}`;
+}
 
 export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private firms: Firm[];
@@ -1248,9 +1265,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async listMattersForUser(user: User): Promise<MatterSummary[]> {
     const entries = this.postedTransactions.flatMap((transaction) => transaction.entries);
+    const visibleMatterIds = new Set(user.assignedMatterIds);
     return this.matters
       .filter(
-        (matter) => matter.firmId === user.firmId && user.assignedMatterIds.includes(matter.id),
+        (matter) =>
+          matter.firmId === user.firmId &&
+          (isFirmWideMatterReader(user) || visibleMatterIds.has(matter.id)),
       )
       .map((matter) => {
         const parties = this.matterParties
@@ -1306,6 +1326,77 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           ),
         };
       });
+  }
+
+  async createMatterWithClient(input: CreateMatterWithClientInput): Promise<MatterSummary> {
+    const actor = this.users.find(
+      (user) => user.firmId === input.firmId && user.id === input.actorUserId,
+    );
+    if (!actor) throw new Error(`Unknown user ${input.actorUserId}`);
+
+    const matter: Matter = {
+      id: input.matterId,
+      firmId: input.firmId,
+      number: nextMatterNumber(this.matters, input.firmId, input.openedOn),
+      title: input.title,
+      practiceArea: input.practiceArea,
+      status: "intake",
+      jurisdiction: input.jurisdiction,
+      responsibleUserId: input.actorUserId,
+      openedOn: input.openedOn,
+    };
+    const contact: Contact = {
+      id: input.contactId,
+      firmId: input.firmId,
+      kind: input.client.kind,
+      displayName: input.client.displayName,
+      aliases: [],
+      identifiers: input.client.identifiers,
+    };
+    const party: MatterParty = {
+      id: input.partyId,
+      firmId: input.firmId,
+      matterId: input.matterId,
+      contactId: input.contactId,
+      role: "prospective_client",
+      adverse: false,
+      confidential: true,
+    };
+
+    this.contacts = [clone(contact), ...this.contacts];
+    this.matters = [clone(matter), ...this.matters];
+    this.matterParties = [clone(party), ...this.matterParties];
+    this.users = this.users.map((user) =>
+      user.firmId === input.firmId && user.id === input.actorUserId
+        ? {
+            ...user,
+            assignedMatterIds: Array.from(new Set([input.matterId, ...user.assignedMatterIds])),
+          }
+        : user,
+    );
+    await this.appendAuditEvent({
+      id: input.auditEventId,
+      firmId: input.firmId,
+      actorId: input.actorUserId,
+      action: "matter.opened",
+      resourceType: "matter",
+      resourceId: input.matterId,
+      occurredAt: input.occurredAt,
+      metadata: {
+        matterId: input.matterId,
+        source: "dashboard_zero_matter",
+        clientContactCreated: true,
+        partyRole: "prospective_client",
+      },
+    });
+
+    const [created] = await this.listMattersForUser({
+      ...actor,
+      assignedMatterIds: Array.from(new Set([input.matterId, ...actor.assignedMatterIds])),
+    });
+    const summary = created?.id === input.matterId ? created : undefined;
+    if (!summary) throw new Error(`Created matter ${input.matterId} was not visible`);
+    return summary;
   }
 
   async listContactDossiersForUser(user: User): Promise<ContactDossier[]> {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { DocumentRecord, PortalGrant } from "./models.js";
-import { canShareDocumentThroughPortal, redactJobMetadata } from "./permissions.js";
+import type { DocumentRecord, PortalGrant, User } from "./models.js";
+import { canAccess, canShareDocumentThroughPortal, redactJobMetadata } from "./permissions.js";
 
 const baseDocument: DocumentRecord = {
   id: "doc-external-upload",
@@ -75,6 +75,40 @@ describe("portal document sharing permissions", () => {
         grant,
       }),
     ).toBe(true);
+  });
+});
+
+describe("matter creation permissions", () => {
+  const licenseeWithoutMatters: User = {
+    id: "user-licensee",
+    firmId: "firm-west-legal",
+    displayName: "Synthetic Licensee",
+    email: "licensee@example.test",
+    role: "licensee",
+    assignedMatterIds: [],
+    mfaEnabled: true,
+  };
+
+  it("allows authorized internal users to create the first matter without existing matter scope", () => {
+    expect(
+      canAccess({
+        user: licenseeWithoutMatters,
+        firmId: "firm-west-legal",
+        resource: "matter",
+        action: "create",
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps matter create denied for roles without create access", () => {
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, role: "firm_member" },
+        firmId: "firm-west-legal",
+        resource: "matter",
+        action: "create",
+      }),
+    ).toBe(false);
   });
 });
 

@@ -129,6 +129,81 @@
   animation: contentReveal 180ms ease both;
 }
 
+.first-matter-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.first-matter-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.42fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.first-matter-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.first-matter-form-grid label,
+.first-matter-kind-field,
+.first-matter-controls {
+  min-width: 0;
+}
+
+.first-matter-kind-field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.first-matter-input {
+  width: 100%;
+  max-width: none;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-muted);
+}
+
+.segmented-control button {
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.segmented-control button:last-child {
+  border-right: 0;
+}
+
+.segmented-control button.active,
+.segmented-control button[aria-pressed="true"] {
+  background: rgba(63, 185, 173, 0.17);
+  color: var(--accent);
+}
+
+.first-matter-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.first-matter-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
 .matter-context-panel .panel-header {
   align-items: end;
   margin-bottom: 10px;

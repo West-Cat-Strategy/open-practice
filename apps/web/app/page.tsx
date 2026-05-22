@@ -4,6 +4,7 @@ import {
   resolveDashboardRouteSelection,
 } from "../routes/routeCatalog";
 import DashboardClient from "./dashboard-client";
+import { applyMatterAvailabilityToNavigation } from "./dashboard-utils";
 import { loadCalendarDashboardData } from "./calendar-dashboard";
 import { loadDraftingDashboardData } from "./drafting-dashboard";
 import {
@@ -639,12 +640,19 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       return coerceLegalClinicProfilesResponse(response);
     },
   });
-  const navigationSections = buildSidebarNavigationSections({
-    billingCanView: billing.canView,
-    capabilitySections: capabilities.sections,
-    shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
-    externalUploadsEnabled: canCreateExternalUpload(externalUploads.status),
-  });
+  const canCreateMatter = capabilities.sections.some(
+    (section) => section.key === "matters" && section.actions.includes("create"),
+  );
+  const navigationSections = applyMatterAvailabilityToNavigation(
+    buildSidebarNavigationSections({
+      billingCanView: billing.canView,
+      capabilitySections: capabilities.sections,
+      shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
+      externalUploadsEnabled: canCreateExternalUpload(externalUploads.status),
+    }),
+    matters.length > 0,
+    canCreateMatter,
+  );
   const initialSection = resolveDashboardRouteSelection({
     requestedSection,
     navigationSections,
