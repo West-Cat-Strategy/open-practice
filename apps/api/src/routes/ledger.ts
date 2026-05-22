@@ -4,6 +4,7 @@ import type {
   AccessRequest,
   JobLifecycleRecord,
   LedgerReconciliationRecord,
+  LedgerStatementImportBatchRecord,
   LedgerTransaction,
   LedgerTransactionApprovalRecord,
   Province,
@@ -14,6 +15,7 @@ import {
   ledgerControlsDiagnostics,
   ledgerReconciliationExceptionVarianceDecisions,
   ledgerReconciliationReviewSummary,
+  ledgerStatementImportBatchStatuses,
   previewLedgerStatementImport,
 } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
@@ -111,6 +113,20 @@ const ledgerStatementImportPreviewBodySchema = z.object({
     .min(1),
 });
 
+const ledgerStatementImportBatchBodySchema = z.object({
+  accountId: z.string().min(1),
+  sourceLabel: z.string().min(1),
+  checksumSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  importedStatementRowCount: z.number().int().positive(),
+  duplicateStatementRowCount: z.number().int().nonnegative(),
+  status: z.enum(ledgerStatementImportBatchStatuses).optional(),
+  matchingProfileId: z.string().min(1).optional(),
+});
+
+const ledgerStatementImportBatchesQuerySchema = z.object({
+  accountId: z.string().min(1),
+});
+
 const ledgerReconciliationExceptionResolutionsQuerySchema = z.object({
   accountId: z.string().min(1),
 });
@@ -168,11 +184,12 @@ async function assertTrustAssetAccount(
   repository: ApiRouteDependencies["repository"],
   firmId: string,
   accountId: string,
+  message = "Trust ledger control requires an existing trust asset account",
 ): Promise<void> {
   const ledger = await repository.getLedger(firmId);
   const account = ledger.accounts.find((candidate) => candidate.id === accountId);
   if (!account || account.type !== "trust_asset") {
-    throw new Error("Reconciliation exception resolutions require an existing trust asset account");
+    throw new Error(message);
   }
 }
 
@@ -620,6 +637,66 @@ export function registerLedgerRoutes(
     });
   });
 
+  server.get("/api/ledger/reconciliations/import-batches", async (request) => {
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "approve",
+    });
+    const query = parseRequestPart(ledgerStatementImportBatchesQuerySchema, request.query, "query");
+    await assertTrustAssetAccount(
+      repository,
+      request.auth.firmId,
+      query.accountId,
+      "Statement import batches require an existing trust asset account",
+    );
+    return repository.listLedgerStatementImportBatches(request.auth.firmId, {
+      accountId: query.accountId,
+    });
+  });
+
+  server.post("/api/ledger/reconciliations/import-batches", async (request) => {
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "approve",
+    });
+    const body = parseRequestPart(ledgerStatementImportBatchBodySchema, request.body, "body");
+    await assertTrustAssetAccount(
+      repository,
+      request.auth.firmId,
+      body.accountId,
+      "Statement import batches require an existing trust asset account",
+    );
+    const batch: LedgerStatementImportBatchRecord = {
+      id: crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      accountId: body.accountId,
+      sourceLabel: body.sourceLabel.trim(),
+      checksumSha256: body.checksumSha256,
+      importedStatementRowCount: body.importedStatementRowCount,
+      duplicateStatementRowCount: body.duplicateStatementRowCount,
+      status: body.status ?? "previewed",
+      matchingProfileId: body.matchingProfileId?.trim(),
+      createdByUserId: request.auth.user.id,
+      createdAt: new Date().toISOString(),
+    };
+    const created = await repository.createLedgerStatementImportBatch(batch);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "ledger.statement_import_batch.recorded",
+      resourceType: "ledger_statement_import_batch",
+      resourceId: created.id,
+      metadata: {
+        accountId: created.accountId,
+        importedStatementRowCount: created.importedStatementRowCount,
+        duplicateStatementRowCount: created.duplicateStatementRowCount,
+        status: created.status,
+        sourceLabelPresent: Boolean(created.sourceLabel.trim()),
+        checksumPresent: Boolean(created.checksumSha256),
+        matchingProfilePresent: Boolean(created.matchingProfileId),
+      },
+    });
+    return created;
+  });
+
   server.get("/api/ledger/reconciliation-exception-resolutions", async (request) => {
     assertLedgerAccess(request.auth, {
       resource: "trust_ledger",
@@ -630,7 +707,12 @@ export function registerLedgerRoutes(
       request.query,
       "query",
     );
-    await assertTrustAssetAccount(repository, request.auth.firmId, query.accountId);
+    await assertTrustAssetAccount(
+      repository,
+      request.auth.firmId,
+      query.accountId,
+      "Reconciliation exception resolutions require an existing trust asset account",
+    );
     return repository.listLedgerReconciliationExceptionResolutions(request.auth.firmId, {
       accountId: query.accountId,
     });
@@ -646,7 +728,12 @@ export function registerLedgerRoutes(
       request.body,
       "body",
     );
-    await assertTrustAssetAccount(repository, request.auth.firmId, body.accountId);
+    await assertTrustAssetAccount(
+      repository,
+      request.auth.firmId,
+      body.accountId,
+      "Reconciliation exception resolutions require an existing trust asset account",
+    );
     const created = await repository.createLedgerReconciliationExceptionResolution({
       id: crypto.randomUUID(),
       firmId: request.auth.firmId,

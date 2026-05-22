@@ -878,6 +878,155 @@ describe("ledger routes", () => {
     });
   });
 
+  it("records statement import batch metadata without posting or reconciling", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const ledgerBefore = await repository.getLedger("firm-west-legal");
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/import-batches",
+      payload: {
+        accountId: "acct-trust-bank",
+        sourceLabel: "  Synthetic May trust statement  ",
+        checksumSha256: "a".repeat(64),
+        importedStatementRowCount: 12,
+        duplicateStatementRowCount: 2,
+        matchingProfileId: "profile-standard-trust",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      accountId: "acct-trust-bank",
+      sourceLabel: "Synthetic May trust statement",
+      checksumSha256: "a".repeat(64),
+      importedStatementRowCount: 12,
+      duplicateStatementRowCount: 2,
+      status: "previewed",
+      matchingProfileId: "profile-standard-trust",
+      createdByUserId: "user-admin",
+    });
+    expect(response.json()).not.toHaveProperty("statementRows");
+    expect(response.json()).not.toHaveProperty("evidence");
+
+    const listResponse = await server.inject({
+      method: "GET",
+      url: "/api/ledger/reconciliations/import-batches?accountId=acct-trust-bank",
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject([
+      {
+        accountId: "acct-trust-bank",
+        sourceLabel: "Synthetic May trust statement",
+        status: "previewed",
+      },
+    ]);
+    await expect(repository.getLedger("firm-west-legal")).resolves.toMatchObject({
+      entries: ledgerBefore.entries,
+    });
+    await expect(repository.listLedgerReconciliations("firm-west-legal")).resolves.toEqual([]);
+    const auditEvents = await repository.listAuditEvents("firm-west-legal");
+    expect(auditEvents).toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "ledger.statement_import_batch.recorded",
+          resourceType: "ledger_statement_import_batch",
+          metadata: {
+            accountId: "acct-trust-bank",
+            importedStatementRowCount: 12,
+            duplicateStatementRowCount: 2,
+            status: "previewed",
+            sourceLabelPresent: true,
+            checksumPresent: true,
+            matchingProfilePresent: true,
+          },
+        }),
+      ]),
+      valid: true,
+    });
+    const event = auditEvents.events.find(
+      (candidate) => candidate.action === "ledger.statement_import_batch.recorded",
+    );
+    expect(event?.metadata).not.toHaveProperty("sourceLabel");
+    expect(event?.metadata).not.toHaveProperty("checksumSha256");
+    expect(event?.metadata).not.toHaveProperty("statementRows");
+  });
+
+  it("rejects unsafe statement import batch inputs without side effects", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const auditBefore = await repository.listAuditEvents("firm-west-legal");
+    const basePayload = {
+      accountId: "acct-trust-bank",
+      sourceLabel: "Synthetic May trust statement",
+      checksumSha256: "a".repeat(64),
+      importedStatementRowCount: 12,
+      duplicateStatementRowCount: 2,
+    };
+
+    const blankSource = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/import-batches",
+      payload: { ...basePayload, sourceLabel: "   " },
+    });
+    const invalidChecksum = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/import-batches",
+      payload: { ...basePayload, checksumSha256: "A".repeat(64) },
+    });
+    const invalidCounts = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/import-batches",
+      payload: { ...basePayload, importedStatementRowCount: 1, duplicateStatementRowCount: 2 },
+    });
+    const invalidStatus = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/import-batches",
+      payload: { ...basePayload, status: "posted" },
+    });
+    const operatingAccount = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/import-batches",
+      payload: { ...basePayload, accountId: "acct-operating-revenue" },
+    });
+
+    expect(blankSource.statusCode).toBe(400);
+    expect(blankSource.json()).toMatchObject({
+      error: "Error",
+      message: "Statement import batch source label is required",
+    });
+    expect(invalidChecksum.statusCode).toBe(400);
+    expect(invalidChecksum.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Invalid request body",
+    });
+    expect(invalidCounts.statusCode).toBe(400);
+    expect(invalidCounts.json()).toMatchObject({
+      error: "Error",
+      message: "Statement import batch duplicate count must fit within row count",
+    });
+    expect(invalidStatus.statusCode).toBe(400);
+    expect(invalidStatus.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Invalid request body",
+    });
+    expect(operatingAccount.statusCode).toBe(400);
+    expect(operatingAccount.json()).toMatchObject({
+      error: "Error",
+      message: "Statement import batches require an existing trust asset account",
+    });
+    await expect(
+      repository.listLedgerStatementImportBatches("firm-west-legal", {
+        accountId: "acct-trust-bank",
+      }),
+    ).resolves.toEqual([]);
+    await expect(repository.listLedgerReconciliations("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: auditBefore.events,
+      valid: true,
+    });
+  });
+
   it("records reconciliation exception resolution decisions without posting or reconciling", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository });
@@ -1189,6 +1338,29 @@ describe("ledger routes", () => {
         ],
       },
     });
+    const importBatch = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/import-batches",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: {
+        accountId: "acct-trust-bank",
+        sourceLabel: "Synthetic May trust statement",
+        checksumSha256: "a".repeat(64),
+        importedStatementRowCount: 1,
+        duplicateStatementRowCount: 0,
+      },
+    });
+    const importBatchList = await server.inject({
+      method: "GET",
+      url: "/api/ledger/reconciliations/import-batches?accountId=acct-trust-bank",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
     const exceptionResolution = await server.inject({
       method: "POST",
       url: "/api/ledger/reconciliation-exception-resolutions",
@@ -1229,6 +1401,16 @@ describe("ledger routes", () => {
 
     expect(preview.statusCode).toBe(403);
     expect(preview.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Trust ledger access required",
+    });
+    expect(importBatch.statusCode).toBe(403);
+    expect(importBatch.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Trust ledger access required",
+    });
+    expect(importBatchList.statusCode).toBe(403);
+    expect(importBatchList.json()).toMatchObject({
       error: "ApiHttpError",
       message: "Trust ledger access required",
     });

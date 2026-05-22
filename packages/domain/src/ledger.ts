@@ -179,6 +179,28 @@ export interface LedgerStatementImportPreview {
   postingPolicy: "review_only_no_automatic_ledger_posting";
 }
 
+export const ledgerStatementImportBatchStatuses = [
+  "previewed",
+  "review_ready",
+  "discarded",
+] as const;
+
+export type LedgerStatementImportBatchStatus = (typeof ledgerStatementImportBatchStatuses)[number];
+
+export interface LedgerStatementImportBatchRecord {
+  id: string;
+  firmId: string;
+  accountId: string;
+  sourceLabel: string;
+  checksumSha256: string;
+  importedStatementRowCount: number;
+  duplicateStatementRowCount: number;
+  status: LedgerStatementImportBatchStatus;
+  matchingProfileId?: string;
+  createdByUserId: string;
+  createdAt: string;
+}
+
 export interface ClientTrustBalanceDelta {
   firmId: string;
   matterId: string;
@@ -764,6 +786,36 @@ export function validateLedgerReconciliationExceptionResolutionRecord(
   }
   if (Number.isNaN(new Date(resolution.recordedAt).getTime())) {
     throw new Error("Reconciliation exception resolution timestamp is invalid");
+  }
+}
+
+export function validateLedgerStatementImportBatchRecord(
+  batch: LedgerStatementImportBatchRecord,
+): void {
+  if (!batch.sourceLabel.trim()) {
+    throw new Error("Statement import batch source label is required");
+  }
+  if (!/^[a-f0-9]{64}$/.test(batch.checksumSha256)) {
+    throw new Error("Statement import batch checksum must be a lowercase SHA-256 hex digest");
+  }
+  if (!Number.isInteger(batch.importedStatementRowCount) || batch.importedStatementRowCount <= 0) {
+    throw new Error("Statement import batch row count must be positive");
+  }
+  if (
+    !Number.isInteger(batch.duplicateStatementRowCount) ||
+    batch.duplicateStatementRowCount < 0 ||
+    batch.duplicateStatementRowCount > batch.importedStatementRowCount
+  ) {
+    throw new Error("Statement import batch duplicate count must fit within row count");
+  }
+  if (!ledgerStatementImportBatchStatuses.includes(batch.status)) {
+    throw new Error("Statement import batch status is invalid");
+  }
+  if (batch.matchingProfileId !== undefined && !batch.matchingProfileId.trim()) {
+    throw new Error("Statement import batch matching profile ID cannot be blank");
+  }
+  if (Number.isNaN(new Date(batch.createdAt).getTime())) {
+    throw new Error("Statement import batch timestamp is invalid");
   }
 }
 

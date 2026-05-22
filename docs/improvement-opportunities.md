@@ -12,6 +12,11 @@ row should not stay here as future work.
 These candidates name the next smallest useful unimplemented slice. Each row also states the shipped
 surface it must not duplicate.
 
+The persistent trust statement import batch metadata gap is shipped as OP-T118; future trust
+statement match-rule profiles should be promoted as their own candidate only after comparing
+against the shipped OP-T104 preview, OP-T107 exception-resolution, and OP-T118 batch metadata
+proof.
+
 ### Reference Review Candidates - 2026-05-22
 
 This catalogue came from a clean-room comparison of the current Open Practice repo against the

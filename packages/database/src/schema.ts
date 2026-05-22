@@ -1346,6 +1346,64 @@ export const trustReconciliations = pgTable(
   }),
 );
 
+export const trustStatementImportBatches = pgTable(
+  "trust_statement_import_batches",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id),
+    sourceLabel: text("source_label").notNull(),
+    checksumSha256: text("checksum_sha256").notNull(),
+    importedStatementRowCount: integer("imported_statement_row_count").notNull(),
+    duplicateStatementRowCount: integer("duplicate_statement_row_count").notNull(),
+    status: text("status").notNull(),
+    matchingProfileId: text("matching_profile_id"),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    accountCreatedAt: index("trust_statement_import_batches_account_created_idx").on(
+      table.firmId,
+      table.accountId,
+      table.createdAt,
+    ),
+    checksum: index("trust_statement_import_batches_checksum_idx").on(
+      table.firmId,
+      table.checksumSha256,
+    ),
+    sourceLabelPresent: check(
+      "trust_statement_import_batches_source_label_present",
+      sql`length(trim(${table.sourceLabel})) > 0`,
+    ),
+    checksumValue: check(
+      "trust_statement_import_batches_checksum_value",
+      sql`${table.checksumSha256} ~ '^[a-f0-9]{64}$'`,
+    ),
+    positiveRowCount: check(
+      "trust_statement_import_batches_positive_row_count",
+      sql`${table.importedStatementRowCount} > 0`,
+    ),
+    duplicateCountRange: check(
+      "trust_statement_import_batches_duplicate_count_range",
+      sql`${table.duplicateStatementRowCount} >= 0 and ${table.duplicateStatementRowCount} <= ${table.importedStatementRowCount}`,
+    ),
+    statusValue: check(
+      "trust_statement_import_batches_status_value",
+      sql`${table.status} in ('previewed', 'review_ready', 'discarded')`,
+    ),
+    matchingProfilePresent: check(
+      "trust_statement_import_batches_matching_profile_present",
+      sql`${table.matchingProfileId} is null or length(trim(${table.matchingProfileId})) > 0`,
+    ),
+  }),
+);
+
 export const trustReconciliationExceptionResolutions = pgTable(
   "trust_reconciliation_exception_resolutions",
   {

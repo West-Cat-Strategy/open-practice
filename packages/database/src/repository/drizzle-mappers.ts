@@ -58,6 +58,7 @@ import {
   type LedgerReconciliationExceptionResolutionStatementRow,
   type LedgerReconciliationRecord,
   type LedgerReconciliationStatementRow,
+  type LedgerStatementImportBatchRecord,
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
   type LegalClinicProgram,
@@ -1335,6 +1336,24 @@ export function mapLedgerReconciliationRow(
     statementRows: row.statementRows as LedgerReconciliationStatementRow[],
     varianceExplanation: row.varianceExplanation ?? undefined,
     evidence: row.evidence as Record<string, unknown>,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function mapLedgerStatementImportBatchRow(
+  row: typeof schema.trustStatementImportBatches.$inferSelect,
+): LedgerStatementImportBatchRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    accountId: row.accountId,
+    sourceLabel: row.sourceLabel,
+    checksumSha256: row.checksumSha256,
+    importedStatementRowCount: row.importedStatementRowCount,
+    duplicateStatementRowCount: row.duplicateStatementRowCount,
+    status: row.status as LedgerStatementImportBatchRecord["status"],
+    matchingProfileId: row.matchingProfileId ?? undefined,
+    createdByUserId: row.createdByUserId,
     createdAt: row.createdAt.toISOString(),
   };
 }

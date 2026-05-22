@@ -7,6 +7,7 @@ import {
   previewLedgerStatementImport,
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
+  validateLedgerStatementImportBatchRecord,
 } from "./ledger.js";
 import type {
   LedgerAccount,
@@ -386,5 +387,65 @@ describe("ledger controls diagnostics", () => {
         recordedAt: "2026-05-02T13:00:00.000Z",
       }),
     ).toThrow(/duplicate key/);
+  });
+
+  it("validates persistent statement import batch metadata without statement rows", () => {
+    expect(() =>
+      validateLedgerStatementImportBatchRecord({
+        id: "statement-import-batch-001",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        sourceLabel: "Synthetic May trust statement",
+        checksumSha256: "a".repeat(64),
+        importedStatementRowCount: 12,
+        duplicateStatementRowCount: 2,
+        status: "previewed",
+        matchingProfileId: "profile-standard-trust",
+        createdByUserId: "user-admin",
+        createdAt: "2026-05-22T12:00:00.000Z",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateLedgerStatementImportBatchRecord({
+        id: "statement-import-batch-blank-source",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        sourceLabel: "   ",
+        checksumSha256: "a".repeat(64),
+        importedStatementRowCount: 1,
+        duplicateStatementRowCount: 0,
+        status: "previewed",
+        createdByUserId: "user-admin",
+        createdAt: "2026-05-22T12:00:00.000Z",
+      }),
+    ).toThrow(/source label/);
+    expect(() =>
+      validateLedgerStatementImportBatchRecord({
+        id: "statement-import-batch-invalid-checksum",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        sourceLabel: "Synthetic May trust statement",
+        checksumSha256: "A".repeat(64),
+        importedStatementRowCount: 1,
+        duplicateStatementRowCount: 0,
+        status: "previewed",
+        createdByUserId: "user-admin",
+        createdAt: "2026-05-22T12:00:00.000Z",
+      }),
+    ).toThrow(/checksum/);
+    expect(() =>
+      validateLedgerStatementImportBatchRecord({
+        id: "statement-import-batch-invalid-count",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        sourceLabel: "Synthetic May trust statement",
+        checksumSha256: "a".repeat(64),
+        importedStatementRowCount: 1,
+        duplicateStatementRowCount: 2,
+        status: "previewed",
+        createdByUserId: "user-admin",
+        createdAt: "2026-05-22T12:00:00.000Z",
+      }),
+    ).toThrow(/duplicate count/);
   });
 });

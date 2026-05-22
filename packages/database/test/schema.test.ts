@@ -62,6 +62,7 @@ import {
   trustClientBalances,
   trustReconciliationExceptionResolutions,
   trustReconciliations,
+  trustStatementImportBatches,
   trustLedgerEntries,
   trustTransactionApprovals,
   trustTransactions,
@@ -802,6 +803,36 @@ describe("database schema hardening", () => {
       expect.arrayContaining([
         "trust_reconciliations_valid_period",
         "trust_reconciliations_status_value",
+      ]),
+    );
+    const importBatchConfig = getTableConfig(trustStatementImportBatches);
+    expect(importBatchConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "account_id",
+        "source_label",
+        "checksum_sha256",
+        "imported_statement_row_count",
+        "duplicate_statement_row_count",
+        "status",
+        "matching_profile_id",
+        "created_by_user_id",
+        "created_at",
+      ]),
+    );
+    expect(importBatchConfig.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "trust_statement_import_batches_account_created_idx",
+        "trust_statement_import_batches_checksum_idx",
+      ]),
+    );
+    expect(importBatchConfig.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "trust_statement_import_batches_source_label_present",
+        "trust_statement_import_batches_checksum_value",
+        "trust_statement_import_batches_positive_row_count",
+        "trust_statement_import_batches_duplicate_count_range",
+        "trust_statement_import_batches_status_value",
+        "trust_statement_import_batches_matching_profile_present",
       ]),
     );
     const exceptionResolutionConfig = getTableConfig(trustReconciliationExceptionResolutions);

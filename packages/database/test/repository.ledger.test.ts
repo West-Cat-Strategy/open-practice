@@ -201,6 +201,76 @@ describe("repository ledger approvals and reconciliations", () => {
     ).rejects.toThrow(/Unknown ledger account/);
 
     await expect(
+      repository.createLedgerStatementImportBatch({
+        id: "statement-import-batch-001",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        sourceLabel: "Synthetic May trust statement",
+        checksumSha256: "a".repeat(64),
+        importedStatementRowCount: 12,
+        duplicateStatementRowCount: 2,
+        status: "review_ready",
+        matchingProfileId: "profile-standard-trust",
+        createdByUserId: "user-admin",
+        createdAt: now,
+      }),
+    ).resolves.toMatchObject({
+      accountId: "acct-trust-bank",
+      status: "review_ready",
+      matchingProfileId: "profile-standard-trust",
+    });
+    await expect(
+      repository.createLedgerStatementImportBatch({
+        id: "statement-import-batch-older",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        sourceLabel: "Synthetic April trust statement",
+        checksumSha256: "b".repeat(64),
+        importedStatementRowCount: 5,
+        duplicateStatementRowCount: 0,
+        status: "previewed",
+        createdByUserId: "user-admin",
+        createdAt: "2026-04-24T12:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({ id: "statement-import-batch-older" });
+    await expect(
+      repository.listLedgerStatementImportBatches("firm-west-legal", {
+        accountId: "acct-trust-bank",
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: "statement-import-batch-older" }),
+      expect.objectContaining({ id: "statement-import-batch-001" }),
+    ]);
+    await expect(
+      repository.createLedgerStatementImportBatch({
+        id: "statement-import-batch-operating-account",
+        firmId: "firm-west-legal",
+        accountId: "acct-operating-revenue",
+        sourceLabel: "Synthetic operating statement",
+        checksumSha256: "c".repeat(64),
+        importedStatementRowCount: 1,
+        duplicateStatementRowCount: 0,
+        status: "previewed",
+        createdByUserId: "user-admin",
+        createdAt: now,
+      }),
+    ).rejects.toThrow(/trust asset account/);
+    await expect(
+      repository.createLedgerStatementImportBatch({
+        id: "statement-import-batch-invalid-counts",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        sourceLabel: "Synthetic May trust statement",
+        checksumSha256: "d".repeat(64),
+        importedStatementRowCount: 1,
+        duplicateStatementRowCount: 2,
+        status: "previewed",
+        createdByUserId: "user-admin",
+        createdAt: now,
+      }),
+    ).rejects.toThrow(/duplicate count/);
+
+    await expect(
       repository.createLedgerReconciliationExceptionResolution({
         id: "resolution-001",
         firmId: "firm-west-legal",
