@@ -49,6 +49,7 @@ import {
   type Contact,
   type ContactDataQualityResolutionRecord,
   type ContactDossier,
+  type ContactIdentifier,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -89,6 +90,7 @@ import {
   type PortalGrant,
   type PostedLedgerTransaction,
   type ProviderSettingRecord,
+  type PublicConsultationIntakeRecord,
   type RecoveryCodeRecord,
   type SavedOperationalViewDefinition,
   type SavedOperationalViewDefinitionInput,
@@ -140,6 +142,7 @@ import type {
   CalendarEventReminderUpsertInput,
   CalendarEventUpsertInput,
   CalendarMeetingSessionCreateInput,
+  ConvertPublicConsultationIntakeInput,
   CreateMatterWithClientInput,
   DocumentUploadIntent,
   FirstRunSetupInput,
@@ -152,6 +155,8 @@ import type {
   OpenPracticeRepository,
   PaymentWithAllocations,
   PracticeOverview,
+  PublicConsultationIntakeListOptions,
+  PublicConsultationIntakeUpdateInput,
   TaskDeadlineCompletionInput,
   TrustTransferRequestUpdate,
   TrustTransferRequestUpdateOptions,
@@ -246,6 +251,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private generatedDocuments: GeneratedDocumentRecord[];
   private firmSettings: FirmSettings[] = [];
   private providerSettings: ProviderSettingRecord[] = [];
+  private publicConsultationIntakes: PublicConsultationIntakeRecord[] = [];
   private connectors: ConnectorRecord[] = [];
   private connectorOutbox: ConnectorOutboxRecord[] = [];
   private connectorDeliveryAttempts: ConnectorDeliveryAttemptRecord[] = [];
@@ -1400,6 +1406,183 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     const summary = created?.id === input.matterId ? created : undefined;
     if (!summary) throw new Error(`Created matter ${input.matterId} was not visible`);
     return summary;
+  }
+
+  async listPublicConsultationIntakes(
+    firmId: string,
+    options: PublicConsultationIntakeListOptions = {},
+  ): Promise<PublicConsultationIntakeRecord[]> {
+    const limit = options.limit ?? 50;
+    return clone(
+      this.publicConsultationIntakes
+        .filter((intake) => {
+          if (intake.firmId !== firmId) return false;
+          if (options.status && intake.status !== options.status) return false;
+          return true;
+        })
+        .sort((left, right) => right.submittedAt.localeCompare(left.submittedAt))
+        .slice(0, limit),
+    );
+  }
+
+  async getPublicConsultationIntake(
+    firmId: string,
+    intakeId: string,
+  ): Promise<PublicConsultationIntakeRecord | undefined> {
+    return clone(
+      this.publicConsultationIntakes.find(
+        (intake) => intake.firmId === firmId && intake.id === intakeId,
+      ),
+    );
+  }
+
+  async createPublicConsultationIntake(
+    record: PublicConsultationIntakeRecord,
+  ): Promise<PublicConsultationIntakeRecord> {
+    const duplicate = this.publicConsultationIntakes.find(
+      (candidate) => candidate.firmId === record.firmId && candidate.id === record.id,
+    );
+    if (duplicate) throw new Error(`Public consultation intake ${record.id} already exists`);
+    this.publicConsultationIntakes = [clone(record), ...this.publicConsultationIntakes];
+    return clone(record);
+  }
+
+  async updatePublicConsultationIntake(
+    firmId: string,
+    intakeId: string,
+    updates: PublicConsultationIntakeUpdateInput,
+  ): Promise<PublicConsultationIntakeRecord | undefined> {
+    const index = this.publicConsultationIntakes.findIndex(
+      (intake) => intake.firmId === firmId && intake.id === intakeId,
+    );
+    if (index < 0) return undefined;
+    const current = this.publicConsultationIntakes[index];
+    const next: PublicConsultationIntakeRecord = {
+      ...current,
+      ...updates,
+      metadata: updates.metadata ?? current.metadata,
+    };
+    this.publicConsultationIntakes[index] = clone(next);
+    return clone(next);
+  }
+
+  async convertPublicConsultationIntakeToMatter(
+    input: ConvertPublicConsultationIntakeInput,
+  ): Promise<{ intake: PublicConsultationIntakeRecord; matter: MatterSummary }> {
+    const actor = this.users.find(
+      (user) => user.firmId === input.firmId && user.id === input.actorUserId,
+    );
+    if (!actor) throw new Error(`Unknown user ${input.actorUserId}`);
+    const intakeIndex = this.publicConsultationIntakes.findIndex(
+      (intake) => intake.firmId === input.firmId && intake.id === input.intakeId,
+    );
+    if (intakeIndex < 0) throw new Error(`Public consultation intake ${input.intakeId} not found`);
+    const intake = this.publicConsultationIntakes[intakeIndex];
+    if (intake.status !== "pending") throw new Error("PUBLIC_CONSULTATION_INTAKE_NOT_PENDING");
+
+    const clientIdentifiers: ContactIdentifier[] = [{ type: "phone", value: intake.telephone }];
+    if (intake.email) clientIdentifiers.push({ type: "email", value: intake.email });
+
+    const matter: Matter = {
+      id: input.matterId,
+      firmId: input.firmId,
+      number: nextMatterNumber(this.matters, input.firmId, input.openedOn),
+      title: input.title,
+      practiceArea: input.practiceArea,
+      status: "intake",
+      jurisdiction: input.jurisdiction,
+      responsibleUserId: input.actorUserId,
+      openedOn: input.openedOn,
+    };
+    const clientContact: Contact = {
+      id: input.clientContactId,
+      firmId: input.firmId,
+      kind: "person",
+      displayName: intake.clientName,
+      aliases: [],
+      identifiers: clientIdentifiers,
+    };
+    const clientParty: MatterParty = {
+      id: input.clientPartyId,
+      firmId: input.firmId,
+      matterId: input.matterId,
+      contactId: input.clientContactId,
+      role: "prospective_client",
+      adverse: false,
+      confidential: true,
+    };
+    const opposingContacts: Contact[] = input.opposingParties.map((party) => ({
+      id: party.contactId,
+      firmId: input.firmId,
+      kind: "person",
+      displayName: party.displayName,
+      aliases: [],
+      identifiers: [],
+    }));
+    const opposingMatterParties: MatterParty[] = input.opposingParties.map((party) => ({
+      id: party.partyId,
+      firmId: input.firmId,
+      matterId: input.matterId,
+      contactId: party.contactId,
+      role: "opposing_party",
+      adverse: true,
+      confidential: false,
+    }));
+
+    this.contacts = [clone(clientContact), ...opposingContacts.map(clone), ...this.contacts];
+    this.matters = [clone(matter), ...this.matters];
+    this.matterParties = [
+      clone(clientParty),
+      ...opposingMatterParties.map(clone),
+      ...this.matterParties,
+    ];
+    this.users = this.users.map((user) =>
+      user.firmId === input.firmId && user.id === input.actorUserId
+        ? {
+            ...user,
+            assignedMatterIds: Array.from(new Set([input.matterId, ...user.assignedMatterIds])),
+          }
+        : user,
+    );
+    const reviewedIntake: PublicConsultationIntakeRecord = {
+      ...intake,
+      status: "converted",
+      reviewedByUserId: input.actorUserId,
+      reviewedAt: input.occurredAt,
+      convertedMatterId: input.matterId,
+      metadata: {
+        ...intake.metadata,
+        convertedMatterId: input.matterId,
+        opposingPartyCount: opposingMatterParties.length,
+      },
+    };
+    this.publicConsultationIntakes[intakeIndex] = clone(reviewedIntake);
+
+    await this.appendAuditEvent({
+      id: input.auditEventId,
+      firmId: input.firmId,
+      actorId: input.actorUserId,
+      action: "matter.opened",
+      resourceType: "matter",
+      resourceId: input.matterId,
+      occurredAt: input.occurredAt,
+      metadata: {
+        matterId: input.matterId,
+        source: "public_consultation_intake",
+        publicConsultationIntakeId: input.intakeId,
+        clientContactCreated: true,
+        partyRole: "prospective_client",
+        opposingPartyCount: opposingMatterParties.length,
+      },
+    });
+
+    const [created] = await this.listMattersForUser({
+      ...actor,
+      assignedMatterIds: Array.from(new Set([input.matterId, ...actor.assignedMatterIds])),
+    });
+    const summary = created?.id === input.matterId ? created : undefined;
+    if (!summary) throw new Error(`Created matter ${input.matterId} was not visible`);
+    return { intake: clone(reviewedIntake), matter: summary };
   }
 
   async listContactDossiersForUser(user: User): Promise<ContactDossier[]> {

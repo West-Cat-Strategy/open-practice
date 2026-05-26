@@ -51,6 +51,7 @@ import {
   type Contact,
   type ContactDataQualityResolutionRecord,
   type ContactDossier,
+  type ContactIdentifier,
   type ConversationMessageRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
@@ -90,6 +91,7 @@ import {
   type PortalGrant,
   type PostedLedgerTransaction,
   type ProviderSettingRecord,
+  type PublicConsultationIntakeRecord,
   type RecoveryCodeRecord,
   type SavedOperationalViewDefinition,
   type SavedOperationalViewDefinitionInput,
@@ -114,6 +116,7 @@ import type {
   CalendarEventReminderUpsertInput,
   CalendarEventUpsertInput,
   CalendarMeetingSessionCreateInput,
+  ConvertPublicConsultationIntakeInput,
   CreateMatterWithClientInput,
   DocumentUploadIntent,
   FirstRunSetupInput,
@@ -126,6 +129,8 @@ import type {
   OpenPracticeRepository,
   PaymentWithAllocations,
   PracticeOverview,
+  PublicConsultationIntakeListOptions,
+  PublicConsultationIntakeUpdateInput,
   TaskDeadlineCompletionInput,
   TrustTransferRequestUpdate,
   TrustTransferRequestUpdateOptions,
@@ -224,6 +229,7 @@ import {
   mapPaymentAllocationRow,
   mapPaymentRow,
   mapProviderSettingRow,
+  mapPublicConsultationIntakeRow,
   mapRecoveryCodeRow,
   mapSavedOperationalViewDefinitionRow,
   mapShareLinkRow,
@@ -239,6 +245,7 @@ import {
   nextEmailAttemptCount,
   paymentAllocationInsert,
   paymentInsert,
+  publicConsultationIntakeInsert,
   sanitizeEmailFailureSummary,
   savedOperationalViewDefinitionInsert,
   setupStatusFromCounts,
@@ -1830,6 +1837,243 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     );
     if (!created) throw new Error(`Created matter ${input.matterId} was not visible`);
     return created;
+  }
+
+  async listPublicConsultationIntakes(
+    firmId: string,
+    options: PublicConsultationIntakeListOptions = {},
+  ): Promise<PublicConsultationIntakeRecord[]> {
+    const conditions = [eq(schema.publicConsultationIntakes.firmId, firmId)];
+    if (options.status)
+      conditions.push(eq(schema.publicConsultationIntakes.status, options.status));
+    const rows = await this.db
+      .select()
+      .from(schema.publicConsultationIntakes)
+      .where(and(...conditions))
+      .orderBy(desc(schema.publicConsultationIntakes.submittedAt))
+      .limit(options.limit ?? 50);
+    return rows.map(mapPublicConsultationIntakeRow);
+  }
+
+  async getPublicConsultationIntake(
+    firmId: string,
+    intakeId: string,
+  ): Promise<PublicConsultationIntakeRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.publicConsultationIntakes)
+      .where(
+        and(
+          eq(schema.publicConsultationIntakes.firmId, firmId),
+          eq(schema.publicConsultationIntakes.id, intakeId),
+        ),
+      );
+    return row ? mapPublicConsultationIntakeRow(row) : undefined;
+  }
+
+  async createPublicConsultationIntake(
+    record: PublicConsultationIntakeRecord,
+  ): Promise<PublicConsultationIntakeRecord> {
+    const [row] = await this.db
+      .insert(schema.publicConsultationIntakes)
+      .values(publicConsultationIntakeInsert(record))
+      .returning();
+    return mapPublicConsultationIntakeRow(row);
+  }
+
+  async updatePublicConsultationIntake(
+    firmId: string,
+    intakeId: string,
+    updates: PublicConsultationIntakeUpdateInput,
+  ): Promise<PublicConsultationIntakeRecord | undefined> {
+    const set: Partial<typeof schema.publicConsultationIntakes.$inferInsert> = {};
+    if (updates.status !== undefined) set.status = updates.status;
+    if (updates.reviewedByUserId !== undefined) set.reviewedByUserId = updates.reviewedByUserId;
+    if (updates.reviewedAt !== undefined) {
+      set.reviewedAt = updates.reviewedAt ? new Date(updates.reviewedAt) : null;
+    }
+    if (updates.dismissedReason !== undefined) set.dismissedReason = updates.dismissedReason;
+    if (updates.convertedMatterId !== undefined) set.convertedMatterId = updates.convertedMatterId;
+    if (updates.notificationEmailId !== undefined) {
+      set.notificationEmailId = updates.notificationEmailId;
+    }
+    if (updates.metadata !== undefined) set.metadata = updates.metadata;
+    const [row] = await this.db
+      .update(schema.publicConsultationIntakes)
+      .set(set)
+      .where(
+        and(
+          eq(schema.publicConsultationIntakes.firmId, firmId),
+          eq(schema.publicConsultationIntakes.id, intakeId),
+        ),
+      )
+      .returning();
+    return row ? mapPublicConsultationIntakeRow(row) : undefined;
+  }
+
+  async convertPublicConsultationIntakeToMatter(
+    input: ConvertPublicConsultationIntakeInput,
+  ): Promise<{ intake: PublicConsultationIntakeRecord; matter: MatterSummary }> {
+    const intake = await this.db.transaction(async (tx) => {
+      const [actorRow] = await tx
+        .select()
+        .from(schema.users)
+        .where(and(eq(schema.users.firmId, input.firmId), eq(schema.users.id, input.actorUserId)));
+      if (!actorRow) throw new Error(`Unknown user ${input.actorUserId}`);
+
+      const [intakeRow] = await tx
+        .select()
+        .from(schema.publicConsultationIntakes)
+        .where(
+          and(
+            eq(schema.publicConsultationIntakes.firmId, input.firmId),
+            eq(schema.publicConsultationIntakes.id, input.intakeId),
+          ),
+        );
+      if (!intakeRow) throw new Error(`Public consultation intake ${input.intakeId} not found`);
+      const currentIntake = mapPublicConsultationIntakeRow(intakeRow);
+      if (currentIntake.status !== "pending") {
+        throw new Error("PUBLIC_CONSULTATION_INTAKE_NOT_PENDING");
+      }
+
+      const existingMatters = await tx
+        .select()
+        .from(schema.matters)
+        .where(eq(schema.matters.firmId, input.firmId));
+      const matter: Matter = {
+        id: input.matterId,
+        firmId: input.firmId,
+        number: nextMatterNumber(existingMatters.map(mapMatter), input.firmId, input.openedOn),
+        title: input.title,
+        practiceArea: input.practiceArea,
+        status: "intake",
+        jurisdiction: input.jurisdiction,
+        responsibleUserId: input.actorUserId,
+        openedOn: input.openedOn,
+      };
+      const clientIdentifiers: ContactIdentifier[] = [
+        { type: "phone", value: currentIntake.telephone },
+      ];
+      if (currentIntake.email) {
+        clientIdentifiers.push({ type: "email", value: currentIntake.email });
+      }
+
+      await tx.insert(schema.contacts).values({
+        id: input.clientContactId,
+        firmId: input.firmId,
+        kind: "person",
+        displayName: currentIntake.clientName,
+        aliases: [],
+        identifiers: clientIdentifiers,
+      });
+      if (input.opposingParties.length > 0) {
+        await tx.insert(schema.contacts).values(
+          input.opposingParties.map((party) => ({
+            id: party.contactId,
+            firmId: input.firmId,
+            kind: "person" as const,
+            displayName: party.displayName,
+            aliases: [],
+            identifiers: [],
+          })),
+        );
+      }
+      await tx.insert(schema.matters).values({
+        ...matter,
+        openedOn: new Date(input.openedOn),
+        closedOn: null,
+      });
+      await tx.insert(schema.matterAssignments).values({
+        matterId: input.matterId,
+        userId: input.actorUserId,
+      });
+      await tx.insert(schema.matterParties).values([
+        {
+          id: input.clientPartyId,
+          firmId: input.firmId,
+          matterId: input.matterId,
+          contactId: input.clientContactId,
+          role: "prospective_client",
+          adverse: false,
+          confidential: true,
+        },
+        ...input.opposingParties.map((party) => ({
+          id: party.partyId,
+          firmId: input.firmId,
+          matterId: input.matterId,
+          contactId: party.contactId,
+          role: "opposing_party" as const,
+          adverse: true,
+          confidential: false,
+        })),
+      ]);
+
+      const [previousRow] = await tx
+        .select()
+        .from(schema.auditEvents)
+        .where(eq(schema.auditEvents.firmId, input.firmId))
+        .orderBy(desc(schema.auditEvents.occurredAt))
+        .limit(1);
+      const previous = previousRow
+        ? {
+            ...previousRow,
+            occurredAt: previousRow.occurredAt.toISOString(),
+            metadata: previousRow.metadata as Record<string, unknown>,
+          }
+        : undefined;
+      const audit = appendAuditEvent(previous, {
+        id: input.auditEventId,
+        firmId: input.firmId,
+        actorId: input.actorUserId,
+        action: "matter.opened",
+        resourceType: "matter",
+        resourceId: input.matterId,
+        occurredAt: input.occurredAt,
+        metadata: {
+          matterId: input.matterId,
+          source: "public_consultation_intake",
+          publicConsultationIntakeId: input.intakeId,
+          clientContactCreated: true,
+          partyRole: "prospective_client",
+          opposingPartyCount: input.opposingParties.length,
+        },
+      });
+      await tx.insert(schema.auditEvents).values({
+        ...audit,
+        occurredAt: new Date(audit.occurredAt),
+        metadata: audit.metadata,
+      });
+
+      const [updatedIntakeRow] = await tx
+        .update(schema.publicConsultationIntakes)
+        .set({
+          status: "converted",
+          reviewedByUserId: input.actorUserId,
+          reviewedAt: new Date(input.occurredAt),
+          convertedMatterId: input.matterId,
+          metadata: {
+            ...currentIntake.metadata,
+            convertedMatterId: input.matterId,
+            opposingPartyCount: input.opposingParties.length,
+          },
+        })
+        .where(
+          and(
+            eq(schema.publicConsultationIntakes.firmId, input.firmId),
+            eq(schema.publicConsultationIntakes.id, input.intakeId),
+          ),
+        )
+        .returning();
+      return mapPublicConsultationIntakeRow(updatedIntakeRow);
+    });
+
+    const actor = await this.getUser(input.firmId, input.actorUserId);
+    if (!actor) throw new Error(`Unknown user ${input.actorUserId}`);
+    const created = (await this.listMattersForUser(actor)).find(
+      (matter) => matter.id === input.matterId,
+    );
+    if (!created) throw new Error(`Created matter ${input.matterId} was not visible`);
+    return { intake, matter: created };
   }
 
   async listContactDossiersForUser(user: User): Promise<ContactDossier[]> {

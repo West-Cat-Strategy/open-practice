@@ -221,6 +221,16 @@ import {
   providerPostureRows,
   summarizeProvidersStatus,
 } from "./provider-status-dashboard";
+import {
+  buildPublicConsultationIntakeConvertPath,
+  buildPublicConsultationIntakeDismissPath,
+  buildPublicConsultationIntakeSettingsPath,
+  buildPublicConsultationIntakesPath,
+  publicConsultationOpposingParties,
+  publicConsultationSettingsSummary,
+  splitPublicConsultationList,
+  upsertPublicConsultationIntake,
+} from "./public-consultation-intakes-dashboard";
 import { summarizeConnectorOperations } from "./connector-outbox-dashboard";
 import {
   buildOperationalFocusSummary,
@@ -314,6 +324,11 @@ import type {
   OperationalViewsResponse,
   PracticeOverview,
   ProvidersStatusResponse,
+  PublicConsultationDashboardResponse,
+  PublicConsultationIntake,
+  PublicConsultationIntakeConvertResponse,
+  PublicConsultationIntakeSettings,
+  PublicConsultationIntakesResponse,
   QueuesResponse,
   CreateShareLinkResponse,
   RevokeShareLinkResponse,
@@ -357,6 +372,7 @@ interface DashboardClientProps {
   operationalViewDefinitions?: SavedOperationalViewDefinition[];
   operationalViews: OperationalViewsResponse;
   providerStatus: ProvidersStatusResponse;
+  publicConsultation: PublicConsultationDashboardResponse;
   matters: MatterSummary[];
   session: SessionResponse;
   shareLinksStatus: ShareLinksStatusResponse;
@@ -662,6 +678,7 @@ export default function DashboardClient({
   operationalViewDefinitions = [],
   operationalViews: initialOperationalViews,
   providerStatus: initialProviderStatus,
+  publicConsultation,
   matters: initialMatters,
   session,
   signatures,
@@ -952,6 +969,39 @@ export default function DashboardClient({
   const [previewingIntakeTemplate, setPreviewingIntakeTemplate] = useState(false);
   const [savingIntakeTemplate, setSavingIntakeTemplate] = useState(false);
   const [startingIntakeSession, setStartingIntakeSession] = useState(false);
+  const [publicConsultationIntakes, setPublicConsultationIntakes] = useState(
+    publicConsultation.intakes,
+  );
+  const [publicConsultationSettings, setPublicConsultationSettings] = useState(
+    publicConsultation.settings,
+  );
+  const [publicConsultationEnabled, setPublicConsultationEnabled] = useState(
+    publicConsultation.settings.enabled,
+  );
+  const [publicConsultationSender, setPublicConsultationSender] = useState(
+    publicConsultation.settings.senderAddress,
+  );
+  const [publicConsultationRecipients, setPublicConsultationRecipients] = useState(
+    publicConsultation.settings.recipientEmails.join(", "),
+  );
+  const [publicConsultationOrigins, setPublicConsultationOrigins] = useState(
+    publicConsultation.settings.allowedOrigins.join("\n"),
+  );
+  const [publicConsultationReviewOwner, setPublicConsultationReviewOwner] = useState(
+    publicConsultation.settings.reviewOwnerUserId ?? "",
+  );
+  const [publicConsultationStatus, setPublicConsultationStatus] = useState(
+    publicConsultation.status === "available"
+      ? `Public consultation intake ${publicConsultationSettingsSummary(publicConsultation.settings)}.`
+      : "Public consultation intake settings are not available for this role.",
+  );
+  const [savingPublicConsultationSettings, setSavingPublicConsultationSettings] = useState(false);
+  const [refreshingPublicConsultationIntakes, setRefreshingPublicConsultationIntakes] =
+    useState(false);
+  const [publicConsultationBusyIntakeId, setPublicConsultationBusyIntakeId] = useState("");
+  const [publicConsultationDismissReasons, setPublicConsultationDismissReasons] = useState<
+    Record<string, string>
+  >({});
 
   const activeSavedMatterViewDefinition = useMemo(
     () =>
@@ -1144,6 +1194,9 @@ export default function DashboardClient({
     : undefined;
   const activePendingIntakeVariableProposals = activeIntakeVariableProposals.filter(
     (proposal) => proposal.status === "pending",
+  );
+  const pendingPublicConsultationIntakes = publicConsultationIntakes.filter(
+    (intakeRecord) => intakeRecord.status === "pending",
   );
   const externalUploadCreateAvailable = canCreateExternalUpload(externalUploads.status);
   const selectedDraft = activeDrafts.find((draft) => draft.id === selectedDraftId);
@@ -1729,6 +1782,47 @@ export default function DashboardClient({
     const payload = (await response.json()) as ConflictResponse;
     setConflictResults(payload.results);
     setConflictStatus(describeConflictCheckStatus(payloadResult.payload, payload.results.length));
+  }
+
+  async function runPublicConsultationConflictCheck(
+    intakeRecord: PublicConsultationIntake,
+  ): Promise<void> {
+    const identifiers = [
+      { type: "phone", value: intakeRecord.telephone },
+      ...(intakeRecord.email ? [{ type: "email", value: intakeRecord.email }] : []),
+    ];
+    const payload = {
+      prospectiveName: intakeRecord.clientName,
+      identifiers,
+      prospectiveRole: "client" as const,
+      includeClosedMatters: true,
+    };
+    setConflictName(intakeRecord.clientName);
+    setConflictAliases("");
+    setConflictIdentifiers(
+      identifiers.map((identifier) => `${identifier.type}:${identifier.value}`).join("\n"),
+    );
+    setConflictProspectiveRole("client");
+    setConflictResults([]);
+    setConflictStatus(`Running conflict check for ${intakeRecord.clientName}...`);
+    try {
+      const response = await requestDashboardJson<ConflictResponse>(
+        apiBaseUrl,
+        "/api/conflicts/check",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload,
+        },
+      );
+      setConflictResults(response.results);
+      setConflictStatus(
+        `${describeConflictCheckStatus(payload, response.results.length)} Opposing names to check separately: ${publicConsultationOpposingParties(intakeRecord)}.`,
+      );
+    } catch (error) {
+      setConflictResults([]);
+      setConflictStatus(`Conflict check failed: ${dashboardApiStatus(error)}`);
+    }
   }
 
   function prepareConflictCheckFromContact(): void {
@@ -2916,6 +3010,139 @@ export default function DashboardClient({
       return;
     }
     void startIntakeSession(pendingDeliveryConfirmation.recipients.length);
+  }
+
+  async function refreshPublicConsultationIntakes(): Promise<void> {
+    setRefreshingPublicConsultationIntakes(true);
+    setPublicConsultationStatus("Refreshing public consultation requests...");
+    try {
+      const payload = await requestDashboardJson<PublicConsultationIntakesResponse>(
+        apiBaseUrl,
+        buildPublicConsultationIntakesPath("pending"),
+        { headers: devHeaders },
+      );
+      setPublicConsultationIntakes(payload.intakes);
+      setPublicConsultationStatus(
+        payload.intakes.length === 0
+          ? "No public consultation requests are pending review."
+          : `${payload.intakes.length} public consultation request${payload.intakes.length === 1 ? "" : "s"} pending review.`,
+      );
+    } catch (error) {
+      setPublicConsultationStatus(`Refresh failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setRefreshingPublicConsultationIntakes(false);
+    }
+  }
+
+  async function savePublicConsultationSettings(): Promise<void> {
+    const recipientEmails = splitPublicConsultationList(publicConsultationRecipients);
+    const allowedOrigins = splitPublicConsultationList(publicConsultationOrigins);
+    if (
+      !publicConsultationSender.trim() ||
+      recipientEmails.length === 0 ||
+      allowedOrigins.length === 0
+    ) {
+      setPublicConsultationStatus(
+        "Settings save failed: sender, recipients, and origins are required.",
+      );
+      return;
+    }
+    const payload: PublicConsultationIntakeSettings = {
+      enabled: publicConsultationEnabled,
+      senderAddress: publicConsultationSender.trim(),
+      recipientEmails,
+      allowedOrigins,
+      reviewOwnerUserId: publicConsultationReviewOwner.trim() || undefined,
+    };
+    setSavingPublicConsultationSettings(true);
+    setPublicConsultationStatus("Saving public consultation intake settings...");
+    try {
+      const saved = await requestDashboardJson<PublicConsultationIntakeSettings>(
+        apiBaseUrl,
+        buildPublicConsultationIntakeSettingsPath(),
+        {
+          method: "PUT",
+          headers: devHeaders,
+          payload,
+        },
+      );
+      setPublicConsultationSettings(saved);
+      setPublicConsultationEnabled(saved.enabled);
+      setPublicConsultationSender(saved.senderAddress);
+      setPublicConsultationRecipients(saved.recipientEmails.join(", "));
+      setPublicConsultationOrigins(saved.allowedOrigins.join("\n"));
+      setPublicConsultationReviewOwner(saved.reviewOwnerUserId ?? "");
+      setPublicConsultationStatus(`Saved: ${publicConsultationSettingsSummary(saved)}.`);
+    } catch (error) {
+      setPublicConsultationStatus(`Settings save failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setSavingPublicConsultationSettings(false);
+    }
+  }
+
+  async function dismissPublicConsultationIntake(
+    intakeRecord: PublicConsultationIntake,
+  ): Promise<void> {
+    setPublicConsultationBusyIntakeId(`dismiss:${intakeRecord.id}`);
+    setPublicConsultationStatus(`Dismissing request from ${intakeRecord.clientName}...`);
+    try {
+      const payload = await requestDashboardJson<{ intake: PublicConsultationIntake | null }>(
+        apiBaseUrl,
+        buildPublicConsultationIntakeDismissPath(intakeRecord.id),
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: { reason: publicConsultationDismissReasons[intakeRecord.id] ?? "" },
+        },
+      );
+      if (payload.intake) {
+        setPublicConsultationIntakes((current) =>
+          upsertPublicConsultationIntake(current, payload.intake!),
+        );
+      }
+      setPublicConsultationStatus(`Dismissed request from ${intakeRecord.clientName}.`);
+    } catch (error) {
+      setPublicConsultationStatus(`Dismiss failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setPublicConsultationBusyIntakeId("");
+    }
+  }
+
+  async function convertPublicConsultationIntake(
+    intakeRecord: PublicConsultationIntake,
+  ): Promise<void> {
+    setPublicConsultationBusyIntakeId(`convert:${intakeRecord.id}`);
+    setPublicConsultationStatus(`Converting request from ${intakeRecord.clientName}...`);
+    try {
+      const payload = await requestDashboardJson<PublicConsultationIntakeConvertResponse>(
+        apiBaseUrl,
+        buildPublicConsultationIntakeConvertPath(intakeRecord.id),
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: {
+            practiceArea: "consultation",
+            jurisdiction: "BC",
+          },
+        },
+      );
+      setPublicConsultationIntakes((current) =>
+        upsertPublicConsultationIntake(current, payload.intake),
+      );
+      setMatters((current) =>
+        current.some((matter) => matter.id === payload.matter.id)
+          ? current.map((matter) => (matter.id === payload.matter.id ? payload.matter : matter))
+          : [payload.matter, ...current],
+      );
+      setActiveMatterId(payload.matter.id);
+      setPublicConsultationStatus(
+        `Converted request from ${intakeRecord.clientName} into matter ${payload.matter.number}.`,
+      );
+    } catch (error) {
+      setPublicConsultationStatus(`Convert failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setPublicConsultationBusyIntakeId("");
+    }
   }
 
   function selectIntakeTemplate(templateId: string): void {
@@ -6208,6 +6435,147 @@ export default function DashboardClient({
                     <span className="field-label">Pending proposals</span>
                     <strong>{activePendingIntakeVariableProposals.length}</strong>
                   </div>
+                  <div>
+                    <span className="field-label">Public requests</span>
+                    <strong>{pendingPublicConsultationIntakes.length}</strong>
+                  </div>
+                </div>
+
+                <div className="section-title">
+                  <h3>Public consultation requests</h3>
+                  <span>{pendingPublicConsultationIntakes.length} pending</span>
+                </div>
+                <div className="upload-create-grid">
+                  <label className="search-field compact">
+                    <span>Enabled</span>
+                    <input
+                      checked={publicConsultationEnabled}
+                      disabled={publicConsultation.status === "access_denied"}
+                      onChange={(event) => setPublicConsultationEnabled(event.target.checked)}
+                      type="checkbox"
+                    />
+                  </label>
+                  <label className="search-field compact">
+                    <span>Send from</span>
+                    <input
+                      onChange={(event) => setPublicConsultationSender(event.target.value)}
+                      value={publicConsultationSender}
+                    />
+                  </label>
+                  <label className="search-field compact">
+                    <span>Notify</span>
+                    <input
+                      onChange={(event) => setPublicConsultationRecipients(event.target.value)}
+                      value={publicConsultationRecipients}
+                    />
+                  </label>
+                  <label className="search-field compact">
+                    <span>Review owner</span>
+                    <input
+                      onChange={(event) => setPublicConsultationReviewOwner(event.target.value)}
+                      placeholder={session.user.id}
+                      value={publicConsultationReviewOwner}
+                    />
+                  </label>
+                  <button
+                    className="secondary-button compact-button"
+                    disabled={refreshingPublicConsultationIntakes}
+                    onClick={() => void refreshPublicConsultationIntakes()}
+                    type="button"
+                  >
+                    {refreshingPublicConsultationIntakes ? "Refreshing..." : "Refresh requests"}
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={
+                      savingPublicConsultationSettings ||
+                      publicConsultation.status === "access_denied"
+                    }
+                    onClick={() => void savePublicConsultationSettings()}
+                    type="button"
+                  >
+                    {savingPublicConsultationSettings ? "Saving..." : "Save settings"}
+                  </button>
+                </div>
+                <label className="form-field">
+                  <span>Allowed website origins</span>
+                  <textarea
+                    onChange={(event) => setPublicConsultationOrigins(event.target.value)}
+                    value={publicConsultationOrigins}
+                  />
+                </label>
+                <p className="inline-empty" role="status" aria-live="polite">
+                  {publicConsultationStatus} Current settings:{" "}
+                  {publicConsultationSettingsSummary(publicConsultationSettings)}.
+                </p>
+                <div className="party-list">
+                  {pendingPublicConsultationIntakes.map((intakeRecord) => {
+                    const dismissReason = publicConsultationDismissReasons[intakeRecord.id] ?? "";
+                    const busy = publicConsultationBusyIntakeId.endsWith(intakeRecord.id);
+                    return (
+                      <div className="party-row upload-link-row" key={intakeRecord.id}>
+                        <span>
+                          <strong>{intakeRecord.clientName}</strong>
+                          <small>
+                            submitted {compactDate(intakeRecord.submittedAt)} · phone{" "}
+                            {intakeRecord.telephone}
+                            {intakeRecord.email ? ` · ${intakeRecord.email}` : ""}
+                          </small>
+                          <small>
+                            opposing parties: {publicConsultationOpposingParties(intakeRecord)}
+                          </small>
+                          <small>{intakeRecord.matterDescription}</small>
+                        </span>
+                        <div className="row-actions">
+                          <button
+                            className="secondary-button compact-button row-button"
+                            disabled={busy}
+                            onClick={() => void runPublicConsultationConflictCheck(intakeRecord)}
+                            type="button"
+                          >
+                            Conflict check
+                          </button>
+                          <label className="search-field compact rejection-field">
+                            <span>Dismiss reason</span>
+                            <input
+                              onChange={(event) =>
+                                setPublicConsultationDismissReasons((current) => ({
+                                  ...current,
+                                  [intakeRecord.id]: event.target.value,
+                                }))
+                              }
+                              value={dismissReason}
+                            />
+                          </label>
+                          <button
+                            className="secondary-button compact-button row-button"
+                            disabled={busy}
+                            onClick={() => void dismissPublicConsultationIntake(intakeRecord)}
+                            type="button"
+                          >
+                            {publicConsultationBusyIntakeId === `dismiss:${intakeRecord.id}`
+                              ? "Dismissing..."
+                              : "Dismiss"}
+                          </button>
+                          <button
+                            className="primary-button row-button"
+                            disabled={busy}
+                            onClick={() => void convertPublicConsultationIntake(intakeRecord)}
+                            type="button"
+                          >
+                            {publicConsultationBusyIntakeId === `convert:${intakeRecord.id}`
+                              ? "Converting..."
+                              : "Convert to intake matter"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {pendingPublicConsultationIntakes.length === 0 ? (
+                    <p className="inline-empty">
+                      No public consultation requests are pending review.
+                    </p>
+                  ) : null}
                 </div>
 
                 {activeLegalClinicProfile ? (

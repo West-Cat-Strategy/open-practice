@@ -292,9 +292,9 @@ export function registerOperationalViewRoutes(
       calendarEvents: calendarEvents.filter((event) => matterIds.has(event.matterId)),
       contactDossiers,
       emailOutbox: emailOutbox
-        .filter((email) => matterIds.has(email.matterId))
+        .filter((email) => email.matterId !== undefined && matterIds.has(email.matterId))
         .map((email) => ({
-          matterId: email.matterId,
+          matterId: email.matterId!,
           status: email.status,
           queuedAt: email.queuedAt,
           sentAt: email.sentAt,

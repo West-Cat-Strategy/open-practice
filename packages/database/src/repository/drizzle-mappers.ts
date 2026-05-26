@@ -67,6 +67,7 @@ import {
   type MatterParty,
   type PaymentAllocationRecord,
   type PortalGrant,
+  type PublicConsultationIntakeRecord,
   type ProviderSettingRecord,
   type RecoveryCodeRecord,
   type SavedOperationalViewDefinition,
@@ -574,7 +575,7 @@ export function mapEmailOutboxRow(row: typeof schema.emailOutbox.$inferSelect): 
   return {
     id: row.id,
     firmId: row.firmId,
-    matterId: row.matterId,
+    matterId: row.matterId ?? undefined,
     idempotencyKey: row.idempotencyKey ?? undefined,
     templateKey: row.templateKey,
     status: row.status as EmailOutboxRecord["status"],
@@ -604,12 +605,54 @@ export function emailOutboxInsert(
 ): typeof schema.emailOutbox.$inferInsert {
   return {
     ...record,
+    matterId: record.matterId ?? null,
     idempotencyKey: record.idempotencyKey ?? null,
     queuedAt: new Date(record.queuedAt),
     sentAt: record.sentAt ? new Date(record.sentAt) : null,
     failedAt: record.failedAt ? new Date(record.failedAt) : null,
     lastAttemptAt: record.lastAttemptAt ? new Date(record.lastAttemptAt) : null,
     terminalFailureAt: record.terminalFailureAt ? new Date(record.terminalFailureAt) : null,
+  };
+}
+
+export function mapPublicConsultationIntakeRow(
+  row: typeof schema.publicConsultationIntakes.$inferSelect,
+): PublicConsultationIntakeRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    status: row.status,
+    clientName: row.clientName,
+    telephone: row.telephone,
+    email: row.email ?? undefined,
+    opposingPartyNames: row.opposingPartyNames,
+    matterDescription: row.matterDescription,
+    sourceUrl: row.sourceUrl ?? undefined,
+    disclosureAcceptedAt: row.disclosureAcceptedAt.toISOString(),
+    submittedAt: row.submittedAt.toISOString(),
+    reviewedByUserId: row.reviewedByUserId ?? undefined,
+    reviewedAt: dateToIso(row.reviewedAt),
+    dismissedReason: row.dismissedReason ?? undefined,
+    convertedMatterId: row.convertedMatterId ?? undefined,
+    notificationEmailId: row.notificationEmailId ?? undefined,
+    metadata: row.metadata,
+  };
+}
+
+export function publicConsultationIntakeInsert(
+  record: PublicConsultationIntakeRecord,
+): typeof schema.publicConsultationIntakes.$inferInsert {
+  return {
+    ...record,
+    email: record.email ?? null,
+    sourceUrl: record.sourceUrl ?? null,
+    disclosureAcceptedAt: new Date(record.disclosureAcceptedAt),
+    submittedAt: new Date(record.submittedAt),
+    reviewedByUserId: record.reviewedByUserId ?? null,
+    reviewedAt: record.reviewedAt ? new Date(record.reviewedAt) : null,
+    dismissedReason: record.dismissedReason ?? null,
+    convertedMatterId: record.convertedMatterId ?? null,
+    notificationEmailId: record.notificationEmailId ?? null,
   };
 }
 

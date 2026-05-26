@@ -93,6 +93,7 @@ export function isPublicRoute(method: string, url: string): boolean {
     (method === "POST" && path === "/api/auth/login/verify") ||
     (method === "POST" && path === "/api/auth/password-setup") ||
     (method === "POST" && path === "/api/auth/recovery-codes/verify") ||
+    (method === "POST" && path === "/api/public/consultation-intakes") ||
     (method === "GET" && path?.startsWith("/api/portal/shares/")) ||
     (method === "POST" && /^\/api\/portal\/shares\/[^/]+\/email-verification$/.test(path ?? "")) ||
     (method === "GET" && /^\/api\/portal\/email-receipts\/[^/]+$/.test(path ?? "")) ||

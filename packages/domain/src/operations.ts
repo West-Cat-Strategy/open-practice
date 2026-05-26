@@ -1,6 +1,7 @@
 export type ProviderSettingKind =
   | "smtp"
   | "inbound_email"
+  | "public_intake"
   | "ai"
   | "ocr"
   | "transcription"
@@ -135,7 +136,7 @@ export interface ConnectorDeliveryAttemptRecord {
 export interface EmailOutboxRecord {
   id: string;
   firmId: string;
-  matterId: string;
+  matterId?: string;
   idempotencyKey?: string;
   templateKey: string;
   status: "queued" | "sending" | "sent" | "failed" | "cancelled";
@@ -157,6 +158,36 @@ export interface EmailOutboxRecord {
   terminalFailureReason?: string;
   errorMessage?: string;
   metadata: Record<string, unknown>;
+}
+
+export type PublicConsultationIntakeStatus = "pending" | "converted" | "dismissed";
+
+export interface PublicConsultationIntakeRecord {
+  id: string;
+  firmId: string;
+  status: PublicConsultationIntakeStatus;
+  clientName: string;
+  telephone: string;
+  email?: string;
+  opposingPartyNames: string[];
+  matterDescription: string;
+  sourceUrl?: string;
+  disclosureAcceptedAt: string;
+  submittedAt: string;
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  dismissedReason?: string;
+  convertedMatterId?: string;
+  notificationEmailId?: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface PublicConsultationIntakeNotificationSettings {
+  enabled: boolean;
+  senderAddress: string;
+  recipientEmails: string[];
+  allowedOrigins: string[];
+  reviewOwnerUserId?: string;
 }
 
 export interface EmailReceiptTokenRecord {
