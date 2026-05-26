@@ -32,6 +32,11 @@ import {
   loadIntakeFormsDashboardData,
 } from "./intake-forms-dashboard";
 import {
+  buildPublicConsultationIntakeSettingsPath,
+  buildPublicConsultationIntakesPath,
+  emptyPublicConsultationDashboard,
+} from "./public-consultation-intakes-dashboard";
+import {
   buildLegalClinicMatterProfilePath,
   coerceLegalClinicProfilesResponse,
   legalClinicProgramsPath,
@@ -99,6 +104,9 @@ import type {
   MatterSummary,
   OperationalViewsResponse,
   PracticeOverview,
+  PublicConsultationDashboardResponse,
+  PublicConsultationIntakeSettings,
+  PublicConsultationIntakesResponse,
   ProvidersStatusResponse,
   QueuesResponse,
   SessionResponse,
@@ -622,6 +630,31 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       return response.proposals;
     },
   });
+  const publicConsultationSettingsResult =
+    await apiGetOptionalWithStatus<PublicConsultationIntakeSettings>(
+      buildPublicConsultationIntakeSettingsPath(),
+      emptyPublicConsultationDashboard("unavailable").settings,
+      headers,
+    );
+  const publicConsultationIntakesResult =
+    await apiGetOptionalWithStatus<PublicConsultationIntakesResponse>(
+      buildPublicConsultationIntakesPath("pending"),
+      { intakes: [] },
+      headers,
+    );
+  const publicConsultationStatus =
+    publicConsultationSettingsResult.status === "access_denied" ||
+    publicConsultationIntakesResult.status === "access_denied"
+      ? "access_denied"
+      : publicConsultationSettingsResult.status === "unavailable" ||
+          publicConsultationIntakesResult.status === "unavailable"
+        ? "unavailable"
+        : "available";
+  const publicConsultation: PublicConsultationDashboardResponse = {
+    settings: publicConsultationSettingsResult.data,
+    intakes: publicConsultationIntakesResult.data.intakes,
+    status: publicConsultationStatus,
+  };
   const legalClinic: LegalClinicDashboardResponse = await loadLegalClinicDashboardData({
     matters,
     listPrograms: async () => {
@@ -678,6 +711,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       initialSection={initialSection}
       intake={intake}
       intakeForms={intakeForms}
+      publicConsultation={publicConsultation}
       legalClinic={legalClinic}
       matters={matters}
       overview={overview}

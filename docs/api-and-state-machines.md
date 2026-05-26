@@ -10,7 +10,8 @@ This document records the current API and lifecycle contracts. Keep it aligned w
 All `/api/*` routes require authentication except first-run setup status/completion/setup passkey
 options, embedded-auth login, password setup, recovery-code verification, public passkey login
 options/verification, and token-scoped public portal routes such as `GET /api/portal/shares/:token`,
-external-upload collection links, intake-form links, and guest-session status links. Production
+external-upload collection links, intake-form links, guest-session status links, and the
+origin-restricted public consultation intake submission route. Production
 accepts embedded session cookies or
 `x-open-practice-session` tokens backed by PostgreSQL session records. Development may use
 `x-open-practice-user-id`, `x-open-practice-firm-id`, and bearer JWT helpers. Production rejects
@@ -96,6 +97,12 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/intake-variable-proposals?matterId=&status=`                                | Lists pending/approved/rejected staff-reviewed client/matter variable proposals created from public form answers.                                                                                                                                                                                                                                                 |
 | `POST /api/intake-variable-proposals/:id/approve`                                     | Applies one pending proposal to the allowed client or matter field and records reviewer evidence.                                                                                                                                                                                                                                                                 |
 | `POST /api/intake-variable-proposals/:id/reject`                                      | Rejects one pending proposal with a required reviewer reason.                                                                                                                                                                                                                                                                                                     |
+| `GET /api/public-consultation-intakes/settings`                                       | Staff read of the firm public-consultation notification/origin settings stored as provider-setting kind `public_intake`.                                                                                                                                                                                                                                          |
+| `PUT /api/public-consultation-intakes/settings`                                       | Staff update for public-consultation enabled state, allowed website origins, sender address, recipient emails, and optional review owner.                                                                                                                                                                                                                         |
+| `GET /api/public-consultation-intakes?status=`                                        | Staff review queue for pending, converted, or dismissed public consultation submissions.                                                                                                                                                                                                                                                                          |
+| `POST /api/public/consultation-intakes`                                               | Unauthenticated, origin-restricted, rate-limited public consultation submission that requires disclosure acceptance, absorbs honeypot submissions, creates a pending public-intake record only, and may queue a redacted staff notification through the SMTP-gated outbox helper.                                                                                 |
+| `POST /api/public-consultation-intakes/:id/dismiss`                                   | Staff dismissal for a pending public consultation intake with reviewer metadata and no matter creation.                                                                                                                                                                                                                                                           |
+| `POST /api/public-consultation-intakes/:id/convert`                                   | Staff conversion of a pending public consultation intake into an intake-status matter, prospective-client contact/party, opposing-party contacts/parties, and a link back to the source public intake submission.                                                                                                                                                 |
 | `GET /api/portal/intake-forms/:token`                                                 | Public token-scoped form load with sanitized link metadata, template definition, item actions, and access logging.                                                                                                                                                                                                                                                |
 | `POST /api/portal/intake-forms/:token/submit`                                         | Public answer submission that gates required items, accepts an optional `clientSubmissionId` for idempotent browser retries, creates an answer snapshot, links it to the form link, creates a review task/queue signal, and creates pending proposals only.                                                                                                       |
 | `POST /api/portal/intake-forms/:token/items/:itemId/uploads`                          | Public token-scoped S3 upload intent for an intake upload item, including accepted MIME-type validation.                                                                                                                                                                                                                                                          |
@@ -526,6 +533,35 @@ Intake audit events record only IDs, counts, status, provider, package/document 
 signature request references. Raw answers, signer details, evidence bodies, storage keys,
 checksums, and generated content stay out of audit metadata.
 
+Public consultation intake submissions are a separate pending-review queue, not automatic matter
+creation. `POST /api/public/consultation-intakes` is allowlisted as unauthenticated but must pass
+the configured website origin policy, the in-memory route rate limit, a blank honeypot field, and a
+checked disclosure-acceptance field. Accepted submissions store only the configured firm ID, client
+name, email, optional telephone, opposing-party names, brief matter description, source URL,
+timestamps, and `pending` status in `public_consultation_intakes`; honeypot submissions return a
+generic received response without persistence.
+
+Public consultation settings live in provider-setting kind `public_intake`, key `consultation`.
+The setting controls whether the public route is enabled, which website origins may submit, which
+sender address and recipient emails are used for staff notifications, and an optional review-owner
+user ID. The Crockett deployment defaults are `info@crockettparalegal.ca` as sender and
+`bryan@crockettparalegal.ca` as recipient; SMTP credentials still come from the normal deployment
+provider setup.
+
+When enabled and SMTP/outbox infrastructure is available, public consultation submission queues a
+matter-less staff notification through the same outbound email helper used elsewhere. The email
+body may contain the submitted details for staff review, but outbox job and audit metadata must
+stay redacted to IDs, recipient count, template key, source flags, and provider/job references. Raw
+matter descriptions, submitted contact details, opposing-party names, email bodies, and website-origin
+headers are not copied into job metadata or audit metadata.
+
+Staff review actions keep the pending queue review-first. Dismissal moves a pending submission to
+`dismissed` with reviewer metadata only. Conversion requires staff review and creates an
+intake-status matter, prospective-client contact/party, opposing-party contacts/parties, current
+user assignment, and a `converted` link back to the source public consultation submission. The
+dashboard conflict-check action is a prefilled staff tool; it does not by itself convert,
+dismiss, or mutate the submission.
+
 Draft records store structured TipTap/ProseMirror JSON and an optional sanitized rendered HTML
 snapshot. New drafts start at version `1`; each save through `PUT /api/drafts/:id` increments the
 version and records the updating user. `POST /api/drafts` accepts exactly one seed source:
@@ -738,10 +774,12 @@ Email outbox records and retry jobs store firm-scoped idempotency keys. Replayin
 outbox or retry request returns the existing email/job projection without requeueing; changed safe
 payload fields such as recipients, subject, template, related resource, provider, or retry target
 conflict. Message bodies are not copied into idempotency metadata.
-Signature, intake, share-link, external-upload, and calendar-invitation flows reuse the same outbox
-helper only after their route-specific delivery confirmation is accepted; share, external-upload,
-and intake-form notification emails are create-time only because raw tokens are not recoverable
-after the response. Calendar attendees are stored as matter-scoped event children with
+Signature, intake, public consultation intake, share-link, external-upload, and calendar-invitation
+flows reuse the same outbox helper at their route-specific review/confirmation boundary; share,
+external-upload, and intake-form notification emails are create-time only because raw tokens are
+not recoverable after the response. Public consultation intake staff notices are matter-less and
+must keep job/audit metadata redacted to routing IDs and counts. Calendar attendees are stored as
+matter-scoped event children with
 required/optional role, response status, and invitation state. Invitation attempts are optional:
 when SMTP or queue delivery is unavailable, the API records a skipped attendee invitation state
 without failing attendee management. `PATCH /api/calendar/events/:eventId/meeting-link` stores
@@ -796,7 +834,9 @@ until an operator repairs it. Production first-run status is blocked until `OPEN
 is configured, and completion requires the matching `x-open-practice-setup-key` header.
 Non-production setup without a configured key is limited to local/private network access.
 Signature and intake providers default to embedded
-implementations. S3 upload signing is enabled only when endpoint and credentials are configured.
+implementations. Public consultation intake notification/origin settings use provider-setting kind
+`public_intake` and the existing SMTP provider/outbox path for notification delivery. S3 upload
+signing is enabled only when endpoint and credentials are configured.
 Redis/BullMQ queues, firm provider settings, job lifecycle records, and disabled-by-default API
 scaffolds are implemented for email, AI triage, OCR, transcription, media, draft assist, and auth
 extensions. Email, inbound email, OCR, and queue-first async draft assist are actionable queue

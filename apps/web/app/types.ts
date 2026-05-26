@@ -35,6 +35,8 @@ import type {
   JurisdictionalTrustReport,
   Matter,
   MatterParty,
+  PublicConsultationIntakeNotificationSettings,
+  PublicConsultationIntakeRecord,
   SignatureRequestRecord,
   TaskDeadlineWorkbench,
   TimeEntry,
@@ -216,6 +218,24 @@ export interface IntakeFormsDashboardResponse {
   linksByMatterId: Record<string, IntakeFormLinkSummary[]>;
   actionsByLinkId: Record<string, IntakeFormItemActionRecord[]>;
   proposalsByMatterId: Record<string, IntakeVariableProposal[]>;
+}
+
+export type PublicConsultationIntake = PublicConsultationIntakeRecord;
+export type PublicConsultationIntakeSettings = PublicConsultationIntakeNotificationSettings;
+
+export interface PublicConsultationIntakesResponse {
+  intakes: PublicConsultationIntake[];
+}
+
+export interface PublicConsultationIntakeConvertResponse {
+  intake: PublicConsultationIntake;
+  matter: MatterSummary;
+}
+
+export interface PublicConsultationDashboardResponse {
+  settings: PublicConsultationIntakeSettings;
+  intakes: PublicConsultationIntake[];
+  status: "available" | "access_denied" | "unavailable";
 }
 
 export interface IntakeTemplateSavePayload {

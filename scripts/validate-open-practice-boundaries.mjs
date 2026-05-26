@@ -162,6 +162,12 @@ export const ROUTE_REGISTRARS = [
     "registerIntakeFormRoutes",
   ],
   [
+    "public consultation intakes",
+    "apps/api/src/routes/public-consultation-intakes.ts",
+    "./routes/public-consultation-intakes.js",
+    "registerPublicConsultationIntakeRoutes",
+  ],
+  [
     "operational views",
     "apps/api/src/routes/operational-views.ts",
     "./routes/operational-views.js",
@@ -211,6 +217,9 @@ export const ROUTE_REGISTRAR_TEST_FILES = {
   registerOperationalViewRoutes: ["apps/api/src/routes/operational-views.test.ts"],
   registerOutboundWebhookRoutes: ["apps/api/src/routes/outbound-webhooks.test.ts"],
   registerProviderStatusRoutes: ["apps/api/src/routes/providers-status.test.ts"],
+  registerPublicConsultationIntakeRoutes: [
+    "apps/api/src/routes/public-consultation-intakes.test.ts",
+  ],
   registerQueuesRoutes: ["apps/api/src/routes/queues.test.ts"],
   registerRecoveryRoutes: ["apps/api/src/routes/mfa.test.ts"],
   registerSessionRoutes: ["apps/api/src/server.test.ts"],

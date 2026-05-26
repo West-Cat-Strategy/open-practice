@@ -46,6 +46,7 @@ import { registerMatterRoutes } from "./routes/matters.js";
 import { registerOperationalViewRoutes } from "./routes/operational-views.js";
 import { registerOutboundWebhookRoutes } from "./routes/outbound-webhooks.js";
 import { registerProviderStatusRoutes } from "./routes/providers-status.js";
+import { registerPublicConsultationIntakeRoutes } from "./routes/public-consultation-intakes.js";
 import { registerQueuesRoutes } from "./routes/queues.js";
 import { registerRecoveryRoutes } from "./routes/recovery.js";
 import { registerSessionRoutes } from "./routes/session.js";
@@ -112,6 +113,9 @@ export const envSchema = z.object({
   PUBLIC_WEB_BASE_URL: optionalUrl,
   WEBRTC_MEETING_PROVIDER_KEY: optionalString,
   WEBRTC_MEETING_BASE_URL: optionalUrl,
+  PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS: optionalString,
+  PUBLIC_CONSULTATION_INTAKE_FIRM_ID: optionalString,
+  PUBLIC_CONSULTATION_INTAKE_ACTOR_USER_ID: optionalString,
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;
@@ -143,6 +147,11 @@ interface ApiOptions {
   ocrJobQueue?: ApiJobQueue;
   sessionTtlHours?: number;
   publicWebBaseUrl?: string;
+  publicConsultationIntake?: {
+    allowedOrigins?: string[];
+    firmId: string;
+    actorUserId: string;
+  };
   meetingLinks?: {
     providerKey: string;
     hostedMeetingBaseUrl?: string;
@@ -307,8 +316,15 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
 }
 
 function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
+  const publicConsultationOrigins = options.publicConsultationIntake?.allowedOrigins ?? [];
   server.register(cors, {
-    origin: [/^http:\/\/localhost:\d+$/],
+    origin: [
+      /^http:\/\/localhost:\d+$/,
+      /^http:\/\/127\.0\.0\.1:\d+$/,
+      "https://crockettparalegal.ca",
+      "https://www.crockettparalegal.ca",
+      ...publicConsultationOrigins,
+    ],
     credentials: true,
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
@@ -427,6 +443,12 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
       rpID: options.webAuthn.rpID,
       origin: options.webAuthn.origin,
     },
+  });
+  registerPublicConsultationIntakeRoutes(server, {
+    repository: options.repository,
+    emailJobQueue: options.emailJobQueue,
+    publicFirmId: options.publicConsultationIntake?.firmId ?? options.devFirmId,
+    publicActorUserId: options.publicConsultationIntake?.actorUserId ?? options.devUserId,
   });
   registerEmailRoutes(server, {
     repository: options.repository,
@@ -559,6 +581,14 @@ function createMeetingLinksFromEnv(env: ApiEnv): ApiOptions["meetingLinks"] {
   };
 }
 
+function splitCsvEnv(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
 function redisConnectionFromUrl(redisUrl: string): {
   host: string;
   port: number;
@@ -668,6 +698,11 @@ if (process.env.NODE_ENV !== "test") {
     ocrJobQueue,
     sessionTtlHours: env.SESSION_TTL_HOURS,
     publicWebBaseUrl: env.PUBLIC_WEB_BASE_URL ?? env.WEBAUTHN_ORIGIN,
+    publicConsultationIntake: {
+      allowedOrigins: splitCsvEnv(env.PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS),
+      firmId: env.PUBLIC_CONSULTATION_INTAKE_FIRM_ID ?? env.DEV_AUTH_FIRM_ID,
+      actorUserId: env.PUBLIC_CONSULTATION_INTAKE_ACTOR_USER_ID ?? env.DEV_AUTH_USER_ID,
+    },
     meetingLinks: createMeetingLinksFromEnv(env),
     setupKey: env.OPEN_PRACTICE_SETUP_KEY,
     s3: createS3FromEnv(env),

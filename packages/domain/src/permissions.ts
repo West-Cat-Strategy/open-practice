@@ -29,6 +29,7 @@ export type ResourceKind =
   | "document_processing"
   | "share_link"
   | "external_upload"
+  | "public_consultation_intake"
   | "connector"
   | "auth_credential"
   | "provider_setting"
@@ -72,6 +73,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     document_processing: ["create", "read", "update", "export"],
     share_link: ["create", "read", "update", "delete", "export"],
     external_upload: ["create", "read", "update", "delete", "export"],
+    public_consultation_intake: ["create", "read", "update", "delete", "approve", "export"],
     connector: ["create", "read", "update", "delete", "export"],
     auth_credential: ["create", "read", "update", "delete", "approve"],
     provider_setting: ["create", "read", "update", "delete", "approve", "export"],
@@ -100,6 +102,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     document_processing: ["create", "read", "update"],
     share_link: ["create", "read", "update", "delete"],
     external_upload: ["create", "read", "update", "delete"],
+    public_consultation_intake: ["create", "read", "update", "approve"],
     connector: ["read"],
     auth_credential: ["create", "read", "update", "delete"],
     draft: ["create", "read", "update", "delete", "export"],
@@ -123,6 +126,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     document_processing: ["create", "read"],
     share_link: ["read"],
     external_upload: ["create", "read"],
+    public_consultation_intake: ["read", "update"],
     auth_credential: ["read", "update"],
     draft: ["create", "read", "update"],
     draft_template: ["read"],
@@ -167,6 +171,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     document_processing: ["read", "export"],
     share_link: ["read", "export"],
     external_upload: ["read", "export"],
+    public_consultation_intake: ["read", "export"],
     connector: ["read", "export"],
     auth_credential: ["read"],
     provider_setting: ["read"],

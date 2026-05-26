@@ -74,6 +74,7 @@ import {
   type Province,
   type PostedLedgerTransaction,
   type ProviderSettingRecord,
+  type PublicConsultationIntakeRecord,
   type RecoveryCodeRecord,
   type SavedOperationalViewDefinition,
   type SavedOperationalViewDefinitionInput,
@@ -403,6 +404,41 @@ export interface CreateMatterWithClientInput {
   };
 }
 
+export interface PublicConsultationIntakeListOptions {
+  status?: PublicConsultationIntakeRecord["status"];
+  limit?: number;
+}
+
+export interface PublicConsultationIntakeUpdateInput {
+  status?: PublicConsultationIntakeRecord["status"];
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  dismissedReason?: string;
+  convertedMatterId?: string;
+  notificationEmailId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ConvertPublicConsultationIntakeInput {
+  firmId: string;
+  intakeId: string;
+  actorUserId: string;
+  matterId: string;
+  clientContactId: string;
+  clientPartyId: string;
+  opposingParties: Array<{
+    contactId: string;
+    partyId: string;
+    displayName: string;
+  }>;
+  title: string;
+  practiceArea: string;
+  jurisdiction: Province;
+  openedOn: string;
+  occurredAt: string;
+  auditEventId: string;
+}
+
 export class FirstRunSetupConflictError extends Error {
   constructor(message = "First-run setup is not available") {
     super(message);
@@ -619,6 +655,25 @@ export interface OpenPracticeRepository {
   getOverview(firmId: string): Promise<PracticeOverview>;
   listMattersForUser(user: User): Promise<MatterSummary[]>;
   createMatterWithClient(input: CreateMatterWithClientInput): Promise<MatterSummary>;
+  listPublicConsultationIntakes(
+    firmId: string,
+    options?: PublicConsultationIntakeListOptions,
+  ): Promise<PublicConsultationIntakeRecord[]>;
+  getPublicConsultationIntake(
+    firmId: string,
+    intakeId: string,
+  ): Promise<PublicConsultationIntakeRecord | undefined>;
+  createPublicConsultationIntake(
+    record: PublicConsultationIntakeRecord,
+  ): Promise<PublicConsultationIntakeRecord>;
+  updatePublicConsultationIntake(
+    firmId: string,
+    intakeId: string,
+    updates: PublicConsultationIntakeUpdateInput,
+  ): Promise<PublicConsultationIntakeRecord | undefined>;
+  convertPublicConsultationIntakeToMatter(
+    input: ConvertPublicConsultationIntakeInput,
+  ): Promise<{ intake: PublicConsultationIntakeRecord; matter: MatterSummary }>;
   listContactDossiersForUser(user: User): Promise<ContactDossier[]>;
   getContact(firmId: string, contactId: string): Promise<Contact | undefined>;
   createContactDataQualityResolution(

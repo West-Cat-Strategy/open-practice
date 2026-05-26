@@ -26,6 +26,7 @@ export const VALID_AUTH_RESOURCES = [
   "outbound_webhook",
   "draft",
   "draft_template",
+  "public_consultation_intake",
 ];
 
 export const VALID_AUTH_ACTIONS = ["create", "read", "update", "delete", "approve", "export"];
@@ -1918,6 +1919,58 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "POST",
     "/api/portal/intake-forms/:token/items/:itemId/signature",
     "intake-form-signature:mutation",
+  ),
+
+  authRoute(
+    "registerPublicConsultationIntakeRoutes",
+    "apps/api/src/routes/public-consultation-intakes.test.ts",
+    "GET",
+    "/api/public-consultation-intakes/settings",
+    "provider_setting",
+    "read",
+    "none",
+  ),
+  authRoute(
+    "registerPublicConsultationIntakeRoutes",
+    "apps/api/src/routes/public-consultation-intakes.test.ts",
+    "PUT",
+    "/api/public-consultation-intakes/settings",
+    "provider_setting",
+    "update",
+    "none",
+  ),
+  authRoute(
+    "registerPublicConsultationIntakeRoutes",
+    "apps/api/src/routes/public-consultation-intakes.test.ts",
+    "GET",
+    "/api/public-consultation-intakes",
+    "public_consultation_intake",
+    "read",
+    "none",
+  ),
+  publicRoute(
+    "registerPublicConsultationIntakeRoutes",
+    "apps/api/src/routes/public-consultation-intakes.test.ts",
+    "POST",
+    "/api/public/consultation-intakes",
+  ),
+  authRoute(
+    "registerPublicConsultationIntakeRoutes",
+    "apps/api/src/routes/public-consultation-intakes.test.ts",
+    "POST",
+    "/api/public-consultation-intakes/:id/dismiss",
+    "public_consultation_intake",
+    "update",
+    "none",
+  ),
+  authRoute(
+    "registerPublicConsultationIntakeRoutes",
+    "apps/api/src/routes/public-consultation-intakes.test.ts",
+    "POST",
+    "/api/public-consultation-intakes/:id/convert",
+    "public_consultation_intake",
+    "approve",
+    "none",
   ),
 
   authRoute(

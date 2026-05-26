@@ -20,7 +20,7 @@ const DEFAULT_FROM = "Open Practice <no-reply@open-practice.local>";
 export const EMAIL_JOB_MAX_ATTEMPTS = 5;
 
 export interface QueueRouteEmailInput {
-  matterId: string;
+  matterId?: string;
   templateKey: string;
   to: string[];
   cc?: string[];
@@ -206,9 +206,17 @@ export async function queueRouteEmailOutbox(
       "Email delivery requires either htmlBody or textBody",
     );
   }
+  if (input.deliveryReceipt && !input.matterId) {
+    throw new ApiHttpError(
+      400,
+      "EMAIL_MATTER_REQUIRED",
+      "Delivery receipts require a matter-scoped email",
+    );
+  }
+  const matterMetadata = input.matterId ? { matterId: input.matterId } : {};
   const metadata = {
     ...(input.metadata ?? {}),
-    matterId: input.matterId,
+    ...matterMetadata,
     provider: enabledProvider.key,
     source: input.source,
     createdByUserId: auth.user.id,
@@ -247,7 +255,7 @@ export async function queueRouteEmailOutbox(
   const safeJobMetadata = {
     ...fingerprint,
     emailId,
-    matterId: input.matterId,
+    ...matterMetadata,
     provider: enabledProvider.key,
     source: input.source ?? "api.route",
     templateKey: input.templateKey,
@@ -288,7 +296,7 @@ export async function queueRouteEmailOutbox(
         jobId,
         source: "api",
         metadata: {
-          matterId: input.matterId,
+          ...matterMetadata,
           provider: enabledProvider.key,
           source: input.source ?? "api.route",
           idempotencyKeyPresent: true,
@@ -315,10 +323,18 @@ export async function queueRouteEmailOutbox(
   const created = queued.email.id === emailId && queued.job.id === jobId;
   if (!created) return queued;
   if (input.deliveryReceipt) {
+    const receiptMatterId = input.matterId;
+    if (!receiptMatterId) {
+      throw new ApiHttpError(
+        400,
+        "EMAIL_MATTER_REQUIRED",
+        "Delivery receipts require a matter-scoped email",
+      );
+    }
     await repository.createEmailReceiptToken({
       id: crypto.randomUUID(),
       firmId: auth.firmId,
-      matterId: input.matterId,
+      matterId: receiptMatterId,
       emailId,
       tokenHash: input.deliveryReceipt.tokenHash,
       purpose: "delivery_receipt",
@@ -340,7 +356,7 @@ export async function queueRouteEmailOutbox(
         resourceId: emailId,
         metadata: {
           emailId: queued.email.id,
-          matterId: input.matterId,
+          ...matterMetadata,
           provider: enabledProvider.key,
           source: input.source ?? "api.route",
           templateKey: input.templateKey,
@@ -368,7 +384,7 @@ export async function queueRouteEmailOutbox(
     resourceId: queued.email.id,
     occurredAt: now,
     metadata: {
-      matterId: input.matterId,
+      ...matterMetadata,
       templateKey: queued.email.templateKey,
       provider: enabledProvider.key,
       source: input.source,
