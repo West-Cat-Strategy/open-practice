@@ -225,6 +225,7 @@ const safeJobMetadataKeys = new Set([
   "leasedCount",
   "matterId",
   "maxAttempts",
+  "messageCount",
   "nextRetryAt",
   "provider",
   "providerConfigured",
@@ -250,6 +251,7 @@ const safeJobMetadataKeys = new Set([
   "templateKey",
   "terminal",
   "textLength",
+  "threadId",
   "timeEntryCount",
   "trustTransferRequestCount",
 ]);

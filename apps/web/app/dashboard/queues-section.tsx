@@ -11,9 +11,14 @@ import type {
   WorkerRunSummaryItem,
 } from "../types";
 import {
+  compactConnectorActionReason,
   connectorDisplayName,
   connectorOutboxStatusTone,
+  describeConnectorOutboxDeadLetterAction,
+  describeConnectorOutboxRetryAction,
   summarizeConnectorPayload,
+  type ConnectorRecoveryAction,
+  type PendingConnectorRecovery,
 } from "../connector-outbox-dashboard";
 
 export interface ProviderPostureRow {
@@ -40,6 +45,9 @@ export interface QueuesSectionProps {
   compactProviderStatus: (value?: string) => string;
   compactStatus: (value?: string) => string;
   connectorOperations: ConnectorOperationsResponse;
+  connectorRecoveryBusyKey?: string;
+  connectorRecoveryNow: Date;
+  connectorRecoveryStatus: string;
   connectorOperationsSummary: string;
   displayedQueues: QueuesResponse;
   formatSavedOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => string;
@@ -50,9 +58,15 @@ export interface QueuesSectionProps {
   ocrProviderUpdating: boolean;
   onApplyQueueOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => void;
   onArchiveQueueOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => void;
+  onCancelConnectorRecovery: () => void;
   onClearQueueOperationalViewDefinition: () => void;
+  onConfirmConnectorRecovery: () => void;
   onRefreshProviders: () => void;
   onRefreshQueues: () => void;
+  onRequestConnectorRecovery: (
+    item: ConnectorOperationsResponse["outbox"][number],
+    action: ConnectorRecoveryAction,
+  ) => void;
   onSaveQueueOperationalViewDefinition: () => void;
   onSelectMatter: (matterId: string) => void;
   onSetOcrProviderEnabled: (enabled: boolean) => void;
@@ -62,6 +76,8 @@ export interface QueuesSectionProps {
   providerStatus: ProvidersStatusResponse;
   providerStatusSummary: string;
   providerRefreshing: boolean;
+  canManageConnectorRecovery: boolean;
+  pendingConnectorRecovery?: PendingConnectorRecovery | null;
   queueFreshnessCue: DashboardLaneFreshnessCue;
   queueSummary: string;
   queueRefreshing: boolean;
@@ -89,6 +105,9 @@ export function QueuesSection({
   compactProviderStatus,
   compactStatus,
   connectorOperations,
+  connectorRecoveryBusyKey = "",
+  connectorRecoveryNow,
+  connectorRecoveryStatus,
   connectorOperationsSummary,
   displayedQueues,
   formatSavedOperationalViewDefinition,
@@ -99,9 +118,12 @@ export function QueuesSection({
   ocrProviderUpdating,
   onApplyQueueOperationalViewDefinition,
   onArchiveQueueOperationalViewDefinition,
+  onCancelConnectorRecovery,
   onClearQueueOperationalViewDefinition,
+  onConfirmConnectorRecovery,
   onRefreshProviders,
   onRefreshQueues,
+  onRequestConnectorRecovery,
   onSaveQueueOperationalViewDefinition,
   onSelectMatter,
   onSetOcrProviderEnabled,
@@ -111,6 +133,8 @@ export function QueuesSection({
   providerStatus,
   providerStatusSummary,
   providerRefreshing,
+  canManageConnectorRecovery,
+  pendingConnectorRecovery,
   queueFreshnessCue,
   queueSummary,
   queueRefreshing,
@@ -203,10 +227,18 @@ export function QueuesSection({
       />
 
       <ConnectorOperationsBlock
+        canManageConnectorRecovery={canManageConnectorRecovery}
         compactDate={compactDate}
         compactStatus={compactStatus}
         connectorOperations={connectorOperations}
+        connectorRecoveryBusyKey={connectorRecoveryBusyKey}
+        connectorRecoveryNow={connectorRecoveryNow}
+        connectorRecoveryStatus={connectorRecoveryStatus}
         connectorOperationsSummary={connectorOperationsSummary}
+        onCancelConnectorRecovery={onCancelConnectorRecovery}
+        onConfirmConnectorRecovery={onConfirmConnectorRecovery}
+        onRequestConnectorRecovery={onRequestConnectorRecovery}
+        pendingConnectorRecovery={pendingConnectorRecovery}
       />
 
       <WorkerRunsBlock
@@ -258,13 +290,32 @@ function DashboardLaneRefreshPanel({
 }
 
 function ConnectorOperationsBlock({
+  canManageConnectorRecovery,
   compactDate,
   compactStatus,
   connectorOperations,
+  connectorRecoveryBusyKey,
+  connectorRecoveryNow,
+  connectorRecoveryStatus,
   connectorOperationsSummary,
+  onCancelConnectorRecovery,
+  onConfirmConnectorRecovery,
+  onRequestConnectorRecovery,
+  pendingConnectorRecovery,
 }: Pick<
   QueuesSectionProps,
-  "compactDate" | "compactStatus" | "connectorOperations" | "connectorOperationsSummary"
+  | "canManageConnectorRecovery"
+  | "compactDate"
+  | "compactStatus"
+  | "connectorOperations"
+  | "connectorRecoveryBusyKey"
+  | "connectorRecoveryNow"
+  | "connectorRecoveryStatus"
+  | "connectorOperationsSummary"
+  | "onCancelConnectorRecovery"
+  | "onConfirmConnectorRecovery"
+  | "onRequestConnectorRecovery"
+  | "pendingConnectorRecovery"
 >) {
   const connectorById = new Map(
     connectorOperations.connectors.map((connector) => [connector.id, connector]),
@@ -325,6 +376,25 @@ function ConnectorOperationsBlock({
         {connectorOperations.outbox.map((item) => {
           const connector = connectorById.get(item.connectorId);
           const tone = connectorOutboxStatusTone(item);
+          const retryAction = describeConnectorOutboxRetryAction(item, canManageConnectorRecovery);
+          const deadLetterAction = describeConnectorOutboxDeadLetterAction(
+            item,
+            canManageConnectorRecovery,
+            connectorRecoveryNow,
+          );
+          const retryTitle = retryAction.available
+            ? "Retry connector delivery"
+            : `Retry disabled: ${compactConnectorActionReason(retryAction.disabledReason)}`;
+          const deadLetterTitle = deadLetterAction.available
+            ? "Move connector delivery to dead letter"
+            : `Dead-letter disabled: ${compactConnectorActionReason(
+                deadLetterAction.disabledReason,
+              )}`;
+          const pendingRecovery =
+            pendingConnectorRecovery && pendingConnectorRecovery.outboxId === item.id
+              ? pendingConnectorRecovery
+              : undefined;
+          const recoveryBusy = Boolean(connectorRecoveryBusyKey);
           return (
             <div className="party-row" key={item.id}>
               <span>
@@ -343,13 +413,68 @@ function ConnectorOperationsBlock({
                   letter {compactDate(item.deadLetteredAt)}
                 </small>
                 {item.lastErrorSummary ? <small>{item.lastErrorSummary}</small> : null}
+                {pendingRecovery ? (
+                  <small className="connector-recovery-confirmation">
+                    Confirm {pendingRecovery.action === "retry" ? "retry" : "dead-letter"} for{" "}
+                    {item.id}.
+                    <button
+                      className="primary-button compact-button row-button"
+                      disabled={recoveryBusy}
+                      onClick={onConfirmConnectorRecovery}
+                      type="button"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      className="secondary-button compact-button row-button"
+                      disabled={recoveryBusy}
+                      onClick={onCancelConnectorRecovery}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                  </small>
+                ) : null}
               </span>
-              <em className={tone === "risk" ? "risk" : undefined}>{compactStatus(item.status)}</em>
+              <span className="queue-row-actions">
+                {canManageConnectorRecovery ? (
+                  <>
+                    <button
+                      aria-label={`Retry ${item.id}`}
+                      className="secondary-button compact-button row-button"
+                      disabled={!retryAction.available || recoveryBusy}
+                      onClick={() => onRequestConnectorRecovery(item, "retry")}
+                      title={retryTitle}
+                      type="button"
+                    >
+                      <RotateCcw size={14} aria-hidden="true" />
+                    </button>
+                    <button
+                      aria-label={`Dead-letter ${item.id}`}
+                      className="secondary-button compact-button row-button"
+                      disabled={!deadLetterAction.available || recoveryBusy}
+                      onClick={() => onRequestConnectorRecovery(item, "dead_letter")}
+                      title={deadLetterTitle}
+                      type="button"
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </>
+                ) : null}
+                <em className={tone === "risk" ? "risk" : undefined}>
+                  {compactStatus(item.status)}
+                </em>
+              </span>
             </div>
           );
         })}
         {connectorOperations.outbox.length === 0 ? (
           <p className="inline-empty">No connector outbox rows are visible.</p>
+        ) : null}
+        {connectorRecoveryStatus ? (
+          <p className="inline-empty" role="status" aria-live="polite">
+            {connectorRecoveryStatus}
+          </p>
         ) : null}
       </div>
     </>

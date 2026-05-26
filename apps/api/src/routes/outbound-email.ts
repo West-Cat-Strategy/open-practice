@@ -40,6 +40,7 @@ export interface QueueRouteEmailInput {
     recordUrl: string;
     includeInBody: boolean;
   };
+  delayMs?: number;
   source?: string;
   required?: boolean;
 }
@@ -349,7 +350,7 @@ export async function queueRouteEmailOutbox(
           idempotencyKeyPresent: true,
         },
       },
-      { jobId },
+      { jobId, delay: input.delayMs },
     );
     bullJobId = bullJob.id === undefined ? undefined : String(bullJob.id);
   } catch {

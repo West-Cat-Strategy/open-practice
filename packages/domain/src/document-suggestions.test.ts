@@ -114,7 +114,8 @@ describe("document review suggestions", () => {
         duplicate_or_supersession: 2,
         matter_contact: 2,
         missing_metadata: 0,
-        total: 5,
+        retention_review: 1,
+        total: 6,
       },
     });
     expect(suggestions.groups.classification[0]).toMatchObject({
@@ -132,6 +133,14 @@ describe("document review suggestions", () => {
       expect.arrayContaining([
         expect.objectContaining({ label: "Matter 2026-0001" }),
         expect.objectContaining({ contactId: "contact-client", role: "client" }),
+      ]),
+    );
+    expect(suggestions.groups.retention_review).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Supersession review",
+          relatedDocumentId: "doc-old",
+        }),
       ]),
     );
     expect(JSON.stringify(suggestions)).not.toContain("Private extracted text");
@@ -167,7 +176,78 @@ describe("document review suggestions", () => {
       ]),
     );
     expect(suggestions.summaryCounts.missing_metadata).toBe(5);
-    expect(suggestions.summaryCounts.total).toBe(5);
+    expect(suggestions.summaryCounts.retention_review).toBe(1);
+    expect(suggestions.summaryCounts.total).toBe(6);
+  });
+
+  it("adds read-only retention-review cues from hold, supersession, upload, and review state", () => {
+    const supersedingDocument: DocumentRecord = {
+      ...baseDocument,
+      id: "doc-new",
+      title: "Updated tenancy evidence",
+      supersedesDocumentId: "doc-old",
+    };
+    const suggestions = buildDocumentReviewSuggestions({
+      document: {
+        ...baseDocument,
+        id: "doc-old",
+        title: "Prior tenancy evidence",
+        legalHold: true,
+        uploadStatus: "uploaded",
+        checksumStatus: "pending",
+        scanStatus: "queued",
+        reviewStatus: "pending_review",
+        reviewReason: "missing_metadata",
+        externalUploadLinkId: "external-upload-link-001",
+        supersededAt: "2026-05-02T12:00:00.000Z",
+      },
+      sameMatterDocuments: [
+        {
+          ...baseDocument,
+          id: "doc-old",
+          title: "Prior tenancy evidence",
+          legalHold: true,
+          uploadStatus: "uploaded",
+          checksumStatus: "pending",
+          scanStatus: "queued",
+          reviewStatus: "pending_review",
+          supersededAt: "2026-05-02T12:00:00.000Z",
+        },
+        supersedingDocument,
+      ],
+      latestExtraction: extraction({ metadata: {} }),
+    });
+
+    expect(suggestions).toMatchObject({
+      reviewerOnly: true,
+      mutating: false,
+      summaryCounts: {
+        duplicate_or_supersession: 1,
+        missing_metadata: 1,
+        retention_review: 6,
+        total: 8,
+      },
+    });
+    expect(suggestions.groups.retention_review).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "Legal hold active", tone: "risk" }),
+        expect.objectContaining({
+          label: "Superseded record review",
+          tone: "neutral",
+          relatedDocumentId: "doc-new",
+        }),
+        expect.objectContaining({ label: "Upload state review" }),
+        expect.objectContaining({ label: "Checksum state review" }),
+        expect.objectContaining({ label: "Scan state review" }),
+        expect.objectContaining({
+          label: "External upload review",
+          detail:
+            "External upload review status is pending review. Review reason is missing metadata.",
+        }),
+      ]),
+    );
+    expect(JSON.stringify(suggestions)).not.toContain("external-upload-link-001");
+    expect(JSON.stringify(suggestions)).not.toContain("Private extracted text");
   });
 
   it("builds metadata-only tags and search summaries without OCR body text", () => {

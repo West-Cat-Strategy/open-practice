@@ -12,6 +12,7 @@ export * from "./ledger.js";
 export * from "./legal-clinics.js";
 export * from "./models.js";
 export * from "./operational-views.js";
+export * from "./operational-actions.js";
 export * from "./operations.js";
 export * from "./outbound-webhooks.js";
 export * from "./permissions.js";

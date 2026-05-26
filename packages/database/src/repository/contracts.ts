@@ -33,6 +33,7 @@ import {
   type ContactKind,
   type ContactDossier,
   type ConversationMessageRecord,
+  type ConversationMessageNotificationRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
   type DraftAssistRecord,
@@ -443,6 +444,20 @@ export interface OpenPracticeRepository {
       limit?: number;
     },
   ): Promise<ConnectorOutboxRecord[]>;
+  getConnectorOutbox(firmId: string, outboxId: string): Promise<ConnectorOutboxRecord | undefined>;
+  retryConnectorOutbox(input: {
+    firmId: string;
+    outboxId: string;
+    expectedStatus: Extract<ConnectorOutboxRecord["status"], "failed" | "dead_letter">;
+    occurredAt: string;
+  }): Promise<ConnectorOutboxRecord | undefined>;
+  deadLetterConnectorOutbox(input: {
+    firmId: string;
+    outboxId: string;
+    expectedStatus: Extract<ConnectorOutboxRecord["status"], "pending" | "failed" | "leased">;
+    occurredAt: string;
+    errorSummary: string;
+  }): Promise<ConnectorOutboxRecord | undefined>;
   createConnectorDeliveryAttempt(
     attempt: ConnectorDeliveryAttemptRecord,
   ): Promise<ConnectorDeliveryAttemptRecord>;
@@ -638,6 +653,31 @@ export interface OpenPracticeRepository {
     occurredAt: string;
     actorUserId: string;
   }): Promise<ConversationThreadRecord | undefined>;
+  createConversationMessageNotifications(input: {
+    firmId: string;
+    threadId: string;
+    messageId: string;
+    matterId: string;
+    notificationBoundary: ConversationThreadRecord["notificationBoundary"];
+    createdAt: string;
+    createdByUserId: string;
+  }): Promise<ConversationMessageNotificationRecord[]>;
+  listConversationMessageNotifications(
+    firmId: string,
+    options?: {
+      threadId?: string;
+      matterId?: string;
+      recipientUserId?: string;
+      messageId?: string;
+    },
+  ): Promise<ConversationMessageNotificationRecord[]>;
+  updateConversationMessageNotificationPosture(input: {
+    firmId: string;
+    notificationId: string;
+    action: "mark_read" | "mute" | "unmute";
+    occurredAt: string;
+    actorUserId: string;
+  }): Promise<ConversationMessageNotificationRecord | undefined>;
   listConversationMessages(
     firmId: string,
     options: { threadId?: string; matterId?: string },

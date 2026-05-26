@@ -6,6 +6,14 @@ import { registerCalendarRoutes } from "./calendar.js";
 
 const servers: FastifyInstance[] = [];
 
+type TestEmailJobQueue = {
+  add: (
+    name: string,
+    data: Record<string, unknown>,
+    options?: { jobId?: string; delay?: number },
+  ) => Promise<{ id: string }>;
+};
+
 class AuditRecordingRepository extends InMemoryOpenPracticeRepository {
   readonly recordedAuditEvents: AuditEvent[] = [];
 
@@ -35,7 +43,7 @@ function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001
 function testServer(
   authUser: User = user("owner_admin", ["matter-001", "matter-002"]),
   repository = new AuditRecordingRepository(),
-  emailJobQueue: { add: () => Promise<{ id: string }> } | undefined = undefined,
+  emailJobQueue: TestEmailJobQueue | undefined = undefined,
   meetingLinks:
     | {
         providerKey: string;
@@ -384,6 +392,218 @@ describe("calendar routes", () => {
     );
     expect(await repository.listJobLifecycleRecords("firm-west-legal", {})).toEqual([]);
     expect(JSON.stringify(repository.recordedAuditEvents)).not.toContain("email");
+  });
+
+  it("queues opt-in pending reminder notifications through the email outbox boundary when configured", async () => {
+    const repository = new AuditRecordingRepository();
+    await enableSmtp(repository);
+    const addCalls: Array<{
+      name: string;
+      data: Record<string, unknown>;
+      options?: { jobId?: string; delay?: number };
+    }> = [];
+    const emailJobQueue = {
+      add: async (
+        name: string,
+        data: Record<string, unknown>,
+        options?: { jobId?: string; delay?: number },
+      ) => {
+        addCalls.push({ name, data, options });
+        return { id: "bull-calendar-reminder-001" };
+      },
+    };
+    const server = testServer(user("licensee", ["matter-001"]), repository, emailJobQueue);
+    const remindAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-001/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt,
+        deliveryConfirmation: deliveryConfirmation(),
+        note: "Synthetic reminder should queue through the email outbox.",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().reminder).toMatchObject({
+      eventId: "calendar-event-001",
+      channel: "dashboard",
+      status: "pending",
+    });
+    expect(addCalls).toHaveLength(1);
+    expect(addCalls[0]).toMatchObject({
+      name: "send_email",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "email_outbox",
+        resourceId: expect.any(String),
+        metadata: expect.objectContaining({
+          emailId: expect.any(String),
+          matterId: "matter-001",
+          provider: "mailpit",
+          source: "calendar.reminder",
+          templateKey: "calendar.reminder",
+          recipientCount: 1,
+          relatedResourceType: "calendar_event",
+          relatedResourceId: "calendar-event-001",
+        }),
+      },
+      options: {
+        jobId: expect.any(String),
+        delay: expect.any(Number),
+      },
+    });
+    expect((addCalls[0].options?.delay ?? 0) > 0).toBe(true);
+    const jobs = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "email",
+    });
+    expect(jobs).toEqual([
+      expect.objectContaining({
+        jobName: "send_email",
+        targetResourceType: "email_outbox",
+        metadata: expect.objectContaining({
+          templateKey: "calendar.reminder",
+          source: "calendar.reminder",
+          recipientCount: 1,
+          relatedResourceType: "calendar_event",
+          relatedResourceId: "calendar-event-001",
+        }),
+      }),
+    ]);
+    const email = await repository.getEmailOutbox("firm-west-legal", jobs[0]!.targetResourceId!);
+    expect(email).toMatchObject({
+      templateKey: "calendar.reminder",
+      to: ["licensee@example.test"],
+      relatedResourceType: "calendar_event",
+      relatedResourceId: "calendar-event-001",
+    });
+    expect(repository.recordedAuditEvents.map((event) => event.action)).toEqual([
+      "calendar.reminder.created",
+      "email_outbox.queued",
+      "calendar.reminder.queued",
+    ]);
+    expect(
+      repository.recordedAuditEvents.find((event) => event.action === "calendar.reminder.queued")
+        ?.metadata,
+    ).toMatchObject({
+      matterId: "matter-001",
+      eventId: "calendar-event-001",
+      reminderId: expect.any(String),
+      status: "pending",
+      notificationStatus: "queued",
+      emailId: expect.any(String),
+      jobId: expect.any(String),
+      deliveryDelayMs: expect.any(Number),
+    });
+    expect(JSON.stringify(repository.recordedAuditEvents)).not.toContain(
+      "Synthetic reminder should queue through the email outbox.",
+    );
+  });
+
+  it("does not queue reminder notifications without an explicit send confirmation", async () => {
+    const repository = new AuditRecordingRepository();
+    await enableSmtp(repository);
+    const addCalls: Array<unknown> = [];
+    const server = testServer(user("licensee", ["matter-001"]), repository, {
+      add: async (...args: unknown[]) => {
+        addCalls.push(args);
+        return { id: "bull-calendar-reminder-001" };
+      },
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-001/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().reminder).toMatchObject({
+      channel: "dashboard",
+      status: "pending",
+    });
+    expect(addCalls).toEqual([]);
+    expect(await repository.listJobLifecycleRecords("firm-west-legal", {})).toEqual([]);
+    expect(repository.recordedAuditEvents.map((event) => event.action)).toEqual([
+      "calendar.reminder.created",
+    ]);
+  });
+
+  it("requires matching confirmation before an opt-in reminder notification mutates state", async () => {
+    const repository = new AuditRecordingRepository();
+    await enableSmtp(repository);
+    const server = testServer(user("licensee", ["matter-001"]), repository, {
+      add: async () => ({ id: "bull-calendar-reminder-001" }),
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-001/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        deliveryConfirmation: deliveryConfirmation(2),
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "SEND_CONFIRMATION_MISMATCH" });
+    expect(
+      await repository.listCalendarEventReminders(
+        "firm-west-legal",
+        "matter-001",
+        "calendar-event-001",
+      ),
+    ).toEqual([]);
+    expect(repository.recordedAuditEvents).toEqual([]);
+  });
+
+  it("queues reminder notifications when a reminder re-enters pending with confirmation", async () => {
+    const repository = new AuditRecordingRepository();
+    await enableSmtp(repository);
+    const addCalls: Array<unknown> = [];
+    const server = testServer(user("licensee", ["matter-001"]), repository, {
+      add: async (...args: unknown[]) => {
+        addCalls.push(args);
+        return { id: "bull-calendar-reminder-001" };
+      },
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-001/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: "2026-05-05T15:45:00.000Z",
+        status: "acknowledged",
+      },
+    });
+    const reminderId = created.json().reminder.id;
+
+    const updated = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/events/calendar-event-001/reminders/${reminderId}`,
+      payload: {
+        matterId: "matter-001",
+        status: "pending",
+        remindAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+
+    expect(updated.statusCode).toBe(200);
+    expect(addCalls).toHaveLength(1);
+    expect(repository.recordedAuditEvents.map((event) => event.action)).toEqual([
+      "calendar.reminder.created",
+      "calendar.reminder.updated",
+      "email_outbox.queued",
+      "calendar.reminder.queued",
+    ]);
   });
 
   it("creates, lists, and revokes current-user calendar app passwords without echoing secrets", async () => {

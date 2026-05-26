@@ -310,4 +310,98 @@ describe("repository connectors", () => {
       }),
     });
   });
+
+  it("manually retries and dead-letters connector outbox rows without leaking private metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const createdAt = "2026-05-26T12:00:00.000Z";
+    const connector = await repository.createConnector({
+      id: "connector-recovery",
+      firmId: "firm-west-legal",
+      type: "generic",
+      key: "synthetic.recovery",
+      displayName: "Synthetic Recovery Webhook",
+      status: "enabled",
+      secretReference: { id: "secret-ref/recovery" },
+      configSummary: { deliveryUrl: "https://webhooks.example.test/open-practice" },
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-retry",
+      firmId: "firm-west-legal",
+      connectorId: connector.id,
+      eventType: "document.verified",
+      idempotencyKey: "doc-retry:verified:v1",
+      status: "dead_letter",
+      payloadSummary: { documentId: "doc-retry" },
+      attemptCount: 3,
+      maxAttempts: 3,
+      deadLetteredAt: "2026-05-26T12:05:00.000Z",
+      lastErrorSummary: "Connector failed for [redacted]",
+      createdAt,
+      updatedAt: "2026-05-26T12:05:00.000Z",
+    });
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-manual-dead-letter",
+      firmId: "firm-west-legal",
+      connectorId: connector.id,
+      eventType: "matter.created",
+      idempotencyKey: "matter-dead-letter:created:v1",
+      status: "failed",
+      payloadSummary: { matterId: "matter-001" },
+      attemptCount: 1,
+      maxAttempts: 3,
+      nextAttemptAt: "2026-05-26T12:30:00.000Z",
+      lastErrorSummary: "Connector failed for [redacted]",
+      createdAt,
+      updatedAt: "2026-05-26T12:05:00.000Z",
+    });
+
+    const retried = await repository.retryConnectorOutbox({
+      firmId: "firm-west-legal",
+      outboxId: "connector-outbox-retry",
+      expectedStatus: "dead_letter",
+      occurredAt: "2026-05-26T12:10:00.000Z",
+    });
+
+    expect(retried).toMatchObject({
+      id: "connector-outbox-retry",
+      status: "pending",
+      attemptCount: 3,
+      maxAttempts: 4,
+      nextAttemptAt: "2026-05-26T12:10:00.000Z",
+      leaseId: undefined,
+      leasedUntil: undefined,
+      deadLetteredAt: undefined,
+      lastErrorSummary: undefined,
+    });
+    await expect(
+      repository.retryConnectorOutbox({
+        firmId: "firm-west-legal",
+        outboxId: "connector-outbox-retry",
+        expectedStatus: "dead_letter",
+        occurredAt: "2026-05-26T12:11:00.000Z",
+      }),
+    ).resolves.toBeUndefined();
+
+    const deadLettered = await repository.deadLetterConnectorOutbox({
+      firmId: "firm-west-legal",
+      outboxId: "connector-outbox-manual-dead-letter",
+      expectedStatus: "failed",
+      occurredAt: "2026-05-26T12:12:00.000Z",
+      errorSummary:
+        "Owner moved connector row to dead letter after token=hidden client@example.test review",
+    });
+
+    expect(deadLettered).toMatchObject({
+      id: "connector-outbox-manual-dead-letter",
+      status: "dead_letter",
+      nextAttemptAt: undefined,
+      leaseId: undefined,
+      leasedUntil: undefined,
+      deadLetteredAt: "2026-05-26T12:12:00.000Z",
+      lastErrorSummary:
+        "Owner moved connector row to dead letter after [redacted] [redacted-email] review",
+    });
+  });
 });

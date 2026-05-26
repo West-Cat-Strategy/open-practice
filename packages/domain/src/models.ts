@@ -271,6 +271,24 @@ export interface ConversationMessageRecord {
   metadata: Record<string, unknown>;
 }
 
+export type ConversationMessageNotificationPosture = "unread" | "read" | "muted";
+
+export interface ConversationMessageNotificationRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  threadId: string;
+  messageId: string;
+  recipientUserId: string;
+  readAt?: string;
+  mutedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdByUserId: string;
+  updatedByUserId: string;
+  metadata: Record<string, unknown>;
+}
+
 export type CalendarEventStatus = "confirmed" | "tentative" | "cancelled";
 export type CalendarAttendeeRole = "required" | "optional";
 export type CalendarAttendeeResponseStatus = "needs_action" | "accepted" | "tentative" | "declined";

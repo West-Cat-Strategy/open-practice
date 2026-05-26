@@ -614,7 +614,8 @@ describe("document processing routes", () => {
               duplicate_or_supersession: 0,
               matter_contact: 3,
               missing_metadata: 0,
-              total: 4,
+              retention_review: 1,
+              total: 5,
             },
             groups: expect.objectContaining({
               classification: [
@@ -628,6 +629,12 @@ describe("document processing routes", () => {
                 expect.objectContaining({ label: "Matter 2026-0001" }),
                 expect.objectContaining({ contactId: "contact-ada", role: "client" }),
               ]),
+              retention_review: [
+                expect.objectContaining({
+                  label: "Legal hold active",
+                  tone: "risk",
+                }),
+              ],
             }),
           },
         }),
@@ -722,6 +729,10 @@ describe("document processing routes", () => {
       method: "GET",
       url: "/api/document-processing/workbench?matterId=matter-001&q=financial&classification=privileged&ocrStatus=completed&cueGroup=classification&tag=cue%3Aclassification",
     });
+    const retentionFiltered = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001&cueGroup=retention_review",
+    });
     const rawTextSearch = await testServer({ repository }).inject({
       method: "GET",
       url: "/api/document-processing/workbench?matterId=matter-001&q=Hidden%20raw%20OCR%20body%20needle",
@@ -765,6 +776,7 @@ describe("document processing routes", () => {
               "ocr:completed",
               "ocr_confidence:medium",
               "cue:classification",
+              "cue:retention_review",
             ]),
             matchedFields: expect.arrayContaining([
               "Classification",
@@ -786,6 +798,19 @@ describe("document processing routes", () => {
           ]),
         }),
       ]),
+    });
+    expect(retentionFiltered.statusCode).toBe(200);
+    expect(retentionFiltered.json().metadataSearch).toMatchObject({
+      filters: { cueGroup: "retention_review" },
+      totalCount: 2,
+      matchedCount: 1,
+      results: [
+        expect.objectContaining({
+          documentId: "doc-001",
+          matchedFields: ["Reviewer cue"],
+          cueCounts: expect.objectContaining({ retention_review: 1 }),
+        }),
+      ],
     });
     expect(rawTextSearch.json().metadataSearch).toMatchObject({ totalCount: 2, matchedCount: 0 });
     expect(privateMetadataSearch.json().metadataSearch).toMatchObject({

@@ -147,5 +147,101 @@ describe("repository conversation threads", () => {
       updatedAt: "2026-05-01T12:00:00.000Z",
       updatedByUserId: "user-licensee",
     });
+    await expect(
+      repository.listConversationMessageNotifications("firm-west-legal", {
+        threadId: "conversation-thread-message",
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it("creates staff-only conversation notification records with mutable mute/read posture", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await repository.createConversationThread({
+      id: "conversation-thread-notifications",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      topic: "Synthetic notification posture",
+      status: "open",
+      exportState: "not_requested",
+      notificationBoundary: "internal_only",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-admin",
+      updatedByUserId: "user-admin",
+      metadata: {},
+    });
+
+    await repository.createConversationMessage({
+      id: "conversation-message-notifications",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      threadId: "conversation-thread-notifications",
+      kind: "internal_note",
+      bodyText: "Synthetic staff-only notification body.",
+      authoredAt: "2026-05-01T12:20:00.000Z",
+      authoredByUserId: "user-admin",
+      createdAt: "2026-05-01T12:20:01.000Z",
+      createdByUserId: "user-admin",
+      metadata: {},
+    });
+
+    const notifications = await repository.listConversationMessageNotifications("firm-west-legal", {
+      threadId: "conversation-thread-notifications",
+    });
+    expect(notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          messageId: "conversation-message-notifications",
+          recipientUserId: "user-staff",
+        }),
+      ]),
+    );
+    expect(notifications).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ recipientUserId: "user-admin" })]),
+    );
+
+    const staffNotification = notifications.find(
+      (notification) => notification.recipientUserId === "user-staff",
+    );
+    expect(staffNotification).toBeDefined();
+    expect(staffNotification?.readAt).toBeUndefined();
+    expect(staffNotification?.mutedAt).toBeUndefined();
+    await expect(
+      repository.updateConversationMessageNotificationPosture({
+        firmId: "firm-west-legal",
+        notificationId: staffNotification!.id,
+        action: "mute",
+        occurredAt: "2026-05-01T12:25:00.000Z",
+        actorUserId: staffNotification!.recipientUserId,
+      }),
+    ).resolves.toMatchObject({
+      mutedAt: "2026-05-01T12:25:00.000Z",
+      readAt: undefined,
+    });
+    await expect(
+      repository.updateConversationMessageNotificationPosture({
+        firmId: "firm-west-legal",
+        notificationId: staffNotification!.id,
+        action: "mark_read",
+        occurredAt: "2026-05-01T12:26:00.000Z",
+        actorUserId: staffNotification!.recipientUserId,
+      }),
+    ).resolves.toMatchObject({
+      mutedAt: "2026-05-01T12:25:00.000Z",
+      readAt: "2026-05-01T12:26:00.000Z",
+    });
+    await expect(
+      repository.updateConversationMessageNotificationPosture({
+        firmId: "firm-west-legal",
+        notificationId: staffNotification!.id,
+        action: "unmute",
+        occurredAt: "2026-05-01T12:27:00.000Z",
+        actorUserId: staffNotification!.recipientUserId,
+      }),
+    ).resolves.toMatchObject({
+      mutedAt: undefined,
+      readAt: "2026-05-01T12:26:00.000Z",
+    });
   });
 });

@@ -154,8 +154,8 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `PATCH /api/calendar/events/:eventId`                                                 | Updates one authorized matter calendar event title, range, status, description, or location while preserving attendee, reminder, sync, and meeting-link children.                                                                                                                                                                                                 |
 | `POST /api/calendar/events/:eventId/cancel`                                           | Cancels one authorized matter calendar event by setting `status=cancelled`, incrementing sequence, and recording redacted lifecycle audit metadata.                                                                                                                                                                                                               |
 | `POST /api/calendar/events/:eventId/reschedule`                                       | Reschedules one authorized matter calendar event, increments sequence, and reopens cancelled events to confirmed unless a status is explicitly supplied.                                                                                                                                                                                                          |
-| `POST /api/calendar/events/:eventId/reminders`                                        | Creates one manual dashboard reminder-state record for an authorized matter event; it does not queue notifications.                                                                                                                                                                                                                                               |
-| `PATCH /api/calendar/events/:eventId/reminders/:reminderId`                           | Updates one manual reminder's due time, dashboard channel, status, or note without queuing notifications.                                                                                                                                                                                                                                                         |
+| `POST /api/calendar/events/:eventId/reminders`                                        | Creates one manual dashboard reminder-state record for an authorized matter event and, when matching email `deliveryConfirmation` opts into delivery, queues a delayed reminder notification without touching attendee or invitation state.                                                                                                                       |
+| `PATCH /api/calendar/events/:eventId/reminders/:reminderId`                           | Updates one manual reminder's due time, dashboard channel, status, or note and only reuses the reminder notification boundary when matching email `deliveryConfirmation` opts into delivery while the reminder transitions into a pending state.                                                                                                                  |
 | `DELETE /api/calendar/events/:eventId/reminders/:reminderId?matterId=`                | Soft-deletes one manual reminder-state record for an authorized matter event.                                                                                                                                                                                                                                                                                     |
 | `POST /api/calendar/events/:eventId/attendees`                                        | Adds a matter-scoped event attendee with role, response status, and not-yet-sent invitation state.                                                                                                                                                                                                                                                                |
 | `PATCH /api/calendar/events/:eventId/attendees/:attendeeId`                           | Updates an attendee name, email, role, or response status for one authorized matter event.                                                                                                                                                                                                                                                                        |
@@ -185,6 +185,8 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `PATCH /api/connectors/:connectorId`                                                  | Updates firm-scoped connector display/status/config fields and preserves stored secret references when clients echo the masked unchanged-secret sentinel.                                                                                                                                                                                                         |
 | `GET /api/connectors/outbox?connectorId=&status=`                                     | Firm-scoped connector outbox summaries with idempotency-key presence, retry counters, next-attempt timestamps, lease presence, redacted payload summaries, and redacted delivered/dead-letter outcomes.                                                                                                                                                           |
 | `POST /api/connectors/outbox`                                                         | Creates or returns an idempotent provider-neutral connector outbox row for a registered connector using bounded allowlisted payload summary fields.                                                                                                                                                                                                               |
+| `POST /api/connectors/outbox/:outboxId/retry`                                         | Owner-only confirmed manual retry for failed or dead-letter connector outbox rows, with current-status confirmation, redacted audit metadata, retry-attempt guardrails, and one redacted connector delivery job when configured.                                                                                                                                  |
+| `POST /api/connectors/outbox/:outboxId/dead-letter`                                   | Owner-only confirmed manual dead-letter transition for pending, failed, or expired leased connector outbox rows, with current-status confirmation, active-lease guards, and fixed redacted operator metadata.                                                                                                                                                     |
 | `GET /api/email/status`                                                               | SMTP provider status from firm provider settings.                                                                                                                                                                                                                                                                                                                 |
 | `POST /api/email/previews`                                                            | Matter-scoped render-only email template preview that normalizes recipients and body previews without SMTP, outbox, job, or audit side effects.                                                                                                                                                                                                                   |
 | `POST /api/mail/outbox`                                                               | Create or replay a confirmation-gated SMTP outbound email record, queued email event, durable job lifecycle record, audit event, and optional HMAC-hashed delivery receipt token.                                                                                                                                                                                 |
@@ -202,12 +204,15 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/conversation-threads?matterId=`                                             | Lists matter-scoped provider-neutral conversation topic records with retention/export/revocation boundary fields and no message bodies.                                                                                                                                                                                                                           |
 | `GET /api/conversation-threads/:id`                                                   | Reads one authorized conversation topic record after resolving its matter scope.                                                                                                                                                                                                                                                                                  |
 | `GET /api/conversation-threads/:id/messages`                                          | Lists authorized matter-scoped message records for one conversation topic; this is persisted record access, not realtime chat or delivery.                                                                                                                                                                                                                        |
-| `POST /api/conversation-threads`                                                      | Creates one authorized matter-scoped conversation topic record and records redacted boundary metadata; realtime chat, delivery, and notifications remain deferred.                                                                                                                                                                                                |
-| `POST /api/conversation-threads/:id/messages`                                         | Creates one authorized message record on an open matter-scoped conversation topic and records redacted audit metadata without queueing delivery, notifications, or exports.                                                                                                                                                                                       |
+| `POST /api/conversation-threads`                                                      | Creates one authorized matter-scoped conversation topic record and records redacted boundary metadata; realtime chat, delivery, notification fan-out, and public notifications remain deferred at thread creation.                                                                                                                                                |
+| `POST /api/conversation-threads/:id/messages`                                         | Creates one authorized message record on an open matter-scoped conversation topic, records staff-only internal notification rows when the thread boundary is `internal_only`, and records redacted audit metadata without realtime chat, public delivery, portal composer behavior, or export creation.                                                           |
 | `PATCH /api/conversation-threads/:id/lifecycle`                                       | Applies a constrained matter-scoped thread lifecycle action for close, reopen, access revocation, or export request without accepting message bodies or producing export artifacts.                                                                                                                                                                               |
+| `POST /api/conversation-threads/:id/export-requests`                                  | Creates a staff-only redacted conversation export request through the existing reports job lifecycle after deriving the thread's matter scope and checking `conversation_thread:export`.                                                                                                                                                                          |
+| `GET /api/conversation-threads/:id/export-requests/:exportJobId`                      | Reads one staff-only conversation export request status for the same authorized thread/job pair.                                                                                                                                                                                                                                                                  |
+| `GET /api/conversation-threads/:id/export-requests/:exportJobId/download`             | Downloads a completed staff-only redacted conversation export by regenerating thread/message projections at request time, with message bodies and metadata values redacted.                                                                                                                                                                                       |
 | `GET /api/document-processing/status`                                                 | Operator-only OCR document-processing posture behind `provider_setting:read`, with provider/queue/job summaries plus reserved/deferred AI triage, transcription, and media metadata.                                                                                                                                                                              |
 | `PUT /api/document-processing/ocr-provider`                                           | Owner/admin OCR posture control behind `provider_setting:update`; accepts `{ enabled: boolean }` for the firm-scoped local Tesseract provider and returns sanitized document-processing status without provider config or secrets.                                                                                                                                |
-| `GET /api/document-processing/workbench?matterId=`                                    | Matter-scoped document processing workbench with sanitized document states, review-queue counts, queue eligibility, provider/worker status, redacted latest job/extraction summaries, reviewer-only non-mutating suggestion cues, and review-only metadata search filters/tag cues/OCR posture over OP-authored fields.                                           |
+| `GET /api/document-processing/workbench?matterId=`                                    | Matter-scoped document processing workbench with sanitized document states, review-queue counts, queue eligibility, provider/worker status, redacted latest job/extraction summaries, reviewer-only non-mutating suggestion cues including retention-review hints, and review-only metadata search filters/tag cues/OCR posture over OP-authored fields.          |
 | `POST /api/document-processing/documents/:id/queue`                                   | Queues OCR for an authorized verified document only when the local OCR provider is enabled and the OCR worker queue is configured.                                                                                                                                                                                                                                |
 | `GET /api/auth/extensions`                                                            | Redacted embedded-auth status for local password, passkey, MFA, and recovery-code posture, with OIDC/SAML marked as deprecated legacy placeholders.                                                                                                                                                                                                               |
 | `GET /api/shares/status`                                                              | Share-link capability status and create enablement based on token-signing configuration.                                                                                                                                                                                                                                                                          |
@@ -421,13 +426,22 @@ status, retention boundary, export state, access-revocation timestamp, notificat
 creator/updater IDs, timestamps, and server-owned operational metadata behind `conversation_thread`
 authorization. Message records are additive child records under an authorized open thread with kind,
 body text, author/user IDs, authored/created timestamps, and server-owned metadata. Message list and
-create routes do not queue delivery, notifications, realtime events, webhook payloads, public
-tokens, or export artifacts. Message reads are blocked after access revocation, and new message
-creation is blocked after the thread retention boundary has expired. Lifecycle updates are limited
-to close, reopen, access revocation, and export-request state; export request marks the thread as
-requested only and does not create an export artifact. Audit events include only thread/message IDs,
-matter ID, status/boundary state, message kind, body length, and author-presence booleans; message
-bodies are not copied into audit metadata.
+create routes do not queue delivery, realtime events, webhook payloads, public tokens, or public
+exports. When a thread's notification boundary is `internal_only`, new message creation also
+records staff-only notification rows for users who can read the matter, and those rows track
+per-user read/mute posture without public delivery. Message reads are blocked after access
+revocation, and new message creation is blocked after the thread retention boundary has expired.
+Lifecycle updates are limited
+to close, reopen, access revocation, and export-request state. The staff-only export artifact slice
+uses the reports job lifecycle for `conversation_thread_export` requests, stores only routing IDs,
+counts, queue state, and provenance in job metadata, and regenerates the redacted artifact at
+download time. The downloaded artifact includes thread boundary fields and message IDs/kinds,
+timestamps, author/user routing fields, body lengths, body-redaction markers, and metadata keys
+only; it does not include message bodies, metadata values, public tokens, delivery state, provider
+payloads, PDF/DOCX packaging, realtime chat, or external integrations. Audit events include only
+thread/message IDs, matter ID, status/boundary state, message kind, body length, author-presence
+booleans, notification boundary/counts, job IDs, counts, and enqueue posture; message bodies are
+not copied into audit metadata.
 
 Email preview is render-only. `POST /api/email/previews` requires matter-scoped email create access
 and returns normalized template key, recipients, subject, sanitized/truncated body preview,
@@ -628,13 +642,14 @@ notes, or privileged document content.
 
 The communications inbox is a matter-view aggregate, not a new navigation route. It combines
 matter-scoped inbound email summaries, redacted outbound delivery history, conversation topic
-summaries with message counts/latest-message timestamps, contact dossier cues without notes,
-derived staff-triage note counts/latest-note timestamps, consent/channel follow-up state, and
-channel state. It does not expose email bodies, parsed text, raw storage keys, checksums, provider
-IDs/tokens, contact notes, private staff-note text, conversation messages, composers, realtime chat,
-retry controls, or new provider setup. Triage updates stay on existing inbound email rows and accept
-only status, labels, matter scope, one internal staff note per update, consent/channel follow-up
-fields, and constrained `metadata.staffTriage` fields for staff routing.
+summaries with message counts/latest-message timestamps and current-user notification posture
+summaries, contact dossier cues without notes, derived staff-triage note counts/latest-note
+timestamps, consent/channel follow-up state, and channel state. It does not expose email bodies,
+parsed text, raw storage keys, checksums, provider IDs/tokens, contact notes, private staff-note
+text, conversation messages, composers, realtime chat, retry controls, or new provider setup.
+Triage updates stay on existing inbound email rows and accept only status, labels, matter scope,
+one internal staff note per update, consent/channel follow-up fields, and constrained
+`metadata.staffTriage` fields for staff routing.
 
 `@open-practice/domain` exports the audit event taxonomy used to classify known action names,
 expected resource types, matter-scope hints, actor-source hints, and safe metadata keys for operator
@@ -669,10 +684,13 @@ reserved/deferred. Job metadata must not carry email bodies, portal tokens, gene
 storage keys, raw evidence, source text, or private secrets.
 The workbench also returns reviewer-only `reviewSuggestions` per visible document. These suggestions
 are non-mutating cues for classification review, duplicate/supersession checks, matter/contact
-context, and missing metadata. They are derived from authorized same-matter document state and
-whitelisted extraction metadata only; raw extracted text, storage keys, checksums, provider payloads,
-tokens, and arbitrary metadata values are never returned. Applying suggestions, merging documents,
-changing classification, or writing metadata remains outside this surface.
+context, missing metadata, and retention review based on legal hold, supersession, upload,
+checksum, scan state, and external-upload review state. They are derived from authorized same-matter document
+state and whitelisted extraction metadata only; raw extracted text, storage keys, checksums,
+provider payloads, tokens, arbitrary metadata values, deletion automation, retention deadlines,
+retention-policy eligibility, and jurisdictional compliance claims are never returned. Applying
+suggestions, merging documents, changing classification, writing metadata, or deleting documents
+remains outside this surface.
 Failed or skipped OCR, transcription, email, connector, AI-assist, or media jobs must not change
 portal-share, billing, signature, trust, or audit state without an explicit reviewed transition.
 
@@ -687,12 +705,23 @@ and optional lease/error summary fields, but route responses expose idempotency-
 presence rather than raw values. Creating an outbox row is idempotent by firm and idempotency key.
 Matching replays return the existing outbox row; conflicting replays return
 `IDEMPOTENCY_KEY_CONFLICT`.
-The dashboard operations panel may present connector/outbox posture as read-only redacted status:
-connector type/key/status/display name, idempotency-key presence, attempt counts, next-attempt time,
-lease presence, delivery/dead-letter timestamps, last error summary, and safe payload-summary shape.
-It does not expose raw idempotency keys, lease IDs, secret references, webhook signing material, or
-payload bodies. This slice does not emit outbound webhooks, validate destination URLs, sign
-payloads, retry or lease outbox rows, or implement provider-specific worker delivery controls.
+The dashboard operations panel may present connector/outbox posture as redacted status: connector
+type/key/status/display name, idempotency-key presence, attempt counts, next-attempt time, lease
+presence, delivery/dead-letter timestamps, last error summary, and safe payload-summary shape.
+Owner-admin users may also request confirmed manual recovery for eligible outbox rows. Retry
+requests require `connector:update`, the target outbox ID, `action: "retry"`, `confirmed: true`,
+and an expected current status of `failed` or `dead_letter`; accepted rows are reset to `pending`,
+their lease/dead-letter/error fields are cleared, `nextAttemptAt` is set to now, exhausted
+`maxAttempts` values are bumped only enough to allow one reviewed attempt, and one
+`deliver_connectors` job is scheduled with manual-retry idempotency metadata. Manual dead-letter
+requests require `connector:update`, the target outbox ID, `action: "dead_letter"`,
+`confirmed: true`, and an expected current status of `pending`, `failed`, or `leased`; only pending,
+failed, and expired-lease rows are accepted, active leases are rejected, lease and retry timing are
+cleared, and the operator summary is a fixed redacted string.
+The routes do not expose raw idempotency keys, lease IDs, secret references, webhook signing
+material, payload bodies, or free-form private operator details. They reject delivered, cancelled,
+ineligible current-status, missing/wrong-firm, disabled/paused connector, and unconfigured connector
+queue cases according to the action guard.
 Connector delivery worker V1 uses the `connectors` worker queue to lease due outbox rows for
 enabled connectors, validate allowlisted event keys and HTTPS destinations from redacted connector
 configuration, resolve signing material from worker-only secret configuration by secret-reference
@@ -702,7 +731,8 @@ attempt rows. Retry error summaries and delivery attempt metadata are sanitized 
 boundary so API reads, backup-style repository exports, and later operational exports do not carry
 raw tokens, signatures, secret references, private storage paths, or email addresses. It does not
 persist raw webhook bodies, expose raw idempotency keys, return signing material, log secrets in job
-metadata, add manual retry controls, or implement provider-specific webhook integrations.
+metadata, replay raw webhook payloads, implement inbound webhook recovery, or implement
+provider-specific recovery tooling.
 
 Email outbox records and retry jobs store firm-scoped idempotency keys. Replaying a matching
 outbox or retry request returns the existing email/job projection without requeueing; changed safe
@@ -736,11 +766,13 @@ Calendar event lifecycle writes are staff-controlled matter-scoped records. Crea
 and reschedule increment the event sequence whenever an existing event changes, preserve attendees,
 reminders, iCalendar/CalDAV export behavior, and stored meeting-link fields, and record audit
 metadata with identifiers, status, sequence, counts, and change flags only. Manual reminder records
-are dashboard state records with `pending`, `acknowledged`, `dismissed`, or `cancelled` status and
-the dashboard channel; they do not create outbox email, notification jobs, public tokens, worker
-metadata, or delivery attempts. Calendar audit metadata records event, reminder, attendee, email,
-job, meeting-boundary status, and count identifiers only; invitation message bodies remain in the
-outbox record and reminder notes are not copied into audit metadata.
+remain dashboard-state records with `pending`, `acknowledged`, `dismissed`, or `cancelled` status
+and the dashboard channel. Pending reminders do not send by default; create/update requests must
+include matching email `deliveryConfirmation` to opt into a delayed reminder notification through
+the existing email outbox boundary, without adding attendee or invitation state. Calendar audit
+metadata records event, reminder, attendee, email, job, meeting-boundary status, and count
+identifiers only; invitation message bodies remain in the outbox record and reminder notes are not
+copied into audit metadata. Dashboard reminder records remain the source of truth.
 
 Draft assist is a disabled-by-default scaffold for non-authoritative suggestions.
 `GET /api/draft-assist/status` reports disabled when no enabled `ai` provider setting exists or no

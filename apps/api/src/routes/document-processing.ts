@@ -59,6 +59,7 @@ const documentCueGroupSchema = z.enum([
   "duplicate_or_supersession",
   "matter_contact",
   "missing_metadata",
+  "retention_review",
 ]);
 const workbenchQuerySchema = z.object({
   matterId: z.string().min(1),

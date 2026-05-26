@@ -1109,6 +1109,117 @@ describe("worker processors", () => {
     ).not.toHaveProperty("statementEvidence");
   });
 
+  it("completes conversation thread export report jobs with bounded metadata only", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createConversationThread({
+      id: "conversation-thread-export-worker-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      topic: "Synthetic worker export",
+      status: "open",
+      retentionUntil: "2026-06-01T00:00:00.000Z",
+      exportState: "requested",
+      notificationBoundary: "internal_only",
+      createdAt: "2026-05-26T10:00:00.000Z",
+      updatedAt: "2026-05-26T10:00:00.000Z",
+      createdByUserId: "user-admin",
+      updatedByUserId: "user-admin",
+      metadata: { privateSummary: "Synthetic thread metadata value" },
+    });
+    await repository.createConversationMessage({
+      id: "conversation-message-export-worker-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      threadId: "conversation-thread-export-worker-test",
+      kind: "client_message",
+      bodyText: "Synthetic privileged conversation body must not survive job metadata",
+      authoredAt: "2026-05-26T10:01:00.000Z",
+      authoredByUserId: "user-licensee",
+      createdAt: "2026-05-26T10:01:00.000Z",
+      createdByUserId: "user-licensee",
+      metadata: { privateNote: "Synthetic message metadata value" },
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-conversation-export-worker-test",
+      firmId: "firm-west-legal",
+      queueName: "reports",
+      jobName: "conversation_thread_export",
+      status: "queued",
+      targetResourceType: "conversation_thread_export",
+      targetResourceId: "conversation-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-05-26T12:00:00.000Z",
+      metadata: {
+        reportType: "conversation_thread",
+        reportScope: "matter",
+        matterId: "matter-001",
+        threadId: "conversation-thread-export-worker-test",
+        requestedByUserId: "user-admin",
+        rawBody: "Synthetic queued export body must not survive job metadata",
+      },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "reports",
+      jobName: "conversation_thread_export",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "conversation_thread_export",
+        resourceId: "conversation-export-worker-test",
+        metadata: {
+          reportType: "conversation_thread",
+          reportScope: "matter",
+          matterId: "matter-001",
+          threadId: "conversation-thread-export-worker-test",
+          requestedByUserId: "user-admin",
+          rawBody: "Synthetic queued export body must not survive job metadata",
+        },
+      },
+      jobLifecycleId: "job-conversation-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      metadata: {
+        firmId: "firm-west-legal",
+        resourceType: "conversation_thread_export",
+        resourceId: "conversation-export-worker-test",
+        reportType: "conversation_thread",
+        reportScope: "matter",
+        matterId: "matter-001",
+        threadId: "conversation-thread-export-worker-test",
+        messageCount: 1,
+      },
+    });
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    expect(job).toMatchObject({
+      id: "job-conversation-export-worker-test",
+      status: "completed",
+      metadata: expect.objectContaining({
+        reportType: "conversation_thread",
+        matterId: "matter-001",
+        threadId: "conversation-thread-export-worker-test",
+        messageCount: 1,
+      }),
+    });
+    const serializedJob = JSON.stringify(job);
+    expect(serializedJob).not.toContain("Synthetic privileged conversation body");
+    expect(serializedJob).not.toContain("Synthetic queued export body");
+    expect(serializedJob).not.toContain("Synthetic message metadata value");
+    expect(serializedJob).not.toContain("Synthetic thread metadata value");
+    expect(job?.metadata).not.toHaveProperty("rawBody");
+  });
+
   it("runs OCR jobs from document storage and completes lifecycle records", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const requestedObjects: string[] = [];

@@ -370,7 +370,10 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     connectorJobQueue: options.connectorJobQueue,
   });
   registerCommunicationsRoutes(server, { repository: options.repository });
-  registerConversationThreadRoutes(server, { repository: options.repository });
+  registerConversationThreadRoutes(server, {
+    repository: options.repository,
+    reportJobQueue: options.reportJobQueue,
+  });
   registerLegalClinicRoutes(server, { repository: options.repository });
   registerLedgerRoutes(server, {
     repository: options.repository,

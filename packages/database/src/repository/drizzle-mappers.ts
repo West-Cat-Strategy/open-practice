@@ -31,6 +31,7 @@ import {
   type Contact,
   type ContactDataQualityResolutionRecord,
   type ConversationMessageRecord,
+  type ConversationMessageNotificationRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
   type DraftAssistRecord,
@@ -847,6 +848,26 @@ export function mapConversationMessageRow(
     authoredByUserId: row.authoredByUserId ?? undefined,
     createdAt: row.createdAt.toISOString(),
     createdByUserId: row.createdByUserId,
+    metadata: row.metadata,
+  };
+}
+
+export function mapConversationMessageNotificationRow(
+  row: typeof schema.conversationMessageNotifications.$inferSelect,
+): ConversationMessageNotificationRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    threadId: row.threadId,
+    messageId: row.messageId,
+    recipientUserId: row.recipientUserId,
+    readAt: dateToIso(row.readAt),
+    mutedAt: dateToIso(row.mutedAt),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    createdByUserId: row.createdByUserId,
+    updatedByUserId: row.updatedByUserId,
     metadata: row.metadata,
   };
 }

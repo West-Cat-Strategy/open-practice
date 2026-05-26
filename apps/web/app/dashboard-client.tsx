@@ -221,7 +221,16 @@ import {
   providerPostureRows,
   summarizeProvidersStatus,
 } from "./provider-status-dashboard";
-import { summarizeConnectorOperations } from "./connector-outbox-dashboard";
+import {
+  buildConnectorOutboxDeadLetterPath,
+  buildConnectorOutboxDeadLetterPayload,
+  buildConnectorOutboxRetryPath,
+  buildConnectorOutboxRetryPayload,
+  emptyConnectorOperationsResponse,
+  summarizeConnectorOperations,
+  type ConnectorRecoveryAction,
+  type PendingConnectorRecovery,
+} from "./connector-outbox-dashboard";
 import {
   buildOperationalFocusSummary,
   operationalFocusEmptyMessage,
@@ -281,7 +290,10 @@ import type {
   CalendarReminderMutationResponse,
   CapabilitiesResponse,
   CommunicationsInboxDashboardResponse,
+  ConnectorOutboxRecoveryResponse,
+  ConnectorOutboxResponse,
   ConnectorOperationsResponse,
+  ConnectorsResponse,
   ConflictResponse,
   ContactDossiersResponse,
   ContactDataQualityResolutionRecord,
@@ -368,6 +380,30 @@ interface DashboardClientProps {
   workerRuns: WorkerRunsDashboardResponse;
 }
 
+async function requestConnectorOperationsForDashboard(
+  apiBaseUrl: string,
+  headers: Record<string, string>,
+): Promise<ConnectorOperationsResponse> {
+  try {
+    const [connectors, outbox] = await Promise.all([
+      requestDashboardJson<ConnectorsResponse>(apiBaseUrl, "/api/connectors", { headers }),
+      requestDashboardJson<ConnectorOutboxResponse>(apiBaseUrl, "/api/connectors/outbox", {
+        headers,
+      }),
+    ]);
+    return {
+      status: "available",
+      connectors: connectors.connectors,
+      outbox: outbox.outbox,
+    };
+  } catch (error) {
+    const status = dashboardApiStatus(error);
+    if (status === 403) return emptyConnectorOperationsResponse("access_denied");
+    if (status === 404) return emptyConnectorOperationsResponse("unavailable");
+    throw error;
+  }
+}
+
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][number];
 type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
@@ -407,6 +443,7 @@ const documentMetadataCueGroupOptions = [
   "duplicate_or_supersession",
   "matter_contact",
   "missing_metadata",
+  "retention_review",
 ] as const;
 
 const currency = new Intl.NumberFormat("en-CA", {
@@ -644,7 +681,7 @@ export default function DashboardClient({
   calendar,
   capabilities,
   communicationsInbox,
-  connectorOperations,
+  connectorOperations: initialConnectorOperations,
   contactDataQualityResolutions: initialContactDataQualityResolutions,
   contactDossiers,
   contactReviewQueue,
@@ -679,6 +716,7 @@ export default function DashboardClient({
   const [queues, setQueues] = useState(initialQueues);
   const [auditProjection, setAuditProjection] = useState(initialAuditProjection);
   const [providerStatus, setProviderStatus] = useState(initialProviderStatus);
+  const [connectorOperations, setConnectorOperations] = useState(initialConnectorOperations);
   const [operationalViews, setOperationalViews] = useState(initialOperationalViews);
   const [freshnessNow, setFreshnessNow] = useState(() => new Date());
   const [dashboardLoadedAt, setDashboardLoadedAt] = useState("");
@@ -691,6 +729,12 @@ export default function DashboardClient({
   const [ocrProviderUpdating, setOcrProviderUpdating] = useState(false);
   const [ocrProviderUpdateStatus, setOcrProviderUpdateStatus] = useState(
     "OCR provider posture has not changed.",
+  );
+  const [pendingConnectorRecovery, setPendingConnectorRecovery] =
+    useState<PendingConnectorRecovery | null>(null);
+  const [connectorRecoveryBusyKey, setConnectorRecoveryBusyKey] = useState("");
+  const [connectorRecoveryStatus, setConnectorRecoveryStatus] = useState(
+    "No connector recovery action has been requested.",
   );
   const [auditRefreshState, setAuditRefreshState] = useState<DashboardLaneRefreshState>({
     refreshing: false,
@@ -1261,6 +1305,7 @@ export default function DashboardClient({
   );
   const providerRows = useMemo(() => providerPostureRows(providerStatus), [providerStatus]);
   const canManageDocumentProcessingProvider = session.user.role === "owner_admin";
+  const canManageConnectorRecovery = session.user.role === "owner_admin";
   const activeWorkerRuns = useMemo(
     () => workerRunsForFilter(workerRuns, workerRunFilter),
     [workerRuns, workerRunFilter],
@@ -1545,10 +1590,14 @@ export default function DashboardClient({
   async function refreshQueueLane(): Promise<void> {
     setQueueRefreshState((current) => ({ ...current, refreshing: true, error: undefined }));
     try {
-      const payload = await requestDashboardJson<QueuesResponse>(apiBaseUrl, "/api/queues", {
-        headers: devHeaders,
-      });
+      const [payload, connectorPayload] = await Promise.all([
+        requestDashboardJson<QueuesResponse>(apiBaseUrl, "/api/queues", {
+          headers: devHeaders,
+        }),
+        requestConnectorOperationsForDashboard(apiBaseUrl, devHeaders),
+      ]);
       setQueues(payload);
+      setConnectorOperations(connectorPayload);
       setQueueRefreshState({ loadedAt: new Date().toISOString(), refreshing: false });
       setFreshnessNow(new Date());
     } catch (error) {
@@ -1559,6 +1608,12 @@ export default function DashboardClient({
       }));
       setFreshnessNow(new Date());
     }
+  }
+
+  async function refreshConnectorOperations(): Promise<void> {
+    const payload = await requestConnectorOperationsForDashboard(apiBaseUrl, devHeaders);
+    setConnectorOperations(payload);
+    setFreshnessNow(new Date());
   }
 
   async function refreshProviderLane(): Promise<void> {
@@ -1615,6 +1670,78 @@ export default function DashboardClient({
       setOcrProviderUpdateStatus(`OCR provider update failed: ${dashboardApiStatus(error)}.`);
     } finally {
       setOcrProviderUpdating(false);
+    }
+  }
+
+  function requestConnectorRecovery(
+    item: ConnectorOperationsResponse["outbox"][number],
+    action: ConnectorRecoveryAction,
+  ): void {
+    if (!canManageConnectorRecovery) return;
+    setPendingConnectorRecovery({ action, outboxId: item.id, expectedStatus: item.status });
+    setConnectorRecoveryStatus(
+      action === "retry" ? `Review retry for ${item.id}.` : `Review dead-letter for ${item.id}.`,
+    );
+  }
+
+  function cancelConnectorRecovery(): void {
+    setPendingConnectorRecovery(null);
+    setConnectorRecoveryStatus("Connector recovery action cancelled.");
+  }
+
+  async function confirmConnectorRecovery(): Promise<void> {
+    if (!pendingConnectorRecovery) return;
+    const item = connectorOperations.outbox.find(
+      (candidate) => candidate.id === pendingConnectorRecovery.outboxId,
+    );
+    if (!item) {
+      setPendingConnectorRecovery(null);
+      setConnectorRecoveryStatus("Connector outbox row is no longer visible.");
+      return;
+    }
+    const busyKey = `${pendingConnectorRecovery.action}:${pendingConnectorRecovery.outboxId}`;
+    setConnectorRecoveryBusyKey(busyKey);
+    setConnectorRecoveryStatus(
+      pendingConnectorRecovery.action === "retry"
+        ? `Retrying ${pendingConnectorRecovery.outboxId}...`
+        : `Moving ${pendingConnectorRecovery.outboxId} to dead letter...`,
+    );
+    try {
+      const path =
+        pendingConnectorRecovery.action === "retry"
+          ? buildConnectorOutboxRetryPath(item.id)
+          : buildConnectorOutboxDeadLetterPath(item.id);
+      const confirmedItem = { ...item, status: pendingConnectorRecovery.expectedStatus };
+      const payload =
+        pendingConnectorRecovery.action === "retry"
+          ? buildConnectorOutboxRetryPayload(confirmedItem)
+          : buildConnectorOutboxDeadLetterPayload(confirmedItem);
+      const response = await requestDashboardJson<ConnectorOutboxRecoveryResponse>(
+        apiBaseUrl,
+        path,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload,
+        },
+      );
+      setConnectorOperations((current) => ({
+        ...current,
+        outbox: current.outbox.map((candidate) =>
+          candidate.id === response.outbox.id ? response.outbox : candidate,
+        ),
+      }));
+      await refreshConnectorOperations();
+      setPendingConnectorRecovery(null);
+      setConnectorRecoveryStatus(
+        pendingConnectorRecovery.action === "retry"
+          ? `${item.id} queued for manual retry.`
+          : `${item.id} moved to dead letter.`,
+      );
+    } catch (error) {
+      setConnectorRecoveryStatus(`Connector recovery failed: ${dashboardApiStatus(error)}.`);
+    } finally {
+      setConnectorRecoveryBusyKey("");
     }
   }
 
@@ -3746,6 +3873,9 @@ export default function DashboardClient({
                   compactProviderStatus={compactProviderStatus}
                   compactStatus={compactStatus}
                   connectorOperations={connectorOperations}
+                  connectorRecoveryBusyKey={connectorRecoveryBusyKey}
+                  connectorRecoveryNow={freshnessNow}
+                  connectorRecoveryStatus={connectorRecoveryStatus}
                   connectorOperationsSummary={connectorOperationsSummary}
                   displayedQueues={displayedQueues}
                   formatSavedOperationalViewDefinition={formatSavedOperationalViewDefinition}
@@ -3756,9 +3886,12 @@ export default function DashboardClient({
                   ocrProviderUpdating={ocrProviderUpdating}
                   onApplyQueueOperationalViewDefinition={applyQueueOperationalViewDefinition}
                   onArchiveQueueOperationalViewDefinition={archiveQueueOperationalViewDefinition}
+                  onCancelConnectorRecovery={cancelConnectorRecovery}
                   onClearQueueOperationalViewDefinition={clearQueueOperationalViewDefinition}
+                  onConfirmConnectorRecovery={() => void confirmConnectorRecovery()}
                   onRefreshProviders={() => void refreshProviderLane()}
                   onRefreshQueues={() => void refreshQueueLane()}
+                  onRequestConnectorRecovery={requestConnectorRecovery}
                   onSaveQueueOperationalViewDefinition={saveQueueOperationalViewDefinition}
                   onSelectMatter={selectMatter}
                   onSetOcrProviderEnabled={(enabled) => void setOcrProviderEnabled(enabled)}
@@ -3768,6 +3901,8 @@ export default function DashboardClient({
                   providerStatus={providerStatus}
                   providerStatusSummary={providerStatusSummary}
                   providerRefreshing={providerRefreshState.refreshing}
+                  canManageConnectorRecovery={canManageConnectorRecovery}
+                  pendingConnectorRecovery={pendingConnectorRecovery}
                   queueFreshnessCue={queueFreshnessCue}
                   queueSummary={queueSummary}
                   queueRefreshing={queueRefreshState.refreshing}
@@ -6831,6 +6966,9 @@ export default function DashboardClient({
                 compactProviderStatus={compactProviderStatus}
                 compactStatus={compactStatus}
                 connectorOperations={connectorOperations}
+                connectorRecoveryBusyKey={connectorRecoveryBusyKey}
+                connectorRecoveryNow={freshnessNow}
+                connectorRecoveryStatus={connectorRecoveryStatus}
                 connectorOperationsSummary={connectorOperationsSummary}
                 displayedQueues={displayedQueues}
                 formatSavedOperationalViewDefinition={formatSavedOperationalViewDefinition}
@@ -6838,16 +6976,21 @@ export default function DashboardClient({
                 formatWorkerRunTiming={formatWorkerRunTiming}
                 onApplyQueueOperationalViewDefinition={applyQueueOperationalViewDefinition}
                 onArchiveQueueOperationalViewDefinition={archiveQueueOperationalViewDefinition}
+                onCancelConnectorRecovery={cancelConnectorRecovery}
                 onClearQueueOperationalViewDefinition={clearQueueOperationalViewDefinition}
+                onConfirmConnectorRecovery={() => void confirmConnectorRecovery()}
                 onRefreshProviders={() => void refreshProviderLane()}
                 onRefreshQueues={() => void refreshQueueLane()}
+                onRequestConnectorRecovery={requestConnectorRecovery}
                 onSaveQueueOperationalViewDefinition={saveQueueOperationalViewDefinition}
                 onSelectMatter={selectMatter}
                 onSetOcrProviderEnabled={(enabled) => void setOcrProviderEnabled(enabled)}
                 onWorkerRunFilterChange={setWorkerRunFilter}
                 canManageDocumentProcessingProvider={canManageDocumentProcessingProvider}
+                canManageConnectorRecovery={canManageConnectorRecovery}
                 ocrProviderUpdateStatus={ocrProviderUpdateStatus}
                 ocrProviderUpdating={ocrProviderUpdating}
+                pendingConnectorRecovery={pendingConnectorRecovery}
                 providerFreshnessCue={providerFreshnessCue}
                 providerRows={providerRows}
                 providerStatus={providerStatus}

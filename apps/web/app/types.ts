@@ -640,6 +640,14 @@ export interface CommunicationsInboxConversation {
   updatedAt: string;
   messageCount?: number;
   latestMessageAt?: string;
+  notificationSummary?: {
+    notificationCount: number;
+    unreadNotificationCount: number;
+    mutedNotificationCount: number;
+    latestNotificationAt?: string;
+    latestReadAt?: string;
+    latestMutedAt?: string;
+  };
 }
 
 export interface CommunicationsInboxContactCue {
@@ -788,7 +796,8 @@ export type DocumentReviewSuggestionGroup =
   | "classification"
   | "duplicate_or_supersession"
   | "matter_contact"
-  | "missing_metadata";
+  | "missing_metadata"
+  | "retention_review";
 
 export interface DocumentReviewSuggestionCue {
   id: string;
@@ -1079,6 +1088,21 @@ export interface ConnectorOutboxItem {
 
 export interface ConnectorOutboxResponse {
   outbox: ConnectorOutboxItem[];
+}
+
+export interface ConnectorOutboxRecoveryResponse {
+  outbox: ConnectorOutboxItem;
+  deliveryJob?: {
+    id: string;
+    queueName: string;
+    jobName: string;
+    status: string;
+    bullJobId?: string;
+    targetResourceType?: string;
+    targetResourceId?: string;
+    queuedAt?: string;
+    idempotencyKeyPresent: boolean;
+  };
 }
 
 export interface ConnectorOperationsResponse {

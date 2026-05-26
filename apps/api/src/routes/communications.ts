@@ -92,7 +92,22 @@ function serializeOutboundEmail(
 function serializeConversationThread(
   thread: ConversationThreadRecord,
   messageAuthoredAts: string[],
+  notificationSummaries: Array<{ createdAt: string; readAt?: string; mutedAt?: string }> = [],
 ) {
+  const notificationCount = notificationSummaries.length;
+  const unreadNotificationCount = notificationSummaries.filter(
+    (notification) => !notification.readAt,
+  ).length;
+  const mutedNotificationCount = notificationSummaries.filter(
+    (notification) => notification.mutedAt,
+  ).length;
+  const latestNotificationAt = notificationSummaries.at(-1)?.createdAt;
+  const latestReadAt = [...notificationSummaries]
+    .reverse()
+    .find((notification) => notification.readAt)?.readAt;
+  const latestMutedAt = [...notificationSummaries]
+    .reverse()
+    .find((notification) => notification.mutedAt)?.mutedAt;
   return {
     id: thread.id,
     matterId: thread.matterId,
@@ -105,6 +120,17 @@ function serializeConversationThread(
     updatedAt: thread.updatedAt,
     messageCount: messageAuthoredAts.length,
     latestMessageAt: messageAuthoredAts.at(-1),
+    notificationSummary:
+      notificationCount > 0
+        ? {
+            notificationCount,
+            unreadNotificationCount,
+            mutedNotificationCount,
+            latestNotificationAt,
+            latestReadAt,
+            latestMutedAt,
+          }
+        : undefined,
   };
 }
 
@@ -237,6 +263,10 @@ export function registerCommunicationsRoutes(
         messages: await repository.listConversationMessages(request.auth.firmId, {
           threadId: thread.id,
         }),
+        notifications: await repository.listConversationMessageNotifications(request.auth.firmId, {
+          threadId: thread.id,
+          recipientUserId: request.auth.user.id,
+        }),
       })),
     );
     const contactCues = contactDossiers
@@ -264,10 +294,11 @@ export function registerCommunicationsRoutes(
       outboundDeliveryHistory: outboundEvents.map(({ email, events }) =>
         serializeOutboundEmail(email, events, receiptTokenByEmailId.get(email.id)),
       ),
-      conversations: conversationMessageSummaries.map(({ thread, messages }) =>
+      conversations: conversationMessageSummaries.map(({ thread, messages, notifications }) =>
         serializeConversationThread(
           thread,
           messages.map((message) => message.authoredAt),
+          notifications,
         ),
       ),
       contactCues,

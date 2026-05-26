@@ -95,15 +95,6 @@ assets, or distinctive prose are copied into this repo by this catalogue.
 
 #### Communications, Workflows, And Meetings
 
-- **Conversation internal notifications**
-  - **First slice:** Add staff-only internal notification records for new conversation messages,
-    with per-user mute/read posture and no realtime chat, portal composer, or public delivery.
-  - **Local gap / shipped boundary:** Conversation message records are persisted, but creation does
-    not queue notifications and the notification boundary remains disabled/internal-only.
-  - **References:** `zulip__zulip`.
-  - **Reuse and snippets:** Apache-2.0/adopt-selectively; small snippets could be possible with
-    attribution, but clean-room semantics are preferred.
-
 - **Conversation export artifact**
   - **First slice:** Use the existing report-job pattern for a staff-only, redacted conversation
     export download.
@@ -122,10 +113,11 @@ assets, or distinctive prose are copied into this repo by this catalogue.
     be allowable after `docs/reuse-decision-policy.md` review.
 
 - **Calendar reminder delivery jobs**
-  - **First slice:** Add opt-in reminder notification jobs through the existing outbox confirmation
-    boundary while preserving dashboard reminder records.
-  - **Local gap / shipped boundary:** Calendar reminder states are staff-dashboard records and do not
-    queue reminder delivery.
+  - **First slice:** Calendar reminders now queue delayed reminder notifications through the
+    existing email outbox boundary when a reminder is pending.
+  - **Local gap / shipped boundary:** Dashboard reminder records remain the source of truth, but
+    reminder cancellation, pending-job refresh, non-email delivery, and user preference routing are
+    still deferred.
   - **References:** `calcom__cal.diy`.
   - **Reuse and snippets:** MIT/adapt-with-attribution; behavior-level reuse should be enough.
 
@@ -208,10 +200,12 @@ assets, or distinctive prose are copied into this repo by this catalogue.
   - **Reuse and snippets:** AGPL/GPL/reference-only; no direct snippets.
 
 - **Document retention and hold review**
-  - **First slice:** Add document retention-review hints based on legal hold, supersession, upload
-    state, and review state; no deletion automation.
-  - **Local gap / shipped boundary:** Document records include legal-hold and supersession fields, but
-    retention review is not surfaced like conversation or guest-session expiry.
+  - **Shipped first slice:** OP-T120 surfaces read-only retention-review hints based on legal hold,
+    supersession, upload/checksum/scan state, and review state in the document-processing workbench;
+    no deletion automation, retention deadline, retention-policy eligibility, or compliance claim was
+    added.
+  - **Remaining gap:** Future work would need an explicit reviewed policy design before adding
+    retention timelines, deletion workflows, or jurisdiction-specific records-disposition claims.
   - **References:** `arkcase__arkcase`, `nextcloud__server`, and `paperless-ngx__paperless-ngx`.
   - **Reuse and snippets:** LGPL/AGPL/GPL/reference-only; no direct snippets.
 
