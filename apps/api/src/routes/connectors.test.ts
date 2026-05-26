@@ -70,6 +70,32 @@ function fakeConnectorQueue(): {
   };
 }
 
+async function createRecoveryConnector(
+  repository: InMemoryOpenPracticeRepository,
+  status = "enabled",
+) {
+  return repository.createConnector({
+    id: `connector-recovery-${status}`,
+    firmId,
+    type: "generic",
+    key: `synthetic.recovery-${status}`,
+    displayName: `Synthetic Recovery ${status}`,
+    status: status as "enabled" | "paused" | "disabled" | "error",
+    secretReference: { id: `secret-ref/recovery-${status}` },
+    configSummary: { deliveryUrl: "https://webhooks.example.test/open-practice" },
+    createdAt: "2026-05-26T12:00:00.000Z",
+    updatedAt: "2026-05-26T12:00:00.000Z",
+  });
+}
+
+function retryConfirmation(outboxId: string, expectedStatus: "failed" | "dead_letter") {
+  return { confirmed: true, action: "retry", outboxId, expectedStatus };
+}
+
+function deadLetterConfirmation(outboxId: string, expectedStatus: "pending" | "failed" | "leased") {
+  return { confirmed: true, action: "dead_letter", outboxId, expectedStatus };
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -613,6 +639,398 @@ describe("connector routes", () => {
     expect(JSON.stringify(response.json())).not.toContain("doc-001:verified:v1");
     expect(JSON.stringify(response.json())).not.toContain("raw-signature-must-not-return");
     expect(JSON.stringify(response.json())).not.toContain("secret-ref/webhook-status");
+  });
+
+  it("manually retries failed connector outbox rows with confirmation and redacted audit metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const connectorQueue = fakeConnectorQueue();
+    const server = testServer({ repository, connectorJobQueue: connectorQueue.queue });
+    const connector = await createRecoveryConnector(repository);
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-retry",
+      firmId,
+      connectorId: connector.id,
+      eventType: "document.verified",
+      resourceType: "document",
+      resourceId: "doc-retry",
+      idempotencyKey: "doc-retry:verified:v1",
+      status: "dead_letter",
+      payloadSummary: { documentId: "doc-retry" },
+      attemptCount: 3,
+      maxAttempts: 3,
+      deadLetteredAt: "2026-05-26T12:05:00.000Z",
+      lastErrorSummary: "Connector delivery failed for [redacted]",
+      createdAt: "2026-05-26T12:00:00.000Z",
+      updatedAt: "2026-05-26T12:05:00.000Z",
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox/connector-outbox-retry/retry",
+      payload: {
+        idempotencyKey: "manual-retry-key",
+        confirmation: retryConfirmation("connector-outbox-retry", "dead_letter"),
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      outbox: {
+        id: "connector-outbox-retry",
+        status: "pending",
+        attemptCount: 3,
+        maxAttempts: 4,
+        idempotencyKeyPresent: true,
+        leasePresent: false,
+      },
+      deliveryJob: {
+        queueName: "connectors",
+        jobName: "deliver_connectors",
+        status: "queued",
+        targetResourceType: "connector_outbox",
+        targetResourceId: "connector-outbox-retry",
+        idempotencyKeyPresent: true,
+      },
+    });
+    expect(response.json().outbox.deadLetteredAt).toBeUndefined();
+    expect(response.json().outbox.lastErrorSummary).toBeUndefined();
+    expect(connectorQueue.jobs).toEqual([
+      expect.objectContaining({
+        name: "deliver_connectors",
+        data: expect.objectContaining({
+          resourceType: "connector_outbox",
+          resourceId: "connector-outbox-retry",
+          metadata: expect.objectContaining({
+            manualRecoveryAction: "retry",
+            previousStatus: "dead_letter",
+            idempotencyKeyPresent: true,
+          }),
+        }),
+      }),
+    ]);
+    const audit = await repository.listAuditEvents(firmId);
+    const event = audit.events.find(
+      (candidate) => candidate.action === "connector_outbox.manual_retry",
+    );
+    expect(event).toMatchObject({
+      resourceType: "connector_outbox",
+      resourceId: "connector-outbox-retry",
+      metadata: expect.objectContaining({
+        connectorId: connector.id,
+        outboxId: "connector-outbox-retry",
+        beforeStatus: "dead_letter",
+        expectedStatus: "dead_letter",
+        afterStatus: "pending",
+        attemptCount: 3,
+        maxAttempts: 4,
+        idempotencyKeyPresent: true,
+        deliveryJobQueued: true,
+        queueName: "connectors",
+      }),
+    });
+    expect(JSON.stringify(event?.metadata)).not.toContain("manual-retry-key");
+    expect(JSON.stringify(event?.metadata)).not.toContain("doc-retry:verified:v1");
+    expect(JSON.stringify(event?.metadata)).not.toContain("secret-ref/recovery");
+    expect(JSON.stringify(response.json())).not.toContain("doc-retry:verified:v1");
+  });
+
+  it("manually dead-letters eligible connector outbox rows with confirmation", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const connector = await createRecoveryConnector(repository);
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-dead-letter",
+      firmId,
+      connectorId: connector.id,
+      eventType: "matter.created",
+      resourceType: "matter",
+      resourceId: "matter-001",
+      idempotencyKey: "matter-001:created:v1",
+      status: "failed",
+      payloadSummary: { matterId: "matter-001" },
+      attemptCount: 1,
+      maxAttempts: 3,
+      nextAttemptAt: "2026-05-26T12:30:00.000Z",
+      lastErrorSummary: "Connector delivery failed for [redacted]",
+      createdAt: "2026-05-26T12:00:00.000Z",
+      updatedAt: "2026-05-26T12:05:00.000Z",
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox/connector-outbox-dead-letter/dead-letter",
+      payload: {
+        confirmation: deadLetterConfirmation("connector-outbox-dead-letter", "failed"),
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      outbox: {
+        id: "connector-outbox-dead-letter",
+        status: "dead_letter",
+        leasePresent: false,
+        lastErrorSummary: "Connector outbox manually moved to dead letter by owner review",
+      },
+    });
+    expect(response.json().outbox.nextAttemptAt).toBeUndefined();
+    const audit = await repository.listAuditEvents(firmId);
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "connector_outbox.manual_dead_letter",
+          resourceType: "connector_outbox",
+          resourceId: "connector-outbox-dead-letter",
+          metadata: expect.objectContaining({
+            connectorId: connector.id,
+            beforeStatus: "failed",
+            expectedStatus: "failed",
+            afterStatus: "dead_letter",
+            deliveryJobQueued: false,
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(audit.events)).not.toContain("matter-001:created:v1");
+    expect(JSON.stringify(audit.events)).not.toContain("secret-ref/recovery");
+  });
+
+  it("requires matching recovery confirmation before mutating connector outbox rows", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const connectorQueue = fakeConnectorQueue();
+    const server = testServer({ repository, connectorJobQueue: connectorQueue.queue });
+    const connector = await createRecoveryConnector(repository);
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-confirmation",
+      firmId,
+      connectorId: connector.id,
+      eventType: "document.verified",
+      idempotencyKey: "doc-confirmation:verified:v1",
+      status: "failed",
+      payloadSummary: { documentId: "doc-confirmation" },
+      attemptCount: 1,
+      maxAttempts: 3,
+      createdAt: "2026-05-26T12:00:00.000Z",
+      updatedAt: "2026-05-26T12:05:00.000Z",
+    });
+
+    const missing = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox/connector-outbox-confirmation/retry",
+      payload: { idempotencyKey: "manual-retry-key" },
+    });
+    const mismatched = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox/connector-outbox-confirmation/retry",
+      payload: {
+        idempotencyKey: "manual-retry-key",
+        confirmation: retryConfirmation("other-outbox", "failed"),
+      },
+    });
+
+    expect(missing.statusCode).toBe(400);
+    expect(mismatched.statusCode).toBe(409);
+    expect(mismatched.json()).toMatchObject({
+      code: "CONNECTOR_RECOVERY_CONFIRMATION_MISMATCH",
+    });
+    await expect(
+      repository.getConnectorOutbox(firmId, "connector-outbox-confirmation"),
+    ).resolves.toMatchObject({
+      status: "failed",
+    });
+    expect(connectorQueue.jobs).toEqual([]);
+  });
+
+  it("rejects connector outbox recovery when guards are not satisfied", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const connectorQueue = fakeConnectorQueue();
+    const server = testServer({ repository, connectorJobQueue: connectorQueue.queue });
+    const connector = await createRecoveryConnector(repository);
+    const pausedConnector = await createRecoveryConnector(repository, "paused");
+    const createdAt = "2026-05-26T12:00:00.000Z";
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-delivered",
+      firmId,
+      connectorId: connector.id,
+      eventType: "document.verified",
+      idempotencyKey: "doc-delivered:verified:v1",
+      status: "delivered",
+      payloadSummary: { documentId: "doc-delivered" },
+      attemptCount: 1,
+      maxAttempts: 3,
+      deliveredAt: "2026-05-26T12:05:00.000Z",
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-cancelled",
+      firmId,
+      connectorId: connector.id,
+      eventType: "document.verified",
+      idempotencyKey: "doc-cancelled:verified:v1",
+      status: "cancelled",
+      payloadSummary: { documentId: "doc-cancelled" },
+      attemptCount: 0,
+      maxAttempts: 3,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-active-lease",
+      firmId,
+      connectorId: connector.id,
+      eventType: "document.verified",
+      idempotencyKey: "doc-active-lease:verified:v1",
+      status: "leased",
+      payloadSummary: { documentId: "doc-active-lease" },
+      attemptCount: 1,
+      maxAttempts: 3,
+      leaseId: "active-lease",
+      leasedUntil: new Date(Date.now() + 60_000).toISOString(),
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-paused-connector",
+      firmId,
+      connectorId: pausedConnector.id,
+      eventType: "document.verified",
+      idempotencyKey: "doc-paused-connector:verified:v1",
+      status: "failed",
+      payloadSummary: { documentId: "doc-paused-connector" },
+      attemptCount: 1,
+      maxAttempts: 3,
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    const deliveredRetry = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox/connector-outbox-delivered/retry",
+      payload: {
+        idempotencyKey: "manual-retry-delivered",
+        confirmation: retryConfirmation("connector-outbox-delivered", "failed"),
+      },
+    });
+    const cancelledDeadLetter = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox/connector-outbox-cancelled/dead-letter",
+      payload: {
+        confirmation: deadLetterConfirmation("connector-outbox-cancelled", "pending"),
+      },
+    });
+    const activeLeaseDeadLetter = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox/connector-outbox-active-lease/dead-letter",
+      payload: {
+        confirmation: deadLetterConfirmation("connector-outbox-active-lease", "leased"),
+      },
+    });
+    const pausedRetry = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox/connector-outbox-paused-connector/retry",
+      payload: {
+        idempotencyKey: "manual-retry-paused",
+        confirmation: retryConfirmation("connector-outbox-paused-connector", "failed"),
+      },
+    });
+    const missing = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox/missing-outbox/retry",
+      payload: {
+        idempotencyKey: "manual-retry-missing",
+        confirmation: retryConfirmation("missing-outbox", "failed"),
+      },
+    });
+
+    expect(deliveredRetry.statusCode).toBe(409);
+    expect(deliveredRetry.json()).toMatchObject({
+      code: "CONNECTOR_RECOVERY_CONFIRMATION_MISMATCH",
+    });
+    expect(cancelledDeadLetter.statusCode).toBe(409);
+    expect(cancelledDeadLetter.json()).toMatchObject({
+      code: "CONNECTOR_RECOVERY_CONFIRMATION_MISMATCH",
+    });
+    expect(activeLeaseDeadLetter.statusCode).toBe(409);
+    expect(activeLeaseDeadLetter.json()).toMatchObject({
+      code: "CONNECTOR_OUTBOX_LEASE_ACTIVE",
+    });
+    expect(pausedRetry.statusCode).toBe(409);
+    expect(pausedRetry.json()).toMatchObject({ code: "CONNECTOR_NOT_ENABLED" });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toMatchObject({ code: "CONNECTOR_OUTBOX_NOT_FOUND" });
+  });
+
+  it("rejects connector manual retry when the connector queue is unavailable", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const connector = await createRecoveryConnector(repository);
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-no-queue",
+      firmId,
+      connectorId: connector.id,
+      eventType: "document.verified",
+      idempotencyKey: "doc-no-queue:verified:v1",
+      status: "failed",
+      payloadSummary: { documentId: "doc-no-queue" },
+      attemptCount: 1,
+      maxAttempts: 3,
+      createdAt: "2026-05-26T12:00:00.000Z",
+      updatedAt: "2026-05-26T12:05:00.000Z",
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/connectors/outbox/connector-outbox-no-queue/retry",
+      payload: {
+        idempotencyKey: "manual-retry-no-queue",
+        confirmation: retryConfirmation("connector-outbox-no-queue", "failed"),
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ code: "CONNECTOR_QUEUE_NOT_CONFIGURED" });
+    await expect(
+      repository.getConnectorOutbox(firmId, "connector-outbox-no-queue"),
+    ).resolves.toMatchObject({
+      status: "failed",
+    });
+  });
+
+  it("limits connector recovery writes to owner admins", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const connector = await createRecoveryConnector(repository);
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-denied",
+      firmId,
+      connectorId: connector.id,
+      eventType: "document.verified",
+      idempotencyKey: "doc-denied:verified:v1",
+      status: "failed",
+      payloadSummary: { documentId: "doc-denied" },
+      attemptCount: 1,
+      maxAttempts: 3,
+      createdAt: "2026-05-26T12:00:00.000Z",
+      updatedAt: "2026-05-26T12:05:00.000Z",
+    });
+
+    const response = await testServer({
+      repository,
+      authUser: user("licensee"),
+      connectorJobQueue: fakeConnectorQueue().queue,
+    }).inject({
+      method: "POST",
+      url: "/api/connectors/outbox/connector-outbox-denied/retry",
+      payload: {
+        idempotencyKey: "manual-retry-denied",
+        confirmation: retryConfirmation("connector-outbox-denied", "failed"),
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      code: "CONNECTOR_ACCESS_REQUIRED",
+    });
   });
 
   it("limits connector writes to owner admins", async () => {

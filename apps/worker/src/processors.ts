@@ -490,6 +490,48 @@ async function processReportJob(input: {
     };
   }
 
+  if (
+    input.jobName === "conversation_thread_export" &&
+    data.resourceType === "conversation_thread_export"
+  ) {
+    const threadId = metadataString(data.metadata ?? {}, "threadId");
+    const thread = threadId
+      ? await repository.getConversationThread(data.firmId, threadId)
+      : undefined;
+    if (!thread) {
+      return {
+        status: "skipped",
+        reason: "Conversation thread export target was not found",
+        metadata: compactMetadata({
+          firmId: data.firmId,
+          resourceType: "conversation_thread_export",
+          resourceId: data.resourceId,
+          reportType: "conversation_thread",
+          reportScope: "matter",
+          threadId,
+          reportStatus: "missing_thread",
+        }),
+      };
+    }
+    const messages = await repository.listConversationMessages(data.firmId, {
+      threadId: thread.id,
+    });
+    return {
+      status: "completed",
+      metadata: compactMetadata({
+        firmId: data.firmId,
+        resourceType: "conversation_thread_export",
+        resourceId: data.resourceId,
+        reportType: "conversation_thread",
+        reportScope: "matter",
+        matterId: thread.matterId,
+        threadId: thread.id,
+        messageCount: messages.length,
+        generatedAt: new Date().toISOString(),
+      }),
+    };
+  }
+
   return {
     status: "skipped",
     reason: "Unsupported report export job",

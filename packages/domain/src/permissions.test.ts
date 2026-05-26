@@ -218,4 +218,29 @@ describe("job metadata redaction", () => {
       trustTransferRequestCount: 1,
     });
   });
+
+  it("keeps conversation export routing and counts while dropping message bodies", () => {
+    expect(
+      redactJobMetadata({
+        reportType: "conversation_thread",
+        reportScope: "matter",
+        matterId: "matter-001",
+        threadId: "thread-export-001",
+        requestedByUserId: "user-admin",
+        messageCount: 2,
+        enqueueStatus: "queued_for_local_report_worker",
+        bodyText: "Synthetic privileged message body",
+        exportBody: [{ bodyText: "Synthetic export content" }],
+        metadataValues: { privateNote: "Synthetic private note" },
+      }),
+    ).toEqual({
+      reportType: "conversation_thread",
+      reportScope: "matter",
+      matterId: "matter-001",
+      threadId: "thread-export-001",
+      requestedByUserId: "user-admin",
+      messageCount: 2,
+      enqueueStatus: "queued_for_local_report_worker",
+    });
+  });
 });

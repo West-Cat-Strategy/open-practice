@@ -1,4 +1,8 @@
 import type { DocumentRecord } from "@open-practice/domain";
+import {
+  describeOperationalActionState,
+  disabledOperationalAction,
+} from "@open-practice/domain/operational-actions";
 import type {
   DocumentProcessingDashboardResponse,
   DocumentProcessingDocumentSummary,
@@ -37,6 +41,7 @@ export const documentReviewSuggestionGroupOrder: DocumentReviewSuggestionGroup[]
   "duplicate_or_supersession",
   "matter_contact",
   "missing_metadata",
+  "retention_review",
 ];
 
 export function buildDocumentProcessingWorkbenchPath(
@@ -232,6 +237,7 @@ export function emptyDocumentReviewSuggestions(): DocumentReviewSuggestions {
       duplicate_or_supersession: 0,
       matter_contact: 0,
       missing_metadata: 0,
+      retention_review: 0,
       total: 0,
     },
     groups: {
@@ -239,6 +245,7 @@ export function emptyDocumentReviewSuggestions(): DocumentReviewSuggestions {
       duplicate_or_supersession: [],
       matter_contact: [],
       missing_metadata: [],
+      retention_review: [],
     },
   };
 }
@@ -247,6 +254,7 @@ export function documentReviewSuggestionGroupLabel(group: DocumentReviewSuggesti
   if (group === "classification") return "Classification";
   if (group === "duplicate_or_supersession") return "Duplicate or supersession";
   if (group === "matter_contact") return "Matter and contact";
+  if (group === "retention_review") return "Retention review";
   return "Missing metadata";
 }
 
@@ -281,8 +289,12 @@ export function summarizeDocumentReviewSuggestions(
     (sum, row) => sum + (row.reviewSuggestions?.summaryCounts.duplicate_or_supersession ?? 0),
     0,
   );
+  const retentionReview = rows.reduce(
+    (sum, row) => sum + (row.reviewSuggestions?.summaryCounts.retention_review ?? 0),
+    0,
+  );
   if (total === 0) return "No reviewer suggestion cues.";
-  return `${total} reviewer suggestion cues. ${duplicateOrSupersession} duplicate or supersession. ${missingMetadata} missing metadata.`;
+  return `${total} reviewer suggestion cues. ${duplicateOrSupersession} duplicate or supersession. ${missingMetadata} missing metadata. ${retentionReview} retention review.`;
 }
 
 export function documentMetadataSearchFilterCount(
@@ -356,42 +368,45 @@ export function describeDocumentQueueAction(
   disabledReason?: string;
   tone: "neutral" | "ready" | "risk";
 } {
-  if (workbench.status === "disabled" || workbench.status === "unavailable") {
-    return {
-      canQueue: false,
-      label: "Queue OCR",
-      disabledReason: compactDocumentProcessingReason(workbench.reason),
-      tone: workbench.status === "disabled" ? "risk" : "neutral",
-    };
-  }
   const ocrQueue = workbench.workerQueues.find((queue) => queue.queueName === "ocr");
-  if (ocrQueue && ocrQueue.status !== "configured") {
-    return {
-      canQueue: false,
-      label: "Queue OCR",
-      disabledReason: compactDocumentProcessingReason(ocrQueue.reason ?? ocrQueue.status),
-      tone: "risk",
-    };
-  }
   const job = describeLatestDocumentJob(item.latestJob);
-  if (item.latestJob?.status === "queued" || item.latestJob?.status === "active") {
-    return {
-      canQueue: false,
-      label: compactDocumentProcessingReason(item.latestJob.status),
-      disabledReason: "job already queued",
-      tone: "neutral",
-    };
-  }
-  if (!item.queueEligibility.eligible) {
-    return {
-      canQueue: false,
-      label: "Queue OCR",
-      disabledReason: compactDocumentProcessingReason(item.queueEligibility.reason),
-      tone: "risk",
-    };
-  }
-  if (job.tone === "risk") return { canQueue: true, label: "Retry OCR", tone: "risk" };
-  return { canQueue: true, label: "Queue OCR", tone: "ready" };
+  const queuedOrActiveStatus =
+    item.latestJob?.status === "queued" || item.latestJob?.status === "active"
+      ? item.latestJob.status
+      : undefined;
+  const action = describeOperationalActionState({
+    actionKey: "document_processing.queue_ocr",
+    label: "Queue OCR",
+    availableLabel: job.tone === "risk" ? "Retry OCR" : "Queue OCR",
+    availableTone: job.tone === "risk" ? "risk" : "ready",
+    disabledWhen: [
+      (workbench.status === "disabled" || workbench.status === "unavailable") &&
+        disabledOperationalAction(workbench.reason ?? "workbench_unavailable", {
+          tone: workbench.status === "disabled" ? "risk" : "neutral",
+        }),
+      ocrQueue?.status !== undefined &&
+        ocrQueue.status !== "configured" &&
+        disabledOperationalAction(ocrQueue.reason ?? ocrQueue.status, { tone: "risk" }),
+      queuedOrActiveStatus
+        ? disabledOperationalAction("job_already_queued", {
+            label: compactDocumentProcessingReason(queuedOrActiveStatus),
+          })
+        : false,
+      !item.queueEligibility.eligible &&
+        disabledOperationalAction(item.queueEligibility.reason ?? "queue_not_eligible", {
+          tone: "risk",
+        }),
+    ],
+  });
+
+  return {
+    canQueue: action.available,
+    label: action.label,
+    ...(action.disabledReason
+      ? { disabledReason: compactDocumentProcessingReason(action.disabledReason) }
+      : {}),
+    tone: action.tone,
+  };
 }
 
 export function summarizeDocumentProcessingWorkbench(

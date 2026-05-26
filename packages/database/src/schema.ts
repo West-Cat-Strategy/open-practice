@@ -28,6 +28,7 @@ import type {
   IntakeResolutionSnapshot,
   IntakeVariableProposal,
   ConversationMessageRecord,
+  ConversationMessageNotificationRecord,
   LegalClinicMatterProfile,
   LegalClinicProgram,
   LedgerReconciliationExceptionResolutionStatementRow,
@@ -916,6 +917,55 @@ export const conversationMessages = pgTable(
       table.threadId,
       table.authoredAt,
     ),
+  }),
+);
+
+export const conversationMessageNotifications = pgTable(
+  "conversation_message_notifications",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => conversationThreads.id),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => conversationMessages.id),
+    recipientUserId: text("recipient_user_id")
+      .notNull()
+      .references(() => users.id),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    mutedAt: timestamp("muted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    updatedByUserId: text("updated_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    metadata: jsonb("metadata")
+      .$type<ConversationMessageNotificationRecord["metadata"]>()
+      .notNull()
+      .default({}),
+  },
+  (table) => ({
+    firmMatterThreadCreated: index(
+      "conversation_message_notifications_firm_matter_thread_created_idx",
+    ).on(table.firmId, table.matterId, table.threadId, table.createdAt),
+    firmRecipientCreated: index("conversation_message_notifications_firm_recipient_created_idx").on(
+      table.firmId,
+      table.recipientUserId,
+      table.createdAt,
+    ),
+    firmMessageRecipient: uniqueIndex(
+      "conversation_message_notifications_firm_message_recipient_idx",
+    ).on(table.firmId, table.messageId, table.recipientUserId),
   }),
 );
 

@@ -14,6 +14,7 @@ import {
   buildBasicDraftTemplates,
   buildContactDossiers,
   buildPracticePresetTemplates,
+  canAccess,
   billingPeriodLocksOverlap,
   billingRateRulesOverlapAtSameActiveScope,
   calculateInvoiceTotals,
@@ -50,6 +51,7 @@ import {
   type ContactDataQualityResolutionRecord,
   type ContactDossier,
   type ConversationMessageRecord,
+  type ConversationMessageNotificationRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
   type DraftAssistRecord,
@@ -209,6 +211,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private legalClinicMatterProfiles: LegalClinicMatterProfile[];
   private conversationThreads: ConversationThreadRecord[] = [];
   private conversationMessages: ConversationMessageRecord[] = [];
+  private conversationMessageNotifications: ConversationMessageNotificationRecord[] = [];
   private calendarEvents: CalendarEventRecord[];
   private calendarMeetingSessions: CalendarMeetingSessionRecord[] = [];
   private calendarGuestLinks: CalendarGuestLinkRecord[] = [];
@@ -501,6 +504,76 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
         .slice(0, limit),
     );
+  }
+
+  async getConnectorOutbox(
+    firmId: string,
+    outboxId: string,
+  ): Promise<ConnectorOutboxRecord | undefined> {
+    return clone(
+      this.connectorOutbox.find((outbox) => outbox.firmId === firmId && outbox.id === outboxId),
+    );
+  }
+
+  async retryConnectorOutbox(input: {
+    firmId: string;
+    outboxId: string;
+    expectedStatus: Extract<ConnectorOutboxRecord["status"], "failed" | "dead_letter">;
+    occurredAt: string;
+  }): Promise<ConnectorOutboxRecord | undefined> {
+    const index = this.connectorOutbox.findIndex(
+      (outbox) =>
+        outbox.firmId === input.firmId &&
+        outbox.id === input.outboxId &&
+        outbox.status === input.expectedStatus,
+    );
+    if (index < 0) return undefined;
+    const current = this.connectorOutbox[index];
+    const next: ConnectorOutboxRecord = {
+      ...current,
+      status: "pending",
+      maxAttempts:
+        current.attemptCount >= current.maxAttempts
+          ? current.attemptCount + 1
+          : current.maxAttempts,
+      nextAttemptAt: input.occurredAt,
+      leaseId: undefined,
+      leasedUntil: undefined,
+      deadLetteredAt: undefined,
+      lastErrorSummary: undefined,
+      updatedAt: input.occurredAt,
+    };
+    this.connectorOutbox[index] = clone(next);
+    return clone(next);
+  }
+
+  async deadLetterConnectorOutbox(input: {
+    firmId: string;
+    outboxId: string;
+    expectedStatus: Extract<ConnectorOutboxRecord["status"], "pending" | "failed" | "leased">;
+    occurredAt: string;
+    errorSummary: string;
+  }): Promise<ConnectorOutboxRecord | undefined> {
+    const index = this.connectorOutbox.findIndex(
+      (outbox) =>
+        outbox.firmId === input.firmId &&
+        outbox.id === input.outboxId &&
+        outbox.status === input.expectedStatus,
+    );
+    if (index < 0) return undefined;
+    const current = this.connectorOutbox[index];
+    const next: ConnectorOutboxRecord = {
+      ...current,
+      status: "dead_letter",
+      nextAttemptAt: undefined,
+      leaseId: undefined,
+      leasedUntil: undefined,
+      deadLetteredAt: input.occurredAt,
+      lastErrorSummary: sanitizeConnectorDeliverySummary(input.errorSummary),
+      updatedAt: input.occurredAt,
+    };
+    this.connectorOutbox[index] = clone(next);
+    return clone(next);
   }
 
   async createConnectorDeliveryAttempt(
@@ -1607,6 +1680,107 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(updated);
   }
 
+  async createConversationMessageNotifications(input: {
+    firmId: string;
+    threadId: string;
+    messageId: string;
+    matterId: string;
+    notificationBoundary: ConversationThreadRecord["notificationBoundary"];
+    createdAt: string;
+    createdByUserId: string;
+  }): Promise<ConversationMessageNotificationRecord[]> {
+    if (input.notificationBoundary !== "internal_only") return [];
+
+    const recipients = this.users.filter(
+      (user) =>
+        user.firmId === input.firmId &&
+        user.id !== input.createdByUserId &&
+        canAccess({
+          user,
+          firmId: input.firmId,
+          resource: "conversation_thread",
+          action: "read",
+          matterId: input.matterId,
+        }),
+    );
+    const notifications = recipients.map((recipient, index) => ({
+      id: `conversation-message-notification-${input.messageId}-${String(index + 1).padStart(2, "0")}`,
+      firmId: input.firmId,
+      matterId: input.matterId,
+      threadId: input.threadId,
+      messageId: input.messageId,
+      recipientUserId: recipient.id,
+      createdAt: input.createdAt,
+      updatedAt: input.createdAt,
+      createdByUserId: input.createdByUserId,
+      updatedByUserId: input.createdByUserId,
+      metadata: {},
+    }));
+    this.conversationMessageNotifications = [
+      ...this.conversationMessageNotifications,
+      ...notifications.map(clone),
+    ];
+    return notifications.map(clone);
+  }
+
+  async listConversationMessageNotifications(
+    firmId: string,
+    options: {
+      threadId?: string;
+      matterId?: string;
+      recipientUserId?: string;
+      messageId?: string;
+    } = {},
+  ): Promise<ConversationMessageNotificationRecord[]> {
+    return clone(
+      this.conversationMessageNotifications
+        .filter((notification) => {
+          if (notification.firmId !== firmId) return false;
+          if (options.threadId && notification.threadId !== options.threadId) return false;
+          if (options.matterId && notification.matterId !== options.matterId) return false;
+          if (options.recipientUserId && notification.recipientUserId !== options.recipientUserId)
+            return false;
+          if (options.messageId && notification.messageId !== options.messageId) return false;
+          return true;
+        })
+        .sort(
+          (left, right) =>
+            left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+        ),
+    );
+  }
+
+  async updateConversationMessageNotificationPosture(input: {
+    firmId: string;
+    notificationId: string;
+    action: "mark_read" | "mute" | "unmute";
+    occurredAt: string;
+    actorUserId: string;
+  }): Promise<ConversationMessageNotificationRecord | undefined> {
+    const index = this.conversationMessageNotifications.findIndex(
+      (notification) =>
+        notification.firmId === input.firmId && notification.id === input.notificationId,
+    );
+    if (index < 0) return undefined;
+    const existing = this.conversationMessageNotifications[index]!;
+    if (existing.recipientUserId !== input.actorUserId) return undefined;
+    const updated = {
+      ...existing,
+      readAt:
+        input.action === "mark_read" ? (existing.readAt ?? input.occurredAt) : existing.readAt,
+      mutedAt:
+        input.action === "mute"
+          ? (existing.mutedAt ?? input.occurredAt)
+          : input.action === "unmute"
+            ? undefined
+            : existing.mutedAt,
+      updatedAt: input.occurredAt,
+      updatedByUserId: input.actorUserId,
+    };
+    this.conversationMessageNotifications[index] = clone(updated);
+    return clone(updated);
+  }
+
   async listConversationMessages(
     firmId: string,
     options: { threadId?: string; matterId?: string } = {},
@@ -1639,6 +1813,18 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         updatedAt: message.authoredAt,
         updatedByUserId: message.createdByUserId,
       };
+    }
+    const thread = threadIndex >= 0 ? this.conversationThreads[threadIndex] : undefined;
+    if (thread) {
+      await this.createConversationMessageNotifications({
+        firmId: message.firmId,
+        threadId: message.threadId,
+        messageId: message.id,
+        matterId: message.matterId,
+        notificationBoundary: thread.notificationBoundary,
+        createdAt: message.createdAt,
+        createdByUserId: message.createdByUserId,
+      });
     }
     return clone(message);
   }

@@ -15,6 +15,10 @@
       "types": "./dist/participant-roles.d.ts",
       "default": "./dist/participant-roles.js"
     },
+    "./operational-actions": {
+      "types": "./dist/operational-actions.d.ts",
+      "default": "./dist/operational-actions.js"
+    },
     "./sample-data": {
       "types": "./dist/sample-data.d.ts",
       "default": "./dist/sample-data.js"

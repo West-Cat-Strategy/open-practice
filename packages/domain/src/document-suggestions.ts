@@ -13,7 +13,8 @@ export type DocumentReviewSuggestionGroup =
   | "classification"
   | "duplicate_or_supersession"
   | "matter_contact"
-  | "missing_metadata";
+  | "missing_metadata"
+  | "retention_review";
 
 export interface DocumentReviewSuggestionCue {
   id: string;
@@ -138,6 +139,7 @@ const suggestionGroups: DocumentReviewSuggestionGroup[] = [
   "duplicate_or_supersession",
   "matter_contact",
   "missing_metadata",
+  "retention_review",
 ];
 
 const classificationValues = new Set<DocumentClassification>([
@@ -170,6 +172,7 @@ function emptyGroups(): Record<DocumentReviewSuggestionGroup, DocumentReviewSugg
     duplicate_or_supersession: [],
     matter_contact: [],
     missing_metadata: [],
+    retention_review: [],
   };
 }
 
@@ -216,6 +219,26 @@ function addMissingMetadataCue(
   });
 }
 
+function addRetentionReviewCue(
+  cues: DocumentReviewSuggestionCue[],
+  document: DocumentRecord,
+  id: string,
+  label: string,
+  detail: string,
+  tone: DocumentReviewSuggestionCue["tone"] = "risk",
+  relatedDocumentId?: string,
+): void {
+  cues.push({
+    id,
+    group: "retention_review",
+    label,
+    detail,
+    tone,
+    documentId: document.id,
+    relatedDocumentId,
+  });
+}
+
 function documentOcrStatus(input: {
   latestExtraction?: DocumentTextExtractionRecord;
   latestJobStatus?: string;
@@ -247,6 +270,7 @@ function emptyCueCounts(): Record<DocumentReviewSuggestionGroup | "total", numbe
     duplicate_or_supersession: 0,
     matter_contact: 0,
     missing_metadata: 0,
+    retention_review: 0,
     total: 0,
   };
 }
@@ -329,7 +353,7 @@ export function buildDocumentMetadataTags(input: {
       label: `Cue: ${formatMetadataValue(group)}`,
       value: group,
       group: "reviewer_cue",
-      tone: group === "missing_metadata" ? "risk" : "neutral",
+      tone: group === "missing_metadata" || group === "retention_review" ? "risk" : "neutral",
       count,
     });
   }
@@ -647,6 +671,86 @@ export function buildDocumentReviewSuggestions(input: {
       classification: superseding?.classification,
       status: document.supersededAt ? "superseded" : undefined,
     });
+  }
+
+  if (document.legalHold) {
+    addRetentionReviewCue(
+      groups.retention_review,
+      document,
+      `${document.id}:retention-legal-hold`,
+      "Legal hold active",
+      "Legal hold is active and should stay visible for staff review.",
+    );
+  }
+  if (document.supersedesDocumentId) {
+    addRetentionReviewCue(
+      groups.retention_review,
+      document,
+      `${document.id}:retention-supersedes`,
+      "Supersession review",
+      "Document references a prior same-matter record.",
+      "neutral",
+      document.supersedesDocumentId,
+    );
+  }
+  if (document.supersededAt || superseding) {
+    addRetentionReviewCue(
+      groups.retention_review,
+      document,
+      `${document.id}:retention-superseded`,
+      "Superseded record review",
+      superseding
+        ? "A newer same-matter record references this document."
+        : "Superseded timestamp is present.",
+      "neutral",
+      superseding?.id,
+    );
+  }
+  if (document.uploadStatus !== "verified") {
+    addRetentionReviewCue(
+      groups.retention_review,
+      document,
+      `${document.id}:retention-upload`,
+      "Upload state review",
+      `Upload status is ${formatMetadataValue(document.uploadStatus)}.`,
+    );
+  }
+  if (document.checksumStatus !== "verified" && document.checksumStatus !== "duplicate") {
+    addRetentionReviewCue(
+      groups.retention_review,
+      document,
+      `${document.id}:retention-checksum`,
+      "Checksum state review",
+      `Checksum status is ${formatMetadataValue(document.checksumStatus)}.`,
+    );
+  }
+  if (document.scanStatus !== "passed" && document.scanStatus !== "not_required") {
+    addRetentionReviewCue(
+      groups.retention_review,
+      document,
+      `${document.id}:retention-scan`,
+      "Scan state review",
+      `Scan status is ${formatMetadataValue(document.scanStatus)}.`,
+    );
+  }
+  if (document.reviewStatus !== "accepted" && document.reviewStatus !== "not_required") {
+    const reviewDetail = [
+      `${document.externalUploadLinkId ? "External upload" : "Document"} review status is ${formatMetadataValue(
+        document.reviewStatus,
+      )}.`,
+      document.reviewReason
+        ? `Review reason is ${formatMetadataValue(document.reviewReason)}.`
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    addRetentionReviewCue(
+      groups.retention_review,
+      document,
+      `${document.id}:retention-review-state`,
+      document.externalUploadLinkId ? "External upload review" : "Document review state",
+      reviewDetail,
+    );
   }
 
   if (input.matter) {

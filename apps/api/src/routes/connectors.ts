@@ -115,6 +115,41 @@ const connectorParamsSchema = z.object({
   connectorId: z.string().min(1),
 });
 
+const connectorOutboxParamsSchema = z.object({
+  outboxId: z.string().min(1),
+});
+
+const connectorRetryConfirmationSchema = z
+  .object({
+    confirmed: z.literal(true),
+    action: z.literal("retry"),
+    outboxId: z.string().min(1),
+    expectedStatus: z.enum(["failed", "dead_letter"]),
+  })
+  .strict();
+
+const connectorDeadLetterConfirmationSchema = z
+  .object({
+    confirmed: z.literal(true),
+    action: z.literal("dead_letter"),
+    outboxId: z.string().min(1),
+    expectedStatus: z.enum(["pending", "failed", "leased"]),
+  })
+  .strict();
+
+const connectorOutboxRetryBodySchema = z
+  .object({
+    idempotencyKey: z.string().min(8).max(180).optional(),
+    confirmation: connectorRetryConfirmationSchema,
+  })
+  .strict();
+
+const connectorOutboxDeadLetterBodySchema = z
+  .object({
+    confirmation: connectorDeadLetterConfirmationSchema,
+  })
+  .strict();
+
 const sensitiveKeyPattern =
   /(api[_-]?key|authorization|bearer|credential|password|private[_-]?key|secret|token)/i;
 const sensitiveValuePattern =
@@ -263,6 +298,56 @@ function serializeOutbox(outbox: ConnectorOutboxRecord) {
   };
 }
 
+function isConnectorOutboxLeaseActive(outbox: ConnectorOutboxRecord, now: string): boolean {
+  return (
+    outbox.status === "leased" &&
+    outbox.leasedUntil !== undefined &&
+    Date.parse(outbox.leasedUntil) > Date.parse(now)
+  );
+}
+
+function assertRecoveryConfirmationMatches(
+  confirmation: {
+    outboxId: string;
+    expectedStatus: ConnectorOutboxRecord["status"];
+  },
+  outbox: ConnectorOutboxRecord,
+): void {
+  if (confirmation.outboxId === outbox.id && confirmation.expectedStatus === outbox.status) return;
+  throw new ApiHttpError(
+    409,
+    "CONNECTOR_RECOVERY_CONFIRMATION_MISMATCH",
+    "Connector outbox recovery confirmation does not match the current row state",
+  );
+}
+
+function connectorOutboxAuditMetadata(input: {
+  connector: ConnectorRecord;
+  outbox: ConnectorOutboxRecord;
+  beforeStatus: ConnectorOutboxRecord["status"];
+  expectedStatus: ConnectorOutboxRecord["status"];
+  afterStatus: ConnectorOutboxRecord["status"];
+  deliveryJob?: JobLifecycleRecord;
+}) {
+  return {
+    connectorId: input.connector.id,
+    connectorType: input.connector.type,
+    connectorKey: input.connector.key,
+    outboxId: input.outbox.id,
+    eventType: input.outbox.eventType,
+    resourceType: input.outbox.resourceType,
+    resourceId: input.outbox.resourceId,
+    beforeStatus: input.beforeStatus,
+    expectedStatus: input.expectedStatus,
+    afterStatus: input.afterStatus,
+    attemptCount: input.outbox.attemptCount,
+    maxAttempts: input.outbox.maxAttempts,
+    idempotencyKeyPresent: Boolean(input.outbox.idempotencyKey),
+    deliveryJobQueued: Boolean(input.deliveryJob),
+    queueName: input.deliveryJob?.queueName,
+  };
+}
+
 function jobDelayUntil(nextAttemptAt: string | undefined, now: string): number | undefined {
   if (!nextAttemptAt) return undefined;
   const delay = Date.parse(nextAttemptAt) - Date.parse(now);
@@ -272,6 +357,7 @@ function jobDelayUntil(nextAttemptAt: string | undefined, now: string): number |
 function connectorDeliveryJobMetadata(
   outbox: ConnectorOutboxRecord,
   now: string,
+  recoveryMetadata: Record<string, unknown> = {},
 ): Record<string, unknown> {
   const delay = jobDelayUntil(outbox.nextAttemptAt, now);
   return {
@@ -280,6 +366,7 @@ function connectorDeliveryJobMetadata(
     eventCount: 1,
     maxAttempts: outbox.maxAttempts,
     idempotencyKeyPresent: Boolean(outbox.idempotencyKey),
+    ...recoveryMetadata,
     ...(delay ? { nextRetryAt: outbox.nextAttemptAt } : {}),
     ...idempotencyMetadata({
       outboxId: outbox.id,
@@ -288,7 +375,9 @@ function connectorDeliveryJobMetadata(
       resourceType: outbox.resourceType,
       resourceId: outbox.resourceId,
       nextAttemptAt: outbox.nextAttemptAt,
+      attemptCount: outbox.attemptCount,
       maxAttempts: outbox.maxAttempts,
+      ...recoveryMetadata,
     }),
   };
 }
@@ -313,18 +402,24 @@ async function scheduleConnectorDeliveryJob(
   auth: ApiAuthContext,
   outbox: ConnectorOutboxRecord,
   now: string,
+  options: {
+    action?: string;
+    clientKey?: string;
+    metadata?: Record<string, unknown>;
+  } = {},
 ): Promise<JobLifecycleRecord | undefined> {
   if (!connectorJobQueue) return undefined;
 
   const jobId = crypto.randomUUID();
-  const metadata = connectorDeliveryJobMetadata(outbox, now);
+  const metadata = connectorDeliveryJobMetadata(outbox, now, options.metadata);
   const idempotencyKey = buildIdempotencyKey({
     scope: "job",
     firmId: auth.firmId,
     resourceType: "connector_outbox",
     resourceId: outbox.id,
-    action: "connectors.deliver",
+    action: options.action ?? "connectors.deliver",
     providerOrTemplate: CONNECTOR_DELIVERY_JOB_NAME,
+    clientKey: options.clientKey,
   });
   const job = await repository.createJobLifecycleRecord({
     id: jobId,
@@ -357,6 +452,7 @@ async function scheduleConnectorDeliveryJob(
           eventCount: 1,
           maxAttempts: outbox.maxAttempts,
           idempotencyKeyPresent: Boolean(outbox.idempotencyKey),
+          ...options.metadata,
         },
       },
       delay === undefined ? { jobId } : { jobId, delay },
@@ -469,6 +565,159 @@ export function registerConnectorRoutes(
     assertConnectorAccess(request.auth, { resource: "connector", action: "read" });
     const outbox = await repository.listConnectorOutbox(request.auth.firmId, query);
     return { outbox: outbox.map(serializeOutbox) };
+  });
+
+  server.post("/api/connectors/outbox/:outboxId/retry", async (request, reply) => {
+    const params = parseRequestPart(connectorOutboxParamsSchema, request.params, "params");
+    const body = parseRequestPart(connectorOutboxRetryBodySchema, request.body, "body");
+    assertConnectorAccess(request.auth, { resource: "connector", action: "update" });
+    const existing = await repository.getConnectorOutbox(request.auth.firmId, params.outboxId);
+    if (!existing) {
+      throw new ApiHttpError(
+        404,
+        "CONNECTOR_OUTBOX_NOT_FOUND",
+        "Connector outbox row was not found",
+      );
+    }
+    assertRecoveryConfirmationMatches(body.confirmation, existing);
+    if (existing.status !== "failed" && existing.status !== "dead_letter") {
+      throw new ApiHttpError(
+        409,
+        "CONNECTOR_OUTBOX_RETRY_NOT_ALLOWED",
+        "Only failed or dead-letter connector outbox rows can be manually retried",
+      );
+    }
+    const connector = await repository.getConnector(request.auth.firmId, existing.connectorId);
+    if (!connector) {
+      throw new ApiHttpError(404, "CONNECTOR_NOT_FOUND", "Connector was not found");
+    }
+    if (connector.status !== "enabled") {
+      throw new ApiHttpError(
+        409,
+        "CONNECTOR_NOT_ENABLED",
+        "Connector must be enabled before manual retry",
+      );
+    }
+    if (!dependencies.connectorJobQueue) {
+      throw new ApiHttpError(
+        503,
+        "CONNECTOR_QUEUE_NOT_CONFIGURED",
+        "Connector queue is not configured",
+      );
+    }
+
+    const now = new Date().toISOString();
+    const retried = await repository.retryConnectorOutbox({
+      firmId: request.auth.firmId,
+      outboxId: existing.id,
+      expectedStatus: body.confirmation.expectedStatus,
+      occurredAt: now,
+    });
+    if (!retried) {
+      throw new ApiHttpError(
+        409,
+        "CONNECTOR_RECOVERY_CONFIRMATION_MISMATCH",
+        "Connector outbox recovery confirmation does not match the current row state",
+      );
+    }
+    let deliveryJob: Awaited<ReturnType<typeof scheduleConnectorDeliveryJob>>;
+    try {
+      deliveryJob = await scheduleConnectorDeliveryJob(dependencies, request.auth, retried, now, {
+        action: `connectors.manual_retry.${retried.attemptCount}`,
+        clientKey: body.idempotencyKey,
+        metadata: {
+          source: "api.connectors.outbox.retry",
+          previousStatus: existing.status,
+          manualRecoveryAction: "retry",
+          attemptCount: retried.attemptCount,
+        },
+      });
+    } catch (error) {
+      rethrowIdempotencyConflict(error);
+    }
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "connector_outbox.manual_retry",
+      resourceType: "connector_outbox",
+      resourceId: retried.id,
+      occurredAt: now,
+      metadata: connectorOutboxAuditMetadata({
+        connector,
+        outbox: retried,
+        beforeStatus: existing.status,
+        expectedStatus: body.confirmation.expectedStatus,
+        afterStatus: retried.status,
+        deliveryJob,
+      }),
+    });
+
+    reply.code(202);
+    return {
+      outbox: serializeOutbox(retried),
+      deliveryJob: summarizeConnectorDeliveryJob(deliveryJob),
+    };
+  });
+
+  server.post("/api/connectors/outbox/:outboxId/dead-letter", async (request) => {
+    const params = parseRequestPart(connectorOutboxParamsSchema, request.params, "params");
+    const body = parseRequestPart(connectorOutboxDeadLetterBodySchema, request.body, "body");
+    assertConnectorAccess(request.auth, { resource: "connector", action: "update" });
+    const existing = await repository.getConnectorOutbox(request.auth.firmId, params.outboxId);
+    if (!existing) {
+      throw new ApiHttpError(
+        404,
+        "CONNECTOR_OUTBOX_NOT_FOUND",
+        "Connector outbox row was not found",
+      );
+    }
+    assertRecoveryConfirmationMatches(body.confirmation, existing);
+    if (!["pending", "failed", "leased"].includes(existing.status)) {
+      throw new ApiHttpError(
+        409,
+        "CONNECTOR_OUTBOX_DEAD_LETTER_NOT_ALLOWED",
+        "Only pending, failed, or expired leased connector outbox rows can be dead-lettered",
+      );
+    }
+    const now = new Date().toISOString();
+    if (isConnectorOutboxLeaseActive(existing, now)) {
+      throw new ApiHttpError(
+        409,
+        "CONNECTOR_OUTBOX_LEASE_ACTIVE",
+        "Active connector leases must expire before manual dead-letter",
+      );
+    }
+    const connector = await repository.getConnector(request.auth.firmId, existing.connectorId);
+    if (!connector) {
+      throw new ApiHttpError(404, "CONNECTOR_NOT_FOUND", "Connector was not found");
+    }
+    const deadLettered = await repository.deadLetterConnectorOutbox({
+      firmId: request.auth.firmId,
+      outboxId: existing.id,
+      expectedStatus: body.confirmation.expectedStatus,
+      occurredAt: now,
+      errorSummary: "Connector outbox manually moved to dead letter by owner review",
+    });
+    if (!deadLettered) {
+      throw new ApiHttpError(
+        409,
+        "CONNECTOR_RECOVERY_CONFIRMATION_MISMATCH",
+        "Connector outbox recovery confirmation does not match the current row state",
+      );
+    }
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "connector_outbox.manual_dead_letter",
+      resourceType: "connector_outbox",
+      resourceId: deadLettered.id,
+      occurredAt: now,
+      metadata: connectorOutboxAuditMetadata({
+        connector,
+        outbox: deadLettered,
+        beforeStatus: existing.status,
+        expectedStatus: body.confirmation.expectedStatus,
+        afterStatus: deadLettered.status,
+      }),
+    });
+
+    return { outbox: serializeOutbox(deadLettered) };
   });
 
   server.post("/api/connectors/outbox", async (request, reply) => {

@@ -15,6 +15,7 @@ import {
   buildBasicDraftTemplates,
   buildContactDossiers,
   buildPracticePresetTemplates,
+  canAccess,
   billingPeriodLocksOverlap,
   billingRateRulesOverlapAtSameActiveScope,
   calculateInvoiceTotals,
@@ -52,6 +53,7 @@ import {
   type ContactDataQualityResolutionRecord,
   type ContactDossier,
   type ConversationMessageRecord,
+  type ConversationMessageNotificationRecord,
   type ConversationThreadRecord,
   type DocumentRecord,
   type DraftAssistRecord,
@@ -188,6 +190,7 @@ import {
   mapContactDataQualityResolutionRow,
   mapContactRow,
   mapConversationMessageRow,
+  mapConversationMessageNotificationRow,
   mapConversationThreadRow,
   mapDocumentRow,
   mapDocumentTextExtractionRow,
@@ -552,6 +555,84 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .orderBy(desc(schema.connectorOutbox.createdAt))
       .limit(options.limit ?? 50);
     return rows.map(mapConnectorOutboxRow);
+  }
+
+  async getConnectorOutbox(
+    firmId: string,
+    outboxId: string,
+  ): Promise<ConnectorOutboxRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.connectorOutbox)
+      .where(
+        and(eq(schema.connectorOutbox.firmId, firmId), eq(schema.connectorOutbox.id, outboxId)),
+      );
+    return row ? mapConnectorOutboxRow(row) : undefined;
+  }
+
+  async retryConnectorOutbox(input: {
+    firmId: string;
+    outboxId: string;
+    expectedStatus: Extract<ConnectorOutboxRecord["status"], "failed" | "dead_letter">;
+    occurredAt: string;
+  }): Promise<ConnectorOutboxRecord | undefined> {
+    const current = await this.getConnectorOutbox(input.firmId, input.outboxId);
+    if (!current || current.status !== input.expectedStatus) return undefined;
+    const occurredAt = new Date(input.occurredAt);
+    const [row] = await this.db
+      .update(schema.connectorOutbox)
+      .set({
+        status: "pending",
+        maxAttempts:
+          current.attemptCount >= current.maxAttempts
+            ? current.attemptCount + 1
+            : current.maxAttempts,
+        nextAttemptAt: occurredAt,
+        leaseId: null,
+        leasedUntil: null,
+        deadLetteredAt: null,
+        lastErrorSummary: null,
+        updatedAt: occurredAt,
+      })
+      .where(
+        and(
+          eq(schema.connectorOutbox.firmId, input.firmId),
+          eq(schema.connectorOutbox.id, input.outboxId),
+          eq(schema.connectorOutbox.status, input.expectedStatus),
+        ),
+      )
+      .returning();
+    return row ? mapConnectorOutboxRow(row) : undefined;
+  }
+
+  async deadLetterConnectorOutbox(input: {
+    firmId: string;
+    outboxId: string;
+    expectedStatus: Extract<ConnectorOutboxRecord["status"], "pending" | "failed" | "leased">;
+    occurredAt: string;
+    errorSummary: string;
+  }): Promise<ConnectorOutboxRecord | undefined> {
+    const occurredAt = new Date(input.occurredAt);
+    const [row] = await this.db
+      .update(schema.connectorOutbox)
+      .set({
+        status: "dead_letter",
+        leaseId: null,
+        leasedUntil: null,
+        nextAttemptAt: null,
+        deadLetteredAt: occurredAt,
+        lastErrorSummary: sanitizeConnectorDeliverySummary(input.errorSummary) ?? null,
+        updatedAt: occurredAt,
+      })
+      .where(
+        and(
+          eq(schema.connectorOutbox.firmId, input.firmId),
+          eq(schema.connectorOutbox.id, input.outboxId),
+          eq(schema.connectorOutbox.status, input.expectedStatus),
+        ),
+      )
+      .returning();
+    return row ? mapConnectorOutboxRow(row) : undefined;
   }
 
   async createConnectorDeliveryAttempt(
@@ -2075,6 +2156,142 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return row ? mapConversationThreadRow(row) : undefined;
   }
 
+  async createConversationMessageNotifications(input: {
+    firmId: string;
+    threadId: string;
+    messageId: string;
+    matterId: string;
+    notificationBoundary: ConversationThreadRecord["notificationBoundary"];
+    createdAt: string;
+    createdByUserId: string;
+  }): Promise<ConversationMessageNotificationRecord[]> {
+    if (input.notificationBoundary !== "internal_only") return [];
+
+    const [thread, users] = await Promise.all([
+      this.getConversationThread(input.firmId, input.threadId),
+      this.listUsers(input.firmId),
+    ]);
+    if (!thread) return [];
+
+    const recipients = users.filter(
+      (user) =>
+        user.id !== input.createdByUserId &&
+        canAccess({
+          user,
+          firmId: input.firmId,
+          resource: "conversation_thread",
+          action: "read",
+          matterId: input.matterId,
+        }),
+    );
+    if (recipients.length === 0) return [];
+
+    const rows = await this.db.transaction(async (tx) => {
+      const inserted: Array<typeof schema.conversationMessageNotifications.$inferSelect> = [];
+      for (const recipient of recipients) {
+        const [row] = await tx
+          .insert(schema.conversationMessageNotifications)
+          .values({
+            id: `conversation-message-notification-${input.messageId}-${recipient.id}`,
+            firmId: input.firmId,
+            matterId: input.matterId,
+            threadId: input.threadId,
+            messageId: input.messageId,
+            recipientUserId: recipient.id,
+            createdAt: new Date(input.createdAt),
+            updatedAt: new Date(input.createdAt),
+            createdByUserId: input.createdByUserId,
+            updatedByUserId: input.createdByUserId,
+            metadata: {},
+          })
+          .onConflictDoNothing()
+          .returning();
+        if (row) inserted.push(row);
+      }
+      return inserted;
+    });
+    return rows.map(mapConversationMessageNotificationRow);
+  }
+
+  async listConversationMessageNotifications(
+    firmId: string,
+    options: {
+      threadId?: string;
+      matterId?: string;
+      recipientUserId?: string;
+      messageId?: string;
+    } = {},
+  ): Promise<ConversationMessageNotificationRecord[]> {
+    const filters = [eq(schema.conversationMessageNotifications.firmId, firmId)];
+    if (options.threadId) {
+      filters.push(eq(schema.conversationMessageNotifications.threadId, options.threadId));
+    }
+    if (options.matterId) {
+      filters.push(eq(schema.conversationMessageNotifications.matterId, options.matterId));
+    }
+    if (options.recipientUserId) {
+      filters.push(
+        eq(schema.conversationMessageNotifications.recipientUserId, options.recipientUserId),
+      );
+    }
+    if (options.messageId) {
+      filters.push(eq(schema.conversationMessageNotifications.messageId, options.messageId));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.conversationMessageNotifications)
+      .where(and(...filters))
+      .orderBy(
+        asc(schema.conversationMessageNotifications.createdAt),
+        asc(schema.conversationMessageNotifications.id),
+      );
+    return rows.map(mapConversationMessageNotificationRow);
+  }
+
+  async updateConversationMessageNotificationPosture(input: {
+    firmId: string;
+    notificationId: string;
+    action: "mark_read" | "mute" | "unmute";
+    occurredAt: string;
+    actorUserId: string;
+  }): Promise<ConversationMessageNotificationRecord | undefined> {
+    const [current] = await this.db
+      .select()
+      .from(schema.conversationMessageNotifications)
+      .where(
+        and(
+          eq(schema.conversationMessageNotifications.firmId, input.firmId),
+          eq(schema.conversationMessageNotifications.id, input.notificationId),
+        ),
+      );
+    if (!current || current.recipientUserId !== input.actorUserId) return undefined;
+
+    const [row] = await this.db
+      .update(schema.conversationMessageNotifications)
+      .set({
+        readAt:
+          input.action === "mark_read"
+            ? (current.readAt ?? new Date(input.occurredAt))
+            : current.readAt,
+        mutedAt:
+          input.action === "mute"
+            ? (current.mutedAt ?? new Date(input.occurredAt))
+            : input.action === "unmute"
+              ? null
+              : current.mutedAt,
+        updatedAt: new Date(input.occurredAt),
+        updatedByUserId: input.actorUserId,
+      })
+      .where(
+        and(
+          eq(schema.conversationMessageNotifications.firmId, input.firmId),
+          eq(schema.conversationMessageNotifications.id, input.notificationId),
+        ),
+      )
+      .returning();
+    return row ? mapConversationMessageNotificationRow(row) : undefined;
+  }
+
   async listConversationMessages(
     firmId: string,
     options: { threadId?: string; matterId?: string } = {},
@@ -2116,6 +2333,18 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         );
       return inserted;
     });
+    const thread = await this.getConversationThread(message.firmId, message.threadId);
+    if (thread) {
+      await this.createConversationMessageNotifications({
+        firmId: message.firmId,
+        threadId: message.threadId,
+        messageId: message.id,
+        matterId: message.matterId,
+        notificationBoundary: thread.notificationBoundary,
+        createdAt: message.createdAt,
+        createdByUserId: message.createdByUserId,
+      });
+    }
     return mapConversationMessageRow(row!);
   }
 

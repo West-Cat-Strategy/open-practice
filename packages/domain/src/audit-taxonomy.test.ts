@@ -98,6 +98,51 @@ describe("audit event taxonomy", () => {
     ).toEqual(
       expect.arrayContaining(["eventType", "idempotencyKeyPresent", "resourceType", "resourceId"]),
     );
+    expect(
+      classifyAuditEvent(
+        auditEvent({
+          action: "connector_outbox.manual_retry",
+          resourceType: "connector_outbox",
+          resourceId: "connector-outbox-001",
+          metadata: {
+            outboxId: "connector-outbox-001",
+            beforeStatus: "dead_letter",
+            expectedStatus: "dead_letter",
+            afterStatus: "pending",
+            deliveryJobQueued: true,
+          },
+        }),
+      ),
+    ).toMatchObject({
+      category: "operations",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(
+      classifyAuditEvent(
+        auditEvent({
+          action: "connector_outbox.manual_dead_letter",
+          resourceType: "connector_outbox",
+          resourceId: "connector-outbox-001",
+          metadata: {
+            outboxId: "connector-outbox-001",
+            beforeStatus: "failed",
+            expectedStatus: "failed",
+            afterStatus: "dead_letter",
+            deliveryJobQueued: false,
+          },
+        }),
+      ).metadataHints.resource,
+    ).toEqual(
+      expect.arrayContaining([
+        "outboxId",
+        "beforeStatus",
+        "expectedStatus",
+        "afterStatus",
+        "deliveryJobQueued",
+      ]),
+    );
   });
 
   it("classifies contact quality decisions without raw reviewer evidence", () => {

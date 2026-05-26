@@ -577,6 +577,20 @@
   overflow-wrap: anywhere;
 }
 
+.party-row .queue-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.connector-recovery-confirmation {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .party-row:last-child,
 .permission-row:last-child,
 .conflict-row:last-child {

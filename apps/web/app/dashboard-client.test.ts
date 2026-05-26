@@ -166,8 +166,17 @@ import {
   summarizeProvidersStatus,
 } from "./provider-status-dashboard";
 import {
+  buildConnectorOutboxDeadLetterPath,
+  buildConnectorOutboxDeadLetterPayload,
+  buildConnectorOutboxRetryPath,
+  buildConnectorOutboxRetryPayload,
+  canDeadLetterConnectorOutbox,
+  canRetryConnectorOutbox,
+  compactConnectorActionReason,
   connectorDisplayName,
   connectorOutboxStatusTone,
+  describeConnectorOutboxDeadLetterAction,
+  describeConnectorOutboxRetryAction,
   emptyConnectorOperationsResponse,
   summarizeConnectorOperations,
   summarizeConnectorPayload,
@@ -582,6 +591,7 @@ function documentProcessingWorkbench(
             duplicate_or_supersession: 0,
             matter_contact: 1,
             missing_metadata: 0,
+            retention_review: 0,
             total: 2,
           },
         },
@@ -624,6 +634,7 @@ function documentProcessingWorkbench(
             duplicate_or_supersession: 0,
             matter_contact: 1,
             missing_metadata: 0,
+            retention_review: 0,
             total: 2,
           },
           groups: {
@@ -652,6 +663,7 @@ function documentProcessingWorkbench(
               },
             ],
             missing_metadata: [],
+            retention_review: [],
           },
         },
         metadataTags: [
@@ -1120,6 +1132,29 @@ describe("dashboard client behavior", () => {
     );
     expect(connectorDisplayName(response.connectors[0])).toBe("Synthetic Review Connector");
     expect(connectorOutboxStatusTone(response.outbox[0]!)).toBe("risk");
+    expect(buildConnectorOutboxRetryPath("connector-outbox-001")).toBe(
+      "/api/connectors/outbox/connector-outbox-001/retry",
+    );
+    expect(buildConnectorOutboxDeadLetterPath("connector-outbox-001")).toBe(
+      "/api/connectors/outbox/connector-outbox-001/dead-letter",
+    );
+    expect(canRetryConnectorOutbox(response.outbox[0]!, true)).toBe(true);
+    expect(canRetryConnectorOutbox(response.outbox[0]!, false)).toBe(false);
+    expect(canDeadLetterConnectorOutbox(response.outbox[0]!, true)).toBe(false);
+    expect(describeConnectorOutboxRetryAction(response.outbox[0]!, false)).toMatchObject({
+      available: false,
+      availability: "disabled",
+      disabledReason: "permission_required",
+    });
+    expect(buildConnectorOutboxRetryPayload(response.outbox[0]!, "manual-retry-key")).toEqual({
+      idempotencyKey: "manual-retry-key",
+      confirmation: {
+        confirmed: true,
+        action: "retry",
+        outboxId: "connector-outbox-001",
+        expectedStatus: "dead_letter",
+      },
+    });
     expect(summarizeConnectorPayload(response.outbox[0]!.payloadSummary)).toBe(
       "2 payload-summary keys: fieldCount, matterId",
     );
@@ -1128,6 +1163,59 @@ describe("dashboard client behavior", () => {
     );
     expect(summarizeConnectorPayload(response.outbox[0]!.payloadSummary)).not.toContain(
       "raw-secret-value",
+    );
+    expect(
+      buildConnectorOutboxDeadLetterPayload({
+        ...response.outbox[0]!,
+        status: "failed",
+      }),
+    ).toEqual({
+      confirmation: {
+        confirmed: true,
+        action: "dead_letter",
+        outboxId: "connector-outbox-001",
+        expectedStatus: "failed",
+      },
+    });
+    expect(
+      canDeadLetterConnectorOutbox(
+        {
+          ...response.outbox[0]!,
+          status: "leased",
+          leasedUntil: "2026-05-26T12:00:00.000Z",
+        },
+        true,
+        new Date("2026-05-26T12:01:00.000Z"),
+      ),
+    ).toBe(true);
+    expect(
+      canDeadLetterConnectorOutbox(
+        {
+          ...response.outbox[0]!,
+          status: "leased",
+          leasedUntil: "2026-05-26T12:02:00.000Z",
+        },
+        true,
+        new Date("2026-05-26T12:01:00.000Z"),
+      ),
+    ).toBe(false);
+    expect(
+      describeConnectorOutboxDeadLetterAction(
+        {
+          ...response.outbox[0]!,
+          status: "leased",
+          leasedUntil: "2026-05-26T12:02:00.000Z",
+        },
+        true,
+        new Date("2026-05-26T12:01:00.000Z"),
+      ),
+    ).toMatchObject({
+      available: false,
+      availability: "disabled",
+      disabledReason: "lease_active_or_unconfirmed",
+    });
+    expect(compactConnectorActionReason("lease_active_or_unconfirmed")).toBe(
+      "lease active or unconfirmed",
     );
   });
 
@@ -2627,7 +2715,37 @@ describe("dashboard client behavior", () => {
       } as unknown as Parameters<typeof describeLatestExtraction>[0]),
     ).toBe("completed · language eng · 3 pages · 88% confidence");
     expect(summarizeDocumentReviewSuggestions(workbench.documents)).toBe(
-      "2 reviewer suggestion cues. 0 duplicate or supersession. 0 missing metadata.",
+      "2 reviewer suggestion cues. 0 duplicate or supersession. 0 missing metadata. 0 retention review.",
+    );
+    expect(
+      summarizeDocumentReviewSuggestions([
+        {
+          ...item,
+          reviewSuggestions: {
+            ...item.reviewSuggestions!,
+            summaryCounts: {
+              ...item.reviewSuggestions!.summaryCounts,
+              retention_review: 1,
+              total: 3,
+            },
+            groups: {
+              ...item.reviewSuggestions!.groups,
+              retention_review: [
+                {
+                  id: "doc-001:retention-legal-hold",
+                  group: "retention_review",
+                  label: "Legal hold active",
+                  detail: "Legal hold is active and should stay visible for staff review.",
+                  tone: "risk",
+                  documentId: "doc-001",
+                },
+              ],
+            },
+          },
+        },
+      ]),
+    ).toBe(
+      "3 reviewer suggestion cues. 0 duplicate or supersession. 0 missing metadata. 1 retention review.",
     );
     expect(summarizeDocumentMetadataSearch(workbench.metadataSearch)).toBe(
       "1 documents indexed by OP-authored metadata. 3 tag cues. Raw OCR text is not searched or returned.",

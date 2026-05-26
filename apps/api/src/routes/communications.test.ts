@@ -1,6 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type {
   EmailEventRecord,
   EmailOutboxRecord,
@@ -9,6 +8,7 @@ import type {
   ProfessionalRole,
   User,
 } from "@open-practice/domain";
+import { InMemoryOpenPracticeRepository } from "../../../../packages/database/src/repository/memory.js";
 import { registerCommunicationsRoutes } from "./communications.js";
 
 const firmId = "firm-west-legal";
@@ -16,8 +16,14 @@ const now = "2026-05-05T12:00:00.000Z";
 const servers: FastifyInstance[] = [];
 
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
+  const idByRole: Partial<Record<ProfessionalRole, string>> = {
+    owner_admin: "user-admin",
+    licensee: "user-licensee",
+    firm_member: "user-staff",
+    auditor: "user-auditor",
+  };
   return {
-    id: `user-${role}`,
+    id: idByRole[role] ?? `user-${role}`,
     firmId,
     displayName: `Test ${role}`,
     email: `${role}@example.test`,
@@ -322,5 +328,88 @@ describe("communications inbox routes", () => {
     });
 
     expect(response.statusCode).toBe(403);
+  });
+
+  it("surfaces staff-only conversation notification posture for the current user", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createConversationThread({
+      id: "conversation-thread-notifications",
+      firmId,
+      matterId: "matter-001",
+      topic: "Synthetic notification posture summary",
+      status: "open",
+      exportState: "not_requested",
+      notificationBoundary: "internal_only",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+      metadata: {},
+    });
+    await repository.createConversationMessage({
+      id: "conversation-message-notifications",
+      firmId,
+      matterId: "matter-001",
+      threadId: "conversation-thread-notifications",
+      kind: "internal_note",
+      bodyText: "Synthetic message for notification posture.",
+      authoredAt: now,
+      authoredByUserId: "user-licensee",
+      createdAt: now,
+      createdByUserId: "user-licensee",
+      metadata: {},
+    });
+
+    const recipient = user("owner_admin", ["matter-001"]);
+    const firstResponse = await testServer(repository, recipient).inject({
+      method: "GET",
+      url: "/api/communications/inbox?matterId=matter-001",
+    });
+    expect(firstResponse.statusCode).toBe(200);
+    expect(firstResponse.json()).toMatchObject({
+      conversations: [
+        expect.objectContaining({
+          id: "conversation-thread-notifications",
+          notificationSummary: {
+            notificationCount: 1,
+            unreadNotificationCount: 1,
+            mutedNotificationCount: 0,
+            latestNotificationAt: now,
+          },
+        }),
+      ],
+    });
+
+    const [recipientNotification] = await repository.listConversationMessageNotifications(firmId, {
+      threadId: "conversation-thread-notifications",
+      recipientUserId: recipient.id,
+    });
+    await repository.updateConversationMessageNotificationPosture({
+      firmId,
+      notificationId: recipientNotification.id,
+      action: "mute",
+      occurredAt: "2026-05-05T12:45:00.000Z",
+      actorUserId: recipient.id,
+    });
+
+    const mutedResponse = await testServer(repository, recipient).inject({
+      method: "GET",
+      url: "/api/communications/inbox?matterId=matter-001",
+    });
+    expect(mutedResponse.statusCode).toBe(200);
+    expect(mutedResponse.json()).toMatchObject({
+      conversations: [
+        expect.objectContaining({
+          id: "conversation-thread-notifications",
+          notificationSummary: {
+            notificationCount: 1,
+            unreadNotificationCount: 1,
+            mutedNotificationCount: 1,
+            latestNotificationAt: now,
+            latestMutedAt: "2026-05-05T12:45:00.000Z",
+          },
+        }),
+      ],
+    });
   });
 });
