@@ -19,33 +19,57 @@ const SETTINGS_KIND: ProviderSettingRecord["kind"] = "public_intake";
 const SETTINGS_KEY = "consultation";
 const PUBLIC_INTAKE_RATE_LIMIT = { max: 8, timeWindow: "1 minute" };
 
-const DEFAULT_ALLOWED_ORIGINS = [
-  "https://crockettparalegal.ca",
-  "https://www.crockettparalegal.ca",
-  "http://localhost:4321",
-  "http://127.0.0.1:4321",
-];
-
 const DEFAULT_NOTIFICATION_SETTINGS: PublicConsultationIntakeNotificationSettings = {
-  enabled: true,
-  senderAddress: "info@crockettparalegal.ca",
-  recipientEmails: ["bryan@crockettparalegal.ca"],
-  allowedOrigins: DEFAULT_ALLOWED_ORIGINS,
+  enabled: false,
+  senderAddress: "",
+  recipientEmails: [],
+  allowedOrigins: [],
 };
 
 const emailAddressSchema = z.string().trim().email().max(254);
+const optionalEmailAddressSchema = z.preprocess(
+  (value) => (typeof value === "string" ? value.trim() : value),
+  z.union([z.literal(""), z.string().email().max(254)]),
+);
+const originUrlSchema = z.string().trim().url().max(2048);
 
-const settingsBodySchema = z.object({
+const settingsConfigSchema = z.object({
   enabled: z.boolean(),
-  senderAddress: emailAddressSchema,
-  recipientEmails: z.array(emailAddressSchema).min(1).max(10),
-  allowedOrigins: z.array(z.string().trim().url().max(2048)).min(1).max(20),
+  senderAddress: optionalEmailAddressSchema.default(""),
+  recipientEmails: z.array(emailAddressSchema).max(10).default([]),
+  allowedOrigins: z.array(originUrlSchema).max(20).default([]),
   reviewOwnerUserId: z
     .preprocess(
       (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
       z.string().trim().min(1).optional(),
     )
     .optional(),
+});
+
+const settingsBodySchema = settingsConfigSchema.superRefine((settings, context) => {
+  if (!settings.enabled) return;
+  if (!settings.senderAddress) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Sender address is required when public consultation intake is enabled",
+      path: ["senderAddress"],
+    });
+  }
+  if (settings.recipientEmails.length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "At least one recipient email is required when public consultation intake is enabled",
+      path: ["recipientEmails"],
+    });
+  }
+  if (settings.allowedOrigins.length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "At least one allowed origin is required when public consultation intake is enabled",
+      path: ["allowedOrigins"],
+    });
+  }
 });
 
 const optionalTelephoneSchema = z.preprocess(
@@ -108,24 +132,20 @@ function compactSettings(
 
 function parseSettingsConfig(
   provider: ProviderSettingRecord | undefined,
-  fallbackReviewOwnerUserId: string,
 ): PublicConsultationIntakeNotificationSettings {
   if (!provider) {
-    return { ...DEFAULT_NOTIFICATION_SETTINGS, reviewOwnerUserId: fallbackReviewOwnerUserId };
+    return { ...DEFAULT_NOTIFICATION_SETTINGS };
   }
   try {
-    const parsed = settingsBodySchema.partial().parse(JSON.parse(provider.encryptedConfig));
+    const parsed = settingsConfigSchema.partial().parse(JSON.parse(provider.encryptedConfig));
     return compactSettings({
       ...DEFAULT_NOTIFICATION_SETTINGS,
       ...parsed,
-      enabled: provider.enabled && parsed.enabled !== false,
-      reviewOwnerUserId: parsed.reviewOwnerUserId ?? fallbackReviewOwnerUserId,
+      enabled: provider.enabled && parsed.enabled === true,
     });
   } catch {
     return {
       ...DEFAULT_NOTIFICATION_SETTINGS,
-      enabled: provider.enabled,
-      reviewOwnerUserId: fallbackReviewOwnerUserId,
     };
   }
 }
@@ -133,32 +153,29 @@ function parseSettingsConfig(
 async function loadNotificationSettings(
   repository: OpenPracticeRepository,
   firmId: string,
-  fallbackReviewOwnerUserId: string,
 ): Promise<PublicConsultationIntakeNotificationSettings> {
   const providers = await repository.listProviderSettings(firmId, { kind: SETTINGS_KIND });
-  return parseSettingsConfig(
-    providers.find((provider) => provider.key === SETTINGS_KEY),
-    fallbackReviewOwnerUserId,
-  );
+  return parseSettingsConfig(providers.find((provider) => provider.key === SETTINGS_KEY));
 }
 
-async function saveNotificationSettings(
+async function upsertPublicConsultationIntakeNotificationSettings(
   repository: OpenPracticeRepository,
   firmId: string,
   settings: PublicConsultationIntakeNotificationSettings,
 ): Promise<PublicConsultationIntakeNotificationSettings> {
+  const validSettings = settingsBodySchema.parse(settings);
   const now = new Date().toISOString();
   await repository.upsertProviderSetting({
     id: `provider-public-intake-${firmId}`,
     firmId,
     kind: SETTINGS_KIND,
     key: SETTINGS_KEY,
-    enabled: settings.enabled,
-    encryptedConfig: JSON.stringify(compactSettings(settings)),
+    enabled: validSettings.enabled,
+    encryptedConfig: JSON.stringify(compactSettings(validSettings)),
     createdAt: now,
     updatedAt: now,
   });
-  return settings;
+  return validSettings;
 }
 
 function requestOrigin(request: FastifyRequest): string | undefined {
@@ -171,7 +188,13 @@ function assertAllowedOrigin(
   request: FastifyRequest,
 ): void {
   const origin = requestOrigin(request);
-  if (!origin) return;
+  if (!origin) {
+    throw new ApiHttpError(
+      403,
+      "PUBLIC_CONSULTATION_ORIGIN_REQUIRED",
+      "A website origin is required to submit consultation intakes",
+    );
+  }
   if (settings.allowedOrigins.includes(origin)) return;
   throw new ApiHttpError(
     403,
@@ -226,14 +249,18 @@ export function registerPublicConsultationIntakeRoutes(
   server.get("/api/public-consultation-intakes/settings", async (request) => {
     const access = requireAccess(request.auth, { resource: "provider_setting", action: "read" });
     if (!access.ok) throw access.error;
-    return loadNotificationSettings(options.repository, request.auth.firmId, request.auth.user.id);
+    return loadNotificationSettings(options.repository, request.auth.firmId);
   });
 
   server.put("/api/public-consultation-intakes/settings", async (request) => {
     const access = requireAccess(request.auth, { resource: "provider_setting", action: "update" });
     if (!access.ok) throw access.error;
     const body = settingsBodySchema.parse(request.body);
-    const saved = await saveNotificationSettings(options.repository, request.auth.firmId, body);
+    const saved = await upsertPublicConsultationIntakeNotificationSettings(
+      options.repository,
+      request.auth.firmId,
+      body,
+    );
     await appendRouteAuditEvent(options.repository, request.auth, {
       action: "public_consultation_intake.settings_updated",
       resourceType: "provider_setting",
@@ -273,11 +300,7 @@ export function registerPublicConsultationIntakeRoutes(
       },
     },
     async (request, reply) => {
-      const settings = await loadNotificationSettings(
-        options.repository,
-        options.publicFirmId,
-        options.publicActorUserId,
-      );
+      const settings = await loadNotificationSettings(options.repository, options.publicFirmId);
       assertAllowedOrigin(settings, request);
       if (!settings.enabled) {
         throw new ApiHttpError(
@@ -319,7 +342,7 @@ export function registerPublicConsultationIntakeRoutes(
         disclosureAcceptedAt: occurredAt,
         submittedAt: occurredAt,
         metadata: {
-          source: "crockett_paralegal_website",
+          source: "public_consultation_form",
           sourceUrlPresent: Boolean(body.sourceUrl),
           opposingPartyCount: opposingPartyNames.length,
         },
@@ -361,7 +384,7 @@ export function registerPublicConsultationIntakeRoutes(
         resourceId: intake.id,
         occurredAt,
         metadata: {
-          source: "crockett_paralegal_website",
+          source: "public_consultation_form",
           sourceUrlPresent: Boolean(body.sourceUrl),
           opposingPartyCount: opposingPartyNames.length,
           notificationEmailQueued: Boolean(queuedEmail),

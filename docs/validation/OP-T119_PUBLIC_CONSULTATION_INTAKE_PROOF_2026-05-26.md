@@ -4,7 +4,7 @@ Date: 2026-05-26
 
 ## Scope
 
-Added a review-first public consultation intake path for the Crockett Paralegal website.
+Added a review-first public consultation intake path for a configured public website.
 
 The public route accepts the front-page consultation form into a pending public-intake record only.
 It collects client name, email address, optional telephone number, opposing-party names, a brief matter

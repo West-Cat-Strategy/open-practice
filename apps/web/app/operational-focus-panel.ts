@@ -5,8 +5,10 @@ import type {
   TaskDeadlineWorkbenchResponse,
   WorkerRunsDashboardResponse,
 } from "./types";
+import type { OpenPracticeSidebarSectionKey } from "../routes/routeCatalog";
 
 export type OperationalFocusTone = "neutral" | "ready" | "risk";
+type PublicConsultationFocusStatus = "available" | "unavailable" | "access_denied";
 
 export interface OperationalFocusItem {
   key: string;
@@ -14,6 +16,7 @@ export interface OperationalFocusItem {
   detail: string;
   value: string;
   tone: OperationalFocusTone;
+  targetSection?: OpenPracticeSidebarSectionKey;
   section:
     | "Tasks"
     | "Workers"
@@ -21,7 +24,8 @@ export interface OperationalFocusItem {
     | "Providers"
     | "Portal access"
     | "Active matter"
-    | "Operational views";
+    | "Operational views"
+    | "Intake";
 }
 
 export interface OperationalFocusSummary {
@@ -81,6 +85,7 @@ function queueAttentionItems(queues: QueuesResponse): OperationalFocusItem[] {
           )}.`,
     tone: highPriority > 0 ? "risk" : "neutral",
     section: "Queues",
+    targetSection: "queues",
   }));
 }
 
@@ -98,6 +103,7 @@ function providerRiskItems(status: ProvidersStatusResponse): OperationalFocusIte
       detail: "Latest job lifecycle summaries are redacted before display.",
       tone: "risk",
       section: "Providers",
+      targetSection: "queues",
     });
   }
 
@@ -114,6 +120,7 @@ function providerRiskItems(status: ProvidersStatusResponse): OperationalFocusIte
       }.`,
       tone: "risk",
       section: "Providers",
+      targetSection: "documents",
     });
   }
 
@@ -125,6 +132,7 @@ function providerRiskItems(status: ProvidersStatusResponse): OperationalFocusIte
       detail: `Queue ${compactStatus(status.email.queue?.status)}. Confirmation-gated delivery remains enforced.`,
       tone: status.email.status === "disabled" ? "neutral" : "risk",
       section: "Providers",
+      targetSection: "queues",
     });
   }
 
@@ -150,6 +158,7 @@ function activeMatterItems(input: {
         detail: item.detail,
         tone: item.tone,
         section: "Active matter" as const,
+        targetSection: "matters" as const,
       })) ?? [];
 
   if (input.attentionActivityCount > 0) {
@@ -160,6 +169,7 @@ function activeMatterItems(input: {
       detail: "Attention-coded active-matter activity from already visible timeline entries.",
       tone: "risk",
       section: "Active matter",
+      targetSection: "matters",
     });
   }
 
@@ -200,6 +210,7 @@ function portalAccessItems(operationalViews: OperationalViewsResponse): Operatio
         : "Latest public-token access events are summarized without network details.",
       tone: latestActivity?.status === "denied" ? "risk" : "neutral",
       section: "Portal access",
+      targetSection: "audit",
     });
   }
 
@@ -211,6 +222,7 @@ function portalAccessItems(operationalViews: OperationalViewsResponse): Operatio
       detail: "Three or more denied or blocked attempts on the same public link in 24 hours.",
       tone: "risk",
       section: "Portal access",
+      targetSection: "audit",
     });
   }
 
@@ -222,6 +234,7 @@ function portalAccessItems(operationalViews: OperationalViewsResponse): Operatio
       detail: "Active share, upload, intake, and guest-session links expiring within 7 days.",
       tone: expiringHighPriority ? "risk" : "neutral",
       section: "Portal access",
+      targetSection: "audit",
     });
   }
 
@@ -250,7 +263,27 @@ function operationalViewItems(operationalViews: OperationalViewsResponse): Opera
       detail: "",
       tone: view.definition.defaultPriority === "high" ? "risk" : "neutral",
       section: "Operational views" as const,
+      targetSection: "queues" as const,
     }));
+}
+
+function publicConsultationItems(input: {
+  status?: PublicConsultationFocusStatus;
+  pendingCount?: number;
+}): OperationalFocusItem[] {
+  const pendingCount = input.pendingCount ?? 0;
+  if (input.status !== "available" || pendingCount <= 0) return [];
+  return [
+    {
+      key: "public-consultation-pending",
+      label: "Public consultation requests",
+      value: pendingCount.toString(),
+      detail: "Pending website requests are summarized by count; request details stay in Intake.",
+      tone: "risk",
+      section: "Intake",
+      targetSection: "intake",
+    },
+  ];
 }
 
 export function buildOperationalFocusSummary(input: {
@@ -261,6 +294,8 @@ export function buildOperationalFocusSummary(input: {
   providerStatus: ProvidersStatusResponse;
   activeMatterCommandCenter?: { rail: MatterCommandCenterRail };
   activeMatterActivitySummary?: { attention: number };
+  publicConsultationStatus?: PublicConsultationFocusStatus;
+  pendingPublicConsultationCount?: number;
 }): OperationalFocusSummary {
   const myTasks = input.taskWorkbench.counters.my;
   const workerSummary = input.workerRuns.all.summary;
@@ -316,6 +351,10 @@ export function buildOperationalFocusSummary(input: {
           },
         ]
       : []),
+    ...publicConsultationItems({
+      status: input.publicConsultationStatus,
+      pendingCount: input.pendingPublicConsultationCount,
+    }),
     ...portalAccessItems(input.operationalViews),
     ...operationalViewItems(input.operationalViews),
     ...queueAttentionItems(input.queues),
@@ -330,6 +369,9 @@ export function buildOperationalFocusSummary(input: {
     attentionCount:
       myTasks.overdue +
       workerSummary.failed +
+      (input.publicConsultationStatus === "available"
+        ? (input.pendingPublicConsultationCount ?? 0)
+        : 0) +
       input.operationalViews.views
         .filter((view) => view.definition.defaultPriority === "high")
         .reduce((sum, view) => sum + view.resultCount, 0) +

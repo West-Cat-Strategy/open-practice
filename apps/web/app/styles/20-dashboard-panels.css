@@ -89,6 +89,11 @@
   gap: 16px;
   align-items: start;
   animation: contentReveal 180ms ease both;
+  transition: grid-template-columns 0.22s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.main-grid.context-rail-collapsed {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .panel {

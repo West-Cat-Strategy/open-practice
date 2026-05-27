@@ -1,3 +1,8 @@
+import {
+  describeOperationalActionState,
+  disabledOperationalAction,
+  type OperationalActionState,
+} from "@open-practice/domain/operational-actions";
 import type {
   AnswerSnapshotRecord,
   EmbeddedIntakeFormItem,
@@ -133,6 +138,105 @@ export function buildIntakeFormReviewDecisionPath(
   decision: "accept" | "reject" | "request-more-info",
 ): string {
   return `/api/intake-form-links/${encodeURIComponent(linkId)}/review/${decision}`;
+}
+
+export type SubmittedIntakeReviewAction = "load" | "accept" | "reject" | "request_more_info";
+export type SubmittedIntakeReviewBusyAction = SubmittedIntakeReviewAction | "other";
+
+const submittedIntakeReviewActionDescriptors: Record<
+  SubmittedIntakeReviewAction,
+  {
+    actionKey: string;
+    label: string;
+    busyLabel: string;
+  }
+> = {
+  load: {
+    actionKey: "submitted_intake_review.load",
+    label: "Load review",
+    busyLabel: "Loading...",
+  },
+  accept: {
+    actionKey: "submitted_intake_review.accept",
+    label: "Accept",
+    busyLabel: "Accepting...",
+  },
+  reject: {
+    actionKey: "submitted_intake_review.reject",
+    label: "Reject",
+    busyLabel: "Rejecting...",
+  },
+  request_more_info: {
+    actionKey: "submitted_intake_review.request_more_info",
+    label: "More info",
+    busyLabel: "Creating follow-up...",
+  },
+};
+
+export function submittedIntakeReviewBusyAction(input: {
+  linkId: string;
+  loadingLinkId?: string;
+  reviewingKey?: string;
+}): SubmittedIntakeReviewBusyAction | undefined {
+  if (input.loadingLinkId === input.linkId) return "load";
+  if (!input.reviewingKey?.startsWith(`${input.linkId}:`)) return undefined;
+  const action = input.reviewingKey.slice(input.linkId.length + 1);
+  if (action === "accept" || action === "reject") return action;
+  if (action === "request-more-info") return "request_more_info";
+  return "other";
+}
+
+export function compactSubmittedIntakeReviewActionReason(value?: string): string {
+  if (!value) return "available";
+  const labels: Record<string, string> = {
+    load_in_progress: "review load in progress",
+    decision_in_progress: "decision in progress",
+    review_payload_required: "review payload required",
+    decision_already_recorded: "decision already recorded",
+    reason_required: "reason required",
+  };
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
+export function describeSubmittedIntakeReviewAction(input: {
+  action: SubmittedIntakeReviewAction;
+  reviewLoaded: boolean;
+  reviewDecisionCount?: number;
+  reason?: string;
+  busyAction?: SubmittedIntakeReviewBusyAction;
+}): OperationalActionState {
+  const descriptor = submittedIntakeReviewActionDescriptors[input.action];
+  const loadBusy = input.busyAction === "load";
+  const decisionBusy = input.busyAction !== undefined && input.busyAction !== "load";
+  const sameDecisionBusy = decisionBusy && input.busyAction === input.action;
+  const decisionAction = input.action !== "load";
+  const decisionAlreadyRecorded = decisionAction && (input.reviewDecisionCount ?? 0) > 0;
+  const reasonRequired =
+    (input.action === "reject" || input.action === "request_more_info") &&
+    input.reviewLoaded &&
+    !decisionAlreadyRecorded &&
+    !input.reason?.trim();
+
+  return describeOperationalActionState({
+    actionKey: descriptor.actionKey,
+    label: descriptor.label,
+    availableTone:
+      input.action === "reject" ? "risk" : input.action === "accept" ? "ready" : "neutral",
+    disabledWhen: [
+      loadBusy &&
+        disabledOperationalAction("load_in_progress", {
+          label: input.action === "load" ? descriptor.busyLabel : undefined,
+        }),
+      sameDecisionBusy &&
+        disabledOperationalAction("decision_in_progress", {
+          label: descriptor.busyLabel,
+        }),
+      decisionBusy && disabledOperationalAction("decision_in_progress"),
+      decisionAction && !input.reviewLoaded && disabledOperationalAction("review_payload_required"),
+      decisionAlreadyRecorded && disabledOperationalAction("decision_already_recorded"),
+      reasonRequired && disabledOperationalAction("reason_required"),
+    ],
+  });
 }
 
 export function describeRequestMoreInfoResult(payload: IntakeFormReviewResponse): string {

@@ -15,6 +15,7 @@ import {
 import type {
   DocumentAutomationProvider,
   DraftAssistProvider,
+  PublicConsultationIntakeNotificationSettings,
   SignatureProvider,
   User,
 } from "@open-practice/domain";
@@ -78,6 +79,24 @@ const optionalUrl = z.preprocess(
   z.string().url().optional(),
 );
 
+const optionalBoolean = z.preprocess((value) => {
+  if (value === undefined || value === "") return undefined;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+  }
+  return value;
+}, z.boolean().optional());
+
+const publicConsultationBootstrapSettingsSchema = z.object({
+  enabled: z.boolean(),
+  senderAddress: z.union([z.literal(""), z.string().trim().email().max(254)]),
+  recipientEmails: z.array(z.string().trim().email().max(254)).max(10),
+  allowedOrigins: z.array(z.string().trim().url().max(2048)).max(20),
+  reviewOwnerUserId: z.string().trim().min(1).optional(),
+});
+
 export const envSchema = z.object({
   NODE_ENV: z.string().default("development"),
   API_PORT: z.coerce.number().default(4000),
@@ -116,12 +135,18 @@ export const envSchema = z.object({
   PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS: optionalString,
   PUBLIC_CONSULTATION_INTAKE_FIRM_ID: optionalString,
   PUBLIC_CONSULTATION_INTAKE_ACTOR_USER_ID: optionalString,
+  PUBLIC_CONSULTATION_INTAKE_ENABLED: optionalBoolean,
+  PUBLIC_CONSULTATION_INTAKE_SENDER_ADDRESS: optionalString,
+  PUBLIC_CONSULTATION_INTAKE_RECIPIENT_EMAILS: optionalString,
+  PUBLIC_CONSULTATION_INTAKE_REVIEW_OWNER_USER_ID: optionalString,
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;
 
 // Session cookie name moved to http/auth-helpers.ts
 const DEFAULT_RATE_LIMIT = { max: 300, timeWindow: "1 minute" };
+const PUBLIC_CONSULTATION_SETTINGS_KIND = "public_intake";
+const PUBLIC_CONSULTATION_SETTINGS_KEY = "consultation";
 // Auth rate limits moved to routes/auth.ts
 
 // Auth schemas moved to routes/auth.ts
@@ -321,8 +346,6 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     origin: [
       /^http:\/\/localhost:\d+$/,
       /^http:\/\/127\.0\.0\.1:\d+$/,
-      "https://crockettparalegal.ca",
-      "https://www.crockettparalegal.ca",
       ...publicConsultationOrigins,
     ],
     credentials: true,
@@ -589,6 +612,62 @@ function splitCsvEnv(value: string | undefined): string[] {
     .filter((item) => item.length > 0);
 }
 
+export function buildPublicConsultationIntakeSettingsFromEnv(
+  env: ApiEnv,
+): PublicConsultationIntakeNotificationSettings | undefined {
+  const senderAddress = env.PUBLIC_CONSULTATION_INTAKE_SENDER_ADDRESS?.trim() ?? "";
+  const recipientEmails = splitCsvEnv(env.PUBLIC_CONSULTATION_INTAKE_RECIPIENT_EMAILS);
+  const allowedOrigins = splitCsvEnv(env.PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS);
+  const reviewOwnerUserId =
+    env.PUBLIC_CONSULTATION_INTAKE_REVIEW_OWNER_USER_ID?.trim() ||
+    env.PUBLIC_CONSULTATION_INTAKE_ACTOR_USER_ID?.trim() ||
+    env.DEV_AUTH_USER_ID;
+  const shouldBootstrap =
+    env.PUBLIC_CONSULTATION_INTAKE_ENABLED !== undefined ||
+    senderAddress.length > 0 ||
+    recipientEmails.length > 0 ||
+    Boolean(env.PUBLIC_CONSULTATION_INTAKE_REVIEW_OWNER_USER_ID);
+
+  if (!shouldBootstrap) return undefined;
+
+  const enabled = env.PUBLIC_CONSULTATION_INTAKE_ENABLED === true;
+  if (enabled && (!senderAddress || recipientEmails.length === 0 || allowedOrigins.length === 0)) {
+    throw new Error(
+      "PUBLIC_CONSULTATION_INTAKE_ENABLED requires PUBLIC_CONSULTATION_INTAKE_SENDER_ADDRESS, PUBLIC_CONSULTATION_INTAKE_RECIPIENT_EMAILS, and PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS",
+    );
+  }
+
+  return {
+    enabled,
+    senderAddress,
+    recipientEmails,
+    allowedOrigins,
+    reviewOwnerUserId,
+  };
+}
+
+export async function configurePublicConsultationIntakeSettingsFromEnv(
+  repository: OpenPracticeRepository,
+  env: ApiEnv,
+): Promise<PublicConsultationIntakeNotificationSettings | undefined> {
+  const rawSettings = buildPublicConsultationIntakeSettingsFromEnv(env);
+  if (!rawSettings) return undefined;
+  const settings = publicConsultationBootstrapSettingsSchema.parse(rawSettings);
+  const firmId = env.PUBLIC_CONSULTATION_INTAKE_FIRM_ID ?? env.DEV_AUTH_FIRM_ID;
+  const now = new Date().toISOString();
+  await repository.upsertProviderSetting({
+    id: `provider-public-intake-${firmId}`,
+    firmId,
+    kind: PUBLIC_CONSULTATION_SETTINGS_KIND,
+    key: PUBLIC_CONSULTATION_SETTINGS_KEY,
+    enabled: settings.enabled,
+    encryptedConfig: JSON.stringify(settings),
+    createdAt: now,
+    updatedAt: now,
+  });
+  return settings;
+}
+
 function redisConnectionFromUrl(redisUrl: string): {
   host: string;
   port: number;
@@ -678,6 +757,7 @@ if (process.env.NODE_ENV !== "test") {
   const env = envSchema.parse(process.env);
   validateProductionReadiness(env);
   const { repository, close } = await createRepositoryFromEnv(env);
+  await configurePublicConsultationIntakeSettingsFromEnv(repository, env);
   const emailJobQueue = createEmailJobQueueFromEnv(env);
   const connectorJobQueue = createConnectorJobQueueFromEnv(env);
   const reportJobQueue = createReportJobQueueFromEnv(env);

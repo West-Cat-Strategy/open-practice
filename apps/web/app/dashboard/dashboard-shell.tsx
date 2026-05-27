@@ -1,8 +1,12 @@
-import type { ChangeEvent, ReactNode, RefObject } from "react";
+import { type ChangeEvent, type ReactNode, type RefObject, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock3,
+  PanelRight,
+  PanelRightClose,
   Save,
   Search,
   ShieldCheck,
@@ -34,6 +38,10 @@ import type {
 
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 
+type ActionableOperationalFocusItem = OperationalFocusSummary["items"][number] & {
+  targetSection?: LocalDashboardSectionKey;
+};
+
 const navigationAreaLabels: Record<OpenPracticeRouteArea, string> = {
   workspace: "Workspace",
   finance: "Finance",
@@ -47,6 +55,8 @@ const navigationAreaOrder: OpenPracticeRouteArea[] = [
   "operations",
   "review",
 ];
+
+const dashboardReviewRailId = "dashboard-review-rail";
 
 export type DashboardMetric = {
   label: string;
@@ -65,6 +75,20 @@ export function DashboardSidebar({
   navIcons: Record<LocalDashboardSectionKey, LucideIcon>;
   onSelectSection: (section: LocalDashboardSectionKey) => void;
 }) {
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<OpenPracticeRouteArea, boolean>>({
+    workspace: false,
+    finance: false,
+    operations: false,
+    review: false,
+  });
+
+  const toggleGroup = (area: OpenPracticeRouteArea) => {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [area]: !prev[area],
+    }));
+  };
+
   const groupedNavigationSections = navigationAreaOrder
     .map((area) => ({
       area,
@@ -83,54 +107,84 @@ export function DashboardSidebar({
       </div>
 
       <nav className="nav-list grouped-nav-list" aria-label="Dashboard sections">
-        {groupedNavigationSections.map((group) => (
-          <section
-            className="nav-group"
-            key={group.area}
-            aria-labelledby={`nav-area-${group.area}`}
-          >
-            <p className="nav-group-label" id={`nav-area-${group.area}`}>
-              {navigationAreaLabels[group.area]}
-            </p>
-            <div className="nav-group-items">
-              {group.sections.map(({ key, label, title, enabled }) => {
-                const Icon = navIcons[key];
-                const disabledReason = describeDisabledNavigationReason({ key, label, enabled });
-                const disabledReasonId = `nav-disabled-${key}`;
-                return (
-                  <button
-                    aria-current={key === activeSection ? "page" : undefined}
-                    aria-describedby={disabledReason ? disabledReasonId : undefined}
-                    aria-disabled={!enabled}
-                    className={[
-                      "nav-item",
-                      key === activeSection ? "active" : "",
-                      enabled ? "" : "disabled",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    key={key}
-                    onClick={() => {
-                      if (enabled) onSelectSection(key);
-                    }}
-                    title={disabledReason ?? title}
-                    type="button"
-                  >
-                    <Icon size={18} />
-                    <span>
-                      <strong>{label}</strong>
-                      {disabledReason ? (
-                        <small className="nav-disabled-reason" id={disabledReasonId}>
-                          {disabledReason}
-                        </small>
-                      ) : null}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        ))}
+        {groupedNavigationSections.map((group) => {
+          const isCollapsed = collapsedGroups[group.area];
+          const groupLabel = navigationAreaLabels[group.area];
+          const groupContentId = `nav-area-${group.area}-items`;
+          const groupToggleLabel = isCollapsed
+            ? `Expand ${groupLabel} navigation`
+            : `Collapse ${groupLabel} navigation`;
+          return (
+            <section
+              className={`nav-group ${isCollapsed ? "collapsed" : ""}`}
+              key={group.area}
+              aria-labelledby={`nav-area-${group.area}`}
+            >
+              <button
+                className="nav-group-header-btn"
+                onClick={() => toggleGroup(group.area)}
+                type="button"
+                aria-controls={groupContentId}
+                aria-expanded={!isCollapsed}
+                aria-label={groupToggleLabel}
+                title={groupToggleLabel}
+              >
+                <span className="nav-group-label" id={`nav-area-${group.area}`}>
+                  {groupLabel}
+                </span>
+                {isCollapsed ? (
+                  <ChevronRight size={14} className="collapse-icon" />
+                ) : (
+                  <ChevronDown size={14} className="collapse-icon" />
+                )}
+              </button>
+
+              {!isCollapsed && (
+                <div className="nav-group-items" id={groupContentId}>
+                  {group.sections.map(({ key, label, title, enabled }) => {
+                    const Icon = navIcons[key];
+                    const disabledReason = describeDisabledNavigationReason({
+                      key,
+                      label,
+                      enabled,
+                    });
+                    const disabledReasonId = `nav-disabled-${key}`;
+                    return (
+                      <button
+                        aria-current={key === activeSection ? "page" : undefined}
+                        aria-describedby={disabledReason ? disabledReasonId : undefined}
+                        aria-disabled={!enabled}
+                        className={[
+                          "nav-item",
+                          key === activeSection ? "active" : "",
+                          enabled ? "" : "disabled",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        key={key}
+                        onClick={() => {
+                          if (enabled) onSelectSection(key);
+                        }}
+                        title={disabledReason ?? title}
+                        type="button"
+                      >
+                        <Icon size={18} />
+                        <span>
+                          <strong>{label}</strong>
+                          {disabledReason ? (
+                            <small className="nav-disabled-reason" id={disabledReasonId}>
+                              {disabledReason}
+                            </small>
+                          ) : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          );
+        })}
       </nav>
 
       <section className="security-card dashboard-security-card">
@@ -146,22 +200,87 @@ export function DashboardTopbar({
   firmName,
   session,
   formatProfessionalRole,
+  isContextRailCollapsed = false,
+  onToggleContextRail,
+  reviewRailToggleRef,
 }: {
   firmName: string;
   session: SessionResponse;
   formatProfessionalRole: (role: SessionResponse["user"]["role"]) => string;
+  isContextRailCollapsed?: boolean;
+  onToggleContextRail?: () => void;
+  reviewRailToggleRef?: RefObject<HTMLButtonElement | null>;
 }) {
+  const reviewRailToggleLabel = isContextRailCollapsed ? "Show review tools" : "Hide review tools";
+  const reviewRailToggleTitle = isContextRailCollapsed
+    ? "Show review tools (prospective checks and queues)"
+    : "Hide review tools";
+
   return (
     <header className="topbar dashboard-topbar">
       <div className="topbar-heading">
         <p className="eyebrow">BC / Ontario / Canada small-practice workspace</p>
         <h1 id="dashboard-title">{firmName}</h1>
       </div>
-      <div className="user-pill topbar-user-pill">
-        <span>{session.user.displayName}</span>
-        <strong>{formatProfessionalRole(session.user.role)}</strong>
+      <div className="topbar-actions-container">
+        {onToggleContextRail && (
+          <button
+            className={`context-rail-toggle-btn ${isContextRailCollapsed ? "collapsed" : ""}`}
+            onClick={onToggleContextRail}
+            ref={reviewRailToggleRef}
+            type="button"
+            aria-controls={dashboardReviewRailId}
+            aria-expanded={!isContextRailCollapsed}
+            aria-label="Toggle review tools"
+            title={reviewRailToggleTitle}
+          >
+            {isContextRailCollapsed ? <PanelRight size={19} /> : <PanelRightClose size={19} />}
+            <span>{reviewRailToggleLabel}</span>
+          </button>
+        )}
+        <div className="user-pill topbar-user-pill">
+          <span>{session.user.displayName}</span>
+          <strong>{formatProfessionalRole(session.user.role)}</strong>
+        </div>
       </div>
     </header>
+  );
+}
+
+export function DashboardReviewRailExpandHandle({
+  expandHandleRef,
+  onExpand,
+}: {
+  expandHandleRef?: RefObject<HTMLButtonElement | null>;
+  onExpand: () => void;
+}) {
+  return (
+    <button
+      className="context-rail-toggle-handle"
+      onClick={onExpand}
+      ref={expandHandleRef}
+      type="button"
+      aria-controls={dashboardReviewRailId}
+      aria-expanded="false"
+      aria-label="Open review tools"
+      title="Open review tools"
+    >
+      <PanelRight size={18} aria-hidden="true" />
+    </button>
+  );
+}
+
+export function DashboardReviewRailCollapsedTarget() {
+  return (
+    <section
+      aria-label="Matter review tools"
+      className="context-rail-placeholder"
+      data-review-rail-state="collapsed"
+      id={dashboardReviewRailId}
+      role="region"
+    >
+      <p>Review tools are collapsed.</p>
+    </section>
   );
 }
 
@@ -180,14 +299,22 @@ export function DashboardMetrics({ metrics }: { metrics: DashboardMetric[] }) {
 }
 
 export function OperationalFocusPanel({
+  navigationSections,
   operationalFocus,
   operationalFocusEmpty,
   onOpenQueues,
+  onSelectSection,
 }: {
+  navigationSections?: OpenPracticeSidebarNavigationSection[];
   operationalFocus: OperationalFocusSummary;
   operationalFocusEmpty?: string;
   onOpenQueues: () => void;
+  onSelectSection?: (section: LocalDashboardSectionKey) => void;
 }) {
+  const enabledNavigationSections = new Set(
+    (navigationSections ?? []).filter((section) => section.enabled).map((section) => section.key),
+  );
+
   return (
     <section className="panel operational-focus-panel" aria-labelledby="operational-focus-title">
       <div className="panel-header operational-focus-header">
@@ -215,24 +342,50 @@ export function OperationalFocusPanel({
         </span>
       </div>
       <div className="operational-focus-list">
-        {operationalFocus.items.map((item) => (
-          <article
-            className={`operational-focus-item ${focusItemToneClass(item.tone)}`}
-            key={item.key}
-          >
-            <span className="operational-focus-item-value">{item.value}</span>
-            <span>
-              <strong>{item.label}</strong>
-              {item.detail ? (
-                <small>
-                  {item.section} · {item.detail}
-                </small>
-              ) : (
-                <small>{item.section}</small>
-              )}
-            </span>
-          </article>
-        ))}
+        {operationalFocus.items.map((item) => {
+          const actionableItem = item as ActionableOperationalFocusItem;
+          const targetSection =
+            actionableItem.targetSection &&
+            enabledNavigationSections.has(actionableItem.targetSection)
+              ? actionableItem.targetSection
+              : undefined;
+          const className = `operational-focus-item ${focusItemToneClass(item.tone)}`;
+          const itemContent = (
+            <>
+              <span className="operational-focus-item-value">{item.value}</span>
+              <span>
+                <strong>{item.label}</strong>
+                {item.detail ? (
+                  <small>
+                    {item.section} · {item.detail}
+                  </small>
+                ) : (
+                  <small>{item.section}</small>
+                )}
+              </span>
+            </>
+          );
+
+          if (targetSection && onSelectSection) {
+            return (
+              <button
+                aria-label={`Open ${item.label}`}
+                className={className}
+                key={item.key}
+                onClick={() => onSelectSection(targetSection)}
+                type="button"
+              >
+                {itemContent}
+              </button>
+            );
+          }
+
+          return (
+            <article className={className} key={item.key}>
+              {itemContent}
+            </article>
+          );
+        })}
         {operationalFocusEmpty ? <p className="inline-empty">{operationalFocusEmpty}</p> : null}
       </div>
     </section>
@@ -524,7 +677,11 @@ export function ContextRail({
   onRunConflictCheck: () => void;
 }) {
   return (
-    <aside className="context-rail matter-context-rail" aria-label="Matter review tools">
+    <aside
+      className="context-rail matter-context-rail"
+      id={dashboardReviewRailId}
+      aria-label="Matter review tools"
+    >
       <article className="panel conflict-panel context-rail-panel">
         <div className="panel-header context-rail-header">
           <div>
