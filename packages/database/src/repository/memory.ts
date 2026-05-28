@@ -12,6 +12,7 @@ import type {
 import {
   appendAuditEvent,
   buildBasicDraftTemplates,
+  buildMatterSetupProfile,
   buildContactDossiers,
   buildPracticePresetTemplates,
   canAccess,
@@ -1361,51 +1362,66 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
             ...party,
             contact: this.contacts.find((contact) => contact.id === party.contactId)!,
           }));
+        const documents = this.documents.filter((document) => document.matterId === matter.id);
+        const timeEntries = this.timeEntries.filter((entry) => entry.matterId === matter.id);
+        const expenses = this.expenseEntries.filter((entry) => entry.matterId === matter.id);
+        const activity = buildActivityTimeline({
+          firmId: user.firmId,
+          matter,
+          contacts: this.contacts,
+          matterParties: this.matterParties,
+          documents: this.documents,
+          portalGrants: this.portalGrants,
+          shareLinks: this.shareLinks,
+          externalUploadLinks: this.externalUploadLinks,
+          accessLogs: this.accessLogs,
+          auditEvents: this.auditEvents,
+          emailOutbox: this.emailOutbox,
+          signatureRequests: this.signatureRequests,
+          intakeSessions: this.intakeSessions,
+          generatedDocuments: this.generatedDocuments,
+          calendarEvents: this.calendarEvents,
+          taskDeadlines: this.taskDeadlines,
+          timeEntries: this.timeEntries,
+          expenses: this.expenseEntries,
+          invoices: this.invoices.map((invoice) => ({
+            ...invoice,
+            lines: this.invoiceLines.filter((line) => line.invoiceId === invoice.id),
+          })),
+          payments: this.manualPayments.map((payment) => ({
+            ...payment,
+            allocations: this.paymentAllocations.filter(
+              (allocation) => allocation.paymentId === payment.id,
+            ),
+          })),
+          trustTransferRequests: this.trustTransferRequests,
+          ledgerAccounts: this.ledgerAccounts,
+          ledgerEntries: entries,
+        });
+        const trustBalanceCents = matterTrustBalance(
+          entries,
+          this.ledgerAccounts,
+          matter,
+          this.matterParties,
+        );
         return {
           ...matter,
           parties,
-          documents: this.documents.filter((document) => document.matterId === matter.id),
-          timeEntries: this.timeEntries.filter((entry) => entry.matterId === matter.id),
-          expenses: this.expenseEntries.filter((entry) => entry.matterId === matter.id),
-          activity: buildActivityTimeline({
-            firmId: user.firmId,
+          documents,
+          timeEntries,
+          expenses,
+          activity,
+          trustBalanceCents,
+          setupProfile: buildMatterSetupProfile({
             matter,
-            contacts: this.contacts,
-            matterParties: this.matterParties,
-            documents: this.documents,
-            portalGrants: this.portalGrants,
-            shareLinks: this.shareLinks,
-            externalUploadLinks: this.externalUploadLinks,
-            accessLogs: this.accessLogs,
-            auditEvents: this.auditEvents,
-            emailOutbox: this.emailOutbox,
-            signatureRequests: this.signatureRequests,
-            intakeSessions: this.intakeSessions,
-            generatedDocuments: this.generatedDocuments,
-            calendarEvents: this.calendarEvents,
-            taskDeadlines: this.taskDeadlines,
-            timeEntries: this.timeEntries,
-            expenses: this.expenseEntries,
-            invoices: this.invoices.map((invoice) => ({
-              ...invoice,
-              lines: this.invoiceLines.filter((line) => line.invoiceId === invoice.id),
-            })),
-            payments: this.manualPayments.map((payment) => ({
-              ...payment,
-              allocations: this.paymentAllocations.filter(
-                (allocation) => allocation.paymentId === payment.id,
-              ),
-            })),
-            trustTransferRequests: this.trustTransferRequests,
-            ledgerAccounts: this.ledgerAccounts,
-            ledgerEntries: entries,
+            parties,
+            documents,
+            timeEntries,
+            expenses,
+            activity,
+            trustBalanceCents,
+            users: this.users.filter((candidate) => candidate.firmId === user.firmId),
           }),
-          trustBalanceCents: matterTrustBalance(
-            entries,
-            this.ledgerAccounts,
-            matter,
-            this.matterParties,
-          ),
         };
       });
   }

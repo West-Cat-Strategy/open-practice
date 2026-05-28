@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type {
-  ActivityTimelineEntry,
-  CalendarEventRecord,
-  DashboardSectionCapability,
-  DashboardSectionKey,
-  DraftRecord,
-  DraftTemplateRecord,
+import {
+  buildMatterSetupProfile,
+  type ActivityTimelineEntry,
+  type CalendarEventRecord,
+  type DashboardSectionCapability,
+  type DashboardSectionKey,
+  type DraftRecord,
+  type DraftTemplateRecord,
+  type MatterParty,
+  type TimeEntry,
 } from "@open-practice/domain";
 import { sampleResidentialTenancyIntakeDefinition } from "@open-practice/domain/sample-data";
 import { buildSidebarNavigationSections } from "../routes/routeCatalog";
@@ -195,7 +198,9 @@ import {
   buildIntakeTemplatePreviewPayload,
   buildIntakeTemplateEditorValue,
   buildVariableMapping,
+  compactSubmittedIntakeReviewActionReason,
   currentProposalValue,
+  describeSubmittedIntakeReviewAction,
   describeRequestMoreInfoResult,
   describeIntakeTemplatePreview,
   buildIntakeVariableProposalListPath,
@@ -204,6 +209,7 @@ import {
   loadIntakeFormsDashboardData,
   pendingSubmittedIntakeReviewLinks,
   previewStatusClass,
+  submittedIntakeReviewBusyAction,
   summarizeAnswerValue,
   summarizeIntakeItemAction,
   summarizeIntakeReview,
@@ -228,6 +234,17 @@ import {
   loadCommunicationsInboxDashboardData,
 } from "./communications-inbox-dashboard";
 import {
+  buildPublicConsultationSettingsPayload,
+  compactPublicConsultationReviewActionReason,
+  defaultPublicConsultationSettings,
+  describePublicConsultationReviewAction,
+  emptyPublicConsultationDashboard,
+  publicConsultationReviewBusyAction,
+  publicConsultationReviewBusyKey,
+  publicConsultationSettingsSummary,
+  splitPublicConsultationList,
+} from "./public-consultation-intakes-dashboard";
+import {
   actionComplete,
   coerceAnswer,
   errorMessage,
@@ -250,6 +267,7 @@ import {
   upsertIntakeSession,
 } from "./types";
 import { ContactsSection } from "./dashboard/contacts-section";
+import { MatterOverviewSection } from "./dashboard/matter-overview-section";
 import type {
   ExternalUploadLinkRecord,
   ExternalUploadReviewItem,
@@ -263,6 +281,7 @@ import type {
   MatterSummary,
   OperationalViewsResponse,
   ProvidersStatusResponse,
+  PublicConsultationIntake,
   QueuesResponse,
   SavedOperationalViewDefinition,
   ShareLinkRecord,
@@ -316,6 +335,26 @@ function matter(overrides: Partial<MatterSummary>): MatterSummary {
     trustBalanceCents: 0,
     ...overrides,
   } as MatterSummary;
+}
+
+function publicConsultationIntake(
+  overrides: Partial<PublicConsultationIntake> = {},
+): PublicConsultationIntake {
+  return {
+    id: "public-intake-001",
+    firmId: "firm-west-legal",
+    status: "pending",
+    clientName: "Synthetic Requester",
+    telephone: "+1-555-0101",
+    email: "requester@example.test",
+    opposingPartyNames: ["Synthetic Opposing Party"],
+    matterDescription: "Synthetic public consultation body text.",
+    sourceUrl: "https://consult.example.test/#consultation-intake",
+    disclosureAcceptedAt: "2026-05-26T10:00:00.000Z",
+    submittedAt: "2026-05-26T10:05:00.000Z",
+    metadata: { source: "public_consultation_form" },
+    ...overrides,
+  };
 }
 
 function contactDossierWithResolutionSignal(): ContactDossier {
@@ -1233,6 +1272,221 @@ describe("dashboard client behavior", () => {
         events: [],
       }),
     ).toEqual({ label: "failed", tone: "risk" });
+  });
+
+  it("uses tenant-neutral public consultation fallback settings", () => {
+    const dashboard = emptyPublicConsultationDashboard();
+
+    expect(defaultPublicConsultationSettings).toEqual({
+      enabled: false,
+      senderAddress: "",
+      recipientEmails: [],
+      allowedOrigins: [],
+    });
+    expect(dashboard.settings).toEqual(defaultPublicConsultationSettings);
+    expect(publicConsultationSettingsSummary(dashboard.settings)).toBe(
+      "disabled · sender not configured · recipients not configured · 0 origins",
+    );
+  });
+
+  it("builds public consultation settings payloads with disabled-empty and enabled-required behavior", () => {
+    const disabled = buildPublicConsultationSettingsPayload({
+      enabled: false,
+      senderAddress: " ",
+      recipientEmailsText: " ",
+      allowedOriginsText: " ",
+      reviewOwnerUserId: " ",
+    });
+    const missingEnabledConfig = buildPublicConsultationSettingsPayload({
+      enabled: true,
+      senderAddress: "",
+      recipientEmailsText: "",
+      allowedOriginsText: "",
+      reviewOwnerUserId: "",
+    });
+    const configured = buildPublicConsultationSettingsPayload({
+      enabled: true,
+      senderAddress: " consultations@example.test ",
+      recipientEmailsText: "review@example.test, review@example.test\nbackup@example.test",
+      allowedOriginsText: "https://consult.example.test\nhttp://localhost:4321",
+      reviewOwnerUserId: " user-admin ",
+    });
+
+    expect(disabled).toEqual({
+      payload: {
+        enabled: false,
+        senderAddress: "",
+        recipientEmails: [],
+        allowedOrigins: [],
+        reviewOwnerUserId: undefined,
+      },
+    });
+    expect(missingEnabledConfig).toEqual({
+      error: "Settings save failed: sender, recipients, and origins are required when enabled.",
+    });
+    expect(configured).toEqual({
+      payload: {
+        enabled: true,
+        senderAddress: "consultations@example.test",
+        recipientEmails: ["review@example.test", "backup@example.test"],
+        allowedOrigins: ["https://consult.example.test", "http://localhost:4321"],
+        reviewOwnerUserId: "user-admin",
+      },
+    });
+    expect(splitPublicConsultationList(" a@example.test, a@example.test\nb@example.test ")).toEqual(
+      ["a@example.test", "b@example.test"],
+    );
+  });
+
+  it("describes available public consultation intake review actions without request detail leakage", () => {
+    const intake = publicConsultationIntake();
+    const actions = [
+      describePublicConsultationReviewAction({
+        action: "conflict_check",
+        intake,
+        dashboardStatus: "available",
+      }),
+      describePublicConsultationReviewAction({
+        action: "dismiss",
+        intake,
+        dashboardStatus: "available",
+      }),
+      describePublicConsultationReviewAction({
+        action: "convert",
+        intake,
+        dashboardStatus: "available",
+      }),
+    ];
+
+    expect(actions).toEqual([
+      {
+        actionKey: "public_consultation_intake.conflict_check",
+        availability: "available",
+        available: true,
+        label: "Conflict check",
+        tone: "ready",
+      },
+      {
+        actionKey: "public_consultation_intake.dismiss",
+        availability: "available",
+        available: true,
+        label: "Dismiss",
+        tone: "neutral",
+      },
+      {
+        actionKey: "public_consultation_intake.convert",
+        availability: "available",
+        available: true,
+        label: "Convert to intake matter",
+        tone: "ready",
+      },
+    ]);
+    expect(compactPublicConsultationReviewActionReason()).toBe("available");
+
+    const serializedActions = JSON.stringify(actions);
+    expect(serializedActions).not.toContain("requester@example.test");
+    expect(serializedActions).not.toContain("Synthetic public consultation body text");
+    expect(serializedActions).not.toContain("https://consult.example.test");
+    expect(serializedActions).not.toContain("Synthetic Opposing Party");
+    expect(serializedActions).not.toContain("public_consultation_form");
+  });
+
+  it("describes public consultation intake review busy states with safe compact reasons", () => {
+    const intake = publicConsultationIntake();
+    const busyKey = publicConsultationReviewBusyKey("convert", intake.id);
+    const busyAction = publicConsultationReviewBusyAction(busyKey, intake.id);
+
+    expect(busyKey).toBe("convert:public-intake-001");
+    expect(busyAction).toBe("convert");
+    expect(publicConsultationReviewBusyAction("dismiss:another-intake", intake.id)).toBeUndefined();
+    expect(publicConsultationReviewBusyAction(`legacy:${intake.id}`, intake.id)).toBe("other");
+    expect(
+      describePublicConsultationReviewAction({
+        action: "convert",
+        intake,
+        dashboardStatus: "available",
+        busyAction,
+      }),
+    ).toMatchObject({
+      actionKey: "public_consultation_intake.convert",
+      availability: "disabled",
+      available: false,
+      disabledReason: "convert_in_progress",
+      label: "Converting...",
+    });
+    expect(
+      describePublicConsultationReviewAction({
+        action: "dismiss",
+        intake,
+        dashboardStatus: "available",
+        busyAction,
+      }),
+    ).toMatchObject({
+      actionKey: "public_consultation_intake.dismiss",
+      availability: "disabled",
+      available: false,
+      disabledReason: "review_action_in_progress",
+      label: "Dismiss",
+    });
+    expect(compactPublicConsultationReviewActionReason("convert_in_progress")).toBe(
+      "convert in progress",
+    );
+    expect(compactPublicConsultationReviewActionReason("review_action_in_progress")).toBe(
+      "review action in progress",
+    );
+  });
+
+  it("describes non-pending public consultation intake review actions as unavailable", () => {
+    for (const status of ["converted", "dismissed"] as const) {
+      expect(
+        describePublicConsultationReviewAction({
+          action: "dismiss",
+          intake: publicConsultationIntake({ status }),
+          dashboardStatus: "available",
+        }),
+      ).toMatchObject({
+        availability: "disabled",
+        available: false,
+        disabledReason: "status_not_pending",
+        label: "Dismiss",
+      });
+    }
+    expect(compactPublicConsultationReviewActionReason("status_not_pending")).toBe("not pending");
+  });
+
+  it("describes public consultation intake review access-denied and unavailable states", () => {
+    const intake = publicConsultationIntake();
+
+    expect(
+      describePublicConsultationReviewAction({
+        action: "conflict_check",
+        intake,
+        dashboardStatus: "access_denied",
+      }),
+    ).toMatchObject({
+      availability: "disabled",
+      available: false,
+      disabledReason: "permission_required",
+      label: "Conflict check",
+    });
+    expect(
+      describePublicConsultationReviewAction({
+        action: "convert",
+        intake,
+        dashboardStatus: "unavailable",
+      }),
+    ).toMatchObject({
+      availability: "disabled",
+      available: false,
+      disabledReason: "review_unavailable",
+      label: "Convert to intake matter",
+    });
+    expect(compactPublicConsultationReviewActionReason("permission_required")).toBe(
+      "permission required",
+    );
+    expect(compactPublicConsultationReviewActionReason("review_unavailable")).toBe(
+      "review unavailable",
+    );
   });
 
   it("filters and summarizes contact dossiers without requiring contact edits", () => {
@@ -3005,6 +3259,111 @@ describe("dashboard client behavior", () => {
     expect(JSON.stringify(summary)).not.toContain("private/storage/key");
   });
 
+  it("renders read-only matter setup profile cues in the matter overview", () => {
+    const activeMatterBase = matter({ trustBalanceCents: 25000 });
+    const syntheticParty: MatterParty = {
+      id: "party-client",
+      firmId: activeMatterBase.firmId,
+      matterId: activeMatterBase.id,
+      contactId: "contact-client",
+      role: "client",
+      adverse: false,
+      confidential: true,
+    };
+    const syntheticTimeEntry: TimeEntry = {
+      id: "time-setup",
+      firmId: activeMatterBase.firmId,
+      matterId: activeMatterBase.id,
+      userId: "user-licensee",
+      performedAt: "2026-05-02",
+      minutes: 90,
+      rateCents: 20000,
+      narrative: "Synthetic setup review",
+      billable: true,
+      billingStatus: "draft",
+    };
+    const setupUser = {
+      id: "user-licensee",
+      firmId: "firm-west-legal",
+      email: "licensee@example.test",
+      displayName: "Synthetic Licensee",
+      role: "licensee" as const,
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    };
+    const activeMatter = {
+      ...activeMatterBase,
+      timeEntries: [syntheticTimeEntry],
+      setupProfile: buildMatterSetupProfile({
+        matter: activeMatterBase,
+        parties: [syntheticParty],
+        documents: [],
+        activity: [],
+        trustBalanceCents: activeMatterBase.trustBalanceCents,
+        timeEntries: [syntheticTimeEntry],
+        expenses: [],
+        users: [setupUser],
+      }),
+    } satisfies MatterSummary;
+
+    const html = renderToStaticMarkup(
+      createElement(MatterOverviewSection, {
+        activeActivitySummary: summarizeMatterActivity([]),
+        activeCommunicationsInbox: undefined,
+        activeEmailDeliveries: [],
+        activeLegalClinicProfile: undefined,
+        activeLegalClinicProgram: undefined,
+        activeMatter,
+        activeMatterCommandCenter: undefined,
+        activityKindFilter: "all",
+        activityStatusFilter: "all",
+        filteredMatterActivity: [],
+        navigationSections: buildSidebarNavigationSections({
+          billingCanView: true,
+          capabilitySections: [capability("matters"), capability("documents"), capability("funds")],
+        }),
+        overview: {
+          firm: {
+            id: "firm-west-legal",
+            name: "West Legal",
+            defaultProvince: "BC",
+          },
+          metrics: {
+            openMatters: 1,
+            intakeMatters: 0,
+            portalGrants: 0,
+            trustBalanceCents: 25000,
+            unbilledMinutes: 90,
+          },
+          users: [
+            {
+              ...setupUser,
+            },
+          ],
+        },
+        compactDate: (value?: string) => value ?? "No date",
+        compactStatus: (value?: string) => value ?? "unknown",
+        formatCurrency: (value: number) => `$${(value / 100).toFixed(2)}`,
+        formatMinutes: (value: number) => `${value}m`,
+        onActivityKindFilterChange: () => undefined,
+        onActivityStatusFilterChange: () => undefined,
+        onSelectSection: () => undefined,
+      }),
+    );
+
+    expect(html).toContain("Matter setup");
+    expect(html).toContain("Open");
+    expect(html).toContain("Synthetic Licensee");
+    expect(html).toContain("Documents");
+    expect(html).toContain("Needs Attention");
+    expect(html).toContain("Practice Area");
+    expect(html).toContain("Trust Balance");
+    expect(html).toContain("$250.00");
+    expect(html).toContain("Unbilled Work");
+    expect(html).toContain("Responsible licensee");
+    expect(html).toContain("Trust balance view");
+  });
+
   it("describes worker run filters and redacted run context", () => {
     const dashboard: WorkerRunsDashboardResponse = {
       all: {
@@ -3437,6 +3796,96 @@ describe("dashboard client behavior", () => {
     expect(JSON.stringify(focus.items)).not.toContain("raw-token");
     expect(JSON.stringify(focus.items)).not.toContain("203.0.113.44");
     expect(JSON.stringify(focus.items)).not.toContain("Private Browser");
+  });
+
+  it("surfaces pending public consultation requests as count-only intake focus", () => {
+    const emptyStatus = emptyProvidersStatusResponse();
+    const providerStatus: ProvidersStatusResponse = {
+      ...emptyStatus,
+      email: {
+        ...emptyStatus.email,
+        status: "configured",
+        provider: "smtp",
+        queue: { queueName: "email", status: "configured" },
+      },
+      documentProcessing: {
+        ...emptyStatus.documentProcessing,
+        status: "configured",
+        workerQueues: [{ queueName: "ocr", status: "configured" }],
+      },
+    };
+
+    const focus = buildOperationalFocusSummary({
+      taskWorkbench: {
+        tasks: [],
+        counters: {
+          my: { overdue: 0, today: 0, upcoming: 0 },
+          team: { overdue: 0, today: 0, upcoming: 0 },
+          matterQueues: [],
+          contactQueues: [],
+        },
+        focusQueues: {
+          myOverdueTaskIds: [],
+          teamTodayTaskIds: [],
+          upcomingTaskIds: [],
+          unassignedTaskIds: [],
+        },
+      },
+      queues: { sections: [] },
+      operationalViews: { views: [] },
+      workerRuns: {
+        all: emptyWorkerRunsResponse("loaded"),
+        email: emptyWorkerRunsResponse("loaded"),
+        ocr: emptyWorkerRunsResponse("loaded"),
+      },
+      providerStatus,
+      publicConsultationStatus: "available",
+      pendingPublicConsultationCount: 2,
+    });
+    const unavailableFocus = buildOperationalFocusSummary({
+      taskWorkbench: {
+        tasks: [],
+        counters: {
+          my: { overdue: 0, today: 0, upcoming: 0 },
+          team: { overdue: 0, today: 0, upcoming: 0 },
+          matterQueues: [],
+          contactQueues: [],
+        },
+        focusQueues: {
+          myOverdueTaskIds: [],
+          teamTodayTaskIds: [],
+          upcomingTaskIds: [],
+          unassignedTaskIds: [],
+        },
+      },
+      queues: { sections: [] },
+      operationalViews: { views: [] },
+      workerRuns: {
+        all: emptyWorkerRunsResponse("loaded"),
+        email: emptyWorkerRunsResponse("loaded"),
+        ocr: emptyWorkerRunsResponse("loaded"),
+      },
+      providerStatus,
+      publicConsultationStatus: "access_denied",
+      pendingPublicConsultationCount: 2,
+    });
+
+    expect(focus.items).toEqual([
+      {
+        key: "public-consultation-pending",
+        label: "Public consultation requests",
+        value: "2",
+        detail: "Pending website requests are summarized by count; request details stay in Intake.",
+        tone: "risk",
+        section: "Intake",
+        targetSection: "intake",
+      },
+    ]);
+    expect(focus.attentionCount).toBe(2);
+    expect(JSON.stringify(focus.items)).not.toContain("client@example.test");
+    expect(JSON.stringify(focus.items)).not.toContain("Synthetic employment matter");
+    expect(unavailableFocus.items).toEqual([]);
+    expect(unavailableFocus.attentionCount).toBe(0);
   });
 
   it("returns an empty operations focus message when no attention signals exist", () => {
@@ -4267,6 +4716,143 @@ describe("dashboard client behavior", () => {
         },
       }),
     ).toEqual([]);
+
+    const loadAction = describeSubmittedIntakeReviewAction({
+      action: "load",
+      reviewLoaded: false,
+    });
+    expect(loadAction).toEqual({
+      actionKey: "submitted_intake_review.load",
+      availability: "available",
+      available: true,
+      label: "Load review",
+      tone: "neutral",
+    });
+
+    const acceptAction = describeSubmittedIntakeReviewAction({
+      action: "accept",
+      reviewLoaded: true,
+      reviewDecisionCount: 0,
+    });
+    expect(acceptAction).toMatchObject({
+      actionKey: "submitted_intake_review.accept",
+      availability: "available",
+      available: true,
+      label: "Accept",
+    });
+    expect(
+      describeSubmittedIntakeReviewAction({
+        action: "accept",
+        reviewLoaded: false,
+      }),
+    ).toMatchObject({
+      availability: "disabled",
+      available: false,
+      disabledReason: "review_payload_required",
+    });
+
+    for (const action of ["reject", "request_more_info"] as const) {
+      expect(
+        describeSubmittedIntakeReviewAction({
+          action,
+          reviewLoaded: true,
+          reviewDecisionCount: 0,
+          reason: "",
+        }),
+      ).toMatchObject({
+        availability: "disabled",
+        available: false,
+        disabledReason: "reason_required",
+      });
+    }
+
+    expect(
+      describeSubmittedIntakeReviewAction({
+        action: "reject",
+        reviewLoaded: true,
+        reviewDecisionCount: 1,
+        reason: "Synthetic reason should not leak.",
+      }),
+    ).toMatchObject({
+      availability: "disabled",
+      available: false,
+      disabledReason: "decision_already_recorded",
+    });
+
+    expect(
+      submittedIntakeReviewBusyAction({
+        linkId: submittedLink.id,
+        loadingLinkId: submittedLink.id,
+      }),
+    ).toBe("load");
+    expect(
+      submittedIntakeReviewBusyAction({
+        linkId: submittedLink.id,
+        reviewingKey: `${submittedLink.id}:request-more-info`,
+      }),
+    ).toBe("request_more_info");
+    expect(
+      submittedIntakeReviewBusyAction({
+        linkId: submittedLink.id,
+        reviewingKey: `legacy:${submittedLink.id}`,
+      }),
+    ).toBeUndefined();
+    expect(
+      submittedIntakeReviewBusyAction({
+        linkId: submittedLink.id,
+        reviewingKey: `${submittedLink.id}:legacy`,
+      }),
+    ).toBe("other");
+
+    expect(
+      describeSubmittedIntakeReviewAction({
+        action: "load",
+        reviewLoaded: false,
+        busyAction: "load",
+      }),
+    ).toMatchObject({
+      availability: "disabled",
+      disabledReason: "load_in_progress",
+      label: "Loading...",
+    });
+    expect(
+      describeSubmittedIntakeReviewAction({
+        action: "request_more_info",
+        reviewLoaded: true,
+        reviewDecisionCount: 0,
+        reason: "Synthetic reason should not leak.",
+        busyAction: "request_more_info",
+      }),
+    ).toMatchObject({
+      availability: "disabled",
+      disabledReason: "decision_in_progress",
+      label: "Creating follow-up...",
+    });
+    expect(compactSubmittedIntakeReviewActionReason()).toBe("available");
+    expect(compactSubmittedIntakeReviewActionReason("review_payload_required")).toBe(
+      "review payload required",
+    );
+    expect(compactSubmittedIntakeReviewActionReason("reason_required")).toBe("reason required");
+
+    const serializedSubmittedIntakeActions = JSON.stringify([
+      describeSubmittedIntakeReviewAction({
+        action: "reject",
+        reviewLoaded: true,
+        reviewDecisionCount: 0,
+        reason: "Synthetic submitted answer reason should not leak.",
+      }),
+      describeSubmittedIntakeReviewAction({
+        action: "request_more_info",
+        reviewLoaded: true,
+        reviewDecisionCount: 0,
+        reason: "Synthetic follow-up reason should not leak.",
+      }),
+    ]);
+    expect(serializedSubmittedIntakeActions).not.toContain("Synthetic submitted answer");
+    expect(serializedSubmittedIntakeActions).not.toContain("Synthetic follow-up reason");
+    expect(serializedSubmittedIntakeActions).not.toContain("one-time-token");
+    expect(serializedSubmittedIntakeActions).not.toContain("portalUrl");
+
     expect(
       buildIntakeTemplatePreviewPayload({
         definition: sampleResidentialTenancyIntakeDefinition,

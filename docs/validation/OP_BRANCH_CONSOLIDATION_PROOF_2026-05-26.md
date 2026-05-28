@@ -62,4 +62,62 @@ OSS reuse policy validation failed:
 - zulip__zulip lock commit must match the central reference index
 ```
 
-The consolidation diff does not touch `docs/oss-references.lock.json`, `docs/oss-references.md`, `docs/reference-repos.md`, `scripts/reference-*`, or `.references/**`, so that blocker is tracked as unrelated reference-governance drift.
+The consolidation diff did not touch `docs/oss-references.lock.json`, `docs/oss-references.md`, `docs/reference-repos.md`, `scripts/reference-*`, or `.references/**`, so that blocker was tracked as unrelated reference-governance drift.
+
+## OSS Lock Reconciliation Follow-Up
+
+The follow-up reference-governance fix refreshed `docs/oss-references.lock.json` from
+`/Users/bryan/projects/reference-repos/docs/index.json` and updated the active OSS matrix
+maintenance signals for affected entries. No package manifests, copied source, schemas,
+migrations, or vendored assets changed.
+
+The lock refresh reconciled these central-index commit updates:
+
+- `activepieces__activepieces`
+- `apache__fineract`
+- `civicrm__civicrm-core`
+- `documenso__documenso`
+- `docusealco__docuseal`
+- `kimai__kimai`
+- `ledgersmb__ledgersmb`
+- `lerianstudio__midaz`
+- `microsoft__markitdown`
+- `nextcloud__server`
+- `open-source-legal__opencontracts`
+- `opencollective__opencollective-api`
+- `opencollective__opencollective-frontend`
+- `temporalio__temporal`
+- `unstructured-io__unstructured`
+- `zulip__zulip`
+
+Follow-up selector:
+
+```bash
+pnpm verify:select -- --files docs/oss-references.lock.json docs/oss-references.md docs/planning-and-progress.md docs/validation/README.md docs/validation/OP_BRANCH_CONSOLIDATION_PROOF_2026-05-26.md
+```
+
+Recommended:
+
+```text
+pnpm format:check
+pnpm docs:check
+pnpm policy:check
+```
+
+Passed:
+
+```bash
+pnpm format:check
+pnpm docs:check
+pnpm refs:clone -- --check
+pnpm policy:check
+pnpm ci:local
+```
+
+`pnpm refs:clone -- --check` confirmed the lock matches 28 Open Practice central-index entries.
+`pnpm policy:check` passed tracked-secret scanning, package-manifest validation, migration parity,
+OSS reuse validation, documentation link validation, and Open Practice boundary policy. `pnpm
+ci:local` passed formatting, lint, typecheck, package tests, script tests, database `db:check`,
+policy checks, production build, and `git diff --check`.
+
+Skipped checks: none.

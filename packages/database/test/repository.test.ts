@@ -316,3 +316,34 @@ describe("repository operations activity redaction", () => {
     );
   });
 });
+
+describe("repository matter setup projection", () => {
+  it("returns setup profiles only for authorized matter summaries", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const user = (await repository.getUser("firm-west-legal", "user-licensee"))!;
+    const matters = await repository.listMattersForUser(user);
+
+    expect(matters.map((matter) => matter.id)).toEqual(["matter-001"]);
+    expect(matters[0]?.setupProfile).toMatchObject({
+      stage: { key: "open", label: "Open" },
+      responsibleUser: {
+        state: "assigned",
+        responsibleUserId: "user-licensee",
+      },
+    });
+    expect(matters[0]?.setupProfile.fieldDefinitions.map((field) => field.key)).toEqual([
+      "practiceArea",
+      "jurisdiction",
+      "openedOn",
+      "status",
+    ]);
+    expect(matters[0]?.setupProfile.checklist).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "parties", state: "complete" }),
+        expect.objectContaining({ key: "documents", state: "complete" }),
+        expect.objectContaining({ key: "trust_balance", state: expect.any(String) }),
+        expect.objectContaining({ key: "unbilled_work", state: expect.any(String) }),
+      ]),
+    );
+  });
+});

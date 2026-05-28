@@ -45,7 +45,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/session`                                                                    | Current authenticated user.                                                                                                                                                                                                                                                                                                                                       |
 | `GET /api/capabilities`                                                               | Permission-aware dashboard sections for the current user and first assigned matter.                                                                                                                                                                                                                                                                               |
 | `GET /api/overview`                                                                   | Firm overview metrics for owner/auditor readers; matter-scoped readers receive assigned-matter metrics and only their own user summary.                                                                                                                                                                                                                           |
-| `GET /api/matters`                                                                    | Matters visible to the current user, including redacted activity entries and document metadata used by the matter activity/file command center. Owner-admin and auditor readers receive firm matters even without assignment rows; matter-scoped users remain assignment-limited.                                                                                 |
+| `GET /api/matters`                                                                    | Matters visible to the current user, including redacted activity entries, document metadata used by the matter activity/file command center, and read-only `setupProfile` cues. Owner-admin and auditor readers receive firm matters even without assignment rows; matter-scoped users remain assignment-limited.                                                 |
 | `POST /api/matters`                                                                   | Creates an internal first/starter matter for users with `matter:create`: server-generated matter/contact/party IDs, date-based matter number, intake status, prospective-client party, current-user assignment, and safe audit metadata only. Client details stay in contact/party records and out of audit metadata.                                             |
 | `GET /api/contacts/dossiers`                                                          | Read-only contact dossiers derived from visible matter-party links, active portal grants, aliases, identifiers, adverse/confidential cues, quality-review signals, and redacted conflict-check history.                                                                                                                                                           |
 | `GET /api/contacts/review-queue`                                                      | Audit-safe contact review queue over visible dossiers, with duplicate, protected-party, and conflict-revalidation counts but no merge automation.                                                                                                                                                                                                                 |
@@ -544,9 +544,17 @@ generic received response without persistence.
 Public consultation settings live in provider-setting kind `public_intake`, key `consultation`.
 The setting controls whether the public route is enabled, which website origins may submit, which
 sender address and recipient emails are used for staff notifications, and an optional review-owner
-user ID. The Crockett deployment defaults are `info@crockettparalegal.ca` as sender and
-`bryan@crockettparalegal.ca` as recipient; SMTP credentials still come from the normal deployment
-provider setup.
+user ID. Missing or unreadable settings resolve to disabled, empty defaults: no sender, no
+recipients, and no allowed origins. Public intake can be enabled only after the firm-owned setting
+explicitly provides a sender address, at least one recipient email, and at least one allowed website
+origin. Requests without an `Origin` header or with an unconfigured origin are rejected before
+persistence. SMTP credentials still come from the normal deployment provider setup.
+Deployments may bootstrap that same firm-owned setting from
+`PUBLIC_CONSULTATION_INTAKE_ENABLED`, `PUBLIC_CONSULTATION_INTAKE_SENDER_ADDRESS`,
+`PUBLIC_CONSULTATION_INTAKE_RECIPIENT_EMAILS`,
+`PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS`, and
+`PUBLIC_CONSULTATION_INTAKE_REVIEW_OWNER_USER_ID`. Supplying only allowed origins opens the CORS
+allowlist for the public route but does not overwrite stored notification settings.
 
 When enabled and SMTP/outbox infrastructure is available, public consultation submission queues a
 matter-less staff notification through the same outbound email helper used elsewhere. The email

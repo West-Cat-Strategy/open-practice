@@ -47,6 +47,21 @@
     position: static;
   }
 
+  .context-rail-toggle-handle {
+    top: auto;
+    right: 18px;
+    bottom: 18px;
+    width: 44px;
+    height: 44px;
+    border: 1px solid rgba(63, 185, 173, 0.35);
+    border-radius: 8px;
+    transform: none;
+  }
+
+  .context-rail-toggle-handle:hover {
+    width: 44px;
+  }
+
   .draft-office-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -66,6 +81,10 @@
 
   .topbar {
     gap: 12px;
+  }
+
+  .context-rail-toggle-handle {
+    display: none;
   }
 
   .draft-office-controls {
@@ -412,5 +431,20 @@
 
   .animate-spin {
     animation: none !important;
+  }
+
+  .context-rail-toggle-handle {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .context-rail-toggle-handle:hover {
+    width: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) and (max-width: 1100px) {
+  .context-rail-toggle-handle:hover {
+    width: 44px;
   }
 }

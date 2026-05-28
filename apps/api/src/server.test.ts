@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { verifyRegistrationResponse } from "@simplewebauthn/server";
-import { createApiServer, envSchema, validateProductionReadiness } from "./server.js";
+import {
+  buildPublicConsultationIntakeSettingsFromEnv,
+  configurePublicConsultationIntakeSettingsFromEnv,
+  createApiServer,
+  envSchema,
+  validateProductionReadiness,
+} from "./server.js";
 
 vi.mock("@simplewebauthn/server", () => ({
   generateRegistrationOptions: vi.fn(async () => ({
@@ -182,6 +188,34 @@ describe("API auth and persistence boundaries", () => {
     expect(response.headers["access-control-allow-methods"]).toContain("PUT");
     expect(response.headers["access-control-allow-methods"]).toContain("PATCH");
     expect(response.headers["access-control-allow-methods"]).toContain("DELETE");
+  });
+
+  it("does not allow tenant-specific public origins unless they are configured", async () => {
+    const unconfigured = await testServer().inject({
+      method: "OPTIONS",
+      url: "/api/public/consultation-intakes",
+      headers: {
+        origin: "https://legacy-tenant.example",
+        "access-control-request-method": "POST",
+      },
+    });
+    const configured = await testServer({
+      publicConsultationIntake: {
+        firmId: "firm-west-legal",
+        actorUserId: "user-admin",
+        allowedOrigins: ["https://consult.example.test"],
+      },
+    }).inject({
+      method: "OPTIONS",
+      url: "/api/public/consultation-intakes",
+      headers: {
+        origin: "https://consult.example.test",
+        "access-control-request-method": "POST",
+      },
+    });
+
+    expect(unconfigured.headers["access-control-allow-origin"]).toBeUndefined();
+    expect(configured.headers["access-control-allow-origin"]).toBe("https://consult.example.test");
   });
 
   it("requires a configured setup key for production setup completion", async () => {
@@ -725,6 +759,48 @@ describe("API auth and persistence boundaries", () => {
 
   it("accepts minimal production readiness configuration", () => {
     expect(() => validateProductionReadiness(productionEnv())).not.toThrow();
+  });
+
+  it("builds explicit public consultation intake settings from deployment env", async () => {
+    const corsOnly = envSchema.parse({
+      PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS: "https://consult.example.test",
+    });
+    const configured = envSchema.parse({
+      PUBLIC_CONSULTATION_INTAKE_ENABLED: "true",
+      PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS:
+        "https://consult.example.test, https://www.consult.example.test",
+      PUBLIC_CONSULTATION_INTAKE_SENDER_ADDRESS: "consultations@example.test",
+      PUBLIC_CONSULTATION_INTAKE_RECIPIENT_EMAILS: "review@example.test",
+      PUBLIC_CONSULTATION_INTAKE_ACTOR_USER_ID: "user-admin",
+    });
+    const repository = new InMemoryOpenPracticeRepository();
+
+    expect(buildPublicConsultationIntakeSettingsFromEnv(corsOnly)).toBeUndefined();
+    expect(buildPublicConsultationIntakeSettingsFromEnv(configured)).toEqual({
+      enabled: true,
+      senderAddress: "consultations@example.test",
+      recipientEmails: ["review@example.test"],
+      allowedOrigins: ["https://consult.example.test", "https://www.consult.example.test"],
+      reviewOwnerUserId: "user-admin",
+    });
+    expect(() =>
+      buildPublicConsultationIntakeSettingsFromEnv(
+        envSchema.parse({ PUBLIC_CONSULTATION_INTAKE_ENABLED: "true" }),
+      ),
+    ).toThrow(/PUBLIC_CONSULTATION_INTAKE_ENABLED/);
+
+    await configurePublicConsultationIntakeSettingsFromEnv(repository, configured);
+    const [provider] = await repository.listProviderSettings("firm-west-legal", {
+      kind: "public_intake",
+    });
+    expect(provider).toMatchObject({
+      enabled: true,
+      key: "consultation",
+    });
+    expect(JSON.parse(provider?.encryptedConfig ?? "{}")).toMatchObject({
+      senderAddress: "consultations@example.test",
+      recipientEmails: ["review@example.test"],
+    });
   });
 
   it("scopes matter lists to the authenticated user", async () => {

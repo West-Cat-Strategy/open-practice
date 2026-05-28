@@ -58,12 +58,53 @@ Completed Phase 3 slices:
 
 Next operational scale priorities:
 
-1.  **Calendar Meeting Media Follow-Through**: Build only after the shipped hosted guest-session
-    control plane is reviewed; future work should stay out of attendee, iCalendar, invitation,
-    stored meeting-link, and status-token contracts unless those seams need targeted hardening.
-2.  **Fresh Candidate Review**: Re-review the current repository and validation proof before
-    promoting the next operational-scale candidate set; do not carry forward already shipped
-    OP-T108 through OP-T112 work as future backlog.
+1.  **Clio-Informed Product Suite Completion**: Use the 2026-05-26
+    [Clio product specification review](reference-review-clio-2026-05-26.md) as the next planning
+    lens. The live Candidate rows OP-T127 through OP-T142 are the active backlog for functional
+    parity with Clio-style practice-management expectations, while shipped OP-T108 through OP-T126
+    work remains archived proof rather than future backlog.
+2.  **Policy Gate Cleanup**: Resolve or explicitly document the OSS reuse lock/index policy block
+    before claiming a fully green policy lane for the next implementation slice.
+
+### Phase 4: Clio-Informed Functional Parity (Candidate)
+
+This product phase translates the Clio-only product-spec review into independently authored Open
+Practice planning. Clio remains proprietary reference research: no Clio assets, prose, screenshots,
+schemas, templates, API examples, or UI structure should be copied into Open Practice. Candidate
+rows live in `docs/planning-and-progress.md`; this section holds the durable product direction.
+
+1.  **Matter System Of Record**: OP-T127 should add reviewed matter stage/setup semantics, custom
+    field definitions, responsible-user posture, and reusable matter setup patterns before widening
+    into workflow automation.
+2.  **Client Collaboration And Portal Accounts**: OP-T128 should turn existing public-token,
+    external-upload, intake, and guest-session records into the first logged-in client account
+    workspace. Start with staff-owned account setup, client action summaries, and redacted access
+    posture before realtime chat, broad document browsing, live payments, or native mobile work.
+3.  **Growth, Intake, CRM, And Scheduling**: OP-T129 through OP-T132 should deepen intake pipeline
+    status/source reporting, contact relationship modeling, reviewed scheduling/deadline workflows,
+    and matter-linked channel history. The first slices should remain staff-reviewed and avoid
+    marketing automation, SMS outreach, external CRM sync, court-rule automation, provider calendar
+    sync, or automatic matter creation.
+4.  **Documents, Signatures, Time, Billing, Payments, And Accounting**: OP-T133 through OP-T137
+    should add original document-assembly/signature-envelope metadata, timer-to-draft time-entry
+    capture, hosted payment request records, trust/accounting reconciliation depth, and saved report
+    definitions. Live settlement, card storage, payment plans, bank-feed automation, automatic trust
+    posting, custom SQL, scheduled report delivery, and certified accounting claims stay out of scope
+    until their processor, reconciliation, and compliance profiles are approved.
+5.  **AI And Legal Work**: OP-T138 and OP-T139 should expand async assist into review-first
+    operational proposals and a staff-only legal research workspace shell. Generated content, source
+    text, and research artifacts must remain redacted from jobs/audit metadata, and AI output must
+    require human approval before changing source records.
+6.  **Platform, Mobile, Admin, And Migration Readiness**: OP-T140 through OP-T142 should define the
+    developer/integration boundary, mobile field-workflow readiness, and visible admin/migration/data
+    portability posture. Start with scoped credentials, webhook subscription posture, responsive web
+    proof, support-access controls, export/import vocabulary, and onboarding checklists before any
+    app marketplace, native app, offline sync, push notification, or broad public developer launch.
+
+Phase 4 validation should continue to start with
+`pnpm verify:select -- --files <changed paths...>`, then run the selected package checks plus
+`pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, and `git diff --check` unless a
+specific slice justifies broader `pnpm ci:local` coverage.
 
 ## Reuse Guardrails
 

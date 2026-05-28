@@ -57,6 +57,58 @@ const commandJumpIcons: Partial<Record<LocalDashboardSectionKey, LucideIcon>> = 
   queues: Clock3,
 };
 
+type MatterSetupTone = "neutral" | "ready" | "risk";
+
+type MatterSetupProfileView = MatterSummary["setupProfile"];
+
+interface MatterSetupCueLike {
+  key?: string;
+  label?: string;
+  description?: string;
+  state?: string;
+  count?: number;
+}
+
+function readableSetupText(value?: string | number | boolean): string {
+  if (value === undefined || value === null || value === "") return "Not recorded";
+  if (typeof value === "boolean") return value ? "Complete" : "Open";
+  return String(value)
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function cueLabel(cue: MatterSetupCueLike): string {
+  return readableSetupText(cue.label ?? cue.key);
+}
+
+function cueStatus(cue: MatterSetupCueLike): string {
+  if (cue.state) return readableSetupText(cue.state);
+  return "Tracked";
+}
+
+function cueDetail(cue: MatterSetupCueLike): string {
+  if (cue.description) return cue.description;
+  if (cue.count !== undefined) return `${cue.count} linked`;
+  return "Read-only setup cue.";
+}
+
+function cueTone(cue: MatterSetupCueLike): MatterSetupTone {
+  const status = cue.state?.toLowerCase() ?? "";
+  if (
+    status.includes("blocked") ||
+    status.includes("missing") ||
+    status.includes("attention") ||
+    status.includes("incomplete") ||
+    status.includes("overdue") ||
+    status.includes("risk")
+  ) {
+    return "risk";
+  }
+  if (status.includes("complete") || status.includes("ready")) return "ready";
+  return "neutral";
+}
+
 export function MatterOverviewSection({
   activeActivitySummary,
   activeCommunicationsInbox,
@@ -102,6 +154,20 @@ export function MatterOverviewSection({
     activeLegalClinicProgram,
     activeLegalClinicProfile,
   );
+  const setupProfile: MatterSetupProfileView = activeMatter.setupProfile;
+  const setupStage = setupProfile.stage;
+  const responsiblePosture = setupProfile.responsibleUser;
+  const responsiblePostureUser = overview.users.find(
+    (user) => user.id === responsiblePosture.responsibleUserId,
+  );
+  const setupChecklist = setupProfile.checklist;
+  const customFieldDefinitions = setupProfile.fieldDefinitions;
+  const financialSnapshotCues = setupProfile.financialSnapshot.cues;
+  const setupSummaryLabel = setupStage.label;
+  const customFieldAttentionCount = customFieldDefinitions.filter(
+    (cue) => cueTone(cue) === "risk",
+  ).length;
+  const financialSnapshotDetail = setupProfile.financialSnapshot.caution;
 
   return (
     <>
@@ -123,6 +189,88 @@ export function MatterOverviewSection({
         <div>
           <span className="field-label">Data source</span>
           <strong>API</strong>
+        </div>
+      </div>
+
+      <div className="section-title">
+        <h3>Matter setup</h3>
+        <span>{readableSetupText(setupSummaryLabel)}</span>
+      </div>
+      <div className="detail-grid compact-detail-grid matter-setup-summary">
+        <div>
+          <span className="field-label">Stage</span>
+          <strong>{readableSetupText(setupStage.label)}</strong>
+          <small>{cueDetail(setupStage)}</small>
+        </div>
+        <div>
+          <span className="field-label">Responsible posture</span>
+          <strong>
+            {responsiblePostureUser?.displayName ??
+              responsiblePosture.responsibleUserDisplayName ??
+              cueLabel(responsiblePosture)}
+          </strong>
+          <small>{cueDetail(responsiblePosture)}</small>
+        </div>
+        <div>
+          <span className="field-label">Custom fields</span>
+          <strong>{customFieldDefinitions.length} definitions</strong>
+          <small>
+            {customFieldDefinitions.length > 0
+              ? `${customFieldAttentionCount} need attention`
+              : "No setup field definitions returned."}
+          </small>
+        </div>
+        <div>
+          <span className="field-label">Financial snapshot</span>
+          <strong>{financialSnapshotCues.length} cues</strong>
+          <small>{financialSnapshotDetail}</small>
+        </div>
+      </div>
+      <div className="activity-grid matter-setup-cue-grid">
+        <div className="activity-card">
+          <strong>Setup checklist</strong>
+          <span>{setupChecklist.length} rows</span>
+          <div className="party-list">
+            {setupChecklist.map((cue, index) => (
+              <div className="party-row" key={`${cue.key}-setup-checklist-${index}`}>
+                <span>
+                  <strong>{cueLabel(cue)}</strong>
+                  <small>{cueDetail(cue)}</small>
+                </span>
+                <em className={cueTone(cue) === "risk" ? "risk" : undefined}>{cueStatus(cue)}</em>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="activity-card">
+          <strong>Custom field definitions</strong>
+          <span>{customFieldDefinitions.length} definitions</span>
+          <div className="party-list">
+            {customFieldDefinitions.map((cue, index) => (
+              <div className="party-row" key={`${cue.key}-custom-field-${index}`}>
+                <span>
+                  <strong>{cueLabel(cue)}</strong>
+                  <small>{cueDetail(cue)}</small>
+                </span>
+                <em className={cueTone(cue) === "risk" ? "risk" : undefined}>{cueStatus(cue)}</em>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="activity-card">
+          <strong>Financial cues</strong>
+          <span>{financialSnapshotCues.length} rows</span>
+          <div className="party-list">
+            {financialSnapshotCues.map((cue, index) => (
+              <div className="party-row" key={`${cue.key}-financial-cue-${index}`}>
+                <span>
+                  <strong>{cueLabel(cue)}</strong>
+                  <small>{cueDetail(cue)}</small>
+                </span>
+                <em className={cueTone(cue) === "risk" ? "risk" : undefined}>{cueStatus(cue)}</em>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

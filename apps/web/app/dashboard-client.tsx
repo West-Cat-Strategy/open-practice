@@ -83,13 +83,16 @@ import {
   buildIntakeFormReviewDecisionPath,
   buildIntakeFormReviewPath,
   buildIntakeFormLinkCreatePayload,
+  compactSubmittedIntakeReviewActionReason,
   coerceIntakeDefinitionV2,
   currentProposalValue,
-  describeRequestMoreInfoResult,
   describeIntakeTemplatePreview,
+  describeRequestMoreInfoResult,
+  describeSubmittedIntakeReviewAction,
   getIntakeFormLinkState,
   pendingSubmittedIntakeReviewLinks,
   previewStatusClass,
+  submittedIntakeReviewBusyAction,
   summarizeAnswerValue,
   summarizeIntakeItemAction,
   summarizeIntakeReview,
@@ -236,9 +239,13 @@ import {
   buildPublicConsultationIntakeDismissPath,
   buildPublicConsultationIntakeSettingsPath,
   buildPublicConsultationIntakesPath,
+  buildPublicConsultationSettingsPayload,
+  compactPublicConsultationReviewActionReason,
+  describePublicConsultationReviewAction,
   publicConsultationOpposingParties,
+  publicConsultationReviewBusyAction,
+  publicConsultationReviewBusyKey,
   publicConsultationSettingsSummary,
-  splitPublicConsultationList,
   upsertPublicConsultationIntake,
 } from "./public-consultation-intakes-dashboard";
 import {
@@ -262,6 +269,8 @@ import { dashboardApiStatus, requestDashboardJson } from "./api-client";
 import {
   ContextRail,
   DashboardMetrics,
+  DashboardReviewRailCollapsedTarget,
+  DashboardReviewRailExpandHandle,
   DashboardSidebar,
   DashboardTopbar,
   MatterContextPanel,
@@ -425,6 +434,8 @@ type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][numb
 type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
 type DashboardIntakeVariableProposal = IntakeVariableProposalsResponse["proposals"][number];
 type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
+
+const reviewRailCollapsedStorageKey = "open-practice.dashboard.reviewRailCollapsed";
 
 const documentMetadataClassificationOptions = [
   "general",
@@ -727,8 +738,13 @@ export default function DashboardClient({
   shareLinksStatus,
 }: DashboardClientProps) {
   const detailPanelRef = useRef<HTMLElement>(null);
+  const reviewRailToggleRef = useRef<HTMLButtonElement>(null);
+  const reviewRailExpandHandleRef = useRef<HTMLButtonElement>(null);
   const shouldFocusDetailRef = useRef(false);
+  const shouldFocusReviewRailToggleRef = useRef(false);
   const hasAppliedUrlSectionRef = useRef(false);
+  const [isContextRailCollapsed, setIsContextRailCollapsed] = useState(false);
+  const [hasLoadedContextRailPreference, setHasLoadedContextRailPreference] = useState(false);
   const [matters, setMatters] = useState(initialMatters);
   const [queues, setQueues] = useState(initialQueues);
   const [auditProjection, setAuditProjection] = useState(initialAuditProjection);
@@ -1380,12 +1396,16 @@ export default function DashboardClient({
         providerStatus,
         activeMatterCommandCenter,
         activeMatterActivitySummary: activeActivitySummary,
+        publicConsultationStatus: publicConsultation.status,
+        pendingPublicConsultationCount: pendingPublicConsultationIntakes.length,
       }),
     [
       activeActivitySummary,
       activeMatterCommandCenter,
       operationalViews,
+      pendingPublicConsultationIntakes.length,
       providerStatus,
+      publicConsultation.status,
       queues,
       taskWorkbench,
       workerRuns,
@@ -1599,6 +1619,36 @@ export default function DashboardClient({
     detailPanelRef.current?.focus();
     shouldFocusDetailRef.current = false;
   }, [activeSection]);
+
+  useEffect(() => {
+    try {
+      const stored = window.sessionStorage.getItem(reviewRailCollapsedStorageKey);
+      if (stored === "true") setIsContextRailCollapsed(true);
+      if (stored === "false") setIsContextRailCollapsed(false);
+    } catch {
+      // Keep the default expanded posture when session storage is unavailable.
+    } finally {
+      setHasLoadedContextRailPreference(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoadedContextRailPreference) return;
+    try {
+      window.sessionStorage.setItem(
+        reviewRailCollapsedStorageKey,
+        isContextRailCollapsed ? "true" : "false",
+      );
+    } catch {
+      // Session storage persistence is ergonomic only; the dashboard remains usable without it.
+    }
+  }, [hasLoadedContextRailPreference, isContextRailCollapsed]);
+
+  useEffect(() => {
+    if (!shouldFocusReviewRailToggleRef.current || isContextRailCollapsed) return;
+    reviewRailToggleRef.current?.focus();
+    shouldFocusReviewRailToggleRef.current = false;
+  }, [isContextRailCollapsed]);
 
   const metrics = useMemo<DashboardMetric[]>(
     () => [
@@ -1914,6 +1964,21 @@ export default function DashboardClient({
   async function runPublicConsultationConflictCheck(
     intakeRecord: PublicConsultationIntake,
   ): Promise<void> {
+    const action = describePublicConsultationReviewAction({
+      action: "conflict_check",
+      intake: intakeRecord,
+      dashboardStatus: publicConsultation.status,
+      busyAction: publicConsultationReviewBusyAction(
+        publicConsultationBusyIntakeId,
+        intakeRecord.id,
+      ),
+    });
+    if (!action.available) {
+      setPublicConsultationStatus(
+        `${action.label} unavailable: ${compactPublicConsultationReviewActionReason(action.disabledReason)}.`,
+      );
+      return;
+    }
     const identifiers: Array<{ type: "email" | "phone"; value: string }> = [];
     if (intakeRecord.email) identifiers.push({ type: "email", value: intakeRecord.email });
     if (intakeRecord.telephone) {
@@ -1925,14 +1990,15 @@ export default function DashboardClient({
       prospectiveRole: "client" as const,
       includeClosedMatters: true,
     };
+    setPublicConsultationBusyIntakeId(
+      publicConsultationReviewBusyKey("conflict_check", intakeRecord.id),
+    );
     setConflictName(intakeRecord.clientName);
     setConflictAliases("");
-    setConflictIdentifiers(
-      identifiers.map((identifier) => `${identifier.type}:${identifier.value}`).join("\n"),
-    );
+    setConflictIdentifiers("");
     setConflictProspectiveRole("client");
     setConflictResults([]);
-    setConflictStatus(`Running conflict check for ${intakeRecord.clientName}...`);
+    setConflictStatus("Running conflict check for public consultation request...");
     try {
       const response = await requestDashboardJson<ConflictResponse>(
         apiBaseUrl,
@@ -1945,11 +2011,13 @@ export default function DashboardClient({
       );
       setConflictResults(response.results);
       setConflictStatus(
-        `${describeConflictCheckStatus(payload, response.results.length)} Opposing names to check separately: ${publicConsultationOpposingParties(intakeRecord)}.`,
+        `${describeConflictCheckStatus(payload, response.results.length)} Review request details in Intake before any separate opposing-party checks.`,
       );
     } catch (error) {
       setConflictResults([]);
       setConflictStatus(`Conflict check failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setPublicConsultationBusyIntakeId("");
     }
   }
 
@@ -3163,25 +3231,17 @@ export default function DashboardClient({
   }
 
   async function savePublicConsultationSettings(): Promise<void> {
-    const recipientEmails = splitPublicConsultationList(publicConsultationRecipients);
-    const allowedOrigins = splitPublicConsultationList(publicConsultationOrigins);
-    if (
-      !publicConsultationSender.trim() ||
-      recipientEmails.length === 0 ||
-      allowedOrigins.length === 0
-    ) {
-      setPublicConsultationStatus(
-        "Settings save failed: sender, recipients, and origins are required.",
-      );
+    const settingsPayload = buildPublicConsultationSettingsPayload({
+      enabled: publicConsultationEnabled,
+      senderAddress: publicConsultationSender,
+      recipientEmailsText: publicConsultationRecipients,
+      allowedOriginsText: publicConsultationOrigins,
+      reviewOwnerUserId: publicConsultationReviewOwner,
+    });
+    if ("error" in settingsPayload) {
+      setPublicConsultationStatus(settingsPayload.error);
       return;
     }
-    const payload: PublicConsultationIntakeSettings = {
-      enabled: publicConsultationEnabled,
-      senderAddress: publicConsultationSender.trim(),
-      recipientEmails,
-      allowedOrigins,
-      reviewOwnerUserId: publicConsultationReviewOwner.trim() || undefined,
-    };
     setSavingPublicConsultationSettings(true);
     setPublicConsultationStatus("Saving public consultation intake settings...");
     try {
@@ -3191,7 +3251,7 @@ export default function DashboardClient({
         {
           method: "PUT",
           headers: devHeaders,
-          payload,
+          payload: settingsPayload.payload,
         },
       );
       setPublicConsultationSettings(saved);
@@ -3211,8 +3271,23 @@ export default function DashboardClient({
   async function dismissPublicConsultationIntake(
     intakeRecord: PublicConsultationIntake,
   ): Promise<void> {
-    setPublicConsultationBusyIntakeId(`dismiss:${intakeRecord.id}`);
-    setPublicConsultationStatus(`Dismissing request from ${intakeRecord.clientName}...`);
+    const action = describePublicConsultationReviewAction({
+      action: "dismiss",
+      intake: intakeRecord,
+      dashboardStatus: publicConsultation.status,
+      busyAction: publicConsultationReviewBusyAction(
+        publicConsultationBusyIntakeId,
+        intakeRecord.id,
+      ),
+    });
+    if (!action.available) {
+      setPublicConsultationStatus(
+        `${action.label} unavailable: ${compactPublicConsultationReviewActionReason(action.disabledReason)}.`,
+      );
+      return;
+    }
+    setPublicConsultationBusyIntakeId(publicConsultationReviewBusyKey("dismiss", intakeRecord.id));
+    setPublicConsultationStatus("Dismissing public consultation request...");
     try {
       const payload = await requestDashboardJson<{ intake: PublicConsultationIntake | null }>(
         apiBaseUrl,
@@ -3228,7 +3303,7 @@ export default function DashboardClient({
           upsertPublicConsultationIntake(current, payload.intake!),
         );
       }
-      setPublicConsultationStatus(`Dismissed request from ${intakeRecord.clientName}.`);
+      setPublicConsultationStatus("Dismissed public consultation request.");
     } catch (error) {
       setPublicConsultationStatus(`Dismiss failed: ${dashboardApiStatus(error)}`);
     } finally {
@@ -3239,8 +3314,23 @@ export default function DashboardClient({
   async function convertPublicConsultationIntake(
     intakeRecord: PublicConsultationIntake,
   ): Promise<void> {
-    setPublicConsultationBusyIntakeId(`convert:${intakeRecord.id}`);
-    setPublicConsultationStatus(`Converting request from ${intakeRecord.clientName}...`);
+    const action = describePublicConsultationReviewAction({
+      action: "convert",
+      intake: intakeRecord,
+      dashboardStatus: publicConsultation.status,
+      busyAction: publicConsultationReviewBusyAction(
+        publicConsultationBusyIntakeId,
+        intakeRecord.id,
+      ),
+    });
+    if (!action.available) {
+      setPublicConsultationStatus(
+        `${action.label} unavailable: ${compactPublicConsultationReviewActionReason(action.disabledReason)}.`,
+      );
+      return;
+    }
+    setPublicConsultationBusyIntakeId(publicConsultationReviewBusyKey("convert", intakeRecord.id));
+    setPublicConsultationStatus("Converting public consultation request...");
     try {
       const payload = await requestDashboardJson<PublicConsultationIntakeConvertResponse>(
         apiBaseUrl,
@@ -3264,7 +3354,7 @@ export default function DashboardClient({
       );
       setActiveMatterId(payload.matter.id);
       setPublicConsultationStatus(
-        `Converted request from ${intakeRecord.clientName} into matter ${payload.matter.number}.`,
+        `Converted public consultation request into matter ${payload.matter.number}.`,
       );
     } catch (error) {
       setPublicConsultationStatus(`Convert failed: ${dashboardApiStatus(error)}`);
@@ -3951,6 +4041,19 @@ export default function DashboardClient({
     );
   }
 
+  function toggleContextRail(): void {
+    setIsContextRailCollapsed((isCollapsed) => {
+      const nextCollapsed = !isCollapsed;
+      if (!nextCollapsed) shouldFocusReviewRailToggleRef.current = true;
+      return nextCollapsed;
+    });
+  }
+
+  function expandContextRail(): void {
+    shouldFocusReviewRailToggleRef.current = true;
+    setIsContextRailCollapsed(false);
+  }
+
   if (!activeMatter) {
     return (
       <main className="app-shell dashboard-shell legal-ops-shell" aria-labelledby="dashboard-title">
@@ -3969,6 +4072,9 @@ export default function DashboardClient({
             firmName={overview.firm.name}
             session={session}
             formatProfessionalRole={formatProfessionalRoleLabel}
+            isContextRailCollapsed={isContextRailCollapsed}
+            onToggleContextRail={toggleContextRail}
+            reviewRailToggleRef={reviewRailToggleRef}
           />
 
           <DashboardMetrics metrics={metrics} />
@@ -3976,10 +4082,14 @@ export default function DashboardClient({
           <OperationalFocusPanel
             operationalFocus={operationalFocus}
             operationalFocusEmpty={operationalFocusEmpty}
+            navigationSections={navigationSections}
             onOpenQueues={() => selectDashboardSection("queues")}
+            onSelectSection={selectDashboardSection}
           />
 
-          <section className="main-grid matter-workspace-grid zero-matter-workspace-grid">
+          <section
+            className={`main-grid matter-workspace-grid zero-matter-workspace-grid ${isContextRailCollapsed ? "context-rail-collapsed" : ""}`}
+          >
             {activeSection === "contacts" ? (
               <article
                 aria-labelledby="zero-contacts-title"
@@ -4164,24 +4274,34 @@ export default function DashboardClient({
               />
             ) : null}
 
-            <ContextRail
-              conflictAliases={conflictAliases}
-              conflictIdentifiers={conflictIdentifiers}
-              conflictName={conflictName}
-              conflictProspectiveRole={conflictProspectiveRole}
-              conflictResults={conflictResults}
-              conflictStatus={conflictStatus}
-              queueSummary={queueSummary}
-              queues={queues}
-              taskDeadlineSummary={taskDeadlineSummary}
-              onConflictAliasesChange={setConflictAliases}
-              onConflictIdentifiersChange={setConflictIdentifiers}
-              onConflictNameChange={setConflictName}
-              onConflictProspectiveRoleChange={setConflictProspectiveRole}
-              onRunConflictCheck={runConflictCheck}
-            />
+            {!isContextRailCollapsed ? (
+              <ContextRail
+                conflictAliases={conflictAliases}
+                conflictIdentifiers={conflictIdentifiers}
+                conflictName={conflictName}
+                conflictProspectiveRole={conflictProspectiveRole}
+                conflictResults={conflictResults}
+                conflictStatus={conflictStatus}
+                queueSummary={queueSummary}
+                queues={queues}
+                taskDeadlineSummary={taskDeadlineSummary}
+                onConflictAliasesChange={setConflictAliases}
+                onConflictIdentifiersChange={setConflictIdentifiers}
+                onConflictNameChange={setConflictName}
+                onConflictProspectiveRoleChange={setConflictProspectiveRole}
+                onRunConflictCheck={runConflictCheck}
+              />
+            ) : (
+              <DashboardReviewRailCollapsedTarget />
+            )}
           </section>
         </section>
+        {isContextRailCollapsed ? (
+          <DashboardReviewRailExpandHandle
+            expandHandleRef={reviewRailExpandHandleRef}
+            onExpand={expandContextRail}
+          />
+        ) : null}
       </main>
     );
   }
@@ -4203,6 +4323,9 @@ export default function DashboardClient({
           firmName={overview.firm.name}
           session={session}
           formatProfessionalRole={formatProfessionalRoleLabel}
+          isContextRailCollapsed={isContextRailCollapsed}
+          onToggleContextRail={toggleContextRail}
+          reviewRailToggleRef={reviewRailToggleRef}
         />
 
         <DashboardMetrics metrics={metrics} />
@@ -4210,7 +4333,9 @@ export default function DashboardClient({
         <OperationalFocusPanel
           operationalFocus={operationalFocus}
           operationalFocusEmpty={operationalFocusEmpty}
+          navigationSections={navigationSections}
           onOpenQueues={() => selectDashboardSection("queues")}
+          onSelectSection={selectDashboardSection}
         />
 
         <MatterContextPanel
@@ -4233,7 +4358,9 @@ export default function DashboardClient({
           selectedMatterPresetFamily={selectedMatterViewPresetFamily}
         />
 
-        <section className="main-grid matter-workspace-grid">
+        <section
+          className={`main-grid matter-workspace-grid ${isContextRailCollapsed ? "context-rail-collapsed" : ""}`}
+        >
           <MatterDetailShell
             activeMatter={activeMatter}
             activeSection={activeSection}
@@ -6647,7 +6774,37 @@ export default function DashboardClient({
                 <div className="party-list">
                   {pendingPublicConsultationIntakes.map((intakeRecord) => {
                     const dismissReason = publicConsultationDismissReasons[intakeRecord.id] ?? "";
-                    const busy = publicConsultationBusyIntakeId.endsWith(intakeRecord.id);
+                    const busyAction = publicConsultationReviewBusyAction(
+                      publicConsultationBusyIntakeId,
+                      intakeRecord.id,
+                    );
+                    const conflictAction = describePublicConsultationReviewAction({
+                      action: "conflict_check",
+                      intake: intakeRecord,
+                      dashboardStatus: publicConsultation.status,
+                      busyAction,
+                    });
+                    const dismissAction = describePublicConsultationReviewAction({
+                      action: "dismiss",
+                      intake: intakeRecord,
+                      dashboardStatus: publicConsultation.status,
+                      busyAction,
+                    });
+                    const convertAction = describePublicConsultationReviewAction({
+                      action: "convert",
+                      intake: intakeRecord,
+                      dashboardStatus: publicConsultation.status,
+                      busyAction,
+                    });
+                    const conflictActionReason = compactPublicConsultationReviewActionReason(
+                      conflictAction.disabledReason,
+                    );
+                    const dismissActionReason = compactPublicConsultationReviewActionReason(
+                      dismissAction.disabledReason,
+                    );
+                    const convertActionReason = compactPublicConsultationReviewActionReason(
+                      convertAction.disabledReason,
+                    );
                     return (
                       <div className="party-row upload-link-row" key={intakeRecord.id}>
                         <span>
@@ -6664,12 +6821,23 @@ export default function DashboardClient({
                         </span>
                         <div className="row-actions">
                           <button
+                            aria-label={
+                              conflictAction.disabledReason
+                                ? `${conflictAction.label}: ${conflictActionReason}`
+                                : conflictAction.label
+                            }
                             className="secondary-button compact-button row-button"
-                            disabled={busy}
+                            data-action-key={conflictAction.actionKey}
+                            disabled={!conflictAction.available}
                             onClick={() => void runPublicConsultationConflictCheck(intakeRecord)}
+                            title={
+                              conflictAction.disabledReason
+                                ? `${conflictAction.label}: ${conflictActionReason}`
+                                : conflictAction.label
+                            }
                             type="button"
                           >
-                            Conflict check
+                            {conflictAction.label}
                           </button>
                           <label className="search-field compact rejection-field">
                             <span>Dismiss reason</span>
@@ -6684,24 +6852,42 @@ export default function DashboardClient({
                             />
                           </label>
                           <button
+                            aria-label={
+                              dismissAction.disabledReason
+                                ? `${dismissAction.label}: ${dismissActionReason}`
+                                : dismissAction.label
+                            }
                             className="secondary-button compact-button row-button"
-                            disabled={busy}
+                            data-action-key={dismissAction.actionKey}
+                            disabled={!dismissAction.available}
                             onClick={() => void dismissPublicConsultationIntake(intakeRecord)}
+                            title={
+                              dismissAction.disabledReason
+                                ? `${dismissAction.label}: ${dismissActionReason}`
+                                : dismissAction.label
+                            }
                             type="button"
                           >
-                            {publicConsultationBusyIntakeId === `dismiss:${intakeRecord.id}`
-                              ? "Dismissing..."
-                              : "Dismiss"}
+                            {dismissAction.label}
                           </button>
                           <button
+                            aria-label={
+                              convertAction.disabledReason
+                                ? `${convertAction.label}: ${convertActionReason}`
+                                : convertAction.label
+                            }
                             className="primary-button row-button"
-                            disabled={busy}
+                            data-action-key={convertAction.actionKey}
+                            disabled={!convertAction.available}
                             onClick={() => void convertPublicConsultationIntake(intakeRecord)}
+                            title={
+                              convertAction.disabledReason
+                                ? `${convertAction.label}: ${convertActionReason}`
+                                : convertAction.label
+                            }
                             type="button"
                           >
-                            {publicConsultationBusyIntakeId === `convert:${intakeRecord.id}`
-                              ? "Converting..."
-                              : "Convert to intake matter"}
+                            {convertAction.label}
                           </button>
                         </div>
                       </div>
@@ -7036,7 +7222,53 @@ export default function DashboardClient({
                   {activePendingIntakeReviewLinks.map((link) => {
                     const reviewPayload = intakeReviewDetailsByLinkId[link.id];
                     const reason = intakeReviewReasons[link.id] ?? "";
-                    const decisionBusy = reviewingIntakeFormLinkId.startsWith(`${link.id}:`);
+                    const busyAction = submittedIntakeReviewBusyAction({
+                      linkId: link.id,
+                      loadingLinkId: loadingIntakeReviewLinkId,
+                      reviewingKey: reviewingIntakeFormLinkId,
+                    });
+                    const reviewLoaded = Boolean(reviewPayload);
+                    const reviewDecisionCount = reviewPayload?.reviews.length ?? 0;
+                    const loadAction = describeSubmittedIntakeReviewAction({
+                      action: "load",
+                      reviewLoaded,
+                      reviewDecisionCount,
+                      reason,
+                      busyAction,
+                    });
+                    const acceptAction = describeSubmittedIntakeReviewAction({
+                      action: "accept",
+                      reviewLoaded,
+                      reviewDecisionCount,
+                      reason,
+                      busyAction,
+                    });
+                    const rejectAction = describeSubmittedIntakeReviewAction({
+                      action: "reject",
+                      reviewLoaded,
+                      reviewDecisionCount,
+                      reason,
+                      busyAction,
+                    });
+                    const moreInfoAction = describeSubmittedIntakeReviewAction({
+                      action: "request_more_info",
+                      reviewLoaded,
+                      reviewDecisionCount,
+                      reason,
+                      busyAction,
+                    });
+                    const loadActionReason = compactSubmittedIntakeReviewActionReason(
+                      loadAction.disabledReason,
+                    );
+                    const acceptActionReason = compactSubmittedIntakeReviewActionReason(
+                      acceptAction.disabledReason,
+                    );
+                    const rejectActionReason = compactSubmittedIntakeReviewActionReason(
+                      rejectAction.disabledReason,
+                    );
+                    const moreInfoActionReason = compactSubmittedIntakeReviewActionReason(
+                      moreInfoAction.disabledReason,
+                    );
                     const answers = reviewPayload
                       ? Object.entries(reviewPayload.snapshot.answers)
                       : [];
@@ -7086,12 +7318,23 @@ export default function DashboardClient({
                         </span>
                         <div className="row-actions">
                           <button
+                            aria-label={
+                              loadAction.disabledReason
+                                ? `${loadAction.label}: ${loadActionReason}`
+                                : loadAction.label
+                            }
                             className="secondary-button compact-button row-button"
-                            disabled={loadingIntakeReviewLinkId === link.id}
+                            data-action-key={loadAction.actionKey}
+                            disabled={!loadAction.available}
                             onClick={() => void loadSubmittedIntakeReview(link.id)}
+                            title={
+                              loadAction.disabledReason
+                                ? `${loadAction.label}: ${loadActionReason}`
+                                : loadAction.label
+                            }
                             type="button"
                           >
-                            {loadingIntakeReviewLinkId === link.id ? "Loading..." : "Load review"}
+                            {loadAction.label}
                           </button>
                           {reviewPayload && reviewPayload.reviews.length === 0 ? (
                             <>
@@ -7108,30 +7351,63 @@ export default function DashboardClient({
                                 />
                               </label>
                               <button
+                                aria-label={
+                                  acceptAction.disabledReason
+                                    ? `${acceptAction.label}: ${acceptActionReason}`
+                                    : acceptAction.label
+                                }
                                 className="secondary-button compact-button row-button"
-                                disabled={decisionBusy}
+                                data-action-key={acceptAction.actionKey}
+                                disabled={!acceptAction.available}
                                 onClick={() => void decideSubmittedIntakeReview(link.id, "accept")}
-                                type="button"
-                              >
-                                Accept
-                              </button>
-                              <button
-                                className="secondary-button compact-button row-button"
-                                disabled={decisionBusy}
-                                onClick={() => void decideSubmittedIntakeReview(link.id, "reject")}
-                                type="button"
-                              >
-                                Reject
-                              </button>
-                              <button
-                                className="secondary-button compact-button row-button"
-                                disabled={decisionBusy}
-                                onClick={() =>
-                                  void decideSubmittedIntakeReview(link.id, "request-more-info")
+                                title={
+                                  acceptAction.disabledReason
+                                    ? `${acceptAction.label}: ${acceptActionReason}`
+                                    : acceptAction.label
                                 }
                                 type="button"
                               >
-                                More info
+                                {acceptAction.label}
+                              </button>
+                              <button
+                                aria-label={
+                                  rejectAction.disabledReason
+                                    ? `${rejectAction.label}: ${rejectActionReason}`
+                                    : rejectAction.label
+                                }
+                                className="secondary-button compact-button row-button"
+                                data-action-key={rejectAction.actionKey}
+                                disabled={!rejectAction.available}
+                                onClick={() => void decideSubmittedIntakeReview(link.id, "reject")}
+                                title={
+                                  rejectAction.disabledReason
+                                    ? `${rejectAction.label}: ${rejectActionReason}`
+                                    : rejectAction.label
+                                }
+                                type="button"
+                              >
+                                {rejectAction.label}
+                              </button>
+                              <button
+                                aria-label={
+                                  moreInfoAction.disabledReason
+                                    ? `${moreInfoAction.label}: ${moreInfoActionReason}`
+                                    : moreInfoAction.label
+                                }
+                                className="secondary-button compact-button row-button"
+                                data-action-key={moreInfoAction.actionKey}
+                                disabled={!moreInfoAction.available}
+                                onClick={() =>
+                                  void decideSubmittedIntakeReview(link.id, "request-more-info")
+                                }
+                                title={
+                                  moreInfoAction.disabledReason
+                                    ? `${moreInfoAction.label}: ${moreInfoActionReason}`
+                                    : moreInfoAction.label
+                                }
+                                type="button"
+                              >
+                                {moreInfoAction.label}
                               </button>
                             </>
                           ) : null}
@@ -7385,24 +7661,34 @@ export default function DashboardClient({
             ) : null}
           </MatterDetailShell>
 
-          <ContextRail
-            conflictAliases={conflictAliases}
-            conflictIdentifiers={conflictIdentifiers}
-            conflictName={conflictName}
-            conflictProspectiveRole={conflictProspectiveRole}
-            conflictResults={conflictResults}
-            conflictStatus={conflictStatus}
-            queueSummary={queueSummary}
-            queues={queues}
-            taskDeadlineSummary={taskDeadlineSummary}
-            onConflictAliasesChange={setConflictAliases}
-            onConflictIdentifiersChange={setConflictIdentifiers}
-            onConflictNameChange={setConflictName}
-            onConflictProspectiveRoleChange={setConflictProspectiveRole}
-            onRunConflictCheck={runConflictCheck}
-          />
+          {!isContextRailCollapsed ? (
+            <ContextRail
+              conflictAliases={conflictAliases}
+              conflictIdentifiers={conflictIdentifiers}
+              conflictName={conflictName}
+              conflictProspectiveRole={conflictProspectiveRole}
+              conflictResults={conflictResults}
+              conflictStatus={conflictStatus}
+              queueSummary={queueSummary}
+              queues={queues}
+              taskDeadlineSummary={taskDeadlineSummary}
+              onConflictAliasesChange={setConflictAliases}
+              onConflictIdentifiersChange={setConflictIdentifiers}
+              onConflictNameChange={setConflictName}
+              onConflictProspectiveRoleChange={setConflictProspectiveRole}
+              onRunConflictCheck={runConflictCheck}
+            />
+          ) : (
+            <DashboardReviewRailCollapsedTarget />
+          )}
         </section>
       </section>
+      {isContextRailCollapsed ? (
+        <DashboardReviewRailExpandHandle
+          expandHandleRef={reviewRailExpandHandleRef}
+          onExpand={expandContextRail}
+        />
+      ) : null}
     </main>
   );
 }

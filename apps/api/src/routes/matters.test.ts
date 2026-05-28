@@ -101,6 +101,37 @@ describe("matter routes", () => {
     );
   });
 
+  it("includes read-only setup profiles on authorized matter summaries", async () => {
+    const response = await testServer(user("licensee", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/matters",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const matters = response.json<MatterSummary[]>();
+    expect(matters).toHaveLength(1);
+    expect(matters[0]?.setupProfile).toMatchObject({
+      stage: {
+        key: "open",
+        label: "Open",
+      },
+      responsibleUser: {
+        state: "assigned",
+        responsibleUserId: "user-licensee",
+      },
+      financialSnapshot: {
+        caution: expect.stringContaining("read-only setup context"),
+      },
+    });
+    expect(matters[0]?.setupProfile.fieldDefinitions.map((field) => field.key)).toEqual([
+      "practiceArea",
+      "jurisdiction",
+      "openedOn",
+      "status",
+    ]);
+    expect(JSON.stringify(matters[0]?.setupProfile)).not.toContain("client@example");
+  });
+
   it("keeps matter-scoped readers assignment-limited when no matters are assigned", async () => {
     const response = await testServer(user("licensee", [])).inject({
       method: "GET",
