@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type {
-  ActivityTimelineEntry,
-  CalendarEventRecord,
-  DashboardSectionCapability,
-  DashboardSectionKey,
-  DraftRecord,
-  DraftTemplateRecord,
+import {
+  buildMatterSetupProfile,
+  type ActivityTimelineEntry,
+  type CalendarEventRecord,
+  type DashboardSectionCapability,
+  type DashboardSectionKey,
+  type DraftRecord,
+  type DraftTemplateRecord,
+  type MatterParty,
+  type TimeEntry,
 } from "@open-practice/domain";
 import { sampleResidentialTenancyIntakeDefinition } from "@open-practice/domain/sample-data";
 import { buildSidebarNavigationSections } from "../routes/routeCatalog";
@@ -264,6 +267,7 @@ import {
   upsertIntakeSession,
 } from "./types";
 import { ContactsSection } from "./dashboard/contacts-section";
+import { MatterOverviewSection } from "./dashboard/matter-overview-section";
 import type {
   ExternalUploadLinkRecord,
   ExternalUploadReviewItem,
@@ -3253,6 +3257,111 @@ describe("dashboard client behavior", () => {
       }),
     );
     expect(JSON.stringify(summary)).not.toContain("private/storage/key");
+  });
+
+  it("renders read-only matter setup profile cues in the matter overview", () => {
+    const activeMatterBase = matter({ trustBalanceCents: 25000 });
+    const syntheticParty: MatterParty = {
+      id: "party-client",
+      firmId: activeMatterBase.firmId,
+      matterId: activeMatterBase.id,
+      contactId: "contact-client",
+      role: "client",
+      adverse: false,
+      confidential: true,
+    };
+    const syntheticTimeEntry: TimeEntry = {
+      id: "time-setup",
+      firmId: activeMatterBase.firmId,
+      matterId: activeMatterBase.id,
+      userId: "user-licensee",
+      performedAt: "2026-05-02",
+      minutes: 90,
+      rateCents: 20000,
+      narrative: "Synthetic setup review",
+      billable: true,
+      billingStatus: "draft",
+    };
+    const setupUser = {
+      id: "user-licensee",
+      firmId: "firm-west-legal",
+      email: "licensee@example.test",
+      displayName: "Synthetic Licensee",
+      role: "licensee" as const,
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    };
+    const activeMatter = {
+      ...activeMatterBase,
+      timeEntries: [syntheticTimeEntry],
+      setupProfile: buildMatterSetupProfile({
+        matter: activeMatterBase,
+        parties: [syntheticParty],
+        documents: [],
+        activity: [],
+        trustBalanceCents: activeMatterBase.trustBalanceCents,
+        timeEntries: [syntheticTimeEntry],
+        expenses: [],
+        users: [setupUser],
+      }),
+    } satisfies MatterSummary;
+
+    const html = renderToStaticMarkup(
+      createElement(MatterOverviewSection, {
+        activeActivitySummary: summarizeMatterActivity([]),
+        activeCommunicationsInbox: undefined,
+        activeEmailDeliveries: [],
+        activeLegalClinicProfile: undefined,
+        activeLegalClinicProgram: undefined,
+        activeMatter,
+        activeMatterCommandCenter: undefined,
+        activityKindFilter: "all",
+        activityStatusFilter: "all",
+        filteredMatterActivity: [],
+        navigationSections: buildSidebarNavigationSections({
+          billingCanView: true,
+          capabilitySections: [capability("matters"), capability("documents"), capability("funds")],
+        }),
+        overview: {
+          firm: {
+            id: "firm-west-legal",
+            name: "West Legal",
+            defaultProvince: "BC",
+          },
+          metrics: {
+            openMatters: 1,
+            intakeMatters: 0,
+            portalGrants: 0,
+            trustBalanceCents: 25000,
+            unbilledMinutes: 90,
+          },
+          users: [
+            {
+              ...setupUser,
+            },
+          ],
+        },
+        compactDate: (value?: string) => value ?? "No date",
+        compactStatus: (value?: string) => value ?? "unknown",
+        formatCurrency: (value: number) => `$${(value / 100).toFixed(2)}`,
+        formatMinutes: (value: number) => `${value}m`,
+        onActivityKindFilterChange: () => undefined,
+        onActivityStatusFilterChange: () => undefined,
+        onSelectSection: () => undefined,
+      }),
+    );
+
+    expect(html).toContain("Matter setup");
+    expect(html).toContain("Open");
+    expect(html).toContain("Synthetic Licensee");
+    expect(html).toContain("Documents");
+    expect(html).toContain("Needs Attention");
+    expect(html).toContain("Practice Area");
+    expect(html).toContain("Trust Balance");
+    expect(html).toContain("$250.00");
+    expect(html).toContain("Unbilled Work");
+    expect(html).toContain("Responsible licensee");
+    expect(html).toContain("Trust balance view");
   });
 
   it("describes worker run filters and redacted run context", () => {

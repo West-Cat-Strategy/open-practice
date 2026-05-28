@@ -13,6 +13,7 @@ import type {
 import {
   appendAuditEvent,
   buildBasicDraftTemplates,
+  buildMatterSetupProfile,
   buildContactDossiers,
   buildPracticePresetTemplates,
   canAccess,
@@ -1743,6 +1744,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     const ledger = await this.getLedger(user.firmId);
     const allParties = await this.listMatterParties(user.firmId);
     const contacts = await this.listContacts(user.firmId);
+    const users = await this.listUsers(user.firmId);
     const documents = await this.listDocuments(user.firmId);
     const timeEntries = await this.listTimeEntries(user.firmId);
     const expenses = await this.listExpenseEntries(user.firmId);
@@ -1795,38 +1797,58 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           ...party,
           contact: contacts.find((contact) => contact.id === party.contactId)!,
         }));
+      const matterDocuments = documents.filter((document) => document.matterId === matter.id);
+      const matterTimeEntries = timeEntries.filter((entry) => entry.matterId === matter.id);
+      const matterExpenses = expenses.filter((entry) => entry.matterId === matter.id);
+      const activity = buildActivityTimeline({
+        firmId: user.firmId,
+        matter,
+        contacts,
+        matterParties: allParties,
+        documents,
+        portalGrants: grants,
+        shareLinks,
+        externalUploadLinks,
+        accessLogs,
+        auditEvents: audit.events,
+        emailOutbox,
+        signatureRequests,
+        intakeSessions,
+        generatedDocuments,
+        calendarEvents,
+        taskDeadlines,
+        timeEntries,
+        expenses,
+        invoices,
+        payments,
+        trustTransferRequests,
+        ledgerAccounts: ledger.accounts,
+        ledgerEntries: ledger.entries,
+      });
+      const trustBalanceCents = matterTrustBalance(
+        ledger.entries,
+        ledger.accounts,
+        matter,
+        allParties,
+      );
       return {
         ...matter,
         parties,
-        documents: documents.filter((document) => document.matterId === matter.id),
-        timeEntries: timeEntries.filter((entry) => entry.matterId === matter.id),
-        expenses: expenses.filter((entry) => entry.matterId === matter.id),
-        activity: buildActivityTimeline({
-          firmId: user.firmId,
+        documents: matterDocuments,
+        timeEntries: matterTimeEntries,
+        expenses: matterExpenses,
+        activity,
+        trustBalanceCents,
+        setupProfile: buildMatterSetupProfile({
           matter,
-          contacts,
-          matterParties: allParties,
-          documents,
-          portalGrants: grants,
-          shareLinks,
-          externalUploadLinks,
-          accessLogs,
-          auditEvents: audit.events,
-          emailOutbox,
-          signatureRequests,
-          intakeSessions,
-          generatedDocuments,
-          calendarEvents,
-          taskDeadlines,
-          timeEntries,
-          expenses,
-          invoices,
-          payments,
-          trustTransferRequests,
-          ledgerAccounts: ledger.accounts,
-          ledgerEntries: ledger.entries,
+          parties,
+          documents: matterDocuments,
+          timeEntries: matterTimeEntries,
+          expenses: matterExpenses,
+          activity,
+          trustBalanceCents,
+          users,
         }),
-        trustBalanceCents: matterTrustBalance(ledger.entries, ledger.accounts, matter, allParties),
       };
     });
   }

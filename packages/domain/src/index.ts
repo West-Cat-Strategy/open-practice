@@ -10,6 +10,7 @@ export * from "./fiscal-host-workflows.js";
 export * from "./intake.js";
 export * from "./ledger.js";
 export * from "./legal-clinics.js";
+export * from "./matter-setup.js";
 export * from "./models.js";
 export * from "./operational-views.js";
 export * from "./operational-actions.js";

@@ -35,6 +35,7 @@ import type {
   JurisdictionalTrustReport,
   Matter,
   MatterParty,
+  MatterSetupProfile,
   PublicConsultationIntakeNotificationSettings,
   PublicConsultationIntakeRecord,
   SignatureRequestRecord,
@@ -53,6 +54,7 @@ export interface MatterSummary extends Matter {
   expenses: ExpenseEntry[];
   activity: ActivityTimelineEntry[];
   trustBalanceCents: number;
+  setupProfile: MatterSetupProfile;
 }
 
 export interface PracticeOverview {

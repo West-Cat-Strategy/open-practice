@@ -4,6 +4,7 @@ import type {
   GeneratedDocumentRecord,
   IntakeSessionRecord,
   IntakeTemplateRecord,
+  MatterSetupProfile,
   SignatureProviderEventRecord,
   SignatureRequestRecord,
   SignatureRequestSignerRecord,
@@ -153,6 +154,7 @@ export interface MatterSummary extends Matter {
   expenses: ExpenseEntry[];
   activity: ActivityTimelineEntry[];
   trustBalanceCents: number;
+  setupProfile: MatterSetupProfile;
 }
 
 export interface PracticeOverview {
