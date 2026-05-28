@@ -9,22 +9,19 @@ import {
 import { z } from "zod";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
-import { createSessionToken, hashToken, sessionCookie } from "../http/auth-helpers.js";
+import { sessionCookie } from "../http/auth-helpers.js";
+import { createEmbeddedAuthService } from "../services/auth-service.js";
 
 const registrationVerifySchema = z.object({
-  firmId: z.string().min(1),
-  email: z.string().email(),
   challengeHash: z.string().min(1),
   response: z.any(),
 });
 
 const loginOptionsSchema = z.object({
-  firmId: z.string().min(1),
   email: z.string().email(),
 });
 
 const loginVerifySchema = z.object({
-  firmId: z.string().min(1),
   email: z.string().email(),
   challengeHash: z.string().min(1),
   response: z.any(),
@@ -53,6 +50,8 @@ export function registerWebAuthnRoutes(
     origin: string;
   },
 ): void {
+  const authService = createEmbeddedAuthService(options);
+
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this WebAuthn route has a tighter per-route cap.
   server.post(
     "/api/auth/register/options",
@@ -174,7 +173,8 @@ export function registerWebAuthnRoutes(
     // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request) => {
       const body = loginOptionsSchema.parse(request.body);
-      const user = await options.repository.getUserByEmail(body.firmId, body.email);
+      const firm = await authService.resolveConfiguredFirm();
+      const user = await options.repository.getUserByEmail(firm.id, body.email);
       const userCredentials = user
         ? await options.repository.listWebAuthnCredentials(user.firmId, user.id)
         : [];
@@ -191,7 +191,7 @@ export function registerWebAuthnRoutes(
 
       await options.repository.createWebAuthnChallenge({
         id: crypto.randomUUID(),
-        firmId: user?.firmId ?? body.firmId,
+        firmId: firm.id,
         userId: user?.id,
         challengeHash: authOptions.challenge,
         purpose: "passkey_authentication",
@@ -219,20 +219,19 @@ export function registerWebAuthnRoutes(
       }
       const body = loginVerifySchema.parse(request.body);
       const now = new Date();
+      const firm = await authService.resolveConfiguredFirm();
       const challenge = await options.repository.getWebAuthnChallenge(body.challengeHash);
-      const user = await options.repository.getUserByEmail(body.firmId, body.email);
+      const user = await options.repository.getUserByEmail(firm.id, body.email);
       if (
         !challenge ||
         challenge.purpose !== "passkey_authentication" ||
         challenge.consumedAt ||
         challengeIsExpired(challenge.expiresAt, now) ||
-        challenge.firmId !== body.firmId ||
-        (challenge.userId && (!user || challenge.userId !== user.id))
+        challenge.firmId !== firm.id ||
+        !user ||
+        challenge.userId !== user.id
       ) {
         throw invalidWebAuthnRequest("Invalid or expired challenge");
-      }
-      if (!user) {
-        throw invalidWebAuthnRequest("Invalid passkey login");
       }
 
       const credentialId = body.response.id;
@@ -266,18 +265,7 @@ export function registerWebAuthnRoutes(
           verification.authenticationInfo.newCounter,
         );
 
-        const token = createSessionToken();
-        const expiresAt = new Date(
-          now.getTime() + (options.sessionTtlHours ?? 12) * 60 * 60 * 1000,
-        ).toISOString();
-        const session = await options.repository.createAuthSession({
-          id: crypto.randomUUID(),
-          firmId: user.firmId,
-          userId: user.id,
-          tokenHash: hashToken(token, options.jwtSecret),
-          createdAt: now.toISOString(),
-          expiresAt,
-        });
+        const result = await authService.createSession(user, now);
         await options.repository.consumeWebAuthnChallenge(
           challenge.challengeHash,
           now.toISOString(),
@@ -285,9 +273,9 @@ export function registerWebAuthnRoutes(
 
         reply.header(
           "set-cookie",
-          sessionCookie(token, expiresAt, options.nodeEnv === "production"),
+          sessionCookie(result.token, result.session.expiresAt, options.nodeEnv === "production"),
         );
-        return { user, session: { id: session.id, expiresAt }, token };
+        return result;
       }
 
       throw Object.assign(new Error("Verification failed"), { statusCode: 400 });

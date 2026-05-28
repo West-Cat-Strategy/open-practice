@@ -4,16 +4,14 @@ import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
 import {
   hashToken,
-  hashPassword,
-  verifyPassword,
   createSessionToken,
   sessionCookie,
   clearSessionCookie,
   readSessionToken,
 } from "../http/auth-helpers.js";
+import { createEmbeddedAuthService } from "../services/auth-service.js";
 
 const loginBodySchema = z.object({
-  firmId: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8),
 });
@@ -24,7 +22,6 @@ const passwordSetupTokenBodySchema = z.object({
 });
 
 const passwordSetupBodySchema = z.object({
-  firmId: z.string().min(1),
   userId: z.string().min(1),
   token: z.string().min(32),
   password: z.string().min(8),
@@ -42,6 +39,8 @@ export function registerAuthRoutes(
     nodeEnv?: string;
   },
 ): void {
+  const authService = createEmbeddedAuthService(options);
+
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this login route has a tighter route cap.
   server.post(
     "/api/auth/login",
@@ -53,36 +52,13 @@ export function registerAuthRoutes(
         });
       }
       const body = loginBodySchema.parse(request.body);
-      const user = await options.repository.getUserByEmail(body.firmId, body.email);
-      const account = user
-        ? await options.repository.getAuthAccount(user.firmId, user.id)
-        : undefined;
-      if (!user || !account || !verifyPassword(body.password, account.passwordHash)) {
-        throw Object.assign(new Error("Invalid email or password"), { statusCode: 401 });
-      }
-
-      if (user.mfaEnabled) {
-        return {
-          status: "mfa_required",
-          mfaOptions: { webauthn: true },
-        };
-      }
-
-      const token = createSessionToken();
-      const now = new Date();
-      const expiresAt = new Date(
-        now.getTime() + (options.sessionTtlHours ?? 12) * 60 * 60 * 1000,
-      ).toISOString();
-      const session = await options.repository.createAuthSession({
-        id: crypto.randomUUID(),
-        firmId: user.firmId,
-        userId: user.id,
-        tokenHash: hashToken(token, options.jwtSecret),
-        createdAt: now.toISOString(),
-        expiresAt,
-      });
-      reply.header("set-cookie", sessionCookie(token, expiresAt, options.nodeEnv === "production"));
-      return { user, session: { id: session.id, expiresAt }, token };
+      const result = await authService.loginWithPassword(body);
+      if ("status" in result) return result;
+      reply.header(
+        "set-cookie",
+        sessionCookie(result.token, result.session.expiresAt, options.nodeEnv === "production"),
+      );
+      return result;
     },
   );
 
@@ -147,25 +123,7 @@ export function registerAuthRoutes(
         throw Object.assign(new Error("Password setup is not configured"), { statusCode: 503 });
       }
       const body = passwordSetupBodySchema.parse(request.body);
-      const now = new Date().toISOString();
-      const token = await options.repository.consumePasswordSetupToken(
-        hashToken(body.token, options.jwtSecret),
-        now,
-      );
-      if (!token || token.firmId !== body.firmId || token.userId !== body.userId) {
-        throw Object.assign(new Error("Password setup token is invalid or expired"), {
-          statusCode: 401,
-        });
-      }
-      const user = await options.repository.getUser(body.firmId, body.userId);
-      if (!user) throw Object.assign(new Error("User was not found"), { statusCode: 404 });
-      await options.repository.setAuthPassword({
-        firmId: body.firmId,
-        userId: body.userId,
-        passwordHash: hashPassword(body.password),
-        passwordUpdatedAt: now,
-      });
-      return { user };
+      return authService.completePasswordSetup(body);
     },
   );
 }

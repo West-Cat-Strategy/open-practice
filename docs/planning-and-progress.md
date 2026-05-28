@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-05-26
+**Last Updated:** 2026-05-27
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -8,22 +8,23 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                 |
-| --------------------- | --------------------------------------------------------------------- |
-| Current focus         | May 26 branch consolidation proof is recorded; no active row is open. |
-| Next recommended pick | Resolve the OSS reuse lock/index mismatch before full policy green.   |
-| Ready rows            | 0                                                                     |
-| Candidate rows        | 0                                                                     |
-| In progress rows      | 0                                                                     |
-| Review rows           | 0                                                                     |
-| Blocked rows          | 0                                                                     |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).  |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`      |
+| Snapshot              | Value                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| Current focus         | Single-tenant auth entry slice is merge-ready with focused proof.    |
+| Next recommended pick | Resolve the OSS reuse lock/index mismatch before full policy green.  |
+| Ready rows            | 0                                                                    |
+| Candidate rows        | 0                                                                    |
+| In progress rows      | 0                                                                    |
+| Review rows           | 0                                                                    |
+| Blocked rows          | 0                                                                    |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Forward Development Plan
 
 | Status | ID      | Task                                              | Immediate Next Move                                                                                                                                                                                                                                                                                                                                                                                                                                                | Validation Plan                                                                                                                                                                                                                                                              |
 | ------ | ------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Done   | OP-M7   | Single-tenant auth entry flows                    | Removed user-facing firm ID entry from embedded login, public passkey login, recovery-code verification, password setup, and login UI payloads while keeping firm IDs internal for authorization, audit, matter-scope, and persistence partitioning. Configured-practice resolution now blocks partial setup state and multiple firm records for operator review.                                                                                                  | Done proof recorded in [single-tenant auth entry proof](validation/OP_SINGLE_TENANT_AUTH_PROOF_2026-05-27.md).                                                                                                                                                               |
 | Done   | OP-T123 | Operational action-state descriptors              | Added the first shared domain descriptor for queue/review action availability, adopted it in the existing connector recovery and document-processing dashboard action helpers, and exposed a web-safe domain subpath without adding new providers, dependencies, queue types, or mutation paths.                                                                                                                                                                   | Done proof recorded in [OP-T123 operational action-state descriptors proof](validation/OP-T123_OPERATIONAL_ACTION_STATE_DESCRIPTORS_PROOF_2026-05-26.md). `pnpm policy:check` remains blocked by pre-existing OSS lock/index mismatches recorded there.                      |
 | Done   | OP-T121 | Calendar reminder delivery jobs                   | Added opt-in delayed reminder email jobs through the existing outbox confirmation boundary while preserving dashboard reminder records as the source of truth and leaving attendee sync, iCalendar subscriptions, meeting-link delivery, provider sync, and meeting media out of scope.                                                                                                                                                                            | Done proof recorded in [OP-T121 reminder delivery proof](validation/OP-T121_CALENDAR_REMINDER_DELIVERY_JOBS_PROOF_2026-05-26.md).                                                                                                                                            |
 | Done   | OP-T122 | Conversation internal notifications               | Added staff-only conversation message notification records with read/mute posture, internal-only fan-out, and current-user inbox posture summaries while keeping realtime chat, portal delivery, public notifications, and cross-thread notification automation out of scope.                                                                                                                                                                                      | Done proof recorded in [OP-T122 conversation internal notifications proof](validation/OP-T122_CONVERSATION_INTERNAL_NOTIFICATIONS_PROOF_2026-05-26.md).                                                                                                                      |

@@ -364,6 +364,11 @@ export interface FirstRunSetupStatus {
   reason?: string;
 }
 
+export type ConfiguredFirmResolution =
+  | { status: "ready"; firm: Firm }
+  | { status: "setup_required" }
+  | { status: "blocked"; reason: string };
+
 export interface FirstRunSetupInput {
   firm: Firm;
   settings: FirmSettings;
@@ -448,6 +453,7 @@ export class FirstRunSetupConflictError extends Error {
 
 export interface OpenPracticeRepository {
   getSetupStatus(): Promise<FirstRunSetupStatus>;
+  resolveConfiguredFirm(): Promise<ConfiguredFirmResolution>;
   completeFirstRunSetup(input: FirstRunSetupInput): Promise<FirstRunSetupResult>;
   getFirmSettings(firmId: string): Promise<FirmSettings | undefined>;
   listProviderSettings(

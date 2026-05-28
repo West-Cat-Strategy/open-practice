@@ -1,7 +1,7 @@
 # Deployment Hardening
 
 - Require TLS for all browser, API, portal, and object-storage traffic.
-- Configure embedded session auth with strong password setup/invitation flows for firm users and portal users.
+- Configure embedded session auth with strong password setup/invitation flows for practice users and portal users.
 - Configure a one-time `OPEN_PRACTICE_SETUP_KEY` for production first-run setup and remove or rotate it after the first owner admin is created.
 - Keep S3 buckets private; serve files only through expiring signed URLs after server-side authorization.
 - Verify upload-completion callbacks against expected storage keys, checksums, size policy, and scan state before documents can be shared.
@@ -9,6 +9,9 @@
 - Back up PostgreSQL and object storage together, test restores, and include migration rollback/roll-forward drills in release readiness.
 - Store secrets outside git and outside container images.
 - Configure production embedded auth explicitly; dev header auth, bearer JWT auth, and weak secrets must not be accepted in production.
+- Keep user-facing embedded auth single-tenant: users sign in with email/password, passkey, or
+  recovery code only, while the API resolves the sole configured practice internally and blocks
+  operator review if multiple firm records exist.
 - Record embedded signature events with signer consent, actor, IP/user-agent, and timestamp evidence.
 - Keep future workers separate from core startup unless an explicit deployment profile enables them.
 - Keep Redis private to API and worker containers. Do not put raw matter, document, intake, transcript,
@@ -46,6 +49,9 @@ Environment variables must be treated as deployment inputs, not application defa
   setup route only proceeds while both firm and user tables are empty; any missing production setup
   key or partial bootstrap state is blocked for operator review. The web setup flow is intentionally
   minimal and creates editable operational defaults after the first owner admin is created.
+- `DEV_AUTH_FIRM_ID` and `x-open-practice-firm-id` are development-only helpers for seeded local
+  requests. They must not be part of production user-facing sign-in, password setup, passkey login,
+  or recovery-code payloads.
 - `API_BASE_URL`, `WEB_PORT`, and `API_PORT` should be explicit per environment, with TLS termination
   and allowed origins configured at the edge.
 - `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY` must reference a
