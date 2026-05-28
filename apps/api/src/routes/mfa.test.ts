@@ -60,10 +60,13 @@ afterEach(async () => {
 
 describe("MFA and Recovery Flows", () => {
   it("enforces MFA if enabled and allows bypass with recovery code", async () => {
-    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
     const firmId = "firm-1";
     const userId = "user-1";
     const email = "test@example.com";
+    const repository = new InMemoryOpenPracticeRepository({
+      seedSampleData: false,
+      firms: [{ id: firmId, name: "Test Firm", defaultProvince: "BC" }],
+    });
 
     // Setup user
     await repository.createUser({
@@ -88,7 +91,7 @@ describe("MFA and Recovery Flows", () => {
     const login1 = await server.inject({
       method: "POST",
       url: "/api/auth/login",
-      payload: { firmId, email, password: "password123" },
+      payload: { email, password: "password123" },
     });
     expect(login1.statusCode).toBe(200);
     expect(login1.json()).not.toHaveProperty("status", "mfa_required");
@@ -134,7 +137,7 @@ describe("MFA and Recovery Flows", () => {
     const login2 = await server.inject({
       method: "POST",
       url: "/api/auth/login",
-      payload: { firmId, email, password: "password123" },
+      payload: { email, password: "password123" },
     });
     expect(login2.statusCode).toBe(200);
     expect(login2.json()).toMatchObject({
@@ -146,7 +149,7 @@ describe("MFA and Recovery Flows", () => {
     const recoveryLogin = await server.inject({
       method: "POST",
       url: "/api/auth/recovery-codes/verify",
-      payload: { firmId, email, code: codes[0] },
+      payload: { email, code: codes[0] },
     });
     expect(recoveryLogin.statusCode).toBe(200);
     expect(recoveryLogin.json()).toHaveProperty("token");
@@ -155,7 +158,7 @@ describe("MFA and Recovery Flows", () => {
     const recoveryLogin2 = await server.inject({
       method: "POST",
       url: "/api/auth/recovery-codes/verify",
-      payload: { firmId, email, code: codes[0] },
+      payload: { email, code: codes[0] },
     });
     expect(recoveryLogin2.statusCode).toBe(401);
     // 8. List credentials

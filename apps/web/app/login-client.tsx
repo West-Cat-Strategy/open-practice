@@ -2,18 +2,18 @@
 
 import { LogIn } from "lucide-react";
 import { useState } from "react";
+import { buildLoginPayload, canSubmitLogin } from "./login-client-utils";
 
 interface LoginClientProps {
   apiBaseUrl: string;
 }
 
 export default function LoginClient({ apiBaseUrl }: LoginClientProps) {
-  const [firmId, setFirmId] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("Session required.");
   const [submitting, setSubmitting] = useState(false);
-  const canSubmit = firmId.trim() && email.trim() && password;
+  const canSubmit = canSubmitLogin({ email, password });
 
   async function login() {
     setSubmitting(true);
@@ -22,7 +22,7 @@ export default function LoginClient({ apiBaseUrl }: LoginClientProps) {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ firmId: firmId.trim(), email: email.trim(), password }),
+      body: JSON.stringify(buildLoginPayload({ email, password })),
     });
     if (!response.ok) {
       const error = (await response.json().catch(() => null)) as { message?: string } | null;
@@ -44,25 +44,14 @@ export default function LoginClient({ apiBaseUrl }: LoginClientProps) {
           <div>
             <p className="eyebrow">Open Practice</p>
             <h1 id="login-title">Sign In</h1>
-            <p className="setup-step-summary">
-              Use the firm workspace ID and owner-issued credentials.
-            </p>
+            <p className="setup-step-summary">Use your owner-issued practice credentials.</p>
           </div>
         </header>
         <div className="auth-readiness-strip" aria-label="Session requirements">
-          <span>{firmId.trim() ? "Firm ID ready" : "Firm ID required"}</span>
           <span>{email.trim() ? "Email ready" : "Email required"}</span>
           <span>{password ? "Password ready" : "Password required"}</span>
         </div>
         <div className="setup-grid one-column auth-form-grid" aria-label="Session credentials">
-          <label className="form-field">
-            <span>Firm ID</span>
-            <input
-              autoComplete="organization"
-              onChange={(event) => setFirmId(event.target.value)}
-              value={firmId}
-            />
-          </label>
           <label className="form-field">
             <span>Email</span>
             <input

@@ -1,7 +1,29 @@
 import { describe, expect, it } from "vitest";
+import { DrizzleOpenPracticeRepository } from "../src/repository/drizzle.js";
 import { FirstRunSetupConflictError } from "../src/repository/contracts.js";
+import * as schema from "../src/schema.js";
 import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
 import { now, setupInput } from "./repository.fixtures.js";
+
+type DrizzleDb = ConstructorParameters<typeof DrizzleOpenPracticeRepository>[0];
+
+function drizzleRepositoryWithSetupRows(input: {
+  firms?: Record<string, unknown>[];
+  users?: Record<string, unknown>[];
+}) {
+  const db = {
+    select: () => ({
+      from: (table: unknown) => ({
+        limit: async () => {
+          if (table === schema.firms) return input.firms ?? [];
+          if (table === schema.users) return input.users ?? [];
+          return [];
+        },
+      }),
+    }),
+  } as unknown as DrizzleDb;
+  return new DrizzleOpenPracticeRepository(db);
+}
 
 describe("repository first-run setup", () => {
   it("reports setup as required only for an empty repository", async () => {
@@ -98,6 +120,78 @@ describe("repository first-run setup", () => {
     await expect(repository.getSetupStatus()).resolves.toMatchObject({
       required: false,
       blocked: true,
+    });
+  });
+
+  it("resolves the sole configured firm for single-tenant auth", async () => {
+    const input = setupInput();
+    const memory = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    await memory.completeFirstRunSetup(input);
+
+    await expect(memory.resolveConfiguredFirm()).resolves.toEqual({
+      status: "ready",
+      firm: input.firm,
+    });
+    await expect(
+      drizzleRepositoryWithSetupRows({
+        firms: [{ ...input.firm, createdAt: new Date(now) }],
+        users: [{ id: input.owner.id }],
+      }).resolveConfiguredFirm(),
+    ).resolves.toEqual({
+      status: "ready",
+      firm: input.firm,
+    });
+  });
+
+  it("reports setup-required or blocked firm resolution states", async () => {
+    await expect(
+      new InMemoryOpenPracticeRepository({ seedSampleData: false }).resolveConfiguredFirm(),
+    ).resolves.toEqual({ status: "setup_required" });
+    await expect(drizzleRepositoryWithSetupRows({}).resolveConfiguredFirm()).resolves.toEqual({
+      status: "setup_required",
+    });
+
+    const firms = [
+      { id: "firm-one", name: "Firm One", defaultProvince: "BC", createdAt: new Date(now) },
+      { id: "firm-two", name: "Firm Two", defaultProvince: "ON", createdAt: new Date(now) },
+    ];
+    const blockedMemory = new InMemoryOpenPracticeRepository({
+      seedSampleData: false,
+      firms: [
+        { id: "firm-one", name: "Firm One", defaultProvince: "BC" },
+        { id: "firm-two", name: "Firm Two", defaultProvince: "ON" },
+      ],
+    });
+
+    await expect(blockedMemory.resolveConfiguredFirm()).resolves.toMatchObject({
+      status: "blocked",
+    });
+    await expect(
+      drizzleRepositoryWithSetupRows({
+        firms,
+        users: [{ id: "user-one" }],
+      }).resolveConfiguredFirm(),
+    ).resolves.toMatchObject({
+      status: "blocked",
+    });
+  });
+
+  it("blocks single-tenant firm resolution for partial first-run state", async () => {
+    const input = setupInput();
+    await expect(
+      new InMemoryOpenPracticeRepository({
+        seedSampleData: false,
+        firms: [input.firm],
+      }).resolveConfiguredFirm(),
+    ).resolves.toMatchObject({
+      status: "blocked",
+    });
+    await expect(
+      drizzleRepositoryWithSetupRows({
+        firms: [{ ...input.firm, createdAt: new Date(now) }],
+      }).resolveConfiguredFirm(),
+    ).resolves.toMatchObject({
+      status: "blocked",
     });
   });
 });

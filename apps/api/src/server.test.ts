@@ -90,7 +90,6 @@ async function setAdminPassword(input: {
     method: "POST",
     url: "/api/auth/password-setup",
     payload: {
-      firmId: "firm-west-legal",
       userId: "user-admin",
       token: setupToken.json<{ token: string }>().token,
       password: input.password,
@@ -613,7 +612,6 @@ describe("API auth and persistence boundaries", () => {
       method: "POST",
       url: "/api/auth/login",
       payload: {
-        firmId: "firm-west-legal",
         email: "avery@example.test",
         password: "correct horse battery staple",
       },
@@ -630,6 +628,64 @@ describe("API auth and persistence boundaries", () => {
     expect(response.statusCode).toBe(200);
   });
 
+  it("reports setup-not-ready before single-tenant embedded login", async () => {
+    const response = await testServer({
+      repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
+      nodeEnv: "production",
+      jwtSecret: "production-test-secret-at-least-32-characters",
+    }).inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: {
+        email: "avery@example.test",
+        password: "correct horse battery staple",
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "First-run setup is required before sign in.",
+    });
+  });
+
+  it("blocks single-tenant embedded login when multiple firm records exist", async () => {
+    const response = await testServer({
+      repository: new InMemoryOpenPracticeRepository({
+        seedSampleData: false,
+        firms: [
+          { id: "firm-one", name: "Firm One", defaultProvince: "BC" },
+          { id: "firm-two", name: "Firm Two", defaultProvince: "ON" },
+        ],
+        users: [
+          {
+            id: "user-one",
+            firmId: "firm-one",
+            displayName: "Avery One",
+            email: "avery@example.test",
+            role: "owner_admin",
+            assignedMatterIds: [],
+            mfaEnabled: false,
+          },
+        ],
+      }),
+      nodeEnv: "production",
+      jwtSecret: "production-test-secret-at-least-32-characters",
+    }).inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: {
+        email: "avery@example.test",
+        password: "correct horse battery staple",
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message:
+        "Multiple firm records found. Resolve practice records before using single-tenant authentication.",
+    });
+  });
+
   it("rate-limits repeated embedded login attempts", async () => {
     const jwtSecret = "production-test-secret-at-least-32-characters";
     const server = testServer({ nodeEnv: "production", jwtSecret });
@@ -641,7 +697,6 @@ describe("API auth and persistence boundaries", () => {
           method: "POST",
           url: "/api/auth/login",
           payload: {
-            firmId: "firm-west-legal",
             email: "avery@example.test",
             password: "wrong password",
           },
@@ -663,7 +718,6 @@ describe("API auth and persistence boundaries", () => {
       method: "POST",
       url: "/api/auth/login",
       payload: {
-        firmId: "firm-west-legal",
         email: "avery@example.test",
         password: "logout password",
       },
@@ -699,7 +753,6 @@ describe("API auth and persistence boundaries", () => {
       method: "POST",
       url: "/api/auth/login",
       payload: {
-        firmId: "firm-west-legal",
         email: "avery@example.test",
         password: "expired password",
       },

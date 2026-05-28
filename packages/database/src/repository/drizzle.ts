@@ -66,6 +66,7 @@ import {
   type EmailReceiptTokenRecord,
   type ExpenseEntry,
   type ExternalUploadLinkRecord,
+  type Firm,
   type FirmSettings,
   type InboundEmailAddressRecord,
   type InboundEmailAttachmentRecord,
@@ -125,6 +126,7 @@ import type {
   FirstRunSetupInput,
   FirstRunSetupResult,
   FirstRunSetupStatus,
+  ConfiguredFirmResolution,
   InboundAttachmentPromotionInput,
   InboundAttachmentPromotionResult,
   InvoiceWithLines,
@@ -284,6 +286,35 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     const firms = await this.db.select({ id: schema.firms.id }).from(schema.firms).limit(2);
     const users = await this.db.select({ id: schema.users.id }).from(schema.users).limit(2);
     return setupStatusFromCounts(firms.length, users.length);
+  }
+
+  async resolveConfiguredFirm(): Promise<ConfiguredFirmResolution> {
+    const rows = await this.db.select().from(schema.firms).limit(2);
+    const users = await this.db.select({ id: schema.users.id }).from(schema.users).limit(2);
+    const status = setupStatusFromCounts(rows.length, users.length);
+    if (status.blocked) {
+      return {
+        status: "blocked",
+        reason: status.reason ?? "Practice setup state requires operator review.",
+      };
+    }
+    if (status.required) {
+      return { status: "setup_required" };
+    }
+    if (rows.length > 1) {
+      return {
+        status: "blocked",
+        reason:
+          "Multiple firm records found. Resolve practice records before using single-tenant authentication.",
+      };
+    }
+    const row = rows[0];
+    const firm: Firm = {
+      id: row.id,
+      name: row.name,
+      defaultProvince: row.defaultProvince,
+    };
+    return { status: "ready", firm };
   }
 
   async completeFirstRunSetup(input: FirstRunSetupInput): Promise<FirstRunSetupResult> {

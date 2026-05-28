@@ -2,12 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
-import {
-  verifyPassword,
-  createSessionToken,
-  hashToken,
-  sessionCookie,
-} from "../http/auth-helpers.js";
+import { sessionCookie } from "../http/auth-helpers.js";
+import { createEmbeddedAuthService, recoveryCodeHash } from "../services/auth-service.js";
 import { randomBytes } from "node:crypto";
 
 export function registerRecoveryRoutes(
@@ -20,7 +16,7 @@ export function registerRecoveryRoutes(
   },
 ): void {
   const RECOVERY_RATE_LIMIT = { max: 5, timeWindow: "1 minute" };
-  const recoveryCodeHash = (code: string) => hashToken(`recovery-code:${code}`, options.jwtSecret!);
+  const authService = createEmbeddedAuthService(options);
 
   server.post(
     "/api/auth/recovery-codes/generate",
@@ -43,7 +39,7 @@ export function registerRecoveryRoutes(
         id: crypto.randomUUID(),
         firmId: request.auth.firmId,
         userId: request.auth.user.id,
-        codeHash: recoveryCodeHash(code),
+        codeHash: recoveryCodeHash(code, options.jwtSecret!),
         createdAt: new Date().toISOString(),
       }));
 
@@ -72,53 +68,17 @@ export function registerRecoveryRoutes(
       }
       const body = z
         .object({
-          firmId: z.string().min(1),
           email: z.string().email(),
           code: z.string().min(1),
         })
         .parse(request.body);
 
-      const user = await options.repository.getUserByEmail(body.firmId, body.email);
-      if (!user) throw Object.assign(new Error("User not found"), { statusCode: 404 });
-
-      const recoveryCodes = await options.repository.listRecoveryCodes(user.firmId, user.id);
-      const newCodeHash = recoveryCodeHash(body.code);
-      const validCode = recoveryCodes.find((code) => {
-        if (code.usedAt) return false;
-        if (code.codeHash === newCodeHash) return true;
-        return code.codeHash.startsWith("pbkdf2:") && verifyPassword(body.code, code.codeHash);
-      });
-
-      if (validCode) {
-        await options.repository.useRecoveryCode(
-          user.firmId,
-          user.id,
-          validCode.codeHash,
-          new Date().toISOString(),
-        );
-
-        const token = createSessionToken();
-        const now = new Date();
-        const expiresAt = new Date(
-          now.getTime() + (options.sessionTtlHours ?? 12) * 60 * 60 * 1000,
-        ).toISOString();
-        const session = await options.repository.createAuthSession({
-          id: crypto.randomUUID(),
-          firmId: user.firmId,
-          userId: user.id,
-          tokenHash: hashToken(token, options.jwtSecret),
-          createdAt: now.toISOString(),
-          expiresAt,
-        });
-
-        reply.header(
-          "set-cookie",
-          sessionCookie(token, expiresAt, options.nodeEnv === "production"),
-        );
-        return { user, session: { id: session.id, expiresAt }, token };
-      }
-
-      throw Object.assign(new Error("Invalid recovery code"), { statusCode: 401 });
+      const result = await authService.verifyRecoveryCode(body);
+      reply.header(
+        "set-cookie",
+        sessionCookie(result.token, result.session.expiresAt, options.nodeEnv === "production"),
+      );
+      return result;
     },
   );
 }

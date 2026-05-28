@@ -44,6 +44,14 @@ vi.mock("@simplewebauthn/server", () => ({
 
 const servers: FastifyInstance[] = [];
 const jwtSecret = "test-secret-at-least-32-chars-long";
+const testFirm = { id: "firm-1", name: "Test Firm", defaultProvince: "BC" as const };
+
+function testRepository() {
+  return new InMemoryOpenPracticeRepository({
+    seedSampleData: false,
+    firms: [testFirm],
+  });
+}
 
 async function seedUser(repository: OpenPracticeRepository, mfaEnabled = false) {
   await repository.createUser({
@@ -111,7 +119,7 @@ afterEach(async () => {
 
 describe("WebAuthn routes", () => {
   it("verifies registration with the stored challenge hash and consumes it", async () => {
-    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const repository = testRepository();
     await seedUser(repository);
     const server = testServer(repository);
 
@@ -127,8 +135,6 @@ describe("WebAuthn routes", () => {
       url: "/api/auth/register/verify",
       headers: { "x-open-practice-session": "session-token" },
       payload: {
-        firmId: "firm-1",
-        email: "test@example.test",
         challengeHash: "registration-challenge",
         response: { id: "credential-id", response: { transports: ["internal"] } },
       },
@@ -143,8 +149,6 @@ describe("WebAuthn routes", () => {
       url: "/api/auth/register/verify",
       headers: { "x-open-practice-session": "session-token" },
       payload: {
-        firmId: "firm-1",
-        email: "test@example.test",
         challengeHash: "registration-challenge",
         response: { id: "credential-id", response: { transports: ["internal"] } },
       },
@@ -153,27 +157,80 @@ describe("WebAuthn routes", () => {
   });
 
   it("does not reveal whether an email exists when generating login options", async () => {
-    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const repository = testRepository();
     await seedUser(repository);
     const server = testServer(repository);
 
     const known = await server.inject({
       method: "POST",
       url: "/api/auth/login/options",
-      payload: { firmId: "firm-1", email: "test@example.test" },
+      payload: { email: "test@example.test" },
     });
     const unknown = await server.inject({
       method: "POST",
       url: "/api/auth/login/options",
-      payload: { firmId: "firm-1", email: "unknown@example.test" },
+      payload: { email: "unknown@example.test" },
     });
 
     expect(known.statusCode).toBe(200);
     expect(unknown.statusCode).toBe(200);
   });
 
+  it("reports setup-not-ready before public passkey login options", async () => {
+    const server = testServer(new InMemoryOpenPracticeRepository({ seedSampleData: false }));
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/auth/login/options",
+      payload: { email: "test@example.test" },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "First-run setup is required before sign in.",
+    });
+  });
+
+  it("does not allow an unknown-email challenge to be replayed for a known passkey user", async () => {
+    const repository = testRepository();
+    await seedUser(repository, true);
+    await repository.registerWebAuthnCredential({
+      id: "cred-1",
+      firmId: "firm-1",
+      userId: "user-1",
+      credentialId: "credential-id",
+      publicKey: Buffer.from([1, 2, 3]).toString("base64url"),
+      counter: 0,
+      transports: [],
+      deviceType: "singleDevice",
+      backedUp: false,
+      createdAt: new Date().toISOString(),
+    });
+    const server = testServer(repository);
+
+    const options = await server.inject({
+      method: "POST",
+      url: "/api/auth/login/options",
+      payload: { email: "unknown@example.test" },
+    });
+    expect(options.statusCode).toBe(200);
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/auth/login/verify",
+      payload: {
+        email: "test@example.test",
+        challengeHash: "authentication-challenge",
+        response: { id: "credential-id" },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ message: "Invalid or expired challenge" });
+  });
+
   it("rejects disabled or cross-firm credentials during login verification", async () => {
-    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const repository = testRepository();
     await seedUser(repository, true);
     await repository.registerWebAuthnCredential({
       id: "cred-1",
@@ -203,7 +260,6 @@ describe("WebAuthn routes", () => {
       method: "POST",
       url: "/api/auth/login/verify",
       payload: {
-        firmId: "firm-1",
         email: "test@example.test",
         challengeHash: "authentication-challenge",
         response: { id: "credential-id" },

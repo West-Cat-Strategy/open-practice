@@ -151,6 +151,7 @@ import type {
   FirstRunSetupInput,
   FirstRunSetupResult,
   FirstRunSetupStatus,
+  ConfiguredFirmResolution,
   InboundAttachmentPromotionInput,
   InboundAttachmentPromotionResult,
   InvoiceWithLines,
@@ -327,6 +328,27 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async getSetupStatus(): Promise<FirstRunSetupStatus> {
     return setupStatusFromCounts(this.firms.length, this.users.length);
+  }
+
+  async resolveConfiguredFirm(): Promise<ConfiguredFirmResolution> {
+    const status = setupStatusFromCounts(this.firms.length, this.users.length);
+    if (status.blocked) {
+      return {
+        status: "blocked",
+        reason: status.reason ?? "Practice setup state requires operator review.",
+      };
+    }
+    if (status.required) {
+      return { status: "setup_required" };
+    }
+    if (this.firms.length > 1) {
+      return {
+        status: "blocked",
+        reason:
+          "Multiple firm records found. Resolve practice records before using single-tenant authentication.",
+      };
+    }
+    return { status: "ready", firm: clone(this.firms[0]) };
   }
 
   async completeFirstRunSetup(input: FirstRunSetupInput): Promise<FirstRunSetupResult> {
