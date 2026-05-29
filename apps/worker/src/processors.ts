@@ -12,8 +12,13 @@ import type {
 } from "@open-practice/domain";
 import {
   assertDraftAssistTask,
+  buildStaffReportProjection,
   buildDraftAssistAuditMetadata,
   extractTipTapPlainText,
+  getStaffSavedReportDefinition,
+  isStaffReportDefinitionKey,
+  isStaffReportExportProfileId,
+  isStaffReportGroupingKey,
   outboundWebhookEventAllowlist,
   validateOutboundWebhookDestination,
 } from "@open-practice/domain";
@@ -181,6 +186,21 @@ function metadataJurisdiction(metadata: Record<string, unknown>): string | undef
   return value === "BC" || value === "ON" || value === "CANADA" || value === "OTHER"
     ? value
     : undefined;
+}
+
+function metadataStaffReportDefinitionKey(metadata: Record<string, unknown>) {
+  const value = metadataString(metadata, "reportDefinitionKey");
+  return value && isStaffReportDefinitionKey(value) ? value : undefined;
+}
+
+function metadataStaffReportExportProfileId(metadata: Record<string, unknown>) {
+  const value = metadataString(metadata, "exportProfileId");
+  return value && isStaffReportExportProfileId(value) ? value : undefined;
+}
+
+function metadataStaffReportGroupingKey(metadata: Record<string, unknown>) {
+  const value = metadataString(metadata, "groupingKey");
+  return value && isStaffReportGroupingKey(value) ? value : undefined;
 }
 
 async function enabledAiProviderKey(
@@ -486,6 +506,67 @@ async function processReportJob(input: {
         reportScope: "firm",
         jurisdiction,
         generatedAt: new Date().toISOString(),
+      }),
+    };
+  }
+
+  if (input.jobName === "staff_report_export" && data.resourceType === "staff_report_export") {
+    const metadata = data.metadata ?? {};
+    const reportDefinitionKey = metadataStaffReportDefinitionKey(metadata);
+    const exportProfileId = metadataStaffReportExportProfileId(metadata);
+    if (!reportDefinitionKey || !exportProfileId) {
+      return {
+        status: "skipped",
+        reason: "Staff report export metadata was incomplete",
+        metadata: compactMetadata({
+          firmId: data.firmId,
+          resourceType: "staff_report_export",
+          resourceId: data.resourceId,
+          reportType: "staff_reporting",
+          reportStatus: "invalid_metadata",
+        }),
+      };
+    }
+    const definition = getStaffSavedReportDefinition(reportDefinitionKey);
+    const groupingKey = metadataStaffReportGroupingKey(metadata) ?? definition.defaultGrouping;
+    const overview = await repository.getOverview(data.firmId);
+    const firmWideMatterReader =
+      overview.users.find((user) => user.role === "owner_admin") ??
+      overview.users.find((user) => user.role === "auditor") ??
+      overview.users[0];
+    const [matters, invoices, ledger, reconciliations, timeEntries, taskDeadlines] =
+      await Promise.all([
+        firmWideMatterReader ? repository.listMattersForUser(firmWideMatterReader) : [],
+        repository.listInvoices(data.firmId),
+        repository.getLedger(data.firmId),
+        repository.listLedgerReconciliations(data.firmId),
+        repository.listTimeEntries(data.firmId),
+        repository.listTaskDeadlines(data.firmId, { includeCompleted: true }),
+      ]);
+    const projection = buildStaffReportProjection({
+      firmId: data.firmId,
+      definitionKey: reportDefinitionKey,
+      groupingKey,
+      matters,
+      users: overview.users,
+      invoices,
+      ledgerAccounts: ledger.accounts,
+      reconciliations,
+      timeEntries,
+      taskDeadlines,
+    });
+    return {
+      status: "completed",
+      metadata: compactMetadata({
+        firmId: data.firmId,
+        resourceType: "staff_report_export",
+        resourceId: data.resourceId,
+        reportType: "staff_reporting",
+        reportDefinitionKey,
+        exportProfileId,
+        groupingKey,
+        rowCount: projection.rowCount,
+        generatedAt: projection.generatedAt,
       }),
     };
   }

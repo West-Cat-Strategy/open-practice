@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Banknote,
+  BarChart3,
   CalendarDays,
   Clock3,
   ContactRound,
@@ -32,6 +33,9 @@ import type {
   DraftExportFormat,
   EmbeddedIntakeTemplateDefinitionV2,
   CalendarMeetingLinkMode,
+  StaffReportDefinitionKey,
+  StaffReportExportProfileId,
+  StaffReportGroupingKey,
 } from "@open-practice/domain";
 import {
   buildDashboardSectionUrl,
@@ -281,6 +285,7 @@ import {
 import { ContactsSection } from "./dashboard/contacts-section";
 import { MatterOverviewSection } from "./dashboard/matter-overview-section";
 import { QueuesSection } from "./dashboard/queues-section";
+import { ReportsSection } from "./dashboard/reports-section";
 import {
   DeliveryConfirmationPanel,
   OneTimeSecretPanel,
@@ -359,6 +364,8 @@ import type {
   ShareLinksResponse,
   ShareLinksStatusResponse,
   SignatureRequestsResponse,
+  StaffReportExportRequestResponse,
+  StaffReportingWorkspaceResponse,
   TaskDeadlineWorkbenchResponse,
   TrustControlsDashboardResponse,
   IntakeVariableProposalsResponse,
@@ -394,6 +401,7 @@ interface DashboardClientProps {
   operationalViews: OperationalViewsResponse;
   providerStatus: ProvidersStatusResponse;
   publicConsultation: PublicConsultationDashboardResponse;
+  reportingWorkspace: StaffReportingWorkspaceResponse;
   matters: MatterSummary[];
   session: SessionResponse;
   shareLinksStatus: ShareLinksStatusResponse;
@@ -493,6 +501,7 @@ const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   contacts: ContactRound,
   funds: Banknote,
   billing: CreditCard,
+  reports: BarChart3,
   documents: Files,
   shares: Link2,
   externalUploads: Upload,
@@ -727,6 +736,7 @@ export default function DashboardClient({
   operationalViews: initialOperationalViews,
   providerStatus: initialProviderStatus,
   publicConsultation,
+  reportingWorkspace: initialReportingWorkspace,
   matters: initialMatters,
   session,
   signatures,
@@ -751,6 +761,7 @@ export default function DashboardClient({
   const [providerStatus, setProviderStatus] = useState(initialProviderStatus);
   const [connectorOperations, setConnectorOperations] = useState(initialConnectorOperations);
   const [operationalViews, setOperationalViews] = useState(initialOperationalViews);
+  const [reportingWorkspace, setReportingWorkspace] = useState(initialReportingWorkspace);
   const [freshnessNow, setFreshnessNow] = useState(() => new Date());
   const [dashboardLoadedAt, setDashboardLoadedAt] = useState("");
   const [queueRefreshState, setQueueRefreshState] = useState<DashboardLaneRefreshState>({
@@ -800,6 +811,12 @@ export default function DashboardClient({
   const [archivingMatterViewId, setArchivingMatterViewId] = useState("");
   const [activeSavedOperationalViewId, setActiveSavedOperationalViewId] = useState("");
   const [activeSavedMatterViewId, setActiveSavedMatterViewId] = useState("");
+  const [exportingReportKey, setExportingReportKey] = useState("");
+  const [reportExportStatus, setReportExportStatus] = useState(
+    reportingWorkspace.history.length > 0
+      ? `${reportingWorkspace.history.length} report export request${reportingWorkspace.history.length === 1 ? "" : "s"} loaded.`
+      : "No report export requested in this session.",
+  );
   const [selectedMatterViewPresetFamily, setSelectedMatterViewPresetFamily] =
     useState<SavedMatterPresetFamily>("matter_follow_up");
   const [matterSearch, setMatterSearch] = useState("");
@@ -4031,6 +4048,43 @@ export default function DashboardClient({
     setSavedMatterViewStatus(describeSavedMatterFocus(definition, matters, operationalViews));
   }
 
+  async function requestReportExport(
+    reportDefinitionKey: StaffReportDefinitionKey,
+    exportProfileId: StaffReportExportProfileId,
+    groupingKey: StaffReportGroupingKey,
+  ): Promise<void> {
+    const busyKey = `${reportDefinitionKey}:${exportProfileId}`;
+    setExportingReportKey(busyKey);
+    setReportExportStatus(`Queuing ${reportDefinitionKey.replaceAll("_", " ")} export...`);
+    try {
+      const payload = await requestDashboardJson<StaffReportExportRequestResponse>(
+        apiBaseUrl,
+        "/api/reports/export-requests",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: {
+            reportDefinitionKey,
+            exportProfileId,
+            groupingKey,
+          },
+        },
+      );
+      setReportingWorkspace((current) => ({
+        ...current,
+        history: [
+          payload.exportRequest,
+          ...current.history.filter((item) => item.jobId !== payload.exportRequest.jobId),
+        ],
+      }));
+      setReportExportStatus(`Report export ${payload.exportRequest.status}.`);
+    } catch (error) {
+      setReportExportStatus(`Report export failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setExportingReportKey("");
+    }
+  }
+
   function selectDashboardSection(sectionKey: LocalDashboardSectionKey): void {
     shouldFocusDetailRef.current = true;
     setActiveSection(sectionKey);
@@ -4261,9 +4315,39 @@ export default function DashboardClient({
               </article>
             ) : null}
 
+            {activeSection === "reports" ? (
+              <article
+                aria-labelledby="zero-reports-title"
+                className="panel matter-detail matter-detail-panel"
+                id="matter-workspace"
+                ref={detailPanelRef}
+                tabIndex={-1}
+              >
+                <div className="panel-header matter-detail-header">
+                  <div>
+                    <p className="eyebrow">Staff reporting</p>
+                    <h2 id="zero-reports-title">Reports</h2>
+                  </div>
+                  <span className="status-chip">Firm surface</span>
+                </div>
+                <ReportsSection
+                  compactDate={compactDate}
+                  cents={cents}
+                  exportingReportKey={exportingReportKey}
+                  exportStatus={reportExportStatus}
+                  minutes={minutes}
+                  onRequestReportExport={(definitionKey, exportProfileId, groupingKey) =>
+                    void requestReportExport(definitionKey, exportProfileId, groupingKey)
+                  }
+                  reportingWorkspace={reportingWorkspace}
+                />
+              </article>
+            ) : null}
+
             {activeSection !== "contacts" &&
             activeSection !== "audit" &&
-            activeSection !== "queues" ? (
+            activeSection !== "queues" &&
+            activeSection !== "reports" ? (
               <FirstMatterWorkspace
                 canCreateMatter={canCreateMatter}
                 creating={creatingFirstMatter}
@@ -7514,6 +7598,20 @@ export default function DashboardClient({
                   ) : null}
                 </div>
               </>
+            ) : null}
+
+            {activeSection === "reports" ? (
+              <ReportsSection
+                compactDate={compactDate}
+                cents={cents}
+                exportingReportKey={exportingReportKey}
+                exportStatus={reportExportStatus}
+                minutes={minutes}
+                onRequestReportExport={(definitionKey, exportProfileId, groupingKey) =>
+                  void requestReportExport(definitionKey, exportProfileId, groupingKey)
+                }
+                reportingWorkspace={reportingWorkspace}
+              />
             ) : null}
 
             {activeSection === "audit" ? (

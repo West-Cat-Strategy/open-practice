@@ -1,0 +1,246 @@
+import { BarChart3, Download, History, SlidersHorizontal } from "lucide-react";
+import type {
+  StaffReportDefinitionKey,
+  StaffReportExportProfileId,
+  StaffReportGroupingKey,
+} from "@open-practice/domain";
+import type { StaffReportingWorkspaceResponse } from "../types";
+
+function compactReportText(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
+function formatReportMetric(input: {
+  cents: (value: number) => string;
+  minutes: (value: number) => string;
+  metricCents?: number;
+  metricMinutes?: number;
+  metricCount?: number;
+}): string {
+  if (input.metricCents !== undefined) return input.cents(input.metricCents);
+  if (input.metricMinutes !== undefined) return input.minutes(input.metricMinutes);
+  if (input.metricCount !== undefined) return String(input.metricCount);
+  return "review";
+}
+
+function metricSummary(metrics: Record<string, string | number | boolean>): string {
+  return Object.entries(metrics)
+    .slice(0, 3)
+    .map(([key, value]) => `${compactReportText(key)} ${String(value)}`)
+    .join(" · ");
+}
+
+export function ReportsSection({
+  compactDate,
+  cents,
+  exportingReportKey,
+  exportStatus,
+  minutes,
+  onRequestReportExport,
+  reportingWorkspace,
+}: {
+  compactDate: (value?: string) => string;
+  cents: (value: number) => string;
+  exportingReportKey?: string;
+  exportStatus: string;
+  minutes: (value: number) => string;
+  onRequestReportExport: (
+    definitionKey: StaffReportDefinitionKey,
+    exportProfileId: StaffReportExportProfileId,
+    groupingKey: StaffReportGroupingKey,
+  ) => void;
+  reportingWorkspace: StaffReportingWorkspaceResponse;
+}) {
+  const reportByDefinition = new Map(
+    reportingWorkspace.reports.map((report) => [report.definitionKey, report] as const),
+  );
+  const profileById = new Map(
+    reportingWorkspace.exportProfiles.map((profile) => [profile.id, profile] as const),
+  );
+
+  return (
+    <>
+      <div className="detail-grid billing-summary-grid">
+        <div>
+          <span className="field-label">Definitions</span>
+          <strong>{reportingWorkspace.definitions.length}</strong>
+        </div>
+        <div>
+          <span className="field-label">Generated</span>
+          <strong>{compactDate(reportingWorkspace.generatedAt)}</strong>
+        </div>
+        <div>
+          <span className="field-label">Export profiles</span>
+          <strong>{reportingWorkspace.exportProfiles.length}</strong>
+        </div>
+        <div>
+          <span className="field-label">History</span>
+          <strong>{reportingWorkspace.history.length}</strong>
+        </div>
+      </div>
+
+      <div className="section-title">
+        <h3>Saved report definitions</h3>
+        <span>manual downloads · bounded job metadata</span>
+      </div>
+      <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+        {exportStatus}
+      </p>
+      <div className="party-list">
+        {reportingWorkspace.definitions.map((definition) => {
+          const report = reportByDefinition.get(definition.key);
+          const defaultGrouping = definition.defaultGrouping;
+          return (
+            <div className="party-row reporting-definition-row" key={definition.key}>
+              <span>
+                <strong>{definition.name}</strong>
+                <small>{definition.description}</small>
+                <small>
+                  {definition.filters.length} filters · {definition.groupings.length} groupings ·{" "}
+                  {report?.rowCount ?? 0} rows
+                </small>
+              </span>
+              <span className="row-actions">
+                {definition.exportProfileIds.map((profileId) => {
+                  const profile = profileById.get(profileId);
+                  const busyKey = `${definition.key}:${profileId}`;
+                  return (
+                    <button
+                      aria-label={`Export ${definition.name} using ${profile?.label ?? profileId}`}
+                      className="secondary-button compact-button row-button"
+                      disabled={exportingReportKey === busyKey}
+                      key={profileId}
+                      onClick={() =>
+                        onRequestReportExport(definition.key, profileId, defaultGrouping)
+                      }
+                      title={profile?.label ?? profileId}
+                      type="button"
+                    >
+                      <Download aria-hidden="true" size={16} />
+                      {exportingReportKey === busyKey ? "Queuing" : profile?.format.toUpperCase()}
+                    </button>
+                  );
+                })}
+              </span>
+            </div>
+          );
+        })}
+        {reportingWorkspace.definitions.length === 0 ? (
+          <p className="inline-empty">Reporting workspace is unavailable for this session.</p>
+        ) : null}
+      </div>
+
+      <div className="section-title">
+        <h3>Filter and grouping metadata</h3>
+        <span>{reportingWorkspace.workspacePolicy.customSql ? "custom SQL" : "no custom SQL"}</span>
+      </div>
+      <div className="activity-grid two-column">
+        {reportingWorkspace.definitions.map((definition) => (
+          <div className="activity-card" key={`metadata-${definition.key}`}>
+            <SlidersHorizontal size={18} />
+            <strong>{definition.name}</strong>
+            <span>
+              {definition.filters.map((filter) => filter.label).join(", ") || "No filters"}
+            </span>
+            <span>
+              {definition.groupings.map((grouping) => grouping.label).join(", ") || "No groupings"}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="section-title">
+        <h3>First report projections</h3>
+        <span>rebuilt from authorized dashboard records</span>
+      </div>
+      <div className="activity-grid two-column">
+        {reportingWorkspace.reports.map((report) => {
+          const definition = reportingWorkspace.definitions.find(
+            (candidate) => candidate.key === report.definitionKey,
+          );
+          return (
+            <div className="activity-card" key={report.definitionKey}>
+              <BarChart3 size={18} />
+              <strong>{definition?.name ?? compactReportText(report.definitionKey)}</strong>
+              <span>{metricSummary(report.summary.metrics)}</span>
+              <span>
+                {report.summary.groups.length} groups · {report.rowCount} rows ·{" "}
+                {compactReportText(report.groupingKey)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="section-title">
+        <h3>Report rows</h3>
+        <span>summary rows only</span>
+      </div>
+      <div className="party-list">
+        {reportingWorkspace.reports.flatMap((report) =>
+          report.rows.slice(0, 3).map((row) => (
+            <div className="party-row" key={`${report.definitionKey}:${row.id}`}>
+              <span>
+                <strong>{row.label}</strong>
+                <small>
+                  {compactReportText(report.definitionKey)} · {row.groupLabel} ·{" "}
+                  {compactReportText(row.status)}
+                </small>
+                <small>
+                  {row.matterNumber ? `${row.matterNumber} · ` : ""}
+                  {row.dueAt
+                    ? `due ${compactDate(row.dueAt)}`
+                    : row.occurredAt
+                      ? compactDate(row.occurredAt)
+                      : "current projection"}
+                </small>
+              </span>
+              <em className={row.tone === "risk" ? "risk" : undefined}>
+                {formatReportMetric({
+                  cents,
+                  minutes,
+                  metricCents: row.metricCents,
+                  metricMinutes: row.metricMinutes,
+                  metricCount: row.metricCount,
+                })}
+              </em>
+            </div>
+          )),
+        )}
+        {reportingWorkspace.reports.every((report) => report.rows.length === 0) ? (
+          <p className="inline-empty">No report rows are available in the current projection.</p>
+        ) : null}
+      </div>
+
+      <div className="section-title">
+        <h3>Export history</h3>
+        <span>{reportingWorkspace.history.length} requests</span>
+      </div>
+      <div className="party-list">
+        {reportingWorkspace.history.slice(0, 6).map((item) => (
+          <div className="party-row" key={item.jobId}>
+            <span>
+              <strong>{compactReportText(item.reportDefinitionKey ?? "staff_report")}</strong>
+              <small>
+                {compactReportText(item.exportProfileId ?? "profile")} ·{" "}
+                {compactReportText(item.status)}
+                {item.rowCount !== undefined ? ` · ${item.rowCount} rows` : ""}
+              </small>
+              <small>{compactDate(item.finishedAt ?? item.queuedAt)}</small>
+            </span>
+            <em
+              className={
+                item.status === "failed" || item.status === "dead_letter" ? "risk" : undefined
+              }
+            >
+              <History size={15} aria-hidden="true" /> {compactReportText(item.status)}
+            </em>
+          </div>
+        ))}
+        {reportingWorkspace.history.length === 0 ? (
+          <p className="inline-empty">No report exports have been requested yet.</p>
+        ) : null}
+      </div>
+    </>
+  );
+}

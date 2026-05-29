@@ -68,6 +68,7 @@ import {
   emptyAuditProjectionDashboard,
   type AuditProjectionDashboardResponse,
 } from "./audit-dashboard";
+import { emptyStaffReportingWorkspace } from "./reporting-dashboard";
 import type {
   AuditResponse,
   BillingDashboardResponse,
@@ -113,6 +114,7 @@ import type {
   ShareLinksStatusResponse,
   SetupStatusResponse,
   SignatureRequestsResponse,
+  StaffReportingWorkspaceResponse,
   TaskDeadlineWorkbenchResponse,
   TrustControlsDashboardResponse,
   WorkerRunsDashboardResponse,
@@ -462,6 +464,12 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     headers,
     { definitions: [] },
   );
+  const reportingWorkspace = await apiGetOptional<StaffReportingWorkspaceResponse>(
+    "/api/reports/workspace",
+    emptyStaffReportingWorkspace(),
+    headers,
+    emptyStaffReportingWorkspace(),
+  );
   const auditProjection = await loadAuditProjection(headers);
   const billing = await apiGetOptional<BillingDashboardResponse>(
     "/api/billing/dashboard",
@@ -719,6 +727,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       operationalViews={operationalViews}
       providerStatus={providerStatus}
       queues={queues}
+      reportingWorkspace={reportingWorkspace}
       session={session}
       shareLinksStatus={shareLinksStatus}
       signatures={signatures}

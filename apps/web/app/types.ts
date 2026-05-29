@@ -38,6 +38,8 @@ import type {
   MatterSetupProfile,
   PublicConsultationIntakeNotificationSettings,
   PublicConsultationIntakeRecord,
+  StaffReportHistoryItem,
+  StaffReportingWorkspace,
   SignatureRequestRecord,
   TaskDeadlineWorkbench,
   TimeEntry,
@@ -1181,6 +1183,12 @@ export interface SavedOperationalViewDefinition {
 
 export interface OperationalViewDefinitionsResponse {
   definitions: SavedOperationalViewDefinition[];
+}
+
+export type StaffReportingWorkspaceResponse = StaffReportingWorkspace;
+
+export interface StaffReportExportRequestResponse {
+  exportRequest: StaffReportHistoryItem;
 }
 
 export type WorkerRunQueueFilter = "all" | "email" | "ocr";
