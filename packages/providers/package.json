@@ -14,9 +14,9 @@
   },
   "dependencies": {
     "@open-practice/domain": "workspace:*",
-    "docx": "9.6.1",
+    "docx": "9.7.1",
     "mailparser": "^3.9.8",
-    "nodemailer": "^8.0.7",
+    "nodemailer": "^8.0.9",
     "pdfkit": "0.18.0",
     "tesseract.js": "^7.0.0"
   },
@@ -26,6 +26,6 @@
     "@types/nodemailer": "^8.0.0",
     "@types/pdfkit": "0.17.6",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.59.4"
+    "typescript-eslint": "8.60.0"
   }
 }

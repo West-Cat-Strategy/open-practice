@@ -23,7 +23,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:8-alpine
+    image: redis:8-alpine@sha256:ad0a6eff0a40304ab1ab4f50f0dc192d82b071e1094eac961bcb6106092f8a4e
     ports:
       - "36379:6379"
     volumes:
@@ -47,7 +47,7 @@ services:
       - minio-data:/data
 
   mailpit:
-    image: open-practice-mailpit:v1.30.0-go1.26.3
+    image: open-practice-mailpit:v1.30.1-go1.26.3
     build:
       context: ./docker/mailpit
     ports:

@@ -37,31 +37,29 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
 
 ### Docker Dependency Snapshot
 
-2026-05-19 dependency refresh evidence, building on the 2026-05-12 and 2026-05-16
+2026-05-28 dependency refresh evidence, building on the 2026-05-12 and 2026-05-16
 infra-image follow-ups:
 
-- `node:26.0.0-alpine3.23` is pinned by digest as the app base. The Dockerfile still updates bundled
-  npm and pnpm explicitly, deploys runtime images with production dependencies, and uses Node's
-  built-in `fetch` for API health checks instead of installing `curl`. Final local app images, not
-  only the upstream base, are the validation target; the upstream Node 26 base still reports the npm
-  `picomatch` high finding until the bundled npm dependency graph carries the patched `picomatch`
-  line.
+- `node:26.2.0-alpine3.23` is pinned by digest as the app base. The Dockerfile updates bundled npm
+  and pnpm explicitly to `npm@11.16.0` and `pnpm@11.4.0`, deploys runtime images with production
+  dependencies, and uses Node's built-in `fetch` for API health checks instead of installing `curl`.
+  Final local app images, not only the upstream base, are the validation target.
 - The local Postgres service now builds `open-practice-postgres:18-alpine-su-exec` from the pinned
   `postgres:18-alpine` 18.4 digest and replaces the vulnerable bundled `gosu` helper with Alpine
-  `su-exec` while preserving the standard Postgres 18 entrypoint and health-check contract. Scout may
-  still report upstream `gosu` findings against the public base attestation, so scan the rebuilt
-  local `open-practice-postgres:18-alpine-su-exec` image when Docker Engine is available.
-- `redis:8-alpine` replaced `redis:7-alpine` in the local Docker stack because the Scout result
-  dropped from critical/high Go runtime findings to no critical/high findings in the current scan.
+  `su-exec` while preserving the standard Postgres 18 entrypoint and health-check contract. The
+  local Dockerfile also upgrades Alpine `libcurl` to at least `8.19.0-r0`, which clears the fixed
+  curl finding while leaving two residual no-fixed-version high findings in the current Scout scan;
+  Scout reports no base-image recommendation.
+- `redis:8-alpine` is pinned by digest in the local Docker stack because the Scout result dropped
+  from critical/high Go runtime findings to no critical/high findings in the current scan.
 - `minio/minio:RELEASE.2025-09-07T16-13-09Z` is pinned by digest. Current Docker Hub, Quay, hotfix,
   and common S3-compatible substitute scans still carried critical/high findings or changed the
   service shape, so MinIO stays product-compatible with residual upstream MinIO/Go CVEs documented
   until a cleaner compatible deterministic release is available.
-- The local Mailpit service now builds `open-practice-mailpit:v1.30.0-go1.26.3` from the checked
-  v1.30.0 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
-  `8025`. The 2026-05-16 dependency refresh verified the upstream Golang and Alpine base images from
-  registry attestations; rerun local Mailpit image build and Scout proof when Docker Engine is
-  available.
+- The local Mailpit service now builds `open-practice-mailpit:v1.30.1-go1.26.3` from the checked
+  v1.30.1 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
+  `8025`. The current local Scout scan leaves one residual high finding in
+  `github.com/gomarkdown/markdown`; the Alpine runtime base is up to date.
 
 ## GitHub Settings Cutover
 
