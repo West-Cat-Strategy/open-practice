@@ -198,6 +198,21 @@ export const auditEventTaxonomyDefinitions = [
     actorMetadataKeys: [],
   }),
   define({
+    action: "portal.account_setup.created",
+    category: "portal",
+    resourceType: "portal_grant",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "accountUserId",
+      "contactId",
+      "grantStatus",
+      "setupTokenStatus",
+      "permissions",
+      "expiresAt",
+    ],
+  }),
+  define({
     action: "share_link.created",
     category: "portal",
     resourceType: "share_link",

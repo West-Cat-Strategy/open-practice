@@ -32,6 +32,7 @@ export type ResourceKind =
   | "public_consultation_intake"
   | "connector"
   | "auth_credential"
+  | "client_portal"
   | "provider_setting"
   | "outbound_webhook"
   | "draft"
@@ -76,6 +77,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     public_consultation_intake: ["create", "read", "update", "delete", "approve", "export"],
     connector: ["create", "read", "update", "delete", "export"],
     auth_credential: ["create", "read", "update", "delete", "approve"],
+    client_portal: ["create", "read", "update", "delete"],
     provider_setting: ["create", "read", "update", "delete", "approve", "export"],
     outbound_webhook: ["create", "read", "update", "delete", "approve", "export"],
     draft: ["create", "read", "update", "delete", "export"],
@@ -105,6 +107,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     public_consultation_intake: ["create", "read", "update", "approve"],
     connector: ["read"],
     auth_credential: ["create", "read", "update", "delete"],
+    client_portal: ["create", "read", "update"],
     draft: ["create", "read", "update", "delete", "export"],
     draft_template: ["create", "read", "update", "export"],
   },
@@ -128,6 +131,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     external_upload: ["create", "read"],
     public_consultation_intake: ["read", "update"],
     auth_credential: ["read", "update"],
+    client_portal: ["read"],
     draft: ["create", "read", "update"],
     draft_template: ["read"],
   },
@@ -151,6 +155,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     calendar_event: ["read"],
     intake_session: ["read"],
     external_upload: ["create", "read"],
+    client_portal: ["read"],
   },
   auditor: {
     firm: ["read"],
@@ -174,6 +179,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     public_consultation_intake: ["read", "export"],
     connector: ["read", "export"],
     auth_credential: ["read"],
+    client_portal: ["read", "export"],
     provider_setting: ["read"],
     outbound_webhook: ["read"],
   },
@@ -279,6 +285,9 @@ const portalPermissionByResourceAction: Partial<
   signature_request: {
     read: "sign",
     approve: "sign",
+  },
+  client_portal: {
+    read: "view_documents",
   },
 };
 

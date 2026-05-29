@@ -1376,6 +1376,69 @@ export interface ShareLinksStatusResponse {
   reason?: string;
 }
 
+export type ClientPortalPermission = "view_documents" | "upload_documents" | "message" | "sign";
+
+export type ClientPortalActionFamily =
+  | "secure_share"
+  | "external_upload"
+  | "intake"
+  | "guest_session"
+  | "receipt"
+  | "client_action";
+
+export interface ClientPortalActionSummary {
+  id: string;
+  family: ClientPortalActionFamily;
+  matterId: string;
+  title: string;
+  detail: string;
+  status: string;
+  tone: "neutral" | "ready" | "risk";
+  updatedAt?: string;
+}
+
+export interface ClientPortalWorkspaceResponse {
+  account: Pick<User, "id" | "displayName" | "email" | "role">;
+  access: {
+    posture: "active" | "no_active_grants";
+    activeGrantCount: number;
+    matterCount: number;
+    permissions: ClientPortalPermission[];
+  };
+  matters: Array<{
+    id: string;
+    number: string;
+    title: string;
+    status: Matter["status"];
+    permissions: ClientPortalPermission[];
+    actionCount: number;
+  }>;
+  actions: ClientPortalActionSummary[];
+}
+
+export interface ClientPortalAccountSetupResponse {
+  account: Pick<User, "id" | "displayName" | "email" | "role">;
+  grant: {
+    id: string;
+    matterId: string;
+    permissions: ClientPortalPermission[];
+    expiresAt?: string;
+    status: "active" | "inactive";
+  };
+  setup:
+    | {
+        status: "token_created";
+        token: string;
+        expiresAt: string;
+        userId: string;
+      }
+    | {
+        status: "token_unavailable";
+        reason: "token_signing_not_configured";
+        userId: string;
+      };
+}
+
 export interface CreateShareLinkResponse {
   share: ShareLinkRecord | null;
   token?: string;

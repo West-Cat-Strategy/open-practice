@@ -26,6 +26,7 @@ import { registerAuthExtensionRoutes } from "./routes/auth-extensions.js";
 import { registerBillingRoutes } from "./routes/billing.js";
 import { registerCalDavRoutes } from "./routes/caldav.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
+import { registerClientPortalRoutes } from "./routes/client-portal.js";
 import { registerContactRoutes } from "./routes/contacts.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
 import { registerCommunicationsRoutes } from "./routes/communications.js";
@@ -429,6 +430,10 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     jwtSecret: options.jwtSecret,
     publicWebBaseUrl: options.publicWebBaseUrl,
     meetingLinks: options.meetingLinks,
+  });
+  registerClientPortalRoutes(server, {
+    repository: options.repository,
+    jwtSecret: options.jwtSecret,
   });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
   if (options.e2eSupport) {

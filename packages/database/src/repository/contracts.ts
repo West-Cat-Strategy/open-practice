@@ -920,6 +920,7 @@ export interface OpenPracticeRepository {
   listAuditEvents(firmId: string): Promise<{ events: AuditEvent[]; valid: boolean }>;
   appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent>;
   listPortalGrants(firmId: string): Promise<PortalGrant[]>;
+  createPortalGrant(grant: PortalGrant): Promise<PortalGrant>;
   listShareLinks(firmId: string, options?: { matterId?: string }): Promise<ShareLinkRecord[]>;
   createShareLink(link: ShareLinkRecord): Promise<ShareLinkRecord>;
   getShareLink(firmId: string, id: string): Promise<ShareLinkRecord | undefined>;
