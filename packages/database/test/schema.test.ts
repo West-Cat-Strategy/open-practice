@@ -37,6 +37,9 @@ import {
   inboundEmailAddresses,
   inboundEmailAttachments,
   inboundEmailMessages,
+  integrationApiCredentials,
+  integrationDeveloperApps,
+  integrationWebhookSubscriptions,
   invoiceLines,
   invoices,
   generatedDocuments,
@@ -404,6 +407,56 @@ describe("database schema hardening", () => {
         "status",
         "idempotency_key",
         "error_summary",
+      ]),
+    );
+  });
+
+  it("persists integration developer app boundary records", () => {
+    const appConfig = getTableConfig(integrationDeveloperApps);
+    const credentialConfig = getTableConfig(integrationApiCredentials);
+    const subscriptionConfig = getTableConfig(integrationWebhookSubscriptions);
+
+    expect(appConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "connector_id",
+        "client_id",
+        "display_name",
+        "status",
+        "redirect_uris",
+        "allowed_origins",
+        "allowed_scopes",
+        "regional_endpoint",
+        "rate_limit",
+        "custom_action_placeholders",
+        "created_by_user_id",
+      ]),
+    );
+    expect(
+      appConfig.indexes.find(
+        (index) => index.config.name === "integration_developer_apps_firm_client_idx",
+      )?.config.unique,
+    ).toBe(true);
+    expect(credentialConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "app_id",
+        "label",
+        "scopes",
+        "secret_reference",
+        "status",
+        "expires_at",
+        "last_used_at",
+        "revoked_at",
+      ]),
+    );
+    expect(subscriptionConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "app_id",
+        "connector_id",
+        "status",
+        "event_types",
+        "destination_url",
+        "destination_host",
+        "signing_secret_reference",
       ]),
     );
   });

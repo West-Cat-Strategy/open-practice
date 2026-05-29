@@ -46,6 +46,9 @@ import {
   type InboundEmailAddressRecord,
   type InboundEmailAttachmentRecord,
   type InboundEmailMessageRecord,
+  type IntegrationApiCredentialRecord,
+  type IntegrationDeveloperAppRecord,
+  type IntegrationWebhookSubscriptionRecord,
   type IntakeFormItemActionRecord,
   type IntakeFormLinkRecord,
   type IntakeFormReviewRecord,
@@ -681,6 +684,99 @@ export function emailEventInsert(record: EmailEventRecord): typeof schema.emailE
     jobId: record.jobId ?? null,
     source: record.source,
     errorMessage: record.errorMessage ?? null,
+  };
+}
+
+export function mapIntegrationDeveloperAppRow(
+  row: typeof schema.integrationDeveloperApps.$inferSelect,
+): IntegrationDeveloperAppRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    connectorId: row.connectorId,
+    clientId: row.clientId,
+    displayName: row.displayName,
+    status: row.status as IntegrationDeveloperAppRecord["status"],
+    redirectUris: row.redirectUris,
+    allowedOrigins: row.allowedOrigins,
+    allowedScopes: row.allowedScopes,
+    regionalEndpoint: row.regionalEndpoint,
+    rateLimit: row.rateLimit,
+    customActionPlaceholders: row.customActionPlaceholders,
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function integrationDeveloperAppInsert(
+  record: IntegrationDeveloperAppRecord,
+): typeof schema.integrationDeveloperApps.$inferInsert {
+  return {
+    ...record,
+    createdAt: new Date(record.createdAt),
+    updatedAt: new Date(record.updatedAt),
+  };
+}
+
+export function mapIntegrationApiCredentialRow(
+  row: typeof schema.integrationApiCredentials.$inferSelect,
+): IntegrationApiCredentialRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    appId: row.appId,
+    label: row.label,
+    scopes: row.scopes,
+    secretReference: row.secretReference,
+    status: row.status as IntegrationApiCredentialRecord["status"],
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: dateToIso(row.expiresAt),
+    lastUsedAt: dateToIso(row.lastUsedAt),
+    revokedAt: dateToIso(row.revokedAt),
+  };
+}
+
+export function integrationApiCredentialInsert(
+  record: IntegrationApiCredentialRecord,
+): typeof schema.integrationApiCredentials.$inferInsert {
+  return {
+    ...record,
+    expiresAt: record.expiresAt ? new Date(record.expiresAt) : null,
+    lastUsedAt: record.lastUsedAt ? new Date(record.lastUsedAt) : null,
+    revokedAt: record.revokedAt ? new Date(record.revokedAt) : null,
+    createdAt: new Date(record.createdAt),
+  };
+}
+
+export function mapIntegrationWebhookSubscriptionRow(
+  row: typeof schema.integrationWebhookSubscriptions.$inferSelect,
+): IntegrationWebhookSubscriptionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    appId: row.appId,
+    connectorId: row.connectorId,
+    status: row.status as IntegrationWebhookSubscriptionRecord["status"],
+    eventTypes: row.eventTypes,
+    destinationUrl: row.destinationUrl,
+    destinationHost: row.destinationHost,
+    signingSecretReference: row.signingSecretReference ?? undefined,
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function integrationWebhookSubscriptionInsert(
+  record: IntegrationWebhookSubscriptionRecord,
+): typeof schema.integrationWebhookSubscriptions.$inferInsert {
+  return {
+    ...record,
+    signingSecretReference: record.signingSecretReference ?? null,
+    createdAt: new Date(record.createdAt),
+    updatedAt: new Date(record.updatedAt),
   };
 }
 

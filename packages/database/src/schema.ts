@@ -23,6 +23,9 @@ import type {
   DraftAssistRecord,
   EmailReceiptTokenRecord,
   EmbeddedIntakeTemplateDefinition,
+  IntegrationDeveloperCustomActionPlaceholder,
+  IntegrationDeveloperEndpointPosture,
+  IntegrationDeveloperRateLimitPosture,
   IntakeFormReviewRecord,
   IntakeFormItemActionRecord,
   IntakeResolutionSnapshot,
@@ -446,6 +449,133 @@ export const connectorDeliveryAttempts = pgTable(
     statusValue: check(
       "connector_delivery_attempts_status_value",
       sql`${table.status} in ('leased', 'delivered', 'failed')`,
+    ),
+  }),
+);
+
+export const integrationDeveloperApps = pgTable(
+  "integration_developer_apps",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    connectorId: text("connector_id")
+      .notNull()
+      .references(() => connectors.id),
+    clientId: text("client_id").notNull(),
+    displayName: text("display_name").notNull(),
+    status: text("status").notNull().default("draft"),
+    redirectUris: jsonb("redirect_uris").$type<string[]>().notNull().default([]),
+    allowedOrigins: jsonb("allowed_origins").$type<string[]>().notNull().default([]),
+    allowedScopes: jsonb("allowed_scopes").$type<string[]>().notNull().default([]),
+    regionalEndpoint: jsonb("regional_endpoint")
+      .$type<IntegrationDeveloperEndpointPosture>()
+      .notNull()
+      .default({ region: "ca", posture: "cue_only" }),
+    rateLimit: jsonb("rate_limit")
+      .$type<IntegrationDeveloperRateLimitPosture>()
+      .notNull()
+      .default({ mode: "documented", windowSeconds: 60, maxRequests: 60, enforcement: "reserved" }),
+    customActionPlaceholders: jsonb("custom_action_placeholders")
+      .$type<IntegrationDeveloperCustomActionPlaceholder[]>()
+      .notNull()
+      .default([]),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmClient: uniqueIndex("integration_developer_apps_firm_client_idx").on(
+      table.firmId,
+      table.clientId,
+    ),
+    firmConnectorStatus: index("integration_developer_apps_firm_connector_status_idx").on(
+      table.firmId,
+      table.connectorId,
+      table.status,
+    ),
+    statusValue: check(
+      "integration_developer_apps_status_value",
+      sql`${table.status} in ('draft', 'active', 'paused', 'revoked')`,
+    ),
+  }),
+);
+
+export const integrationApiCredentials = pgTable(
+  "integration_api_credentials",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    appId: text("app_id")
+      .notNull()
+      .references(() => integrationDeveloperApps.id),
+    label: text("label").notNull(),
+    scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
+    secretReference: jsonb("secret_reference").$type<ConnectorSecretReference>().notNull(),
+    status: text("status").notNull().default("active"),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => ({
+    firmAppStatus: index("integration_api_credentials_firm_app_status_idx").on(
+      table.firmId,
+      table.appId,
+      table.status,
+    ),
+    statusValue: check(
+      "integration_api_credentials_status_value",
+      sql`${table.status} in ('active', 'revoked')`,
+    ),
+  }),
+);
+
+export const integrationWebhookSubscriptions = pgTable(
+  "integration_webhook_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    appId: text("app_id")
+      .notNull()
+      .references(() => integrationDeveloperApps.id),
+    connectorId: text("connector_id")
+      .notNull()
+      .references(() => connectors.id),
+    status: text("status").notNull().default("paused"),
+    eventTypes: jsonb("event_types").$type<string[]>().notNull().default([]),
+    destinationUrl: text("destination_url").notNull(),
+    destinationHost: text("destination_host").notNull(),
+    signingSecretReference: jsonb("signing_secret_reference").$type<ConnectorSecretReference>(),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmAppStatus: index("integration_webhook_subscriptions_firm_app_status_idx").on(
+      table.firmId,
+      table.appId,
+      table.status,
+    ),
+    connectorStatus: index("integration_webhook_subscriptions_connector_status_idx").on(
+      table.connectorId,
+      table.status,
+    ),
+    statusValue: check(
+      "integration_webhook_subscriptions_status_value",
+      sql`${table.status} in ('active', 'paused', 'disabled')`,
     ),
   }),
 );

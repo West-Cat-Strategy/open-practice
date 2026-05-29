@@ -48,6 +48,82 @@ export interface ConnectorRecord {
   updatedAt: string;
 }
 
+export type IntegrationDeveloperAppStatus = "draft" | "active" | "paused" | "revoked";
+
+export type IntegrationDeveloperRegion = "ca" | "us" | "eu" | "custom";
+
+export interface IntegrationDeveloperEndpointPosture {
+  region: IntegrationDeveloperRegion;
+  endpointBaseUrl?: string;
+  posture: "cue_only";
+}
+
+export interface IntegrationDeveloperRateLimitPosture {
+  mode: "documented";
+  windowSeconds: number;
+  maxRequests: number;
+  burstLimit?: number;
+  enforcement: "reserved";
+}
+
+export interface IntegrationDeveloperCustomActionPlaceholder {
+  key: string;
+  label: string;
+  status: "reserved";
+}
+
+export interface IntegrationDeveloperAppRecord {
+  id: string;
+  firmId: string;
+  connectorId: string;
+  clientId: string;
+  displayName: string;
+  status: IntegrationDeveloperAppStatus;
+  redirectUris: string[];
+  allowedOrigins: string[];
+  allowedScopes: string[];
+  regionalEndpoint: IntegrationDeveloperEndpointPosture;
+  rateLimit: IntegrationDeveloperRateLimitPosture;
+  customActionPlaceholders: IntegrationDeveloperCustomActionPlaceholder[];
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type IntegrationApiCredentialStatus = "active" | "revoked";
+
+export interface IntegrationApiCredentialRecord {
+  id: string;
+  firmId: string;
+  appId: string;
+  label: string;
+  scopes: string[];
+  secretReference: ConnectorSecretReference;
+  status: IntegrationApiCredentialStatus;
+  createdByUserId: string;
+  createdAt: string;
+  expiresAt?: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+}
+
+export type IntegrationWebhookSubscriptionStatus = "active" | "paused" | "disabled";
+
+export interface IntegrationWebhookSubscriptionRecord {
+  id: string;
+  firmId: string;
+  appId: string;
+  connectorId: string;
+  status: IntegrationWebhookSubscriptionStatus;
+  eventTypes: string[];
+  destinationUrl: string;
+  destinationHost: string;
+  signingSecretReference?: ConnectorSecretReference;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type OpenPracticeQueueName =
   | "email"
   | "connectors"
