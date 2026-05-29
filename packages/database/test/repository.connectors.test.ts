@@ -102,6 +102,120 @@ describe("repository connectors", () => {
     ).rejects.toThrow("Connector outbox connector-outbox-1 was not found");
   });
 
+  it("stores integration developer apps, scoped credentials, and webhook subscriptions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const createdAt = "2026-05-28T12:00:00.000Z";
+    const connector = await repository.createConnector({
+      id: "connector-integration-dev",
+      firmId: "firm-west-legal",
+      type: "generic",
+      key: "synthetic.integration-dev",
+      displayName: "Synthetic Integration Developer",
+      status: "enabled",
+      configSummary: { deliveryUrl: "https://webhooks.example.test/open-practice" },
+      createdAt,
+      updatedAt: createdAt,
+    });
+    const app = await repository.createIntegrationDeveloperApp({
+      id: "integration-app-1",
+      firmId: "firm-west-legal",
+      connectorId: connector.id,
+      clientId: "op_client_synthetic",
+      displayName: "Synthetic Developer App",
+      status: "draft",
+      redirectUris: ["https://developer.example.test/oauth/callback"],
+      allowedOrigins: ["https://developer.example.test"],
+      allowedScopes: ["document.read", "webhook.deliver"],
+      regionalEndpoint: {
+        region: "ca",
+        endpointBaseUrl: "https://api.ca.example.test/open-practice",
+        posture: "cue_only",
+      },
+      rateLimit: {
+        mode: "documented",
+        windowSeconds: 60,
+        maxRequests: 120,
+        enforcement: "reserved",
+      },
+      customActionPlaceholders: [
+        { key: "document.review", label: "Document Review", status: "reserved" },
+      ],
+      createdByUserId: "user-owner",
+      createdAt,
+      updatedAt: createdAt,
+    });
+    const credential = await repository.createIntegrationApiCredential({
+      id: "integration-credential-1",
+      firmId: "firm-west-legal",
+      appId: app.id,
+      label: "Synthetic scoped credential",
+      scopes: ["document.read"],
+      secretReference: { id: "secret-ref/integration-credential", label: "Scoped API credential" },
+      status: "active",
+      createdByUserId: "user-owner",
+      createdAt,
+    });
+    const subscription = await repository.createIntegrationWebhookSubscription({
+      id: "integration-webhook-1",
+      firmId: "firm-west-legal",
+      appId: app.id,
+      connectorId: connector.id,
+      status: "paused",
+      eventTypes: ["document.verified"],
+      destinationUrl: "https://webhooks.example.test/open-practice",
+      destinationHost: "webhooks.example.test",
+      signingSecretReference: { id: "secret-ref/webhook-signing" },
+      createdByUserId: "user-owner",
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    await expect(repository.listIntegrationDeveloperApps("firm-west-legal")).resolves.toMatchObject(
+      [
+        {
+          id: app.id,
+          connectorId: connector.id,
+          clientId: "op_client_synthetic",
+          allowedScopes: ["document.read", "webhook.deliver"],
+          rateLimit: { enforcement: "reserved" },
+        },
+      ],
+    );
+    await expect(
+      repository.listIntegrationApiCredentials("firm-west-legal", { appId: app.id }),
+    ).resolves.toMatchObject([
+      {
+        id: credential.id,
+        scopes: ["document.read"],
+        status: "active",
+        secretReference: { id: "secret-ref/integration-credential" },
+      },
+    ]);
+    await expect(
+      repository.revokeIntegrationApiCredential({
+        firmId: "firm-west-legal",
+        credentialId: credential.id,
+        revokedAt: "2026-05-28T12:05:00.000Z",
+      }),
+    ).resolves.toMatchObject({ status: "revoked", revokedAt: "2026-05-28T12:05:00.000Z" });
+    await expect(
+      repository.listIntegrationWebhookSubscriptions("firm-west-legal", { appId: app.id }),
+    ).resolves.toMatchObject([
+      {
+        id: subscription.id,
+        destinationHost: "webhooks.example.test",
+        signingSecretReference: { id: "secret-ref/webhook-signing" },
+      },
+    ]);
+    await expect(
+      repository.createIntegrationDeveloperApp({
+        ...app,
+        id: "integration-app-cross",
+        connectorId: "missing",
+      }),
+    ).rejects.toThrow("Connector missing was not found");
+  });
+
   it("leases due enabled connector outbox rows and records redacted delivery outcomes", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const createdAt = "2026-05-12T12:00:00.000Z";

@@ -71,6 +71,9 @@ import {
   type InboundEmailAddressRecord,
   type InboundEmailAttachmentRecord,
   type InboundEmailMessageRecord,
+  type IntegrationApiCredentialRecord,
+  type IntegrationDeveloperAppRecord,
+  type IntegrationWebhookSubscriptionRecord,
   type IntakeFormItemActionRecord,
   type IntakeFormLinkRecord,
   type IntakeFormReviewRecord,
@@ -175,6 +178,9 @@ import {
   intakeFormLinkInsert,
   intakeFormReviewInsert,
   intakeVariableProposalInsert,
+  integrationApiCredentialInsert,
+  integrationDeveloperAppInsert,
+  integrationWebhookSubscriptionInsert,
   invoiceInsert,
   invoiceLineInsert,
   jobLifecycleInsert,
@@ -221,6 +227,9 @@ import {
   mapIntakeSessionRow,
   mapIntakeTemplateRow,
   mapIntakeVariableProposalRow,
+  mapIntegrationApiCredentialRow,
+  mapIntegrationDeveloperAppRow,
+  mapIntegrationWebhookSubscriptionRow,
   mapInvoiceLineRow,
   mapInvoiceRow,
   mapJobLifecycleRow,
@@ -917,6 +926,200 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .where(and(...conditions))
       .orderBy(desc(schema.connectorDeliveryAttempts.startedAt));
     return rows.map(mapConnectorDeliveryAttemptRow);
+  }
+
+  async createIntegrationDeveloperApp(
+    app: IntegrationDeveloperAppRecord,
+  ): Promise<IntegrationDeveloperAppRecord> {
+    const connector = await this.getConnector(app.firmId, app.connectorId);
+    if (!connector) throw new Error(`Connector ${app.connectorId} was not found`);
+    const [row] = await this.db
+      .insert(schema.integrationDeveloperApps)
+      .values(integrationDeveloperAppInsert(app))
+      .returning();
+    return mapIntegrationDeveloperAppRow(row);
+  }
+
+  async updateIntegrationDeveloperApp(
+    firmId: string,
+    appId: string,
+    updates: Partial<
+      Pick<
+        IntegrationDeveloperAppRecord,
+        | "displayName"
+        | "status"
+        | "redirectUris"
+        | "allowedOrigins"
+        | "allowedScopes"
+        | "regionalEndpoint"
+        | "rateLimit"
+        | "customActionPlaceholders"
+      >
+    > & { updatedAt: string },
+  ): Promise<IntegrationDeveloperAppRecord | undefined> {
+    const set: Partial<typeof schema.integrationDeveloperApps.$inferInsert> = {
+      updatedAt: new Date(updates.updatedAt),
+    };
+    if (updates.displayName !== undefined) set.displayName = updates.displayName;
+    if (updates.status !== undefined) set.status = updates.status;
+    if (updates.redirectUris !== undefined) set.redirectUris = updates.redirectUris;
+    if (updates.allowedOrigins !== undefined) set.allowedOrigins = updates.allowedOrigins;
+    if (updates.allowedScopes !== undefined) set.allowedScopes = updates.allowedScopes;
+    if (updates.regionalEndpoint !== undefined) set.regionalEndpoint = updates.regionalEndpoint;
+    if (updates.rateLimit !== undefined) set.rateLimit = updates.rateLimit;
+    if (updates.customActionPlaceholders !== undefined) {
+      set.customActionPlaceholders = updates.customActionPlaceholders;
+    }
+    const [row] = await this.db
+      .update(schema.integrationDeveloperApps)
+      .set(set)
+      .where(
+        and(
+          eq(schema.integrationDeveloperApps.firmId, firmId),
+          eq(schema.integrationDeveloperApps.id, appId),
+        ),
+      )
+      .returning();
+    return row ? mapIntegrationDeveloperAppRow(row) : undefined;
+  }
+
+  async listIntegrationDeveloperApps(
+    firmId: string,
+    options: { connectorId?: string; status?: IntegrationDeveloperAppRecord["status"] } = {},
+  ): Promise<IntegrationDeveloperAppRecord[]> {
+    const conditions = [eq(schema.integrationDeveloperApps.firmId, firmId)];
+    if (options.connectorId) {
+      conditions.push(eq(schema.integrationDeveloperApps.connectorId, options.connectorId));
+    }
+    if (options.status) conditions.push(eq(schema.integrationDeveloperApps.status, options.status));
+    const rows = await this.db
+      .select()
+      .from(schema.integrationDeveloperApps)
+      .where(and(...conditions))
+      .orderBy(desc(schema.integrationDeveloperApps.createdAt));
+    return rows.map(mapIntegrationDeveloperAppRow);
+  }
+
+  async getIntegrationDeveloperApp(
+    firmId: string,
+    appId: string,
+  ): Promise<IntegrationDeveloperAppRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.integrationDeveloperApps)
+      .where(
+        and(
+          eq(schema.integrationDeveloperApps.firmId, firmId),
+          eq(schema.integrationDeveloperApps.id, appId),
+        ),
+      );
+    return row ? mapIntegrationDeveloperAppRow(row) : undefined;
+  }
+
+  async createIntegrationApiCredential(
+    credential: IntegrationApiCredentialRecord,
+  ): Promise<IntegrationApiCredentialRecord> {
+    const app = await this.getIntegrationDeveloperApp(credential.firmId, credential.appId);
+    if (!app) throw new Error(`Integration app ${credential.appId} was not found`);
+    const [row] = await this.db
+      .insert(schema.integrationApiCredentials)
+      .values(integrationApiCredentialInsert(credential))
+      .returning();
+    return mapIntegrationApiCredentialRow(row);
+  }
+
+  async listIntegrationApiCredentials(
+    firmId: string,
+    options: { appId?: string; status?: IntegrationApiCredentialRecord["status"] } = {},
+  ): Promise<IntegrationApiCredentialRecord[]> {
+    const conditions = [eq(schema.integrationApiCredentials.firmId, firmId)];
+    if (options.appId) conditions.push(eq(schema.integrationApiCredentials.appId, options.appId));
+    if (options.status) {
+      conditions.push(eq(schema.integrationApiCredentials.status, options.status));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.integrationApiCredentials)
+      .where(and(...conditions))
+      .orderBy(desc(schema.integrationApiCredentials.createdAt));
+    return rows.map(mapIntegrationApiCredentialRow);
+  }
+
+  async getIntegrationApiCredential(
+    firmId: string,
+    credentialId: string,
+  ): Promise<IntegrationApiCredentialRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.integrationApiCredentials)
+      .where(
+        and(
+          eq(schema.integrationApiCredentials.firmId, firmId),
+          eq(schema.integrationApiCredentials.id, credentialId),
+        ),
+      );
+    return row ? mapIntegrationApiCredentialRow(row) : undefined;
+  }
+
+  async revokeIntegrationApiCredential(input: {
+    firmId: string;
+    credentialId: string;
+    revokedAt: string;
+  }): Promise<IntegrationApiCredentialRecord | undefined> {
+    const [row] = await this.db
+      .update(schema.integrationApiCredentials)
+      .set({
+        status: "revoked",
+        revokedAt: new Date(input.revokedAt),
+      })
+      .where(
+        and(
+          eq(schema.integrationApiCredentials.firmId, input.firmId),
+          eq(schema.integrationApiCredentials.id, input.credentialId),
+        ),
+      )
+      .returning();
+    return row ? mapIntegrationApiCredentialRow(row) : undefined;
+  }
+
+  async createIntegrationWebhookSubscription(
+    subscription: IntegrationWebhookSubscriptionRecord,
+  ): Promise<IntegrationWebhookSubscriptionRecord> {
+    const app = await this.getIntegrationDeveloperApp(subscription.firmId, subscription.appId);
+    if (!app) throw new Error(`Integration app ${subscription.appId} was not found`);
+    if (app.connectorId !== subscription.connectorId) {
+      throw new Error(`Connector ${subscription.connectorId} is not linked to integration app`);
+    }
+    const [row] = await this.db
+      .insert(schema.integrationWebhookSubscriptions)
+      .values(integrationWebhookSubscriptionInsert(subscription))
+      .returning();
+    return mapIntegrationWebhookSubscriptionRow(row);
+  }
+
+  async listIntegrationWebhookSubscriptions(
+    firmId: string,
+    options: {
+      appId?: string;
+      connectorId?: string;
+      status?: IntegrationWebhookSubscriptionRecord["status"];
+    } = {},
+  ): Promise<IntegrationWebhookSubscriptionRecord[]> {
+    const conditions = [eq(schema.integrationWebhookSubscriptions.firmId, firmId)];
+    if (options.appId)
+      conditions.push(eq(schema.integrationWebhookSubscriptions.appId, options.appId));
+    if (options.connectorId) {
+      conditions.push(eq(schema.integrationWebhookSubscriptions.connectorId, options.connectorId));
+    }
+    if (options.status) {
+      conditions.push(eq(schema.integrationWebhookSubscriptions.status, options.status));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.integrationWebhookSubscriptions)
+      .where(and(...conditions))
+      .orderBy(desc(schema.integrationWebhookSubscriptions.createdAt));
+    return rows.map(mapIntegrationWebhookSubscriptionRow);
   }
 
   async createJobLifecycleRecord(record: JobLifecycleRecord): Promise<JobLifecycleRecord> {

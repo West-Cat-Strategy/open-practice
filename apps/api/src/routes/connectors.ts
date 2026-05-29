@@ -5,9 +5,17 @@ import type {
   ConnectorOutboxRecord,
   ConnectorRecord,
   ConnectorSecretReference,
+  IntegrationApiCredentialRecord,
+  IntegrationDeveloperAppRecord,
+  IntegrationDeveloperEndpointPosture,
+  IntegrationDeveloperRateLimitPosture,
+  IntegrationWebhookSubscriptionRecord,
   JobLifecycleRecord,
 } from "@open-practice/domain";
-import { outboundWebhookEventAllowlist } from "@open-practice/domain";
+import {
+  outboundWebhookEventAllowlist,
+  validateOutboundWebhookDestination,
+} from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -149,6 +157,97 @@ const connectorOutboxDeadLetterBodySchema = z
     confirmation: connectorDeadLetterConfirmationSchema,
   })
   .strict();
+
+const integrationDeveloperAppStatusSchema = z.enum(["draft", "active", "paused", "revoked"]);
+const integrationWebhookSubscriptionStatusSchema = z.enum(["active", "paused", "disabled"]);
+const integrationRegionSchema = z.enum(["ca", "us", "eu", "custom"]);
+const integrationDeveloperScopeSchema = z.enum([
+  "matter.read",
+  "document.read",
+  "signature_request.read",
+  "intake_session.read",
+  "invoice.read",
+  "email_outbox.read",
+  "webhook.deliver",
+]);
+
+const integrationDeveloperEndpointSchema = z
+  .object({
+    region: integrationRegionSchema.default("ca"),
+    endpointBaseUrl: z.string().url().max(2048).optional(),
+  })
+  .strict()
+  .default({ region: "ca" });
+
+const integrationDeveloperRateLimitSchema = z
+  .object({
+    windowSeconds: z.number().int().min(60).max(86_400).default(60),
+    maxRequests: z.number().int().min(1).max(10_000).default(60),
+    burstLimit: z.number().int().min(1).max(10_000).optional(),
+  })
+  .strict()
+  .default({ windowSeconds: 60, maxRequests: 60 });
+
+const integrationCustomActionPlaceholderSchema = z
+  .object({
+    key: z
+      .string()
+      .min(1)
+      .max(120)
+      .regex(/^[a-z0-9][a-z0-9._-]*$/),
+    label: z.string().min(1).max(160),
+    status: z.literal("reserved").default("reserved"),
+  })
+  .strict();
+
+const integrationDeveloperAppCreateBodySchema = z
+  .object({
+    connectorId: z.string().min(1),
+    displayName: z.string().min(1).max(160),
+    status: integrationDeveloperAppStatusSchema.default("draft"),
+    redirectUris: z.array(z.string().url().max(2048)).max(20).default([]),
+    allowedOrigins: z.array(z.string().url().max(2048)).max(20).default([]),
+    allowedScopes: z.array(integrationDeveloperScopeSchema).min(1).max(20),
+    regionalEndpoint: integrationDeveloperEndpointSchema,
+    rateLimit: integrationDeveloperRateLimitSchema,
+    customActionPlaceholders: z.array(integrationCustomActionPlaceholderSchema).max(20).default([]),
+  })
+  .strict();
+
+const integrationDeveloperAppListQuerySchema = z.object({
+  connectorId: z.string().min(1).optional(),
+  status: integrationDeveloperAppStatusSchema.optional(),
+});
+
+const integrationDeveloperAppParamsSchema = z.object({
+  appId: z.string().min(1),
+});
+
+const integrationCredentialParamsSchema = z.object({
+  credentialId: z.string().min(1),
+});
+
+const integrationApiCredentialCreateBodySchema = z
+  .object({
+    label: z.string().min(1).max(160),
+    scopes: z.array(integrationDeveloperScopeSchema).min(1).max(20),
+    secretReference: secretReferenceSchema,
+    expiresAt: z.string().datetime().optional(),
+  })
+  .strict();
+
+const integrationWebhookSubscriptionCreateBodySchema = z
+  .object({
+    status: integrationWebhookSubscriptionStatusSchema.default("paused"),
+    eventTypes: z.array(z.enum(outboundWebhookEventAllowlist)).min(1).max(20),
+    destinationUrl: z.string().url().max(2048),
+    signingSecretReference: secretReferenceSchema.optional(),
+  })
+  .strict();
+
+const integrationDeliveryHistoryQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
 
 const sensitiveKeyPattern =
   /(api[_-]?key|authorization|bearer|credential|password|private[_-]?key|secret|token)/i;
@@ -295,6 +394,184 @@ function serializeOutbox(outbox: ConnectorOutboxRecord) {
     lastErrorSummary: outbox.lastErrorSummary,
     createdAt: outbox.createdAt,
     updatedAt: outbox.updatedAt,
+  };
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values)].sort();
+}
+
+function normalizeHttpsUrl(value: string, code: string, field: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new ApiHttpError(400, code, `${field} must be a valid HTTPS URL`);
+  }
+  if (parsed.protocol !== "https:") {
+    throw new ApiHttpError(400, code, `${field} must use HTTPS`);
+  }
+  parsed.username = "";
+  parsed.password = "";
+  parsed.hash = "";
+  return parsed.toString();
+}
+
+function normalizeAllowedOrigin(value: string): string {
+  const normalized = normalizeHttpsUrl(
+    value,
+    "INTEGRATION_ORIGIN_DENIED",
+    "allowedOrigins entries",
+  );
+  const parsed = new URL(normalized);
+  return parsed.origin;
+}
+
+function normalizeIntegrationEndpoint(
+  input: z.infer<typeof integrationDeveloperEndpointSchema>,
+): IntegrationDeveloperEndpointPosture {
+  if (!input.endpointBaseUrl) return { region: input.region, posture: "cue_only" };
+  const endpoint = validateOutboundWebhookDestination(input.endpointBaseUrl);
+  if (!endpoint.ok) {
+    throw new ApiHttpError(
+      400,
+      "INTEGRATION_ENDPOINT_DENIED",
+      "Regional endpoint cue failed guardrail validation",
+      { reason: endpoint.reason },
+    );
+  }
+  return {
+    region: input.region,
+    endpointBaseUrl: endpoint.normalizedUrl,
+    posture: "cue_only",
+  };
+}
+
+function normalizeRateLimitPosture(
+  input: z.infer<typeof integrationDeveloperRateLimitSchema>,
+): IntegrationDeveloperRateLimitPosture {
+  return {
+    mode: "documented",
+    windowSeconds: input.windowSeconds,
+    maxRequests: input.maxRequests,
+    burstLimit: input.burstLimit,
+    enforcement: "reserved",
+  };
+}
+
+function assertCredentialScopesWithinApp(
+  app: IntegrationDeveloperAppRecord,
+  scopes: string[],
+): void {
+  const allowed = new Set(app.allowedScopes);
+  const rejected = scopes.filter((scope) => !allowed.has(scope));
+  if (rejected.length === 0) return;
+  throw new ApiHttpError(
+    400,
+    "INTEGRATION_CREDENTIAL_SCOPE_DENIED",
+    `Credential scopes are not registered for this integration app: ${rejected.sort().join(", ")}`,
+  );
+}
+
+function assertIntegrationAppUsable(app: IntegrationDeveloperAppRecord): void {
+  if (app.status !== "revoked") return;
+  throw new ApiHttpError(
+    409,
+    "INTEGRATION_APP_REVOKED",
+    "Revoked integration app registrations cannot be changed",
+  );
+}
+
+function serializeIntegrationCredential(credential: IntegrationApiCredentialRecord) {
+  return {
+    id: credential.id,
+    appId: credential.appId,
+    label: credential.label,
+    scopes: credential.scopes,
+    secretReference: serializeSecretReference(credential.secretReference),
+    status: credential.status,
+    createdAt: credential.createdAt,
+    expiresAt: credential.expiresAt,
+    lastUsedAt: credential.lastUsedAt,
+    revokedAt: credential.revokedAt,
+  };
+}
+
+function serializeIntegrationWebhookSubscription(
+  subscription: IntegrationWebhookSubscriptionRecord,
+) {
+  return {
+    id: subscription.id,
+    appId: subscription.appId,
+    connectorId: subscription.connectorId,
+    status: subscription.status,
+    eventTypes: subscription.eventTypes,
+    destinationHost: subscription.destinationHost,
+    destinationUrlPresent: Boolean(subscription.destinationUrl),
+    signingSecretReference: serializeSecretReference(subscription.signingSecretReference),
+    createdAt: subscription.createdAt,
+    updatedAt: subscription.updatedAt,
+  };
+}
+
+function serializeIntegrationApp(input: {
+  app: IntegrationDeveloperAppRecord;
+  connector?: ConnectorRecord;
+  credentials?: IntegrationApiCredentialRecord[];
+  webhookSubscriptions?: IntegrationWebhookSubscriptionRecord[];
+}) {
+  return {
+    id: input.app.id,
+    connectorId: input.app.connectorId,
+    connector: input.connector
+      ? {
+          id: input.connector.id,
+          type: input.connector.type,
+          key: input.connector.key,
+          status: input.connector.status,
+        }
+      : undefined,
+    clientId: input.app.clientId,
+    displayName: input.app.displayName,
+    status: input.app.status,
+    redirectUris: input.app.redirectUris,
+    allowedOrigins: input.app.allowedOrigins,
+    allowedScopes: input.app.allowedScopes,
+    regionalEndpoint: input.app.regionalEndpoint,
+    rateLimit: input.app.rateLimit,
+    customActionPlaceholders: input.app.customActionPlaceholders,
+    credentialCount: input.credentials?.length ?? 0,
+    webhookSubscriptionCount: input.webhookSubscriptions?.length ?? 0,
+    createdAt: input.app.createdAt,
+    updatedAt: input.app.updatedAt,
+  };
+}
+
+function serializeConnectorDeliveryAttempt(attempt: {
+  id: string;
+  outboxId: string;
+  attemptNumber: number;
+  status: string;
+  startedAt: string;
+  finishedAt?: string;
+  errorSummary?: string;
+  metadata: Record<string, unknown>;
+}) {
+  const metadata = attempt.metadata;
+  return {
+    id: attempt.id,
+    outboxId: attempt.outboxId,
+    attemptNumber: attempt.attemptNumber,
+    status: attempt.status,
+    startedAt: attempt.startedAt,
+    finishedAt: attempt.finishedAt,
+    errorSummary: attempt.errorSummary,
+    metadata: {
+      destinationHost:
+        typeof metadata.destinationHost === "string" ? metadata.destinationHost : undefined,
+      httpStatus: typeof metadata.httpStatus === "number" ? metadata.httpStatus : undefined,
+      terminal: typeof metadata.terminal === "boolean" ? metadata.terminal : undefined,
+    },
   };
 }
 
@@ -558,6 +835,284 @@ export function registerConnectorRoutes(
 
     reply.code(201);
     return { connector: serializeConnector(connector) };
+  });
+
+  server.get("/api/connectors/developer/apps", async (request) => {
+    const query = parseRequestPart(integrationDeveloperAppListQuerySchema, request.query, "query");
+    assertConnectorAccess(request.auth, { resource: "connector", action: "read" });
+    const [apps, connectors, credentials, webhookSubscriptions] = await Promise.all([
+      repository.listIntegrationDeveloperApps(request.auth.firmId, query),
+      repository.listConnectors(request.auth.firmId),
+      repository.listIntegrationApiCredentials(request.auth.firmId),
+      repository.listIntegrationWebhookSubscriptions(request.auth.firmId),
+    ]);
+    const connectorsById = new Map(connectors.map((connector) => [connector.id, connector]));
+    return {
+      apps: apps.map((app) =>
+        serializeIntegrationApp({
+          app,
+          connector: connectorsById.get(app.connectorId),
+          credentials: credentials.filter((credential) => credential.appId === app.id),
+          webhookSubscriptions: webhookSubscriptions.filter(
+            (subscription) => subscription.appId === app.id,
+          ),
+        }),
+      ),
+    };
+  });
+
+  server.post("/api/connectors/developer/apps", async (request, reply) => {
+    const body = parseRequestPart(integrationDeveloperAppCreateBodySchema, request.body, "body");
+    assertConnectorAccess(request.auth, { resource: "connector", action: "create" });
+    const connector = await repository.getConnector(request.auth.firmId, body.connectorId);
+    if (!connector) {
+      throw new ApiHttpError(404, "CONNECTOR_NOT_FOUND", "Connector was not found");
+    }
+    const now = new Date().toISOString();
+    const app = await repository.createIntegrationDeveloperApp({
+      id: crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      connectorId: connector.id,
+      clientId: `op_client_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`,
+      displayName: body.displayName,
+      status: body.status,
+      redirectUris: uniqueSorted(
+        body.redirectUris.map((uri) =>
+          normalizeHttpsUrl(uri, "INTEGRATION_REDIRECT_URI_DENIED", "redirectUris entries"),
+        ),
+      ),
+      allowedOrigins: uniqueSorted(body.allowedOrigins.map(normalizeAllowedOrigin)),
+      allowedScopes: uniqueSorted(body.allowedScopes),
+      regionalEndpoint: normalizeIntegrationEndpoint(body.regionalEndpoint),
+      rateLimit: normalizeRateLimitPosture(body.rateLimit),
+      customActionPlaceholders: body.customActionPlaceholders,
+      createdByUserId: request.auth.user.id,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "integration_developer_app.registered",
+      resourceType: "integration_developer_app",
+      resourceId: app.id,
+      occurredAt: now,
+      metadata: {
+        appId: app.id,
+        connectorId: connector.id,
+        connectorType: connector.type,
+        connectorKey: connector.key,
+        status: app.status,
+        scopeCount: app.allowedScopes.length,
+        redirectUriCount: app.redirectUris.length,
+        allowedOriginCount: app.allowedOrigins.length,
+        endpointRegion: app.regionalEndpoint.region,
+        endpointBaseUrlPresent: Boolean(app.regionalEndpoint.endpointBaseUrl),
+        rateLimitWindowSeconds: app.rateLimit.windowSeconds,
+        rateLimitMaxRequests: app.rateLimit.maxRequests,
+        rateLimitEnforcement: app.rateLimit.enforcement,
+        customActionCount: app.customActionPlaceholders.length,
+      },
+    });
+
+    reply.code(201);
+    return { app: serializeIntegrationApp({ app, connector }) };
+  });
+
+  server.post("/api/connectors/developer/apps/:appId/credentials", async (request, reply) => {
+    const params = parseRequestPart(integrationDeveloperAppParamsSchema, request.params, "params");
+    const body = parseRequestPart(integrationApiCredentialCreateBodySchema, request.body, "body");
+    assertConnectorAccess(request.auth, { resource: "connector", action: "update" });
+    const app = await repository.getIntegrationDeveloperApp(request.auth.firmId, params.appId);
+    if (!app) {
+      throw new ApiHttpError(
+        404,
+        "INTEGRATION_APP_NOT_FOUND",
+        "Integration developer app was not found",
+      );
+    }
+    assertIntegrationAppUsable(app);
+    assertCredentialScopesWithinApp(app, body.scopes);
+    const now = new Date().toISOString();
+    const credential = await repository.createIntegrationApiCredential({
+      id: crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      appId: app.id,
+      label: body.label,
+      scopes: uniqueSorted(body.scopes),
+      secretReference: body.secretReference,
+      status: "active",
+      createdByUserId: request.auth.user.id,
+      createdAt: now,
+      expiresAt: body.expiresAt,
+    });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "integration_api_credential.created",
+      resourceType: "integration_api_credential",
+      resourceId: credential.id,
+      occurredAt: now,
+      metadata: {
+        appId: app.id,
+        credentialId: credential.id,
+        connectorId: app.connectorId,
+        scopeCount: credential.scopes.length,
+        secretReferencePresent: true,
+        expiresAtPresent: Boolean(credential.expiresAt),
+      },
+    });
+
+    reply.code(201);
+    return { credential: serializeIntegrationCredential(credential) };
+  });
+
+  server.post("/api/connectors/developer/credentials/:credentialId/revoke", async (request) => {
+    const params = parseRequestPart(integrationCredentialParamsSchema, request.params, "params");
+    assertConnectorAccess(request.auth, { resource: "connector", action: "update" });
+    const existing = await repository.getIntegrationApiCredential(
+      request.auth.firmId,
+      params.credentialId,
+    );
+    if (!existing) {
+      throw new ApiHttpError(
+        404,
+        "INTEGRATION_CREDENTIAL_NOT_FOUND",
+        "Integration API credential was not found",
+      );
+    }
+    const now = new Date().toISOString();
+    const credential = await repository.revokeIntegrationApiCredential({
+      firmId: request.auth.firmId,
+      credentialId: existing.id,
+      revokedAt: now,
+    });
+    if (!credential) {
+      throw new ApiHttpError(
+        404,
+        "INTEGRATION_CREDENTIAL_NOT_FOUND",
+        "Integration API credential was not found",
+      );
+    }
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "integration_api_credential.revoked",
+      resourceType: "integration_api_credential",
+      resourceId: credential.id,
+      occurredAt: now,
+      metadata: {
+        appId: credential.appId,
+        credentialId: credential.id,
+        revokedAt: credential.revokedAt,
+      },
+    });
+
+    return { credential: serializeIntegrationCredential(credential) };
+  });
+
+  server.post(
+    "/api/connectors/developer/apps/:appId/webhook-subscriptions",
+    async (request, reply) => {
+      const params = parseRequestPart(
+        integrationDeveloperAppParamsSchema,
+        request.params,
+        "params",
+      );
+      const body = parseRequestPart(
+        integrationWebhookSubscriptionCreateBodySchema,
+        request.body,
+        "body",
+      );
+      assertConnectorAccess(request.auth, { resource: "connector", action: "update" });
+      const app = await repository.getIntegrationDeveloperApp(request.auth.firmId, params.appId);
+      if (!app) {
+        throw new ApiHttpError(
+          404,
+          "INTEGRATION_APP_NOT_FOUND",
+          "Integration developer app was not found",
+        );
+      }
+      assertIntegrationAppUsable(app);
+      const destination = validateOutboundWebhookDestination(body.destinationUrl);
+      if (!destination.ok) {
+        throw new ApiHttpError(
+          400,
+          "INTEGRATION_WEBHOOK_DESTINATION_DENIED",
+          "Integration webhook subscription destination failed guardrail validation",
+          { reason: destination.reason },
+        );
+      }
+      const now = new Date().toISOString();
+      const subscription = await repository.createIntegrationWebhookSubscription({
+        id: crypto.randomUUID(),
+        firmId: request.auth.firmId,
+        appId: app.id,
+        connectorId: app.connectorId,
+        status: body.status,
+        eventTypes: uniqueSorted(body.eventTypes),
+        destinationUrl: destination.normalizedUrl,
+        destinationHost: destination.host,
+        signingSecretReference: body.signingSecretReference,
+        createdByUserId: request.auth.user.id,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await appendRouteAuditEvent(repository, request.auth, {
+        action: "integration_webhook_subscription.created",
+        resourceType: "integration_webhook_subscription",
+        resourceId: subscription.id,
+        occurredAt: now,
+        metadata: {
+          appId: app.id,
+          connectorId: app.connectorId,
+          subscriptionId: subscription.id,
+          status: subscription.status,
+          eventCount: subscription.eventTypes.length,
+          destinationHost: subscription.destinationHost,
+          signingSecretReferencePresent: Boolean(subscription.signingSecretReference),
+        },
+      });
+
+      reply.code(201);
+      return { subscription: serializeIntegrationWebhookSubscription(subscription) };
+    },
+  );
+
+  server.get("/api/connectors/developer/apps/:appId/delivery-history", async (request) => {
+    const params = parseRequestPart(integrationDeveloperAppParamsSchema, request.params, "params");
+    const query = parseRequestPart(integrationDeliveryHistoryQuerySchema, request.query, "query");
+    assertConnectorAccess(request.auth, { resource: "connector", action: "read" });
+    const app = await repository.getIntegrationDeveloperApp(request.auth.firmId, params.appId);
+    if (!app) {
+      throw new ApiHttpError(
+        404,
+        "INTEGRATION_APP_NOT_FOUND",
+        "Integration developer app was not found",
+      );
+    }
+    const [connector, outbox, attempts, subscriptions] = await Promise.all([
+      repository.getConnector(request.auth.firmId, app.connectorId),
+      repository.listConnectorOutbox(request.auth.firmId, {
+        connectorId: app.connectorId,
+        limit: query.limit,
+      }),
+      repository.listConnectorDeliveryAttempts(request.auth.firmId, {
+        connectorId: app.connectorId,
+      }),
+      repository.listIntegrationWebhookSubscriptions(request.auth.firmId, {
+        appId: app.id,
+      }),
+    ]);
+    const outboxIds = new Set(outbox.map((record) => record.id));
+    return {
+      app: serializeIntegrationApp({
+        app,
+        connector,
+        webhookSubscriptions: subscriptions,
+      }),
+      webhookSubscriptions: subscriptions.map(serializeIntegrationWebhookSubscription),
+      deliveries: outbox.map((record) => ({
+        outbox: serializeOutbox(record),
+        attempts: attempts
+          .filter((attempt) => attempt.outboxId === record.id && outboxIds.has(attempt.outboxId))
+          .map(serializeConnectorDeliveryAttempt),
+      })),
+    };
   });
 
   server.get("/api/connectors/outbox", async (request) => {

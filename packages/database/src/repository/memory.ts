@@ -69,6 +69,9 @@ import {
   type InboundEmailAddressRecord,
   type InboundEmailAttachmentRecord,
   type InboundEmailMessageRecord,
+  type IntegrationApiCredentialRecord,
+  type IntegrationDeveloperAppRecord,
+  type IntegrationWebhookSubscriptionRecord,
   type IntakeFormItemActionRecord,
   type IntakeFormLinkRecord,
   type IntakeFormReviewRecord,
@@ -260,6 +263,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private connectors: ConnectorRecord[] = [];
   private connectorOutbox: ConnectorOutboxRecord[] = [];
   private connectorDeliveryAttempts: ConnectorDeliveryAttemptRecord[] = [];
+  private integrationDeveloperApps: IntegrationDeveloperAppRecord[] = [];
+  private integrationApiCredentials: IntegrationApiCredentialRecord[] = [];
+  private integrationWebhookSubscriptions: IntegrationWebhookSubscriptionRecord[] = [];
   private jobLifecycleRecords: JobLifecycleRecord[] = [];
   private emailOutbox: EmailOutboxRecord[] = [];
   private emailEvents: EmailEventRecord[] = [];
@@ -784,6 +790,170 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           return true;
         })
         .sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
+    );
+  }
+
+  async createIntegrationDeveloperApp(
+    app: IntegrationDeveloperAppRecord,
+  ): Promise<IntegrationDeveloperAppRecord> {
+    const connector = this.connectors.find(
+      (candidate) => candidate.firmId === app.firmId && candidate.id === app.connectorId,
+    );
+    if (!connector) throw new Error(`Connector ${app.connectorId} was not found`);
+    const duplicate = this.integrationDeveloperApps.find(
+      (candidate) => candidate.firmId === app.firmId && candidate.clientId === app.clientId,
+    );
+    if (duplicate) throw new Error(`Integration client ${app.clientId} already exists`);
+    this.integrationDeveloperApps.push(clone(app));
+    return clone(app);
+  }
+
+  async updateIntegrationDeveloperApp(
+    firmId: string,
+    appId: string,
+    updates: Partial<
+      Pick<
+        IntegrationDeveloperAppRecord,
+        | "displayName"
+        | "status"
+        | "redirectUris"
+        | "allowedOrigins"
+        | "allowedScopes"
+        | "regionalEndpoint"
+        | "rateLimit"
+        | "customActionPlaceholders"
+      >
+    > & { updatedAt: string },
+  ): Promise<IntegrationDeveloperAppRecord | undefined> {
+    const index = this.integrationDeveloperApps.findIndex(
+      (app) => app.firmId === firmId && app.id === appId,
+    );
+    if (index < 0) return undefined;
+    const current = this.integrationDeveloperApps[index];
+    const next: IntegrationDeveloperAppRecord = {
+      ...current,
+      ...updates,
+      updatedAt: updates.updatedAt,
+    };
+    this.integrationDeveloperApps[index] = clone(next);
+    return clone(next);
+  }
+
+  async listIntegrationDeveloperApps(
+    firmId: string,
+    options: { connectorId?: string; status?: IntegrationDeveloperAppRecord["status"] } = {},
+  ): Promise<IntegrationDeveloperAppRecord[]> {
+    return clone(
+      this.integrationDeveloperApps
+        .filter((app) => {
+          if (app.firmId !== firmId) return false;
+          if (options.connectorId && app.connectorId !== options.connectorId) return false;
+          if (options.status && app.status !== options.status) return false;
+          return true;
+        })
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    );
+  }
+
+  async getIntegrationDeveloperApp(
+    firmId: string,
+    appId: string,
+  ): Promise<IntegrationDeveloperAppRecord | undefined> {
+    return clone(
+      this.integrationDeveloperApps.find((app) => app.firmId === firmId && app.id === appId),
+    );
+  }
+
+  async createIntegrationApiCredential(
+    credential: IntegrationApiCredentialRecord,
+  ): Promise<IntegrationApiCredentialRecord> {
+    const app = this.integrationDeveloperApps.find(
+      (candidate) => candidate.firmId === credential.firmId && candidate.id === credential.appId,
+    );
+    if (!app) throw new Error(`Integration app ${credential.appId} was not found`);
+    this.integrationApiCredentials.push(clone(credential));
+    return clone(credential);
+  }
+
+  async listIntegrationApiCredentials(
+    firmId: string,
+    options: { appId?: string; status?: IntegrationApiCredentialRecord["status"] } = {},
+  ): Promise<IntegrationApiCredentialRecord[]> {
+    return clone(
+      this.integrationApiCredentials
+        .filter((credential) => {
+          if (credential.firmId !== firmId) return false;
+          if (options.appId && credential.appId !== options.appId) return false;
+          if (options.status && credential.status !== options.status) return false;
+          return true;
+        })
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    );
+  }
+
+  async getIntegrationApiCredential(
+    firmId: string,
+    credentialId: string,
+  ): Promise<IntegrationApiCredentialRecord | undefined> {
+    return clone(
+      this.integrationApiCredentials.find(
+        (credential) => credential.firmId === firmId && credential.id === credentialId,
+      ),
+    );
+  }
+
+  async revokeIntegrationApiCredential(input: {
+    firmId: string;
+    credentialId: string;
+    revokedAt: string;
+  }): Promise<IntegrationApiCredentialRecord | undefined> {
+    const index = this.integrationApiCredentials.findIndex(
+      (credential) => credential.firmId === input.firmId && credential.id === input.credentialId,
+    );
+    if (index < 0) return undefined;
+    const current = this.integrationApiCredentials[index];
+    const next: IntegrationApiCredentialRecord = {
+      ...current,
+      status: "revoked",
+      revokedAt: input.revokedAt,
+    };
+    this.integrationApiCredentials[index] = clone(next);
+    return clone(next);
+  }
+
+  async createIntegrationWebhookSubscription(
+    subscription: IntegrationWebhookSubscriptionRecord,
+  ): Promise<IntegrationWebhookSubscriptionRecord> {
+    const app = this.integrationDeveloperApps.find(
+      (candidate) =>
+        candidate.firmId === subscription.firmId && candidate.id === subscription.appId,
+    );
+    if (!app) throw new Error(`Integration app ${subscription.appId} was not found`);
+    if (app.connectorId !== subscription.connectorId) {
+      throw new Error(`Connector ${subscription.connectorId} is not linked to integration app`);
+    }
+    this.integrationWebhookSubscriptions.push(clone(subscription));
+    return clone(subscription);
+  }
+
+  async listIntegrationWebhookSubscriptions(
+    firmId: string,
+    options: {
+      appId?: string;
+      connectorId?: string;
+      status?: IntegrationWebhookSubscriptionRecord["status"];
+    } = {},
+  ): Promise<IntegrationWebhookSubscriptionRecord[]> {
+    return clone(
+      this.integrationWebhookSubscriptions
+        .filter((subscription) => {
+          if (subscription.firmId !== firmId) return false;
+          if (options.appId && subscription.appId !== options.appId) return false;
+          if (options.connectorId && subscription.connectorId !== options.connectorId) return false;
+          if (options.status && subscription.status !== options.status) return false;
+          return true;
+        })
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
     );
   }
 

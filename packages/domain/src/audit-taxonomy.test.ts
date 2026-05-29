@@ -145,6 +145,77 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies integration developer boundary events as firm-scoped and redacted", () => {
+    expect(
+      classifyAuditEvent(
+        auditEvent({
+          action: "integration_developer_app.registered",
+          resourceType: "integration_developer_app",
+          resourceId: "integration-app-001",
+          metadata: {
+            appId: "integration-app-001",
+            connectorId: "connector-001",
+            connectorType: "generic",
+            status: "draft",
+            scopeCount: 3,
+            endpointRegion: "ca",
+            endpointBaseUrlPresent: true,
+            rateLimitEnforcement: "reserved",
+          },
+        }),
+      ),
+    ).toMatchObject({
+      category: "operations",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(
+      classifyAuditEvent(
+        auditEvent({
+          action: "integration_api_credential.created",
+          resourceType: "integration_api_credential",
+          resourceId: "integration-credential-001",
+          metadata: {
+            appId: "integration-app-001",
+            credentialId: "integration-credential-001",
+            scopeCount: 2,
+            secretReferencePresent: true,
+          },
+        }),
+      ).metadataHints.resource,
+    ).toEqual(
+      expect.arrayContaining([
+        "appId",
+        "credentialId",
+        "scopeCount",
+        "secretReferencePresent",
+        "expiresAtPresent",
+      ]),
+    );
+    expect(
+      classifyAuditEvent(
+        auditEvent({
+          action: "integration_webhook_subscription.created",
+          resourceType: "integration_webhook_subscription",
+          resourceId: "integration-webhook-001",
+          metadata: {
+            appId: "integration-app-001",
+            subscriptionId: "integration-webhook-001",
+            eventCount: 2,
+            destinationHost: "webhooks.example.test",
+            signingSecretReferencePresent: true,
+          },
+        }),
+      ),
+    ).toMatchObject({
+      category: "operations",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+  });
+
   it("classifies contact quality decisions without raw reviewer evidence", () => {
     const classification = classifyAuditEvent(
       auditEvent({

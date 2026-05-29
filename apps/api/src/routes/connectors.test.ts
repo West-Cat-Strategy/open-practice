@@ -264,6 +264,319 @@ describe("connector routes", () => {
     });
   });
 
+  it("registers integration developer apps with scoped credentials and webhook posture", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const connector = await createRecoveryConnector(repository);
+
+    const registered = await server.inject({
+      method: "POST",
+      url: "/api/connectors/developer/apps",
+      payload: {
+        connectorId: connector.id,
+        displayName: "Synthetic Developer App",
+        redirectUris: ["https://developer.example.test/oauth/callback#fragment"],
+        allowedOrigins: ["https://developer.example.test/app"],
+        allowedScopes: ["document.read", "webhook.deliver"],
+        regionalEndpoint: {
+          region: "ca",
+          endpointBaseUrl: "https://api.ca.example.test/open-practice",
+        },
+        rateLimit: { windowSeconds: 60, maxRequests: 120 },
+        customActionPlaceholders: [
+          { key: "document.review", label: "Document Review", status: "reserved" },
+        ],
+      },
+    });
+
+    expect(registered.statusCode).toBe(201);
+    expect(registered.json()).toMatchObject({
+      app: {
+        connectorId: connector.id,
+        clientId: expect.stringMatching(/^op_client_/),
+        status: "draft",
+        redirectUris: ["https://developer.example.test/oauth/callback"],
+        allowedOrigins: ["https://developer.example.test"],
+        allowedScopes: ["document.read", "webhook.deliver"],
+        regionalEndpoint: {
+          region: "ca",
+          endpointBaseUrl: "https://api.ca.example.test/open-practice",
+          posture: "cue_only",
+        },
+        rateLimit: {
+          mode: "documented",
+          windowSeconds: 60,
+          maxRequests: 120,
+          enforcement: "reserved",
+        },
+        customActionPlaceholders: [
+          { key: "document.review", label: "Document Review", status: "reserved" },
+        ],
+      },
+    });
+
+    const appId = registered.json().app.id;
+    const credential = await server.inject({
+      method: "POST",
+      url: `/api/connectors/developer/apps/${appId}/credentials`,
+      payload: {
+        label: "Synthetic scoped credential",
+        scopes: ["document.read"],
+        secretReference: {
+          id: "secret-ref/integration-api-credential",
+          label: "Integration API credential",
+        },
+      },
+    });
+
+    expect(credential.statusCode).toBe(201);
+    expect(credential.json()).toMatchObject({
+      credential: {
+        appId,
+        label: "Synthetic scoped credential",
+        scopes: ["document.read"],
+        secretReference: {
+          id: "__open_practice_connector_secret_unchanged__",
+          label: "Integration API credential",
+          redacted: true,
+        },
+        status: "active",
+      },
+    });
+    expect(credential.body).not.toContain("secret-ref/integration-api-credential");
+
+    const revoked = await server.inject({
+      method: "POST",
+      url: `/api/connectors/developer/credentials/${credential.json().credential.id}/revoke`,
+    });
+
+    expect(revoked.statusCode).toBe(200);
+    expect(revoked.json()).toMatchObject({
+      credential: {
+        id: credential.json().credential.id,
+        status: "revoked",
+        revokedAt: expect.any(String),
+      },
+    });
+    expect(revoked.body).not.toContain("secret-ref/integration-api-credential");
+
+    const subscription = await server.inject({
+      method: "POST",
+      url: `/api/connectors/developer/apps/${appId}/webhook-subscriptions`,
+      payload: {
+        status: "paused",
+        eventTypes: ["document.verified"],
+        destinationUrl: "https://webhooks.example.test/open-practice#secret",
+        signingSecretReference: { id: "secret-ref/webhook-signing" },
+      },
+    });
+
+    expect(subscription.statusCode).toBe(201);
+    expect(subscription.json()).toMatchObject({
+      subscription: {
+        appId,
+        connectorId: connector.id,
+        status: "paused",
+        eventTypes: ["document.verified"],
+        destinationHost: "webhooks.example.test",
+        destinationUrlPresent: true,
+        signingSecretReference: {
+          id: "__open_practice_connector_secret_unchanged__",
+          redacted: true,
+        },
+      },
+    });
+    expect(subscription.body).not.toContain("secret-ref/webhook-signing");
+    expect(subscription.body).not.toContain("/open-practice");
+
+    const listed = await server.inject({ method: "GET", url: "/api/connectors/developer/apps" });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toMatchObject({
+      apps: [
+        {
+          id: appId,
+          credentialCount: 1,
+          webhookSubscriptionCount: 1,
+          connector: { id: connector.id, status: "enabled" },
+        },
+      ],
+    });
+
+    const audit = await repository.listAuditEvents(firmId);
+    expect(audit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "integration_developer_app.registered",
+          metadata: expect.objectContaining({
+            appId,
+            scopeCount: 2,
+            endpointBaseUrlPresent: true,
+            rateLimitEnforcement: "reserved",
+            customActionCount: 1,
+          }),
+        }),
+        expect.objectContaining({
+          action: "integration_api_credential.created",
+          metadata: expect.objectContaining({
+            appId,
+            scopeCount: 1,
+            secretReferencePresent: true,
+          }),
+        }),
+        expect.objectContaining({
+          action: "integration_api_credential.revoked",
+          metadata: expect.objectContaining({
+            appId,
+            credentialId: credential.json().credential.id,
+          }),
+        }),
+        expect.objectContaining({
+          action: "integration_webhook_subscription.created",
+          metadata: expect.objectContaining({
+            appId,
+            eventCount: 1,
+            destinationHost: "webhooks.example.test",
+            signingSecretReferencePresent: true,
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("exposes redacted integration delivery history from connector outbox attempts", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const connector = await createRecoveryConnector(repository);
+    const app = await repository.createIntegrationDeveloperApp({
+      id: "integration-app-history",
+      firmId,
+      connectorId: connector.id,
+      clientId: "op_client_history",
+      displayName: "Synthetic History App",
+      status: "active",
+      redirectUris: [],
+      allowedOrigins: [],
+      allowedScopes: ["webhook.deliver"],
+      regionalEndpoint: { region: "ca", posture: "cue_only" },
+      rateLimit: {
+        mode: "documented",
+        windowSeconds: 60,
+        maxRequests: 60,
+        enforcement: "reserved",
+      },
+      customActionPlaceholders: [],
+      createdByUserId: "user-owner_admin",
+      createdAt: "2026-05-28T12:00:00.000Z",
+      updatedAt: "2026-05-28T12:00:00.000Z",
+    });
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-history",
+      firmId,
+      connectorId: connector.id,
+      eventType: "document.verified",
+      resourceType: "document",
+      resourceId: "doc-history",
+      idempotencyKey: "doc-history:verified:v1",
+      status: "delivered",
+      payloadSummary: { documentId: "doc-history" },
+      attemptCount: 1,
+      maxAttempts: 3,
+      deliveredAt: "2026-05-28T12:03:00.000Z",
+      createdAt: "2026-05-28T12:00:00.000Z",
+      updatedAt: "2026-05-28T12:03:00.000Z",
+    });
+    await repository.createConnectorDeliveryAttempt({
+      id: "connector-attempt-history",
+      firmId,
+      connectorId: connector.id,
+      outboxId: "connector-outbox-history",
+      attemptNumber: 1,
+      status: "delivered",
+      idempotencyKey: "doc-history:verified:v1",
+      startedAt: "2026-05-28T12:02:00.000Z",
+      finishedAt: "2026-05-28T12:03:00.000Z",
+      metadata: {
+        destinationHost: "webhooks.example.test",
+        httpStatus: 202,
+        authorization: "Bearer should-not-leak",
+        terminal: true,
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: `/api/connectors/developer/apps/${app.id}/delivery-history`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      app: { id: app.id, connectorId: connector.id },
+      deliveries: [
+        {
+          outbox: {
+            id: "connector-outbox-history",
+            idempotencyKeyPresent: true,
+            leasePresent: false,
+            status: "delivered",
+          },
+          attempts: [
+            {
+              id: "connector-attempt-history",
+              metadata: {
+                destinationHost: "webhooks.example.test",
+                httpStatus: 202,
+                terminal: true,
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(response.body).not.toContain("doc-history:verified:v1");
+    expect(response.body).not.toContain("should-not-leak");
+  });
+
+  it("keeps payment-link scopes and unsafe webhook destinations out of the developer boundary", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const connector = await createRecoveryConnector(repository);
+
+    const paymentScope = await server.inject({
+      method: "POST",
+      url: "/api/connectors/developer/apps",
+      payload: {
+        connectorId: connector.id,
+        displayName: "Synthetic Payment Link App",
+        allowedScopes: ["payment_link.write"],
+      },
+    });
+
+    expect(paymentScope.statusCode).toBe(400);
+
+    const registered = await server.inject({
+      method: "POST",
+      url: "/api/connectors/developer/apps",
+      payload: {
+        connectorId: connector.id,
+        displayName: "Synthetic Webhook App",
+        allowedScopes: ["webhook.deliver"],
+      },
+    });
+    const localhostWebhook = await server.inject({
+      method: "POST",
+      url: `/api/connectors/developer/apps/${registered.json().app.id}/webhook-subscriptions`,
+      payload: {
+        eventTypes: ["document.verified"],
+        destinationUrl: "https://localhost/hooks",
+      },
+    });
+
+    expect(localhostWebhook.statusCode).toBe(400);
+    expect(localhostWebhook.json()).toMatchObject({
+      code: "INTEGRATION_WEBHOOK_DESTINATION_DENIED",
+    });
+  });
+
   it("queues provider-neutral outbox rows idempotently without payload secrets", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const connectorQueue = fakeConnectorQueue();
