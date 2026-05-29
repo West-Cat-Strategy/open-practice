@@ -31,6 +31,7 @@ import {
   buildIntakeVariableProposalListPath,
   loadIntakeFormsDashboardData,
 } from "./intake-forms-dashboard";
+import { buildIntakePipelinePath, emptyIntakePipelineDashboard } from "./intake-pipeline-dashboard";
 import {
   buildPublicConsultationIntakeSettingsPath,
   buildPublicConsultationIntakesPath,
@@ -94,6 +95,8 @@ import type {
   IntakeSessionsResponse,
   IntakeFormsDashboardResponse,
   IntakeFormLinksResponse,
+  IntakePipelineDashboardResponse,
+  IntakePipelineResponse,
   IntakeVariableProposalsResponse,
   JurisdictionalTrustReportResponse,
   LegalClinicDashboardResponse,
@@ -630,6 +633,15 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       return response.proposals;
     },
   });
+  const intakePipelineResult = await apiGetOptionalWithStatus<IntakePipelineResponse>(
+    buildIntakePipelinePath(),
+    emptyIntakePipelineDashboard("unavailable"),
+    headers,
+  );
+  const intakePipeline: IntakePipelineDashboardResponse = {
+    ...intakePipelineResult.data,
+    status: intakePipelineResult.status,
+  };
   const publicConsultationSettingsResult =
     await apiGetOptionalWithStatus<PublicConsultationIntakeSettings>(
       buildPublicConsultationIntakeSettingsPath(),
@@ -711,6 +723,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       initialSection={initialSection}
       intake={intake}
       intakeForms={intakeForms}
+      intakePipeline={intakePipeline}
       publicConsultation={publicConsultation}
       legalClinic={legalClinic}
       matters={matters}

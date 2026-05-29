@@ -21,6 +21,8 @@ import type {
   ContactDataQualityResolutionRecord,
   DashboardSectionCapability,
   IntakeSessionRecord,
+  IntakePipelineLeadRecord,
+  IntakePipelineSummary,
   IntakeTemplateRecord,
   IntakeFormReviewRecord,
   IntakeVariableProposal,
@@ -44,8 +46,12 @@ import type {
   User,
 } from "@open-practice/domain";
 
-export type { ContactDossier };
-export type { ContactDataQualityResolutionRecord };
+export type {
+  ContactDossier,
+  ContactDataQualityResolutionRecord,
+  IntakePipelineLeadRecord,
+  IntakePipelineSummary,
+};
 
 export interface MatterSummary extends Matter {
   parties: Array<MatterParty & { contact: Contact }>;
@@ -220,6 +226,15 @@ export interface IntakeFormsDashboardResponse {
   linksByMatterId: Record<string, IntakeFormLinkSummary[]>;
   actionsByLinkId: Record<string, IntakeFormItemActionRecord[]>;
   proposalsByMatterId: Record<string, IntakeVariableProposal[]>;
+}
+
+export interface IntakePipelineResponse {
+  leads: IntakePipelineLeadRecord[];
+  summary: IntakePipelineSummary;
+}
+
+export interface IntakePipelineDashboardResponse extends IntakePipelineResponse {
+  status: "available" | "access_denied" | "unavailable";
 }
 
 export type PublicConsultationIntake = PublicConsultationIntakeRecord;

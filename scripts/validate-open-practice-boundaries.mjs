@@ -156,6 +156,12 @@ export const ROUTE_REGISTRARS = [
   ],
   ["intake", "apps/api/src/routes/intake.ts", "./routes/intake.js", "registerIntakeRoutes"],
   [
+    "intake pipeline",
+    "apps/api/src/routes/intake-pipeline.ts",
+    "./routes/intake-pipeline.js",
+    "registerIntakePipelineRoutes",
+  ],
+  [
     "intake forms",
     "apps/api/src/routes/intake-forms.ts",
     "./routes/intake-forms.js",
@@ -209,6 +215,7 @@ export const ROUTE_REGISTRAR_TEST_FILES = {
   registerExternalUploadRoutes: ["apps/api/src/routes/external-uploads.test.ts"],
   registerInboundEmailRoutes: ["apps/api/src/routes/inbound-email.test.ts"],
   registerIntakeFormRoutes: ["apps/api/src/routes/intake-forms.test.ts"],
+  registerIntakePipelineRoutes: ["apps/api/src/routes/intake-pipeline.test.ts"],
   registerIntakeRoutes: ["apps/api/src/routes/intake.test.ts"],
   registerJobsRoutes: ["apps/api/src/routes/jobs.test.ts"],
   registerLedgerRoutes: ["apps/api/src/routes/ledger.test.ts"],

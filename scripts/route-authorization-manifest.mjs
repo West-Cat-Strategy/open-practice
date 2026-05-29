@@ -1753,6 +1753,16 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
   ),
 
   authRoute(
+    "registerIntakePipelineRoutes",
+    "apps/api/src/routes/intake-pipeline.test.ts",
+    "GET",
+    "/api/intake-pipeline",
+    "public_consultation_intake",
+    "read",
+    "none",
+  ),
+
+  authRoute(
     "registerIntakeFormRoutes",
     "apps/api/src/routes/intake-forms.test.ts",
     "POST",

@@ -249,6 +249,11 @@ import {
   upsertPublicConsultationIntake,
 } from "./public-consultation-intakes-dashboard";
 import {
+  intakePipelineSourceLabel,
+  intakePipelineStatusLabel,
+  intakePipelineSummaryLine,
+} from "./intake-pipeline-dashboard";
+import {
   buildOperationalFocusSummary,
   operationalFocusEmptyMessage,
 } from "./operational-focus-panel";
@@ -334,6 +339,7 @@ import type {
   IntakeSessionsResponse,
   IntakeSessionCreateResponse,
   IntakeFormsDashboardResponse,
+  IntakePipelineDashboardResponse,
   IntakeFormLinkCreateResponse,
   IntakeFormLinkRevokeResponse,
   IntakeFormReviewResponse,
@@ -386,6 +392,7 @@ interface DashboardClientProps {
   externalUploads: ExternalUploadsDashboardResponse;
   intake: IntakeSessionsResponse;
   intakeForms: IntakeFormsDashboardResponse;
+  intakePipeline: IntakePipelineDashboardResponse;
   jurisdictionalTrustReport: JurisdictionalTrustReportResponse;
   legalClinic: LegalClinicDashboardResponse;
   initialSection: DashboardNavigationSectionKey;
@@ -719,6 +726,7 @@ export default function DashboardClient({
   externalUploads,
   intake,
   intakeForms,
+  intakePipeline,
   jurisdictionalTrustReport,
   legalClinic,
   initialSection,
@@ -1258,6 +1266,10 @@ export default function DashboardClient({
   const pendingPublicConsultationIntakes = publicConsultationIntakes.filter(
     (intakeRecord) => intakeRecord.status === "pending",
   );
+  const activeMatterPipelineLeads = activeMatter
+    ? intakePipeline.leads.filter((lead) => lead.matterId === activeMatter.id)
+    : [];
+  const recentIntakePipelineLeads = intakePipeline.leads.slice(0, 5);
   const externalUploadCreateAvailable = canCreateExternalUpload(externalUploads.status);
   const selectedDraft = activeDrafts.find((draft) => draft.id === selectedDraftId);
   const activeDraftAssistRecords = selectedDraft
@@ -6702,7 +6714,63 @@ export default function DashboardClient({
                     <span className="field-label">Public requests</span>
                     <strong>{pendingPublicConsultationIntakes.length}</strong>
                   </div>
+                  <div>
+                    <span className="field-label">Pipeline leads</span>
+                    <strong>{intakePipeline.summary.totalLeads}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Conversions</span>
+                    <strong>{intakePipeline.summary.conversionCount}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Conflict review</span>
+                    <strong>
+                      {intakePipeline.summary.conflictReview.needs_review +
+                        intakePipeline.summary.conflictReview.reviewing}
+                    </strong>
+                  </div>
                 </div>
+
+                <div className="section-title">
+                  <h3>Intake pipeline</h3>
+                  <span>{intakePipelineSummaryLine(intakePipeline.summary)}</span>
+                </div>
+                <div className="party-list">
+                  {recentIntakePipelineLeads.map((lead) => (
+                    <div className="party-row upload-link-row" key={lead.id}>
+                      <span>
+                        <strong>{lead.displayName}</strong>
+                        <small>
+                          {intakePipelineSourceLabel(lead.sourceType)} ·{" "}
+                          {intakePipelineStatusLabel(lead.leadStatus)} ·{" "}
+                          {lead.sourceAttribution.label}
+                        </small>
+                        <small>
+                          conflict {intakePipelineStatusLabel(lead.conflictReview.posture)} ·{" "}
+                          {lead.requestLinks.length} request links · {lead.appointmentLinks.length}{" "}
+                          appointment links
+                        </small>
+                      </span>
+                      <em>{lead.conversionCount} conversions</em>
+                    </div>
+                  ))}
+                  {recentIntakePipelineLeads.length === 0 ? (
+                    <p className="inline-empty">
+                      {intakePipeline.status === "access_denied"
+                        ? "Intake pipeline is unavailable for this role."
+                        : "No intake pipeline leads are available."}
+                    </p>
+                  ) : null}
+                </div>
+
+                {activeMatterPipelineLeads.length > 0 ? (
+                  <div className="inline-empty">
+                    Current matter pipeline:{" "}
+                    {activeMatterPipelineLeads
+                      .map((lead) => intakePipelineStatusLabel(lead.leadStatus))
+                      .join(", ")}
+                  </div>
+                ) : null}
 
                 <div className="section-title">
                   <h3>Public consultation requests</h3>
