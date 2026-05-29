@@ -308,6 +308,7 @@ import type {
   CalendarMeetingLinkMutationResponse,
   CalendarReminderMutationResponse,
   CapabilitiesResponse,
+  ClientPortalAccountSetupResponse,
   CommunicationsInboxDashboardResponse,
   ConnectorOutboxRecoveryResponse,
   ConnectorOutboxResponse,
@@ -874,6 +875,12 @@ export default function DashboardClient({
   const [creatingShare, setCreatingShare] = useState(false);
   const [revokingShareId, setRevokingShareId] = useState("");
   const [shareOneTimeToken, setShareOneTimeToken] = useState("");
+  const [clientPortalContactId, setClientPortalContactId] = useState("");
+  const [clientPortalSetupToken, setClientPortalSetupToken] = useState("");
+  const [clientPortalStatus, setClientPortalStatus] = useState(
+    "No client portal account setup run in this session.",
+  );
+  const [creatingClientPortalAccount, setCreatingClientPortalAccount] = useState(false);
   const [externalUploadsByMatterId, setExternalUploadsByMatterId] = useState(
     externalUploads.uploadsByMatterId,
   );
@@ -1190,6 +1197,20 @@ export default function DashboardClient({
   const activeDocumentMetadataTags =
     activeDocumentProcessing.metadataSearch?.tags.slice(0, 10) ?? [];
   const activeShares = activeMatter ? (sharesByMatterId[activeMatter.id] ?? []) : [];
+  const activeClientPortalContacts =
+    activeMatter?.parties.filter(
+      (party) =>
+        !party.adverse &&
+        ["client", "prospective_client", "notary_client", "paralegal_client"].includes(
+          party.role,
+        ) &&
+        party.contact.identifiers.some((identifier) => identifier.type === "email"),
+    ) ?? [];
+  const selectedClientPortalContactId = activeClientPortalContacts.some(
+    (party) => party.contactId === clientPortalContactId,
+  )
+    ? clientPortalContactId
+    : activeClientPortalContacts[0]?.contactId || "";
   const activeDrafts = activeMatter ? (draftsByMatterId[activeMatter.id] ?? []) : [];
   const activeExternalUploads = activeMatter
     ? (externalUploadsByMatterId[activeMatter.id] ?? [])
@@ -3849,6 +3870,42 @@ export default function DashboardClient({
     setCreatingShare(false);
   }
 
+  async function createClientPortalAccount(): Promise<void> {
+    if (!activeMatter || !selectedClientPortalContactId) {
+      setClientPortalStatus("Select a client contact before account setup.");
+      return;
+    }
+    setCreatingClientPortalAccount(true);
+    setClientPortalSetupToken("");
+    setClientPortalStatus("Creating client portal account...");
+    try {
+      const payload = await requestDashboardJson<ClientPortalAccountSetupResponse>(
+        apiBaseUrl,
+        "/api/client-portal/accounts",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: {
+            matterId: activeMatter.id,
+            contactId: selectedClientPortalContactId,
+          },
+        },
+      );
+      setClientPortalSetupToken(
+        payload.setup.status === "token_created" ? payload.setup.token : "",
+      );
+      setClientPortalStatus(
+        payload.setup.status === "token_created"
+          ? `Client account ready for ${payload.account.email}.`
+          : `Client account ready for ${payload.account.email}; setup token unavailable.`,
+      );
+    } catch (error) {
+      setClientPortalStatus(`Client account setup failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setCreatingClientPortalAccount(false);
+    }
+  }
+
   async function revokeShareLink(share: ShareLinkRecord): Promise<void> {
     setRevokingShareId(share.id);
     setShareStatus("Revoking share link...");
@@ -5301,6 +5358,48 @@ export default function DashboardClient({
                   ) : null}
                   <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
                     {shareStatus}
+                  </p>
+                </div>
+
+                <div className="share-controls">
+                  <div className="section-title">
+                    <h3>Client account setup</h3>
+                    <span>{activeClientPortalContacts.length} eligible contacts</span>
+                  </div>
+                  <div className="share-form-row">
+                    <label className="search-field">
+                      <span>Client contact</span>
+                      <select
+                        disabled={activeClientPortalContacts.length === 0}
+                        onChange={(event) => setClientPortalContactId(event.target.value)}
+                        value={selectedClientPortalContactId}
+                      >
+                        {activeClientPortalContacts.map((party) => (
+                          <option key={party.contactId} value={party.contactId}>
+                            {party.contact.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      className="secondary-button compact-button"
+                      disabled={
+                        activeClientPortalContacts.length === 0 || creatingClientPortalAccount
+                      }
+                      onClick={() => void createClientPortalAccount()}
+                      type="button"
+                    >
+                      <ContactRound size={16} />
+                      {creatingClientPortalAccount ? "Creating..." : "Create account"}
+                    </button>
+                  </div>
+                  {clientPortalSetupToken ? (
+                    <OneTimeSecretPanel
+                      items={[{ label: "Password setup token", value: clientPortalSetupToken }]}
+                    />
+                  ) : null}
+                  <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+                    {clientPortalStatus}
                   </p>
                 </div>
 

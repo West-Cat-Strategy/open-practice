@@ -2806,6 +2806,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(this.portalGrants.filter((grant) => grant.firmId === firmId));
   }
 
+  async createPortalGrant(grant: PortalGrant): Promise<PortalGrant> {
+    this.portalGrants = [...this.portalGrants, clone(grant)];
+    return clone(grant);
+  }
+
   async listShareLinks(
     firmId: string,
     options: { matterId?: string } = {},

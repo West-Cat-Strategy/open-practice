@@ -102,6 +102,12 @@ export const ROUTE_REGISTRARS = [
   ["CalDAV", "apps/api/src/routes/caldav.ts", "./routes/caldav.js", "registerCalDavRoutes"],
   ["calendar", "apps/api/src/routes/calendar.ts", "./routes/calendar.js", "registerCalendarRoutes"],
   [
+    "client portal",
+    "apps/api/src/routes/client-portal.ts",
+    "./routes/client-portal.js",
+    "registerClientPortalRoutes",
+  ],
+  [
     "documents",
     "apps/api/src/routes/documents.ts",
     "./routes/documents.js",
@@ -196,6 +202,7 @@ export const ROUTE_REGISTRAR_TEST_FILES = {
   registerBillingRoutes: ["apps/api/src/routes/billing.test.ts"],
   registerCalDavRoutes: ["apps/api/src/routes/caldav.test.ts"],
   registerCalendarRoutes: ["apps/api/src/routes/calendar.test.ts"],
+  registerClientPortalRoutes: ["apps/api/src/routes/client-portal.test.ts"],
   registerCommunicationsRoutes: ["apps/api/src/routes/communications.test.ts"],
   registerConnectorRoutes: ["apps/api/src/routes/connectors.test.ts"],
   registerContactRoutes: ["apps/api/src/routes/contacts.test.ts"],

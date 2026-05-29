@@ -3916,6 +3916,32 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     }));
   }
 
+  async createPortalGrant(grant: PortalGrant): Promise<PortalGrant> {
+    const [row] = await this.db
+      .insert(schema.portalGrants)
+      .values({
+        id: grant.id,
+        firmId: grant.firmId,
+        matterId: grant.matterId,
+        contactId: grant.contactId,
+        grantedByUserId: grant.grantedByUserId,
+        permissions: grant.permissions,
+        expiresAt: grant.expiresAt ? new Date(grant.expiresAt) : null,
+        revokedAt: grant.revokedAt ? new Date(grant.revokedAt) : null,
+      })
+      .returning();
+    return {
+      id: row.id,
+      firmId: row.firmId,
+      matterId: row.matterId,
+      contactId: row.contactId,
+      grantedByUserId: row.grantedByUserId,
+      permissions: row.permissions as PortalGrant["permissions"],
+      expiresAt: dateToIso(row.expiresAt),
+      revokedAt: dateToIso(row.revokedAt),
+    };
+  }
+
   async listShareLinks(
     firmId: string,
     options: { matterId?: string } = {},

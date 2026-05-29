@@ -22,6 +22,7 @@ export const VALID_AUTH_RESOURCES = [
   "external_upload",
   "connector",
   "auth_credential",
+  "client_portal",
   "provider_setting",
   "outbound_webhook",
   "draft",
@@ -1125,6 +1126,24 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "calendar_event",
     "read",
     "required",
+  ),
+  authRoute(
+    "registerClientPortalRoutes",
+    "apps/api/src/routes/client-portal.test.ts",
+    "POST",
+    "/api/client-portal/accounts",
+    "auth_credential",
+    "create",
+    "derived",
+  ),
+  authRoute(
+    "registerClientPortalRoutes",
+    "apps/api/src/routes/client-portal.test.ts",
+    "GET",
+    "/api/client-portal/workspace",
+    "client_portal",
+    "read",
+    "derived",
   ),
 
   authRoute(

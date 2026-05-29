@@ -65,6 +65,11 @@
   .draft-office-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .client-portal-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 @media (max-width: 720px) {
@@ -188,6 +193,15 @@
     border-top: 1px solid var(--line);
     padding-left: 0;
     padding-top: 12px;
+  }
+
+  .client-portal-action,
+  .client-portal-matter {
+    grid-template-columns: 1fr;
+  }
+
+  .client-portal-action em {
+    text-align: left;
   }
 
   .calendar-event-summary,
