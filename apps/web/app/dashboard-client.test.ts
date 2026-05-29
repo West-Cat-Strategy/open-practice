@@ -308,6 +308,7 @@ const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapabilit
   signatures: "signature_request",
   intake: "intake_session",
   audit: "audit_log",
+  reports: "report",
 };
 
 function capability(
@@ -1933,6 +1934,7 @@ describe("dashboard client behavior", () => {
         capability("signatures"),
         capability("intake"),
         capability("audit"),
+        capability("reports"),
       ],
     });
 
@@ -1994,6 +1996,12 @@ describe("dashboard client behavior", () => {
         enabled: true,
       }),
       expect.objectContaining({ key: "audit", label: "Audit", area: "review", enabled: true }),
+      expect.objectContaining({
+        key: "reports",
+        label: "Reports",
+        area: "review",
+        enabled: true,
+      }),
       expect.objectContaining({
         key: "queues",
         label: "Queues",

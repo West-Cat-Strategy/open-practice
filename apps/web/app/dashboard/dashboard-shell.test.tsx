@@ -42,6 +42,7 @@ const navIcons = {
   intake: FileText,
   funds: FileText,
   audit: FileText,
+  reports: FileText,
   queues: FileText,
 } satisfies Record<OpenPracticeSidebarSectionKey, LucideIcon>;
 

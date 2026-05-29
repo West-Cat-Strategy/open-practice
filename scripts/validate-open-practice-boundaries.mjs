@@ -199,6 +199,7 @@ export const ROUTE_REGISTRARS = [
   ],
   ["tasks", "apps/api/src/routes/tasks.ts", "./routes/tasks.js", "registerTaskRoutes"],
   ["queues", "apps/api/src/routes/queues.ts", "./routes/queues.js", "registerQueuesRoutes"],
+  ["reports", "apps/api/src/routes/reports.ts", "./routes/reports.js", "registerReportRoutes"],
 ].map(([family, file, importPath, registrar]) => ({ family, file, importPath, registrar }));
 
 export const ROUTE_REGISTRAR_TEST_FILES = {
@@ -235,6 +236,7 @@ export const ROUTE_REGISTRAR_TEST_FILES = {
     "apps/api/src/routes/public-consultation-intakes.test.ts",
   ],
   registerQueuesRoutes: ["apps/api/src/routes/queues.test.ts"],
+  registerReportRoutes: ["apps/api/src/routes/reports.test.ts"],
   registerRecoveryRoutes: ["apps/api/src/routes/mfa.test.ts"],
   registerSessionRoutes: ["apps/api/src/server.test.ts"],
   registerSetupRoutes: ["apps/api/src/server.test.ts"],
@@ -294,6 +296,15 @@ export const FORBIDDEN_SERVER_ROUTE_GROUPS = [
     ],
   },
   { owner: "queue endpoints in apps/api/src/routes/queues.ts", routeLiterals: ["/api/queues"] },
+  {
+    owner: "report endpoints in apps/api/src/routes/reports.ts",
+    routeLiterals: [
+      "/api/reports/workspace",
+      "/api/reports/export-requests",
+      "/api/reports/export-requests/:exportJobId",
+      "/api/reports/export-requests/:exportJobId/download",
+    ],
+  },
   {
     owner: "auth endpoints in apps/api/src/routes/auth.ts",
     routeLiterals: [

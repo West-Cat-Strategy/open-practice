@@ -670,6 +670,22 @@ export const auditEventTaxonomyDefinitions = [
     ],
   }),
   define({
+    action: "staff_report_export.requested",
+    category: "operations",
+    resourceType: "staff_report_export",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "jobId",
+      "reportType",
+      "reportDefinitionKey",
+      "exportProfileId",
+      "groupingKey",
+      "idempotencyKeyPresent",
+      "enqueueStatus",
+    ],
+  }),
+  define({
     action: "trust_transfer_request.created",
     category: "trust",
     resourceType: "trust_transfer_request",

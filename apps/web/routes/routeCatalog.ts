@@ -13,6 +13,7 @@ export type OpenPracticeRouteId =
   | "intake"
   | "funds"
   | "audit"
+  | "reports"
   | "queues";
 
 export type OpenPracticeRouteArea = "workspace" | "operations" | "finance" | "review";
@@ -198,6 +199,17 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     area: "review",
     requiresMatterContext: false,
     order: 70,
+    showInSidebar: true,
+  },
+  {
+    id: "reports",
+    title: "Reports",
+    shortLabel: "Reports",
+    path: "/?section=reports",
+    sectionKey: "reports",
+    area: "review",
+    requiresMatterContext: false,
+    order: 75,
     showInSidebar: true,
   },
   {

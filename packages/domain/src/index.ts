@@ -20,6 +20,7 @@ export * from "./outbound-webhooks.js";
 export * from "./permissions.js";
 export * from "./participant-roles.js";
 export * from "./practice-presets.js";
+export * from "./reports.js";
 export * from "./signatures.js";
 export * from "./drafting.js";
 export * from "./tasks.js";

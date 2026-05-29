@@ -1109,6 +1109,86 @@ describe("worker processors", () => {
     ).not.toHaveProperty("statementEvidence");
   });
 
+  it("completes staff report export jobs with bounded metadata only", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-staff-report-export-worker-test",
+      firmId: "firm-west-legal",
+      queueName: "reports",
+      jobName: "staff_report_export",
+      status: "queued",
+      targetResourceType: "staff_report_export",
+      targetResourceId: "staff-report-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-05-28T12:01:00.000Z",
+      metadata: {
+        reportType: "staff_reporting",
+        reportDefinitionKey: "productivity",
+        exportProfileId: "summary_json",
+        groupingKey: "staff_member",
+        requestedByUserId: "user-admin",
+        rawBody: "Synthetic staff report body must not survive job metadata",
+      },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "reports",
+      jobName: "staff_report_export",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "staff_report_export",
+        resourceId: "staff-report-export-worker-test",
+        metadata: {
+          reportType: "staff_reporting",
+          reportDefinitionKey: "productivity",
+          exportProfileId: "summary_json",
+          groupingKey: "staff_member",
+          requestedByUserId: "user-admin",
+          rawBody: "Synthetic staff report body must not survive job metadata",
+        },
+      },
+      jobLifecycleId: "job-staff-report-export-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      metadata: {
+        firmId: "firm-west-legal",
+        resourceType: "staff_report_export",
+        resourceId: "staff-report-export-worker-test",
+        reportType: "staff_reporting",
+        reportDefinitionKey: "productivity",
+        exportProfileId: "summary_json",
+        groupingKey: "staff_member",
+        rowCount: expect.any(Number),
+      },
+    });
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "reports",
+    });
+    expect(job).toMatchObject({
+      id: "job-staff-report-export-worker-test",
+      status: "completed",
+      metadata: expect.objectContaining({
+        reportType: "staff_reporting",
+        reportDefinitionKey: "productivity",
+        exportProfileId: "summary_json",
+        groupingKey: "staff_member",
+        rowCount: expect.any(Number),
+      }),
+    });
+    expect(JSON.stringify(job.metadata)).not.toContain("Synthetic staff report body");
+    expect(job.metadata).not.toHaveProperty("rawBody");
+  });
+
   it("completes conversation thread export report jobs with bounded metadata only", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createConversationThread({

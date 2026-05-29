@@ -41,6 +41,7 @@ describe("Open Practice route catalog", () => {
       "signatures",
       "intake",
       "audit",
+      "reports",
       "queues",
     ];
 
@@ -67,6 +68,7 @@ describe("Open Practice route catalog", () => {
       "intake",
       "queues",
     ]);
+    expect(getRoutesByArea("review").map((entry) => entry.id)).toEqual(["audit", "reports"]);
     expect(getRoutesByArea("workspace").map((entry) => entry.id)).toEqual([
       "matters",
       "contacts",
@@ -100,6 +102,7 @@ describe("Open Practice route catalog", () => {
       "signatures",
       "intake",
       "audit",
+      "reports",
       "queues",
     ]);
   });
@@ -112,6 +115,7 @@ describe("Open Practice route catalog", () => {
     expect(matchRouteCatalogEntry("/?section=externalUploads")?.id).toBe("externalUploads");
     expect(matchRouteCatalogEntry("/?section=drafting")?.id).toBe("drafting");
     expect(matchRouteCatalogEntry("/?section=calendar")?.id).toBe("calendar");
+    expect(matchRouteCatalogEntry("/?section=reports")?.id).toBe("reports");
     expect(matchRouteCatalogEntry("/?section=queues")?.id).toBe("queues");
     expect(matchRouteCatalogEntry("/?section=unknown")).toBeNull();
   });
@@ -198,6 +202,7 @@ describe("Open Practice route catalog", () => {
           { key: "documents", enabled: true },
           { key: "intake", enabled: true },
           { key: "billing", enabled: true },
+          { key: "reports", enabled: true },
           { key: "audit", enabled: true },
         ],
         expected: {
@@ -206,6 +211,7 @@ describe("Open Practice route catalog", () => {
           billing: "matched",
           intake: "matched",
           audit: "matched",
+          reports: "matched",
           shares: "disabled",
           externalUploads: "disabled",
         },
@@ -226,6 +232,7 @@ describe("Open Practice route catalog", () => {
           documents: "matched",
           intake: "matched",
           audit: "matched",
+          reports: "disabled",
           billing: "disabled",
           shares: "disabled",
           externalUploads: "disabled",
@@ -250,6 +257,7 @@ describe("Open Practice route catalog", () => {
           shares: "disabled",
           externalUploads: "disabled",
           audit: "disabled",
+          reports: "disabled",
         },
       },
     ];

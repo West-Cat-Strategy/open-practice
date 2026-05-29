@@ -24,6 +24,7 @@ export type ResourceKind =
   | "intake_session"
   | "legal_clinic"
   | "job"
+  | "report"
   | "email"
   | "inbound_email"
   | "document_processing"
@@ -69,6 +70,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     intake_session: ["create", "read", "update", "delete", "approve", "export"],
     legal_clinic: ["create", "read", "update", "delete", "approve", "export"],
     job: ["read", "update", "export"],
+    report: ["read", "export"],
     email: ["create", "read", "update", "export"],
     inbound_email: ["create", "read", "update", "delete", "export"],
     document_processing: ["create", "read", "update", "export"],
@@ -145,6 +147,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     intake_session: ["read"],
     legal_clinic: ["read"],
     job: ["read"],
+    report: ["read", "export"],
     email: ["read"],
     inbound_email: ["read"],
   },
@@ -171,6 +174,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     conversation_thread: ["read", "export"],
     legal_clinic: ["read", "export"],
     job: ["read", "export"],
+    report: ["read", "export"],
     email: ["read", "export"],
     inbound_email: ["read", "export"],
     document_processing: ["read", "export"],
@@ -224,6 +228,7 @@ const safeJobMetadataKeys = new Set([
   "eventCount",
   "evidenceKeyCount",
   "expenseEntryCount",
+  "exportProfileId",
   "failedCount",
   "firmId",
   "inboundMessageId",
@@ -232,6 +237,7 @@ const safeJobMetadataKeys = new Set([
   "invoiceCount",
   "jobId",
   "jurisdiction",
+  "groupingKey",
   "language",
   "leasedCount",
   "matterId",
@@ -244,6 +250,7 @@ const safeJobMetadataKeys = new Set([
   "providerModel",
   "recipientCount",
   "recordCount",
+  "reportDefinitionKey",
   "requestedByUserId",
   "reportScope",
   "reportType",
@@ -251,6 +258,7 @@ const safeJobMetadataKeys = new Set([
   "resourceType",
   "retryScheduleFailedCount",
   "retryScheduledCount",
+  "rowCount",
   "scanStatus",
   "source",
   "sourceTextLength",
@@ -401,6 +409,7 @@ export type DashboardSectionKey =
   | "drafting"
   | "calendar"
   | "billing"
+  | "reports"
   | "signatures"
   | "intake"
   | "audit";
@@ -446,6 +455,7 @@ const dashboardSections: Array<{
     resource: "time_entry",
     preferredMatterScopedAction: "read",
   },
+  { key: "reports", label: "Reports", resource: "report" },
   {
     key: "signatures",
     label: "Signatures",

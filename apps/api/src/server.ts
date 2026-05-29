@@ -51,6 +51,7 @@ import { registerOutboundWebhookRoutes } from "./routes/outbound-webhooks.js";
 import { registerProviderStatusRoutes } from "./routes/providers-status.js";
 import { registerPublicConsultationIntakeRoutes } from "./routes/public-consultation-intakes.js";
 import { registerQueuesRoutes } from "./routes/queues.js";
+import { registerReportRoutes } from "./routes/reports.js";
 import { registerRecoveryRoutes } from "./routes/recovery.js";
 import { registerSessionRoutes } from "./routes/session.js";
 import { registerShareRoutes } from "./routes/shares.js";
@@ -535,6 +536,10 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerOutboundWebhookRoutes(server, { repository: options.repository });
   registerTaskRoutes(server, { repository: options.repository });
   registerQueuesRoutes(server, { repository: options.repository });
+  registerReportRoutes(server, {
+    repository: options.repository,
+    reportJobQueue: options.reportJobQueue,
+  });
 
   server.setErrorHandler((error, _request, reply) => {
     server.log.error(error);
