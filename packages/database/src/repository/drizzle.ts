@@ -1467,6 +1467,15 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return users.find((user) => user.email.trim().toLowerCase() === normalized);
   }
 
+  async listUsersByEmail(email: string): Promise<User[]> {
+    const normalized = email.trim().toLowerCase();
+    const rows = await this.db.select().from(schema.users);
+    const users = await Promise.all(rows.map((row) => this.getUser(row.firmId, row.id)));
+    return users
+      .filter((user): user is User => Boolean(user))
+      .filter((user) => user.email.trim().toLowerCase() === normalized);
+  }
+
   async getAuthAccount(firmId: string, userId: string): Promise<AuthAccountRecord | undefined> {
     const [row] = await this.db
       .select()
@@ -3914,6 +3923,32 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       expiresAt: dateToIso(row.expiresAt),
       revokedAt: dateToIso(row.revokedAt),
     }));
+  }
+
+  async createPortalGrant(grant: PortalGrant): Promise<PortalGrant> {
+    const [row] = await this.db
+      .insert(schema.portalGrants)
+      .values({
+        id: grant.id,
+        firmId: grant.firmId,
+        matterId: grant.matterId,
+        contactId: grant.contactId,
+        grantedByUserId: grant.grantedByUserId,
+        permissions: grant.permissions,
+        expiresAt: grant.expiresAt ? new Date(grant.expiresAt) : null,
+        revokedAt: grant.revokedAt ? new Date(grant.revokedAt) : null,
+      })
+      .returning();
+    return {
+      id: row.id,
+      firmId: row.firmId,
+      matterId: row.matterId,
+      contactId: row.contactId,
+      grantedByUserId: row.grantedByUserId,
+      permissions: row.permissions as PortalGrant["permissions"],
+      expiresAt: dateToIso(row.expiresAt),
+      revokedAt: dateToIso(row.revokedAt),
+    };
   }
 
   async listShareLinks(

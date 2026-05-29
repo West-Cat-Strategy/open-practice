@@ -623,6 +623,7 @@ export interface OpenPracticeRepository {
   getUser(firmId: string, userId: string): Promise<User | undefined>;
   createUser(user: User): Promise<User>;
   getUserByEmail(firmId: string, email: string): Promise<User | undefined>;
+  listUsersByEmail(email: string): Promise<User[]>;
   getAuthAccount(firmId: string, userId: string): Promise<AuthAccountRecord | undefined>;
   setAuthPassword(input: {
     firmId: string;
@@ -920,6 +921,7 @@ export interface OpenPracticeRepository {
   listAuditEvents(firmId: string): Promise<{ events: AuditEvent[]; valid: boolean }>;
   appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent>;
   listPortalGrants(firmId: string): Promise<PortalGrant[]>;
+  createPortalGrant(grant: PortalGrant): Promise<PortalGrant>;
   listShareLinks(firmId: string, options?: { matterId?: string }): Promise<ShareLinkRecord[]>;
   createShareLink(link: ShareLinkRecord): Promise<ShareLinkRecord>;
   getShareLink(firmId: string, id: string): Promise<ShareLinkRecord | undefined>;

@@ -1181,6 +1181,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     );
   }
 
+  async listUsersByEmail(email: string): Promise<User[]> {
+    const normalized = email.trim().toLowerCase();
+    return clone(this.users.filter((user) => user.email.trim().toLowerCase() === normalized));
+  }
+
   async getAuthAccount(firmId: string, userId: string): Promise<AuthAccountRecord | undefined> {
     return clone(
       this.authAccounts.find((account) => account.firmId === firmId && account.userId === userId),
@@ -2804,6 +2809,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async listPortalGrants(firmId: string): Promise<PortalGrant[]> {
     return clone(this.portalGrants.filter((grant) => grant.firmId === firmId));
+  }
+
+  async createPortalGrant(grant: PortalGrant): Promise<PortalGrant> {
+    this.portalGrants = [...this.portalGrants, clone(grant)];
+    return clone(grant);
   }
 
   async listShareLinks(

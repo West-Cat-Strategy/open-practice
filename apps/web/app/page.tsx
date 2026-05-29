@@ -4,6 +4,7 @@ import {
   resolveDashboardRouteSelection,
 } from "../routes/routeCatalog";
 import DashboardClient from "./dashboard-client";
+import ClientPortalWorkspace from "./client-portal-workspace";
 import { applyMatterAvailabilityToNavigation } from "./dashboard-utils";
 import { loadCalendarDashboardData } from "./calendar-dashboard";
 import { loadDraftingDashboardData } from "./drafting-dashboard";
@@ -74,6 +75,7 @@ import type {
   CalendarCredentialsResponse,
   CalendarDashboardResponse,
   CalendarEventsResponse,
+  ClientPortalWorkspaceResponse,
   CapabilitiesResponse,
   CommunicationsInboxDashboardResponse,
   CommunicationsInboxMatterResponse,
@@ -339,6 +341,26 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
 
   const headers = await buildApiHeaders();
   let session: SessionResponse;
+  try {
+    session = await apiGet<SessionResponse>("/api/session", headers);
+  } catch (error) {
+    if (
+      error instanceof ApiRequestError &&
+      selectStartupView(setupStatus, error.status) === "login"
+    ) {
+      return <LoginClient apiBaseUrl={browserApiBaseUrl} />;
+    }
+    throw error;
+  }
+
+  if (session.user.role === "client_external") {
+    const workspace = await apiGet<ClientPortalWorkspaceResponse>(
+      "/api/client-portal/workspace",
+      headers,
+    );
+    return <ClientPortalWorkspace workspace={workspace} />;
+  }
+
   let capabilities: CapabilitiesResponse;
   let overview: PracticeOverview;
   let matters: MatterSummary[];
@@ -347,9 +369,8 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   let queues: QueuesResponse;
   let contactDossiers: ContactDossiersResponse;
   try {
-    [session, capabilities, overview, matters, signatures, intake, queues, contactDossiers] =
+    [capabilities, overview, matters, signatures, intake, queues, contactDossiers] =
       await Promise.all([
-        apiGet<SessionResponse>("/api/session", headers),
         apiGet<CapabilitiesResponse>("/api/capabilities", headers),
         apiGet<PracticeOverview>("/api/overview", headers),
         apiGet<MatterSummary[]>("/api/matters", headers),

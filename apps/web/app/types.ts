@@ -83,6 +83,96 @@ export interface SessionResponse {
   user: User;
 }
 
+export interface ClientPortalWorkspaceAction {
+  id: string;
+  kind:
+    | "share_link"
+    | "external_upload"
+    | "intake_form"
+    | "guest_session"
+    | "email_receipt"
+    | "manual";
+  sourceType?: string;
+  title: string;
+  detail: string;
+  status: string;
+  tone: "neutral" | "ready" | "risk";
+  createdAt?: string;
+  sourceLinked?: boolean;
+}
+
+export interface ClientPortalWorkspaceMatter {
+  matterId: string;
+  contact: {
+    id: string;
+    displayName: string;
+  };
+  access: {
+    accountId?: string;
+    grantCount: number;
+    permissions: string[];
+    expiresAt?: string;
+    redacted: true;
+  };
+  summaries: {
+    secureShares: {
+      activeLinkCount: number;
+      emailVerificationRequiredCount: number;
+      sharedDocumentCount: number;
+    };
+    externalUploads: {
+      activeLinkCount: number;
+      remainingUploadSlots: number;
+      reviewCounts: Record<string, number>;
+    };
+    intake: {
+      activeLinkCount: number;
+      submittedLinkCount: number;
+      draftLinkCount: number;
+      itemActionCounts: Record<string, number>;
+    };
+    guestSessions: {
+      activeLinkCount: number;
+      statusCounts: Record<string, number>;
+    };
+    receipts: {
+      pendingCount: number;
+      recordedCount: number;
+      expiredCount: number;
+    };
+    signatures: {
+      pendingCount: number;
+      completedCount: number;
+    };
+  };
+  clientActions: ClientPortalWorkspaceAction[];
+}
+
+export interface ClientPortalWorkspaceResponse {
+  account: {
+    userId: string;
+    displayName: string;
+    email: string;
+    role: "client_external";
+  };
+  access: {
+    status: "active" | "no_active_grants";
+    activeAccountCount: number;
+    activeGrantCount: number;
+    contactCount: number;
+    matchedBy: "contact_email";
+    redacted: true;
+  };
+  matters: ClientPortalWorkspaceMatter[];
+  boundaries: {
+    publicTokenRoutesPreserved: boolean;
+    realtimeChat: "out_of_scope";
+    broadDocumentBrowsing: "out_of_scope";
+    livePayments: "out_of_scope";
+    nativeMobile: "out_of_scope";
+  };
+}
+
 export interface CapabilitiesResponse {
   sections: DashboardSectionCapability[];
 }
