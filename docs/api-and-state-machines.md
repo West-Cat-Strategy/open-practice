@@ -103,6 +103,7 @@ accounting/tax advice, or automatic trust-ledger posting from billing actions.
 | `GET /api/intake-variable-proposals?matterId=&status=`                                | Lists pending/approved/rejected staff-reviewed client/matter variable proposals created from public form answers.                                                                                                                                                                                                                                                 |
 | `POST /api/intake-variable-proposals/:id/approve`                                     | Applies one pending proposal to the allowed client or matter field and records reviewer evidence.                                                                                                                                                                                                                                                                 |
 | `POST /api/intake-variable-proposals/:id/reject`                                      | Rejects one pending proposal with a required reviewer reason.                                                                                                                                                                                                                                                                                                     |
+| `GET /api/intake-pipeline`                                                            | Staff-only intake pipeline projection over public consultation and intake-session records with lead statuses, source attribution, conflict-review posture, safe request/appointment links, and conversion counts. Reporting omits requester email, request bodies, raw source/interview URLs, intake tokens, and appointment titles.                              |
 | `GET /api/public-consultation-intakes/settings`                                       | Staff read of the firm public-consultation notification/origin settings stored as provider-setting kind `public_intake`.                                                                                                                                                                                                                                          |
 | `PUT /api/public-consultation-intakes/settings`                                       | Staff update for public-consultation enabled state, allowed website origins, sender address, recipient emails, and optional review owner.                                                                                                                                                                                                                         |
 | `GET /api/public-consultation-intakes?status=`                                        | Staff review queue for pending, converted, or dismissed public consultation submissions.                                                                                                                                                                                                                                                                          |
@@ -576,6 +577,17 @@ intake-status matter, prospective-client contact/party, opposing-party contacts/
 user assignment, and a `converted` link back to the source public consultation submission. The
 dashboard conflict-check action is a prefilled staff tool; it does not by itself convert,
 dismiss, or mutate the submission.
+
+The intake pipeline projection is staff-only and read-only in this slice. `GET /api/intake-pipeline`
+combines public consultation submissions, intake sessions, intake form links/reviews, and
+matter-scoped calendar event IDs into lead-style records. Lead status is derived from staff-owned
+review states: pending website submissions with opposing-party names are marked for conflict review,
+dismissed submissions are closed, converted submissions and accepted submitted intake forms count as
+conversions, and submitted-but-unreviewed intake forms remain qualified/reviewing. Source
+attribution uses safe labels, channels, and URL presence flags; aggregate reporting does not include
+requester email addresses, request bodies, raw source/interview URLs, intake token hashes, portal
+URLs, raw answers, appointment titles, or appointment locations. The route does not create matters,
+send SMS, ingest ad spend, run campaign delivery, or perform marketing automation.
 
 Draft records store structured TipTap/ProseMirror JSON and an optional sanitized rendered HTML
 snapshot. New drafts start at version `1`; each save through `PUT /api/drafts/:id` increments the

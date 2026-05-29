@@ -40,6 +40,7 @@ import { registerEmailRoutes } from "./routes/email.js";
 import { registerExternalUploadRoutes } from "./routes/external-uploads.js";
 import { registerInboundEmailRoutes } from "./routes/inbound-email.js";
 import { registerIntakeFormRoutes } from "./routes/intake-forms.js";
+import { registerIntakePipelineRoutes } from "./routes/intake-pipeline.js";
 import { registerIntakeRoutes } from "./routes/intake.js";
 import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
@@ -521,6 +522,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     automationProvider: options.automationProvider ?? new EmbeddedAutomationProvider(),
     emailJobQueue: options.emailJobQueue,
   });
+  registerIntakePipelineRoutes(server, { repository: options.repository });
   registerIntakeFormRoutes(server, {
     repository: options.repository,
     s3: options.s3,

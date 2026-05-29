@@ -245,6 +245,13 @@ import {
   splitPublicConsultationList,
 } from "./public-consultation-intakes-dashboard";
 import {
+  buildIntakePipelinePath,
+  emptyIntakePipelineDashboard,
+  intakePipelineSourceLabel,
+  intakePipelineStatusLabel,
+  intakePipelineSummaryLine,
+} from "./intake-pipeline-dashboard";
+import {
   actionComplete,
   coerceAnswer,
   errorMessage,
@@ -4621,6 +4628,54 @@ describe("dashboard client behavior", () => {
       throw new Error("Expected V2 intake sample");
     }
 
+    expect(buildIntakePipelinePath()).toBe("/api/intake-pipeline");
+    expect(emptyIntakePipelineDashboard("available")).toMatchObject({
+      status: "available",
+      leads: [],
+      summary: {
+        totalLeads: 0,
+        conversionCount: 0,
+        byLeadStatus: {
+          new: 0,
+          contacted: 0,
+          conflict_review: 0,
+          qualified: 0,
+          converted: 0,
+          closed: 0,
+        },
+        bySourceType: {
+          public_consultation: 0,
+          intake_session: 0,
+        },
+      },
+    });
+    expect(intakePipelineSourceLabel("public_consultation")).toBe("Public consultation");
+    expect(intakePipelineSourceLabel("intake_session")).toBe("Intake session");
+    expect(intakePipelineStatusLabel("conflict_review")).toBe("conflict review");
+    expect(
+      intakePipelineSummaryLine({
+        totalLeads: 3,
+        conversionCount: 1,
+        byLeadStatus: {
+          new: 0,
+          contacted: 1,
+          conflict_review: 1,
+          qualified: 0,
+          converted: 1,
+          closed: 0,
+        },
+        bySourceType: {
+          public_consultation: 2,
+          intake_session: 1,
+        },
+        conflictReview: {
+          not_started: 0,
+          needs_review: 1,
+          reviewing: 1,
+          reviewed: 1,
+        },
+      }),
+    ).toBe("3 leads · 1 conversions · 2 conflict reviews");
     expect(buildIntakeFormLinkListPath("matter 001")).toBe(
       "/api/intake-form-links?matterId=matter%20001",
     );
