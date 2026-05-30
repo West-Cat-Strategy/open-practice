@@ -21,6 +21,34 @@ export interface ContactDossierMatterLink {
   portalPermissions: PortalGrant["permissions"];
 }
 
+export interface ContactDossierRelatedContactSummary {
+  kind: Contact["kind"];
+  displayName: string;
+}
+
+export interface ContactDossierRelationshipRecord {
+  source: "matter_party";
+  relationshipLabel: string;
+  relatedContact: ContactDossierRelatedContactSummary;
+  matter: Pick<ContactDossierMatterLink, "matterId" | "matterNumber" | "matterTitle">;
+  contactRole: MatterParty["role"];
+  relatedRole: MatterParty["role"];
+  conflictSafeLabels: string[];
+}
+
+export interface ContactDossierCrmTaxonomyCue {
+  kind: "contact_type" | "matter_role" | "relationship_context" | "privacy_flag" | "portal_access";
+  label: string;
+  source: "contact" | "matter_party" | "portal_grant";
+  count?: number;
+}
+
+export interface ContactDossierCrmTaxonomy {
+  contactType: Contact["kind"];
+  primaryLabel: "Person" | "Company or organization";
+  cues: ContactDossierCrmTaxonomyCue[];
+}
+
 export interface ContactDossierConflictCue {
   severity: "blocker" | "review" | "info";
   reason: string;
@@ -137,6 +165,8 @@ export interface ContactDossier {
     activeGrantCount: number;
     permissionLabels: PortalGrant["permissions"];
   };
+  relationships: ContactDossierRelationshipRecord[];
+  crmTaxonomy: ContactDossierCrmTaxonomy;
   conflictCues: ContactDossierConflictCue[];
   qualityReview: ContactDossierQualityReview;
   conflictHistory: ContactDossierConflictHistoryEntry[];
@@ -196,6 +226,172 @@ function summarizeContact(contact: Contact): ContactDossierContactSummary {
     displayName: contact.displayName,
     aliases: contact.aliases,
     identifiers: contact.identifiers,
+  };
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean))).sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
+function formatContactKindLabel(kind: Contact["kind"]): ContactDossierCrmTaxonomy["primaryLabel"] {
+  return kind === "person" ? "Person" : "Company or organization";
+}
+
+function formatPartyRoleLabel(role: MatterParty["role"]): string {
+  return role.replaceAll("_", " ");
+}
+
+function buildRelationshipLabel(
+  contactRole: MatterParty["role"],
+  relatedRole: MatterParty["role"],
+): string {
+  return `${formatPartyRoleLabel(contactRole)} to ${formatPartyRoleLabel(relatedRole)}`;
+}
+
+function buildRelationshipConflictSafeLabels(input: {
+  contactLink: ContactDossierMatterLink;
+  relatedLink: ContactDossierMatterLink;
+}): string[] {
+  return uniqueSorted([
+    input.relatedLink.adverse ? "related adverse party" : "",
+    input.relatedLink.confidential ? "related confidential party" : "",
+    input.relatedLink.portalActive ? "related portal contact" : "",
+    input.contactLink.adverse || input.relatedLink.adverse ? "conflict caution" : "",
+    input.contactLink.confidential || input.relatedLink.confidential ? "confidential handling" : "",
+  ]);
+}
+
+function buildContactRelationships(input: {
+  contactId: string;
+  contactLinks: ContactDossierMatterLink[];
+  contactById: Map<string, Contact>;
+  linksByContactId: Map<string, ContactDossierMatterLink[]>;
+}): ContactDossierRelationshipRecord[] {
+  const relationships: ContactDossierRelationshipRecord[] = [];
+  const seen = new Set<string>();
+
+  for (const contactLink of input.contactLinks) {
+    for (const [relatedContactId, relatedLinks] of input.linksByContactId.entries()) {
+      if (relatedContactId === input.contactId) continue;
+      const relatedLink = relatedLinks.find((link) => link.matterId === contactLink.matterId);
+      if (!relatedLink) continue;
+
+      const relatedContact = input.contactById.get(relatedContactId);
+      if (!relatedContact) continue;
+
+      const key = [
+        contactLink.matterId,
+        relatedContact.displayName,
+        relatedContact.kind,
+        relatedLink.role,
+      ].join(":");
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      relationships.push({
+        source: "matter_party",
+        relationshipLabel: buildRelationshipLabel(contactLink.role, relatedLink.role),
+        relatedContact: {
+          kind: relatedContact.kind,
+          displayName: relatedContact.displayName,
+        },
+        matter: {
+          matterId: contactLink.matterId,
+          matterNumber: contactLink.matterNumber,
+          matterTitle: contactLink.matterTitle,
+        },
+        contactRole: contactLink.role,
+        relatedRole: relatedLink.role,
+        conflictSafeLabels: buildRelationshipConflictSafeLabels({ contactLink, relatedLink }),
+      });
+    }
+  }
+
+  return relationships.sort(
+    (left, right) =>
+      [
+        left.matter.matterNumber.localeCompare(right.matter.matterNumber),
+        left.relatedContact.displayName.localeCompare(right.relatedContact.displayName),
+        left.relationshipLabel.localeCompare(right.relationshipLabel),
+      ].find((comparison) => comparison !== 0) ?? 0,
+  );
+}
+
+function buildContactCrmTaxonomy(input: {
+  contact: Contact;
+  links: ContactDossierMatterLink[];
+  relationships: ContactDossierRelationshipRecord[];
+}): ContactDossierCrmTaxonomy {
+  const roleCounts = new Map<string, number>();
+  for (const link of input.links) {
+    const label = formatPartyRoleLabel(link.role);
+    roleCounts.set(label, (roleCounts.get(label) ?? 0) + 1);
+  }
+
+  const relationshipCounts = new Map<string, number>();
+  for (const relationship of input.relationships) {
+    relationshipCounts.set(
+      relationship.relationshipLabel,
+      (relationshipCounts.get(relationship.relationshipLabel) ?? 0) + 1,
+    );
+  }
+
+  const cues: ContactDossierCrmTaxonomyCue[] = [
+    {
+      kind: "contact_type",
+      label: formatContactKindLabel(input.contact.kind),
+      source: "contact",
+    },
+    ...Array.from(roleCounts.entries()).map(([label, count]) => ({
+      kind: "matter_role" as const,
+      label,
+      source: "matter_party" as const,
+      count,
+    })),
+    ...Array.from(relationshipCounts.entries()).map(([label, count]) => ({
+      kind: "relationship_context" as const,
+      label,
+      source: "matter_party" as const,
+      count,
+    })),
+  ];
+
+  const confidentialCount = input.links.filter((link) => link.confidential).length;
+  if (confidentialCount > 0) {
+    cues.push({
+      kind: "privacy_flag",
+      label: "confidential matter",
+      source: "matter_party",
+      count: confidentialCount,
+    });
+  }
+
+  const adverseCount = input.links.filter((link) => link.adverse).length;
+  if (adverseCount > 0) {
+    cues.push({
+      kind: "privacy_flag",
+      label: "adverse party",
+      source: "matter_party",
+      count: adverseCount,
+    });
+  }
+
+  const portalCount = input.links.filter((link) => link.portalActive).length;
+  if (portalCount > 0) {
+    cues.push({
+      kind: "portal_access",
+      label: "portal contact",
+      source: "portal_grant",
+      count: portalCount,
+    });
+  }
+
+  return {
+    contactType: input.contact.kind,
+    primaryLabel: formatContactKindLabel(input.contact.kind),
+    cues,
   };
 }
 
@@ -466,6 +662,12 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
       const sortedMatters = matters.sort((left, right) =>
         left.matterNumber.localeCompare(right.matterNumber),
       );
+      const relationships = buildContactRelationships({
+        contactId,
+        contactLinks: sortedMatters,
+        contactById,
+        linksByContactId,
+      });
       return {
         contact: summarizeContact(contact),
         matters: sortedMatters,
@@ -473,6 +675,12 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
           activeGrantCount: contactGrants.length,
           permissionLabels: uniquePermissions(contactGrants),
         },
+        relationships,
+        crmTaxonomy: buildContactCrmTaxonomy({
+          contact,
+          links: sortedMatters,
+          relationships,
+        }),
         conflictCues: buildConflictCues(sortedMatters),
         qualityReview: buildQualityReview({
           contact,

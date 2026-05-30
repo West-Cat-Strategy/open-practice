@@ -131,12 +131,15 @@ import {
   contactDataQualityResolutionActions,
   contactDataQualityResolutionMatchesSignal,
   contactDossierRiskClass,
+  contactRelationshipRiskClass,
   contactReviewQueueRiskClass,
   filterContactDossiers,
   formatContactDataQualityResolutionDecision,
+  formatContactKindLabel,
   formatContactReviewSignalKind,
   latestContactDataQualityResolutionForSignal,
   summarizeContactDossier,
+  summarizeContactRelationshipCount,
   summarizeContactReviewQueueItem,
 } from "./contact-dossiers-dashboard";
 import {
@@ -398,6 +401,39 @@ function contactDossierWithResolutionSignal(): ContactDossier {
       },
     ],
     portal: { activeGrantCount: 0, permissionLabels: [] },
+    relationships: [
+      {
+        source: "matter_party",
+        relationshipLabel: "opposing party to client",
+        relatedContact: {
+          kind: "person",
+          displayName: "Ada Morgan",
+        },
+        matter: {
+          matterId: "matter-001",
+          matterNumber: "2026-0001",
+          matterTitle: "Morgan tenancy dispute",
+        },
+        contactRole: "opposing_party",
+        relatedRole: "client",
+        conflictSafeLabels: ["conflict caution", "related confidential party"],
+      },
+    ],
+    crmTaxonomy: {
+      contactType: "organization",
+      primaryLabel: "Company or organization",
+      cues: [
+        { kind: "contact_type", label: "Company or organization", source: "contact" },
+        { kind: "matter_role", label: "opposing party", source: "matter_party", count: 1 },
+        {
+          kind: "relationship_context",
+          label: "opposing party to client",
+          source: "matter_party",
+          count: 1,
+        },
+        { kind: "privacy_flag", label: "adverse party", source: "matter_party", count: 1 },
+      ],
+    },
     conflictCues: [],
     qualityReview: {
       summary: {
@@ -1603,6 +1639,55 @@ describe("dashboard client behavior", () => {
           },
         ],
         portal: { activeGrantCount: 1, permissionLabels: ["view_documents" as const] },
+        relationships: [
+          {
+            source: "matter_party" as const,
+            relationshipLabel: "client to opposing party",
+            relatedContact: {
+              kind: "organization" as const,
+              displayName: "River City Rentals Inc.",
+            },
+            matter: {
+              matterId: "matter-001",
+              matterNumber: "2026-0001",
+              matterTitle: "Morgan tenancy dispute",
+            },
+            contactRole: "client" as const,
+            relatedRole: "opposing_party" as const,
+            conflictSafeLabels: ["confidential handling", "related adverse party"],
+          },
+        ],
+        crmTaxonomy: {
+          contactType: "person" as const,
+          primaryLabel: "Person" as const,
+          cues: [
+            { kind: "contact_type" as const, label: "Person", source: "contact" as const },
+            {
+              kind: "matter_role" as const,
+              label: "client",
+              source: "matter_party" as const,
+              count: 1,
+            },
+            {
+              kind: "relationship_context" as const,
+              label: "client to opposing party",
+              source: "matter_party" as const,
+              count: 1,
+            },
+            {
+              kind: "privacy_flag" as const,
+              label: "confidential matter",
+              source: "matter_party" as const,
+              count: 1,
+            },
+            {
+              kind: "portal_access" as const,
+              label: "portal contact",
+              source: "portal_grant" as const,
+              count: 1,
+            },
+          ],
+        },
         conflictCues: [
           {
             severity: "review" as const,
@@ -1657,6 +1742,53 @@ describe("dashboard client behavior", () => {
           },
         ],
         portal: { activeGrantCount: 0, permissionLabels: [] },
+        relationships: [
+          {
+            source: "matter_party" as const,
+            relationshipLabel: "opposing party to client",
+            relatedContact: {
+              kind: "person" as const,
+              displayName: "Ada Morgan",
+            },
+            matter: {
+              matterId: "matter-001",
+              matterNumber: "2026-0001",
+              matterTitle: "Morgan tenancy dispute",
+            },
+            contactRole: "opposing_party" as const,
+            relatedRole: "client" as const,
+            conflictSafeLabels: ["conflict caution", "related confidential party"],
+          },
+        ],
+        crmTaxonomy: {
+          contactType: "organization" as const,
+          primaryLabel: "Company or organization" as const,
+          cues: [
+            {
+              kind: "contact_type" as const,
+              label: "Company or organization",
+              source: "contact" as const,
+            },
+            {
+              kind: "matter_role" as const,
+              label: "opposing party",
+              source: "matter_party" as const,
+              count: 1,
+            },
+            {
+              kind: "relationship_context" as const,
+              label: "opposing party to client",
+              source: "matter_party" as const,
+              count: 1,
+            },
+            {
+              kind: "privacy_flag" as const,
+              label: "adverse party",
+              source: "matter_party" as const,
+              count: 1,
+            },
+          ],
+        },
         conflictCues: [
           {
             severity: "blocker" as const,
@@ -1720,6 +1852,13 @@ describe("dashboard client behavior", () => {
     expect(summarizeContactDossier(dossiers[1]!)).toBe(
       "duplicate review / conflict recheck / adverse",
     );
+    expect(formatContactKindLabel(dossiers[1]!.contact.kind)).toBe("Company");
+    expect(summarizeContactRelationshipCount(dossiers[0]!)).toBe("1 relationship");
+    expect(contactRelationshipRiskClass(dossiers[0]!.relationships[0]!)).toBe("risk");
+    expect(filterContactDossiers(dossiers, "client to opposing party")).toEqual([dossiers[0]]);
+    expect(
+      filterContactDossiers(dossiers, "river city").map((dossier) => dossier.contact.id),
+    ).toEqual(["contact-ada", "contact-river"]);
     expect(contactDossierRiskClass(dossiers[1]!)).toBe("risk");
     expect(filterContactDossiers(dossiers, "conflict-check-river")).toEqual([dossiers[1]]);
     expect(buildContactDossierConflictCheckPrefill(dossiers[1]!, "matter-001")).toEqual({
@@ -1818,6 +1957,41 @@ describe("dashboard client behavior", () => {
         },
       ],
       portal: { activeGrantCount: 0, permissionLabels: [] },
+      relationships: [
+        {
+          source: "matter_party" as const,
+          relationshipLabel: "opposing party to client",
+          relatedContact: {
+            kind: "person" as const,
+            displayName: "Ada Morgan",
+          },
+          matter: {
+            matterId: "matter-001",
+            matterNumber: "2026-0001",
+            matterTitle: "Morgan tenancy dispute",
+          },
+          contactRole: "opposing_party" as const,
+          relatedRole: "client" as const,
+          conflictSafeLabels: ["conflict caution"],
+        },
+      ],
+      crmTaxonomy: {
+        contactType: "organization" as const,
+        primaryLabel: "Company or organization" as const,
+        cues: [
+          {
+            kind: "contact_type" as const,
+            label: "Company or organization",
+            source: "contact" as const,
+          },
+          {
+            kind: "relationship_context" as const,
+            label: "opposing party to client",
+            source: "matter_party" as const,
+            count: 1,
+          },
+        ],
+      },
       conflictCues: [],
       qualityReview: {
         summary: {
@@ -1979,11 +2153,16 @@ describe("dashboard client behavior", () => {
     );
 
     expect(readOnlyHtml).toContain("Resolution history");
+    expect(readOnlyHtml).toContain("CRM taxonomy");
+    expect(readOnlyHtml).toContain("Relationship summaries");
+    expect(readOnlyHtml).toContain("opposing party to client");
+    expect(readOnlyHtml).toContain("Ada Morgan");
     expect(readOnlyHtml).toContain("Latest decision");
     expect(readOnlyHtml).toContain("not duplicate");
     expect(readOnlyHtml).toContain("related contact noted");
     expect(readOnlyHtml).not.toContain("contact-resolution-actions");
     expect(readOnlyHtml).not.toContain("legal@rivercity.example");
+    expect(readOnlyHtml).not.toContain("relatedContact&quot;:{&quot;id");
     expect(writableHtml).toContain("contact-resolution-actions");
     expect(writableHtml).toContain("Needs review");
   });

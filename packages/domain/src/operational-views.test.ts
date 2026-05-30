@@ -195,6 +195,12 @@ describe("built-in operational views", () => {
           },
           matters: [],
           portal: { activeGrantCount: 0, permissionLabels: [] },
+          relationships: [],
+          crmTaxonomy: {
+            contactType: "person",
+            primaryLabel: "Person",
+            cues: [{ kind: "contact_type", label: "Person", source: "contact" }],
+          },
           conflictCues: [
             {
               matterId: "matter-001",

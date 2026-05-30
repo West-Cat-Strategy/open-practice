@@ -3,11 +3,14 @@ import {
   contactDataQualityResolutionActions,
   contactDataQualitySignalKey,
   contactDossierRiskClass,
+  contactRelationshipRiskClass,
   formatContactDataQualityResolutionDecision,
+  formatContactKindLabel,
   contactReviewQueueRiskClass,
   formatContactReviewSignalKind,
   latestContactDataQualityResolutionForSignal,
   summarizeContactDossier,
+  summarizeContactRelationshipCount,
   summarizeContactReviewQueueItem,
 } from "../contact-dossiers-dashboard";
 import { formatMatterPartyRoleLabel } from "../participant-role-labels";
@@ -251,6 +254,74 @@ export function ContactsSection({
                       : "none"}
                   </strong>
                 </div>
+              </div>
+
+              <div className="detail-grid compact-detail-grid">
+                <div>
+                  <span className="field-label">CRM taxonomy</span>
+                  <strong>{activeContactDossier.crmTaxonomy.primaryLabel}</strong>
+                </div>
+                <div>
+                  <span className="field-label">Taxonomy cues</span>
+                  <strong>
+                    {activeContactDossier.crmTaxonomy.cues.length > 0
+                      ? activeContactDossier.crmTaxonomy.cues
+                          .map((cue) => `${cue.label}${cue.count ? ` (${cue.count})` : ""}`)
+                          .join(", ")
+                      : formatContactKindLabel(activeContactDossier.contact.kind)}
+                  </strong>
+                </div>
+                <div>
+                  <span className="field-label">Relationships</span>
+                  <strong>{summarizeContactRelationshipCount(activeContactDossier)}</strong>
+                </div>
+                <div>
+                  <span className="field-label">Relationship labels</span>
+                  <strong>
+                    {activeContactDossier.relationships.length > 0
+                      ? Array.from(
+                          new Set(
+                            activeContactDossier.relationships.map(
+                              (relationship) => relationship.relationshipLabel,
+                            ),
+                          ),
+                        ).join(", ")
+                      : "none"}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="section-title">
+                <h3>Relationship summaries</h3>
+                <span>{activeContactDossier.relationships.length}</span>
+              </div>
+              <div className="party-list">
+                {activeContactDossier.relationships.map((relationship, index) => (
+                  <div
+                    className="party-row"
+                    key={`${relationship.matter.matterId}-${relationship.relatedContact.displayName}-${index}`}
+                  >
+                    <span>
+                      <strong>{relationship.relatedContact.displayName}</strong>
+                      <small>
+                        {formatContactKindLabel(relationship.relatedContact.kind)} ·{" "}
+                        {relationship.relationshipLabel}
+                      </small>
+                      <small>
+                        {relationship.matter.matterNumber} · {relationship.matter.matterTitle}
+                      </small>
+                      {relationship.conflictSafeLabels.length > 0 ? (
+                        <small>{relationship.conflictSafeLabels.join(" · ")}</small>
+                      ) : null}
+                    </span>
+                    <em className={contactRelationshipRiskClass(relationship)}>
+                      {formatMatterPartyRoleLabel(relationship.relatedRole)}
+                    </em>
+                  </div>
+                ))}
+                {activeContactDossier.relationships.length === 0 ? (
+                  <p className="inline-empty">No visible contact relationships.</p>
+                ) : null}
               </div>
 
               <div className="section-title">

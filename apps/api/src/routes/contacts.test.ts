@@ -96,6 +96,16 @@ describe("contact routes", () => {
       Array<{
         contact: { id: string };
         matters: unknown[];
+        relationships: Array<{
+          relationshipLabel: string;
+          relatedContact: Record<string, unknown>;
+          matter: { matterId: string; matterNumber: string; matterTitle: string };
+          conflictSafeLabels: string[];
+        }>;
+        crmTaxonomy: {
+          primaryLabel: string;
+          cues: Array<{ kind: string; label: string; count?: number }>;
+        };
         conflictHistory: Array<{
           id: string;
           matchedContactId: string;
@@ -130,6 +140,44 @@ describe("contact routes", () => {
       },
       conflictHistory: [],
     });
+    expect(payload.find((dossier) => dossier.contact.id === "contact-ada")).toMatchObject({
+      relationships: [
+        {
+          relationshipLabel: "client to opposing party",
+          relatedContact: {
+            kind: "organization",
+            displayName: "River City Rentals Inc.",
+          },
+          matter: {
+            matterId: "matter-001",
+            matterNumber: "2026-0001",
+            matterTitle: "Morgan tenancy dispute",
+          },
+          conflictSafeLabels: expect.arrayContaining([
+            "confidential handling",
+            "conflict caution",
+            "related adverse party",
+          ]),
+        },
+      ],
+      crmTaxonomy: {
+        primaryLabel: "Person",
+        cues: expect.arrayContaining([
+          expect.objectContaining({ kind: "contact_type", label: "Person" }),
+          expect.objectContaining({ kind: "matter_role", label: "client", count: 1 }),
+          expect.objectContaining({
+            kind: "relationship_context",
+            label: "client to opposing party",
+            count: 1,
+          }),
+        ]),
+      },
+    });
+    const adaRelationship = payload.find((dossier) => dossier.contact.id === "contact-ada")!
+      .relationships[0]!;
+    expect(adaRelationship.relatedContact).not.toHaveProperty("id");
+    expect(adaRelationship.relatedContact).not.toHaveProperty("aliases");
+    expect(adaRelationship.relatedContact).not.toHaveProperty("identifiers");
     const river = payload.find((dossier) => dossier.contact.id === "contact-river")!;
     expect(river.conflictHistory).toEqual([
       expect.objectContaining({
@@ -142,6 +190,7 @@ describe("contact routes", () => {
     expect(JSON.stringify(payload)).not.toContain("North Star Holdings");
     expect(JSON.stringify(payload)).not.toContain("matter-002");
     expect(JSON.stringify(payload)).not.toContain('"matchedValue":');
+    expect(JSON.stringify(payload)).not.toContain('"relatedContact":{"id"');
   });
 
   it("returns an audit-safe contact review queue without widening matter visibility", async () => {

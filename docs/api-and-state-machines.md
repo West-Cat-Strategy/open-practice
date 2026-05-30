@@ -359,9 +359,14 @@ external forms.
 Contact dossiers are a read-only `/?section=contacts` dashboard surface backed by
 `GET /api/contacts/dossiers`. Dossiers reuse existing contacts, visible matter-party links, active
 portal grants, aliases, identifiers, adverse/confidential party cues, and additive
-`qualityReview` signals. Quality review can flag likely duplicate candidates, protected-party
-handling, portal-sensitive contacts, and manual conflict-check revalidation prompts; it does not add
-contact editing, duplicate merges, automatic conflict changes, or cross-scope matter disclosure.
+`qualityReview` signals. They also derive read-only relationship summaries and CRM taxonomy cues
+from visible matter-party links only: related-contact summaries expose display name and kind,
+related matter summaries stay limited to already visible matter number/title/ID, and conflict-safe
+labels report role/privacy posture without exposing related contact IDs, aliases, identifiers,
+matched values, notes, or hidden matters. Quality review can flag likely duplicate candidates,
+protected-party handling, portal-sensitive contacts, and manual conflict-check revalidation prompts;
+it does not add contact editing, duplicate merges, external CRM sync, automatic conflict changes, or
+cross-scope matter disclosure.
 
 Legal clinic workflow data is modeled as firm-scoped clinic programs plus at most one clinic matter
 profile per matter. Program records carry operational status, service area, eligibility summary,
