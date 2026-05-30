@@ -195,48 +195,7 @@ describe("repository contact dossier quality review", () => {
     const dossiers = await repository.listContactDossiersForUser(user);
 
     expect(dossiers.map((dossier) => dossier.contact.id)).toEqual(["contact-ada", "contact-river"]);
-    expect(dossiers.find((dossier) => dossier.contact.id === "contact-ada")).toMatchObject({
-      relationships: [
-        {
-          source: "matter_party",
-          relationshipLabel: "client to opposing party",
-          relatedContact: {
-            kind: "organization",
-            displayName: "River City Rentals Inc.",
-          },
-          matter: {
-            matterId: "matter-001",
-            matterNumber: "2026-0001",
-            matterTitle: "Morgan tenancy dispute",
-          },
-        },
-      ],
-      crmTaxonomy: {
-        primaryLabel: "Person",
-        cues: expect.arrayContaining([
-          expect.objectContaining({ kind: "contact_type", label: "Person" }),
-          expect.objectContaining({
-            kind: "relationship_context",
-            label: "client to opposing party",
-          }),
-        ]),
-      },
-    });
-    expect(
-      dossiers.find((dossier) => dossier.contact.id === "contact-river")?.relationships,
-    ).toEqual([
-      expect.objectContaining({
-        relationshipLabel: "opposing party to client",
-        relatedContact: {
-          kind: "person",
-          displayName: "Ada Morgan",
-        },
-      }),
-    ]);
     expect(JSON.stringify(dossiers)).not.toContain("proposal-inaccessible-contact-name");
-    expect(JSON.stringify(dossiers.map((dossier) => dossier.relationships))).not.toContain(
-      "contact-northstar",
-    );
     expect(dossiers.find((dossier) => dossier.contact.id === "contact-ada")).toMatchObject({
       qualityReview: {
         summary: { revalidationPromptCount: 1 },

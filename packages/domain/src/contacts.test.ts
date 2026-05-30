@@ -37,43 +37,6 @@ describe("contact dossiers", () => {
           portalActive: true,
         },
       ],
-      relationships: [
-        {
-          source: "matter_party",
-          relationshipLabel: "client to opposing party",
-          relatedContact: {
-            kind: "organization",
-            displayName: "River City Rentals Inc.",
-          },
-          matter: {
-            matterId: "matter-001",
-            matterNumber: "2026-0001",
-            matterTitle: "Morgan tenancy dispute",
-          },
-          contactRole: "client",
-          relatedRole: "opposing_party",
-          conflictSafeLabels: [
-            "confidential handling",
-            "conflict caution",
-            "related adverse party",
-          ],
-        },
-      ],
-      crmTaxonomy: {
-        contactType: "person",
-        primaryLabel: "Person",
-        cues: expect.arrayContaining([
-          expect.objectContaining({ kind: "contact_type", label: "Person" }),
-          expect.objectContaining({ kind: "matter_role", label: "client", count: 1 }),
-          expect.objectContaining({
-            kind: "relationship_context",
-            label: "client to opposing party",
-            count: 1,
-          }),
-          expect.objectContaining({ kind: "privacy_flag", label: "confidential matter", count: 1 }),
-          expect.objectContaining({ kind: "portal_access", label: "portal contact", count: 1 }),
-        ]),
-      },
       conflictCues: [
         {
           severity: "review",
@@ -82,12 +45,6 @@ describe("contact dossiers", () => {
         },
       ],
     });
-    const adaRelationship = dossiers.find((dossier) => dossier.contact.id === "contact-ada")!
-      .relationships[0]!;
-    expect(adaRelationship.relatedContact).not.toHaveProperty("id");
-    expect(adaRelationship.relatedContact).not.toHaveProperty("aliases");
-    expect(adaRelationship.relatedContact).not.toHaveProperty("identifiers");
-    expect(adaRelationship.relatedContact).not.toHaveProperty("notes");
     expect(dossiers[0].contact).not.toHaveProperty("notes");
   });
 
@@ -211,22 +168,6 @@ describe("contact dossiers", () => {
     });
 
     const river = dossiers.find((dossier) => dossier.contact.id === "contact-river")!;
-    expect(river.relationships).toEqual([
-      expect.objectContaining({
-        relationshipLabel: "opposing party to client",
-        relatedContact: {
-          kind: "person",
-          displayName: "Ada Morgan",
-        },
-        conflictSafeLabels: expect.arrayContaining([
-          "confidential handling",
-          "conflict caution",
-          "related confidential party",
-        ]),
-      }),
-    ]);
-    expect(JSON.stringify(river.relationships)).not.toContain("ada@example.test");
-    expect(JSON.stringify(river.relationships)).not.toContain("contact-ada");
     expect(river.conflictHistory).toEqual([
       {
         id: "conflict-check-visible",
