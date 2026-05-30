@@ -895,6 +895,66 @@ export const contactDataQualityResolutions = pgTable(
   }),
 );
 
+export const contactRelationships = pgTable(
+  "contact_relationships",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    contactId: text("contact_id")
+      .notNull()
+      .references(() => contacts.id),
+    relatedContactId: text("related_contact_id")
+      .notNull()
+      .references(() => contacts.id),
+    relationshipKind: text("relationship_kind").notNull(),
+    label: text("label").notNull(),
+    matterId: text("matter_id").references(() => matters.id),
+    source: text("source").notNull().default("manual"),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    contactStatus: index("contact_relationships_contact_status_idx").on(
+      table.firmId,
+      table.contactId,
+      table.status,
+    ),
+    relatedContactStatus: index("contact_relationships_related_contact_status_idx").on(
+      table.firmId,
+      table.relatedContactId,
+      table.status,
+    ),
+    matterStatus: index("contact_relationships_matter_status_idx").on(
+      table.firmId,
+      table.matterId,
+      table.status,
+    ),
+    kindValue: check(
+      "contact_relationships_kind_value",
+      sql`${table.relationshipKind} in ('authorized_representative', 'employee_of', 'family_contact', 'opposing_party_for', 'referral_source')`,
+    ),
+    sourceValue: check(
+      "contact_relationships_source_value",
+      sql`${table.source} in ('manual', 'matter_party', 'intake')`,
+    ),
+    statusValue: check(
+      "contact_relationships_status_value",
+      sql`${table.status} in ('active', 'review_needed', 'ended')`,
+    ),
+    labelPresent: check(
+      "contact_relationships_label_present",
+      sql`length(trim(${table.label})) > 0`,
+    ),
+    differentContacts: check(
+      "contact_relationships_different_contacts",
+      sql`${table.contactId} <> ${table.relatedContactId}`,
+    ),
+  }),
+);
+
 export const matters = pgTable(
   "matters",
   {

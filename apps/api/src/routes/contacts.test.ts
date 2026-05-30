@@ -96,22 +96,22 @@ describe("contact routes", () => {
       Array<{
         contact: { id: string };
         matters: unknown[];
-        relationships: Array<{
-          relationshipLabel: string;
-          relatedContact: Record<string, unknown>;
-          matter: { matterId: string; matterNumber: string; matterTitle: string };
-          conflictSafeLabels: string[];
-        }>;
-        crmTaxonomy: {
-          primaryLabel: string;
-          cues: Array<{ kind: string; label: string; count?: number }>;
-        };
         conflictHistory: Array<{
           id: string;
           matchedContactId: string;
           visibleMatchedMatterIds: string[];
           matchCount: number;
           maxSeverity: string;
+        }>;
+        crmTaxonomy: {
+          labels: Array<{ key: string }>;
+          relationshipSummary: { activeCount: number; reviewNeededCount: number };
+        };
+        relationships: Array<{
+          direction: string;
+          relationshipKind: string;
+          relatedContact: { kind: string; displayName: string; id?: string };
+          visibleMatterIds: string[];
         }>;
         qualityReview: { summary: { revalidationPromptCount: number }; signals: unknown[] };
       }>
@@ -140,44 +140,24 @@ describe("contact routes", () => {
       },
       conflictHistory: [],
     });
-    expect(payload.find((dossier) => dossier.contact.id === "contact-ada")).toMatchObject({
-      relationships: [
-        {
-          relationshipLabel: "client to opposing party",
-          relatedContact: {
-            kind: "organization",
-            displayName: "River City Rentals Inc.",
-          },
-          matter: {
-            matterId: "matter-001",
-            matterNumber: "2026-0001",
-            matterTitle: "Morgan tenancy dispute",
-          },
-          conflictSafeLabels: expect.arrayContaining([
-            "confidential handling",
-            "conflict caution",
-            "related adverse party",
-          ]),
+    const ada = payload.find((dossier) => dossier.contact.id === "contact-ada")!;
+    expect(ada.crmTaxonomy.labels.map((label) => label.key)).toEqual(
+      expect.arrayContaining(["client_contact", "relationship_graph"]),
+    );
+    expect(ada.relationships).toEqual([
+      expect.objectContaining({
+        direction: "outbound",
+        relationshipKind: "opposing_party_for",
+        relatedContact: {
+          kind: "organization",
+          displayName: "River City Rentals Inc.",
         },
-      ],
-      crmTaxonomy: {
-        primaryLabel: "Person",
-        cues: expect.arrayContaining([
-          expect.objectContaining({ kind: "contact_type", label: "Person" }),
-          expect.objectContaining({ kind: "matter_role", label: "client", count: 1 }),
-          expect.objectContaining({
-            kind: "relationship_context",
-            label: "client to opposing party",
-            count: 1,
-          }),
-        ]),
-      },
-    });
-    const adaRelationship = payload.find((dossier) => dossier.contact.id === "contact-ada")!
-      .relationships[0]!;
-    expect(adaRelationship.relatedContact).not.toHaveProperty("id");
-    expect(adaRelationship.relatedContact).not.toHaveProperty("aliases");
-    expect(adaRelationship.relatedContact).not.toHaveProperty("identifiers");
+        visibleMatterIds: ["matter-001"],
+      }),
+    ]);
+    expect(ada.relationships[0]?.relatedContact).not.toHaveProperty("id");
+    expect(ada.relationships[0]?.relatedContact).not.toHaveProperty("aliases");
+    expect(ada.relationships[0]?.relatedContact).not.toHaveProperty("identifiers");
     const river = payload.find((dossier) => dossier.contact.id === "contact-river")!;
     expect(river.conflictHistory).toEqual([
       expect.objectContaining({

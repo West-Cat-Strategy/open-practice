@@ -3,14 +3,11 @@ import {
   contactDataQualityResolutionActions,
   contactDataQualitySignalKey,
   contactDossierRiskClass,
-  contactRelationshipRiskClass,
   formatContactDataQualityResolutionDecision,
-  formatContactKindLabel,
   contactReviewQueueRiskClass,
   formatContactReviewSignalKind,
   latestContactDataQualityResolutionForSignal,
   summarizeContactDossier,
-  summarizeContactRelationshipCount,
   summarizeContactReviewQueueItem,
 } from "../contact-dossiers-dashboard";
 import { formatMatterPartyRoleLabel } from "../participant-role-labels";
@@ -86,6 +83,12 @@ export function ContactsSection({
                   dossier.qualityReview.signals.some((signal) => signal.severity !== "info"),
               ).length
             }
+          </strong>
+        </div>
+        <div>
+          <span className="field-label">Relationships</span>
+          <strong>
+            {contactDossiers.reduce((sum, dossier) => sum + dossier.relationships.length, 0)}
           </strong>
         </div>
       </div>
@@ -192,6 +195,11 @@ export function ContactsSection({
                 <small>
                   {dossier.contact.kind} · {dossier.matters.length} matter
                   {dossier.matters.length === 1 ? "" : "s"}
+                  {dossier.relationships.length > 0
+                    ? ` · ${dossier.relationships.length} relationship${
+                        dossier.relationships.length === 1 ? "" : "s"
+                      }`
+                    : ""}
                 </small>
               </span>
               <em className={contactDossierRiskClass(dossier)}>
@@ -254,68 +262,53 @@ export function ContactsSection({
                       : "none"}
                   </strong>
                 </div>
-              </div>
-
-              <div className="detail-grid compact-detail-grid">
                 <div>
-                  <span className="field-label">CRM taxonomy</span>
-                  <strong>{activeContactDossier.crmTaxonomy.primaryLabel}</strong>
-                </div>
-                <div>
-                  <span className="field-label">Taxonomy cues</span>
+                  <span className="field-label">CRM labels</span>
                   <strong>
-                    {activeContactDossier.crmTaxonomy.cues.length > 0
-                      ? activeContactDossier.crmTaxonomy.cues
-                          .map((cue) => `${cue.label}${cue.count ? ` (${cue.count})` : ""}`)
-                          .join(", ")
-                      : formatContactKindLabel(activeContactDossier.contact.kind)}
+                    {activeContactDossier.crmTaxonomy.labels
+                      .map((label) => compactStatus(label.label))
+                      .join(", ")}
                   </strong>
                 </div>
                 <div>
-                  <span className="field-label">Relationships</span>
-                  <strong>{summarizeContactRelationshipCount(activeContactDossier)}</strong>
+                  <span className="field-label">Related matters</span>
+                  <strong>{activeContactDossier.crmTaxonomy.relatedMatterSummary.total}</strong>
                 </div>
                 <div>
-                  <span className="field-label">Relationship labels</span>
+                  <span className="field-label">Graph review</span>
                   <strong>
-                    {activeContactDossier.relationships.length > 0
-                      ? Array.from(
-                          new Set(
-                            activeContactDossier.relationships.map(
-                              (relationship) => relationship.relationshipLabel,
-                            ),
-                          ),
-                        ).join(", ")
-                      : "none"}
+                    {activeContactDossier.crmTaxonomy.relationshipSummary.reviewNeededCount}
                   </strong>
                 </div>
               </div>
 
               <div className="section-title">
-                <h3>Relationship summaries</h3>
+                <h3>Relationship graph</h3>
                 <span>{activeContactDossier.relationships.length}</span>
               </div>
               <div className="party-list">
-                {activeContactDossier.relationships.map((relationship, index) => (
-                  <div
-                    className="party-row"
-                    key={`${relationship.matter.matterId}-${relationship.relatedContact.displayName}-${index}`}
-                  >
+                {activeContactDossier.relationships.map((relationship) => (
+                  <div className="party-row" key={relationship.id}>
                     <span>
                       <strong>{relationship.relatedContact.displayName}</strong>
                       <small>
-                        {formatContactKindLabel(relationship.relatedContact.kind)} ·{" "}
-                        {relationship.relationshipLabel}
+                        {[
+                          relationship.relatedContact.kind,
+                          relationship.conflictSafeLabel,
+                          relationship.direction,
+                          relationship.source,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </small>
                       <small>
-                        {relationship.matter.matterNumber} · {relationship.matter.matterTitle}
+                        {relationship.visibleMatterIds.length > 0
+                          ? relationship.visibleMatterIds.join(" · ")
+                          : "contact-level"}
                       </small>
-                      {relationship.conflictSafeLabels.length > 0 ? (
-                        <small>{relationship.conflictSafeLabels.join(" · ")}</small>
-                      ) : null}
                     </span>
-                    <em className={contactRelationshipRiskClass(relationship)}>
-                      {formatMatterPartyRoleLabel(relationship.relatedRole)}
+                    <em className={relationship.status === "review_needed" ? "risk" : undefined}>
+                      {compactStatus(relationship.status)}
                     </em>
                   </div>
                 ))}

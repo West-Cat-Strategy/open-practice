@@ -63,17 +63,16 @@ export function filterContactDossiers(
         matter.role,
         matter.practiceArea,
       ]),
-      dossier.crmTaxonomy.primaryLabel,
-      ...dossier.crmTaxonomy.cues.flatMap((cue) => [cue.kind, cue.label, cue.source]),
+      ...dossier.crmTaxonomy.labels.map((label) => label.label),
       ...dossier.relationships.flatMap((relationship) => [
-        relationship.relationshipLabel,
+        relationship.relationshipKind,
+        relationship.label,
+        relationship.conflictSafeLabel,
+        relationship.status,
+        relationship.source,
         relationship.relatedContact.displayName,
         relationship.relatedContact.kind,
-        relationship.matter.matterNumber,
-        relationship.matter.matterTitle,
-        relationship.contactRole,
-        relationship.relatedRole,
-        ...relationship.conflictSafeLabels,
+        ...relationship.visibleMatterIds,
       ]),
       ...dossier.qualityReview.signals.flatMap((signal) => [
         signal.kind,
@@ -99,30 +98,9 @@ export function summarizeContactDossier(dossier: ContactDossier): string {
     dossier.matters.some((matter) => matter.adverse) ? "adverse" : null,
     dossier.matters.some((matter) => matter.confidential) ? "confidential" : null,
     dossier.portal.activeGrantCount > 0 ? "portal active" : null,
+    dossier.relationships.length > 0 ? "relationship graph" : null,
   ].filter(Boolean);
   return flags.length > 0 ? flags.join(" / ") : "standard";
-}
-
-export function formatContactKindLabel(kind: ContactDossier["contact"]["kind"]): string {
-  return kind === "person" ? "Person" : "Company";
-}
-
-export function summarizeContactRelationshipCount(dossier: ContactDossier): string {
-  const count = dossier.relationships.length;
-  return `${count} relationship${count === 1 ? "" : "s"}`;
-}
-
-export function contactRelationshipRiskClass(
-  relationship: ContactDossier["relationships"][number],
-): "risk" | undefined {
-  return relationship.conflictSafeLabels.some(
-    (label) =>
-      label === "conflict caution" ||
-      label === "related adverse party" ||
-      label === "confidential handling",
-  )
-    ? "risk"
-    : undefined;
 }
 
 export function contactDossierRiskClass(dossier: ContactDossier): "risk" | undefined {

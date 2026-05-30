@@ -22,6 +22,7 @@ import {
   connectorDeliveryAttempts,
   connectorOutbox,
   connectors,
+  contactRelationships,
   conversationMessages,
   conversationThreads,
   documentAssemblyPackages,
@@ -113,6 +114,41 @@ describe("database schema hardening", () => {
         "supersedes_document_id",
         "superseded_at",
         "verified_at",
+      ]),
+    );
+  });
+
+  it("persists contact relationship graph records with safe relationship constraints", () => {
+    const config = getTableConfig(contactRelationships);
+
+    expect(config.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "contact_id",
+        "related_contact_id",
+        "relationship_kind",
+        "label",
+        "matter_id",
+        "source",
+        "status",
+        "created_at",
+        "updated_at",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "contact_relationships_contact_status_idx",
+        "contact_relationships_related_contact_status_idx",
+        "contact_relationships_matter_status_idx",
+      ]),
+    );
+    expect(config.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "contact_relationships_kind_value",
+        "contact_relationships_source_value",
+        "contact_relationships_status_value",
+        "contact_relationships_label_present",
+        "contact_relationships_different_contacts",
       ]),
     );
   });

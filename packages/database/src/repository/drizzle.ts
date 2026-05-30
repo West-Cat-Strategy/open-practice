@@ -36,6 +36,7 @@ import {
   validateBillingPeriodLock,
   validateBillingRateRule,
   validateContactDataQualityResolutionRecord,
+  validateContactRelationshipRecord,
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
   validateLedgerStatementImportBatchRecord,
@@ -57,6 +58,7 @@ import {
   type ContactDataQualityResolutionRecord,
   type ContactDossier,
   type ContactIdentifier,
+  type ContactRelationshipRecord,
   type ConversationMessageRecord,
   type ConversationMessageNotificationRecord,
   type ConversationThreadRecord,
@@ -205,6 +207,7 @@ import {
   mapConnectorOutboxRow,
   mapConnectorRow,
   mapContactDataQualityResolutionRow,
+  mapContactRelationshipRow,
   mapContactRow,
   mapConversationMessageRow,
   mapConversationMessageNotificationRow,
@@ -2449,15 +2452,42 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         .from(schema.conflictChecks)
         .where(eq(schema.conflictChecks.firmId, user.firmId))
     ).map(mapConflictCheckRow);
+    const contactRelationships = (
+      await this.db
+        .select()
+        .from(schema.contactRelationships)
+        .where(eq(schema.contactRelationships.firmId, user.firmId))
+    ).map(mapContactRelationshipRow);
     return buildContactDossiers({
       firmId: user.firmId,
       contacts,
       matters,
       matterParties,
       portalGrants,
+      contactRelationships,
       intakeVariableProposals,
       conflictChecks,
     });
+  }
+
+  async createContactRelationship(
+    relationship: ContactRelationshipRecord,
+  ): Promise<ContactRelationshipRecord> {
+    validateContactRelationshipRecord(relationship);
+    await this.db.insert(schema.contactRelationships).values({
+      id: relationship.id,
+      firmId: relationship.firmId,
+      contactId: relationship.contactId,
+      relatedContactId: relationship.relatedContactId,
+      relationshipKind: relationship.relationshipKind,
+      label: relationship.label,
+      matterId: relationship.matterId ?? null,
+      source: relationship.source,
+      status: relationship.status,
+      createdAt: new Date(relationship.createdAt),
+      updatedAt: new Date(relationship.updatedAt),
+    });
+    return relationship;
   }
 
   async getContact(firmId: string, contactId: string): Promise<Contact | undefined> {

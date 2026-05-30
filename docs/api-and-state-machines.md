@@ -66,7 +66,7 @@ relationship persistence, assignment rewrites, or broader access rules.
 | `GET /api/overview`                                                                   | Firm overview metrics for owner/auditor readers; matter-scoped readers receive assigned-matter metrics and only their own user summary.                                                                                                                                                                                                                                  |
 | `GET /api/matters`                                                                    | Matters visible to the current user, including redacted activity entries, document metadata used by the matter activity/file command center, and read-only `setupProfile` cues. Owner-admin and auditor readers receive firm matters even without assignment rows; matter-scoped users remain assignment-limited.                                                        |
 | `POST /api/matters`                                                                   | Creates an internal first/starter matter for users with `matter:create`: server-generated matter/contact/party IDs, date-based matter number, intake status, prospective-client party, current-user assignment, and safe audit metadata only. Client details stay in contact/party records and out of audit metadata.                                                    |
-| `GET /api/contacts/dossiers`                                                          | Read-only contact dossiers derived from visible matter-party links, active portal grants, aliases, identifiers, adverse/confidential cues, quality-review signals, and redacted conflict-check history.                                                                                                                                                                  |
+| `GET /api/contacts/dossiers`                                                          | Read-only contact dossiers derived from visible matter-party links, active portal grants, aliases, identifiers, adverse/confidential cues, persistent contact relationship records, CRM taxonomy labels, quality-review signals, and redacted conflict-check history.                                                                                                      |
 | `GET /api/contacts/review-queue`                                                      | Audit-safe contact review queue over visible dossiers, with duplicate, protected-party, and conflict-revalidation counts but no merge automation.                                                                                                                                                                                                                        |
 | `GET /api/contacts/data-quality-resolutions?contactId=&matterId=`                     | Lists append-only reviewer decisions for visible contact data-quality signals to contact readers without returning signal matched values or broadening matter/contact scope.                                                                                                                                                                                             |
 | `POST /api/contacts/data-quality-resolutions`                                         | Records a reviewer decision for one visible contact data-quality signal with safe audit metadata only; it does not merge contacts, rewrite records, or mutate conflict posture.                                                                                                                                                                                          |
@@ -358,14 +358,11 @@ external forms.
 
 Contact dossiers are a read-only `/?section=contacts` dashboard surface backed by
 `GET /api/contacts/dossiers`. Dossiers reuse existing contacts, visible matter-party links, active
-portal grants, aliases, identifiers, adverse/confidential party cues, and additive
-`qualityReview` signals. They also derive read-only relationship summaries and CRM taxonomy cues
-from visible matter-party links only: related-contact summaries expose display name and kind,
-related matter summaries stay limited to already visible matter number/title/ID, and conflict-safe
-labels report role/privacy posture without exposing related contact IDs, aliases, identifiers,
-matched values, notes, or hidden matters. Quality review can flag likely duplicate candidates,
-protected-party handling, portal-sensitive contacts, and manual conflict-check revalidation prompts;
-it does not add contact editing, duplicate merges, external CRM sync, automatic conflict changes, or
+portal grants, aliases, identifiers, adverse/confidential party cues, additive `qualityReview`
+signals, CRM taxonomy labels, and display-safe contact relationship summaries. Relationship graph
+summaries expose direction, kind, status, source, conflict-safe label, related contact kind/display
+name, and visible matter IDs only; they do not expose `relatedContact.id`, hidden contacts, raw
+matched values, contact editing, duplicate merges, automatic conflict changes, external CRM sync, or
 cross-scope matter disclosure.
 
 Legal clinic workflow data is modeled as firm-scoped clinic programs plus at most one clinic matter

@@ -5,6 +5,7 @@ import type {
   PaymentAllocationRecord,
   TrustTransferRequestRecord,
 } from "./billing.js";
+import type { ContactRelationshipRecord } from "./contacts.js";
 import type {
   DocumentAssemblyPackageRecord,
   DocumentAssemblySetDefinitionRecord,
@@ -152,6 +153,35 @@ export const sampleMatterParties: MatterParty[] = [
     role: "notary_client",
     adverse: false,
     confidential: true,
+  },
+];
+
+export const sampleContactRelationships: ContactRelationshipRecord[] = [
+  {
+    id: "contact-relationship-ada-river-counterparty",
+    firmId: sampleFirm.id,
+    contactId: "contact-ada",
+    relatedContactId: "contact-river",
+    relationshipKind: "opposing_party_for",
+    label: "Matter counterparty",
+    matterId: "matter-001",
+    source: "matter_party",
+    status: "active",
+    createdAt: "2026-05-29T12:00:00.000Z",
+    updatedAt: "2026-05-29T12:00:00.000Z",
+  },
+  {
+    id: "contact-relationship-ada-northstar-referral",
+    firmId: sampleFirm.id,
+    contactId: "contact-ada",
+    relatedContactId: "contact-northstar",
+    relationshipKind: "referral_source",
+    label: "Referral source",
+    matterId: "matter-002",
+    source: "manual",
+    status: "review_needed",
+    createdAt: "2026-05-29T12:05:00.000Z",
+    updatedAt: "2026-05-29T12:05:00.000Z",
   },
 ];
 
