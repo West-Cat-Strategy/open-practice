@@ -25,6 +25,7 @@ import {
   type CalendarEventReminderRecord,
   type CalendarGuestLinkRecord,
   type CalendarMeetingSessionRecord,
+  type CalendarSchedulingRequestRecord,
   type BillingPeriodLockRecord,
   type BillingRateRuleRecord,
   type ConflictCheckRecord,
@@ -287,6 +288,38 @@ export function mapCalendarEventReminderRow(
     deletedAt: dateToIso(row.deletedAt),
     createdByUserId: row.createdByUserId,
     updatedByUserId: row.updatedByUserId,
+  };
+}
+
+export function mapCalendarSchedulingRequestRow(
+  row: typeof schema.calendarSchedulingRequests.$inferSelect,
+): CalendarSchedulingRequestRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    kind: row.kind as CalendarSchedulingRequestRecord["kind"],
+    status: row.status as CalendarSchedulingRequestRecord["status"],
+    title: row.title,
+    taskId: row.taskId ?? undefined,
+    calendarEventId: row.calendarEventId ?? undefined,
+    calendarReminderId: row.calendarReminderId ?? undefined,
+    ownerUserId: row.ownerUserId ?? undefined,
+    sourceType: row.sourceType as CalendarSchedulingRequestRecord["sourceType"],
+    sourceId: row.sourceId ?? undefined,
+    sourceLabel: row.sourceLabel,
+    requestedDueAt: dateToIso(row.requestedDueAt),
+    requestedStartsAt: dateToIso(row.requestedStartsAt),
+    requestedEndsAt: dateToIso(row.requestedEndsAt),
+    reminderPosture: row.reminderPosture as CalendarSchedulingRequestRecord["reminderPosture"],
+    privacy: row.privacy as CalendarSchedulingRequestRecord["privacy"],
+    timeCaptureCue: row.timeCaptureCue,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    createdByUserId: row.createdByUserId,
+    updatedByUserId: row.updatedByUserId,
+    reviewedAt: dateToIso(row.reviewedAt),
+    reviewedByUserId: row.reviewedByUserId ?? undefined,
   };
 }
 

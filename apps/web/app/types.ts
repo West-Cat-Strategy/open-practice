@@ -18,6 +18,7 @@ import type {
   CalendarEventAttendeeRecord,
   CalendarEventReminderRecord,
   CalendarMeetingInvitationBoundary,
+  CalendarSchedulingRequestSummary,
   ContactDossier,
   ContactDataQualityResolutionRecord,
   DashboardSectionCapability,
@@ -386,6 +387,7 @@ export interface CalendarCredentialSummary {
 export interface CalendarEventsResponse {
   events: CalendarEventRecord[];
   guestSessions?: CalendarGuestSessionSummary[];
+  schedulingRequests?: CalendarSchedulingRequestSummary[];
   caldavUrl: string;
   subscriptionUrl: string;
 }
@@ -529,6 +531,7 @@ export interface CalendarMatterLinks {
 export interface CalendarDashboardResponse {
   eventsByMatterId: Record<string, CalendarEventRecord[]>;
   guestSessionsByEventId: Record<string, CalendarGuestSessionSummary[]>;
+  schedulingRequestsByMatterId: Record<string, CalendarSchedulingRequestSummary[]>;
   linksByMatterId: Record<string, CalendarMatterLinks>;
   credentials: CalendarCredentialSummary[];
 }

@@ -26,6 +26,7 @@ import {
   type CalendarGuestLinkStatus,
   type CalendarMeetingSessionRecord,
   type CalendarMeetingSessionStatus,
+  type CalendarSchedulingRequestRecord,
   type BillingPeriodLockRecord,
   type BillingRateRuleRecord,
   type ConnectorDeliveryAttemptRecord,
@@ -870,6 +871,17 @@ export interface OpenPracticeRepository {
   upsertCalendarEventReminder(
     reminder: CalendarEventReminderUpsertInput,
   ): Promise<CalendarEventReminderRecord>;
+  createCalendarSchedulingRequest(
+    request: CalendarSchedulingRequestRecord,
+  ): Promise<CalendarSchedulingRequestRecord>;
+  listCalendarSchedulingRequests(
+    firmId: string,
+    options?: {
+      matterId?: string;
+      status?: CalendarSchedulingRequestRecord["status"];
+      ownerUserId?: string;
+    },
+  ): Promise<CalendarSchedulingRequestRecord[]>;
   deleteCalendarEventReminder(input: {
     firmId: string;
     matterId: string;

@@ -51,6 +51,7 @@ import {
   type CalendarEventReminderRecord,
   type CalendarGuestLinkRecord,
   type CalendarMeetingSessionRecord,
+  type CalendarSchedulingRequestRecord,
   type ConnectorDeliveryAttemptRecord,
   type ConnectorOutboxRecord,
   type ConnectorRecord,
@@ -202,6 +203,7 @@ import {
   mapCalendarEventRow,
   mapCalendarGuestLinkRow,
   mapCalendarMeetingSessionRow,
+  mapCalendarSchedulingRequestRow,
   mapConflictCheckRow,
   mapConnectorDeliveryAttemptRow,
   mapConnectorOutboxRow,
@@ -3385,6 +3387,89 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       throw new Error(`Calendar reminder ${reminder.id} already exists in another scope`);
     }
     return mapCalendarEventReminderRow(row);
+  }
+
+  async createCalendarSchedulingRequest(
+    request: CalendarSchedulingRequestRecord,
+  ): Promise<CalendarSchedulingRequestRecord> {
+    const [row] = await this.db
+      .insert(schema.calendarSchedulingRequests)
+      .values({
+        id: request.id,
+        firmId: request.firmId,
+        matterId: request.matterId,
+        kind: request.kind,
+        status: request.status,
+        title: request.title,
+        taskId: request.taskId ?? null,
+        calendarEventId: request.calendarEventId ?? null,
+        calendarReminderId: request.calendarReminderId ?? null,
+        ownerUserId: request.ownerUserId ?? null,
+        sourceType: request.sourceType,
+        sourceId: request.sourceId ?? null,
+        sourceLabel: request.sourceLabel,
+        requestedDueAt: request.requestedDueAt ? new Date(request.requestedDueAt) : null,
+        requestedStartsAt: request.requestedStartsAt ? new Date(request.requestedStartsAt) : null,
+        requestedEndsAt: request.requestedEndsAt ? new Date(request.requestedEndsAt) : null,
+        reminderPosture: request.reminderPosture,
+        privacy: request.privacy,
+        timeCaptureCue: request.timeCaptureCue,
+        createdAt: new Date(request.createdAt),
+        updatedAt: new Date(request.updatedAt),
+        createdByUserId: request.createdByUserId,
+        updatedByUserId: request.updatedByUserId,
+        reviewedAt: request.reviewedAt ? new Date(request.reviewedAt) : null,
+        reviewedByUserId: request.reviewedByUserId ?? null,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (!row) {
+      const [existing] = await this.db
+        .select()
+        .from(schema.calendarSchedulingRequests)
+        .where(
+          and(
+            eq(schema.calendarSchedulingRequests.firmId, request.firmId),
+            eq(schema.calendarSchedulingRequests.id, request.id),
+          ),
+        );
+      if (!existing) {
+        throw new Error(`Calendar scheduling request ${request.id} already exists in another firm`);
+      }
+      return mapCalendarSchedulingRequestRow(existing);
+    }
+    return mapCalendarSchedulingRequestRow(row);
+  }
+
+  async listCalendarSchedulingRequests(
+    firmId: string,
+    options: {
+      matterId?: string;
+      status?: CalendarSchedulingRequestRecord["status"];
+      ownerUserId?: string;
+    } = {},
+  ): Promise<CalendarSchedulingRequestRecord[]> {
+    const filters = [eq(schema.calendarSchedulingRequests.firmId, firmId)];
+    if (options.matterId) {
+      filters.push(eq(schema.calendarSchedulingRequests.matterId, options.matterId));
+    }
+    if (options.status) {
+      filters.push(eq(schema.calendarSchedulingRequests.status, options.status));
+    }
+    if (options.ownerUserId) {
+      filters.push(eq(schema.calendarSchedulingRequests.ownerUserId, options.ownerUserId));
+    }
+    const rows = await this.db
+      .select()
+      .from(schema.calendarSchedulingRequests)
+      .where(and(...filters))
+      .orderBy(
+        asc(schema.calendarSchedulingRequests.requestedDueAt),
+        asc(schema.calendarSchedulingRequests.requestedStartsAt),
+        asc(schema.calendarSchedulingRequests.createdAt),
+        asc(schema.calendarSchedulingRequests.id),
+      );
+    return rows.map(mapCalendarSchedulingRequestRow);
   }
 
   async deleteCalendarEventReminder(input: {

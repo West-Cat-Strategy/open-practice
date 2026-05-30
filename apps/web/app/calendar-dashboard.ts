@@ -393,10 +393,14 @@ export async function loadCalendarDashboardData(input: {
   ]);
   const eventsByMatterId: Record<string, CalendarEventRecord[]> = {};
   const guestSessionsByEventId: Record<string, CalendarGuestSessionSummary[]> = {};
+  const schedulingRequestsByMatterId: CalendarDashboardResponse["schedulingRequestsByMatterId"] =
+    {};
   const linksByMatterId: Record<string, CalendarMatterLinks> = {};
 
   for (const matterResponse of matterResponses) {
     eventsByMatterId[matterResponse.matterId] = matterResponse.response.events;
+    schedulingRequestsByMatterId[matterResponse.matterId] =
+      matterResponse.response.schedulingRequests ?? [];
     for (const session of matterResponse.response.guestSessions ?? []) {
       guestSessionsByEventId[session.eventId] = sortCalendarGuestSessions([
         ...(guestSessionsByEventId[session.eventId] ?? []),
@@ -412,6 +416,7 @@ export async function loadCalendarDashboardData(input: {
   return {
     eventsByMatterId,
     guestSessionsByEventId,
+    schedulingRequestsByMatterId,
     linksByMatterId,
     credentials,
   };

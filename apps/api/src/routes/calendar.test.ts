@@ -101,6 +101,38 @@ describe("calendar routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       subscriptionUrl: "webcal://practice.example.test/api/calendar/matters/matter-001.ics",
+      schedulingRequests: [
+        {
+          id: "calendar-scheduling-request-001",
+          matterId: "matter-001",
+          kind: "deadline_review",
+          status: "needs_review",
+          source: { type: "task_deadline", label: "Review tenant evidence package" },
+          linkedTaskId: "task-deadline-001",
+          linkedEvent: {
+            id: "calendar-event-001",
+            title: "Residential tenancy filing deadline",
+          },
+          privacy: { visibility: "staff_only", clientVisible: false },
+          timeCaptureCue: {
+            posture: "draft_available",
+            suggestedMinutes: 30,
+            existingTimeEntryCount: 1,
+            billable: true,
+          },
+          reviewBoundary: {
+            approvalCreatesTask: false,
+            approvalReschedulesEvent: false,
+            approvalCancelsReminder: false,
+            approvalCreatesTimeEntry: false,
+          },
+        },
+        {
+          id: "calendar-scheduling-request-002",
+          matterId: "matter-001",
+          kind: "event_scheduling",
+        },
+      ],
       events: [
         { id: "calendar-event-001", matterId: "matter-001" },
         {
@@ -116,6 +148,10 @@ describe("calendar routes", () => {
       ],
     });
     expect(response.json()).not.toHaveProperty("principalUrl");
+    expect(JSON.stringify(response.json().schedulingRequests)).not.toContain(
+      "Reviewed tenancy branch materials",
+    );
+    expect(JSON.stringify(response.json().schedulingRequests)).not.toContain("ada.morgan");
   });
 
   it("blocks cross-matter calendar reads and export", async () => {

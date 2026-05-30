@@ -4674,6 +4674,38 @@ describe("dashboard client behavior", () => {
       matters: [matter({ id: "matter-001" }), matter({ id: "matter-002" })],
       listEventsForMatter: async (matterId) => ({
         events: matterId === "matter-002" ? [event] : [],
+        schedulingRequests:
+          matterId === "matter-002"
+            ? [
+                {
+                  id: "calendar-scheduling-request-001",
+                  matterId,
+                  kind: "deadline_review",
+                  status: "needs_review",
+                  title: "Review filing deadline schedule",
+                  source: { type: "task_deadline", label: "Review tenant evidence package" },
+                  linkedTaskId: "task-deadline-001",
+                  reminderSummary: {
+                    posture: "delivery_opt_in_available",
+                    pendingCount: 0,
+                    acknowledgedCount: 0,
+                  },
+                  privacy: { visibility: "staff_only", clientVisible: false },
+                  timeCaptureCue: {
+                    posture: "draft_available",
+                    suggestedMinutes: 30,
+                    existingTimeEntryCount: 1,
+                    billable: true,
+                  },
+                  reviewBoundary: {
+                    approvalCreatesTask: false,
+                    approvalReschedulesEvent: false,
+                    approvalCancelsReminder: false,
+                    approvalCreatesTimeEntry: false,
+                  },
+                },
+              ]
+            : [],
         caldavUrl: "http://practice.example.test/caldav",
         subscriptionUrl: `webcal://practice.example.test/api/calendar/matters/${matterId}.ics`,
       }),
@@ -4688,6 +4720,9 @@ describe("dashboard client behavior", () => {
     });
 
     expect(data.eventsByMatterId).toEqual({ "matter-001": [], "matter-002": [event] });
+    expect(data.schedulingRequestsByMatterId["matter-002"]).toEqual([
+      expect.objectContaining({ id: "calendar-scheduling-request-001" }),
+    ]);
     expect(data.linksByMatterId["matter-001"]).toEqual({
       caldavUrl: "http://practice.example.test/caldav",
       subscriptionUrl: "webcal://practice.example.test/api/calendar/matters/matter-001.ics",

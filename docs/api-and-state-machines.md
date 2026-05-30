@@ -180,7 +180,7 @@ relationship persistence, assignment rewrites, or broader access rules.
 | `POST /api/reports/export-requests`                                                   | Creates one staff report export request through the existing reports job lifecycle with bounded report/profile/grouping metadata and no report body storage.                                                                                                                                                                                                             |
 | `GET /api/reports/export-requests/:exportJobId`                                       | Reads one staff report export request status after report-export authorization.                                                                                                                                                                                                                                                                                          |
 | `GET /api/reports/export-requests/:exportJobId/download`                              | Downloads a completed staff report export by regenerating the authorized projection at request time instead of storing rows or raw report output in job metadata.                                                                                                                                                                                                        |
-| `GET /api/calendar/events?matterId=&startsAfter=&startsBefore=`                       | Matter-scoped operator-entered calendar events, manual reminder-state records, CalDAV, iCalendar subscription URLs, and meeting-boundary status for the matter dashboard.                                                                                                                                                                                                |
+| `GET /api/calendar/events?matterId=&startsAfter=&startsBefore=`                       | Matter-scoped calendar events, manual reminder-state records, read-only scheduling request summaries, CalDAV, iCalendar subscription URLs, and meeting-boundary status for the dashboard. Scheduling summaries expose safe linked task/event/reminder posture, source labels, owner/privacy cues, and bounded time-capture posture only.                                     |
 | `POST /api/calendar/events`                                                           | Creates one authorized matter-scoped staff calendar event with provider-neutral event metadata and redacted audit evidence.                                                                                                                                                                                                                                              |
 | `PATCH /api/calendar/events/:eventId`                                                 | Updates one authorized matter calendar event title, range, status, description, or location while preserving attendee, reminder, sync, and meeting-link children.                                                                                                                                                                                                        |
 | `POST /api/calendar/events/:eventId/cancel`                                           | Cancels one authorized matter calendar event by setting `status=cancelled`, incrementing sequence, and recording redacted lifecycle audit metadata.                                                                                                                                                                                                                      |
@@ -895,6 +895,16 @@ the existing email outbox boundary, without adding attendee or invitation state.
 metadata records event, reminder, attendee, email, job, meeting-boundary status, and count
 identifiers only; invitation message bodies remain in the outbox record and reminder notes are not
 copied into audit metadata. Dashboard reminder records remain the source of truth.
+
+Calendar scheduling request records are persistent review records, not automation. The Calendar
+matter load returns them only after matter-scoped calendar read access, and linked task/event/reminder
+summaries are included only when they stay in the same firm and matter. The summary exposes safe IDs,
+dates, source labels, owner assignment, reminder posture, privacy level, and bounded time-capture
+counts/minute suggestions when the caller can read time entries. It does not expose reminder notes,
+attendee emails, meeting URLs, time narratives, raw source payloads, provider metadata, public room
+URLs, media, or private audit metadata. Reviewing those records is metadata-only in this first slice
+and does not create tasks, reschedule calendar events, cancel reminders, queue delivery, or create
+time entries.
 
 Draft assist is a disabled-by-default scaffold for non-authoritative suggestions.
 `GET /api/draft-assist/status` reports disabled when no enabled `ai` provider setting exists or no
