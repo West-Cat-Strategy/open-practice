@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   assertValidCalendarEventRange,
+  buildCalendarSchedulingRequestSummaries,
   buildCalendarMeetingInvitationBoundary,
   buildICalendarFeed,
   calendarMeetingInvitationBoundaryMetadata,
@@ -208,6 +209,14 @@ function assertCalendarAccess(
     matterId,
   });
   if (!access.ok) throw access.error;
+}
+
+function canReadTimeCapture(context: ApiAuthContext, matterId: string): boolean {
+  return requireAccess(context, {
+    resource: "time_entry",
+    action: "read",
+    matterId,
+  }).ok;
 }
 
 function baseUrl(request: FastifyRequest): string {
@@ -773,6 +782,12 @@ export function registerCalendarRoutes(
       request.auth.firmId,
     );
     const events = await repository.listCalendarEvents(request.auth.firmId, query);
+    const schedulingRequests = await repository.listCalendarSchedulingRequests(
+      request.auth.firmId,
+      {
+        matterId: query.matterId,
+      },
+    );
     const sessions = await repository.listCalendarMeetingSessions(request.auth.firmId, {
       matterId: query.matterId,
     });
@@ -785,6 +800,11 @@ export function registerCalendarRoutes(
           calendarGuestSessionWithLinks(repository, session, eventsById.get(session.eventId)),
         ),
       ),
+      schedulingRequests: buildCalendarSchedulingRequestSummaries({
+        requests: schedulingRequests,
+        events,
+        includeTimeCapture: canReadTimeCapture(request.auth, query.matterId),
+      }),
       caldavUrl: `${baseUrl(request)}/caldav`,
       subscriptionUrl: webcalSubscriptionUrl(request, query.matterId),
     };

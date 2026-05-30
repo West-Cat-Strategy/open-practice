@@ -10,6 +10,8 @@ import type {
   CalendarMeetingInvitationBoundary,
   CalendarMeetingSessionRecord,
   CalendarMeetingSessionStatus,
+  CalendarSchedulingRequestRecord,
+  CalendarSchedulingRequestSummary,
 } from "./models.js";
 
 const DEFAULT_PRODUCT_ID = "-//Open Practice//Matter Calendar//EN";
@@ -97,6 +99,13 @@ export interface CalendarGuestLinkTransitionInput {
   occurredAt: string;
   actorUserId: string;
 }
+
+const SCHEDULING_REVIEW_BOUNDARY = {
+  approvalCreatesTask: false,
+  approvalReschedulesEvent: false,
+  approvalCancelsReminder: false,
+  approvalCreatesTimeEntry: false,
+} as const;
 
 export function normalizeCalendarMeetingLinkState(
   input: CalendarMeetingLinkStateInput = {},
@@ -201,6 +210,108 @@ export function transitionCalendarGuestLinkStatus(
       input.status === "admitted" ? (link.admittedAt ?? input.occurredAt) : link.admittedAt,
     deniedAt: input.status === "denied" ? (link.deniedAt ?? input.occurredAt) : link.deniedAt,
   };
+}
+
+function compareCalendarSchedulingRequests(
+  left: CalendarSchedulingRequestRecord,
+  right: CalendarSchedulingRequestRecord,
+): number {
+  const leftTime = Date.parse(left.requestedDueAt ?? left.requestedStartsAt ?? left.createdAt) || 0;
+  const rightTime =
+    Date.parse(right.requestedDueAt ?? right.requestedStartsAt ?? right.createdAt) || 0;
+  return leftTime === rightTime ? left.id.localeCompare(right.id) : leftTime - rightTime;
+}
+
+function reminderSummary(
+  request: CalendarSchedulingRequestRecord,
+  event?: CalendarEventRecord,
+): CalendarSchedulingRequestSummary["reminderSummary"] {
+  const sameMatterReminders = (event?.reminders ?? []).filter(
+    (reminder) => reminder.matterId === request.matterId && !reminder.deletedAt,
+  );
+  const pending = sameMatterReminders
+    .filter((reminder) => reminder.status === "pending")
+    .sort((left, right) => {
+      const remindAtDifference = Date.parse(left.remindAt) - Date.parse(right.remindAt);
+      return remindAtDifference === 0 ? left.id.localeCompare(right.id) : remindAtDifference;
+    });
+  return {
+    posture: request.reminderPosture,
+    pendingCount: pending.length,
+    acknowledgedCount: sameMatterReminders.filter((reminder) => reminder.status === "acknowledged")
+      .length,
+    nextRemindAt: pending[0]?.remindAt,
+  };
+}
+
+function timeCaptureCue(
+  request: CalendarSchedulingRequestRecord,
+  includeTimeCapture: boolean,
+): CalendarSchedulingRequestSummary["timeCaptureCue"] {
+  if (includeTimeCapture) return request.timeCaptureCue;
+  return {
+    posture: "none",
+    existingTimeEntryCount: 0,
+    billable: false,
+    redacted: true,
+  };
+}
+
+export function buildCalendarSchedulingRequestSummaries(input: {
+  requests: CalendarSchedulingRequestRecord[];
+  events?: CalendarEventRecord[];
+  includeTimeCapture?: boolean;
+}): CalendarSchedulingRequestSummary[] {
+  const eventsById = new Map(
+    (input.events ?? []).map((event): [string, CalendarEventRecord] => [event.id, event]),
+  );
+  const includeTimeCapture = input.includeTimeCapture ?? false;
+
+  return [...input.requests]
+    .sort(compareCalendarSchedulingRequests)
+    .map((request): CalendarSchedulingRequestSummary => {
+      const event =
+        request.calendarEventId &&
+        eventsById.get(request.calendarEventId)?.matterId === request.matterId
+          ? eventsById.get(request.calendarEventId)
+          : undefined;
+
+      return {
+        id: request.id,
+        matterId: request.matterId,
+        kind: request.kind,
+        status: request.status,
+        title: request.title,
+        ownerUserId: request.ownerUserId,
+        source: {
+          type: request.sourceType,
+          label: request.sourceLabel,
+        },
+        linkedTaskId: request.taskId,
+        linkedEvent: event
+          ? {
+              id: event.id,
+              title: event.title,
+              startsAt: event.startsAt,
+              endsAt: event.endsAt,
+              status: event.status,
+            }
+          : undefined,
+        linkedReminderId: request.calendarReminderId,
+        requestedDueAt: request.requestedDueAt,
+        requestedStartsAt: request.requestedStartsAt,
+        requestedEndsAt: request.requestedEndsAt,
+        reminderSummary: reminderSummary(request, event),
+        privacy: {
+          visibility: request.privacy,
+          clientVisible: false,
+        },
+        timeCaptureCue: timeCaptureCue(request, includeTimeCapture),
+        reviewBoundary: SCHEDULING_REVIEW_BOUNDARY,
+        reviewedAt: request.reviewedAt,
+        reviewedByUserId: request.reviewedByUserId,
+      };
+    });
 }
 
 export function escapeICalendarText(value: string): string {

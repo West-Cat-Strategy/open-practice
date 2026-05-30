@@ -19,6 +19,7 @@ import {
   calendarEvents,
   calendarGuestLinks,
   calendarMeetingSessions,
+  calendarSchedulingRequests,
   connectorDeliveryAttempts,
   connectorOutbox,
   connectors,
@@ -215,6 +216,55 @@ describe("database schema hardening", () => {
       expect.arrayContaining([
         "calendar_event_reminders_channel_value",
         "calendar_event_reminders_status_value",
+      ]),
+    );
+  });
+
+  it("persists reviewed calendar scheduling request records", () => {
+    const config = getTableConfig(calendarSchedulingRequests);
+    const columns = config.columns.map((column) => column.name);
+
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "kind",
+        "status",
+        "title",
+        "task_id",
+        "calendar_event_id",
+        "calendar_reminder_id",
+        "owner_user_id",
+        "source_type",
+        "source_id",
+        "source_label",
+        "requested_due_at",
+        "requested_starts_at",
+        "requested_ends_at",
+        "reminder_posture",
+        "privacy",
+        "time_capture_cue",
+        "created_by_user_id",
+        "updated_by_user_id",
+        "reviewed_at",
+        "reviewed_by_user_id",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "calendar_scheduling_requests_matter_status_idx",
+        "calendar_scheduling_requests_owner_status_idx",
+      ]),
+    );
+    expect(config.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "calendar_scheduling_requests_kind_value",
+        "calendar_scheduling_requests_status_value",
+        "calendar_scheduling_requests_source_type_value",
+        "calendar_scheduling_requests_reminder_posture_value",
+        "calendar_scheduling_requests_privacy_value",
+        "calendar_scheduling_requests_title_present",
+        "calendar_scheduling_requests_source_label_present",
       ]),
     );
   });

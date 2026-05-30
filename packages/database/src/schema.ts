@@ -16,6 +16,7 @@ import { sql } from "drizzle-orm";
 import type {
   CalendarGuestLinkRecord,
   CalendarMeetingSessionRecord,
+  CalendarSchedulingRequestRecord,
   ConnectorSecretReference,
   BillingRateSnapshot,
   BillingRateRuleRecord,
@@ -2306,6 +2307,88 @@ export const calendarEventReminders = pgTable(
     statusValue: check(
       "calendar_event_reminders_status_value",
       sql`${table.status} in ('pending', 'acknowledged', 'dismissed', 'cancelled')`,
+    ),
+  }),
+);
+
+export const calendarSchedulingRequests = pgTable(
+  "calendar_scheduling_requests",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("needs_review"),
+    title: text("title").notNull(),
+    taskId: text("task_id").references(() => tasks.id),
+    calendarEventId: text("calendar_event_id").references(() => calendarEvents.id),
+    calendarReminderId: text("calendar_reminder_id").references(() => calendarEventReminders.id),
+    ownerUserId: text("owner_user_id").references(() => users.id),
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id"),
+    sourceLabel: text("source_label").notNull(),
+    requestedDueAt: timestamp("requested_due_at", { withTimezone: true }),
+    requestedStartsAt: timestamp("requested_starts_at", { withTimezone: true }),
+    requestedEndsAt: timestamp("requested_ends_at", { withTimezone: true }),
+    reminderPosture: text("reminder_posture").notNull().default("none"),
+    privacy: text("privacy").notNull().default("staff_only"),
+    timeCaptureCue: jsonb("time_capture_cue")
+      .$type<CalendarSchedulingRequestRecord["timeCaptureCue"]>()
+      .notNull()
+      .default({ posture: "none", existingTimeEntryCount: 0, billable: false }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    updatedByUserId: text("updated_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+  },
+  (table) => ({
+    matterStatus: index("calendar_scheduling_requests_matter_status_idx").on(
+      table.firmId,
+      table.matterId,
+      table.status,
+    ),
+    ownerStatus: index("calendar_scheduling_requests_owner_status_idx").on(
+      table.firmId,
+      table.ownerUserId,
+      table.status,
+    ),
+    kindValue: check(
+      "calendar_scheduling_requests_kind_value",
+      sql`${table.kind} in ('deadline_review', 'event_scheduling', 'reminder_review')`,
+    ),
+    statusValue: check(
+      "calendar_scheduling_requests_status_value",
+      sql`${table.status} in ('needs_review', 'reviewed', 'scheduled', 'dismissed')`,
+    ),
+    sourceTypeValue: check(
+      "calendar_scheduling_requests_source_type_value",
+      sql`${table.sourceType} in ('task_deadline', 'calendar_event', 'calendar_reminder', 'manual')`,
+    ),
+    reminderPostureValue: check(
+      "calendar_scheduling_requests_reminder_posture_value",
+      sql`${table.reminderPosture} in ('none', 'dashboard_pending', 'delivery_opt_in_available')`,
+    ),
+    privacyValue: check(
+      "calendar_scheduling_requests_privacy_value",
+      sql`${table.privacy} in ('staff_only', 'matter_team')`,
+    ),
+    titlePresent: check(
+      "calendar_scheduling_requests_title_present",
+      sql`length(trim(${table.title})) > 0`,
+    ),
+    sourceLabelPresent: check(
+      "calendar_scheduling_requests_source_label_present",
+      sql`length(trim(${table.sourceLabel})) > 0`,
     ),
   }),
 );

@@ -3,6 +3,7 @@ import {
   InvalidCalendarPayloadError,
   InvalidCalendarMeetingTransitionError,
   UnsupportedCalendarPayloadError,
+  buildCalendarSchedulingRequestSummaries,
   buildCalendarMeetingInvitationBoundary,
   buildICalendarFeed,
   calendarMeetingInvitationBoundaryMetadata,
@@ -16,6 +17,7 @@ import type {
   CalendarEventRecord,
   CalendarGuestLinkRecord,
   CalendarMeetingSessionRecord,
+  CalendarSchedulingRequestRecord,
 } from "./models.js";
 
 const events: CalendarEventRecord[] = [
@@ -72,6 +74,96 @@ const events: CalendarEventRecord[] = [
     ],
   },
 ];
+
+describe("calendar scheduling request summaries", () => {
+  it("keeps review requests matter-scoped and redacts time-capture cues when access is absent", () => {
+    const request: CalendarSchedulingRequestRecord = {
+      id: "calendar-scheduling-request-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      kind: "deadline_review",
+      status: "needs_review",
+      title: "Review filing deadline posture",
+      taskId: "task-deadline-001",
+      calendarEventId: "calendar-event-001",
+      ownerUserId: "user-licensee",
+      sourceType: "task_deadline",
+      sourceId: "task-deadline-001",
+      sourceLabel: "Review tenant evidence package",
+      requestedDueAt: "2026-05-01T19:00:00.000Z",
+      reminderPosture: "dashboard_pending",
+      privacy: "staff_only",
+      timeCaptureCue: {
+        posture: "draft_available",
+        suggestedMinutes: 30,
+        existingTimeEntryCount: 1,
+        billable: true,
+      },
+      createdAt: "2026-04-30T12:00:00.000Z",
+      updatedAt: "2026-04-30T12:00:00.000Z",
+      createdByUserId: "user-licensee",
+      updatedByUserId: "user-licensee",
+    };
+    const event: CalendarEventRecord = {
+      ...events[1]!,
+      reminders: [
+        {
+          id: "calendar-reminder-001",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          eventId: "calendar-event-001",
+          remindAt: "2026-05-01T15:30:00.000Z",
+          channel: "dashboard",
+          status: "pending",
+          note: "Private reminder note stays outside scheduling summaries.",
+          createdAt: "2026-04-30T12:00:00.000Z",
+          updatedAt: "2026-04-30T12:00:00.000Z",
+          createdByUserId: "user-licensee",
+          updatedByUserId: "user-licensee",
+        },
+      ],
+    };
+
+    expect(
+      buildCalendarSchedulingRequestSummaries({
+        requests: [request],
+        events: [event],
+        includeTimeCapture: false,
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "calendar-scheduling-request-001",
+        source: { type: "task_deadline", label: "Review tenant evidence package" },
+        linkedEvent: expect.objectContaining({ id: "calendar-event-001" }),
+        reminderSummary: expect.objectContaining({
+          pendingCount: 1,
+          nextRemindAt: "2026-05-01T15:30:00.000Z",
+        }),
+        timeCaptureCue: {
+          posture: "none",
+          existingTimeEntryCount: 0,
+          billable: false,
+          redacted: true,
+        },
+        reviewBoundary: {
+          approvalCreatesTask: false,
+          approvalReschedulesEvent: false,
+          approvalCancelsReminder: false,
+          approvalCreatesTimeEntry: false,
+        },
+      }),
+    ]);
+    expect(
+      JSON.stringify(
+        buildCalendarSchedulingRequestSummaries({
+          requests: [request],
+          events: [event],
+          includeTimeCapture: false,
+        }),
+      ),
+    ).not.toContain("Private reminder note");
+  });
+});
 
 describe("iCalendar feed serialization", () => {
   it("builds deterministic UTC VEVENT output with escaped text", () => {

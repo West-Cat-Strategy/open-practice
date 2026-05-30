@@ -42,6 +42,7 @@ import {
   type CalendarEventReminderRecord,
   type CalendarGuestLinkRecord,
   type CalendarMeetingSessionRecord,
+  type CalendarSchedulingRequestRecord,
   type BillingPeriodLockRecord,
   type BillingRateRuleRecord,
   type ConflictCheckRecord,
@@ -111,6 +112,7 @@ import {
 import {
   sampleAuditEvents,
   sampleCalendarEvents,
+  sampleCalendarSchedulingRequests,
   sampleContacts,
   sampleDocuments,
   sampleDraftTemplates,
@@ -223,6 +225,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private conversationMessages: ConversationMessageRecord[] = [];
   private conversationMessageNotifications: ConversationMessageNotificationRecord[] = [];
   private calendarEvents: CalendarEventRecord[];
+  private calendarSchedulingRequests: CalendarSchedulingRequestRecord[];
   private calendarMeetingSessions: CalendarMeetingSessionRecord[] = [];
   private calendarGuestLinks: CalendarGuestLinkRecord[] = [];
   private taskDeadlines: TaskDeadlineRecord[];
@@ -300,6 +303,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.legalClinicPrograms = seeded ? clone(sampleLegalClinicPrograms) : [];
     this.legalClinicMatterProfiles = seeded ? clone(sampleLegalClinicMatterProfiles) : [];
     this.calendarEvents = seeded ? clone(sampleCalendarEvents) : [];
+    this.calendarSchedulingRequests = seeded ? clone(sampleCalendarSchedulingRequests) : [];
     this.taskDeadlines = seeded ? clone(sampleTaskDeadlines) : [];
     this.portalGrants = seeded ? clone(samplePortalGrants) : [];
     this.timeEntries = seeded ? clone(sampleTimeEntries) : [];
@@ -2522,6 +2526,49 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     }
     event.reminders = reminders;
     return clone(reminder);
+  }
+
+  async createCalendarSchedulingRequest(
+    request: CalendarSchedulingRequestRecord,
+  ): Promise<CalendarSchedulingRequestRecord> {
+    const existingIndex = this.calendarSchedulingRequests.findIndex(
+      (candidate) => candidate.firmId === request.firmId && candidate.id === request.id,
+    );
+    if (existingIndex >= 0) {
+      this.calendarSchedulingRequests[existingIndex] = clone(request);
+    } else {
+      this.calendarSchedulingRequests = [...this.calendarSchedulingRequests, clone(request)];
+    }
+    return clone(request);
+  }
+
+  async listCalendarSchedulingRequests(
+    firmId: string,
+    options: {
+      matterId?: string;
+      status?: CalendarSchedulingRequestRecord["status"];
+      ownerUserId?: string;
+    } = {},
+  ): Promise<CalendarSchedulingRequestRecord[]> {
+    return clone(
+      this.calendarSchedulingRequests
+        .filter(
+          (request) =>
+            request.firmId === firmId &&
+            (!options.matterId || request.matterId === options.matterId) &&
+            (!options.status || request.status === options.status) &&
+            (!options.ownerUserId || request.ownerUserId === options.ownerUserId),
+        )
+        .sort((left, right) => {
+          const leftTime = Date.parse(
+            left.requestedDueAt ?? left.requestedStartsAt ?? left.createdAt,
+          );
+          const rightTime = Date.parse(
+            right.requestedDueAt ?? right.requestedStartsAt ?? right.createdAt,
+          );
+          return leftTime === rightTime ? left.id.localeCompare(right.id) : leftTime - rightTime;
+        }),
+    );
   }
 
   async deleteCalendarEventReminder(input: {

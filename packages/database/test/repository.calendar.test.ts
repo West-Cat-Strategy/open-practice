@@ -74,6 +74,67 @@ describe("repository calendar and tasks", () => {
     ).resolves.toMatchObject({ completedAt: "2026-05-02T17:30:00.000Z" });
   });
 
+  it("persists and filters calendar scheduling requests by matter and owner", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await expect(
+      repository.listCalendarSchedulingRequests("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "calendar-scheduling-request-001",
+        matterId: "matter-001",
+        taskId: "task-deadline-001",
+        calendarEventId: "calendar-event-001",
+      }),
+      expect.objectContaining({
+        id: "calendar-scheduling-request-002",
+        matterId: "matter-001",
+        taskId: "task-deadline-002",
+      }),
+    ]);
+
+    await expect(
+      repository.createCalendarSchedulingRequest({
+        id: "calendar-scheduling-request-test",
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        kind: "event_scheduling",
+        status: "needs_review",
+        title: "Schedule synthetic records review",
+        taskId: "task-deadline-003",
+        ownerUserId: "user-admin",
+        sourceType: "task_deadline",
+        sourceId: "task-deadline-003",
+        sourceLabel: "Confirm corporate records request",
+        requestedDueAt: "2026-05-06T17:00:00.000Z",
+        reminderPosture: "none",
+        privacy: "staff_only",
+        timeCaptureCue: {
+          posture: "draft_available",
+          suggestedMinutes: 15,
+          existingTimeEntryCount: 0,
+          billable: true,
+        },
+        createdAt: now,
+        updatedAt: now,
+        createdByUserId: "user-admin",
+        updatedByUserId: "user-admin",
+      }),
+    ).resolves.toMatchObject({ id: "calendar-scheduling-request-test" });
+
+    await expect(
+      repository.listCalendarSchedulingRequests("firm-west-legal", {
+        matterId: "matter-002",
+        ownerUserId: "user-admin",
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "calendar-scheduling-request-test",
+        sourceLabel: "Confirm corporate records request",
+      }),
+    ]);
+  });
+
   it("creates, updates, soft-deletes, and replaces calendar event attendees", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const attendee = await repository.upsertCalendarEventAttendee({

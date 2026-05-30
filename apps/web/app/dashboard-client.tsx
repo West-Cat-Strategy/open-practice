@@ -1246,6 +1246,9 @@ export default function DashboardClient({
   const activeCalendarEvents = activeMatter
     ? (calendarEventsByMatterId[activeMatter.id] ?? [])
     : [];
+  const activeCalendarSchedulingRequests = activeMatter
+    ? (calendar.schedulingRequestsByMatterId?.[activeMatter.id] ?? [])
+    : [];
   const activeCalendarLinks = activeMatter ? calendar.linksByMatterId[activeMatter.id] : undefined;
   const activeCalendarBuckets = useMemo(
     () => buildCalendarRadarBuckets(activeCalendarEvents),
@@ -5787,6 +5790,10 @@ export default function DashboardClient({
                     <strong>{activeCalendarBuckets.tentative.length}</strong>
                   </div>
                   <div>
+                    <span className="field-label">Scheduling reviews</span>
+                    <strong>{activeCalendarSchedulingRequests.length}</strong>
+                  </div>
+                  <div>
                     <span className="field-label">Cancelled</span>
                     <strong>{activeCalendarBuckets.cancelled.length}</strong>
                   </div>
@@ -5812,6 +5819,53 @@ export default function DashboardClient({
                     <strong>{activeCalendarBuckets.nextThirtyDays.length} next 30 days</strong>
                     <span>remaining active near-term events</span>
                   </div>
+                </div>
+
+                <div className="section-title">
+                  <h3>Scheduling requests</h3>
+                  <span>{activeCalendarSchedulingRequests.length} review records</span>
+                </div>
+                <div className="party-list">
+                  {activeCalendarSchedulingRequests.map((request) => (
+                    <div className="party-row" key={request.id}>
+                      <span>
+                        <strong>
+                          {request.title} · {compactStatus(request.status)}
+                        </strong>
+                        <small>
+                          {compactStatus(request.kind)} · source {request.source.label} · due{" "}
+                          {compactDate(request.requestedDueAt)} · event{" "}
+                          {request.linkedEvent
+                            ? `${request.linkedEvent.title} (${compactDate(
+                                request.linkedEvent.startsAt,
+                              )})`
+                            : "needs scheduling"}
+                        </small>
+                        <small>
+                          reminder {compactStatus(request.reminderSummary.posture)} · privacy{" "}
+                          {compactStatus(request.privacy.visibility)} · time{" "}
+                          {request.timeCaptureCue.redacted
+                            ? "restricted"
+                            : `${request.timeCaptureCue.posture.replace(/_/g, " ")}${
+                                request.timeCaptureCue.suggestedMinutes
+                                  ? ` (${request.timeCaptureCue.suggestedMinutes}m)`
+                                  : ""
+                              }`}
+                        </small>
+                      </span>
+                      <em className={request.status === "needs_review" ? "risk" : undefined}>
+                        {request.reviewBoundary.approvalCreatesTask ||
+                        request.reviewBoundary.approvalReschedulesEvent ||
+                        request.reviewBoundary.approvalCancelsReminder ||
+                        request.reviewBoundary.approvalCreatesTimeEntry
+                          ? "Automation enabled"
+                          : "Review only"}
+                      </em>
+                    </div>
+                  ))}
+                  {activeCalendarSchedulingRequests.length === 0 ? (
+                    <p className="inline-empty">No scheduling request records for this matter.</p>
+                  ) : null}
                 </div>
 
                 <div className="share-controls calendar-event-controls">

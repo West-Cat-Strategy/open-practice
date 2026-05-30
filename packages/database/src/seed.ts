@@ -2,6 +2,7 @@ import { clientTrustBalanceDeltas } from "@open-practice/domain";
 import {
   sampleAuditEvents,
   sampleCalendarEvents,
+  sampleCalendarSchedulingRequests,
   sampleContacts,
   sampleDraftTemplates,
   sampleDocuments,
@@ -148,6 +149,26 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
         assignedToUserId: task.assignedToUserId ?? null,
         dueAt: task.dueAt ? new Date(task.dueAt) : null,
         completedAt: task.completedAt ? new Date(task.completedAt) : null,
+      })),
+    )
+    .onConflictDoNothing();
+  await db
+    .insert(schema.calendarSchedulingRequests)
+    .values(
+      sampleCalendarSchedulingRequests.map((request) => ({
+        ...request,
+        taskId: request.taskId ?? null,
+        calendarEventId: request.calendarEventId ?? null,
+        calendarReminderId: request.calendarReminderId ?? null,
+        ownerUserId: request.ownerUserId ?? null,
+        sourceId: request.sourceId ?? null,
+        requestedDueAt: request.requestedDueAt ? new Date(request.requestedDueAt) : null,
+        requestedStartsAt: request.requestedStartsAt ? new Date(request.requestedStartsAt) : null,
+        requestedEndsAt: request.requestedEndsAt ? new Date(request.requestedEndsAt) : null,
+        createdAt: new Date(request.createdAt),
+        updatedAt: new Date(request.updatedAt),
+        reviewedAt: request.reviewedAt ? new Date(request.reviewedAt) : null,
+        reviewedByUserId: request.reviewedByUserId ?? null,
       })),
     )
     .onConflictDoNothing();

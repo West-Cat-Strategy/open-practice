@@ -298,6 +298,26 @@ export type CalendarMeetingSessionStatus = "lobby_closed" | "lobby_open" | "lock
 export type CalendarGuestLinkStatus = "issued" | "waiting" | "admitted" | "denied" | "revoked";
 export type CalendarEventReminderChannel = "dashboard";
 export type CalendarEventReminderStatus = "pending" | "acknowledged" | "dismissed" | "cancelled";
+export type CalendarSchedulingRequestKind =
+  | "deadline_review"
+  | "event_scheduling"
+  | "reminder_review";
+export type CalendarSchedulingRequestStatus =
+  | "needs_review"
+  | "reviewed"
+  | "scheduled"
+  | "dismissed";
+export type CalendarSchedulingRequestSourceType =
+  | "task_deadline"
+  | "calendar_event"
+  | "calendar_reminder"
+  | "manual";
+export type CalendarSchedulingRequestReminderPosture =
+  | "none"
+  | "dashboard_pending"
+  | "delivery_opt_in_available";
+export type CalendarSchedulingRequestPrivacy = "staff_only" | "matter_team";
+export type CalendarSchedulingRequestTimeCapturePosture = "none" | "draft_available" | "captured";
 export type CalendarMeetingBoundaryStatus = "disabled" | "configured";
 export type CalendarMeetingBoundaryReason =
   | "not_configured"
@@ -377,6 +397,87 @@ export interface CalendarEventRecord {
   attendees?: CalendarEventAttendeeRecord[];
   reminders?: CalendarEventReminderRecord[];
   meetingInvitationBoundary?: CalendarMeetingInvitationBoundary;
+}
+
+export interface CalendarSchedulingRequestTimeCaptureCue {
+  posture: CalendarSchedulingRequestTimeCapturePosture;
+  suggestedMinutes?: number;
+  existingTimeEntryCount: number;
+  billable: boolean;
+}
+
+export interface CalendarSchedulingRequestRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  kind: CalendarSchedulingRequestKind;
+  status: CalendarSchedulingRequestStatus;
+  title: string;
+  taskId?: string;
+  calendarEventId?: string;
+  calendarReminderId?: string;
+  ownerUserId?: string;
+  sourceType: CalendarSchedulingRequestSourceType;
+  sourceId?: string;
+  sourceLabel: string;
+  requestedDueAt?: string;
+  requestedStartsAt?: string;
+  requestedEndsAt?: string;
+  reminderPosture: CalendarSchedulingRequestReminderPosture;
+  privacy: CalendarSchedulingRequestPrivacy;
+  timeCaptureCue: CalendarSchedulingRequestTimeCaptureCue;
+  createdAt: string;
+  updatedAt: string;
+  createdByUserId: string;
+  updatedByUserId: string;
+  reviewedAt?: string;
+  reviewedByUserId?: string;
+}
+
+export interface CalendarSchedulingRequestSummary {
+  id: string;
+  matterId: string;
+  kind: CalendarSchedulingRequestKind;
+  status: CalendarSchedulingRequestStatus;
+  title: string;
+  ownerUserId?: string;
+  source: {
+    type: CalendarSchedulingRequestSourceType;
+    label: string;
+  };
+  linkedTaskId?: string;
+  linkedEvent?: {
+    id: string;
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    status: CalendarEventStatus;
+  };
+  linkedReminderId?: string;
+  requestedDueAt?: string;
+  requestedStartsAt?: string;
+  requestedEndsAt?: string;
+  reminderSummary: {
+    posture: CalendarSchedulingRequestReminderPosture;
+    pendingCount: number;
+    acknowledgedCount: number;
+    nextRemindAt?: string;
+  };
+  privacy: {
+    visibility: CalendarSchedulingRequestPrivacy;
+    clientVisible: false;
+  };
+  timeCaptureCue: CalendarSchedulingRequestTimeCaptureCue & {
+    redacted?: boolean;
+  };
+  reviewBoundary: {
+    approvalCreatesTask: false;
+    approvalReschedulesEvent: false;
+    approvalCancelsReminder: false;
+    approvalCreatesTimeEntry: false;
+  };
+  reviewedAt?: string;
+  reviewedByUserId?: string;
 }
 
 export interface CalendarMeetingSessionRecord {
