@@ -125,6 +125,12 @@ export const ROUTE_REGISTRARS = [
     "./routes/document-processing.js",
     "registerDocumentProcessingRoutes",
   ],
+  [
+    "document assembly",
+    "apps/api/src/routes/document-assembly.ts",
+    "./routes/document-assembly.js",
+    "registerDocumentAssemblyRoutes",
+  ],
   ["drafts", "apps/api/src/routes/drafts.ts", "./routes/drafts.js", "registerDraftRoutes"],
   [
     "draft assist",
@@ -214,6 +220,7 @@ export const ROUTE_REGISTRAR_TEST_FILES = {
   registerConnectorRoutes: ["apps/api/src/routes/connectors.test.ts"],
   registerContactRoutes: ["apps/api/src/routes/contacts.test.ts"],
   registerConversationThreadRoutes: ["apps/api/src/routes/conversation-threads.test.ts"],
+  registerDocumentAssemblyRoutes: ["apps/api/src/routes/document-assembly.test.ts"],
   registerDocumentProcessingRoutes: ["apps/api/src/routes/document-processing.test.ts"],
   registerDocumentRoutes: ["apps/api/src/routes/documents.test.ts"],
   registerE2ESupportRoutes: ["apps/api/src/routes/e2e-support.test.ts"],
@@ -660,6 +667,45 @@ function manifestAuthUsesGlobalPublic(auth) {
   return auth.kind === "public" || auth.kind === "token" || auth.globalPublic === true;
 }
 
+function authGuardEntries(auth) {
+  if (!auth || (auth.kind !== "authenticated" && auth.kind !== "basic")) return [];
+  if (Array.isArray(auth.guards)) return auth.guards;
+  return [
+    {
+      resource: auth.resource,
+      action: auth.action,
+      matterScope: auth.matterScope,
+      hasMatterScope: "matterScope" in auth,
+    },
+  ];
+}
+
+function validateAuthGuardEntry(key, guard, failures) {
+  if (!guard || typeof guard !== "object") {
+    failures.push(`${key} manifest guard must be an object.`);
+    return;
+  }
+
+  if (!VALID_AUTH_RESOURCES.includes(guard.resource)) {
+    failures.push(
+      `${key} manifest resource ${guard.resource ?? "<missing>"} is not a valid ResourceKind.`,
+    );
+  }
+
+  if (!VALID_AUTH_ACTIONS.includes(guard.action)) {
+    failures.push(`${key} manifest action ${guard.action ?? "<missing>"} is not a valid Action.`);
+  }
+
+  const hasMatterScope = guard.hasMatterScope ?? "matterScope" in guard;
+  if (MATTER_SCOPED_AUTH_RESOURCES.includes(guard.resource) && !hasMatterScope) {
+    failures.push(`${key} manifest resource ${guard.resource} must declare matterScope.`);
+  }
+
+  if (hasMatterScope && !VALID_MATTER_SCOPES.includes(guard.matterScope)) {
+    failures.push(`${key} manifest matterScope ${guard.matterScope} is not supported.`);
+  }
+}
+
 function validateAuthEntry(entry, failures, pathExists, knownRegistrars) {
   const key = routeAuthorizationKey(entry);
 
@@ -691,23 +737,12 @@ function validateAuthEntry(entry, failures, pathExists, knownRegistrars) {
     return;
   }
 
-  if (!VALID_AUTH_RESOURCES.includes(auth.resource)) {
-    failures.push(
-      `${key} manifest resource ${auth.resource ?? "<missing>"} is not a valid ResourceKind.`,
-    );
+  const guards = authGuardEntries(auth);
+  if (guards.length === 0) {
+    failures.push(`${key} manifest must declare at least one auth guard.`);
+    return;
   }
-
-  if (!VALID_AUTH_ACTIONS.includes(auth.action)) {
-    failures.push(`${key} manifest action ${auth.action ?? "<missing>"} is not a valid Action.`);
-  }
-
-  if (MATTER_SCOPED_AUTH_RESOURCES.includes(auth.resource) && !("matterScope" in auth)) {
-    failures.push(`${key} manifest resource ${auth.resource} must declare matterScope.`);
-  }
-
-  if ("matterScope" in auth && !VALID_MATTER_SCOPES.includes(auth.matterScope)) {
-    failures.push(`${key} manifest matterScope ${auth.matterScope} is not supported.`);
-  }
+  for (const guard of guards) validateAuthGuardEntry(key, guard, failures);
 }
 
 export function collectRouteAuthorizationManifestFailures({

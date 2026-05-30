@@ -32,6 +32,7 @@ import { registerConnectorRoutes } from "./routes/connectors.js";
 import { registerCommunicationsRoutes } from "./routes/communications.js";
 import { registerConversationThreadRoutes } from "./routes/conversation-threads.js";
 import { registerDocumentProcessingRoutes } from "./routes/document-processing.js";
+import { registerDocumentAssemblyRoutes } from "./routes/document-assembly.js";
 import { registerDocumentRoutes } from "./routes/documents.js";
 import { registerDraftAssistRoutes } from "./routes/draft-assist.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
@@ -438,6 +439,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     jwtSecret: options.jwtSecret,
   });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
+  registerDocumentAssemblyRoutes(server, { repository: options.repository });
   if (options.e2eSupport) {
     registerE2ESupportRoutes(server, { repository: options.repository });
   }

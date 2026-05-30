@@ -1,5 +1,7 @@
 import type {
   AnswerSnapshotRecord,
+  DocumentAssemblyPackageRecord,
+  DocumentAssemblySetDefinitionRecord,
   DocumentTextExtractionRecord,
   GeneratedDocumentRecord,
   IntakeSessionRecord,
@@ -8,6 +10,7 @@ import type {
   SignatureProviderEventRecord,
   SignatureRequestRecord,
   SignatureRequestSignerRecord,
+  SignatureEnvelopeRecord,
   SignatureWebhookAttemptRecord,
 } from "@open-practice/domain";
 import {
@@ -1175,7 +1178,23 @@ export interface OpenPracticeRepository {
     reviewedAt: string;
     rejectionReason?: string;
   }): Promise<IntakeVariableProposal | undefined>;
+  listGeneratedDocuments(
+    firmId: string,
+    options?: { matterId?: string; documentId?: string },
+  ): Promise<GeneratedDocumentRecord[]>;
   createGeneratedDocument(document: GeneratedDocumentRecord): Promise<GeneratedDocumentRecord>;
+  listDocumentAssemblySetDefinitions(
+    firmId: string,
+    options?: { activeOnly?: boolean },
+  ): Promise<DocumentAssemblySetDefinitionRecord[]>;
+  listDocumentAssemblyPackages(
+    firmId: string,
+    options?: { matterId?: string; definitionId?: string },
+  ): Promise<DocumentAssemblyPackageRecord[]>;
+  listSignatureEnvelopes(
+    firmId: string,
+    options?: { matterId?: string; assemblyPackageId?: string; signatureRequestId?: string },
+  ): Promise<SignatureEnvelopeRecord[]>;
   createLedgerTransactionApproval(
     approval: LedgerTransactionApprovalRecord,
   ): Promise<LedgerTransactionApprovalRecord>;

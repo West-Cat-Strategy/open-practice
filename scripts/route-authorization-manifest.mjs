@@ -77,6 +77,12 @@ const authRoute = (registrar, testFile, method, path, resource, action, matterSc
     matterScope,
   });
 
+const multiGuardAuthRoute = (registrar, testFile, method, path, guards) =>
+  route(registrar, testFile, method, path, {
+    kind: "authenticated",
+    guards,
+  });
+
 const calDavRoute = (method, path, action, matterScope = "derived") =>
   route("registerCalDavRoutes", "apps/api/src/routes/caldav.test.ts", method, path, {
     kind: "basic",
@@ -1257,6 +1263,16 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "document_processing",
     "create",
     "derived",
+  ),
+  multiGuardAuthRoute(
+    "registerDocumentAssemblyRoutes",
+    "apps/api/src/routes/document-assembly.test.ts",
+    "GET",
+    "/api/document-assembly/workbench",
+    [
+      { resource: "document", action: "read", matterScope: "required" },
+      { resource: "signature_request", action: "read", matterScope: "required" },
+    ],
   ),
 
   authRoute(

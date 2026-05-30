@@ -5,6 +5,7 @@ import type {
   BillingRateSnapshot,
   Contact,
   ConflictCandidate,
+  DocumentAssemblyWorkspace,
   DocumentRecord,
   GeneratedDocumentRecord,
   DraftRecord,
@@ -139,6 +140,16 @@ export interface ContactReviewQueueResponse {
 }
 
 export type ContactDataQualityResolutionsResponse = ContactDataQualityResolutionRecord[];
+
+export type DocumentAssemblyWorkbenchStatus = "available" | "access_denied" | "unavailable";
+
+export type DocumentAssemblyWorkbenchResponse = DocumentAssemblyWorkspace & {
+  status: DocumentAssemblyWorkbenchStatus;
+};
+
+export interface DocumentAssemblyDashboardResponse {
+  workbenchesByMatterId: Record<string, DocumentAssemblyWorkbenchResponse>;
+}
 
 export interface IntakeSessionsResponse {
   templates: IntakeTemplateRecord[];

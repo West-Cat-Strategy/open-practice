@@ -24,6 +24,8 @@ import {
   connectors,
   conversationMessages,
   conversationThreads,
+  documentAssemblyPackages,
+  documentAssemblySetDefinitions,
   documentTextExtractions,
   documentVersions,
   documents,
@@ -58,6 +60,7 @@ import {
   recoveryCodes,
   savedOperationalViewDefinitions,
   shareLinks,
+  signatureEnvelopes,
   signatureProviderEvents,
   signatureRequestSigners,
   signatureRequests,
@@ -762,6 +765,58 @@ describe("database schema hardening", () => {
     );
     expect(getTableConfig(intakeTemplates).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["description", "category", "created_at", "updated_at", "metadata"]),
+    );
+  });
+
+  it("persists document assembly sets, packages, and signature envelope metadata", () => {
+    const setConfig = getTableConfig(documentAssemblySetDefinitions);
+    const packageConfig = getTableConfig(documentAssemblyPackages);
+    const envelopeConfig = getTableConfig(signatureEnvelopes);
+
+    expect(setConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "name",
+        "document_refs",
+        "required_merge_fields",
+        "active",
+        "metadata",
+      ]),
+    );
+    expect(packageConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "definition_id",
+        "status",
+        "population_status",
+        "document_ids",
+        "generated_document_ids",
+        "signature_request_ids",
+      ]),
+    );
+    expect(envelopeConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "assembly_package_id",
+        "signature_request_id",
+        "signer_order",
+        "field_placements",
+        "validation_status",
+      ]),
+    );
+    expect(packageConfig.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "document_assembly_packages_status_value",
+        "document_assembly_packages_population_status_value",
+      ]),
+    );
+    expect(envelopeConfig.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "signature_envelopes_status_value",
+        "signature_envelopes_validation_status_value",
+      ]),
     );
   });
 

@@ -29,6 +29,7 @@ import {
   initialFirstMatterFormState,
   summarizeQueues,
 } from "./dashboard-utils";
+import { DocumentAssemblyDashboardBlock } from "./dashboard-client";
 import {
   buildConflictCheckPayload,
   describeConflictCheckStatus,
@@ -100,6 +101,12 @@ import {
   summarizeDocumentReviewSuggestions,
   summarizeDocumentProcessingWorkbench,
 } from "./document-processing-dashboard";
+import {
+  buildDocumentAssemblyWorkbenchPath,
+  emptyDocumentAssemblyWorkbench,
+  loadDocumentAssemblyDashboardData,
+  summarizeDocumentAssemblyWorkbench,
+} from "./document-assembly-dashboard";
 import {
   buildCalendarEventPayload,
   buildCalendarInvitationPayload,
@@ -278,6 +285,7 @@ import { MatterOverviewSection } from "./dashboard/matter-overview-section";
 import type {
   ExternalUploadLinkRecord,
   ExternalUploadReviewItem,
+  DocumentAssemblyWorkbenchResponse,
   DocumentProcessingWorkbenchResponse,
   CommunicationsInboxMatterResponse,
   BillingDashboardResponse,
@@ -739,6 +747,78 @@ function documentProcessingWorkbench(
         ],
       },
     ],
+    ...overrides,
+  };
+}
+
+function documentAssemblyWorkbench(
+  overrides: Partial<DocumentAssemblyWorkbenchResponse> = {},
+): DocumentAssemblyWorkbenchResponse {
+  return {
+    matterId: "matter-001",
+    status: "available",
+    definitions: [
+      {
+        id: "set-001",
+        name: "Synthetic retainer package",
+        documentCount: 1,
+        requiredDocumentCount: 1,
+        signerRoles: ["client"],
+        requiredMergeFieldCount: 1,
+      },
+    ],
+    packages: [
+      {
+        package: {
+          id: "assembly-package-001",
+          title: "Synthetic retainer package",
+          status: "assembled",
+          populationStatus: "populated",
+          createdAt: "2026-05-29T17:00:00.000Z",
+          updatedAt: "2026-05-29T17:05:00.000Z",
+        },
+        definition: {
+          id: "set-001",
+          name: "Synthetic retainer package",
+          documentCount: 1,
+          requiredDocumentCount: 1,
+          signerRoles: ["client"],
+          requiredMergeFieldCount: 1,
+        },
+        documents: [],
+        generatedDocuments: [],
+        signatureRequests: [],
+        envelopes: [
+          {
+            envelope: {
+              id: "envelope-001",
+              title: "Synthetic envelope",
+              status: "sent",
+              signerOrder: [{ role: "client", order: 1, required: true }],
+              fieldSummaries: [{ fieldType: "signature", count: 1, requiredCount: 1 }],
+              validationStatus: "valid",
+              createdAt: "2026-05-29T17:02:00.000Z",
+              updatedAt: "2026-05-29T17:02:00.000Z",
+            },
+            validationIssues: [],
+          },
+        ],
+        readiness: {
+          blockedReasons: [],
+          documentCount: 1,
+          generatedDocumentCount: 1,
+          signatureRequestCount: 1,
+          missingDefinition: false,
+        },
+      },
+    ],
+    summary: {
+      packageCount: 1,
+      activeDefinitionCount: 1,
+      blockedPackageCount: 0,
+      envelopeCount: 1,
+      validEnvelopeCount: 1,
+    },
     ...overrides,
   };
 }
@@ -3154,6 +3234,98 @@ describe("dashboard client behavior", () => {
         documentProcessingWorkbench({ matterId: "matter-002" }),
       ),
     ).toHaveProperty("matter-002");
+  });
+
+  it("loads document assembly workbenches without raw signer or storage fields", async () => {
+    const activeMatter = matter({ id: "matter-001" });
+    const workbench = documentAssemblyWorkbench();
+    const loaded = await loadDocumentAssemblyDashboardData({
+      matters: [activeMatter],
+      getWorkbench: async () => workbench,
+    });
+
+    expect(buildDocumentAssemblyWorkbenchPath("matter 001")).toBe(
+      "/api/document-assembly/workbench?matterId=matter%20001",
+    );
+    expect(loaded.workbenchesByMatterId["matter-001"]?.summary).toMatchObject({
+      packageCount: 1,
+      envelopeCount: 1,
+      validEnvelopeCount: 1,
+    });
+    expect(summarizeDocumentAssemblyWorkbench(workbench)).toBe(
+      "1 packages · 1 envelopes · 0 blocked",
+    );
+    const serialized = JSON.stringify(loaded);
+    expect(serialized).not.toContain("storageKey");
+    expect(serialized).not.toContain("ada@example.test");
+    expect(emptyDocumentAssemblyWorkbench("matter-002", "access_denied").status).toBe(
+      "access_denied",
+    );
+  });
+
+  it("renders document assembly dashboard summaries without raw signer or storage fields", () => {
+    const base = documentAssemblyWorkbench();
+    const assemblyPackage = base.packages[0];
+    const envelope = assemblyPackage?.envelopes[0];
+    if (!assemblyPackage || !envelope) throw new Error("Expected document assembly fixture.");
+    const poisonedValues = [
+      "poison-dashboard-storage-key",
+      "poison-dashboard-signer@example.test",
+      "poison-dashboard-consent-text",
+      "poison-dashboard-signing-url",
+      "poison-dashboard-provider-evidence",
+      "poison-dashboard-raw-populated-value",
+      "poison-dashboard-field-anchor",
+      "poison-dashboard-signer-user-id",
+    ];
+    const poisonedWorkbench = {
+      ...base,
+      rawPopulatedValues: { clientName: "poison-dashboard-raw-populated-value" },
+      packages: [
+        {
+          ...assemblyPackage,
+          package: {
+            ...assemblyPackage.package,
+            storageKey: "poison-dashboard-storage-key",
+            providerEvidence: "poison-dashboard-provider-evidence",
+          },
+          envelopes: [
+            {
+              ...envelope,
+              envelope: {
+                ...envelope.envelope,
+                fieldPlacements: [{ anchor: "poison-dashboard-field-anchor" }],
+                signerUserId: "poison-dashboard-signer-user-id",
+              },
+              linkedSignature: {
+                id: "signature-001",
+                documentId: "doc-001",
+                title: "Synthetic signature request",
+                status: "sent",
+                createdAt: "2026-05-29T17:02:00.000Z",
+                signerEmail: "poison-dashboard-signer@example.test",
+                consentText: "poison-dashboard-consent-text",
+                signingUrl: "poison-dashboard-signing-url",
+              },
+            },
+          ],
+        },
+      ],
+    } as unknown as DocumentAssemblyWorkbenchResponse;
+
+    const html = renderToStaticMarkup(
+      createElement(DocumentAssemblyDashboardBlock, { workbench: poisonedWorkbench }),
+    );
+
+    expect(html).toContain("Document assembly");
+    expect(html).toContain("1 packages · 1 envelopes · 0 blocked");
+    expect(html).toContain("IDs, roles, counts, and statuses only");
+    expect(html).toContain("Synthetic retainer package");
+    expect(html).toContain("1 signer roles");
+    expect(html).toContain("1 field summaries");
+    for (const poison of poisonedValues) {
+      expect(html).not.toContain(poison);
+    }
   });
 
   it("derives matter activity and file command-center summaries without raw file fields", () => {

@@ -1,11 +1,14 @@
 import type {
   AnswerSnapshotRecord,
+  DocumentAssemblyPackageRecord,
+  DocumentAssemblySetDefinitionRecord,
   DocumentTextExtractionRecord,
   GeneratedDocumentRecord,
   IntakeSessionRecord,
   IntakeTemplateRecord,
   SignatureProviderEventRecord,
   SignatureProviderStatus,
+  SignatureEnvelopeRecord,
   SignatureRequestRecord,
   SignatureRequestSignerRecord,
   SignatureWebhookAttemptRecord,
@@ -1048,6 +1051,69 @@ export function mapGeneratedDocumentRow(
     checksumSha256: row.checksumSha256 ?? undefined,
     evidence: row.evidence as Record<string, unknown>,
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function mapDocumentAssemblySetDefinitionRow(
+  row: typeof schema.documentAssemblySetDefinitions.$inferSelect,
+): DocumentAssemblySetDefinitionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    name: row.name,
+    description: row.description ?? undefined,
+    practiceArea: row.practiceArea ?? undefined,
+    documentRefs: row.documentRefs,
+    requiredMergeFields: row.requiredMergeFields,
+    active: row.active,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    metadata: row.metadata,
+  };
+}
+
+export function mapDocumentAssemblyPackageRow(
+  row: typeof schema.documentAssemblyPackages.$inferSelect,
+): DocumentAssemblyPackageRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    definitionId: row.definitionId ?? undefined,
+    title: row.title,
+    status: row.status,
+    populationStatus: row.populationStatus,
+    sourceDraftId: row.sourceDraftId ?? undefined,
+    intakeSessionId: row.intakeSessionId ?? undefined,
+    packageId: row.packageId ?? undefined,
+    documentIds: row.documentIds,
+    generatedDocumentIds: row.generatedDocumentIds,
+    signatureRequestIds: row.signatureRequestIds,
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    metadata: row.metadata,
+  };
+}
+
+export function mapSignatureEnvelopeRow(
+  row: typeof schema.signatureEnvelopes.$inferSelect,
+): SignatureEnvelopeRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    assemblyPackageId: row.assemblyPackageId ?? undefined,
+    signatureRequestId: row.signatureRequestId ?? undefined,
+    title: row.title,
+    status: row.status,
+    signerOrder: row.signerOrder,
+    fieldPlacements: row.fieldPlacements,
+    validationStatus: row.validationStatus,
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    metadata: row.metadata,
   };
 }
 

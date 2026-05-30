@@ -123,6 +123,11 @@ describe("validate-open-practice-boundaries contract", () => {
           path: "/api/documents/:id/upload-complete",
           registrar: "registerDocumentRoutes",
         },
+        {
+          method: "GET",
+          path: "/api/document-assembly/workbench",
+          registrar: "registerDocumentAssemblyRoutes",
+        },
       ],
       manifest: [
         {
@@ -145,6 +150,19 @@ describe("validate-open-practice-boundaries contract", () => {
           registrar: "registerDocumentRoutes",
           testFile: "apps/api/src/routes/documents.test.ts",
           auth: { kind: "authenticated", resource: "document", action: "update" },
+        },
+        {
+          method: "GET",
+          path: "/api/document-assembly/workbench",
+          registrar: "registerDocumentAssemblyRoutes",
+          testFile: "apps/api/src/routes/document-assembly.test.ts",
+          auth: {
+            kind: "authenticated",
+            guards: [
+              { resource: "document", action: "read", matterScope: "required" },
+              { resource: "signature_request", action: "read", matterScope: "required" },
+            ],
+          },
         },
         {
           method: "GET",
@@ -184,6 +202,11 @@ describe("validate-open-practice-boundaries contract", () => {
       failures.includes(
         "POST /api/documents/:id/upload-complete manifest resource document must declare matterScope.",
       ),
+    );
+    assert.ok(
+      failures.includes(
+        "GET /api/document-assembly/workbench manifest must declare at least one auth guard.",
+      ) === false,
     );
     assert.ok(
       failures.includes(

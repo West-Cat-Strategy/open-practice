@@ -1,10 +1,13 @@
 import type {
   AnswerSnapshotRecord,
+  DocumentAssemblyPackageRecord,
+  DocumentAssemblySetDefinitionRecord,
   DocumentTextExtractionRecord,
   GeneratedDocumentRecord,
   IntakeSessionRecord,
   IntakeTemplateRecord,
   SignatureProviderEventRecord,
+  SignatureEnvelopeRecord,
   SignatureRequestRecord,
   SignatureRequestSignerRecord,
   SignatureWebhookAttemptRecord,
@@ -111,6 +114,8 @@ import {
 import {
   sampleAuditEvents,
   sampleCalendarEvents,
+  sampleDocumentAssemblyPackages,
+  sampleDocumentAssemblySetDefinitions,
   sampleContacts,
   sampleDocuments,
   sampleDraftTemplates,
@@ -131,6 +136,7 @@ import {
   samplePaymentAllocations,
   samplePortalGrants,
   sampleSignatureProviderEvents,
+  sampleSignatureEnvelopes,
   sampleSignatureRequestSigners,
   sampleSignatureRequests,
   sampleSignatureWebhookAttempts,
@@ -257,6 +263,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private intakeVariableProposals: IntakeVariableProposal[] = [];
   private conflictChecks: ConflictCheckRecord[] = [];
   private generatedDocuments: GeneratedDocumentRecord[];
+  private documentAssemblySetDefinitions: DocumentAssemblySetDefinitionRecord[];
+  private documentAssemblyPackages: DocumentAssemblyPackageRecord[];
+  private signatureEnvelopes: SignatureEnvelopeRecord[];
   private firmSettings: FirmSettings[] = [];
   private providerSettings: ProviderSettingRecord[] = [];
   private publicConsultationIntakes: PublicConsultationIntakeRecord[] = [];
@@ -318,6 +327,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.signatureRequests = seeded ? clone(sampleSignatureRequests) : [];
     this.intakeSessions = seeded ? clone(sampleIntakeSessions) : [];
     this.generatedDocuments = seeded ? clone(sampleGeneratedDocuments) : [];
+    this.documentAssemblySetDefinitions = seeded ? clone(sampleDocumentAssemblySetDefinitions) : [];
+    this.documentAssemblyPackages = seeded ? clone(sampleDocumentAssemblyPackages) : [];
+    this.signatureEnvelopes = seeded ? clone(sampleSignatureEnvelopes) : [];
     this.auditEvents = seeded ? clone(sampleAuditEvents) : [];
     this.postedTransactions = seeded
       ? [
@@ -3775,11 +3787,76 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     }
   }
 
+  async listGeneratedDocuments(
+    firmId: string,
+    options: { matterId?: string; documentId?: string } = {},
+  ): Promise<GeneratedDocumentRecord[]> {
+    return clone(
+      this.generatedDocuments
+        .filter(
+          (document) =>
+            document.firmId === firmId &&
+            (!options.matterId || document.matterId === options.matterId) &&
+            (!options.documentId || document.documentId === options.documentId),
+        )
+        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
+    );
+  }
+
   async createGeneratedDocument(
     document: GeneratedDocumentRecord,
   ): Promise<GeneratedDocumentRecord> {
     this.generatedDocuments = [...this.generatedDocuments, clone(document)];
     return clone(document);
+  }
+
+  async listDocumentAssemblySetDefinitions(
+    firmId: string,
+    options: { activeOnly?: boolean } = {},
+  ): Promise<DocumentAssemblySetDefinitionRecord[]> {
+    return clone(
+      this.documentAssemblySetDefinitions
+        .filter(
+          (definition) =>
+            definition.firmId === firmId && (!options.activeOnly || definition.active),
+        )
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    );
+  }
+
+  async listDocumentAssemblyPackages(
+    firmId: string,
+    options: { matterId?: string; definitionId?: string } = {},
+  ): Promise<DocumentAssemblyPackageRecord[]> {
+    return clone(
+      this.documentAssemblyPackages
+        .filter(
+          (item) =>
+            item.firmId === firmId &&
+            (!options.matterId || item.matterId === options.matterId) &&
+            (!options.definitionId || item.definitionId === options.definitionId),
+        )
+        .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)),
+    );
+  }
+
+  async listSignatureEnvelopes(
+    firmId: string,
+    options: { matterId?: string; assemblyPackageId?: string; signatureRequestId?: string } = {},
+  ): Promise<SignatureEnvelopeRecord[]> {
+    return clone(
+      this.signatureEnvelopes
+        .filter(
+          (envelope) =>
+            envelope.firmId === firmId &&
+            (!options.matterId || envelope.matterId === options.matterId) &&
+            (!options.assemblyPackageId ||
+              envelope.assemblyPackageId === options.assemblyPackageId) &&
+            (!options.signatureRequestId ||
+              envelope.signatureRequestId === options.signatureRequestId),
+        )
+        .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)),
+    );
   }
 
   async createLedgerTransactionApproval(

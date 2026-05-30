@@ -3,6 +3,8 @@ import {
   sampleAuditEvents,
   sampleCalendarEvents,
   sampleContacts,
+  sampleDocumentAssemblyPackages,
+  sampleDocumentAssemblySetDefinitions,
   sampleDraftTemplates,
   sampleDocuments,
   sampleExpenseEntries,
@@ -22,6 +24,7 @@ import {
   samplePaymentAllocations,
   samplePortalGrants,
   sampleSignatureProviderEvents,
+  sampleSignatureEnvelopes,
   sampleSignatureRequestSigners,
   sampleSignatureRequests,
   sampleSignatureWebhookAttempts,
@@ -369,6 +372,50 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
           ...document,
           intakeSessionId: document.intakeSessionId ?? null,
           createdAt: new Date(document.createdAt),
+        })),
+      )
+      .onConflictDoNothing();
+  }
+  if (sampleDocumentAssemblySetDefinitions.length > 0) {
+    await db
+      .insert(schema.documentAssemblySetDefinitions)
+      .values(
+        sampleDocumentAssemblySetDefinitions.map((definition) => ({
+          ...definition,
+          description: definition.description ?? null,
+          practiceArea: definition.practiceArea ?? null,
+          createdAt: new Date(definition.createdAt),
+          updatedAt: new Date(definition.updatedAt),
+        })),
+      )
+      .onConflictDoNothing();
+  }
+  if (sampleDocumentAssemblyPackages.length > 0) {
+    await db
+      .insert(schema.documentAssemblyPackages)
+      .values(
+        sampleDocumentAssemblyPackages.map((item) => ({
+          ...item,
+          definitionId: item.definitionId ?? null,
+          sourceDraftId: item.sourceDraftId ?? null,
+          intakeSessionId: item.intakeSessionId ?? null,
+          packageId: item.packageId ?? null,
+          createdAt: new Date(item.createdAt),
+          updatedAt: new Date(item.updatedAt),
+        })),
+      )
+      .onConflictDoNothing();
+  }
+  if (sampleSignatureEnvelopes.length > 0) {
+    await db
+      .insert(schema.signatureEnvelopes)
+      .values(
+        sampleSignatureEnvelopes.map((envelope) => ({
+          ...envelope,
+          assemblyPackageId: envelope.assemblyPackageId ?? null,
+          signatureRequestId: envelope.signatureRequestId ?? null,
+          createdAt: new Date(envelope.createdAt),
+          updatedAt: new Date(envelope.updatedAt),
         })),
       )
       .onConflictDoNothing();

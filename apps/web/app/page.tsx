@@ -22,6 +22,11 @@ import {
   loadDocumentProcessingDashboardData,
 } from "./document-processing-dashboard";
 import {
+  buildDocumentAssemblyWorkbenchPath,
+  emptyDocumentAssemblyWorkbench,
+  loadDocumentAssemblyDashboardData,
+} from "./document-assembly-dashboard";
+import {
   buildExternalUploadListPath,
   canCreateExternalUpload,
   externalUploadsStatusFallback,
@@ -87,6 +92,8 @@ import type {
   ContactDataQualityResolutionsResponse,
   ContactDossiersResponse,
   ContactReviewQueueResponse,
+  DocumentAssemblyDashboardResponse,
+  DocumentAssemblyWorkbenchResponse,
   DocumentProcessingDashboardResponse,
   DocumentProcessingWorkbenchResponse,
   DraftingDashboardResponse,
@@ -290,7 +297,6 @@ function buildBillingFallback(
         description: entry.description,
         status: "approved" as const,
       }));
-
     return {
       matterId: matter.id,
       unbilledTime,
@@ -618,6 +624,18 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
           ),
       })
     : { workbenchesByMatterId: {} };
+  const documentAssembly: DocumentAssemblyDashboardResponse = canViewDocuments
+    ? await loadDocumentAssemblyDashboardData({
+        matters,
+        getWorkbench: (matterId) =>
+          apiGetOptional<DocumentAssemblyWorkbenchResponse>(
+            buildDocumentAssemblyWorkbenchPath(matterId),
+            emptyDocumentAssemblyWorkbench(matterId),
+            headers,
+            emptyDocumentAssemblyWorkbench(matterId, "access_denied"),
+          ),
+      })
+    : { workbenchesByMatterId: {} };
   const shareLinksStatus = await apiGetOptional<ShareLinksStatusResponse>(
     "/api/shares/status",
     { createStatus: "disabled", reason: "share_routes_unavailable" },
@@ -745,6 +763,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       contactDossiers={contactDossiers}
       contactReviewQueue={contactReviewQueue}
       devHeaders={process.env.NODE_ENV === "production" ? {} : devHeaders}
+      documentAssembly={documentAssembly}
       documentProcessing={documentProcessing}
       drafting={drafting}
       emailDeliveryHistory={emailDeliveryHistory}

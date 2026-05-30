@@ -6,6 +6,11 @@ import type {
   TrustTransferRequestRecord,
 } from "./billing.js";
 import type {
+  DocumentAssemblyPackageRecord,
+  DocumentAssemblySetDefinitionRecord,
+  SignatureEnvelopeRecord,
+} from "./document-assembly.js";
+import type {
   Contact,
   CalendarEventRecord,
   DocumentRecord,
@@ -464,7 +469,110 @@ export const sampleIntakeSessions: IntakeSessionRecord[] = [
   },
 ];
 
-export const sampleGeneratedDocuments: GeneratedDocumentRecord[] = [];
+export const sampleGeneratedDocuments: GeneratedDocumentRecord[] = [
+  {
+    id: "generated-doc-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    provider: "embedded",
+    externalId: "draft-export:draft-sample-retainer:doc-001",
+    title: "Retainer agreement",
+    documentId: "doc-001",
+    storageKey: "matters/matter-001/draft-exports/generated-doc-001-retainer.pdf",
+    checksumSha256: "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c",
+    evidence: {
+      source: "draft_export",
+      draftId: "draft-sample-retainer",
+      draftVersion: 1,
+      format: "pdf",
+    },
+    createdAt: "2026-04-03T18:20:00.000Z",
+  },
+];
+
+export const sampleDocumentAssemblySetDefinitions: DocumentAssemblySetDefinitionRecord[] = [
+  {
+    id: "assembly-set-retainer",
+    firmId: sampleFirm.id,
+    name: "Retainer signature package",
+    description: "Synthetic reusable retainer package metadata.",
+    practiceArea: "housing",
+    documentRefs: [
+      {
+        id: "retainer-agreement",
+        title: "Retainer agreement",
+        sourceKind: "draft_template",
+        sourceId: "template-general-retainer",
+        required: true,
+        signerRoles: ["client"],
+      },
+    ],
+    requiredMergeFields: ["client.displayName", "matter.number", "matter.title"],
+    active: true,
+    createdAt: "2026-04-03T18:00:00.000Z",
+    updatedAt: "2026-04-03T18:00:00.000Z",
+    metadata: { source: "seed" },
+  },
+];
+
+export const sampleDocumentAssemblyPackages: DocumentAssemblyPackageRecord[] = [
+  {
+    id: "assembly-package-retainer-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    definitionId: "assembly-set-retainer",
+    title: "Retainer signature package",
+    status: "assembled",
+    populationStatus: "populated",
+    documentIds: ["doc-001"],
+    generatedDocumentIds: ["generated-doc-001"],
+    signatureRequestIds: ["sig-001"],
+    createdByUserId: "user-licensee",
+    createdAt: "2026-04-03T18:25:00.000Z",
+    updatedAt: "2026-04-03T18:30:00.000Z",
+    metadata: { source: "seed" },
+  },
+];
+
+export const sampleSignatureEnvelopes: SignatureEnvelopeRecord[] = [
+  {
+    id: "signature-envelope-retainer-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    assemblyPackageId: "assembly-package-retainer-001",
+    signatureRequestId: "sig-001",
+    title: "Retainer client signature envelope",
+    status: "sent",
+    signerOrder: [{ role: "client", order: 1, required: true }],
+    fieldPlacements: [
+      {
+        id: "client-signature",
+        role: "client",
+        fieldType: "signature",
+        page: 1,
+        required: true,
+        documentId: "doc-001",
+        xPercent: 72,
+        yPercent: 84,
+      },
+      {
+        id: "client-date",
+        role: "client",
+        fieldType: "date",
+        page: 1,
+        required: true,
+        documentId: "doc-001",
+        xPercent: 72,
+        yPercent: 90,
+      },
+    ],
+    validationStatus: "valid",
+    createdByUserId: "user-licensee",
+    createdAt: "2026-04-03T18:28:00.000Z",
+    updatedAt: "2026-04-03T18:30:00.000Z",
+    metadata: { source: "seed" },
+  },
+];
 
 export const sampleDraftTemplates = buildBasicDraftTemplates(
   sampleFirm.id,
