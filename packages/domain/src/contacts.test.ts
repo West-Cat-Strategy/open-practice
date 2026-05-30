@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildContactDossiers, validateContactDataQualityResolutionRecord } from "./contacts.js";
 import {
+  buildContactDossiers,
+  validateContactDataQualityResolutionRecord,
+  validateContactRelationshipRecord,
+} from "./contacts.js";
+import {
+  sampleContactRelationships,
   sampleContacts,
   sampleMatterParties,
   sampleMatters,
@@ -41,6 +46,64 @@ describe("contact dossiers", () => {
       ],
     });
     expect(dossiers[0].contact).not.toHaveProperty("notes");
+  });
+
+  it("adds conflict-safe CRM taxonomy and relationship graph summaries", () => {
+    const dossiers = buildContactDossiers({
+      firmId: "firm-west-legal",
+      contacts: sampleContacts,
+      matters: sampleMatters.filter((matter) => matter.id === "matter-001"),
+      matterParties: sampleMatterParties,
+      portalGrants: samplePortalGrants,
+      contactRelationships: sampleContactRelationships,
+      now: "2026-05-29T12:00:00.000Z",
+    });
+
+    const ada = dossiers.find((dossier) => dossier.contact.id === "contact-ada")!;
+    expect(ada.crmTaxonomy).toMatchObject({
+      entityType: "person",
+      relatedMatterSummary: {
+        total: 1,
+        clientRoleCount: 1,
+        adverseRoleCount: 0,
+        confidentialRoleCount: 1,
+        portalMatterCount: 1,
+      },
+      relationshipSummary: {
+        activeCount: 1,
+        reviewNeededCount: 0,
+        organizationCount: 1,
+        personCount: 0,
+      },
+    });
+    expect(ada.crmTaxonomy.labels.map((label) => label.key)).toEqual(
+      expect.arrayContaining([
+        "person",
+        "client_contact",
+        "confidential_handling",
+        "portal_enabled",
+        "relationship_graph",
+      ]),
+    );
+    expect(ada.relationships).toEqual([
+      {
+        id: "contact-relationship-ada-river-counterparty",
+        direction: "outbound",
+        relationshipKind: "opposing_party_for",
+        label: "Matter counterparty",
+        conflictSafeLabel: "Matter counterparty",
+        status: "active",
+        source: "matter_party",
+        relatedContact: {
+          kind: "organization",
+          displayName: "River City Rentals Inc.",
+        },
+        visibleMatterIds: ["matter-001"],
+      },
+    ]);
+    expect(JSON.stringify(ada.relationships)).not.toContain("contact-river");
+    expect(JSON.stringify(dossiers)).not.toContain("North Star Holdings");
+    expect(JSON.stringify(dossiers)).not.toContain("contact-northstar");
   });
 
   it("marks adverse party links without adding conflict-check records", () => {
@@ -257,5 +320,41 @@ describe("contact dossiers", () => {
         recordedAt: "not-a-date",
       }),
     ).toThrow("timestamp is invalid");
+  });
+
+  it("validates contact relationship records", () => {
+    const relationship = {
+      id: "relationship-001",
+      firmId: "firm-west-legal",
+      contactId: "contact-ada",
+      relatedContactId: "contact-river",
+      relationshipKind: "opposing_party_for",
+      label: "Matter counterparty",
+      matterId: "matter-001",
+      source: "matter_party",
+      status: "active",
+      createdAt: "2026-05-29T12:00:00.000Z",
+      updatedAt: "2026-05-29T12:00:00.000Z",
+    } as const;
+
+    expect(() => validateContactRelationshipRecord(relationship)).not.toThrow();
+    expect(() =>
+      validateContactRelationshipRecord({
+        ...relationship,
+        relatedContactId: "contact-ada",
+      }),
+    ).toThrow("related contact must differ");
+    expect(() =>
+      validateContactRelationshipRecord({
+        ...relationship,
+        relationshipKind: "unsupported" as never,
+      }),
+    ).toThrow("kind is invalid");
+    expect(() =>
+      validateContactRelationshipRecord({
+        ...relationship,
+        createdAt: "not-a-date",
+      }),
+    ).toThrow("created timestamp is invalid");
   });
 });

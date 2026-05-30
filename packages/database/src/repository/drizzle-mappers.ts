@@ -30,6 +30,7 @@ import {
   type ConnectorRecord,
   type Contact,
   type ContactDataQualityResolutionRecord,
+  type ContactRelationshipRecord,
   type ConversationMessageRecord,
   type ConversationMessageNotificationRecord,
   type ConversationThreadRecord,
@@ -864,6 +865,24 @@ export function mapContactRow(row: typeof schema.contacts.$inferSelect): Contact
     aliases: row.aliases,
     identifiers: row.identifiers as Contact["identifiers"],
     notes: row.notes ?? undefined,
+  };
+}
+
+export function mapContactRelationshipRow(
+  row: typeof schema.contactRelationships.$inferSelect,
+): ContactRelationshipRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    contactId: row.contactId,
+    relatedContactId: row.relatedContactId,
+    relationshipKind: row.relationshipKind as ContactRelationshipRecord["relationshipKind"],
+    label: row.label,
+    matterId: row.matterId ?? undefined,
+    source: row.source as ContactRelationshipRecord["source"],
+    status: row.status as ContactRelationshipRecord["status"],
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 

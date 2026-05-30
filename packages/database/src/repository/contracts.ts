@@ -33,6 +33,7 @@ import {
   type ContactIdentifier,
   type ContactKind,
   type ContactDossier,
+  type ContactRelationshipRecord,
   type ConversationMessageRecord,
   type ConversationMessageNotificationRecord,
   type ConversationThreadRecord,
@@ -741,6 +742,9 @@ export interface OpenPracticeRepository {
     input: ConvertPublicConsultationIntakeInput,
   ): Promise<{ intake: PublicConsultationIntakeRecord; matter: MatterSummary }>;
   listContactDossiersForUser(user: User): Promise<ContactDossier[]>;
+  createContactRelationship(
+    relationship: ContactRelationshipRecord,
+  ): Promise<ContactRelationshipRecord>;
   getContact(firmId: string, contactId: string): Promise<Contact | undefined>;
   createContactDataQualityResolution(
     resolution: ContactDataQualityResolutionRecord,

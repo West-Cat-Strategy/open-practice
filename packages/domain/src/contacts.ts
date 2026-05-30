@@ -27,6 +27,81 @@ export interface ContactDossierConflictCue {
   matterId?: string;
 }
 
+export type ContactRelationshipKind =
+  | "authorized_representative"
+  | "employee_of"
+  | "family_contact"
+  | "opposing_party_for"
+  | "referral_source";
+
+export const contactRelationshipKinds = [
+  "authorized_representative",
+  "employee_of",
+  "family_contact",
+  "opposing_party_for",
+  "referral_source",
+] as const satisfies ContactRelationshipKind[];
+
+export type ContactRelationshipSource = "manual" | "matter_party" | "intake";
+
+export const contactRelationshipSources = [
+  "manual",
+  "matter_party",
+  "intake",
+] as const satisfies ContactRelationshipSource[];
+
+export type ContactRelationshipStatus = "active" | "review_needed" | "ended";
+
+export const contactRelationshipStatuses = [
+  "active",
+  "review_needed",
+  "ended",
+] as const satisfies ContactRelationshipStatus[];
+
+export interface ContactRelationshipRecord {
+  id: string;
+  firmId: string;
+  contactId: string;
+  relatedContactId: string;
+  relationshipKind: ContactRelationshipKind;
+  label: string;
+  matterId?: string;
+  source: ContactRelationshipSource;
+  status: ContactRelationshipStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContactDossierRelationshipSummary {
+  id: string;
+  direction: "outbound" | "inbound";
+  relationshipKind: ContactRelationshipKind;
+  label: string;
+  conflictSafeLabel: string;
+  status: ContactRelationshipStatus;
+  source: ContactRelationshipSource;
+  relatedContact: Pick<ContactDossierContactSummary, "kind" | "displayName">;
+  visibleMatterIds: string[];
+}
+
+export interface ContactDossierCrmTaxonomy {
+  entityType: "person" | "organization";
+  labels: Array<{ key: string; label: string; severity: "info" | "review" | "blocker" }>;
+  relatedMatterSummary: {
+    total: number;
+    clientRoleCount: number;
+    adverseRoleCount: number;
+    confidentialRoleCount: number;
+    portalMatterCount: number;
+  };
+  relationshipSummary: {
+    activeCount: number;
+    reviewNeededCount: number;
+    organizationCount: number;
+    personCount: number;
+  };
+}
+
 export type ContactDossierQualitySignalKind =
   | "duplicate_candidate"
   | "protected_party_cue"
@@ -137,6 +212,8 @@ export interface ContactDossier {
     activeGrantCount: number;
     permissionLabels: PortalGrant["permissions"];
   };
+  crmTaxonomy: ContactDossierCrmTaxonomy;
+  relationships: ContactDossierRelationshipSummary[];
   conflictCues: ContactDossierConflictCue[];
   qualityReview: ContactDossierQualityReview;
   conflictHistory: ContactDossierConflictHistoryEntry[];
@@ -148,6 +225,7 @@ export interface BuildContactDossiersInput {
   matters: Matter[];
   matterParties: MatterParty[];
   portalGrants: PortalGrant[];
+  contactRelationships?: ContactRelationshipRecord[];
   intakeVariableProposals?: IntakeVariableProposal[];
   conflictChecks?: ConflictCheckRecord[];
   now?: string;
@@ -188,6 +266,35 @@ function buildConflictCues(links: ContactDossierMatterLink[]): ContactDossierCon
     : [{ severity: "info", reason: "No adverse or confidential accessible party flags" }];
 }
 
+export function validateContactRelationshipRecord(relationship: ContactRelationshipRecord): void {
+  if (!relationship.firmId.trim()) throw new Error("Contact relationship requires a firm id");
+  if (!relationship.contactId.trim()) {
+    throw new Error("Contact relationship requires a contact id");
+  }
+  if (!relationship.relatedContactId.trim()) {
+    throw new Error("Contact relationship requires a related contact id");
+  }
+  if (relationship.contactId === relationship.relatedContactId) {
+    throw new Error("Contact relationship related contact must differ from contact");
+  }
+  if (!contactRelationshipKinds.includes(relationship.relationshipKind)) {
+    throw new Error("Contact relationship kind is invalid");
+  }
+  if (!relationship.label.trim()) throw new Error("Contact relationship label is required");
+  if (!contactRelationshipSources.includes(relationship.source)) {
+    throw new Error("Contact relationship source is invalid");
+  }
+  if (!contactRelationshipStatuses.includes(relationship.status)) {
+    throw new Error("Contact relationship status is invalid");
+  }
+  if (Number.isNaN(Date.parse(relationship.createdAt))) {
+    throw new Error("Contact relationship created timestamp is invalid");
+  }
+  if (Number.isNaN(Date.parse(relationship.updatedAt))) {
+    throw new Error("Contact relationship updated timestamp is invalid");
+  }
+}
+
 function summarizeContact(contact: Contact): ContactDossierContactSummary {
   return {
     id: contact.id,
@@ -196,6 +303,134 @@ function summarizeContact(contact: Contact): ContactDossierContactSummary {
     displayName: contact.displayName,
     aliases: contact.aliases,
     identifiers: contact.identifiers,
+  };
+}
+
+const clientLikeRoles = new Set<MatterParty["role"]>([
+  "client",
+  "prospective_client",
+  "notary_client",
+  "paralegal_client",
+]);
+
+function relationshipKindLabel(kind: ContactRelationshipKind): string {
+  switch (kind) {
+    case "authorized_representative":
+      return "authorized representative";
+    case "employee_of":
+      return "employee of";
+    case "family_contact":
+      return "family contact";
+    case "opposing_party_for":
+      return "matter counterparty";
+    case "referral_source":
+      return "referral source";
+  }
+}
+
+function buildRelationshipSummaries(input: {
+  contactId: string;
+  firmId: string;
+  contactById: Map<string, Contact>;
+  relationships: ContactRelationshipRecord[];
+  visibleMatterIds: Set<string>;
+}): ContactDossierRelationshipSummary[] {
+  return input.relationships
+    .filter((relationship) => relationship.firmId === input.firmId)
+    .flatMap((relationship): ContactDossierRelationshipSummary[] => {
+      const outbound = relationship.contactId === input.contactId;
+      const inbound = relationship.relatedContactId === input.contactId;
+      if (!outbound && !inbound) return [];
+      if (relationship.matterId && !input.visibleMatterIds.has(relationship.matterId)) return [];
+
+      const relatedContactId = outbound ? relationship.relatedContactId : relationship.contactId;
+      const relatedContact = input.contactById.get(relatedContactId);
+      if (!relatedContact) return [];
+
+      const label =
+        relationship.label.trim() || relationshipKindLabel(relationship.relationshipKind);
+      const conflictSafeLabel =
+        relationship.status === "review_needed" ? `${label} needs review` : label;
+
+      return [
+        {
+          id: relationship.id,
+          direction: outbound ? "outbound" : "inbound",
+          relationshipKind: relationship.relationshipKind,
+          label,
+          conflictSafeLabel,
+          status: relationship.status,
+          source: relationship.source,
+          relatedContact: {
+            kind: relatedContact.kind,
+            displayName: relatedContact.displayName,
+          },
+          visibleMatterIds: relationship.matterId ? [relationship.matterId] : [],
+        },
+      ];
+    })
+    .sort((left, right) =>
+      `${left.relatedContact.displayName}:${left.label}`.localeCompare(
+        `${right.relatedContact.displayName}:${right.label}`,
+      ),
+    );
+}
+
+function buildCrmTaxonomy(input: {
+  contact: Contact;
+  links: ContactDossierMatterLink[];
+  relationships: ContactDossierRelationshipSummary[];
+}): ContactDossierCrmTaxonomy {
+  const labels: ContactDossierCrmTaxonomy["labels"] = [
+    {
+      key: input.contact.kind,
+      label: input.contact.kind === "organization" ? "organization" : "person",
+      severity: "info",
+    },
+  ];
+  if (input.links.some((link) => clientLikeRoles.has(link.role))) {
+    labels.push({ key: "client_contact", label: "client contact", severity: "info" });
+  }
+  if (input.links.some((link) => link.adverse)) {
+    labels.push({ key: "adverse_party", label: "adverse party", severity: "blocker" });
+  }
+  if (input.links.some((link) => link.confidential)) {
+    labels.push({
+      key: "confidential_handling",
+      label: "confidential handling",
+      severity: "review",
+    });
+  }
+  if (input.links.some((link) => link.portalActive)) {
+    labels.push({ key: "portal_enabled", label: "portal enabled", severity: "review" });
+  }
+  if (input.relationships.length > 0) {
+    labels.push({ key: "relationship_graph", label: "relationship graph", severity: "info" });
+  }
+
+  return {
+    entityType: input.contact.kind,
+    labels,
+    relatedMatterSummary: {
+      total: input.links.length,
+      clientRoleCount: input.links.filter((link) => clientLikeRoles.has(link.role)).length,
+      adverseRoleCount: input.links.filter((link) => link.adverse).length,
+      confidentialRoleCount: input.links.filter((link) => link.confidential).length,
+      portalMatterCount: input.links.filter((link) => link.portalActive).length,
+    },
+    relationshipSummary: {
+      activeCount: input.relationships.filter((relationship) => relationship.status === "active")
+        .length,
+      reviewNeededCount: input.relationships.filter(
+        (relationship) => relationship.status === "review_needed",
+      ).length,
+      organizationCount: input.relationships.filter(
+        (relationship) => relationship.relatedContact.kind === "organization",
+      ).length,
+      personCount: input.relationships.filter(
+        (relationship) => relationship.relatedContact.kind === "person",
+      ).length,
+    },
   };
 }
 
@@ -466,6 +701,13 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
       const sortedMatters = matters.sort((left, right) =>
         left.matterNumber.localeCompare(right.matterNumber),
       );
+      const relationships = buildRelationshipSummaries({
+        contactId,
+        firmId: input.firmId,
+        contactById,
+        relationships: input.contactRelationships ?? [],
+        visibleMatterIds,
+      });
       return {
         contact: summarizeContact(contact),
         matters: sortedMatters,
@@ -473,6 +715,12 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
           activeGrantCount: contactGrants.length,
           permissionLabels: uniquePermissions(contactGrants),
         },
+        crmTaxonomy: buildCrmTaxonomy({
+          contact,
+          links: sortedMatters,
+          relationships,
+        }),
+        relationships,
         conflictCues: buildConflictCues(sortedMatters),
         qualityReview: buildQualityReview({
           contact,

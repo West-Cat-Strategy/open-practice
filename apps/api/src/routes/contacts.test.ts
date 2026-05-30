@@ -103,6 +103,16 @@ describe("contact routes", () => {
           matchCount: number;
           maxSeverity: string;
         }>;
+        crmTaxonomy: {
+          labels: Array<{ key: string }>;
+          relationshipSummary: { activeCount: number; reviewNeededCount: number };
+        };
+        relationships: Array<{
+          direction: string;
+          relationshipKind: string;
+          relatedContact: { kind: string; displayName: string; id?: string };
+          visibleMatterIds: string[];
+        }>;
         qualityReview: { summary: { revalidationPromptCount: number }; signals: unknown[] };
       }>
     >();
@@ -130,6 +140,22 @@ describe("contact routes", () => {
       },
       conflictHistory: [],
     });
+    const ada = payload.find((dossier) => dossier.contact.id === "contact-ada")!;
+    expect(ada.crmTaxonomy.labels.map((label) => label.key)).toEqual(
+      expect.arrayContaining(["client_contact", "relationship_graph"]),
+    );
+    expect(ada.relationships).toEqual([
+      expect.objectContaining({
+        direction: "outbound",
+        relationshipKind: "opposing_party_for",
+        relatedContact: {
+          kind: "organization",
+          displayName: "River City Rentals Inc.",
+        },
+        visibleMatterIds: ["matter-001"],
+      }),
+    ]);
+    expect(ada.relationships[0]?.relatedContact).not.toHaveProperty("id");
     const river = payload.find((dossier) => dossier.contact.id === "contact-river")!;
     expect(river.conflictHistory).toEqual([
       expect.objectContaining({

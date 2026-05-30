@@ -2,6 +2,7 @@ import { clientTrustBalanceDeltas } from "@open-practice/domain";
 import {
   sampleAuditEvents,
   sampleCalendarEvents,
+  sampleContactRelationships,
   sampleContacts,
   sampleDraftTemplates,
   sampleDocuments,
@@ -68,6 +69,17 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
     )
     .onConflictDoNothing();
   await db.insert(schema.matterParties).values(sampleMatterParties).onConflictDoNothing();
+  await db
+    .insert(schema.contactRelationships)
+    .values(
+      sampleContactRelationships.map((relationship) => ({
+        ...relationship,
+        matterId: relationship.matterId ?? null,
+        createdAt: new Date(relationship.createdAt),
+        updatedAt: new Date(relationship.updatedAt),
+      })),
+    )
+    .onConflictDoNothing();
   await db
     .insert(schema.legalClinicPrograms)
     .values(

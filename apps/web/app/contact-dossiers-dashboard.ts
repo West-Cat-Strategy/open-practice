@@ -63,6 +63,17 @@ export function filterContactDossiers(
         matter.role,
         matter.practiceArea,
       ]),
+      ...dossier.crmTaxonomy.labels.map((label) => label.label),
+      ...dossier.relationships.flatMap((relationship) => [
+        relationship.relationshipKind,
+        relationship.label,
+        relationship.conflictSafeLabel,
+        relationship.status,
+        relationship.source,
+        relationship.relatedContact.displayName,
+        relationship.relatedContact.kind,
+        ...relationship.visibleMatterIds,
+      ]),
       ...dossier.qualityReview.signals.flatMap((signal) => [
         signal.kind,
         signal.reason,
@@ -87,6 +98,7 @@ export function summarizeContactDossier(dossier: ContactDossier): string {
     dossier.matters.some((matter) => matter.adverse) ? "adverse" : null,
     dossier.matters.some((matter) => matter.confidential) ? "confidential" : null,
     dossier.portal.activeGrantCount > 0 ? "portal active" : null,
+    dossier.relationships.length > 0 ? "relationship graph" : null,
   ].filter(Boolean);
   return flags.length > 0 ? flags.join(" / ") : "standard";
 }

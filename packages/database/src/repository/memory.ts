@@ -33,6 +33,7 @@ import {
   validateBillingPeriodLock,
   validateBillingRateRule,
   validateContactDataQualityResolutionRecord,
+  validateContactRelationshipRecord,
   verifyAuditChain,
   type AccessLogRecord,
   type AuditEvent,
@@ -52,6 +53,7 @@ import {
   type ContactDataQualityResolutionRecord,
   type ContactDossier,
   type ContactIdentifier,
+  type ContactRelationshipRecord,
   type ConversationMessageRecord,
   type ConversationMessageNotificationRecord,
   type ConversationThreadRecord,
@@ -111,6 +113,7 @@ import {
 import {
   sampleAuditEvents,
   sampleCalendarEvents,
+  sampleContactRelationships,
   sampleContacts,
   sampleDocuments,
   sampleDraftTemplates,
@@ -213,6 +216,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private firms: Firm[];
   private users: User[];
   private contacts: Contact[];
+  private contactRelationships: ContactRelationshipRecord[];
   private contactDataQualityResolutions: ContactDataQualityResolutionRecord[] = [];
   private matters: Matter[];
   private matterParties: MatterParty[];
@@ -294,6 +298,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.firms = options.firms ? clone(options.firms) : seeded ? [clone(sampleFirm)] : [];
     this.users = options.users ? clone(options.users) : seeded ? clone(sampleUsers) : [];
     this.contacts = seeded ? clone(sampleContacts) : [];
+    this.contactRelationships = seeded ? clone(sampleContactRelationships) : [];
     this.matters = seeded ? clone(sampleMatters) : [];
     this.matterParties = seeded ? clone(sampleMatterParties) : [];
     this.documents = seeded ? clone(sampleDocuments) : [];
@@ -1894,9 +1899,35 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       matters,
       matterParties,
       portalGrants: this.portalGrants,
+      contactRelationships: this.contactRelationships,
       intakeVariableProposals,
       conflictChecks: this.conflictChecks,
     });
+  }
+
+  async createContactRelationship(
+    relationship: ContactRelationshipRecord,
+  ): Promise<ContactRelationshipRecord> {
+    const contact = this.contacts.find(
+      (candidate) =>
+        candidate.firmId === relationship.firmId && candidate.id === relationship.contactId,
+    );
+    if (!contact) throw new Error("Contact relationship contact was not found");
+    const related = this.contacts.find(
+      (candidate) =>
+        candidate.firmId === relationship.firmId && candidate.id === relationship.relatedContactId,
+    );
+    if (!related) throw new Error("Contact relationship related contact was not found");
+    if (relationship.matterId) {
+      const matter = this.matters.find(
+        (candidate) =>
+          candidate.firmId === relationship.firmId && candidate.id === relationship.matterId,
+      );
+      if (!matter) throw new Error("Contact relationship matter was not found");
+    }
+    validateContactRelationshipRecord(relationship);
+    this.contactRelationships = [...this.contactRelationships, clone(relationship)];
+    return clone(relationship);
   }
 
   async getContact(firmId: string, contactId: string): Promise<Contact | undefined> {

@@ -66,6 +66,72 @@ describe("repository contact dossier quality review", () => {
     ).rejects.toThrow("Contact data-quality resolution decision is invalid");
   });
 
+  it("surfaces relationship graph summaries without leaking hidden contacts or related ids", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const user: User = {
+      id: "user-licensee",
+      firmId: "firm-west-legal",
+      displayName: "Test Licensee",
+      email: "licensee@example.test",
+      role: "licensee",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    };
+    await repository.createContactRelationship({
+      id: "relationship-visible-review",
+      firmId: "firm-west-legal",
+      contactId: "contact-river",
+      relatedContactId: "contact-ada",
+      relationshipKind: "opposing_party_for",
+      label: "Counterparty relationship",
+      matterId: "matter-001",
+      source: "matter_party",
+      status: "review_needed",
+      createdAt: "2026-05-29T13:00:00.000Z",
+      updatedAt: "2026-05-29T13:00:00.000Z",
+    });
+
+    const dossiers = await repository.listContactDossiersForUser(user);
+    const ada = dossiers.find((dossier) => dossier.contact.id === "contact-ada")!;
+    const river = dossiers.find((dossier) => dossier.contact.id === "contact-river")!;
+
+    expect(ada.crmTaxonomy.labels.map((label) => label.key)).toEqual(
+      expect.arrayContaining(["client_contact", "relationship_graph"]),
+    );
+    expect(ada.relationships).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "contact-relationship-ada-river-counterparty",
+          direction: "outbound",
+          relationshipKind: "opposing_party_for",
+          relatedContact: {
+            kind: "organization",
+            displayName: "River City Rentals Inc.",
+          },
+          visibleMatterIds: ["matter-001"],
+        }),
+      ]),
+    );
+    expect(river.relationships).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "relationship-visible-review",
+          direction: "outbound",
+          conflictSafeLabel: "Counterparty relationship needs review",
+          status: "review_needed",
+          relatedContact: {
+            kind: "person",
+            displayName: "Ada Morgan",
+          },
+        }),
+      ]),
+    );
+    const serialized = JSON.stringify(dossiers);
+    expect(serialized).not.toContain("contact-northstar");
+    expect(serialized).not.toContain("North Star Holdings");
+    expect(serialized).not.toContain('"relatedContact":{"id"');
+  });
+
   it("surfaces conflict-check revalidation prompts only from accessible applied contact changes", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const user: User = {
