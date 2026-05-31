@@ -35,6 +35,7 @@ const sectionSentinels: Record<OpenPracticeRouteId, RegExp[]> = {
   reports: [/Saved report definitions/i],
   admin: [
     /Access and support controls/i,
+    /Portability and migration/i,
     /Backup and restore evidence/i,
     /Regional, privacy, and training posture/i,
   ],

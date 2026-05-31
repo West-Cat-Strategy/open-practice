@@ -1,10 +1,10 @@
-# OP-T134 Time and Expense Capture Depth Proof
+# OP-T134 Time And Expense Capture Proof
 
-Date: 2026-05-31
+Date: 2026-05-31 PDT
 
 ## Scope
 
-Recovered the smallest coherent OP-T134 first slice from the 2026-05-29 stash trail:
+Implemented the smallest coherent OP-T134 first slice from the 2026-05-29 recovery trail:
 
 - `POST /api/time-entries/timer-drafts` accepts local timer start/stop timestamps, resolves draft
   minutes and rate snapshots, rejects locked-period overlaps, and always creates `draft` time
@@ -14,13 +14,13 @@ Recovered the smallest coherent OP-T134 first slice from the 2026-05-29 stash tr
 - `GET /api/billing/dashboard` now separates draft/submitted capture-review rows from approved
   unbilled invoice sources and includes review-only expense category profiles.
 - The dashboard adds local timer and expense draft controls over the existing billing surface.
-- The route authorization manifest covers both new billing capture endpoints.
+- The route authorization manifest covers both billing capture endpoints.
 
 Out of scope: native mobile capture, automatic billing, external time-tool sync, lock bypasses,
 payment processing, trust-ledger posting, tax/compliance certification, ReBAC authorization-matrix
 leftovers, OP-T144 proof residue, and OP-T133/document-assembly stash residue.
 
-## Stash Trail
+## Recovery Trail
 
 Used these 2026-05-29 OP-T134 stashes as recovery references:
 
