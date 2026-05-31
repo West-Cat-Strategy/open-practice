@@ -197,6 +197,30 @@ async function addClientPortalRecords(repository: InMemoryOpenPracticeRepository
     metadata: { emailId: email.id },
   };
   await repository.createQueuedEmailOutbox({ email, event, job });
+  const otherClientEmail: EmailOutboxRecord = {
+    ...email,
+    id: "email-client-other-001",
+    to: ["other-client@example.test"],
+    subject: "Other synthetic update",
+    queuedAt: "2026-05-20T16:05:00.000Z",
+    sentAt: "2026-05-20T16:06:00.000Z",
+  };
+  await repository.createQueuedEmailOutbox({
+    email: otherClientEmail,
+    event: {
+      ...event,
+      id: "email-event-client-other-001",
+      emailId: otherClientEmail.id,
+      occurredAt: "2026-05-20T16:06:00.000Z",
+    },
+    job: {
+      ...job,
+      id: "job-email-client-other-001",
+      targetResourceId: otherClientEmail.id,
+      finishedAt: "2026-05-20T16:06:00.000Z",
+      metadata: { emailId: otherClientEmail.id },
+    },
+  });
   await repository.createEmailReceiptToken({
     id: "receipt-client-001",
     firmId: "firm-west-legal",
@@ -289,7 +313,7 @@ describe("client portal routes", () => {
       account: { role: string };
       access: { posture: string; activeGrantCount: number };
       matters: Array<{ number: string; actionCount: number }>;
-      actions: Array<{ family: string; status: string; detail: string }>;
+      actions: Array<{ id: string; family: string; status: string; detail: string }>;
     }>();
     expect(body.account.role).toBe("client_external");
     expect(body.access).toMatchObject({ posture: "active", activeGrantCount: 1 });
@@ -303,6 +327,7 @@ describe("client portal routes", () => {
         "intake",
         "guest_session",
         "receipt",
+        "client_update",
         "client_action",
       ]),
     );
@@ -311,9 +336,13 @@ describe("client portal routes", () => {
         expect.objectContaining({ family: "secure_share", status: "verification_required" }),
         expect.objectContaining({ family: "external_upload", status: "active" }),
         expect.objectContaining({ family: "client_action", status: "retry_requested" }),
+        expect.objectContaining({ family: "client_update", status: "sent" }),
         expect.objectContaining({ family: "receipt", status: "open" }),
       ]),
     );
+    expect(
+      body.actions.filter((action) => action.family === "client_update").map((action) => action.id),
+    ).toEqual(["client-update:email-client-001"]);
 
     const serialized = JSON.stringify(body);
     expect(serialized).not.toContain("secret-share-token-hash");
@@ -323,6 +352,9 @@ describe("client portal routes", () => {
     expect(serialized).not.toContain("secret-receipt-token-hash");
     expect(serialized).not.toContain("PRIVATE HTML BODY");
     expect(serialized).not.toContain("PRIVATE TEXT BODY");
+    expect(serialized).not.toContain("Synthetic update");
+    expect(serialized).not.toContain("Other synthetic update");
+    expect(serialized).not.toContain("office@example.test");
     expect(serialized).not.toContain("private-intake-storage-key");
     expect(serialized).not.toContain("private-room-id");
   });

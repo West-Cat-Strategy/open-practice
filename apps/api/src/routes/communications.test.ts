@@ -237,6 +237,35 @@ describe("communications inbox routes", () => {
       createdByUserId: "user-admin",
       metadata: { rawNote: "Private message routing note" },
     });
+    await repository.createConversationMessage({
+      id: "conversation-message-draft-001",
+      firmId,
+      matterId: "matter-001",
+      threadId: "conversation-thread-001",
+      kind: "client_message",
+      bodyText: "Private client update draft body",
+      authoredAt: "2026-05-05T13:00:00.000Z",
+      authoredByUserId: "user-admin",
+      createdAt: "2026-05-05T13:00:01.000Z",
+      createdByUserId: "user-admin",
+      metadata: {
+        clientUpdateDraft: true,
+        privateDraftPrompt: "Private client update draft metadata",
+      },
+    });
+    await repository.createConversationMessage({
+      id: "conversation-message-client-001",
+      firmId,
+      matterId: "matter-001",
+      threadId: "conversation-thread-001",
+      kind: "client_message",
+      bodyText: "Private ordinary client message body",
+      authoredAt: "2026-05-05T13:05:00.000Z",
+      authoredByUserId: "user-admin",
+      createdAt: "2026-05-05T13:05:01.000Z",
+      createdByUserId: "user-admin",
+      metadata: {},
+    });
 
     const response = await testServer(repository, user("licensee", ["matter-001"])).inject({
       method: "GET",
@@ -288,10 +317,69 @@ describe("communications inbox routes", () => {
           id: "conversation-thread-001",
           topic: "Repair evidence follow-up",
           notificationBoundary: "internal_only",
-          messageCount: 1,
-          latestMessageAt: "2026-05-05T12:30:00.000Z",
+          messageCount: 3,
+          latestMessageAt: "2026-05-05T13:05:00.000Z",
         }),
       ],
+      clientUpdateDraftRequests: [
+        {
+          id: "client-update-draft:conversation-message-draft-001",
+          matterId: "matter-001",
+          threadId: "conversation-thread-001",
+          messageId: "conversation-message-draft-001",
+          status: "draft_requested",
+          requestedAt: "2026-05-05T13:00:00.000Z",
+          requestedByUserIdPresent: true,
+          bodyLength: "Private client update draft body".length,
+          bodyRedacted: true,
+          metadataRedacted: true,
+          automaticSendEnabled: false,
+          portalComposerEnabled: false,
+        },
+      ],
+      channelHistory: expect.arrayContaining([
+        expect.objectContaining({
+          id: "inbound-email:inbound-message-001",
+          kind: "inbound_email",
+          channel: "email",
+          direction: "inbound",
+          bodyRedacted: true,
+          metadataRedacted: true,
+          attachmentCount: 1,
+        }),
+        expect.objectContaining({
+          id: "phone-note-placeholder:inbound-message-001",
+          kind: "phone_note_placeholder",
+          channel: "phone",
+          direction: "planned_outbound",
+          consentStatus: "consented",
+          bodyRedacted: true,
+          metadataRedacted: true,
+        }),
+        expect.objectContaining({
+          id: "outbound-email:email-outbox-001",
+          kind: "outbound_email",
+          title: "client.update",
+          recipientCount: 3,
+          bodyRedacted: true,
+          metadataRedacted: true,
+        }),
+        expect.objectContaining({
+          id: "conversation-thread:conversation-thread-001",
+          kind: "conversation",
+          messageCount: 3,
+          bodyRedacted: true,
+          metadataRedacted: true,
+        }),
+        expect.objectContaining({
+          id: "client-update-draft:conversation-message-draft-001",
+          kind: "client_update_draft",
+          direction: "planned_outbound",
+          bodyLength: "Private client update draft body".length,
+          bodyRedacted: true,
+          metadataRedacted: true,
+        }),
+      ]),
     });
     expect(payload.contactCues).toEqual(
       expect.arrayContaining([
@@ -317,6 +405,48 @@ describe("communications inbox routes", () => {
     expect(serialized).not.toContain("Private conversation note");
     expect(serialized).not.toContain("Private conversation message body");
     expect(serialized).not.toContain("Private message routing note");
+    expect(serialized).not.toContain("Private client update draft body");
+    expect(serialized).not.toContain("Private client update draft metadata");
+    expect(serialized).not.toContain("Private ordinary client message body");
+  });
+
+  it("normalizes SMS follow-up metadata into a redacted text placeholder", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(
+      inboundMessage({
+        id: "inbound-message-sms-001",
+        metadata: {
+          staffTriage: {
+            followUp: {
+              channel: "sms",
+              consentStatus: "consented",
+              dueAt: "2026-05-07T18:00:00.000Z",
+            },
+          },
+        },
+      }),
+    );
+
+    const response = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/communications/inbox?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      channelHistory: expect.arrayContaining([
+        expect.objectContaining({
+          id: "text-note-placeholder:inbound-message-sms-001",
+          kind: "text_note_placeholder",
+          channel: "text",
+          direction: "planned_outbound",
+          status: "follow_up_placeholder",
+          consentStatus: "consented",
+          bodyRedacted: true,
+          metadataRedacted: true,
+        }),
+      ]),
+    });
   });
 
   it("denies cross-matter aggregate reads", async () => {

@@ -238,6 +238,7 @@ import {
 import {
   buildCommunicationsInboxPath,
   describeCommunicationsDeliveryState,
+  describeCommunicationsHistoryState,
   loadCommunicationsInboxDashboardData,
 } from "./communications-inbox-dashboard";
 import {
@@ -1145,6 +1146,25 @@ describe("dashboard client behavior", () => {
       ],
       outboundDeliveryHistory: [],
       conversations: [],
+      channelHistory: [
+        {
+          id: "inbound-email:inbound-message-001",
+          matterId: "matter-001",
+          kind: "inbound_email",
+          channel: "email",
+          direction: "inbound",
+          occurredAt: "2026-05-05T12:00:00.000Z",
+          status: "triage_pending",
+          title: "Inbound email",
+          detail: "1 attachment linked",
+          sourceResourceType: "inbound_email",
+          sourceResourceId: "inbound-message-001",
+          metadataRedacted: true,
+          bodyRedacted: true,
+          attachmentCount: 1,
+        },
+      ],
+      clientUpdateDraftRequests: [],
       contactCues: [],
     };
 
@@ -1386,6 +1406,24 @@ describe("dashboard client behavior", () => {
         events: [],
       }),
     ).toEqual({ label: "failed", tone: "risk" });
+    expect(
+      describeCommunicationsHistoryState({
+        id: "client-update-draft:message-001",
+        matterId: "matter-001",
+        kind: "client_update_draft",
+        channel: "client_update",
+        direction: "planned_outbound",
+        occurredAt: "2026-05-05T12:30:00.000Z",
+        status: "draft_requested",
+        title: "Client update draft",
+        detail: "Draft-only client update request",
+        sourceResourceType: "conversation_message",
+        sourceResourceId: "message-001",
+        metadataRedacted: true,
+        bodyRedacted: true,
+        bodyLength: 42,
+      }),
+    ).toEqual({ label: "draft requested" });
   });
 
   it("uses tenant-neutral public consultation fallback settings", () => {
@@ -3494,6 +3532,8 @@ describe("dashboard client behavior", () => {
         conversations: [
           { id: "conversation-001" } as CommunicationsInboxMatterResponse["conversations"][number],
         ],
+        channelHistory: [],
+        clientUpdateDraftRequests: [],
         contactCues: [],
       },
     });

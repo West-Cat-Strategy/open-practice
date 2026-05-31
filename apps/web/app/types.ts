@@ -703,6 +703,55 @@ export interface CommunicationsInboxConversation {
   };
 }
 
+export type CommunicationsChannelHistoryKind =
+  | "inbound_email"
+  | "outbound_email"
+  | "conversation"
+  | "phone_note_placeholder"
+  | "text_note_placeholder"
+  | "client_update_draft";
+
+export interface CommunicationsChannelHistoryItem {
+  id: string;
+  matterId: string;
+  kind: CommunicationsChannelHistoryKind;
+  channel: "email" | "conversation" | "phone" | "text" | "client_update";
+  direction: "inbound" | "outbound" | "internal" | "planned_outbound";
+  occurredAt: string;
+  status: string;
+  title: string;
+  detail: string;
+  sourceResourceType:
+    | "inbound_email"
+    | "email_outbox"
+    | "conversation_thread"
+    | "conversation_message";
+  sourceResourceId: string;
+  metadataRedacted: true;
+  bodyRedacted?: true;
+  consentStatus?: string;
+  recipientCount?: number;
+  attachmentCount?: number;
+  messageCount?: number;
+  eventCount?: number;
+  bodyLength?: number;
+}
+
+export interface ClientUpdateDraftRequestSummary {
+  id: string;
+  matterId: string;
+  threadId: string;
+  messageId: string;
+  status: "draft_requested" | "thread_closed" | "thread_revoked";
+  requestedAt: string;
+  requestedByUserIdPresent: boolean;
+  bodyLength: number;
+  bodyRedacted: true;
+  metadataRedacted: true;
+  automaticSendEnabled: false;
+  portalComposerEnabled: false;
+}
+
 export interface CommunicationsInboxContactCue {
   contact: {
     id: string;
@@ -736,6 +785,8 @@ export interface CommunicationsInboxMatterResponse {
   inboundEmail: CommunicationsInboxInboundEmail[];
   outboundDeliveryHistory: CommunicationsInboxOutboundDelivery[];
   conversations: CommunicationsInboxConversation[];
+  channelHistory: CommunicationsChannelHistoryItem[];
+  clientUpdateDraftRequests: ClientUpdateDraftRequestSummary[];
   contactCues: CommunicationsInboxContactCue[];
 }
 
@@ -1421,6 +1472,7 @@ export type ClientPortalActionFamily =
   | "intake"
   | "guest_session"
   | "receipt"
+  | "client_update"
   | "client_action";
 
 export interface ClientPortalActionSummary {
