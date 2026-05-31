@@ -164,7 +164,6 @@ export function DashboardSidebar({
                       <button
                         aria-current={key === activeSection ? "page" : undefined}
                         aria-describedby={resolvedDisabledReason ? disabledReasonId : undefined}
-                        aria-disabled={!enabled}
                         className={[
                           "nav-item",
                           key === activeSection ? "active" : "",
@@ -172,6 +171,7 @@ export function DashboardSidebar({
                         ]
                           .filter(Boolean)
                           .join(" ")}
+                        disabled={!enabled}
                         key={key}
                         onClick={() => {
                           if (enabled) onSelectSection(key);

@@ -134,6 +134,12 @@ export function emptyPublicConsultationDashboard(
   };
 }
 
+export function publicConsultationSettingsControlDisabled(
+  status: PublicConsultationDashboardResponse["status"],
+): boolean {
+  return status === "access_denied";
+}
+
 export function upsertPublicConsultationIntake(
   intakes: PublicConsultationIntake[],
   intake: PublicConsultationIntake,

@@ -59,6 +59,13 @@ export function canCreateExternalUpload(status: ExternalUploadsStatusResponse): 
   return status.status === "available";
 }
 
+export function externalUploadCreateControlDisabled(input: {
+  creating: boolean;
+  status: ExternalUploadsStatusResponse;
+}): boolean {
+  return input.creating || !canCreateExternalUpload(input.status);
+}
+
 export function coerceExternalUploadMaxUploads(value: string): number {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;

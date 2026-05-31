@@ -117,6 +117,7 @@ export function registerProviderStatusRoutes(
         repository: options.repository,
         firmId: request.auth.firmId,
         ocrJobQueue: options.ocrJobQueue,
+        s3: options.s3,
       }),
       buildEmailStatus({ repository: options.repository, firmId: request.auth.firmId }),
       buildInboundEmailStatus({ repository: options.repository, firmId: request.auth.firmId }),

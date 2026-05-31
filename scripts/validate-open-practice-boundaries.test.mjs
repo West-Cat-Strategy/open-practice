@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   REQUIRED_ROUTE_CATALOG_IDS,
   ROUTE_REGISTRARS,
+  collectApiRouteDeclarations,
   collectForbiddenRouteFailures,
   collectRegistrarTestFailures,
   collectRouteAuthorizationManifestFailures,
@@ -224,6 +225,80 @@ describe("validate-open-practice-boundaries contract", () => {
     assert.ok(
       failures.includes(
         "GET /api/ghost in route authorization manifest is not registered by API route files.",
+      ),
+    );
+  });
+
+  it("expands literal tuple loops when collecting registered routes", () => {
+    const declarations = collectApiRouteDeclarations({
+      routeRegistrars: [
+        {
+          family: "billing",
+          file: "apps/api/src/routes/billing.ts",
+          importPath: "./routes/billing.js",
+          registrar: "registerBillingRoutes",
+        },
+      ],
+      readText: (path) => {
+        if (path === "apps/api/src/server.ts") return "";
+        if (path === "apps/api/src/routes/billing.ts") {
+          return `
+export function registerBillingRoutes(server) {
+  for (const [route, nextStatus] of [
+    ["submit", "submitted"],
+    ["approve", "approved"],
+    ["write-off", "written_off"],
+  ] as const) {
+    server.post(\`/api/time-entries/:id/\${route}\`, async () => ({ nextStatus }));
+  }
+}
+`;
+        }
+        throw new Error(`unexpected read: ${path}`);
+      },
+    });
+
+    assert.deepEqual(
+      declarations.map((declaration) => `${declaration.method} ${declaration.path}`),
+      [
+        "POST /api/time-entries/:id/approve",
+        "POST /api/time-entries/:id/submit",
+        "POST /api/time-entries/:id/write-off",
+      ],
+    );
+  });
+
+  it("reverse-checks public helper samples against public manifest entries", () => {
+    const failures = collectRouteAuthorizationManifestFailures({
+      actualRoutes: [
+        {
+          method: "GET",
+          path: "/api/portal/email-receipts/:token",
+          registrar: "registerEmailRoutes",
+        },
+      ],
+      manifest: [
+        {
+          method: "GET",
+          path: "/api/portal/email-receipts/:token",
+          registrar: "registerEmailRoutes",
+          testFile: "apps/api/src/routes/email.test.ts",
+          auth: { kind: "token", tokenScope: "email-receipt:view" },
+        },
+      ],
+      publicRouteSamples: [
+        { method: "GET", path: "/api/portal/email-receipts/sample" },
+        { method: "POST", path: "/api/portal/mail/receipts/sample/acknowledge" },
+      ],
+      pathExists: () => true,
+      isPublicRoute: (method, path) =>
+        (method === "GET" && path === "/api/portal/email-receipts/sample") ||
+        (method === "POST" && path === "/api/portal/mail/receipts/sample/acknowledge"),
+    });
+
+    assert.ok(
+      failures.includes(
+        "POST /api/portal/mail/receipts/sample/acknowledge is public in auth helper samples but missing from manifest.",
       ),
     );
   });

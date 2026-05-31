@@ -779,6 +779,59 @@ describe("billing routes", () => {
     expect(ledgerAfter.json<{ entries: unknown[] }>().entries).toHaveLength(beforeEntryCount);
   });
 
+  it("requires approve access for time and expense approval routes", async () => {
+    const server = testServer({ devUserId: "user-staff" });
+    const time = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-approve-access-test",
+        matterId: "matter-001",
+        minutes: 20,
+        rateCents: 18000,
+        narrative: "Synthetic approval access test.",
+      },
+    });
+    const expense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-approve-access-test",
+        matterId: "matter-001",
+        amountCents: 500,
+        category: "Courier",
+        description: "Synthetic expense approval access test.",
+      },
+    });
+    expect(time.statusCode).toBe(200);
+    expect(expense.statusCode).toBe(200);
+
+    const submittedTime = await server.inject({
+      method: "POST",
+      url: "/api/time-entries/time-approve-access-test/submit",
+    });
+    const submittedExpense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries/expense-approve-access-test/submit",
+    });
+    expect(submittedTime.statusCode).toBe(200);
+    expect(submittedExpense.statusCode).toBe(200);
+
+    const approvedTime = await server.inject({
+      method: "POST",
+      url: "/api/time-entries/time-approve-access-test/approve",
+    });
+    const approvedExpense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries/expense-approve-access-test/approve",
+    });
+
+    expect(approvedTime.statusCode).toBe(403);
+    expect(approvedTime.json()).toMatchObject({ code: "TIME_ENTRY_ACCESS_REQUIRED" });
+    expect(approvedExpense.statusCode).toBe(403);
+    expect(approvedExpense.json()).toMatchObject({ code: "EXPENSE_ENTRY_ACCESS_REQUIRED" });
+  });
+
   it("queues billing export requests, gates downloads, and keeps job metadata redacted", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const queuedReports: QueuedReportJob[] = [];

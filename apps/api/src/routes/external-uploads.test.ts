@@ -873,6 +873,48 @@ describe("external upload routes", () => {
     );
   });
 
+  it("does not create a pending document when upload capacity is lost during claim", async () => {
+    class ClaimFailingRepository extends InMemoryOpenPracticeRepository {
+      override async claimExternalUploadUse() {
+        return undefined;
+      }
+    }
+    const repository = new ClaimFailingRepository();
+    const { server } = testServer({ repository, s3: s3Config() });
+    const token = await createDirectToken({
+      repository,
+      id: "external-upload-claim-race",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      maxUploads: 1,
+      usedUploads: 0,
+    });
+
+    const intent = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${token}/intents`,
+      payload: { filename: "race.pdf", checksumSha256: checksum },
+    });
+
+    expect(intent.statusCode).toBe(403);
+    expect(intent.json()).toMatchObject({
+      message: "External upload link is not available",
+    });
+    await expect(repository.listMatterDocuments("firm-west-legal", "matter-001")).resolves.toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ externalUploadLinkId: "external-upload-claim-race" }),
+      ]),
+    );
+    await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalUploadLinkId: "external-upload-claim-race",
+          resourceType: "external_upload_link",
+          metadata: { outcome: "denied", reason: "upload_limit" },
+        }),
+      ]),
+    );
+  });
+
   it("rate-limits public external upload intents without leaking token material", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const { server } = testServer({ repository, s3: s3Config() });

@@ -78,6 +78,7 @@ import {
   buildExternalUploadRevokePath,
   canCreateExternalUpload,
   describeExternalUploadReviewState,
+  externalUploadCreateControlDisabled,
   getExternalUploadLinkState,
   loadExternalUploadsDashboardData,
   upsertExternalUploadDocument,
@@ -252,6 +253,7 @@ import {
   defaultPublicConsultationSettings,
   describePublicConsultationReviewAction,
   emptyPublicConsultationDashboard,
+  publicConsultationSettingsControlDisabled,
   publicConsultationReviewBusyAction,
   publicConsultationReviewBusyKey,
   publicConsultationSettingsSummary,
@@ -1444,6 +1446,9 @@ describe("dashboard client behavior", () => {
     expect(publicConsultationSettingsSummary(dashboard.settings)).toBe(
       "disabled · sender not configured · recipients not configured · 0 origins",
     );
+    expect(publicConsultationSettingsControlDisabled("access_denied")).toBe(true);
+    expect(publicConsultationSettingsControlDisabled("available")).toBe(false);
+    expect(publicConsultationSettingsControlDisabled("unavailable")).toBe(false);
   });
 
   it("builds public consultation settings payloads with disabled-empty and enabled-required behavior", () => {
@@ -4471,10 +4476,10 @@ describe("dashboard client behavior", () => {
       "Not available",
     );
     expect(describePublicShareStatus({ documents: [{ id: "doc-001" }] })).toBe(
-      "Email verification complete. 1 document is available.",
+      "Email verification complete. 1 shared document metadata record is available.",
     );
     expect(describePublicShareStatus({ documents: [{ id: "doc-001" }, { id: "doc-002" }] })).toBe(
-      "Email verification complete. 2 documents are available.",
+      "Email verification complete. 2 shared document metadata records are available.",
     );
   });
 
@@ -4656,6 +4661,24 @@ describe("dashboard client behavior", () => {
     ).toEqual({ matterId: "matter-001", maxUploads: 1 });
     expect(canCreateExternalUpload({ status: "available", provider: "s3" })).toBe(true);
     expect(canCreateExternalUpload({ status: "not_configured", provider: "s3" })).toBe(false);
+    expect(
+      externalUploadCreateControlDisabled({
+        creating: false,
+        status: { status: "available", provider: "s3" },
+      }),
+    ).toBe(false);
+    expect(
+      externalUploadCreateControlDisabled({
+        creating: true,
+        status: { status: "available", provider: "s3" },
+      }),
+    ).toBe(true);
+    expect(
+      externalUploadCreateControlDisabled({
+        creating: false,
+        status: { status: "not_configured", provider: "s3" },
+      }),
+    ).toBe(true);
     expect(upsertExternalUploadLink({}, upload)).toEqual({ "matter-001": [upload] });
     expect(upsertExternalUploadLink({ "matter-001": [upload] }, updatedUpload)).toEqual({
       "matter-001": [updatedUpload],

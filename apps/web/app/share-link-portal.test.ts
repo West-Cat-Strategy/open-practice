@@ -16,7 +16,7 @@ describe("public share link action summary", () => {
       {
         id: "share-email-verification",
         title: "Verify email",
-        detail: "Complete verification before viewing the shared documents.",
+        detail: "Complete verification before reviewing the shared document records.",
         status: "required",
         tone: "risk",
       },
@@ -27,8 +27,8 @@ describe("public share link action summary", () => {
     expect(shareLinkAttentionItems({ payload, verificationRequired: false })).toEqual([
       {
         id: "share-no-documents",
-        title: "No shared documents available",
-        detail: "The link is valid, but no documents are currently visible from this page.",
+        title: "No shared document records available",
+        detail: "The link is valid, but no document metadata is currently visible from this page.",
         status: "waiting",
       },
     ]);

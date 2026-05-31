@@ -11,9 +11,9 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
 | Current focus         | OP-T134 time and expense capture depth is in Review.                 |
-| Next recommended pick | Review OP-T134, then pick the next candidate row.                    |
+| Next recommended pick | Review OP-T134, then pick OP-T135, OP-T136, OP-T138, or OP-T139.     |
 | Ready rows            | 0                                                                    |
-| Candidate rows        | 6                                                                    |
+| Candidate rows        | 4                                                                    |
 | In progress rows      | 0                                                                    |
 | Review rows           | 1                                                                    |
 | Blocked rows          | 0                                                                    |

@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import type { S3Client } from "@aws-sdk/client-s3";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type {
@@ -37,12 +38,13 @@ function testServer(
   repository: InMemoryOpenPracticeRepository,
   authUser: User = user("owner_admin", ["matter-001", "matter-002"]),
   ocrJobQueue?: ApiJobQueue,
+  s3: { client: S3Client; bucket: string } | null = fakeS3(),
 ): FastifyInstance {
   const server = Fastify({ logger: false });
   server.addHook("preHandler", async (request) => {
     request.auth = { firmId: authUser.firmId, user: authUser };
   });
-  registerInboundEmailRoutes(server, { repository, ocrJobQueue });
+  registerInboundEmailRoutes(server, { repository, ocrJobQueue, s3: s3 ?? undefined });
   servers.push(server);
   return server;
 }
@@ -92,6 +94,13 @@ function fakeOcrQueue() {
     },
   };
   return { queue, jobs };
+}
+
+function fakeS3(): { client: S3Client; bucket: string } {
+  return {
+    client: {} as S3Client,
+    bucket: "open-practice-test-documents",
+  };
 }
 
 async function enableOcrProvider(repository: InMemoryOpenPracticeRepository): Promise<void> {
@@ -747,6 +756,36 @@ describe("inbound email routes", () => {
 
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({ message: "OCR provider is not configured" });
+    expect(jobs).toEqual([]);
+    const detail = await testServer(repository).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages/inbound-message-001",
+    });
+    expect(detail.json().attachments[0]).not.toHaveProperty("documentId");
+    await expect(repository.listJobLifecycleRecords(firmId, { queueName: "ocr" })).resolves.toEqual(
+      [],
+    );
+  });
+
+  it("keeps default OCR queueing atomic when document storage is unavailable", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message());
+    await repository.createInboundEmailAttachment(attachment());
+    await enableOcrProvider(repository);
+    const { queue, jobs } = fakeOcrQueue();
+
+    const response = await testServer(
+      repository,
+      user("licensee", ["matter-001"]),
+      queue,
+      null,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-001/promote-document",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ message: "OCR document storage is not configured" });
     expect(jobs).toEqual([]);
     const detail = await testServer(repository).inject({
       method: "GET",

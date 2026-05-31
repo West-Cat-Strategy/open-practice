@@ -493,6 +493,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerInboundEmailRoutes(server, {
     repository: options.repository,
     ocrJobQueue: options.ocrJobQueue,
+    s3: options.s3,
   });
   registerShareRoutes(server, {
     repository: options.repository,

@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import type { S3Client } from "@aws-sdk/client-s3";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
@@ -31,6 +32,13 @@ function fakeOcrQueue() {
   return { queue, jobs };
 }
 
+function fakeS3(): { client: S3Client; bucket: string } {
+  return {
+    client: {} as S3Client,
+    bucket: "open-practice-test-documents",
+  };
+}
+
 async function enableOcrProvider(
   repository: InMemoryOpenPracticeRepository,
   enabled = true,
@@ -52,6 +60,7 @@ function testServer(
     repository?: InMemoryOpenPracticeRepository;
     authUser?: User;
     ocrJobQueue?: ApiJobQueue;
+    s3?: { client: S3Client; bucket: string } | null;
   } = {},
 ): FastifyInstance {
   const server = Fastify({ logger: false });
@@ -63,6 +72,7 @@ function testServer(
   registerDocumentProcessingRoutes(server, {
     repository,
     ocrJobQueue: input.ocrJobQueue,
+    s3: input.s3 === null ? undefined : (input.s3 ?? fakeS3()),
   });
   servers.push(server);
   return server;
@@ -1037,6 +1047,40 @@ describe("document processing routes", () => {
     await expect(repository.listJobLifecycleRecords(firmId, { queueName: "ocr" })).resolves.toEqual(
       [],
     );
+  });
+
+  it("requires document storage before accepting OCR jobs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableOcrProvider(repository);
+    const { queue, jobs } = fakeOcrQueue();
+
+    const response = await testServer({ repository, ocrJobQueue: queue, s3: null }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-001/queue",
+      payload: { language: "eng" },
+    });
+    const workbench = await testServer({ repository, ocrJobQueue: queue, s3: null }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ message: "OCR document storage is not configured" });
+    expect(jobs).toEqual([]);
+    await expect(repository.listJobLifecycleRecords(firmId, { queueName: "ocr" })).resolves.toEqual(
+      [],
+    );
+    expect(workbench.statusCode).toBe(200);
+    expect(workbench.json()).toMatchObject({
+      status: "disabled",
+      reason: "storage_not_configured",
+      documents: expect.arrayContaining([
+        expect.objectContaining({
+          document: expect.objectContaining({ id: "doc-001" }),
+          queueEligibility: { eligible: false, reason: "ocr_storage_not_configured" },
+        }),
+      ]),
+    });
   });
 
   it("allows duplicate-checksum verified documents to queue OCR", async () => {

@@ -540,15 +540,22 @@ function stringValue(node) {
   return undefined;
 }
 
-function routePathValue(node, sourceFile) {
+function cartesianPathValues(paths, span, sourceFile, templateValues) {
+  const expressionText = span.expression.getText(sourceFile);
+  const replacements = templateValues.get(expressionText);
+  const values = replacements ?? [`\${${expressionText}}`];
+  return paths.flatMap((path) => values.map((value) => `${path}${value}${span.literal.text}`));
+}
+
+function routePathValues(node, sourceFile, templateValues = new Map()) {
   const current = unwrapExpression(node);
-  if (ts.isStringLiteralLike(current)) return current.text;
-  if (ts.isNoSubstitutionTemplateLiteral(current)) return current.text;
-  if (!ts.isTemplateExpression(current)) return undefined;
+  if (ts.isStringLiteralLike(current)) return [current.text];
+  if (ts.isNoSubstitutionTemplateLiteral(current)) return [current.text];
+  if (!ts.isTemplateExpression(current)) return [];
 
   return current.templateSpans.reduce(
-    (path, span) => `${path}\${${span.expression.getText(sourceFile)}}${span.literal.text}`,
-    current.head.text,
+    (paths, span) => cartesianPathValues(paths, span, sourceFile, templateValues),
+    [current.head.text],
   );
 }
 
@@ -588,20 +595,27 @@ function tokenPolicyScopeFromExpression(node) {
   return family && scope ? `${family}:${scope}` : undefined;
 }
 
-function routeDeclarationsFromCall(call, sourceFile, registrar) {
+function routeDeclarationsFromCall(call, sourceFile, registrar, templateValues = new Map()) {
   const expression = unwrapExpression(call.expression);
   if (!ts.isPropertyAccessExpression(expression)) return [];
   if (expression.expression.getText(sourceFile) !== "server") return [];
 
   const methodName = expression.name.text;
   if (["get", "post", "put", "patch", "delete"].includes(methodName)) {
-    const path = call.arguments[0] ? routePathValue(call.arguments[0], sourceFile) : undefined;
-    if (!path) return [];
+    const paths = call.arguments[0]
+      ? routePathValues(call.arguments[0], sourceFile, templateValues)
+      : [];
+    if (paths.length === 0) return [];
     const tokenPolicyScope = call.arguments
       .slice(1)
       .map((argument) => tokenPolicyScopeFromExpression(argument))
       .find(Boolean);
-    return [{ method: methodName.toUpperCase(), path, registrar, tokenPolicyScope }];
+    return paths.map((path) => ({
+      method: methodName.toUpperCase(),
+      path,
+      registrar,
+      tokenPolicyScope,
+    }));
   }
 
   if (methodName !== "route") return [];
@@ -609,9 +623,52 @@ function routeDeclarationsFromCall(call, sourceFile, registrar) {
   if (!routeOptions || !ts.isObjectLiteralExpression(routeOptions)) return [];
   const urlNode = propertyValue(routeOptions, "url");
   const methodNode = propertyValue(routeOptions, "method");
-  const path = urlNode ? routePathValue(urlNode, sourceFile) : undefined;
-  if (!path || !methodNode) return [];
-  return routeMethods(methodNode).map((method) => ({ method, path, registrar }));
+  const paths = urlNode ? routePathValues(urlNode, sourceFile, templateValues) : [];
+  if (paths.length === 0 || !methodNode) return [];
+  return routeMethods(methodNode).flatMap((method) =>
+    paths.map((path) => ({ method, path, registrar })),
+  );
+}
+
+function loopTemplateValues(node) {
+  if (!ts.isForOfStatement(node)) return undefined;
+  const initializer = node.initializer;
+  if (!ts.isVariableDeclarationList(initializer)) return undefined;
+  const declaration = initializer.declarations[0];
+  if (!declaration || !ts.isArrayBindingPattern(declaration.name)) return undefined;
+  const loopExpression = unwrapExpression(node.expression);
+  if (!ts.isArrayLiteralExpression(loopExpression)) return undefined;
+
+  const bindings = declaration.name.elements
+    .map((element) =>
+      ts.isBindingElement(element) && ts.isIdentifier(element.name) ? element.name.text : undefined,
+    )
+    .filter(Boolean);
+  if (bindings.length === 0) return undefined;
+
+  const values = new Map();
+  for (const binding of bindings) values.set(binding, []);
+
+  for (const tuple of loopExpression.elements) {
+    const current = unwrapExpression(tuple);
+    if (!ts.isArrayLiteralExpression(current)) continue;
+    bindings.forEach((binding, index) => {
+      const value = current.elements[index] ? stringValue(current.elements[index]) : undefined;
+      if (value) values.get(binding)?.push(value);
+    });
+  }
+
+  for (const binding of bindings) {
+    if ((values.get(binding) ?? []).length === 0) values.delete(binding);
+  }
+  return values.size > 0 ? values : undefined;
+}
+
+function mergeTemplateValues(parentValues, nextValues) {
+  if (!nextValues) return parentValues;
+  const merged = new Map(parentValues);
+  for (const [key, value] of nextValues) merged.set(key, value);
+  return merged;
 }
 
 export function collectApiRouteDeclarations({
@@ -627,11 +684,14 @@ export function collectApiRouteDeclarations({
   for (const owner of routeOwners) {
     const sourceText = readText(owner.file);
     const sourceFile = ts.createSourceFile(owner.file, sourceText, ts.ScriptTarget.Latest, true);
-    const visit = (node) => {
+    const visit = (node, templateValues = new Map()) => {
+      const scopedTemplateValues = mergeTemplateValues(templateValues, loopTemplateValues(node));
       if (ts.isCallExpression(node)) {
-        declarations.push(...routeDeclarationsFromCall(node, sourceFile, owner.registrar));
+        declarations.push(
+          ...routeDeclarationsFromCall(node, sourceFile, owner.registrar, scopedTemplateValues),
+        );
       }
-      ts.forEachChild(node, visit);
+      ts.forEachChild(node, (child) => visit(child, scopedTemplateValues));
     };
     visit(sourceFile);
   }
@@ -643,9 +703,9 @@ export function collectApiRouteDeclarations({
 }
 
 let cachedDefaultIsPublicRoute;
+let cachedDefaultPublicRouteSamples;
 
-function defaultIsPublicRoute(readText) {
-  if (cachedDefaultIsPublicRoute) return cachedDefaultIsPublicRoute;
+function authHelperExports(readText) {
   const source = readText("apps/api/src/http/auth-helpers.ts");
   const output = ts.transpileModule(source, {
     compilerOptions: {
@@ -659,8 +719,19 @@ function defaultIsPublicRoute(readText) {
     module,
     exports: module.exports,
   });
-  cachedDefaultIsPublicRoute = module.exports.isPublicRoute;
+  return module.exports;
+}
+
+function defaultIsPublicRoute(readText) {
+  if (cachedDefaultIsPublicRoute) return cachedDefaultIsPublicRoute;
+  cachedDefaultIsPublicRoute = authHelperExports(readText).isPublicRoute;
   return cachedDefaultIsPublicRoute;
+}
+
+function defaultPublicRouteSamples(readText) {
+  if (cachedDefaultPublicRouteSamples) return cachedDefaultPublicRouteSamples;
+  cachedDefaultPublicRouteSamples = authHelperExports(readText).PUBLIC_ROUTE_SAMPLES ?? [];
+  return cachedDefaultPublicRouteSamples;
 }
 
 function manifestAuthUsesGlobalPublic(auth) {
@@ -752,6 +823,7 @@ export function collectRouteAuthorizationManifestFailures({
   pathExists = defaultExists,
   routeRegistrars = ROUTE_REGISTRARS,
   isPublicRoute,
+  publicRouteSamples,
 } = {}) {
   const failures = [];
   const knownRegistrars = new Set([
@@ -762,6 +834,8 @@ export function collectRouteAuthorizationManifestFailures({
   const actualByKey = new Map();
   const manifestByKey = new Map();
   const publicRouteCheck = isPublicRoute ?? defaultIsPublicRoute(readText);
+  const helperPublicRouteSamples =
+    publicRouteSamples ?? (actualRoutes === undefined ? defaultPublicRouteSamples(readText) : []);
 
   for (const routeDeclaration of actual) {
     const key = routeAuthorizationKey(routeDeclaration);
@@ -825,6 +899,24 @@ export function collectRouteAuthorizationManifestFailures({
           `${key} tokenScope ${entry.auth.tokenScope} does not match publicTokenPolicyOptions ${routeDeclaration.tokenPolicyScope}.`,
         );
       }
+    }
+  }
+
+  const manifestPublicSamples = new Set(
+    manifest
+      .filter((entry) => manifestAuthUsesGlobalPublic(entry.auth))
+      .map((entry) => `${entry.method} ${publicRouteSamplePath(entry.path)}`),
+  );
+  for (const sample of helperPublicRouteSamples) {
+    if (!publicRouteCheck(sample.method, sample.path)) {
+      failures.push(
+        `${sample.method} ${sample.path} is listed as a public-route helper sample but isPublicRoute returns false.`,
+      );
+      continue;
+    }
+    const sampleKey = `${sample.method} ${sample.path}`;
+    if (!manifestPublicSamples.has(sampleKey)) {
+      failures.push(`${sampleKey} is public in auth helper samples but missing from manifest.`);
     }
   }
 

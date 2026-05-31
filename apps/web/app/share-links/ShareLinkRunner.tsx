@@ -38,7 +38,9 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
         const body = (await readPublicTokenError(response)) as PublicShareErrorBody;
         if (response.status === 403 && isShareEmailVerificationRequired(body)) {
           setVerificationRequired(true);
-          setStatus("Email verification is required before documents can be viewed.");
+          setStatus(
+            "Email verification is required before shared document records can be reviewed.",
+          );
           return;
         }
         setStatus(publicShareErrorMessage(body, `Share link unavailable: ${response.status}`));
@@ -48,8 +50,8 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
       setPayload(nextPayload);
       setStatus(
         nextPayload.documents.length === 1
-          ? "1 document is available."
-          : `${nextPayload.documents.length} documents are available.`,
+          ? "1 shared document metadata record is available."
+          : `${nextPayload.documents.length} shared document metadata records are available.`,
       );
     }
     void loadShare();
@@ -87,10 +89,10 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
           </span>
         ) : undefined
       }
-      description="View the documents made available through this secure link."
+      description="Review the shared document metadata made available through this secure link."
       eyebrow="Secure share"
       icon={<FileText size={22} />}
-      title="Shared documents"
+      title="Shared document records"
     >
       <PublicStatusMessage>{status}</PublicStatusMessage>
 
@@ -103,7 +105,9 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
         <div className="public-form-action">
           <div>
             <strong>Email verification</strong>
-            <small>Complete verification from this email-delivered link to view documents.</small>
+            <small>
+              Complete verification from this email-delivered link to open this metadata view.
+            </small>
           </div>
           <button
             className="secondary-button"
@@ -120,7 +124,7 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
       {payload ? (
         <div className="public-form-section">
           <div className="section-title">
-            <h2>Documents</h2>
+            <h2>Document records</h2>
             <span>{payload.documents.length} records</span>
           </div>
           <div className="public-form-items">

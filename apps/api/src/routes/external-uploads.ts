@@ -762,18 +762,6 @@ export function registerExternalUploadRoutes(
         expiresIn: SIGNED_URL_EXPIRES_IN_SECONDS,
         unhoistableHeaders: new Set(Object.keys(requiredHeaders)),
       });
-      const document = await repository.createDocumentUploadIntent({
-        id: documentId,
-        firmId: link.firmId,
-        matterId: link.matterId,
-        title: body.filename,
-        storageKey,
-        checksumSha256: body.checksumSha256,
-        classification: body.classification,
-        legalHold: body.legalHold,
-        reviewStatus: "pending_review",
-        externalUploadLinkId: link.id,
-      });
       const claimed = await claimExternalUploadUse(externalUploadRepository, {
         firmId: link.firmId,
         id: link.id,
@@ -789,6 +777,18 @@ export function registerExternalUploadRoutes(
         });
         throw externalUploadDenied();
       }
+      const document = await repository.createDocumentUploadIntent({
+        id: documentId,
+        firmId: link.firmId,
+        matterId: link.matterId,
+        title: body.filename,
+        storageKey,
+        checksumSha256: body.checksumSha256,
+        classification: body.classification,
+        legalHold: body.legalHold,
+        reviewStatus: "pending_review",
+        externalUploadLinkId: link.id,
+      });
       await recordAccessLog(externalUploadRepository, {
         link,
         request,
