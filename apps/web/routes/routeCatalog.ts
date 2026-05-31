@@ -14,6 +14,7 @@ export type OpenPracticeRouteId =
   | "funds"
   | "audit"
   | "reports"
+  | "admin"
   | "queues";
 
 export type OpenPracticeRouteArea = "workspace" | "operations" | "finance" | "review";
@@ -21,6 +22,7 @@ export type OpenPracticeDashboardSectionKey =
   | DashboardSectionKey
   | "shares"
   | "externalUploads"
+  | "admin"
   | "queues";
 
 export interface OpenPracticeRouteCatalogEntry {
@@ -213,6 +215,17 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     showInSidebar: true,
   },
   {
+    id: "admin",
+    title: "Admin Readiness",
+    shortLabel: "Admin",
+    path: "/?section=admin",
+    sectionKey: "admin",
+    area: "review",
+    requiresMatterContext: false,
+    order: 78,
+    showInSidebar: true,
+  },
+  {
     id: "queues",
     title: "Operational Queues",
     shortLabel: "Queues",
@@ -253,6 +266,7 @@ export function buildSidebarNavigationSections(input: {
   capabilitySections: RouteCatalogSectionCapability[];
   shareLinksEnabled?: boolean;
   externalUploadsEnabled?: boolean;
+  adminReadinessEnabled?: boolean;
 }): OpenPracticeSidebarNavigationSection[] {
   const sidebarEntryBySectionKey = new Map(
     getSidebarRouteCatalogEntries().flatMap((entry) =>
@@ -351,6 +365,19 @@ export function buildSidebarNavigationSections(input: {
       enabled: true,
       order: queuesEntry.order,
       requiresMatterContext: queuesEntry.requiresMatterContext,
+    });
+  }
+  const adminEntry = sidebarEntryBySectionKey.get("admin");
+  const hasAdminCandidate = displayCandidates.some((candidate) => candidate.key === "admin");
+  if (adminEntry && !hasAdminCandidate) {
+    displayCandidates.push({
+      key: "admin",
+      label: adminEntry.shortLabel,
+      title: adminEntry.title,
+      area: adminEntry.area,
+      enabled: input.adminReadinessEnabled ?? false,
+      order: adminEntry.order,
+      requiresMatterContext: adminEntry.requiresMatterContext,
     });
   }
 

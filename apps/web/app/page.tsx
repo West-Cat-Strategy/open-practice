@@ -789,6 +789,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       capabilitySections: capabilities.sections,
       shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
       externalUploadsEnabled: canCreateExternalUpload(externalUploads.status),
+      adminReadinessEnabled: ["owner_admin", "auditor"].includes(session.user.role),
     }),
     matters.length > 0,
     canCreateMatter,
@@ -832,6 +833,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       session={session}
       shareLinksStatus={shareLinksStatus}
       signatures={signatures}
+      setupStatus={setupStatus}
       taskWorkbench={taskWorkbench}
       jurisdictionalTrustReport={jurisdictionalTrustReport}
       trustControls={trustControls}

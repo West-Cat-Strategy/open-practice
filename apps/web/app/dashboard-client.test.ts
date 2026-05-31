@@ -2212,6 +2212,12 @@ describe("dashboard client behavior", () => {
         enabled: true,
       }),
       expect.objectContaining({
+        key: "admin",
+        label: "Admin",
+        area: "review",
+        enabled: false,
+      }),
+      expect.objectContaining({
         key: "queues",
         label: "Queues",
         area: "operations",
