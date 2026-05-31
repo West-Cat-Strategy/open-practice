@@ -174,6 +174,9 @@ describe("WebAuthn routes", () => {
 
     expect(known.statusCode).toBe(200);
     expect(unknown.statusCode).toBe(200);
+    expect(known.json()).not.toHaveProperty("allowCredentials");
+    expect(unknown.json()).not.toHaveProperty("allowCredentials");
+    expect(known.json()).toEqual(unknown.json());
   });
 
   it("reports setup-not-ready before public passkey login options", async () => {
@@ -191,7 +194,7 @@ describe("WebAuthn routes", () => {
     });
   });
 
-  it("does not allow an unknown-email challenge to be replayed for a known passkey user", async () => {
+  it("allows credential-bound verification without binding the login challenge to an email", async () => {
     const repository = testRepository();
     await seedUser(repository, true);
     await repository.registerWebAuthnCredential({
@@ -225,8 +228,10 @@ describe("WebAuthn routes", () => {
       },
     });
 
-    expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({ message: "Invalid or expired challenge" });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["set-cookie"]).toEqual(
+      expect.stringContaining("open_practice_session"),
+    );
   });
 
   it("rejects disabled or cross-firm credentials during login verification", async () => {

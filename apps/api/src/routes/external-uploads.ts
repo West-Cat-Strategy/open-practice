@@ -1,7 +1,6 @@
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { Buffer } from "node:buffer";
 import { z } from "zod";
 import type {
   AccessLogRecord,
@@ -27,6 +26,11 @@ import {
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import { publicTokenPolicyOptions } from "./public-token-rate-limits.js";
 import type { ApiRouteDependencies } from "./types.js";
+import {
+  normalizeChecksumSha256,
+  sha256HexToBase64,
+  verifyUploadedObject,
+} from "./upload-verification.js";
 
 const SIGNED_URL_EXPIRES_IN_SECONDS = 600;
 const publicExternalUploadClassifications = [
@@ -36,11 +40,6 @@ const publicExternalUploadClassifications = [
   "financial",
   "identity",
 ] as const;
-const checksumSha256HexSchema = z
-  .string()
-  .regex(/^[a-fA-F0-9]{64}$/, "checksumSha256 must be a 64-character hex SHA-256 digest")
-  .transform((value) => value.toLowerCase());
-
 type ExternalUploadRepository = ApiRouteDependencies["repository"] & {
   listExternalUploadLinks: (
     firmId: string,
@@ -81,13 +80,13 @@ const publicCompleteParamsSchema = z.object({
 
 const publicIntentBodySchema = z.object({
   filename: z.string().min(1),
-  checksumSha256: checksumSha256HexSchema,
+  checksumSha256: z.string().transform(normalizeChecksumSha256),
   classification: z.enum(publicExternalUploadClassifications).default("general"),
   legalHold: z.coerce.boolean().default(false),
 });
 
 const publicCompleteBodySchema = z.object({
-  checksumSha256: checksumSha256HexSchema,
+  checksumSha256: z.string().transform(normalizeChecksumSha256),
 });
 
 const reviewDecisionSchema = z.enum(["accept", "request_metadata", "request_retry", "discard"]);
@@ -154,10 +153,6 @@ function sanitizeFilename(filename: string): string {
   return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-function sha256HexToBase64(checksumSha256: string): string {
-  return Buffer.from(checksumSha256, "hex").toString("base64");
-}
-
 function linkStatus(link: ExternalUploadLinkRecord, now = new Date()): string {
   if (link.revokedAt) return "revoked";
   if (Date.parse(link.expiresAt) <= now.getTime()) return "expired";
@@ -203,25 +198,34 @@ function serializePublicDocument(document: DocumentRecord): Record<string, unkno
     classification: document.classification,
     legalHold: document.legalHold,
     uploadStatus: document.uploadStatus,
-    checksumStatus: document.checksumStatus,
-    scanStatus: document.scanStatus,
+    scanStatus: document.scanStatus === "failed" ? "failed" : "queued",
     reviewStatus: document.reviewStatus,
-    reviewReason: document.reviewReason,
   };
 }
 
-function serializePublicReviewDocument(document: DocumentRecord): Record<string, unknown> {
+function serializePublicCompletionDocument(document: DocumentRecord): Record<string, unknown> {
   return {
     id: document.id,
     title: document.title,
+    version: document.version,
     classification: document.classification,
     legalHold: document.legalHold,
     uploadStatus: document.uploadStatus,
-    checksumStatus: document.checksumStatus,
-    scanStatus: document.scanStatus,
+    scanStatus: document.scanStatus === "failed" ? "failed" : "queued",
     reviewStatus: document.reviewStatus,
-    reviewReason: document.reviewReason,
-    reviewedAt: document.reviewedAt,
+  };
+}
+
+function serializePublicStatusDocument(document: DocumentRecord): Record<string, unknown> {
+  return {
+    id: document.id,
+    title: document.title,
+    version: document.version,
+    classification: document.classification,
+    legalHold: document.legalHold,
+    uploadStatus: document.uploadStatus,
+    scanStatus: document.scanStatus === "failed" ? "failed" : "queued",
+    reviewStatus: document.reviewStatus,
   };
 }
 
@@ -713,7 +717,7 @@ export function registerExternalUploadRoutes(
       });
       const documents = (await repository.listMatterDocuments(link.firmId, link.matterId))
         .filter((document) => externalUploadLinkIdForDocument(document) === link.id)
-        .map(serializePublicReviewDocument);
+        .map(serializePublicStatusDocument);
 
       return {
         upload: serializePublicLink(link),
@@ -836,6 +840,13 @@ export function registerExternalUploadRoutes(
         });
         throw externalUploadDenied();
       }
+      if (!s3) {
+        throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
+      }
+      await verifyUploadedObject(s3, {
+        storageKey: document.storageKey,
+        checksumSha256: body.checksumSha256,
+      });
 
       const completed = await repository.completeDocumentUpload({
         firmId: link.firmId,
@@ -852,7 +863,7 @@ export function registerExternalUploadRoutes(
       });
 
       return {
-        document: serializePublicDocument(completed),
+        document: serializePublicCompletionDocument(completed),
       };
     },
   );

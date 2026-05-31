@@ -66,6 +66,86 @@ describe("audit routes", () => {
     expect(JSON.stringify(response.json())).not.toContain("Synthetic billing audit time entry");
   });
 
+  it("denies firm-wide audit reads to non firm-wide roles", async () => {
+    const response = await testServer({
+      repository: new InMemoryOpenPracticeRepository(),
+      role: "licensee",
+    }).inject({
+      method: "GET",
+      url: "/api/audit",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: "FIRM_WIDE_AUDIT_FORBIDDEN" });
+  });
+
+  it("returns matter-scoped audit reads without hash-chain internals", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const server = testServer({ repository, role: "firm_member" });
+    await repository.appendAuditEvent({
+      id: "audit-matter-001",
+      firmId,
+      actorId: "user-owner_admin",
+      action: "matter.updated",
+      resourceType: "matter",
+      resourceId: "matter-001",
+      occurredAt: "2026-05-17T10:00:00.000Z",
+      metadata: { matterId: "matter-001", privateNote: "synthetic private note" },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-matter-002",
+      firmId,
+      actorId: "user-owner_admin",
+      action: "matter.updated",
+      resourceType: "matter",
+      resourceId: "matter-002",
+      occurredAt: "2026-05-17T10:01:00.000Z",
+      metadata: { matterId: "matter-002" },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/audit?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      scope: { kind: "matter", matterId: "matter-001" },
+      chainValidation: "not_shown_for_filtered_view",
+      events: [expect.objectContaining({ id: "audit-matter-001" })],
+    });
+    expect(response.json()).not.toHaveProperty("valid");
+    expect(response.json().events[0]).not.toHaveProperty("previousHash");
+    expect(response.json().events[0]).not.toHaveProperty("hash");
+    expect(JSON.stringify(response.json())).not.toContain("synthetic private note");
+    expect(JSON.stringify(response.json())).not.toContain("audit-matter-002");
+  });
+
+  it("includes taxonomy-supported matter metadata aliases in scoped audit reads", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const server = testServer({ repository, role: "firm_member" });
+    await repository.appendAuditEvent({
+      id: "audit-previous-matter",
+      firmId,
+      actorId: "user-owner_admin",
+      action: "inbound_email.triage.updated",
+      resourceType: "inbound_email",
+      resourceId: "email-previous-matter",
+      occurredAt: "2026-05-17T10:02:00.000Z",
+      metadata: { previousMatterId: "matter-001" },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/audit?matterId=matter-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().events).toEqual([
+      expect.objectContaining({ id: "audit-previous-matter" }),
+    ]);
+  });
+
   it("returns read-only taxonomy projection summaries for audit operators", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository });

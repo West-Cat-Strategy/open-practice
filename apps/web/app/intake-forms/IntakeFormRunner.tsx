@@ -175,14 +175,16 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
         return;
       }
       const intentPayload = (await intent.json()) as {
+        method?: "PUT";
         uploadUrl: string;
         document: { id: string };
+        requiredHeaders?: Record<string, string>;
       };
       const put = await fetch(intentPayload.uploadUrl, {
-        method: "PUT",
+        method: intentPayload.method ?? "PUT",
         headers: {
           "Content-Type": contentType,
-          "x-amz-checksum-sha256": checksumSha256,
+          ...(intentPayload.requiredHeaders ?? {}),
         },
         body: file,
       });

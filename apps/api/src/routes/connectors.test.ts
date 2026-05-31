@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
 import { registerConnectorRoutes } from "./connectors.js";
-import type { ApiJobQueue } from "./types.js";
+import type { ApiJobQueue, ConnectorDnsResolver } from "./types.js";
 
 const firmId = "firm-west-legal";
 const servers: FastifyInstance[] = [];
@@ -24,6 +24,7 @@ function testServer(input: {
   repository: InMemoryOpenPracticeRepository;
   authUser?: User;
   connectorJobQueue?: ApiJobQueue;
+  connectorDnsResolver?: ConnectorDnsResolver;
 }): FastifyInstance {
   const server = Fastify({ logger: false });
   const authUser = input.authUser ?? user("owner_admin");
@@ -33,6 +34,7 @@ function testServer(input: {
   registerConnectorRoutes(server, {
     repository: input.repository,
     connectorJobQueue: input.connectorJobQueue,
+    connectorDnsResolver: input.connectorDnsResolver ?? (async () => ["203.0.113.10"]),
   });
   server.setErrorHandler((error, _request, reply) => {
     const normalizedError = error as Error & { statusCode?: number; code?: string };
@@ -162,6 +164,57 @@ describe("connector routes", () => {
         }),
       ]),
     );
+  });
+
+  it("rejects connector delivery URLs that target private network ranges", async () => {
+    const server = testServer({ repository: new InMemoryOpenPracticeRepository() });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/connectors",
+      payload: {
+        type: "generic",
+        key: "synthetic.private-url",
+        displayName: "Synthetic Private URL",
+        status: "enabled",
+        configSummary: {
+          deliveryUrl: "https://10.0.0.5/open-practice",
+        },
+      },
+    });
+
+    expect(created.statusCode).toBe(400);
+    expect(created.json()).toMatchObject({
+      code: "CONNECTOR_DELIVERY_URL_REJECTED",
+      message: "configSummary.deliveryUrl failed outbound webhook guardrail validation",
+    });
+  });
+
+  it("rejects connector delivery URLs whose DNS resolves to private addresses", async () => {
+    const server = testServer({
+      repository: new InMemoryOpenPracticeRepository(),
+      connectorDnsResolver: async () => ["10.0.0.5"],
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/connectors",
+      payload: {
+        type: "generic",
+        key: "synthetic.private-dns",
+        displayName: "Synthetic Private DNS",
+        status: "enabled",
+        configSummary: {
+          deliveryUrl: "https://webhooks.example.test/open-practice",
+        },
+      },
+    });
+
+    expect(created.statusCode).toBe(400);
+    expect(created.json()).toMatchObject({
+      code: "CONNECTOR_DELIVERY_URL_REJECTED",
+      message: "configSummary.deliveryUrl failed outbound webhook DNS guardrail validation",
+    });
   });
 
   it("preserves stored connector secrets when clients write the masked sentinel", async () => {
@@ -574,6 +627,24 @@ describe("connector routes", () => {
     expect(localhostWebhook.statusCode).toBe(400);
     expect(localhostWebhook.json()).toMatchObject({
       code: "INTEGRATION_WEBHOOK_DESTINATION_DENIED",
+    });
+
+    const privateDnsServer = testServer({
+      repository,
+      connectorDnsResolver: async () => ["10.0.0.8"],
+    });
+    const privateDnsWebhook = await privateDnsServer.inject({
+      method: "POST",
+      url: `/api/connectors/developer/apps/${registered.json().app.id}/webhook-subscriptions`,
+      payload: {
+        eventTypes: ["document.verified"],
+        destinationUrl: "https://webhooks.example.test/hooks",
+      },
+    });
+    expect(privateDnsWebhook.statusCode).toBe(400);
+    expect(privateDnsWebhook.json()).toMatchObject({
+      code: "CONNECTOR_DELIVERY_URL_REJECTED",
+      message: "destinationUrl failed outbound webhook DNS guardrail validation",
     });
   });
 

@@ -72,6 +72,7 @@ describe("worker processors", () => {
       ocrProvider: {} as never,
       mailSender: {} as never,
       inboundEmailParser: {} as never,
+      connectorDnsResolver: async () => ["203.0.113.10"],
     };
   }
 
@@ -623,6 +624,36 @@ describe("worker processors", () => {
     );
     const attempts = await repository.listConnectorDeliveryAttempts("firm-west-legal");
     expect(JSON.stringify(attempts)).not.toContain("synthetic-signing-secret");
+  });
+
+  it("dead-letters connector destinations that resolve to private addresses", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await createConnectorOutboxFixture(repository, {
+      connectorId: "connector-private-dns",
+      deliveryUrl: "https://webhooks.example.test/open-practice",
+      outboxId: "connector-outbox-private-dns",
+    });
+
+    const result = await processOpenPracticeJob({
+      ...connectorJobDefaults(repository),
+      connectorSecretResolver: () => "synthetic-signing-secret",
+      connectorDnsResolver: async () => ["10.0.0.12"],
+      async connectorHttpDeliverer() {
+        throw new Error("Should not deliver");
+      },
+    });
+
+    expect(result.metadata).toMatchObject({ deadLetterCount: 1, deliveredCount: 0 });
+    const attempts = await repository.listConnectorDeliveryAttempts("firm-west-legal", {
+      outboxId: "connector-outbox-private-dns",
+    });
+    expect(attempts).toEqual([
+      expect.objectContaining({
+        status: "failed",
+        errorSummary: "Connector destination failed DNS guardrail validation",
+        metadata: expect.objectContaining({ reason: "private_network_denied" }),
+      }),
+    ]);
   });
 
   it("records retryable and terminal connector HTTP failures", async () => {

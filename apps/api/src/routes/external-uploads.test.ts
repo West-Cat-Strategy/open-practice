@@ -20,18 +20,22 @@ function deliveryConfirmation(recipientCount = 1) {
   return { confirmed: true, channel: "email", recipientCount };
 }
 
-function s3Config(): NonNullable<CreateServerOptions["s3"]> {
+function s3Config(checksumSha256 = checksum): NonNullable<CreateServerOptions["s3"]> {
+  const client = new S3Client({
+    endpoint: "http://127.0.0.1:9000",
+    forcePathStyle: true,
+    region: "local",
+    credentials: {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    },
+  });
+  (client as unknown as { send: () => Promise<{ ChecksumSHA256: string }> }).send = async () => ({
+    ChecksumSHA256: Buffer.from(checksumSha256, "hex").toString("base64"),
+  });
   return {
     bucket: "open-practice-test-documents",
-    client: new S3Client({
-      endpoint: "http://127.0.0.1:9000",
-      forcePathStyle: true,
-      region: "local",
-      credentials: {
-        accessKeyId: "test-access-key",
-        secretAccessKey: "test-secret-key",
-      },
-    }),
+    client,
   };
 }
 
@@ -474,12 +478,13 @@ describe("external upload routes", () => {
       document: {
         title: "external evidence.pdf",
         uploadStatus: "intent_created",
-        checksumStatus: "pending",
         reviewStatus: "pending_review",
       },
     });
     expect(intent.json()).not.toHaveProperty("storageKey");
     expect(intent.json().document).not.toHaveProperty("storageKey");
+    expect(intent.json().document).not.toHaveProperty("checksumStatus");
+    expect(intent.json().document).not.toHaveProperty("reviewReason");
     expect(intent.json().document).not.toHaveProperty("supersedesDocumentId");
     expect(intent.json().uploadUrl).toContain("open-practice-test-documents");
     expect(intent.json().requiredHeaders).toMatchObject({
@@ -534,11 +539,11 @@ describe("external upload routes", () => {
       document: {
         id: intent.json().document.id,
         uploadStatus: "verified",
-        checksumStatus: "verified",
         scanStatus: "queued",
         reviewStatus: "pending_review",
       },
     });
+    expect(complete.json().document).not.toHaveProperty("checksumStatus");
 
     const reviewed = await server.inject({
       method: "PATCH",
@@ -711,30 +716,24 @@ describe("external upload routes", () => {
           id: "doc-public-pending",
           title: "Pending synthetic upload.pdf",
           uploadStatus: "intent_created",
-          checksumStatus: "pending",
-          scanStatus: "pending",
+          scanStatus: "queued",
           reviewStatus: "pending_review",
         }),
         expect.objectContaining({
           id: "doc-public-accepted",
           reviewStatus: "accepted",
-          reviewReason: "other",
-          reviewedAt: "2026-05-11T10:30:00.000Z",
         }),
         expect.objectContaining({
           id: "doc-public-metadata",
           reviewStatus: "needs_metadata",
-          reviewReason: "missing_metadata",
         }),
         expect.objectContaining({
           id: "doc-public-retry",
           reviewStatus: "retry_requested",
-          reviewReason: "unreadable",
         }),
         expect.objectContaining({
           id: "doc-public-discarded",
           reviewStatus: "discarded",
-          reviewReason: "wrong_matter",
         }),
       ]),
     });
@@ -745,6 +744,9 @@ describe("external upload routes", () => {
     expect(response.json().documents[0]).not.toHaveProperty("matterId");
     expect(response.json().documents[0]).not.toHaveProperty("externalUploadLinkId");
     expect(response.json().documents[0]).not.toHaveProperty("storageKey");
+    expect(response.json().documents[0]).not.toHaveProperty("checksumStatus");
+    expect(response.json().documents[0]).not.toHaveProperty("reviewReason");
+    expect(response.json().documents[0]).not.toHaveProperty("reviewedAt");
     expect(response.json().documents[0]).not.toHaveProperty("reviewMetadata");
     expect(response.json().documents[0]).not.toHaveProperty("reviewedByUserId");
     expect(response.body).not.toContain("Private staff-only note");
@@ -958,11 +960,22 @@ describe("external upload routes", () => {
     expect(duplicateComplete.statusCode).toBe(200);
     expect(duplicateComplete.json()).toMatchObject({
       document: {
-        checksumStatus: "duplicate",
         reviewStatus: "pending_review",
-        reviewReason: "duplicate",
       },
     });
+    expect(duplicateComplete.json().document).not.toHaveProperty("checksumStatus");
+    expect(duplicateComplete.json().document).not.toHaveProperty("reviewReason");
+    const publicStatus = await server.inject({
+      method: "GET",
+      url: `/api/portal/external-uploads/${duplicateCreated.json().token}`,
+    });
+    expect(publicStatus.statusCode).toBe(200);
+    const publicDuplicate = publicStatus
+      .json<{ documents: Array<Record<string, unknown>> }>()
+      .documents.find((document) => document.id === duplicateIntent.json().document.id);
+    expect(publicDuplicate).toMatchObject({ reviewStatus: "pending_review" });
+    expect(publicDuplicate).not.toHaveProperty("checksumStatus");
+    expect(publicDuplicate).not.toHaveProperty("reviewReason");
 
     const reviewedDuplicate = await server.inject({
       method: "PATCH",

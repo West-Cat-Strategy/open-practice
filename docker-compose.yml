@@ -13,7 +13,7 @@ services:
       POSTGRES_USER: open_practice
       POSTGRES_PASSWORD: open_practice
     ports:
-      - "35432:5432"
+      - "${OPEN_PRACTICE_DOCKER_HOST_BIND:-127.0.0.1}:35432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -25,7 +25,7 @@ services:
   redis:
     image: redis:8-alpine@sha256:ad0a6eff0a40304ab1ab4f50f0dc192d82b071e1094eac961bcb6106092f8a4e
     ports:
-      - "36379:6379"
+      - "${OPEN_PRACTICE_DOCKER_HOST_BIND:-127.0.0.1}:36379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -41,8 +41,8 @@ services:
       MINIO_ROOT_USER: open_practice
       MINIO_ROOT_PASSWORD: open_practice_secret
     ports:
-      - "39000:9000"
-      - "39001:9001"
+      - "${OPEN_PRACTICE_DOCKER_HOST_BIND:-127.0.0.1}:39000:9000"
+      - "${OPEN_PRACTICE_DOCKER_HOST_BIND:-127.0.0.1}:39001:9001"
     volumes:
       - minio-data:/data
 
@@ -51,8 +51,8 @@ services:
     build:
       context: ./docker/mailpit
     ports:
-      - "31025:1025"
-      - "38025:8025"
+      - "${OPEN_PRACTICE_DOCKER_HOST_BIND:-127.0.0.1}:31025:1025"
+      - "${OPEN_PRACTICE_DOCKER_HOST_BIND:-127.0.0.1}:38025:8025"
 
   api:
     build:
@@ -75,7 +75,7 @@ services:
       - WEBAUTHN_ORIGIN=http://localhost:33000
       - PUBLIC_WEB_BASE_URL=http://localhost:33000
     ports:
-      - "34000:4000"
+      - "${OPEN_PRACTICE_DOCKER_HOST_BIND:-127.0.0.1}:34000:4000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,7 +105,7 @@ services:
       - API_BASE_URL=http://api:4000
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:34000
     ports:
-      - "33000:3000"
+      - "${OPEN_PRACTICE_DOCKER_HOST_BIND:-127.0.0.1}:33000:3000"
     depends_on:
       api:
         condition: service_healthy

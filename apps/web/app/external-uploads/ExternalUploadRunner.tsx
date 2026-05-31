@@ -221,7 +221,9 @@ export default function ExternalUploadRunner({ apiBaseUrl, token }: ExternalUplo
                     <small>
                       {document.classification.replaceAll("_", " ")} ·{" "}
                       {document.uploadStatus.replaceAll("_", " ")} ·{" "}
-                      {document.checksumStatus.replaceAll("_", " ")} checksum ·{" "}
+                      {document.checksumStatus
+                        ? `${document.checksumStatus.replaceAll("_", " ")} checksum · `
+                        : ""}
                       {document.scanStatus.replaceAll("_", " ")} scan
                     </small>
                     <small>{documentStatus.detail}</small>

@@ -60,7 +60,7 @@ import { registerSignatureRoutes } from "./routes/signatures.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
 import { registerWebAuthnRoutes } from "./routes/webauthn.js";
-import type { ApiJobQueue } from "./routes/types.js";
+import type { ApiJobQueue, ConnectorDnsResolver } from "./routes/types.js";
 import {
   hashToken,
   hashPassword,
@@ -172,6 +172,7 @@ interface ApiOptions {
   draftAssistProvider?: DraftAssistProvider;
   emailJobQueue?: ApiJobQueue;
   connectorJobQueue?: ApiJobQueue;
+  connectorDnsResolver?: ConnectorDnsResolver;
   reportJobQueue?: ApiJobQueue;
   aiAssistJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
@@ -413,6 +414,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerConnectorRoutes(server, {
     repository: options.repository,
     connectorJobQueue: options.connectorJobQueue,
+    connectorDnsResolver: options.connectorDnsResolver,
   });
   registerCommunicationsRoutes(server, { repository: options.repository });
   registerConversationThreadRoutes(server, {

@@ -1,4 +1,5 @@
 import { S3Client } from "@aws-sdk/client-s3";
+import { Buffer } from "node:buffer";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   InMemoryOpenPracticeRepository,
@@ -14,18 +15,22 @@ const checksum = "f".repeat(64);
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
 
-function s3Config(): NonNullable<CreateServerOptions["s3"]> {
+function s3Config(checksumSha256 = checksum): NonNullable<CreateServerOptions["s3"]> {
+  const client = new S3Client({
+    endpoint: "http://127.0.0.1:9000",
+    forcePathStyle: true,
+    region: "local",
+    credentials: {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    },
+  });
+  (client as unknown as { send: () => Promise<{ ChecksumSHA256: string }> }).send = async () => ({
+    ChecksumSHA256: Buffer.from(checksumSha256, "hex").toString("base64"),
+  });
   return {
     bucket: "open-practice-test-documents",
-    client: new S3Client({
-      endpoint: "http://127.0.0.1:9000",
-      forcePathStyle: true,
-      region: "local",
-      credentials: {
-        accessKeyId: "test-access-key",
-        secretAccessKey: "test-secret-key",
-      },
-    }),
+    client,
   };
 }
 
@@ -323,6 +328,12 @@ describe("intake form builder routes", () => {
       },
     });
     expect(uploadIntent.statusCode).toBe(200);
+    expect(uploadIntent.json()).toMatchObject({
+      requiredHeaders: {
+        "x-amz-checksum-sha256": expect.any(String),
+        "x-amz-meta-open-practice-upload-scope": "intake-form",
+      },
+    });
     const documentId = uploadIntent.json<{ document: { id: string } }>().document.id;
 
     const completeUpload = await server.inject({

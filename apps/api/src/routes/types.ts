@@ -19,6 +19,8 @@ export interface ApiJobQueue {
   ): Promise<{ id?: string | number }>;
 }
 
+export type ConnectorDnsResolver = (hostname: string) => Promise<string[]>;
+
 export interface ApiRouteDependencies {
   repository: OpenPracticeRepository;
   automationProvider?: DocumentAutomationProvider;
@@ -31,6 +33,7 @@ export interface ApiRouteDependencies {
   };
   emailJobQueue?: ApiJobQueue;
   connectorJobQueue?: ApiJobQueue;
+  connectorDnsResolver?: ConnectorDnsResolver;
   reportJobQueue?: ApiJobQueue;
   aiAssistJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;

@@ -1476,6 +1476,17 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(this.webAuthnCredentials.find((c) => c.credentialId === credentialId));
   }
 
+  async getWebAuthnCredentialForFirm(
+    firmId: string,
+    credentialId: string,
+  ): Promise<WebAuthnCredentialRecord | undefined> {
+    return clone(
+      this.webAuthnCredentials.find(
+        (credential) => credential.firmId === firmId && credential.credentialId === credentialId,
+      ),
+    );
+  }
+
   async updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void> {
     const cred = this.webAuthnCredentials.find((c) => c.id === id);
     if (cred) {

@@ -1,6 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import type { OpenPracticeRepository } from "@open-practice/database";
-import { summarizeAuditEventTaxonomy } from "@open-practice/domain";
+import {
+  summarizeAuditEventTaxonomy,
+  type AuditEvent,
+  type ProfessionalRole,
+} from "@open-practice/domain";
 import { z } from "zod";
 import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
@@ -14,6 +18,10 @@ const auditExportRequestBodySchema = z.object({
 
 const auditExportParamsSchema = z.object({
   exportJobId: z.string().min(1),
+});
+
+const auditListQuerySchema = z.object({
+  matterId: z.string().min(1).optional(),
 });
 
 function auditExportJobId(): string {
@@ -61,14 +69,78 @@ function serializeAuditEvents(
   };
 }
 
+function canReadFirmWideAudit(role: ProfessionalRole): boolean {
+  return role === "owner_admin" || role === "auditor";
+}
+
+function metadataContainsMatterId(value: unknown, matterId: string): boolean {
+  if (value === matterId) return true;
+  return Array.isArray(value) && value.includes(matterId);
+}
+
+function auditEventTouchesMatter(event: AuditEvent, matterId: string): boolean {
+  return (
+    (event.resourceType === "matter" && event.resourceId === matterId) ||
+    metadataContainsMatterId(event.metadata.matterId, matterId) ||
+    metadataContainsMatterId(event.metadata.matterIds, matterId) ||
+    metadataContainsMatterId(event.metadata.previousMatterId, matterId)
+  );
+}
+
+function serializeMatterScopedAuditEvents(input: {
+  audit: Awaited<ReturnType<OpenPracticeRepository["listAuditEvents"]>>;
+  matterId: string;
+}) {
+  const events = input.audit.events.filter((event) =>
+    auditEventTouchesMatter(event, input.matterId),
+  );
+  return {
+    generatedAt: new Date().toISOString(),
+    scope: { kind: "matter", matterId: input.matterId },
+    chainValidation: "not_shown_for_filtered_view",
+    taxonomySummary: summarizeAuditEventTaxonomy(events),
+    events: events.map((event) => ({
+      id: event.id,
+      actorId: event.actorId,
+      action: event.action,
+      resourceType: event.resourceType,
+      resourceId: event.resourceId,
+      occurredAt: event.occurredAt,
+      metadataKeys: Object.keys(event.metadata).sort(),
+    })),
+  };
+}
+
 export function registerAuditRoutes(
   server: FastifyInstance,
   options: { repository: OpenPracticeRepository; reportJobQueue?: ApiJobQueue },
 ): void {
   server.get("/api/audit", async (request) => {
-    const access = requireAccess(request.auth, { resource: "audit_log", action: "read" });
-    if (!access.ok) throw access.error;
-    return serializeAuditEvents(await options.repository.listAuditEvents(request.auth.firmId));
+    const query = parseRequestPart(auditListQuerySchema, request.query, "query");
+    if (!query.matterId) {
+      if (!canReadFirmWideAudit(request.auth.user.role)) {
+        throw new ApiHttpError(
+          403,
+          "FIRM_WIDE_AUDIT_FORBIDDEN",
+          "Firm-wide audit logs are restricted to owner administrators and auditors.",
+        );
+      }
+      const access = requireAccess(request.auth, { resource: "audit_log", action: "read" });
+      if (!access.ok) throw access.error;
+      return serializeAuditEvents(await options.repository.listAuditEvents(request.auth.firmId));
+    }
+
+    const matterAccess = requireAccess(request.auth, {
+      resource: "matter",
+      action: "read",
+      matterId: query.matterId,
+    });
+    if (!matterAccess.ok) throw matterAccess.error;
+
+    return serializeMatterScopedAuditEvents({
+      audit: await options.repository.listAuditEvents(request.auth.firmId),
+      matterId: query.matterId,
+    });
   });
 
   server.post("/api/audit/export-requests", async (request, reply) => {

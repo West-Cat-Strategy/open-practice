@@ -34,7 +34,7 @@ export interface PublicExternalUploadDocument {
   classification: string;
   legalHold: boolean;
   uploadStatus: string;
-  checksumStatus: string;
+  checksumStatus?: string;
   scanStatus: string;
   reviewStatus: string;
   reviewReason?: string;

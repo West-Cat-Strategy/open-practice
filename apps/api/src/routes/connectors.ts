@@ -1,3 +1,4 @@
+import { lookup as dnsLookup } from "node:dns/promises";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type {
@@ -13,6 +14,7 @@ import type {
   JobLifecycleRecord,
 } from "@open-practice/domain";
 import {
+  isDeniedOutboundWebhookAddress,
   outboundWebhookEventAllowlist,
   validateOutboundWebhookDestination,
 } from "@open-practice/domain";
@@ -27,7 +29,7 @@ import {
   rethrowIdempotencyConflict,
 } from "./idempotency.js";
 import { enqueueFailureError, markJobEnqueueFailed } from "./outbound-email.js";
-import type { ApiRouteDependencies } from "./types.js";
+import type { ApiRouteDependencies, ConnectorDnsResolver } from "./types.js";
 
 const connectorTypeSchema = z.enum([
   "calendar",
@@ -283,6 +285,62 @@ function assertRedactedSummary(summary: Record<string, unknown>, field: string):
     400,
     "CONNECTOR_SECRET_SUMMARY_REJECTED",
     `${field} must contain redacted operational metadata only`,
+  );
+}
+
+async function defaultConnectorDnsResolver(hostname: string): Promise<string[]> {
+  const records = await dnsLookup(hostname, { all: true, verbatim: true });
+  return records.map((record) => record.address);
+}
+
+async function assertConnectorDestinationDns(
+  destination: Extract<ReturnType<typeof validateOutboundWebhookDestination>, { ok: true }>,
+  field: string,
+  resolver: ConnectorDnsResolver,
+): Promise<void> {
+  let addresses: string[];
+  try {
+    addresses = await resolver(destination.host);
+  } catch {
+    throw new ApiHttpError(
+      400,
+      "CONNECTOR_DELIVERY_URL_REJECTED",
+      `${field} failed outbound webhook DNS guardrail validation`,
+      { reason: "dns_resolution_failed" },
+    );
+  }
+  if (
+    addresses.length === 0 ||
+    addresses.some((address) => isDeniedOutboundWebhookAddress(address))
+  ) {
+    throw new ApiHttpError(
+      400,
+      "CONNECTOR_DELIVERY_URL_REJECTED",
+      `${field} failed outbound webhook DNS guardrail validation`,
+      {
+        reason: addresses.length === 0 ? "dns_resolution_failed" : "private_network_denied",
+      },
+    );
+  }
+}
+
+async function assertConnectorDeliveryUrl(
+  summary: Record<string, unknown>,
+  field: string,
+  resolver: ConnectorDnsResolver,
+): Promise<void> {
+  const value = summary.deliveryUrl;
+  if (typeof value !== "string" || !value.trim()) return;
+  const validation = validateOutboundWebhookDestination(value);
+  if (validation.ok) {
+    await assertConnectorDestinationDns(validation, `${field}.deliveryUrl`, resolver);
+    return;
+  }
+  throw new ApiHttpError(
+    400,
+    "CONNECTOR_DELIVERY_URL_REJECTED",
+    `${field}.deliveryUrl failed outbound webhook guardrail validation`,
+    { reason: validation.reason },
   );
 }
 
@@ -748,6 +806,7 @@ export function registerConnectorRoutes(
   dependencies: ApiRouteDependencies,
 ): void {
   const { repository } = dependencies;
+  const connectorDnsResolver = dependencies.connectorDnsResolver ?? defaultConnectorDnsResolver;
 
   server.get("/api/connectors", async (request) => {
     const query = parseRequestPart(connectorListQuerySchema, request.query, "query");
@@ -760,7 +819,10 @@ export function registerConnectorRoutes(
     const params = parseRequestPart(connectorParamsSchema, request.params, "params");
     const body = parseRequestPart(connectorPatchBodySchema, request.body, "body");
     assertConnectorAccess(request.auth, { resource: "connector", action: "update" });
-    if (body.configSummary) assertRedactedSummary(body.configSummary, "configSummary");
+    if (body.configSummary) {
+      assertRedactedSummary(body.configSummary, "configSummary");
+      await assertConnectorDeliveryUrl(body.configSummary, "configSummary", connectorDnsResolver);
+    }
     const existing = await repository.getConnector(request.auth.firmId, params.connectorId);
     if (!existing) {
       throw new ApiHttpError(404, "CONNECTOR_NOT_FOUND", "Connector was not found");
@@ -806,6 +868,7 @@ export function registerConnectorRoutes(
     const body = parseRequestPart(connectorCreateBodySchema, request.body, "body");
     assertConnectorAccess(request.auth, { resource: "connector", action: "create" });
     assertRedactedSummary(body.configSummary, "configSummary");
+    await assertConnectorDeliveryUrl(body.configSummary, "configSummary", connectorDnsResolver);
     const now = new Date().toISOString();
     const connector = await repository.createConnector({
       id: crypto.randomUUID(),
@@ -1037,6 +1100,7 @@ export function registerConnectorRoutes(
           { reason: destination.reason },
         );
       }
+      await assertConnectorDestinationDns(destination, "destinationUrl", connectorDnsResolver);
       const now = new Date().toISOString();
       const subscription = await repository.createIntegrationWebhookSubscription({
         id: crypto.randomUUID(),

@@ -248,4 +248,49 @@ describe("matter routes", () => {
 
     expect(response.statusCode).toBe(403);
   });
+
+  it("redacts conflict-check details for non firm-wide reviewers", async () => {
+    const response = await testServer(user("licensee", ["matter-001"])).inject({
+      method: "POST",
+      url: "/api/conflicts/check",
+      payload: {
+        prospectiveName: "Ada Morgan",
+        identifiers: [{ type: "email", value: "ada@example.test" }],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      results: [],
+      summary: {
+        matchCount: expect.any(Number),
+        detailsRedacted: true,
+        countsBySeverity: expect.any(Object),
+      },
+    });
+    expect(response.json()).not.toHaveProperty("auditChainValid");
+    expect(JSON.stringify(response.json())).not.toContain("contact-");
+    expect(JSON.stringify(response.json())).not.toContain("matter-");
+    expect(JSON.stringify(response.json())).not.toContain("ada@example.test");
+  });
+
+  it("keeps full conflict-check details for firm-wide reviewers", async () => {
+    const response = await testServer(user("owner_admin", [])).inject({
+      method: "POST",
+      url: "/api/conflicts/check",
+      payload: {
+        prospectiveName: "Ada Morgan",
+        identifiers: [{ type: "email", value: "ada@example.test" }],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results.length).toBeGreaterThan(0);
+    expect(response.json().results[0]).toEqual(
+      expect.objectContaining({
+        contactId: expect.any(String),
+        severity: expect.any(String),
+      }),
+    );
+  });
 });

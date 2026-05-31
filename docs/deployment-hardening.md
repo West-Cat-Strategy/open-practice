@@ -1,10 +1,12 @@
 # Deployment Hardening
 
 - Require TLS for all browser, API, portal, and object-storage traffic.
+- Serve the web app with baseline response hardening headers, including no powered-by header,
+  `nosniff`, no-referrer policy, restrictive permissions policy, and frame/object/base CSP guards.
 - Configure embedded session auth with strong password setup/invitation flows for practice users and portal users.
 - Configure a one-time `OPEN_PRACTICE_SETUP_KEY` for production first-run setup and remove or rotate it after the first owner admin is created.
 - Keep S3 buckets private; serve files only through expiring signed URLs after server-side authorization.
-- Verify upload-completion callbacks against expected storage keys, checksums, size policy, and scan state before documents can be shared.
+- Verify upload-completion callbacks against expected storage keys, object existence, checksums, size policy, and server-controlled scan state before documents can be shared.
 - Run malware scanning before a document can be shared through the portal.
 - Back up PostgreSQL and object storage together, test restores, and include migration rollback/roll-forward drills in release readiness.
 - Store secrets outside git and outside container images.
@@ -22,6 +24,12 @@
   provenance, and human-review states for generated text.
 - Configure passkey RP ID/origin before enabling SimpleWebAuthn routes, and sanitize/render TipTap
   content server-side before portal exposure.
+- Keep public passkey login options non-enumerating: login challenges must not return user-specific
+  credential IDs, and verification should resolve active credentials within the configured practice.
+- Validate outbound connector delivery URLs before persistence and again in the worker immediately
+  before delivery, including DNS resolution checks that reject private, loopback, link-local, and
+  other reserved addresses. Worker delivery should use a guarded HTTPS socket lookup and must not
+  automatically follow redirects to unvalidated destinations.
 - Keep audit exports in immutable or write-once storage where available.
 - Separate production trust/funds operations from test data and demo data.
 - Keep billing, invoice, manual-payment, and trust-transfer workflows behind role-scoped operational controls; do not describe them as jurisdiction-certified accounting, tax, or trust-compliance advice.
@@ -54,6 +62,8 @@ Environment variables must be treated as deployment inputs, not application defa
   or recovery-code payloads.
 - `API_BASE_URL`, `WEB_PORT`, and `API_PORT` should be explicit per environment, with TLS termination
   and allowed origins configured at the edge.
+- Local Docker Compose host ports bind to `127.0.0.1` by default. Set
+  `OPEN_PRACTICE_DOCKER_HOST_BIND` only for intentional LAN testing on a trusted network.
 - `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY` must reference a
   private bucket or compatible object store. Endpoint, access key, and secret key must be provided
   together when S3 is enabled. Upload completion must verify the expected key, checksum, size policy,
