@@ -1,4 +1,5 @@
 import { dirname } from "node:path";
+import { env } from "node:process";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -31,7 +32,7 @@ const securityHeaders = [
   },
 ];
 
-if (process.env.NODE_ENV === "production") {
+if (env.NODE_ENV === "production") {
   securityHeaders.push({
     key: "Strict-Transport-Security",
     value: "max-age=31536000; includeSubDomains",

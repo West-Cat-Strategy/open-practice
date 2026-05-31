@@ -179,10 +179,10 @@ export function registerWebAuthnRoutes(
         rpID: options.rpID,
         userVerification: "preferred",
       });
-      const { allowCredentials: _allowCredentials, ...publicAuthOptions } =
-        authOptions as typeof authOptions & {
-          allowCredentials?: unknown;
-        };
+      const publicAuthOptions = { ...authOptions } as typeof authOptions & {
+        allowCredentials?: unknown;
+      };
+      delete publicAuthOptions.allowCredentials;
 
       await options.repository.createWebAuthnChallenge({
         id: crypto.randomUUID(),
