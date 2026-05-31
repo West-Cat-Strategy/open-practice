@@ -22,6 +22,7 @@ describe("contact dossiers", () => {
       matters: sampleMatters.filter((matter) => matter.id === "matter-001"),
       matterParties: sampleMatterParties,
       portalGrants: samplePortalGrants,
+      contactRelationships: sampleContactRelationships,
       now: "2026-05-02T12:00:00.000Z",
     });
 
@@ -39,40 +40,42 @@ describe("contact dossiers", () => {
       ],
       relationships: [
         {
+          id: "contact-relationship-ada-river-counterparty",
+          direction: "outbound",
+          relationshipKind: "opposing_party_for",
+          label: "Matter counterparty",
+          conflictSafeLabel: "Matter counterparty",
+          status: "active",
           source: "matter_party",
-          relationshipLabel: "client to opposing party",
           relatedContact: {
             kind: "organization",
             displayName: "River City Rentals Inc.",
           },
-          matter: {
-            matterId: "matter-001",
-            matterNumber: "2026-0001",
-            matterTitle: "Morgan tenancy dispute",
-          },
-          contactRole: "client",
-          relatedRole: "opposing_party",
-          conflictSafeLabels: [
-            "confidential handling",
-            "conflict caution",
-            "related adverse party",
-          ],
+          visibleMatterIds: ["matter-001"],
         },
       ],
       crmTaxonomy: {
-        contactType: "person",
-        primaryLabel: "Person",
-        cues: expect.arrayContaining([
-          expect.objectContaining({ kind: "contact_type", label: "Person" }),
-          expect.objectContaining({ kind: "matter_role", label: "client", count: 1 }),
-          expect.objectContaining({
-            kind: "relationship_context",
-            label: "client to opposing party",
-            count: 1,
-          }),
-          expect.objectContaining({ kind: "privacy_flag", label: "confidential matter", count: 1 }),
-          expect.objectContaining({ kind: "portal_access", label: "portal contact", count: 1 }),
+        entityType: "person",
+        labels: expect.arrayContaining([
+          expect.objectContaining({ key: "person", label: "person", severity: "info" }),
+          expect.objectContaining({ key: "client_contact", label: "client contact" }),
+          expect.objectContaining({ key: "confidential_handling", severity: "review" }),
+          expect.objectContaining({ key: "portal_enabled", severity: "review" }),
+          expect.objectContaining({ key: "relationship_graph", severity: "info" }),
         ]),
+        relatedMatterSummary: {
+          total: 1,
+          clientRoleCount: 1,
+          adverseRoleCount: 0,
+          confidentialRoleCount: 1,
+          portalMatterCount: 1,
+        },
+        relationshipSummary: {
+          activeCount: 1,
+          reviewNeededCount: 0,
+          organizationCount: 1,
+          personCount: 0,
+        },
       },
       conflictCues: [
         {
@@ -176,6 +179,7 @@ describe("contact dossiers", () => {
       matters: sampleMatters.filter((matter) => matter.id === "matter-001"),
       matterParties: sampleMatterParties,
       portalGrants: [],
+      contactRelationships: sampleContactRelationships,
       conflictChecks: [
         {
           id: "conflict-check-visible",
@@ -213,16 +217,18 @@ describe("contact dossiers", () => {
     const river = dossiers.find((dossier) => dossier.contact.id === "contact-river")!;
     expect(river.relationships).toEqual([
       expect.objectContaining({
-        relationshipLabel: "opposing party to client",
+        id: "contact-relationship-ada-river-counterparty",
+        direction: "inbound",
+        relationshipKind: "opposing_party_for",
+        label: "Matter counterparty",
+        conflictSafeLabel: "Matter counterparty",
+        status: "active",
+        source: "matter_party",
         relatedContact: {
           kind: "person",
           displayName: "Ada Morgan",
         },
-        conflictSafeLabels: expect.arrayContaining([
-          "confidential handling",
-          "conflict caution",
-          "related confidential party",
-        ]),
+        visibleMatterIds: ["matter-001"],
       }),
     ]);
     expect(JSON.stringify(river.relationships)).not.toContain("ada@example.test");

@@ -198,39 +198,46 @@ describe("repository contact dossier quality review", () => {
     expect(dossiers.find((dossier) => dossier.contact.id === "contact-ada")).toMatchObject({
       relationships: [
         {
+          id: "contact-relationship-ada-river-counterparty",
+          direction: "outbound",
+          relationshipKind: "opposing_party_for",
+          label: "Matter counterparty",
+          conflictSafeLabel: "Matter counterparty",
+          status: "active",
           source: "matter_party",
-          relationshipLabel: "client to opposing party",
           relatedContact: {
             kind: "organization",
             displayName: "River City Rentals Inc.",
           },
-          matter: {
-            matterId: "matter-001",
-            matterNumber: "2026-0001",
-            matterTitle: "Morgan tenancy dispute",
-          },
+          visibleMatterIds: ["matter-001"],
         },
       ],
       crmTaxonomy: {
-        primaryLabel: "Person",
-        cues: expect.arrayContaining([
-          expect.objectContaining({ kind: "contact_type", label: "Person" }),
-          expect.objectContaining({
-            kind: "relationship_context",
-            label: "client to opposing party",
-          }),
+        entityType: "person",
+        labels: expect.arrayContaining([
+          expect.objectContaining({ key: "person", label: "person" }),
+          expect.objectContaining({ key: "client_contact", label: "client contact" }),
+          expect.objectContaining({ key: "relationship_graph", severity: "info" }),
         ]),
+        relationshipSummary: expect.objectContaining({
+          activeCount: 1,
+          organizationCount: 1,
+        }),
       },
     });
     expect(
       dossiers.find((dossier) => dossier.contact.id === "contact-river")?.relationships,
     ).toEqual([
       expect.objectContaining({
-        relationshipLabel: "opposing party to client",
+        id: "contact-relationship-ada-river-counterparty",
+        direction: "inbound",
+        label: "Matter counterparty",
+        conflictSafeLabel: "Matter counterparty",
         relatedContact: {
           kind: "person",
           displayName: "Ada Morgan",
         },
+        visibleMatterIds: ["matter-001"],
       }),
     ]);
     expect(JSON.stringify(dossiers)).not.toContain("proposal-inaccessible-contact-name");
