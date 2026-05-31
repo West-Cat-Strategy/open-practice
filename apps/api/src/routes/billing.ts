@@ -4,12 +4,16 @@ import {
   assertBillingStatusTransition,
   billingDateFallsInsideLock,
   billingRuleScope,
+  billingTimerWindowOverlapsLock,
   calculateInvoiceTotals,
   clientTrustBalanceByMatter,
   createInvoiceLineTotals,
+  expenseCategoryProfileCues,
+  expenseCategoryProfileForKey,
   isBillableUnbilled,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
+  timerDraftMinutesFromWindow,
   trustTransferRequestAvailableBalanceCents,
   type AccessRequest,
 } from "@open-practice/domain";
@@ -51,6 +55,26 @@ const timeEntryPatchBodySchema = timeEntryBodySchema
   .omit({ id: true, matterId: true, userId: true })
   .partial();
 
+const timeEntryTimerDraftBodySchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    matterId: z.string().min(1),
+    userId: z.string().min(1).optional(),
+    startedAt: z.string().datetime(),
+    stoppedAt: z.string().datetime(),
+    rateCents: z.number().int().nonnegative().optional(),
+    narrative: z.string().min(1),
+    billable: z.boolean().default(true),
+  })
+  .strict();
+
+const expenseCategoryProfileKeySchema = z.enum(
+  expenseCategoryProfileCues.map((profile) => profile.key) as [
+    (typeof expenseCategoryProfileCues)[number]["key"],
+    ...(typeof expenseCategoryProfileCues)[number]["key"][],
+  ],
+);
+
 const expenseEntryBodySchema = z.object({
   id: z.string().min(1).optional(),
   matterId: z.string().min(1),
@@ -67,6 +91,23 @@ const expenseEntryBodySchema = z.object({
 const expenseEntryPatchBodySchema = expenseEntryBodySchema
   .omit({ id: true, matterId: true })
   .partial();
+
+const expenseEntryReviewDraftBodySchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    matterId: z.string().min(1),
+    incurredAt: z.string().datetime().optional(),
+    amountCents: z.number().int().positive(),
+    categoryProfileKey: expenseCategoryProfileKeySchema.optional(),
+    category: z.string().min(1).optional(),
+    description: z.string().min(1),
+    reimbursable: z.boolean().optional(),
+  })
+  .strict()
+  .refine((body) => Boolean(body.categoryProfileKey ?? body.category?.trim()), {
+    message: "Expense review draft requires a profile key or category",
+    path: ["category"],
+  });
 
 const billingEntryQuerySchema = z.object({
   matterId: z.string().min(1).optional(),
@@ -315,6 +356,26 @@ async function assertBillingTimestampUnlocked(
   throw Object.assign(
     new Error(
       `${label} is inside locked billing period ${lockedPeriod.periodStart} to ${lockedPeriod.periodEnd}`,
+    ),
+    { statusCode: 409 },
+  );
+}
+
+async function assertBillingTimerWindowUnlocked(
+  repository: ApiRouteDependencies["repository"],
+  firmId: string,
+  startedAt: string,
+  stoppedAt: string,
+): Promise<void> {
+  const lockedPeriod = billingTimerWindowOverlapsLock({
+    startedAt,
+    stoppedAt,
+    locks: await repository.listBillingPeriodLocks(firmId),
+  });
+  if (!lockedPeriod) return;
+  throw Object.assign(
+    new Error(
+      `Timer window overlaps locked billing period ${lockedPeriod.periodStart} to ${lockedPeriod.periodEnd}`,
     ),
     { statusCode: 409 },
   );
@@ -570,6 +631,65 @@ export function registerBillingRoutes(
     return created;
   });
 
+  server.post("/api/time-entries/timer-drafts", async (request) => {
+    const body = parseRequestPart(timeEntryTimerDraftBodySchema, request.body, "body");
+    assertMatterAccess(request.auth, {
+      resource: "time_entry",
+      action: "create",
+      matterId: body.matterId,
+    });
+    await assertBillingTimerWindowUnlocked(
+      repository,
+      request.auth.firmId,
+      body.startedAt,
+      body.stoppedAt,
+    );
+    const now = new Date().toISOString();
+    const userId = body.userId ?? request.auth.user.id;
+    const minutes = timerDraftMinutesFromWindow({
+      startedAt: body.startedAt,
+      stoppedAt: body.stoppedAt,
+    });
+    const rate = await resolveTimeEntryRate({
+      repository,
+      auth: request.auth,
+      matterId: body.matterId,
+      userId,
+      performedAt: body.startedAt,
+      rateCents: body.rateCents,
+      resolvedAt: now,
+    });
+    const entry: TimeEntry = {
+      id: body.id ?? crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      matterId: body.matterId,
+      userId,
+      performedAt: body.startedAt,
+      minutes,
+      narrative: body.narrative,
+      billable: body.billable,
+      billingStatus: "draft",
+      ...rate,
+    };
+    const created = await repository.createTimeEntry(entry);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "time_entry.created",
+      resourceType: "time_entry",
+      resourceId: created.id,
+      metadata: {
+        matterId: created.matterId,
+        timeEntryId: created.id,
+        status: created.billingStatus,
+        captureSource: "local_timer",
+        minutes: created.minutes,
+        rateCents: created.rateCents,
+        rateRuleId: created.rateRuleId,
+        rateSource: created.rateSnapshot?.source,
+      },
+    });
+    return created;
+  });
+
   server.patch("/api/time-entries/:id", async (request) => {
     const params = parseRequestPart(idParamsSchema, request.params, "params");
     const existing = await repository.getTimeEntry(request.auth.firmId, params.id);
@@ -727,6 +847,59 @@ export function registerBillingRoutes(
         expenseEntryId: created.id,
         status: created.billingStatus,
         amountCents: created.amountCents,
+      },
+    });
+    return created;
+  });
+
+  server.post("/api/expense-entries/review-drafts", async (request) => {
+    const body = parseRequestPart(expenseEntryReviewDraftBodySchema, request.body, "body");
+    assertMatterAccess(request.auth, {
+      resource: "expense_entry",
+      action: "create",
+      matterId: body.matterId,
+    });
+    const incurredAt = body.incurredAt ?? new Date().toISOString();
+    await assertBillingTimestampUnlocked(
+      repository,
+      request.auth.firmId,
+      incurredAt,
+      "Expense entry",
+    );
+    const profile = body.categoryProfileKey
+      ? expenseCategoryProfileForKey(body.categoryProfileKey)
+      : undefined;
+    const category = profile?.category ?? body.category?.trim();
+    if (!category) {
+      throw Object.assign(new Error("Expense review draft requires a category"), {
+        statusCode: 400,
+      });
+    }
+    const entry: ExpenseEntry = {
+      id: body.id ?? crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      matterId: body.matterId,
+      incurredAt,
+      amountCents: body.amountCents,
+      category,
+      description: body.description,
+      reimbursable: body.reimbursable ?? profile?.defaultReimbursable ?? true,
+      billingStatus: "draft",
+    };
+    const created = await repository.createExpenseEntry(entry);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "expense_entry.created",
+      resourceType: "expense_entry",
+      resourceId: created.id,
+      metadata: {
+        matterId: created.matterId,
+        expenseEntryId: created.id,
+        status: created.billingStatus,
+        captureSource: "expense_profile_review",
+        categoryProfileKey: profile?.key,
+        category: created.category,
+        amountCents: created.amountCents,
+        reimbursable: created.reimbursable,
       },
     });
     return created;
@@ -1562,11 +1735,15 @@ export function registerBillingRoutes(
     const now = new Date().toISOString();
     const matterSummaries = matterIds.map((matterId) => {
       const unbilledTime = timeEntries
-        .filter((entry) => entry.matterId === matterId && entry.billingStatus === "approved")
+        .filter(
+          (entry) =>
+            entry.matterId === matterId && entry.billable && entry.billingStatus === "approved",
+        )
         .map((entry) => ({
           id: entry.id,
           matterId: entry.matterId,
           userId: entry.userId,
+          performedAt: entry.performedAt,
           minutes: entry.minutes,
           rateCents: entry.rateCents,
           rateRuleId: entry.rateRuleId,
@@ -1576,17 +1753,63 @@ export function registerBillingRoutes(
           status: entry.billingStatus,
         }));
       const unbilledExpenses = expenseEntries
-        .filter((entry) => entry.matterId === matterId && entry.billingStatus === "approved")
+        .filter(
+          (entry) =>
+            entry.matterId === matterId && entry.reimbursable && entry.billingStatus === "approved",
+        )
         .map((entry) => ({
           id: entry.id,
           matterId: entry.matterId,
+          incurredAt: entry.incurredAt,
           amountCents: entry.amountCents,
           category: entry.category,
           description: entry.description,
           status: entry.billingStatus,
         }));
+      const captureReviewTime = timeEntries
+        .filter(
+          (entry) =>
+            entry.matterId === matterId &&
+            entry.billable &&
+            ["draft", "submitted"].includes(entry.billingStatus),
+        )
+        .map((entry) => ({
+          id: entry.id,
+          matterId: entry.matterId,
+          userId: entry.userId,
+          performedAt: entry.performedAt,
+          minutes: entry.minutes,
+          rateCents: entry.rateCents,
+          rateRuleId: entry.rateRuleId,
+          rateSnapshot: entry.rateSnapshot,
+          amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
+          narrative: entry.narrative,
+          status: entry.billingStatus,
+        }));
+      const captureReviewExpenses = expenseEntries
+        .filter(
+          (entry) =>
+            entry.matterId === matterId && ["draft", "submitted"].includes(entry.billingStatus),
+        )
+        .map((entry) => {
+          const profile = expenseCategoryProfileCues.find(
+            (candidate) => candidate.category === entry.category,
+          );
+          return {
+            id: entry.id,
+            matterId: entry.matterId,
+            incurredAt: entry.incurredAt,
+            amountCents: entry.amountCents,
+            category: entry.category,
+            categoryProfileKey: profile?.key,
+            description: entry.description,
+            status: entry.billingStatus,
+          };
+        });
       return {
         matterId,
+        captureReviewTime,
+        captureReviewExpenses,
         unbilledTime,
         unbilledExpenses,
         invoices: invoices
@@ -1642,6 +1865,7 @@ export function registerBillingRoutes(
       },
       periodLocks,
       rateRules,
+      expenseCategoryProfiles: expenseCategoryProfileCues,
       matters: matterSummaries,
     };
   });

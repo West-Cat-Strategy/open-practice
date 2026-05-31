@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   buildMatterSetupProfile,
+  expenseCategoryProfileCues,
   type ActivityTimelineEntry,
   type CalendarEventRecord,
   type DashboardSectionCapability,
@@ -151,9 +152,13 @@ import {
   trustControlsForMatter,
 } from "./trust-controls-dashboard";
 import {
+  buildExpenseReviewDraftPayload,
   buildDraftInvoicePayload,
+  buildTimerDraftTimeEntryPayload,
   describeDraftInvoiceCreated,
+  updateBillingDashboardWithExpenseDraft,
   updateBillingDashboardWithCreatedInvoice,
+  updateBillingDashboardWithTimerDraft,
 } from "./billing-dashboard";
 import {
   buildWorkerHealthPath,
@@ -2393,9 +2398,12 @@ describe("dashboard client behavior", () => {
       },
       periodLocks: [],
       rateRules: [],
+      expenseCategoryProfiles: expenseCategoryProfileCues,
       matters: [
         {
           matterId: "matter-001",
+          captureReviewTime: [],
+          captureReviewExpenses: [],
           unbilledTime: [
             {
               id: "time-001",
@@ -2466,6 +2474,132 @@ describe("dashboard client behavior", () => {
         2,
       ),
     ).toBe("Created draft INV-001 from 2 source records.");
+  });
+
+  it("builds review-only timer and expense draft payloads and appends them locally", () => {
+    const periodLocks = [
+      {
+        id: "billing-lock-april",
+        firmId: "firm-west-legal",
+        periodStart: "2026-04-01T00:00:00.000Z",
+        periodEnd: "2026-05-01T00:00:00.000Z",
+        lockedByUserId: "user-admin",
+        lockedAt: "2026-05-01T00:00:00.000Z",
+      },
+    ];
+
+    expect(
+      buildTimerDraftTimeEntryPayload({
+        matter: { id: "matter-001" },
+        startedAt: "2026-05-05T10:00:00.000Z",
+        stoppedAt: "2026-05-05T10:20:00.000Z",
+        rateHourly: "180",
+        narrative: "Prepare review memo.",
+        billable: true,
+        locks: periodLocks,
+      }).payload,
+    ).toEqual({
+      matterId: "matter-001",
+      startedAt: "2026-05-05T10:00:00.000Z",
+      stoppedAt: "2026-05-05T10:20:00.000Z",
+      rateCents: 18000,
+      narrative: "Prepare review memo.",
+      billable: true,
+    });
+    expect(
+      buildTimerDraftTimeEntryPayload({
+        matter: { id: "matter-001" },
+        startedAt: "2026-04-15T10:00:00.000Z",
+        stoppedAt: "2026-04-15T10:20:00.000Z",
+        rateHourly: "180",
+        narrative: "Locked draft.",
+        billable: true,
+        locks: periodLocks,
+      }).error,
+    ).toContain("locked billing period");
+
+    expect(
+      buildExpenseReviewDraftPayload({
+        matter: { id: "matter-001" },
+        incurredAtDate: "2026-05-05",
+        amount: "42.50",
+        categoryProfileKey: "filing_service",
+        customCategory: "",
+        description: "Synthetic filing receipt.",
+        reimbursable: true,
+        locks: periodLocks,
+      }).payload,
+    ).toEqual({
+      matterId: "matter-001",
+      incurredAt: "2026-05-05T00:00:00.000Z",
+      amountCents: 4250,
+      categoryProfileKey: "filing_service",
+      description: "Synthetic filing receipt.",
+      reimbursable: true,
+    });
+
+    const dashboard: BillingDashboardResponse = {
+      canView: true,
+      summary: {
+        unbilledTimeCents: 0,
+        unbilledExpenseCents: 0,
+        draftInvoiceCents: 0,
+        issuedBalanceDueCents: 0,
+        lockedPeriodCount: 1,
+        activeLockedPeriodCount: 0,
+        activeRateRuleCount: 0,
+      },
+      periodLocks,
+      rateRules: [],
+      expenseCategoryProfiles: expenseCategoryProfileCues,
+      matters: [
+        {
+          matterId: "matter-001",
+          captureReviewTime: [],
+          captureReviewExpenses: [],
+          unbilledTime: [],
+          unbilledExpenses: [],
+          invoices: [],
+          payments: [],
+        },
+      ],
+    };
+
+    const withTimer = updateBillingDashboardWithTimerDraft(dashboard, {
+      id: "time-timer-local",
+      matterId: "matter-001",
+      performedAt: "2026-05-05T10:00:00.000Z",
+      minutes: 20,
+      rateCents: 18000,
+      narrative: "Prepare review memo.",
+      billable: true,
+      billingStatus: "draft",
+    });
+    const withExpense = updateBillingDashboardWithExpenseDraft(withTimer, {
+      id: "expense-profile-local",
+      matterId: "matter-001",
+      incurredAt: "2026-05-05T00:00:00.000Z",
+      amountCents: 4250,
+      category: "Filing and service",
+      description: "Synthetic filing receipt.",
+      reimbursable: true,
+      billingStatus: "draft",
+    });
+
+    expect(withExpense.summary).toEqual(dashboard.summary);
+    expect(withExpense.matters[0]!.captureReviewTime).toEqual([
+      expect.objectContaining({
+        id: "time-timer-local",
+        amountCents: 6000,
+        status: "draft",
+      }),
+    ]);
+    expect(withExpense.matters[0]!.captureReviewExpenses).toEqual([
+      expect.objectContaining({
+        id: "expense-profile-local",
+        status: "draft",
+      }),
+    ]);
   });
 
   it("summarizes read-only trust controls for the Funds workbench", async () => {

@@ -4,8 +4,12 @@ import {
   billingPeriodLocksOverlap,
   billingRateRulesOverlapAtSameActiveScope,
   billingRuleScope,
+  billingTimerWindowOverlapsLock,
+  expenseCategoryProfileCues,
+  expenseCategoryProfileForKey,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
+  timerDraftMinutesFromWindow,
   trustTransferRequestAvailableBalanceCents,
   type BillingRateRuleRecord,
 } from "./billing.js";
@@ -152,6 +156,61 @@ describe("billing period locks and rate rules", () => {
         userId: "user-staff",
       }),
     ).toBe(false);
+  });
+
+  it("rounds local timer windows into draft minutes", () => {
+    expect(
+      timerDraftMinutesFromWindow({
+        startedAt: "2026-04-12T10:00:00.000Z",
+        stoppedAt: "2026-04-12T10:00:01.000Z",
+      }),
+    ).toBe(1);
+    expect(
+      timerDraftMinutesFromWindow({
+        startedAt: "2026-04-12T10:00:00.000Z",
+        stoppedAt: "2026-04-12T10:44:01.000Z",
+      }),
+    ).toBe(45);
+    expect(() =>
+      timerDraftMinutesFromWindow({
+        startedAt: "2026-04-12T10:00:00.000Z",
+        stoppedAt: "2026-04-12T10:00:00.000Z",
+      }),
+    ).toThrow("Timer draft stop time must be after start time");
+  });
+
+  it("finds billing period locks that overlap a timer window", () => {
+    const locks = [
+      {
+        periodStart: "2026-04-01T00:00:00.000Z",
+        periodEnd: "2026-05-01T00:00:00.000Z",
+      },
+    ];
+
+    expect(
+      billingTimerWindowOverlapsLock({
+        startedAt: "2026-03-31T23:45:00.000Z",
+        stoppedAt: "2026-04-01T00:15:00.000Z",
+        locks,
+      }),
+    ).toEqual(locks[0]);
+    expect(
+      billingTimerWindowOverlapsLock({
+        startedAt: "2026-05-01T00:00:00.000Z",
+        stoppedAt: "2026-05-01T00:15:00.000Z",
+        locks,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("keeps expense category profiles as review-only cues", () => {
+    expect(expenseCategoryProfileForKey("filing_service")).toMatchObject({
+      category: "Filing and service",
+      defaultReimbursable: true,
+      reviewOnly: true,
+    });
+    expect(expenseCategoryProfileForKey("missing-profile")).toBeUndefined();
+    expect(expenseCategoryProfileCues.every((profile) => profile.reviewOnly)).toBe(true);
   });
 });
 
