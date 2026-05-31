@@ -88,7 +88,9 @@ async function sweepDashboardSections({
     await expect(sidebarButton, `${section.title} sidebar entry`).toBeVisible();
 
     const expectedDisabled = disabledSections.has(section.id);
-    const isDisabled = (await sidebarButton.getAttribute("aria-disabled")) === "true";
+    const isDisabled =
+      (await sidebarButton.getAttribute("aria-disabled")) === "true" ||
+      (await sidebarButton.isDisabled());
     expect(isDisabled, `${section.title} enabled/disabled route state`).toBe(expectedDisabled);
 
     if (expectedDisabled) {

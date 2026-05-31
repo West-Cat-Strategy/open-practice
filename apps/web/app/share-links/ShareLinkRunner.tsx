@@ -124,7 +124,7 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
       {payload ? (
         <div className="public-form-section">
           <div className="section-title">
-            <h2>Document records</h2>
+            <h2>Shared documents</h2>
             <span>{payload.documents.length} records</span>
           </div>
           <div className="public-form-items">
