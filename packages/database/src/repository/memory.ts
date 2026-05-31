@@ -82,6 +82,7 @@ import {
   type IntakeFormLinkRecord,
   type IntakeFormReviewRecord,
   type IntakeVariableProposal,
+  type HostedPaymentRequestRecord,
   type InvoiceLineRecord,
   type InvoiceRecord,
   type JobLifecycleRecord,
@@ -131,6 +132,7 @@ import {
   sampleIntakeTemplates,
   sampleInvoiceLines,
   sampleInvoices,
+  sampleHostedPaymentRequests,
   sampleLedgerAccounts,
   sampleLedgerEntries,
   sampleLegalClinicMatterProfiles,
@@ -176,6 +178,7 @@ import type {
   PublicConsultationIntakeListOptions,
   PublicConsultationIntakeUpdateInput,
   TaskDeadlineCompletionInput,
+  HostedPaymentRequestUpdate,
   TrustTransferRequestUpdate,
   TrustTransferRequestUpdateOptions,
 } from "./contracts.js";
@@ -250,6 +253,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private invoiceLines: InvoiceLineRecord[];
   private manualPayments: ManualPaymentRecord[];
   private paymentAllocations: PaymentAllocationRecord[];
+  private hostedPaymentRequests: HostedPaymentRequestRecord[];
   private trustTransferRequests: TrustTransferRequestRecord[];
   private ledgerAccounts: LedgerAccount[];
   private ledgerApprovals: LedgerTransactionApprovalRecord[] = [];
@@ -326,6 +330,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.invoiceLines = seeded ? clone(sampleInvoiceLines) : [];
     this.manualPayments = seeded ? clone(sampleManualPayments) : [];
     this.paymentAllocations = seeded ? clone(samplePaymentAllocations) : [];
+    this.hostedPaymentRequests = seeded ? clone(sampleHostedPaymentRequests) : [];
     this.trustTransferRequests = seeded ? clone(sampleTrustTransferRequests) : [];
     this.ledgerAccounts = seeded ? clone(sampleLedgerAccounts) : [];
     this.intakeTemplates = seeded ? clone(sampleIntakeTemplates) : [];
@@ -4303,6 +4308,57 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           ),
         })),
     );
+  }
+
+  async createHostedPaymentRequest(
+    request: HostedPaymentRequestRecord,
+  ): Promise<HostedPaymentRequestRecord> {
+    this.hostedPaymentRequests = [...this.hostedPaymentRequests, clone(request)];
+    return clone(request);
+  }
+
+  async getHostedPaymentRequest(
+    firmId: string,
+    requestId: string,
+  ): Promise<HostedPaymentRequestRecord | undefined> {
+    return clone(
+      this.hostedPaymentRequests.find(
+        (request) => request.firmId === firmId && request.id === requestId,
+      ),
+    );
+  }
+
+  async listHostedPaymentRequests(
+    firmId: string,
+    options: {
+      matterId?: string;
+      invoiceId?: string;
+      status?: HostedPaymentRequestRecord["status"];
+    } = {},
+  ): Promise<HostedPaymentRequestRecord[]> {
+    return clone(
+      this.hostedPaymentRequests.filter(
+        (request) =>
+          request.firmId === firmId &&
+          (!options.matterId || request.matterId === options.matterId) &&
+          (!options.invoiceId || request.invoiceId === options.invoiceId) &&
+          (!options.status || request.status === options.status),
+      ),
+    );
+  }
+
+  async updateHostedPaymentRequest(
+    firmId: string,
+    requestId: string,
+    updates: HostedPaymentRequestUpdate,
+  ): Promise<HostedPaymentRequestRecord> {
+    const existing = await this.getHostedPaymentRequest(firmId, requestId);
+    if (!existing) throw new Error("Hosted payment request was not found");
+    const updated = clone({ ...existing, ...updates });
+    this.hostedPaymentRequests = this.hostedPaymentRequests.map((request) =>
+      request.firmId === firmId && request.id === requestId ? updated : request,
+    );
+    return clone(updated);
   }
 
   async createTrustTransferRequest(

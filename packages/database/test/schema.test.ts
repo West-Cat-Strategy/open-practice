@@ -47,6 +47,7 @@ import {
   invoiceLines,
   invoices,
   generatedDocuments,
+  hostedPaymentRequests,
   intakeFormLinks,
   intakeFormReviews,
   intakeTemplates,
@@ -1107,6 +1108,26 @@ describe("database schema hardening", () => {
     );
     expect(getTableConfig(paymentAllocations).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["payment_id", "invoice_id", "amount_cents", "allocated_at"]),
+    );
+    expect(getTableConfig(hostedPaymentRequests).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "invoice_id",
+        "amount_cents",
+        "hosted_path",
+        "delivery_state",
+        "reminder_state",
+        "payment_plan_placeholder",
+        "credit_write_off_posture",
+        "processor_state",
+        "evidence",
+      ]),
+    );
+    expect(getTableConfig(hostedPaymentRequests).checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "hosted_payment_requests_status_value",
+        "hosted_payment_requests_positive_amount",
+        "hosted_payment_requests_cad_currency",
+      ]),
     );
     expect(
       getTableConfig(billingTrustTransferRequests).columns.map((column) => column.name),

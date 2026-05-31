@@ -14,6 +14,7 @@ import {
   sampleGeneratedDocuments,
   sampleIntakeSessions,
   sampleIntakeTemplates,
+  sampleHostedPaymentRequests,
   sampleInvoiceLines,
   sampleInvoices,
   sampleLegalClinicMatterProfiles,
@@ -293,6 +294,19 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
         samplePaymentAllocations.map((allocation) => ({
           ...allocation,
           allocatedAt: new Date(allocation.allocatedAt),
+        })),
+      )
+      .onConflictDoNothing();
+  }
+  if (sampleHostedPaymentRequests.length > 0) {
+    await db
+      .insert(schema.hostedPaymentRequests)
+      .values(
+        sampleHostedPaymentRequests.map((request) => ({
+          ...request,
+          createdAt: new Date(request.createdAt),
+          updatedAt: new Date(request.updatedAt),
+          expiresAt: request.expiresAt ? new Date(request.expiresAt) : null,
         })),
       )
       .onConflictDoNothing();

@@ -1,4 +1,5 @@
 import type {
+  HostedPaymentRequestRecord,
   InvoiceLineRecord,
   InvoiceRecord,
   ManualPaymentRecord,
@@ -857,6 +858,47 @@ export const sampleInvoiceLines: InvoiceLineRecord[] = [
 export const sampleManualPayments: ManualPaymentRecord[] = [];
 
 export const samplePaymentAllocations: PaymentAllocationRecord[] = [];
+
+export const sampleHostedPaymentRequests: HostedPaymentRequestRecord[] = [
+  {
+    id: "payment-request-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    clientContactId: "contact-ada",
+    invoiceId: "invoice-001",
+    status: "ready_to_send",
+    amountCents: 13230,
+    currency: "CAD",
+    hostedPath: "/payments/requests/payment-request-001",
+    delivery: {
+      status: "not_sent",
+      channel: "none",
+      recipientCount: 0,
+    },
+    reminder: {
+      status: "not_scheduled",
+      reminderCount: 0,
+    },
+    paymentPlan: {
+      status: "not_offered",
+      enforcement: "none",
+    },
+    creditWriteOffPosture: {
+      status: "none",
+      movement: "none",
+    },
+    processor: {
+      status: "not_started",
+    },
+    evidence: {
+      source: "synthetic-payment-request-shell",
+    },
+    createdByUserId: "user-licensee",
+    createdAt: "2026-04-06T17:10:00.000Z",
+    updatedAt: "2026-04-06T17:10:00.000Z",
+    expiresAt: "2026-05-06T17:00:00.000Z",
+  },
+];
 
 export const sampleTrustTransferRequests: TrustTransferRequestRecord[] = [
   {

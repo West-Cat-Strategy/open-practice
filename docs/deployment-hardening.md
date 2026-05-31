@@ -25,7 +25,10 @@
 - Keep audit exports in immutable or write-once storage where available.
 - Separate production trust/funds operations from test data and demo data.
 - Keep billing, invoice, manual-payment, and trust-transfer workflows behind role-scoped operational controls; do not describe them as jurisdiction-certified accounting, tax, or trust-compliance advice.
-- Do not enable live payment processing by default. Any future processor must have explicit secrets, webhook verification, replay protection, settlement reconciliation, refund/chargeback handling, and a manual fallback before production use.
+- Do not enable live payment processing by default. Stripe Checkout Session creation is available
+  only behind explicit non-production provider configuration in the current runtime; production
+  `STRIPE_SECRET_KEY` configuration is rejected until webhook verification, replay protection,
+  settlement reconciliation, refund/chargeback handling, and a manual fallback are implemented.
 - Do not let invoice payment application or trust-transfer approval automatically post trust ledger entries. Trust ledger posting must remain an explicit balanced transaction with its own evidence, idempotency key, approval controls, and reconciliation path.
 - Run local dependency, secret, and license checks before deployment: `pnpm deps:audit`,
   `pnpm security:scan`, and `pnpm policy:check`. Container/image scanning remains a
@@ -69,8 +72,8 @@ Environment variables must be treated as deployment inputs, not application defa
   review roles, tax labels, payment terms, write-off reasons, and evidence requirements. They should
   not be represented as accounting or tax certification.
 - Manual payment intake should require reviewer workflow, evidence retention, and reconciliation
-  reporting. Until a processor integration exists, all payment statuses should be treated as
-  operator-reviewed records rather than live settlement.
+  reporting. Stripe Checkout Session creation records processor posture only; all payment statuses
+  should still be treated as operator-reviewed records rather than live settlement.
 - Trust-transfer-request deployment gates should require matter-balance checks, invoice linkage,
   authorization evidence, and segregation between request approval and ledger posting. Approval of a
   transfer request must not automatically create trust ledger transactions.

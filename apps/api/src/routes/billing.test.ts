@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
+import type { PaymentProcessorCheckoutSessionInput } from "@open-practice/domain";
 import { createApiServer } from "../server.js";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
@@ -38,6 +39,27 @@ function fakeReportQueue(
     async add(name, data, options) {
       jobs.push({ name, data, jobId: options?.jobId });
       return { id: options?.jobId ?? "report-job" };
+    },
+  };
+}
+
+function fakePaymentProcessor(
+  calls: PaymentProcessorCheckoutSessionInput[] = [],
+): NonNullable<CreateServerOptions["paymentProcessorProvider"]> {
+  return {
+    async createCheckoutSession(input) {
+      calls.push(input);
+      return {
+        provider: "stripe",
+        externalSessionId: "cs_test_payment_request_route",
+        checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_payment_request_route",
+        expiresAt: "2026-06-01T21:00:00.000Z",
+        evidence: {
+          mode: "checkout_session",
+          liveMode: false,
+          sessionStatus: "open",
+        },
+      };
     },
   };
 }
@@ -779,6 +801,304 @@ describe("billing routes", () => {
     expect(ledgerAfter.json<{ entries: unknown[] }>().entries).toHaveLength(beforeEntryCount);
   });
 
+  it("records hosted payment request shells for issued invoices without settlement or trust postings", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const ledgerBefore = await server.inject({ method: "GET", url: "/api/ledger" });
+    const beforeEntryCount = ledgerBefore.json<{ entries: unknown[] }>().entries.length;
+    const invoiceBefore = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+    expect(invoiceBefore.statusCode).toBe(200);
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-requests",
+      payload: {
+        id: "payment-request-route-test",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        amountCents: 5000,
+        expiresAt: "2026-05-06T17:00:00.000Z",
+        delivery: {
+          status: "queued",
+          channel: "email",
+          recipientCount: 1,
+          lastAttemptAt: "2026-04-07T17:00:00.000Z",
+        },
+        reminder: {
+          status: "scheduled",
+          reminderCount: 0,
+          nextReminderAt: "2026-04-21T17:00:00.000Z",
+        },
+        paymentPlan: {
+          status: "offered",
+          installmentCount: 3,
+          cadence: "monthly",
+          startsAt: "2026-05-01T17:00:00.000Z",
+          enforcement: "none",
+        },
+        creditWriteOffPosture: {
+          status: "credit_review",
+          amountCents: 500,
+          reason: "Synthetic courtesy credit review.",
+          movement: "none",
+        },
+        evidence: { source: "synthetic-bill-delivery" },
+      },
+    });
+
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      id: "payment-request-route-test",
+      invoiceId: "invoice-001",
+      status: "ready_to_send",
+      amountCents: 5000,
+      currency: "CAD",
+      hostedPath: "/payments/requests/payment-request-route-test",
+      delivery: expect.objectContaining({ status: "queued", channel: "email" }),
+      reminder: expect.objectContaining({ status: "scheduled" }),
+      paymentPlan: expect.objectContaining({ status: "offered", enforcement: "none" }),
+      creditWriteOffPosture: expect.objectContaining({
+        status: "credit_review",
+        movement: "none",
+      }),
+      processor: { status: "not_started" },
+    });
+
+    const updated = await server.inject({
+      method: "PATCH",
+      url: "/api/billing/payment-requests/payment-request-route-test",
+      payload: {
+        status: "sent",
+        delivery: {
+          status: "sent",
+          channel: "email",
+          recipientCount: 1,
+          deliveredAt: "2026-04-07T17:05:00.000Z",
+          lastAttemptAt: "2026-04-07T17:05:00.000Z",
+        },
+        reminder: {
+          status: "scheduled",
+          reminderCount: 1,
+          lastReminderAt: "2026-04-21T17:00:00.000Z",
+          nextReminderAt: "2026-05-01T17:00:00.000Z",
+        },
+        evidence: { source: "synthetic-delivery-confirmation" },
+      },
+    });
+
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json()).toMatchObject({
+      id: "payment-request-route-test",
+      status: "sent",
+      delivery: expect.objectContaining({ status: "sent" }),
+      reminder: expect.objectContaining({ reminderCount: 1 }),
+    });
+
+    const list = await server.inject({
+      method: "GET",
+      url: "/api/billing/payment-requests?matterId=matter-001",
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toMatchObject({
+      requests: expect.arrayContaining([
+        expect.objectContaining({
+          id: "payment-request-route-test",
+          paymentPlan: expect.objectContaining({ enforcement: "none" }),
+        }),
+      ]),
+    });
+
+    const dashboard = await server.inject({ method: "GET", url: "/api/billing/dashboard" });
+    const dashboardMatter = dashboard
+      .json<{
+        matters: Array<{
+          matterId: string;
+          paymentRequests: Array<{ id: string; evidencePresent: boolean }>;
+        }>;
+      }>()
+      .matters.find((matter) => matter.matterId === "matter-001");
+    expect(dashboardMatter?.paymentRequests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "payment-request-route-test", evidencePresent: true }),
+      ]),
+    );
+
+    const invoiceAfter = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+    expect(invoiceAfter.json()).toMatchObject({
+      status: invoiceBefore.json<{ status: string }>().status,
+      paidCents: invoiceBefore.json<{ paidCents: number }>().paidCents,
+      balanceDueCents: invoiceBefore.json<{ balanceDueCents: number }>().balanceDueCents,
+    });
+    const ledgerAfter = await server.inject({ method: "GET", url: "/api/ledger" });
+    expect(ledgerAfter.json<{ entries: unknown[] }>().entries).toHaveLength(beforeEntryCount);
+  });
+
+  it("creates Stripe checkout sessions for payment request shells without applying settlement", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const checkoutCalls: PaymentProcessorCheckoutSessionInput[] = [];
+    const server = testServer({
+      repository,
+      paymentProcessorProvider: fakePaymentProcessor(checkoutCalls),
+      publicWebBaseUrl: "https://app.open-practice.test/dashboard",
+    });
+    const ledgerBefore = await server.inject({ method: "GET", url: "/api/ledger" });
+    const beforeEntryCount = ledgerBefore.json<{ entries: unknown[] }>().entries.length;
+    const invoiceBefore = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+    expect(invoiceBefore.statusCode).toBe(200);
+    await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-requests",
+      payload: {
+        id: "payment-request-stripe-route-test",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        amountCents: 5000,
+      },
+    });
+
+    const createdSession = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-requests/payment-request-stripe-route-test/checkout-session",
+    });
+
+    expect(createdSession.statusCode).toBe(200);
+    expect(createdSession.json()).toMatchObject({
+      checkout: {
+        provider: "stripe",
+        externalSessionId: "cs_test_payment_request_route",
+        checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_payment_request_route",
+        expiresAt: "2026-06-01T21:00:00.000Z",
+        reused: false,
+      },
+      request: {
+        id: "payment-request-stripe-route-test",
+        processor: {
+          status: "checkout_session_created",
+          provider: "stripe",
+          externalSessionId: "cs_test_payment_request_route",
+          checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_payment_request_route",
+          expiresAt: "2026-06-01T21:00:00.000Z",
+        },
+      },
+    });
+    expect(checkoutCalls).toEqual([
+      expect.objectContaining({
+        amountCents: 5000,
+        currency: "CAD",
+        hostedPaymentRequestId: "payment-request-stripe-route-test",
+        idempotencyKey: "hosted-payment-request:firm-west-legal:payment-request-stripe-route-test",
+        successUrl:
+          "https://app.open-practice.test/?paymentRequestId=payment-request-stripe-route-test&stripeCheckout=success&stripeSessionId={CHECKOUT_SESSION_ID}",
+        cancelUrl:
+          "https://app.open-practice.test/?paymentRequestId=payment-request-stripe-route-test&stripeCheckout=cancelled",
+        metadata: expect.objectContaining({
+          invoiceId: "invoice-001",
+          hostedPaymentRequestId: "payment-request-stripe-route-test",
+        }),
+      }),
+    ]);
+
+    const reused = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-requests/payment-request-stripe-route-test/checkout-session",
+    });
+    expect(reused.statusCode).toBe(200);
+    expect(reused.json()).toMatchObject({
+      checkout: {
+        reused: true,
+        externalSessionId: "cs_test_payment_request_route",
+      },
+    });
+    expect(checkoutCalls).toHaveLength(1);
+
+    const invoiceAfter = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+    expect(invoiceAfter.json()).toMatchObject({
+      status: invoiceBefore.json<{ status: string }>().status,
+      paidCents: invoiceBefore.json<{ paidCents: number }>().paidCents,
+      balanceDueCents: invoiceBefore.json<{ balanceDueCents: number }>().balanceDueCents,
+    });
+    const ledgerAfter = await server.inject({ method: "GET", url: "/api/ledger" });
+    expect(ledgerAfter.json<{ entries: unknown[] }>().entries).toHaveLength(beforeEntryCount);
+
+    const checkoutAudit = (await auditEvents(repository)).find(
+      (event) => event.action === "hosted_payment_request.checkout_session_created",
+    );
+    expect(checkoutAudit).toMatchObject({
+      resourceType: "hosted_payment_request",
+      resourceId: "payment-request-stripe-route-test",
+      metadata: expect.objectContaining({
+        provider: "stripe",
+        checkoutSessionId: "cs_test_payment_request_route",
+        checkoutUrlPresent: true,
+        processorStatus: "checkout_session_created",
+      }),
+    });
+    expect(checkoutAudit?.metadata).not.toHaveProperty("checkoutUrl");
+  });
+
+  it("keeps Stripe checkout creation disabled when no processor is configured", async () => {
+    const server = testServer();
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-requests/payment-request-001/checkout-session",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      message: "Payment processor provider is not configured",
+    });
+  });
+
+  it("rejects payment request shells for non-issued invoices and over-balance amounts", async () => {
+    const server = testServer();
+    const draft = await server.inject({
+      method: "POST",
+      url: "/api/invoices",
+      payload: {
+        id: "invoice-payment-request-draft",
+        matterId: "matter-001",
+        adjustmentLines: [
+          {
+            description: "Synthetic adjustment invoice.",
+            unitAmountCents: 1000,
+          },
+        ],
+      },
+    });
+    expect(draft.statusCode).toBe(200);
+
+    const draftRequest = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-requests",
+      payload: {
+        id: "payment-request-draft-blocked",
+        matterId: "matter-001",
+        invoiceId: "invoice-payment-request-draft",
+        amountCents: 1000,
+      },
+    });
+    expect(draftRequest.statusCode).toBe(409);
+    expect(draftRequest.json()).toMatchObject({
+      message: "Hosted payment requests can only be created for issued invoices",
+    });
+
+    const overBalance = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-requests",
+      payload: {
+        id: "payment-request-over-balance",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        amountCents: 999999,
+      },
+    });
+    expect(overBalance.statusCode).toBe(409);
+    expect(overBalance.json()).toMatchObject({
+      message: "Payment request amount exceeds invoice balance due",
+    });
+  });
+
   it("queues billing export requests, gates downloads, and keeps job metadata redacted", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const queuedReports: QueuedReportJob[] = [];
@@ -889,6 +1209,7 @@ describe("billing routes", () => {
           }),
         ]),
         invoices: expect.any(Array),
+        paymentRequests: expect.any(Array),
         trustTransferRequests: expect.any(Array),
       },
     });
@@ -1486,6 +1807,35 @@ describe("billing routes", () => {
     });
     expect(issueInvoice.statusCode).toBe(200);
 
+    const paymentRequest = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-requests",
+      payload: {
+        id: "payment-request-audit-route-test",
+        matterId: "matter-001",
+        invoiceId: "invoice-audit-route-test",
+        amountCents: 3000,
+        evidence: { source: "synthetic-payment-request-audit" },
+      },
+    });
+    expect(paymentRequest.statusCode).toBe(200);
+
+    const paymentRequestUpdate = await server.inject({
+      method: "PATCH",
+      url: "/api/billing/payment-requests/payment-request-audit-route-test",
+      payload: {
+        status: "sent",
+        delivery: {
+          status: "sent",
+          channel: "email",
+          recipientCount: 1,
+          deliveredAt: "2026-04-07T17:05:00.000Z",
+          lastAttemptAt: "2026-04-07T17:05:00.000Z",
+        },
+      },
+    });
+    expect(paymentRequestUpdate.statusCode).toBe(200);
+
     const payment = await server.inject({
       method: "POST",
       url: "/api/payments",
@@ -1610,6 +1960,26 @@ describe("billing routes", () => {
           metadata: expect.objectContaining({ previousStatus: "draft", status: "void" }),
         }),
         expect.objectContaining({
+          action: "hosted_payment_request.created",
+          resourceId: "payment-request-audit-route-test",
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            invoiceId: "invoice-audit-route-test",
+            amountCents: 3000,
+            status: "ready_to_send",
+            evidencePresent: true,
+          }),
+        }),
+        expect.objectContaining({
+          action: "hosted_payment_request.state_updated",
+          resourceId: "payment-request-audit-route-test",
+          metadata: expect.objectContaining({
+            previousStatus: "ready_to_send",
+            status: "sent",
+            deliveryStatus: "sent",
+          }),
+        }),
+        expect.objectContaining({
           action: "manual_payment.created",
           resourceId: "payment-audit-route-test",
           metadata: expect.objectContaining({
@@ -1638,6 +2008,7 @@ describe("billing routes", () => {
         "time_entry.",
         "expense_entry.",
         "invoice.",
+        "hosted_payment_request.",
         "manual_payment.",
         "trust_transfer_request.",
       ].some((prefix) => event.action.startsWith(prefix)),

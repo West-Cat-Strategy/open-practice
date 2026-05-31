@@ -819,6 +819,9 @@ describe("API auth and persistence boundaries", () => {
     expect(() =>
       validateProductionReadiness(productionEnv({ OIDC_ISSUER_URL: "https://issuer.example" })),
     ).toThrow(/Deprecated external provider/);
+    expect(() =>
+      validateProductionReadiness(productionEnv({ STRIPE_SECRET_KEY: "sk_test_synthetic" })),
+    ).toThrow(/STRIPE_SECRET_KEY/);
   });
 
   it("accepts minimal production readiness configuration", () => {

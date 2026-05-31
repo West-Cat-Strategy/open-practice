@@ -5,8 +5,14 @@ import {
   billingRateRulesOverlapAtSameActiveScope,
   billingRuleScope,
   billingTimerWindowOverlapsLock,
+  defaultBillDeliveryState,
+  defaultBillReminderState,
+  defaultCreditWriteOffPosture,
+  defaultHostedPaymentProcessorState,
+  defaultPaymentPlanPlaceholder,
   expenseCategoryProfileCues,
   expenseCategoryProfileForKey,
+  hostedPaymentRequestPath,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
   timerDraftMinutesFromWindow,
@@ -211,6 +217,32 @@ describe("billing period locks and rate rules", () => {
     });
     expect(expenseCategoryProfileForKey("missing-profile")).toBeUndefined();
     expect(expenseCategoryProfileCues.every((profile) => profile.reviewOnly)).toBe(true);
+  });
+
+  it("defaults hosted payment request shells to non-settlement posture", () => {
+    expect(hostedPaymentRequestPath("payment-request-001")).toBe(
+      "/payments/requests/payment-request-001",
+    );
+    expect(defaultBillDeliveryState()).toMatchObject({
+      status: "not_sent",
+      channel: "none",
+      recipientCount: 0,
+    });
+    expect(defaultBillReminderState()).toMatchObject({
+      status: "not_scheduled",
+      reminderCount: 0,
+    });
+    expect(defaultPaymentPlanPlaceholder()).toMatchObject({
+      status: "not_offered",
+      enforcement: "none",
+    });
+    expect(defaultCreditWriteOffPosture()).toMatchObject({
+      status: "none",
+      movement: "none",
+    });
+    expect(defaultHostedPaymentProcessorState()).toEqual({
+      status: "not_started",
+    });
   });
 });
 
