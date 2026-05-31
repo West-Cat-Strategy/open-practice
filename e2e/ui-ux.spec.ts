@@ -11,6 +11,8 @@ import {
 
 const hostDisabledSections = new Set<OpenPracticeRouteId>(["externalUploads"]);
 const deepReviewSections = new Set<OpenPracticeRouteId>([
+  "admin",
+  "billing",
   "documents",
   "externalUploads",
   "calendar",
@@ -31,6 +33,11 @@ const sectionSentinels: Record<OpenPracticeRouteId, RegExp[]> = {
   intake: [/Intake pipeline/i],
   audit: [/Audit taxonomy projection/i],
   reports: [/Saved report definitions/i],
+  admin: [
+    /Access and support controls/i,
+    /Backup and restore evidence/i,
+    /Regional, privacy, and training posture/i,
+  ],
   queues: [/Connector outbox/i],
 };
 
@@ -186,7 +193,7 @@ test.describe("UI/UX screenshot QA", () => {
 
     for (const width of [1100, 720, 520]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const section of ["documents", "calendar", "intake"] as const) {
+      for (const section of ["billing", "documents", "calendar", "intake", "admin"] as const) {
         await page.goto(app.url(`/?section=${section}`));
         await expectPageHealthy(page);
         await expectSectionSentinels(page, section);

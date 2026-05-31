@@ -20,6 +20,7 @@ const prosemirrorAliases = {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  devIndicators: false,
   transpilePackages: ["@open-practice/domain"],
   turbopack: {
     root: projectRoot,
