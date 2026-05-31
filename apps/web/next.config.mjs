@@ -40,6 +40,7 @@ if (process.env.NODE_ENV === "production") {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  devIndicators: false,
   poweredByHeader: false,
   transpilePackages: ["@open-practice/domain"],
   turbopack: {
