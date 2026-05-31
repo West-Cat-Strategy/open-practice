@@ -7,6 +7,44 @@ export type InvoiceStatus = "draft" | "approved" | "issued" | "partially_paid" |
 
 export type InvoiceLineKind = "time" | "expense" | "adjustment";
 
+export const expenseCategoryProfileCues = [
+  {
+    key: "filing_service",
+    label: "Filing and service",
+    category: "Filing and service",
+    defaultReimbursable: true,
+    reviewCue: "Attach receipt or registry confirmation before billing approval.",
+    reviewOnly: true,
+  },
+  {
+    key: "courier_postage",
+    label: "Courier and postage",
+    category: "Courier and postage",
+    defaultReimbursable: true,
+    reviewCue: "Confirm matter purpose and delivery evidence before approval.",
+    reviewOnly: true,
+  },
+  {
+    key: "research_database",
+    label: "Research database",
+    category: "Research database",
+    defaultReimbursable: false,
+    reviewCue: "Confirm client billing agreement before marking reimbursable.",
+    reviewOnly: true,
+  },
+  {
+    key: "travel_meal",
+    label: "Travel and meals",
+    category: "Travel and meals",
+    defaultReimbursable: false,
+    reviewCue: "Review policy, purpose, and receipts before approval.",
+    reviewOnly: true,
+  },
+] as const;
+
+export type ExpenseCategoryProfileCue = (typeof expenseCategoryProfileCues)[number];
+export type ExpenseCategoryProfileKey = ExpenseCategoryProfileCue["key"];
+
 export type ManualPaymentMethod = "cash" | "cheque" | "card" | "eft" | "other";
 
 export type ManualPaymentStatus = "received" | "void";
@@ -298,6 +336,45 @@ export function billingDateFallsInsideLock(
 ): boolean {
   const value = Date.parse(dateIso);
   return value >= Date.parse(lock.periodStart) && value < Date.parse(lock.periodEnd);
+}
+
+export function expenseCategoryProfileForKey(key: string): ExpenseCategoryProfileCue | undefined {
+  return expenseCategoryProfileCues.find((profile) => profile.key === key);
+}
+
+export function timerDraftMinutesFromWindow(input: {
+  startedAt: string;
+  stoppedAt: string;
+  minimumMinutes?: number;
+}): number {
+  const startedAt = Date.parse(input.startedAt);
+  const stoppedAt = Date.parse(input.stoppedAt);
+  if (Number.isNaN(startedAt) || Number.isNaN(stoppedAt)) {
+    throw new Error("Timer draft timestamps must be valid");
+  }
+  if (stoppedAt <= startedAt) {
+    throw new Error("Timer draft stop time must be after start time");
+  }
+  const minimumMinutes = input.minimumMinutes ?? 1;
+  return Math.max(minimumMinutes, Math.ceil((stoppedAt - startedAt) / 60_000));
+}
+
+export function billingTimerWindowOverlapsLock(input: {
+  startedAt: string;
+  stoppedAt: string;
+  locks: Array<Pick<BillingPeriodLockRecord, "periodStart" | "periodEnd">>;
+}): Pick<BillingPeriodLockRecord, "periodStart" | "periodEnd"> | undefined {
+  const startedAt = Date.parse(input.startedAt);
+  const stoppedAt = Date.parse(input.stoppedAt);
+  if (Number.isNaN(startedAt) || Number.isNaN(stoppedAt)) {
+    throw new Error("Timer draft timestamps must be valid");
+  }
+  if (stoppedAt <= startedAt) {
+    throw new Error("Timer draft stop time must be after start time");
+  }
+  return input.locks.find(
+    (lock) => startedAt < Date.parse(lock.periodEnd) && Date.parse(lock.periodStart) < stoppedAt,
+  );
 }
 
 export function billingPeriodLocksOverlap(

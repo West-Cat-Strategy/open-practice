@@ -210,11 +210,19 @@ import {
   trustControlsForMatter,
 } from "./trust-controls-dashboard";
 import {
+  buildExpenseReviewDraftPayload,
   buildDraftInvoicePayload,
+  buildTimerDraftTimeEntryPayload,
   describeDraftInvoiceCreated,
+  formatExpenseDraftApiFailure,
   formatDraftInvoiceApiFailure,
+  formatTimerDraftApiFailure,
+  updateBillingDashboardWithExpenseDraft,
   updateBillingDashboardWithCreatedInvoice,
+  updateBillingDashboardWithTimerDraft,
   type CreatedDraftInvoiceResponse,
+  type CreatedExpenseReviewDraftResponse,
+  type CreatedTimerDraftTimeEntryResponse,
 } from "./billing-dashboard";
 import {
   describeWorkerRunStatus,
@@ -967,6 +975,25 @@ export default function DashboardClient({
   const [draftInvoiceTaxRate, setDraftInvoiceTaxRate] = useState("0");
   const [draftInvoiceStatus, setDraftInvoiceStatus] = useState("No draft invoice created.");
   const [creatingDraftInvoice, setCreatingDraftInvoice] = useState(false);
+  const [timerDraftStartedAt, setTimerDraftStartedAt] = useState("");
+  const [timerDraftStoppedAt, setTimerDraftStoppedAt] = useState("");
+  const [timerDraftNarrative, setTimerDraftNarrative] = useState("");
+  const [timerDraftRate, setTimerDraftRate] = useState("");
+  const [timerDraftBillable, setTimerDraftBillable] = useState(true);
+  const [timerDraftStatus, setTimerDraftStatus] = useState("No timer draft created.");
+  const [creatingTimerDraft, setCreatingTimerDraft] = useState(false);
+  const firstExpenseProfileKey = billing.expenseCategoryProfiles[0]?.key ?? "";
+  const [expenseDraftProfileKey, setExpenseDraftProfileKey] =
+    useState<string>(firstExpenseProfileKey);
+  const [expenseDraftCategory, setExpenseDraftCategory] = useState("");
+  const [expenseDraftAmount, setExpenseDraftAmount] = useState("");
+  const [expenseDraftDate, setExpenseDraftDate] = useState("");
+  const [expenseDraftDescription, setExpenseDraftDescription] = useState("");
+  const [expenseDraftReimbursable, setExpenseDraftReimbursable] = useState(
+    billing.expenseCategoryProfiles[0]?.defaultReimbursable ?? true,
+  );
+  const [expenseDraftStatus, setExpenseDraftStatus] = useState("No expense draft created.");
+  const [creatingExpenseDraft, setCreatingExpenseDraft] = useState(false);
   const [draftsByMatterId, setDraftsByMatterId] = useState(drafting.draftsByMatterId);
   const [creatingTemplateId, setCreatingTemplateId] = useState("");
   const [draftStatus, setDraftStatus] = useState("No draft created in this session.");
@@ -1461,8 +1488,15 @@ export default function DashboardClient({
   );
   const activeUnbilledTime = activeBilling?.unbilledTime ?? [];
   const activeUnbilledExpenses = activeBilling?.unbilledExpenses ?? [];
+  const activeCaptureReviewTime = activeBilling?.captureReviewTime ?? [];
+  const activeCaptureReviewExpenses = activeBilling?.captureReviewExpenses ?? [];
+  const activeCaptureReviewCount =
+    activeCaptureReviewTime.length + activeCaptureReviewExpenses.length;
   const activeInvoices = activeBilling?.invoices ?? [];
   const activeManualPayments = activeBilling?.payments ?? [];
+  const selectedExpenseProfile = billingDashboard.expenseCategoryProfiles.find(
+    (profile) => profile.key === expenseDraftProfileKey,
+  );
   const activeBalanceDueCents = activeInvoices.reduce(
     (sum, invoice) => sum + invoice.balanceDueCents,
     0,
@@ -2038,6 +2072,108 @@ export default function DashboardClient({
         error: String(dashboardApiStatus(error)),
       }));
       setFreshnessNow(new Date());
+    }
+  }
+
+  function startTimerDraft(): void {
+    const now = new Date().toISOString();
+    setTimerDraftStartedAt(now);
+    setTimerDraftStoppedAt("");
+    setTimerDraftStatus(`Timer started ${new Date(now).toLocaleTimeString("en-CA")}.`);
+  }
+
+  function stopTimerDraft(): void {
+    if (!timerDraftStartedAt) {
+      setTimerDraftStatus("Start the timer before stopping it.");
+      return;
+    }
+    const now = new Date().toISOString();
+    setTimerDraftStoppedAt(now);
+    setTimerDraftStatus(`Timer stopped ${new Date(now).toLocaleTimeString("en-CA")}.`);
+  }
+
+  async function createTimerDraft(): Promise<void> {
+    if (!activeMatter) return;
+    const payloadResult = buildTimerDraftTimeEntryPayload({
+      matter: activeMatter,
+      startedAt: timerDraftStartedAt,
+      stoppedAt: timerDraftStoppedAt,
+      rateHourly: timerDraftRate,
+      narrative: timerDraftNarrative,
+      billable: timerDraftBillable,
+      locks: billingDashboard.periodLocks,
+    });
+
+    if (!payloadResult.payload) {
+      setTimerDraftStatus(payloadResult.error ?? "Timer draft payload is incomplete.");
+      return;
+    }
+
+    setCreatingTimerDraft(true);
+    setTimerDraftStatus("Creating timer draft...");
+    try {
+      const entry = await requestDashboardJson<CreatedTimerDraftTimeEntryResponse>(
+        apiBaseUrl,
+        "/api/time-entries/timer-drafts",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: payloadResult.payload,
+        },
+      );
+      setBillingDashboard((current) => updateBillingDashboardWithTimerDraft(current, entry));
+      setTimerDraftStartedAt("");
+      setTimerDraftStoppedAt("");
+      setTimerDraftNarrative("");
+      setTimerDraftRate("");
+      setTimerDraftStatus(`Created draft time entry for ${minutes(entry.minutes)}.`);
+    } catch (error) {
+      setTimerDraftStatus(formatTimerDraftApiFailure(dashboardApiStatus(error)));
+    } finally {
+      setCreatingTimerDraft(false);
+    }
+  }
+
+  async function createExpenseDraft(): Promise<void> {
+    if (!activeMatter) return;
+    const payloadResult = buildExpenseReviewDraftPayload({
+      matter: activeMatter,
+      incurredAtDate: expenseDraftDate,
+      amount: expenseDraftAmount,
+      categoryProfileKey: expenseDraftProfileKey,
+      customCategory: expenseDraftCategory,
+      description: expenseDraftDescription,
+      reimbursable: expenseDraftReimbursable,
+      locks: billingDashboard.periodLocks,
+    });
+
+    if (!payloadResult.payload) {
+      setExpenseDraftStatus(payloadResult.error ?? "Expense draft payload is incomplete.");
+      return;
+    }
+
+    setCreatingExpenseDraft(true);
+    setExpenseDraftStatus("Creating expense draft...");
+    try {
+      const entry = await requestDashboardJson<CreatedExpenseReviewDraftResponse>(
+        apiBaseUrl,
+        "/api/expense-entries/review-drafts",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: payloadResult.payload,
+        },
+      );
+      setBillingDashboard((current) => updateBillingDashboardWithExpenseDraft(current, entry));
+      setExpenseDraftAmount("");
+      setExpenseDraftDate("");
+      setExpenseDraftCategory("");
+      setExpenseDraftDescription("");
+      setExpenseDraftStatus(`Created draft expense for ${cents(entry.amountCents)}.`);
+    } catch (error) {
+      setExpenseDraftStatus(formatExpenseDraftApiFailure(dashboardApiStatus(error)));
+    } finally {
+      setCreatingExpenseDraft(false);
     }
   }
 
@@ -3931,6 +4067,8 @@ export default function DashboardClient({
           : [
               {
                 matterId: created.id,
+                captureReviewTime: [],
+                captureReviewExpenses: [],
                 unbilledTime: [],
                 unbilledExpenses: [],
                 invoices: [],
@@ -4973,6 +5111,234 @@ export default function DashboardClient({
                     {billingDashboard.periodLocks.length === 0 &&
                     billingDashboard.rateRules.length === 0 ? (
                       <p className="inline-empty">No billing locks or rate rules are active.</p>
+                    ) : null}
+                  </div>
+
+                  <div className="section-title">
+                    <h3>Capture review drafts</h3>
+                    <span>{activeCaptureReviewCount} pending</span>
+                  </div>
+                  <div className="billing-capture-grid">
+                    <section className="billing-capture-panel" aria-label="Local timer draft">
+                      <div className="section-title compact">
+                        <h4>Local timer</h4>
+                        <span>{timerDraftBillable ? "billable" : "non-billable"}</span>
+                      </div>
+                      <div className="billing-action-row">
+                        <button
+                          className="compact-button"
+                          disabled={creatingTimerDraft}
+                          onClick={startTimerDraft}
+                          type="button"
+                        >
+                          <Clock3 size={16} />
+                          Start
+                        </button>
+                        <button
+                          className="compact-button"
+                          disabled={creatingTimerDraft}
+                          onClick={stopTimerDraft}
+                          type="button"
+                        >
+                          <Save size={16} />
+                          Stop
+                        </button>
+                        <label className="billing-toggle-field">
+                          <input
+                            checked={timerDraftBillable}
+                            disabled={creatingTimerDraft}
+                            onChange={(event) => setTimerDraftBillable(event.target.checked)}
+                            type="checkbox"
+                          />
+                          <span>Billable</span>
+                        </label>
+                      </div>
+                      <div className="billing-action-row">
+                        <label className="search-field compact">
+                          <span>Rate / hr</span>
+                          <input
+                            disabled={creatingTimerDraft}
+                            inputMode="decimal"
+                            min={0}
+                            onChange={(event) => setTimerDraftRate(event.target.value)}
+                            step={0.01}
+                            type="number"
+                            value={timerDraftRate}
+                          />
+                        </label>
+                        <label className="search-field compact">
+                          <span>Started</span>
+                          <input
+                            disabled={creatingTimerDraft}
+                            onChange={(event) => setTimerDraftStartedAt(event.target.value)}
+                            type="datetime-local"
+                            value={timerDraftStartedAt.slice(0, 16)}
+                          />
+                        </label>
+                        <label className="search-field compact">
+                          <span>Stopped</span>
+                          <input
+                            disabled={creatingTimerDraft}
+                            onChange={(event) => setTimerDraftStoppedAt(event.target.value)}
+                            type="datetime-local"
+                            value={timerDraftStoppedAt.slice(0, 16)}
+                          />
+                        </label>
+                      </div>
+                      <label className="search-field compact">
+                        <span>Narrative</span>
+                        <input
+                          disabled={creatingTimerDraft}
+                          onChange={(event) => setTimerDraftNarrative(event.target.value)}
+                          placeholder="Matter preparation"
+                          value={timerDraftNarrative}
+                        />
+                      </label>
+                      <button
+                        className="primary-button"
+                        disabled={creatingTimerDraft}
+                        onClick={() => void createTimerDraft()}
+                        type="button"
+                      >
+                        <Plus size={16} />
+                        {creatingTimerDraft ? "Creating..." : "Create draft"}
+                      </button>
+                      <p
+                        aria-atomic="true"
+                        aria-live="polite"
+                        className="inline-empty"
+                        role="status"
+                      >
+                        {timerDraftStatus}
+                      </p>
+                    </section>
+
+                    <section className="billing-capture-panel" aria-label="Expense review draft">
+                      <div className="section-title compact">
+                        <h4>Expense profile</h4>
+                        <span>{selectedExpenseProfile?.label ?? "Custom"}</span>
+                      </div>
+                      <div className="billing-action-row">
+                        <label className="search-field compact">
+                          <span>Profile</span>
+                          <select
+                            disabled={creatingExpenseDraft}
+                            onChange={(event) => {
+                              const profile = billingDashboard.expenseCategoryProfiles.find(
+                                (candidate) => candidate.key === event.target.value,
+                              );
+                              setExpenseDraftProfileKey(event.target.value);
+                              if (profile) setExpenseDraftReimbursable(profile.defaultReimbursable);
+                            }}
+                            value={expenseDraftProfileKey}
+                          >
+                            <option value="">Custom</option>
+                            {billingDashboard.expenseCategoryProfiles.map((profile) => (
+                              <option key={profile.key} value={profile.key}>
+                                {profile.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="search-field compact">
+                          <span>Amount</span>
+                          <input
+                            disabled={creatingExpenseDraft}
+                            inputMode="decimal"
+                            min={0}
+                            onChange={(event) => setExpenseDraftAmount(event.target.value)}
+                            step={0.01}
+                            type="number"
+                            value={expenseDraftAmount}
+                          />
+                        </label>
+                        <label className="search-field compact">
+                          <span>Incurred</span>
+                          <input
+                            disabled={creatingExpenseDraft}
+                            onChange={(event) => setExpenseDraftDate(event.target.value)}
+                            type="date"
+                            value={expenseDraftDate}
+                          />
+                        </label>
+                      </div>
+                      <div className="billing-action-row">
+                        <label className="search-field compact">
+                          <span>Category</span>
+                          <input
+                            disabled={creatingExpenseDraft || Boolean(expenseDraftProfileKey)}
+                            onChange={(event) => setExpenseDraftCategory(event.target.value)}
+                            placeholder={selectedExpenseProfile?.category ?? "Custom category"}
+                            value={expenseDraftCategory}
+                          />
+                        </label>
+                        <label className="search-field compact">
+                          <span>Description</span>
+                          <input
+                            disabled={creatingExpenseDraft}
+                            onChange={(event) => setExpenseDraftDescription(event.target.value)}
+                            placeholder="Filing receipt"
+                            value={expenseDraftDescription}
+                          />
+                        </label>
+                        <label className="billing-toggle-field">
+                          <input
+                            checked={expenseDraftReimbursable}
+                            disabled={creatingExpenseDraft}
+                            onChange={(event) => setExpenseDraftReimbursable(event.target.checked)}
+                            type="checkbox"
+                          />
+                          <span>Reimbursable</span>
+                        </label>
+                      </div>
+                      <button
+                        className="primary-button"
+                        disabled={creatingExpenseDraft}
+                        onClick={() => void createExpenseDraft()}
+                        type="button"
+                      >
+                        <Plus size={16} />
+                        {creatingExpenseDraft ? "Creating..." : "Create draft"}
+                      </button>
+                      <p
+                        aria-atomic="true"
+                        aria-live="polite"
+                        className="inline-empty"
+                        role="status"
+                      >
+                        {expenseDraftStatus}{" "}
+                        {selectedExpenseProfile
+                          ? selectedExpenseProfile.reviewCue
+                          : "Custom expense drafts stay in draft review."}
+                      </p>
+                    </section>
+                  </div>
+                  <div className="party-list">
+                    {activeCaptureReviewTime.map((entry) => (
+                      <div className="party-row" key={entry.id}>
+                        <span>
+                          <strong>{entry.narrative}</strong>
+                          <small>
+                            {entry.status} · {minutes(entry.minutes)} · {cents(entry.rateCents)}/hr
+                          </small>
+                        </span>
+                        <em>review</em>
+                      </div>
+                    ))}
+                    {activeCaptureReviewExpenses.map((entry) => (
+                      <div className="party-row" key={entry.id}>
+                        <span>
+                          <strong>{entry.description}</strong>
+                          <small>
+                            {entry.status} · {entry.category}
+                            {entry.categoryProfileKey ? ` · ${entry.categoryProfileKey}` : ""}
+                          </small>
+                        </span>
+                        <em>{cents(entry.amountCents)}</em>
+                      </div>
+                    ))}
+                    {activeCaptureReviewCount === 0 ? (
+                      <p className="inline-empty">No draft time or expense records need review.</p>
                     ) : null}
                   </div>
 

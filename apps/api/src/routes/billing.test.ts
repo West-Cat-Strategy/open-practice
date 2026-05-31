@@ -539,6 +539,160 @@ describe("billing routes", () => {
     });
   });
 
+  it("creates timer and expense-profile drafts as review-only billing capture rows", async () => {
+    const server = testServer();
+
+    const lock = await server.inject({
+      method: "POST",
+      url: "/api/billing/period-locks",
+      payload: {
+        id: "billing-lock-timer-capture",
+        periodStart: "2026-04-01T00:00:00.000Z",
+        periodEnd: "2026-05-01T00:00:00.000Z",
+        reason: "Synthetic closed month.",
+      },
+    });
+    expect(lock.statusCode).toBe(200);
+
+    const blockedTimer = await server.inject({
+      method: "POST",
+      url: "/api/time-entries/timer-drafts",
+      payload: {
+        id: "time-timer-locked-window",
+        matterId: "matter-001",
+        startedAt: "2026-03-31T23:45:00.000Z",
+        stoppedAt: "2026-04-01T00:15:00.000Z",
+        rateCents: 18000,
+        narrative: "Synthetic locked timer capture.",
+      },
+    });
+    expect(blockedTimer.statusCode).toBe(409);
+    expect(blockedTimer.json()).toMatchObject({
+      message: expect.stringContaining("Timer window overlaps locked billing period"),
+    });
+
+    const statusOverride = await server.inject({
+      method: "POST",
+      url: "/api/time-entries/timer-drafts",
+      payload: {
+        id: "time-timer-status-override",
+        matterId: "matter-001",
+        startedAt: "2026-05-05T10:00:00.000Z",
+        stoppedAt: "2026-05-05T10:30:00.000Z",
+        rateCents: 18000,
+        narrative: "Synthetic timer status override.",
+        billingStatus: "approved",
+      },
+    });
+    expect(statusOverride.statusCode).toBe(400);
+
+    const timerDraft = await server.inject({
+      method: "POST",
+      url: "/api/time-entries/timer-drafts",
+      payload: {
+        id: "time-timer-review-draft",
+        matterId: "matter-001",
+        startedAt: "2026-05-05T10:00:00.000Z",
+        stoppedAt: "2026-05-05T10:44:01.000Z",
+        rateCents: 18000,
+        narrative: "Synthetic timer-to-draft review.",
+      },
+    });
+    expect(timerDraft.statusCode).toBe(200);
+    expect(timerDraft.json()).toMatchObject({
+      id: "time-timer-review-draft",
+      performedAt: "2026-05-05T10:00:00.000Z",
+      minutes: 45,
+      billingStatus: "draft",
+      rateSnapshot: expect.objectContaining({ source: "manual", rateCents: 18000 }),
+    });
+
+    const expenseOverride = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries/review-drafts",
+      payload: {
+        id: "expense-review-status-override",
+        matterId: "matter-001",
+        incurredAt: "2026-05-05T11:00:00.000Z",
+        amountCents: 4200,
+        categoryProfileKey: "filing_service",
+        description: "Synthetic filing status override.",
+        billingStatus: "approved",
+      },
+    });
+    expect(expenseOverride.statusCode).toBe(400);
+
+    const expenseDraft = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries/review-drafts",
+      payload: {
+        id: "expense-review-profile-draft",
+        matterId: "matter-001",
+        incurredAt: "2026-05-05T11:00:00.000Z",
+        amountCents: 4200,
+        categoryProfileKey: "filing_service",
+        description: "Synthetic filing disbursement for review.",
+      },
+    });
+    expect(expenseDraft.statusCode).toBe(200);
+    expect(expenseDraft.json()).toMatchObject({
+      id: "expense-review-profile-draft",
+      amountCents: 4200,
+      category: "Filing and service",
+      reimbursable: true,
+      billingStatus: "draft",
+    });
+
+    const invoice = await server.inject({
+      method: "POST",
+      url: "/api/invoices",
+      payload: {
+        id: "invoice-review-drafts-blocked",
+        matterId: "matter-001",
+        timeEntryIds: ["time-timer-review-draft"],
+        expenseEntryIds: ["expense-review-profile-draft"],
+        taxRateBps: 0,
+      },
+    });
+    expect(invoice.statusCode).toBe(409);
+    expect(invoice.json()).toMatchObject({
+      message: "Only approved unbilled entries can be invoiced",
+    });
+
+    const dashboard = await server.inject({ method: "GET", url: "/api/billing/dashboard" });
+    expect(dashboard.statusCode).toBe(200);
+    const dashboardBody = dashboard.json<{
+      expenseCategoryProfiles: Array<{ key: string; reviewOnly: boolean }>;
+      matters: Array<{
+        matterId: string;
+        unbilledTime: Array<{ id: string }>;
+        unbilledExpenses: Array<{ id: string }>;
+        captureReviewTime: Array<{ id: string; status: string }>;
+        captureReviewExpenses: Array<{ id: string; status: string }>;
+      }>;
+    }>();
+    const matterBilling = dashboardBody.matters.find((matter) => matter.matterId === "matter-001");
+    expect(matterBilling).toMatchObject({
+      captureReviewTime: expect.arrayContaining([
+        expect.objectContaining({ id: "time-timer-review-draft", status: "draft" }),
+      ]),
+      captureReviewExpenses: expect.arrayContaining([
+        expect.objectContaining({ id: "expense-review-profile-draft", status: "draft" }),
+      ]),
+    });
+    expect(matterBilling?.unbilledTime).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "time-timer-review-draft" })]),
+    );
+    expect(matterBilling?.unbilledExpenses).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "expense-review-profile-draft" })]),
+    );
+    expect(dashboardBody.expenseCategoryProfiles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "filing_service", reviewOnly: true }),
+      ]),
+    );
+  });
+
   it("creates a draft invoice from approved billing dashboard sources without trust ledger postings", async () => {
     const server = testServer();
     const ledgerBefore = await server.inject({ method: "GET", url: "/api/ledger" });

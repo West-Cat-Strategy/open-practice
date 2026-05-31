@@ -11,6 +11,7 @@ import type {
   DraftRecord,
   DraftAssistRecord,
   DraftTemplateRecord,
+  ExpenseCategoryProfileCue,
   ExpenseEntry,
   Firm,
   ActivityTimelineEntry,
@@ -1044,6 +1045,7 @@ export interface BillingTimeItem {
   id: string;
   matterId: string;
   userId?: string;
+  performedAt?: string;
   minutes: number;
   rateCents: number;
   rateRuleId?: string;
@@ -1056,8 +1058,10 @@ export interface BillingTimeItem {
 export interface BillingExpenseItem {
   id: string;
   matterId: string;
+  incurredAt?: string;
   amountCents: number;
   category: string;
+  categoryProfileKey?: string;
   description: string;
   status: BillingEntryStatus;
 }
@@ -1085,6 +1089,8 @@ export interface BillingPaymentSummary {
 
 export interface MatterBillingSummary {
   matterId: string;
+  captureReviewTime: BillingTimeItem[];
+  captureReviewExpenses: BillingExpenseItem[];
   unbilledTime: BillingTimeItem[];
   unbilledExpenses: BillingExpenseItem[];
   invoices: BillingInvoiceSummary[];
@@ -1104,6 +1110,7 @@ export interface BillingDashboardResponse {
   };
   periodLocks: BillingPeriodLockRecord[];
   rateRules: BillingRateRuleRecord[];
+  expenseCategoryProfiles: readonly ExpenseCategoryProfileCue[];
   matters: MatterBillingSummary[];
 }
 

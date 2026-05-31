@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { expenseCategoryProfileCues } from "@open-practice/domain";
 import {
   buildSidebarNavigationSections,
   resolveDashboardRouteSelection,
@@ -273,12 +274,45 @@ function buildBillingFallback(
   session: SessionResponse,
 ): BillingDashboardResponse {
   const billingMatters = matters.map((matter) => {
+    const captureReviewTime = matter.timeEntries
+      .filter((entry) => entry.billable && ["draft", "submitted"].includes(entry.billingStatus))
+      .map((entry) => ({
+        id: entry.id,
+        matterId: entry.matterId,
+        userId: entry.userId,
+        performedAt: entry.performedAt,
+        minutes: entry.minutes,
+        rateCents: entry.rateCents,
+        rateRuleId: entry.rateRuleId,
+        rateSnapshot: entry.rateSnapshot,
+        amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
+        narrative: entry.narrative,
+        status: entry.billingStatus,
+      }));
+    const captureReviewExpenses = matter.expenses
+      .filter((entry) => ["draft", "submitted"].includes(entry.billingStatus))
+      .map((entry) => {
+        const profile = expenseCategoryProfileCues.find(
+          (candidate) => candidate.category === entry.category,
+        );
+        return {
+          id: entry.id,
+          matterId: entry.matterId,
+          incurredAt: entry.incurredAt,
+          amountCents: entry.amountCents,
+          category: entry.category,
+          categoryProfileKey: profile?.key,
+          description: entry.description,
+          status: entry.billingStatus,
+        };
+      });
     const unbilledTime = matter.timeEntries
       .filter((entry) => entry.billable && entry.billingStatus === "approved")
       .map((entry) => ({
         id: entry.id,
         matterId: entry.matterId,
         userId: entry.userId,
+        performedAt: entry.performedAt,
         minutes: entry.minutes,
         rateCents: entry.rateCents,
         rateRuleId: entry.rateRuleId,
@@ -292,6 +326,7 @@ function buildBillingFallback(
       .map((entry) => ({
         id: entry.id,
         matterId: entry.matterId,
+        incurredAt: entry.incurredAt,
         amountCents: entry.amountCents,
         category: entry.category,
         description: entry.description,
@@ -299,6 +334,8 @@ function buildBillingFallback(
       }));
     return {
       matterId: matter.id,
+      captureReviewTime,
+      captureReviewExpenses,
       unbilledTime,
       unbilledExpenses,
       invoices: [],
@@ -328,6 +365,7 @@ function buildBillingFallback(
     },
     periodLocks: [],
     rateRules: [],
+    expenseCategoryProfiles: expenseCategoryProfileCues,
     matters: billingMatters,
   };
 }
