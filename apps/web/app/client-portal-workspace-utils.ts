@@ -7,6 +7,7 @@ export function clientPortalActionFamilyLabel(family: ClientPortalActionFamily):
     intake: "Intake",
     guest_session: "Guest session",
     receipt: "Receipt",
+    client_update: "Client update",
     client_action: "Client action",
   };
   return labels[family];

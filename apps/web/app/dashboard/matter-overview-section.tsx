@@ -23,7 +23,10 @@ import {
   type MatterActivityKindFilter,
   type MatterActivityStatusFilter,
 } from "../matter-command-center";
-import { describeCommunicationsDeliveryState } from "../communications-inbox-dashboard";
+import {
+  describeCommunicationsDeliveryState,
+  describeCommunicationsHistoryState,
+} from "../communications-inbox-dashboard";
 import { describeEmailDeliveryState } from "../email-delivery-dashboard";
 import {
   describeFiscalHostProgramMetadata,
@@ -523,6 +526,14 @@ export function MatterOverviewSection({
           <strong>{activeCommunicationsInbox?.conversations.length ?? 0}</strong>
         </div>
         <div>
+          <span className="field-label">History entries</span>
+          <strong>{activeCommunicationsInbox?.channelHistory.length ?? 0}</strong>
+        </div>
+        <div>
+          <span className="field-label">Update drafts</span>
+          <strong>{activeCommunicationsInbox?.clientUpdateDraftRequests.length ?? 0}</strong>
+        </div>
+        <div>
           <span className="field-label">Channel status</span>
           <strong>
             {activeCommunicationsInbox
@@ -533,6 +544,23 @@ export function MatterOverviewSection({
       </div>
 
       <div className="party-list">
+        {activeCommunicationsInbox?.channelHistory.slice(0, 4).map((item) => {
+          const state = describeCommunicationsHistoryState(item);
+          return (
+            <div className="party-row" key={item.id}>
+              <span>
+                <strong>{item.title}</strong>
+                <small>
+                  {item.detail} · {compactStatus(item.direction)} · {compactDate(item.occurredAt)}
+                </small>
+                {item.consentStatus ? (
+                  <small>Consent {compactStatus(item.consentStatus)}</small>
+                ) : null}
+              </span>
+              <em className={state.tone === "risk" ? "risk" : undefined}>{state.label}</em>
+            </div>
+          );
+        })}
         {activeCommunicationsInbox?.inboundEmail.slice(0, 3).map((message) => (
           <div className="party-row" key={message.id}>
             <span>
@@ -596,6 +624,8 @@ export function MatterOverviewSection({
         activeCommunicationsInbox.inboundEmail.length === 0 &&
         activeCommunicationsInbox.outboundDeliveryHistory.length === 0 &&
         activeCommunicationsInbox.conversations.length === 0 &&
+        activeCommunicationsInbox.channelHistory.length === 0 &&
+        activeCommunicationsInbox.clientUpdateDraftRequests.length === 0 &&
         activeCommunicationsInbox.contactCues.length === 0 ? (
           <p className="inline-empty">No client communications are linked to this matter.</p>
         ) : null}

@@ -56,6 +56,7 @@ describe("client portal workspace helpers", () => {
   it("labels account posture and action families without leaking implementation names", () => {
     expect(clientPortalAccessLabel(workspace.access)).toBe("1 active grant across 1 matter");
     expect(clientPortalActionFamilyLabel("secure_share")).toBe("Secure share");
+    expect(clientPortalActionFamilyLabel("client_update")).toBe("Client update");
     expect(clientPortalActionFamilyLabel("client_action")).toBe("Client action");
   });
 
