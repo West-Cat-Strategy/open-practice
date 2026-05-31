@@ -167,6 +167,7 @@ export function describeDisabledNavigationReason(
   if (section.key === "intake") return "Intake requires matter-scoped intake read access.";
   if (section.key === "audit") return "Audit review requires audit log read access.";
   if (section.key === "reports") return "Reports require firm reporting access.";
+  if (section.key === "admin") return "Admin readiness requires owner/admin or auditor access.";
   if (section.key === "queues") return "Operational queues require job or audit read access.";
   if (section.key === "shares") {
     return "Share links require token signing and share-link access.";

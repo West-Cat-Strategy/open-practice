@@ -296,6 +296,7 @@ import { ContactsSection } from "./dashboard/contacts-section";
 import { MatterOverviewSection } from "./dashboard/matter-overview-section";
 import { QueuesSection } from "./dashboard/queues-section";
 import { ReportsSection } from "./dashboard/reports-section";
+import { AdminReadinessSection } from "./dashboard/admin-readiness-section";
 import {
   DeliveryConfirmationPanel,
   OneTimeSecretPanel,
@@ -377,6 +378,7 @@ import type {
   ShareLinkRecord,
   ShareLinksResponse,
   ShareLinksStatusResponse,
+  SetupStatusResponse,
   SignatureRequestsResponse,
   StaffReportExportRequestResponse,
   StaffReportingWorkspaceResponse,
@@ -422,6 +424,7 @@ interface DashboardClientProps {
   session: SessionResponse;
   shareLinksStatus: ShareLinksStatusResponse;
   signatures: SignatureRequestsResponse;
+  setupStatus: SetupStatusResponse;
   taskWorkbench: TaskDeadlineWorkbenchResponse;
   trustControls: TrustControlsDashboardResponse;
   queues: QueuesResponse;
@@ -621,6 +624,7 @@ const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   signatures: FileSignature,
   intake: FileText,
   audit: ShieldCheck,
+  admin: LockKeyhole,
   queues: Clock3,
 };
 
@@ -853,6 +857,7 @@ export default function DashboardClient({
   matters: initialMatters,
   session,
   signatures,
+  setupStatus,
   taskWorkbench,
   trustControls,
   queues: initialQueues,
@@ -1490,6 +1495,7 @@ export default function DashboardClient({
         capabilitySections: navigationCapabilitySections,
         shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
         externalUploadsEnabled: externalUploadCreateAvailable,
+        adminReadinessEnabled: ["owner_admin", "auditor"].includes(session.user.role),
       }),
       hasAccessibleMatter,
       canCreateMatter,
@@ -1500,6 +1506,7 @@ export default function DashboardClient({
     externalUploadCreateAvailable,
     hasAccessibleMatter,
     navigationCapabilitySections,
+    session.user.role,
     shareLinksStatus.createStatus,
   ]);
   const activeSectionLabel =
@@ -4525,10 +4532,38 @@ export default function DashboardClient({
               </article>
             ) : null}
 
+            {activeSection === "admin" ? (
+              <article
+                aria-labelledby="zero-admin-title"
+                className="panel matter-detail matter-detail-panel"
+                id="matter-workspace"
+                ref={detailPanelRef}
+                tabIndex={-1}
+              >
+                <div className="panel-header matter-detail-header">
+                  <div>
+                    <p className="eyebrow">Admin readiness</p>
+                    <h2 id="zero-admin-title">Admin Readiness</h2>
+                  </div>
+                  <span className="status-chip">Firm surface</span>
+                </div>
+                <AdminReadinessSection
+                  capabilities={capabilities}
+                  matters={matters}
+                  overview={overview}
+                  reportingWorkspace={reportingWorkspace}
+                  session={session}
+                  setupStatus={setupStatus}
+                  workerHealth={workerHealth}
+                />
+              </article>
+            ) : null}
+
             {activeSection !== "contacts" &&
             activeSection !== "audit" &&
             activeSection !== "queues" &&
-            activeSection !== "reports" ? (
+            activeSection !== "reports" &&
+            activeSection !== "admin" ? (
               <FirstMatterWorkspace
                 canCreateMatter={canCreateMatter}
                 creating={creatingFirstMatter}
@@ -7942,6 +7977,18 @@ export default function DashboardClient({
                   void requestReportExport(definitionKey, exportProfileId, groupingKey)
                 }
                 reportingWorkspace={reportingWorkspace}
+              />
+            ) : null}
+
+            {activeSection === "admin" ? (
+              <AdminReadinessSection
+                capabilities={capabilities}
+                matters={matters}
+                overview={overview}
+                reportingWorkspace={reportingWorkspace}
+                session={session}
+                setupStatus={setupStatus}
+                workerHealth={workerHealth}
               />
             ) : null}
 
