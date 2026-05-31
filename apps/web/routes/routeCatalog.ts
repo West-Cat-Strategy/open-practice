@@ -419,7 +419,7 @@ export function resolveDashboardRouteSelection(input: {
       sectionKey: fallbackSection,
       status: "default",
       requestedSection,
-      entry: getRouteCatalogEntry("matters"),
+      entry: getRouteCatalogEntry(fallbackSection),
     };
   }
 

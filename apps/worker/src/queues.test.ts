@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import {
   createQueuedJobLifecycleRecord,
   defaultJobOptionsByQueue,
@@ -7,6 +8,20 @@ import {
   terminalJobStatus,
 } from "./queues.js";
 import { processOpenPracticeJob } from "./processors.js";
+import {
+  createWorkerRepositoryFromEnv,
+  validateWorkerReadiness,
+  workerEnvSchema,
+  type WorkerEnv,
+} from "./worker.js";
+
+function workerEnv(overrides: Partial<WorkerEnv> = {}): WorkerEnv {
+  return workerEnvSchema.parse({
+    NODE_ENV: "development",
+    REDIS_URL: "redis://localhost:6379/0",
+    ...overrides,
+  });
+}
 
 describe("worker queue foundation", () => {
   it("defines all planned background queues with retry policies", () => {
@@ -110,5 +125,38 @@ describe("worker queue foundation", () => {
     });
     expect(terminalJobStatus("queued")).toBe(false);
     expect(terminalJobStatus("skipped")).toBe(true);
+  });
+
+  it("starts memory repository mode without requiring DATABASE_URL", () => {
+    const runtime = createWorkerRepositoryFromEnv(workerEnv());
+
+    expect(runtime.repository).toBeInstanceOf(InMemoryOpenPracticeRepository);
+    expect(runtime.close).toBeUndefined();
+  });
+
+  it("rejects worker memory mode when a database URL is also present", () => {
+    expect(() =>
+      createWorkerRepositoryFromEnv(
+        workerEnv({
+          DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+          OPEN_PRACTICE_USE_MEMORY_REPO: true,
+        }),
+      ),
+    ).toThrow("Worker memory repository cannot be combined with DATABASE_URL");
+  });
+
+  it("applies production repository safety checks before worker startup", () => {
+    expect(() => validateWorkerReadiness(workerEnv({ NODE_ENV: "production" }))).toThrow(
+      "DATABASE_URL is required in production",
+    );
+    expect(() =>
+      validateWorkerReadiness(
+        workerEnv({
+          NODE_ENV: "production",
+          DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+          OPEN_PRACTICE_USE_MEMORY_REPO: true,
+        }),
+      ),
+    ).toThrow("OPEN_PRACTICE_USE_MEMORY_REPO cannot be true in production");
   });
 });

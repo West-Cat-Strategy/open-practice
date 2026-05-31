@@ -80,6 +80,48 @@ function isPublicCalDavRoute(path: string): boolean {
   );
 }
 
+export const PUBLIC_ROUTE_SAMPLES = [
+  { method: "GET", path: "/health" },
+  { method: "GET", path: "/api/setup/status" },
+  { method: "POST", path: "/api/setup/complete" },
+  { method: "POST", path: "/api/setup/webauthn-options" },
+  { method: "POST", path: "/api/auth/login" },
+  { method: "POST", path: "/api/auth/login/options" },
+  { method: "POST", path: "/api/auth/login/verify" },
+  { method: "POST", path: "/api/auth/password-setup" },
+  { method: "POST", path: "/api/auth/recovery-codes/verify" },
+  { method: "POST", path: "/api/public/consultation-intakes" },
+  { method: "GET", path: "/api/portal/shares/sample" },
+  { method: "POST", path: "/api/portal/shares/sample/email-verification" },
+  { method: "GET", path: "/api/portal/email-receipts/sample" },
+  { method: "POST", path: "/api/portal/email-receipts/sample" },
+  { method: "GET", path: "/api/portal/mail/receipts/sample" },
+  { method: "POST", path: "/api/portal/mail/receipts/sample" },
+  { method: "GET", path: "/api/portal/intake-forms/sample" },
+  { method: "POST", path: "/api/portal/intake-forms/sample/draft" },
+  { method: "POST", path: "/api/portal/intake-forms/sample/submit" },
+  {
+    method: "POST",
+    path: "/api/portal/intake-forms/sample/items/sample/uploads",
+  },
+  {
+    method: "POST",
+    path: "/api/portal/intake-forms/sample/items/sample/documents/sample/complete",
+  },
+  {
+    method: "POST",
+    path: "/api/portal/intake-forms/sample/items/sample/signature",
+  },
+  { method: "GET", path: "/api/portal/external-uploads/sample" },
+  { method: "POST", path: "/api/portal/external-uploads/sample/intents" },
+  {
+    method: "POST",
+    path: "/api/portal/external-uploads/sample/documents/sample/complete",
+  },
+  { method: "GET", path: "/api/portal/guest-sessions/sample" },
+  { method: "POST", path: "/api/portal/guest-sessions/sample/check-in" },
+] as const;
+
 export function isPublicRoute(method: string, url: string): boolean {
   const path = url.split("?")[0];
   return (
@@ -103,11 +145,9 @@ export function isPublicRoute(method: string, url: string): boolean {
     (method === "GET" && /^\/api\/portal\/intake-forms\/[^/]+$/.test(path ?? "")) ||
     (method === "POST" && /^\/api\/portal\/intake-forms\/[^/]+\/draft$/.test(path ?? "")) ||
     (method === "GET" && /^\/api\/portal\/external-uploads\/[^/]+$/.test(path ?? "")) ||
-    (method === "GET" && /^\/api\/portal\/mail\/receipts\/[^/]+$/.test(path ?? "")) ||
     (method === "GET" && /^\/api\/portal\/guest-sessions\/[^/]+$/.test(path ?? "")) ||
     (method === "POST" && /^\/api\/portal\/intake-forms\/[^/]+\/submit$/.test(path ?? "")) ||
     (method === "POST" && /^\/api\/portal\/guest-sessions\/[^/]+\/check-in$/.test(path ?? "")) ||
-    (method === "POST" && /^\/api\/portal\/mail\/receipts\/[^/]+\/acknowledge$/.test(path ?? "")) ||
     (method === "POST" &&
       /^\/api\/portal\/intake-forms\/[^/]+\/items\/[^/]+\/uploads$/.test(path ?? "")) ||
     (method === "POST" &&

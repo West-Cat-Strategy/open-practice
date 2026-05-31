@@ -93,6 +93,7 @@ type QueueEligibility =
       reason:
         | "already_queued_or_active"
         | "ocr_queue_not_configured"
+        | "ocr_storage_not_configured"
         | "ocr_provider_disabled"
         | "ocr_provider_not_configured"
         | "review_required"
@@ -104,6 +105,7 @@ type QueueEligibility =
 export interface QueueDocumentOcrInput {
   repository: OpenPracticeRepository;
   ocrJobQueue?: ApiJobQueue;
+  s3?: ApiRouteDependencies["s3"];
   auth: ApiAuthContext;
   requestId?: string;
   document: DocumentRecord;
@@ -225,6 +227,7 @@ function queueEligibility(input: {
   document: DocumentRecord;
   latestJob?: JobLifecycleRecord;
   ocrQueueConfigured: boolean;
+  ocrStorageConfigured: boolean;
   ocrProviderStatus: ReturnType<typeof providerStatus>;
 }): QueueEligibility {
   if (input.latestJob?.status === "queued" || input.latestJob?.status === "active") {
@@ -240,6 +243,7 @@ function queueEligibility(input: {
           : "ocr_provider_not_configured",
     };
   }
+  if (!input.ocrStorageConfigured) return { eligible: false, reason: "ocr_storage_not_configured" };
   if (input.document.externalUploadLinkId && input.document.reviewStatus !== "accepted") {
     return { eligible: false, reason: "review_required" };
   }
@@ -331,6 +335,9 @@ export async function queueDocumentOcr(
   const { repository, ocrJobQueue, auth, document } = input;
   if (!ocrJobQueue) {
     throw Object.assign(new Error("OCR queue is not configured"), { statusCode: 503 });
+  }
+  if (!input.s3) {
+    throw Object.assign(new Error("OCR document storage is not configured"), { statusCode: 503 });
   }
   await assertOcrProviderConfigured({ repository, firmId: auth.firmId });
   assertDocumentProcessable(document);
@@ -451,6 +458,7 @@ export async function buildDocumentProcessingStatus(input: {
   repository: ApiRouteDependencies["repository"];
   firmId: string;
   ocrJobQueue?: ApiJobQueue;
+  s3?: ApiRouteDependencies["s3"];
 }) {
   const providers = await Promise.all([
     input.repository.listProviderSettings(input.firmId, { kind: "ocr" }),
@@ -473,13 +481,15 @@ export async function buildDocumentProcessingStatus(input: {
     providerStatus("ocr", []);
   const configuredOcrProviders = (providers[0] ?? []).filter((provider) => provider.enabled);
   return {
-    status: configuredOcrProviders.length > 0 ? "configured" : "disabled",
+    status: configuredOcrProviders.length > 0 && input.s3 ? "configured" : "disabled",
     reason:
-      configuredOcrProviders.length > 0
+      configuredOcrProviders.length > 0 && input.s3
         ? undefined
         : ocrProviderState.reason === "provider_disabled"
           ? "provider_disabled"
-          : "not_configured",
+          : configuredOcrProviders.length > 0 && !input.s3
+            ? "storage_not_configured"
+            : "not_configured",
     workers: workerQueues.filter((queue) => queue.status === "configured"),
     workerQueues,
     reservedQueues,
@@ -498,7 +508,7 @@ export async function buildDocumentProcessingStatus(input: {
 
 export function registerDocumentProcessingRoutes(
   server: FastifyInstance,
-  { repository, ocrJobQueue }: ApiRouteDependencies,
+  { repository, ocrJobQueue, s3 }: ApiRouteDependencies,
 ): void {
   server.get("/api/document-processing/status", async (request) => {
     const access = requireAccess(request.auth, {
@@ -511,6 +521,7 @@ export function registerDocumentProcessingRoutes(
       repository,
       firmId: request.auth.firmId,
       ocrJobQueue,
+      s3,
     });
   });
 
@@ -545,6 +556,7 @@ export function registerDocumentProcessingRoutes(
       repository,
       firmId: request.auth.firmId,
       ocrJobQueue,
+      s3,
     });
   });
 
@@ -596,6 +608,7 @@ export function registerDocumentProcessingRoutes(
           document,
           latestJob,
           ocrQueueConfigured,
+          ocrStorageConfigured: Boolean(s3),
           ocrProviderStatus: ocrProviderState,
         });
         const latestExtraction = latestTextExtraction(
@@ -635,16 +648,19 @@ export function registerDocumentProcessingRoutes(
       }),
     );
     const documentItems = documentEntries.map((entry) => entry.item);
+    const ocrReady = ocrProviderState.status === "configured" && Boolean(s3);
 
     return {
       matterId: query.matterId,
-      status: ocrProviderState.status === "configured" ? "configured" : "disabled",
+      status: ocrReady ? "configured" : "disabled",
       reason:
-        ocrProviderState.status === "configured"
+        ocrProviderState.status === "configured" && s3
           ? undefined
           : ocrProviderState.reason === "provider_disabled"
             ? "provider_disabled"
-            : "not_configured",
+            : ocrProviderState.status === "configured" && !s3
+              ? "storage_not_configured"
+              : "not_configured",
       providerStatus: providerStates,
       workerQueues,
       reservedQueues,
@@ -684,6 +700,7 @@ export function registerDocumentProcessingRoutes(
     return queueDocumentOcr({
       repository,
       ocrJobQueue,
+      s3,
       auth: request.auth,
       requestId: request.id,
       document,

@@ -46,7 +46,7 @@ export function shareLinkAttentionItems(input: {
       {
         id: "share-email-verification",
         title: "Verify email",
-        detail: "Complete verification before viewing the shared documents.",
+        detail: "Complete verification before reviewing the shared document records.",
         status: "required",
         tone: "risk",
       },
@@ -59,8 +59,8 @@ export function shareLinkAttentionItems(input: {
     return [
       {
         id: "share-no-documents",
-        title: "No shared documents available",
-        detail: "The link is valid, but no documents are currently visible from this page.",
+        title: "No shared document records available",
+        detail: "The link is valid, but no document metadata is currently visible from this page.",
         status: "waiting",
       },
     ];
@@ -91,6 +91,6 @@ export function isShareEmailVerificationRequired(body: PublicShareErrorBody): bo
 
 export function describePublicShareStatus(payload: { documents: readonly unknown[] }): string {
   return payload.documents.length === 1
-    ? "Email verification complete. 1 document is available."
-    : `Email verification complete. ${payload.documents.length} documents are available.`;
+    ? "Email verification complete. 1 shared document metadata record is available."
+    : `Email verification complete. ${payload.documents.length} shared document metadata records are available.`;
 }

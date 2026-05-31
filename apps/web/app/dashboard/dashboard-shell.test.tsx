@@ -254,6 +254,32 @@ describe("dashboard shell review rail controls", () => {
     expect(html).toContain("Create or assign a matter to enable this matter-scoped section.");
   });
 
+  it("renders unavailable navigation entries as disabled controls", () => {
+    const navigationSections = buildSidebarNavigationSections({
+      billingCanView: true,
+      shareLinksEnabled: false,
+      externalUploadsEnabled: false,
+      capabilitySections: [
+        { key: "matters", enabled: true },
+        { key: "shares", enabled: true },
+        { key: "externalUploads", enabled: true },
+      ],
+    });
+    const html = renderToStaticMarkup(
+      createElement(DashboardSidebar, {
+        activeSection: "matters",
+        navigationSections,
+        navIcons,
+        onSelectSection: () => {},
+      }),
+    );
+
+    expect(html).toContain('<button aria-describedby="nav-disabled-shares"');
+    expect(html).toContain('disabled=""');
+    expect(html).toContain("Share links require token signing and share-link access.");
+    expect(html).not.toContain("aria-disabled");
+  });
+
   it("renders operational focus targets as buttons only for enabled dashboard sections", () => {
     const navigationSections = buildSidebarNavigationSections({
       billingCanView: true,

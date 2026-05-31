@@ -32,7 +32,8 @@ const optionalUrl = z.preprocess(
   z.string().url().optional(),
 );
 
-const envSchema = z.object({
+export const workerEnvSchema = z.object({
+  NODE_ENV: z.string().default("development"),
   REDIS_URL: z.string().url().default("redis://localhost:6379/0"),
   WORKER_QUEUES: z.string().optional(),
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
@@ -52,6 +53,8 @@ const envSchema = z.object({
   CONNECTOR_WEBHOOK_SECRETS: optionalString,
 });
 
+export type WorkerEnv = z.infer<typeof workerEnvSchema>;
+
 function selectedQueues(value: string | undefined): OpenPracticeQueueName[] {
   if (!value) return [...openPracticeQueues];
   const requested = value
@@ -64,6 +67,43 @@ function selectedQueues(value: string | undefined): OpenPracticeQueueName[] {
     }
     return queue as OpenPracticeQueueName;
   });
+}
+
+export function validateWorkerReadiness(env: WorkerEnv): void {
+  const s3Values = [env.S3_ENDPOINT, env.S3_ACCESS_KEY, env.S3_SECRET_KEY];
+  const s3ConfiguredCount = s3Values.filter(Boolean).length;
+  if (s3ConfiguredCount > 0 && s3ConfiguredCount < s3Values.length) {
+    throw new Error("S3 configuration must be complete or absent");
+  }
+
+  if (env.NODE_ENV === "production") {
+    if (!env.DATABASE_URL) {
+      throw new Error("DATABASE_URL is required in production");
+    }
+    if (env.OPEN_PRACTICE_USE_MEMORY_REPO) {
+      throw new Error("OPEN_PRACTICE_USE_MEMORY_REPO cannot be true in production");
+    }
+  } else if (env.OPEN_PRACTICE_USE_MEMORY_REPO && env.DATABASE_URL) {
+    throw new Error(
+      "Worker memory repository cannot be combined with DATABASE_URL; unset DATABASE_URL or disable OPEN_PRACTICE_USE_MEMORY_REPO",
+    );
+  }
+}
+
+export function createWorkerRepositoryFromEnv(env: WorkerEnv): {
+  repository: OpenPracticeRepository;
+  close?: () => Promise<void>;
+} {
+  validateWorkerReadiness(env);
+  if (env.OPEN_PRACTICE_USE_MEMORY_REPO || !env.DATABASE_URL) {
+    return { repository: new InMemoryOpenPracticeRepository() };
+  }
+
+  const runtime = createDatabaseRuntime(env.DATABASE_URL);
+  return {
+    repository: new DrizzleOpenPracticeRepository(runtime.db),
+    close: runtime.close,
+  };
 }
 
 export function createWorkers(input: {
@@ -110,13 +150,8 @@ export function createWorkers(input: {
 }
 
 if (process.env.NODE_ENV !== "test") {
-  const env = envSchema.parse(process.env);
-
-  const runtime = createDatabaseRuntime(env.DATABASE_URL!);
-  const repository: OpenPracticeRepository =
-    env.OPEN_PRACTICE_USE_MEMORY_REPO || !env.DATABASE_URL
-      ? new InMemoryOpenPracticeRepository()
-      : new DrizzleOpenPracticeRepository(runtime.db);
+  const env = workerEnvSchema.parse(process.env);
+  const { repository, close } = createWorkerRepositoryFromEnv(env);
 
   const s3Client = new S3Client({
     endpoint: env.S3_ENDPOINT,
@@ -178,8 +213,10 @@ if (process.env.NODE_ENV !== "test") {
   }
 
   process.once("SIGTERM", () => {
-    void Promise.all([...workers.map((worker) => worker.close()), connectorJobQueue?.close()]).then(
-      () => process.exit(0),
-    );
+    void Promise.all([
+      ...workers.map((worker) => worker.close()),
+      connectorJobQueue?.close(),
+      close?.(),
+    ]).then(() => process.exit(0));
   });
 }

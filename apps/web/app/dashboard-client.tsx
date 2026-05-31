@@ -75,6 +75,7 @@ import {
   buildExternalUploadRevokePath,
   canCreateExternalUpload,
   describeExternalUploadReviewState,
+  externalUploadCreateControlDisabled,
   externalUploadReviewReasons,
   getExternalUploadLinkState,
   upsertExternalUploadDocument,
@@ -260,6 +261,7 @@ import {
   compactPublicConsultationReviewActionReason,
   describePublicConsultationReviewAction,
   publicConsultationOpposingParties,
+  publicConsultationSettingsControlDisabled,
   publicConsultationReviewBusyAction,
   publicConsultationReviewBusyKey,
   publicConsultationSettingsSummary,
@@ -1454,6 +1456,13 @@ export default function DashboardClient({
     : [];
   const recentIntakePipelineLeads = intakePipeline.leads.slice(0, 5);
   const externalUploadCreateAvailable = canCreateExternalUpload(externalUploads.status);
+  const externalUploadCreateDisabled = externalUploadCreateControlDisabled({
+    creating: creatingExternalUpload,
+    status: externalUploads.status,
+  });
+  const publicConsultationSettingsDisabled = publicConsultationSettingsControlDisabled(
+    publicConsultation.status,
+  );
   const selectedDraft = activeDrafts.find((draft) => draft.id === selectedDraftId);
   const activeDraftAssistRecords = selectedDraft
     ? (draftAssistRecordsByDraftId[selectedDraft.id] ?? [])
@@ -6142,6 +6151,7 @@ export default function DashboardClient({
                   <label className="search-field compact">
                     <span>Max uploads</span>
                     <input
+                      disabled={externalUploadCreateDisabled}
                       min={1}
                       onChange={(event) => setExternalUploadMaxUploads(event.target.value)}
                       type="number"
@@ -6151,6 +6161,7 @@ export default function DashboardClient({
                   <label className="search-field compact">
                     <span>Expiry</span>
                     <input
+                      disabled={externalUploadCreateDisabled}
                       onChange={(event) => setExternalUploadExpiresAt(event.target.value)}
                       type="datetime-local"
                       value={externalUploadExpiresAt}
@@ -6158,7 +6169,7 @@ export default function DashboardClient({
                   </label>
                   <button
                     className="primary-button"
-                    disabled={creatingExternalUpload || !externalUploadCreateAvailable}
+                    disabled={externalUploadCreateDisabled}
                     onClick={() => void createExternalUploadLink()}
                     type="button"
                   >
@@ -7577,7 +7588,7 @@ export default function DashboardClient({
                     <span>Enabled</span>
                     <input
                       checked={publicConsultationEnabled}
-                      disabled={publicConsultation.status === "access_denied"}
+                      disabled={publicConsultationSettingsDisabled}
                       onChange={(event) => setPublicConsultationEnabled(event.target.checked)}
                       type="checkbox"
                     />
@@ -7585,6 +7596,7 @@ export default function DashboardClient({
                   <label className="search-field compact">
                     <span>Send from</span>
                     <input
+                      disabled={publicConsultationSettingsDisabled}
                       onChange={(event) => setPublicConsultationSender(event.target.value)}
                       value={publicConsultationSender}
                     />
@@ -7592,6 +7604,7 @@ export default function DashboardClient({
                   <label className="search-field compact">
                     <span>Notify</span>
                     <input
+                      disabled={publicConsultationSettingsDisabled}
                       onChange={(event) => setPublicConsultationRecipients(event.target.value)}
                       value={publicConsultationRecipients}
                     />
@@ -7599,6 +7612,7 @@ export default function DashboardClient({
                   <label className="search-field compact">
                     <span>Review owner</span>
                     <input
+                      disabled={publicConsultationSettingsDisabled}
                       onChange={(event) => setPublicConsultationReviewOwner(event.target.value)}
                       placeholder={session.user.id}
                       value={publicConsultationReviewOwner}
@@ -7615,8 +7629,7 @@ export default function DashboardClient({
                   <button
                     className="primary-button"
                     disabled={
-                      savingPublicConsultationSettings ||
-                      publicConsultation.status === "access_denied"
+                      savingPublicConsultationSettings || publicConsultationSettingsDisabled
                     }
                     onClick={() => void savePublicConsultationSettings()}
                     type="button"
@@ -7627,6 +7640,7 @@ export default function DashboardClient({
                 <label className="form-field">
                   <span>Allowed website origins</span>
                   <textarea
+                    disabled={publicConsultationSettingsDisabled}
                     onChange={(event) => setPublicConsultationOrigins(event.target.value)}
                     value={publicConsultationOrigins}
                   />

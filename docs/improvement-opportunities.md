@@ -19,81 +19,12 @@ proof.
 
 ### Clio-Informed Functional-Parity Candidates - 2026-05-27
 
-These candidates mirror the live Candidate rows OP-T127 through OP-T142 in
+These candidates mirror the remaining live Candidate rows OP-T135, OP-T136, OP-T138, and OP-T139 in
 `docs/planning-and-progress.md`. They come from the Clio-only product-spec review and the local Open
 Practice audit. Clio remains proprietary public-product research; use this section for independent
 planning only, with no copied Clio prose, assets, screenshots, templates, schemas, API examples, or
-UI structure. Older reference-review candidates below remain useful source detail, but they should be
-promoted through these parity rows rather than as duplicate live work.
-
-- **OP-T127 matter stage and setup model**
-  - **First slice:** Add reviewed matter stage/setup semantics with custom-field definitions,
-    responsible-user posture, reusable setup checklist templates, and matter financial snapshot cues.
-  - **Local gap / shipped boundary:** OP has matter records, assignments, conflicts, billing/trust
-    projections, and a first-matter create path, but not Clio-like stage/setup depth.
-  - **Out of scope:** Automatic workflow transitions, external sync, and jurisdiction-specific rule
-    automation.
-
-- **OP-T128 client portal account workspace**
-  - **First slice:** Add the smallest logged-in client account workspace over existing secure-share,
-    external-upload, intake, guest-session, receipt, and client-action records.
-  - **Local gap / shipped boundary:** OP has strong public-token actions and portal-access activity
-    proof, but no durable client account workspace. Do not duplicate OP-T117 or rewrite token routes.
-  - **Out of scope:** Realtime chat, broad document browsing, live payments, native mobile apps, and
-    token-route rewrites.
-
-- **OP-T129 intake pipeline and source reporting**
-  - **First slice:** Promote public consultation and intake-session records into a lead
-    pipeline/source reporting model with staff statuses, conflict-review posture, appointment/request
-    links, and conversion counts.
-  - **Local gap / shipped boundary:** Public consultation intake is review-first and staff-owned, but
-    pipeline/source analytics are not modeled as a CRM surface.
-  - **Out of scope:** Marketing automation, ad-spend ingestion, SMS outreach, bulk campaign delivery,
-    and automatic matter creation.
-
-- **OP-T130 contact relationship graph and CRM taxonomy**
-  - **First slice:** Add read-only contact-to-contact relationship records and CRM-style taxonomy cues
-    in contact dossiers.
-  - **Local gap / shipped boundary:** Contact dossiers expose matter-party links and review signals,
-    while duplicate/conflict/data-quality controls remain separate; relationship modeling is absent.
-  - **Out of scope:** Automatic merges, deduplication writes, external CRM sync, and conflict
-    disposition automation.
-
-- **OP-T131 calendar deadline and scheduling depth**
-  - **First slice:** Add a reviewed deadline/scheduling request model that connects tasks, calendar
-    events, reminder posture, scheduling-source context, owner assignment, privacy, and time-capture
-    cues.
-  - **Local gap / shipped boundary:** Calendar lifecycle and email reminder jobs shipped, but
-    scheduling request depth, court-rule-style review posture, and preference routing are not first
-    class.
-  - **Out of scope:** Court-rule automation, provider calendar sync, meeting media, public room URLs,
-    automatic deadline creation, and automatic reminder cancellation.
-
-- **OP-T132 communications channel history and client updates**
-  - **First slice:** Deepen matter-linked communication history across inbound email, outbound email,
-    internal conversations, phone/text note placeholders, and client-update draft requests.
-  - **Local gap / shipped boundary:** OP has communication records and notifications, but no
-    Clio-like channel-history layer that also prepares staff-reviewed client updates.
-  - **Out of scope:** Live SMS delivery, public portal composer, realtime chat, and automatic
-    client-update sends.
-
-- **OP-T133 document assembly and signature-envelope model**
-  - **First slice:** Add OP-authored envelope/document-assembly metadata for signer order,
-    field-placement validation, package assembly status, matter-data population posture, and reusable
-    document-set definitions.
-  - **Local gap / shipped boundary:** Document storage, exports, generated package metadata, and
-    embedded signatures exist, but reusable envelope and field-placement models do not.
-  - **Out of scope:** Third-party template import, copied forms, automatic legal drafting, and public
-    signing UX rewrites.
-
-- **OP-T134 time and expense capture depth**
-  - **First slice:** Add a local timer-to-draft-time-entry flow plus expense category/profile cues
-    that always create reviewable draft records and respect billing period locks before submit or
-    approve.
-  - **Local gap / shipped boundary:** Time-entry capture, rate rules, approvals, write-off, expenses,
-    and locks exist, but no timer capture or managed expense-category depth exists.
-  - **Out of scope:** Native mobile capture, automatic billing, external time-tool sync, and lock
-    bypasses.
+UI structure. OP-T127 through OP-T134 and OP-T137 through OP-T142 are shipped or in Review and should
+not remain here as future work.
 
 - **OP-T135 billing approval and payment collection flow**
   - **First slice:** Add hosted payment-request/link shell records tied to issued invoices, bill
@@ -114,15 +45,6 @@ promoted through these parity rows rather than as duplicate live work.
   - **Out of scope:** Live bank feeds, automatic transaction matching, automatic disbursement,
     accounting certification, and jurisdiction-specific compliance claims.
 
-- **OP-T137 reporting workspace and saved report definitions**
-  - **First slice:** Add a staff reporting workspace with saved report definitions, filters/grouping
-    metadata, export profiles, history, and first reports for invoice aging, reconciliation freshness,
-    productivity, and operational follow-up.
-  - **Local gap / shipped boundary:** Async exports and operational dashboards exist, but repeatable
-    management reports remain scattered across projections.
-  - **Out of scope:** Custom SQL, BI embeds, scheduled report email delivery, raw report bodies in
-    job metadata, and certified accounting reports.
-
 - **OP-T138 AI operational action proposals**
   - **First slice:** Expand async assist into review-first operational proposals for deadlines,
     tasks, document organization, draft invoice cues, and client-update drafts with source context.
@@ -139,33 +61,6 @@ promoted through these parity rows rather than as duplicate live work.
     substantive legal research workspace boundary.
   - **Out of scope:** Proprietary research content, scraped authority storage, automated advice, and
     source-citation claims.
-
-- **OP-T140 integration developer boundary**
-  - **First slice:** Define OAuth-style app registration, scoped API credentials, webhook
-    subscriptions, regional endpoint posture, rate-limit posture, custom-action placeholders, and
-    redacted delivery history using the existing connector registry/outbox as the base.
-  - **Local gap / shipped boundary:** Connector registry/outbox and owner-only recovery controls
-    exist, but no public developer boundary or app registration model exists.
-  - **Out of scope:** Public app marketplace behavior, third-party app review, broad model coverage,
-    live payment-link API exposure, and provider-specific recovery tools.
-
-- **OP-T141 mobile field workflow readiness**
-  - **First slice:** Inventory and harden mobile-sized staff/client web workflows for matter lookup,
-    task review, time capture, document upload/scanning handoff, client response, bill/payment
-    status, and security posture.
-  - **Local gap / shipped boundary:** Responsive dashboard proof exists across specific slices, but
-    mobile field workflows are not planned as a cohesive product surface.
-  - **Out of scope:** Native iOS/Android delivery, offline sync, push notifications, device
-    biometrics, and payment capture.
-
-- **OP-T142 admin, migration, and data portability readiness**
-  - **First slice:** Make admin/security/migration posture product-visible with role/support-access
-    controls, export/import readiness, onboarding/migration checklists, regional/privacy posture
-    notes, training/support surfaces, and tenant-safe backup/restore evidence.
-  - **Local gap / shipped boundary:** OP has strong local-first policy and release proof surfaces, but
-    migration/onboarding/data-portability readiness is not a visible product workflow.
-  - **Out of scope:** Public compliance claims, production migration services, regional hosting
-    guarantees, and support impersonation.
 
 ### Reference Review Candidates - 2026-05-22
 

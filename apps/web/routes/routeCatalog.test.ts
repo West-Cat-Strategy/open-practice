@@ -153,6 +153,22 @@ describe("Open Practice route catalog", () => {
     });
   });
 
+  it("keeps the default entry aligned with the first enabled fallback section", () => {
+    const navigationSections = enabledSidebarNavigation().map((section) =>
+      section.key === "matters" ? { ...section, enabled: false } : section,
+    );
+
+    expect(
+      resolveDashboardRouteSelection({
+        navigationSections,
+      }),
+    ).toMatchObject({
+      sectionKey: "contacts",
+      status: "default",
+      entry: expect.objectContaining({ id: "contacts", sectionKey: "contacts" }),
+    });
+  });
+
   it("does not hydrate disabled sidebar entries", () => {
     const navigationSections = enabledSidebarNavigation().map((section) =>
       section.key === "billing" ? { ...section, enabled: false } : section,

@@ -261,7 +261,7 @@ export async function buildInboundEmailStatus(input: {
 
 export function registerInboundEmailRoutes(
   server: FastifyInstance,
-  { repository, ocrJobQueue }: ApiRouteDependencies,
+  { repository, ocrJobQueue, s3 }: ApiRouteDependencies,
 ): void {
   server.get("/api/inbound-email/status", async (request) => {
     return buildInboundEmailStatus({ repository, firmId: request.auth.firmId, auth: request.auth });
@@ -500,6 +500,11 @@ export function registerInboundEmailRoutes(
       if (body.queueOcr && !ocrJobQueue) {
         throw Object.assign(new Error("OCR queue is not configured"), { statusCode: 503 });
       }
+      if (body.queueOcr && !s3) {
+        throw Object.assign(new Error("OCR document storage is not configured"), {
+          statusCode: 503,
+        });
+      }
       if (body.queueOcr) {
         await assertOcrProviderConfigured({ repository, firmId: request.auth.firmId });
       }
@@ -535,6 +540,7 @@ export function registerInboundEmailRoutes(
         ? await queueDocumentOcr({
             repository,
             ocrJobQueue,
+            s3,
             auth: request.auth,
             document: promoted.document,
             language: body.language,
