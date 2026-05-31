@@ -48,6 +48,7 @@ pnpm build
 Passed:
 
 ```sh
+pnpm verify:select -- --files apps/api/src/routes/contacts.test.ts apps/web/app/contact-dossiers-dashboard.ts apps/web/app/dashboard-client.test.ts apps/web/app/dashboard/contacts-section.tsx docs/api-and-state-machines.md docs/planning-and-progress.md docs/validation/README.md docs/validation/OP-T130_CONTACT_RELATIONSHIP_GRAPH_CRM_TAXONOMY_PROOF_2026-05-29.md packages/database/migrations/0042_contact_relationship_graph.sql packages/database/migrations/meta/_journal.json packages/database/src/repository/contracts.ts packages/database/src/repository/drizzle-mappers.ts packages/database/src/repository/drizzle.ts packages/database/src/repository/memory.ts packages/database/src/schema.ts packages/database/src/seed.ts packages/database/test/repository.contact-dossier.test.ts packages/database/test/schema.test.ts packages/domain/src/contacts.test.ts packages/domain/src/contacts.ts packages/domain/src/operational-views.test.ts packages/domain/src/sample-data.ts
 pnpm --filter @open-practice/domain build
 pnpm --filter @open-practice/database build
 pnpm --filter @open-practice/providers build
@@ -70,21 +71,23 @@ pnpm build
 git diff --check
 ```
 
-Results:
+2026-05-30 branch-ready rerun results:
 
-- Domain tests passed: 21 files and 140 tests, including contact taxonomy, relationship graph, and
+- Domain tests passed: 22 files and 143 tests, including contact taxonomy, relationship graph, and
   relationship-record validation.
-- Database tests passed: 15 files and 83 tests, including relationship graph scoping,
+- Database tests passed: 16 files and 87 tests, including relationship graph scoping,
   hidden-contact redaction, schema/index/check coverage, and repository behavior.
-- API tests passed: 38 files and 404 tests, including `GET /api/contacts/dossiers` relationship
+- API tests passed: 39 files and 407 tests, including `GET /api/contacts/dossiers` relationship
   graph output and `relatedContact.id` exclusion.
 - Providers, worker, and web tests passed: 5 provider files/15 tests, 3 worker files/23 tests, and
-  14 web files/119 tests.
+  14 web files/121 tests.
 - Formatting, docs links, policy gates, migration parity, `drizzle-kit check`, package typechecks,
   production build, and whitespace checks passed.
 - Fresh-worktree database/API tests and typechecks initially stopped on unresolved local workspace
   package entrypoints; after building `@open-practice/domain`, `@open-practice/database`, and
   `@open-practice/providers`, the selected checks above were rerun and passed.
+- The branch-ready rerun also tightened stale domain/database assertions to the final display-safe
+  relationship summary and CRM taxonomy shape without changing production code or schema.
 
 ## Redaction And Scope Proof
 

@@ -195,7 +195,55 @@ describe("repository contact dossier quality review", () => {
     const dossiers = await repository.listContactDossiersForUser(user);
 
     expect(dossiers.map((dossier) => dossier.contact.id)).toEqual(["contact-ada", "contact-river"]);
+    expect(dossiers.find((dossier) => dossier.contact.id === "contact-ada")).toMatchObject({
+      relationships: [
+        {
+          id: "contact-relationship-ada-river-counterparty",
+          direction: "outbound",
+          relationshipKind: "opposing_party_for",
+          label: "Matter counterparty",
+          conflictSafeLabel: "Matter counterparty",
+          status: "active",
+          source: "matter_party",
+          relatedContact: {
+            kind: "organization",
+            displayName: "River City Rentals Inc.",
+          },
+          visibleMatterIds: ["matter-001"],
+        },
+      ],
+      crmTaxonomy: {
+        entityType: "person",
+        labels: expect.arrayContaining([
+          expect.objectContaining({ key: "person", label: "person" }),
+          expect.objectContaining({ key: "client_contact", label: "client contact" }),
+          expect.objectContaining({ key: "relationship_graph", severity: "info" }),
+        ]),
+        relationshipSummary: expect.objectContaining({
+          activeCount: 1,
+          organizationCount: 1,
+        }),
+      },
+    });
+    expect(
+      dossiers.find((dossier) => dossier.contact.id === "contact-river")?.relationships,
+    ).toEqual([
+      expect.objectContaining({
+        id: "contact-relationship-ada-river-counterparty",
+        direction: "inbound",
+        label: "Matter counterparty",
+        conflictSafeLabel: "Matter counterparty",
+        relatedContact: {
+          kind: "person",
+          displayName: "Ada Morgan",
+        },
+        visibleMatterIds: ["matter-001"],
+      }),
+    ]);
     expect(JSON.stringify(dossiers)).not.toContain("proposal-inaccessible-contact-name");
+    expect(JSON.stringify(dossiers.map((dossier) => dossier.relationships))).not.toContain(
+      "contact-northstar",
+    );
     expect(dossiers.find((dossier) => dossier.contact.id === "contact-ada")).toMatchObject({
       qualityReview: {
         summary: { revalidationPromptCount: 1 },
