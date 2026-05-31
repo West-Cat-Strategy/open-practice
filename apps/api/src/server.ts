@@ -149,6 +149,7 @@ export type ApiEnv = z.infer<typeof envSchema>;
 
 // Session cookie name moved to http/auth-helpers.ts
 const DEFAULT_RATE_LIMIT = { max: 300, timeWindow: "1 minute" };
+const E2E_RATE_LIMIT = { max: 2_000, timeWindow: "1 minute" };
 const PUBLIC_CONSULTATION_SETTINGS_KIND = "public_intake";
 const PUBLIC_CONSULTATION_SETTINGS_KEY = "consultation";
 // Auth rate limits moved to routes/auth.ts
@@ -325,10 +326,11 @@ function routePath(url: string): string {
 
 export function createApiServer(options: ApiOptions): FastifyInstance {
   const server = Fastify({ logger: true });
+  const defaultRateLimit = options.e2eSupport ? E2E_RATE_LIMIT : DEFAULT_RATE_LIMIT;
 
   server.register(async (app) => {
     await app.register(rateLimit, {
-      ...DEFAULT_RATE_LIMIT,
+      ...defaultRateLimit,
       global: true,
       keyGenerator: (request) => `${request.ip}:${request.method}:${routePath(request.url)}`,
       errorResponseBuilder: () => ({

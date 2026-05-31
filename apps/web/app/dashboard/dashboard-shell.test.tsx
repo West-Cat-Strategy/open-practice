@@ -8,6 +8,7 @@ import {
 } from "../../routes/routeCatalog";
 import type { OperationalFocusSummary } from "../operational-focus-panel";
 import type { QueuesResponse, SessionResponse } from "../types";
+import { applyMatterAvailabilityToNavigation } from "../dashboard-utils";
 import {
   ContextRail,
   DashboardReviewRailCollapsedTarget,
@@ -209,6 +210,47 @@ describe("dashboard shell review rail controls", () => {
     expect(html.indexOf(">Workspace<")).toBeLessThan(html.indexOf(">Finance<"));
     expect(html.indexOf(">Finance<")).toBeLessThan(html.indexOf(">Operations<"));
     expect(html.indexOf(">Operations<")).toBeLessThan(html.indexOf(">Review<"));
+  });
+
+  it("marks the zero-matter sidebar for compact mobile navigation", () => {
+    const navigationSections = applyMatterAvailabilityToNavigation(
+      buildSidebarNavigationSections({
+        billingCanView: true,
+        shareLinksEnabled: true,
+        externalUploadsEnabled: true,
+        capabilitySections: [
+          { key: "matters", enabled: false },
+          { key: "contacts", enabled: true },
+          { key: "funds", enabled: true },
+          { key: "billing", enabled: true },
+          { key: "documents", enabled: true },
+          { key: "shares", enabled: true },
+          { key: "externalUploads", enabled: true },
+          { key: "drafting", enabled: true },
+          { key: "calendar", enabled: true },
+          { key: "signatures", enabled: true },
+          { key: "intake", enabled: true },
+          { key: "audit", enabled: true },
+          { key: "reports", enabled: true },
+          { key: "queues", enabled: true },
+        ],
+      }),
+      false,
+      true,
+    );
+    const html = renderToStaticMarkup(
+      createElement(DashboardSidebar, {
+        activeSection: "matters",
+        matterState: "empty",
+        navigationSections,
+        navIcons,
+        onSelectSection: () => {},
+      }),
+    );
+
+    expect(html).toContain('class="sidebar dashboard-sidebar zero-matter-sidebar"');
+    expect(html).toContain('data-matter-state="empty"');
+    expect(html).toContain("Create or assign a matter to enable this matter-scoped section.");
   });
 
   it("renders operational focus targets as buttons only for enabled dashboard sections", () => {

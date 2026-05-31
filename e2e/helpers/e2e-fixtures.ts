@@ -34,7 +34,10 @@ export async function expectPageHealthy(page: Page): Promise<void> {
   await expect(page).toHaveTitle(/Open Practice/);
   const body = page.locator("body");
   await expect(body).not.toContainText(/Unhandled Runtime Error|Application error|Build Error/i);
-  await expect(body).not.toContainText(/This page could not be found|404/i);
+  await expect(body).not.toContainText(/This page could not be found/i);
+  await expect(
+    page.getByRole("heading", { name: /^(404( not found)?|This page could not be found)$/i }),
+  ).toHaveCount(0);
 }
 
 export class OpenPracticeE2EClient {

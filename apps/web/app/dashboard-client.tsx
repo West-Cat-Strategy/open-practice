@@ -597,6 +597,7 @@ const currency = new Intl.NumberFormat("en-CA", {
   currency: "CAD",
 });
 const compactDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "UTC",
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
@@ -4297,6 +4298,7 @@ export default function DashboardClient({
         </a>
         <DashboardSidebar
           activeSection={activeSection}
+          matterState="empty"
           navigationSections={navigationSections}
           navIcons={navIcons}
           onSelectSection={selectDashboardSection}
@@ -8018,7 +8020,7 @@ export default function DashboardClient({
                     <div className="party-row" key={entry.id}>
                       <span>
                         <strong>{entry.title}</strong>
-                        <small>{new Date(entry.occurredAt).toLocaleString("en-CA")}</small>
+                        <small>{compactDate(entry.occurredAt)}</small>
                       </span>
                       <em>{entry.kind}</em>
                     </div>
