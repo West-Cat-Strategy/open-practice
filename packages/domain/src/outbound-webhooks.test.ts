@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildOutboundWebhookTestDeliverySimulation,
+  isDeniedOutboundWebhookAddress,
   validateOutboundWebhookDestination,
 } from "./outbound-webhooks.js";
 
 describe("outbound webhook guardrails", () => {
-  it("requires HTTPS destinations and removes credentials/fragments from normalized URLs", () => {
+  it("requires HTTPS destinations and rejects URL credentials", () => {
     expect(validateOutboundWebhookDestination("http://example.test/hooks")).toEqual({
       ok: false,
       reason: "https_required",
@@ -13,31 +14,47 @@ describe("outbound webhook guardrails", () => {
 
     expect(
       validateOutboundWebhookDestination("https://user:secret@webhooks.example.test/hooks#token"),
-    ).toMatchObject({
-      ok: true,
-      normalizedUrl: "https://webhooks.example.test/hooks",
-      scheme: "https",
-      host: "webhooks.example.test",
+    ).toEqual({
+      ok: false,
+      reason: "credentials_denied",
     });
   });
 
-  it("denies localhost and loopback destinations before simulation", () => {
+  it("denies localhost and private-network destinations before simulation", () => {
     expect(validateOutboundWebhookDestination("https://localhost/hooks")).toEqual({
       ok: false,
-      reason: "localhost_or_loopback_denied",
+      reason: "private_network_denied",
     });
     expect(validateOutboundWebhookDestination("https://ops.localhost/hooks")).toEqual({
       ok: false,
-      reason: "localhost_or_loopback_denied",
+      reason: "private_network_denied",
     });
     expect(validateOutboundWebhookDestination("https://127.0.0.1/hooks")).toEqual({
       ok: false,
-      reason: "localhost_or_loopback_denied",
+      reason: "private_network_denied",
+    });
+    expect(validateOutboundWebhookDestination("https://10.0.0.7/hooks")).toEqual({
+      ok: false,
+      reason: "private_network_denied",
+    });
+    expect(validateOutboundWebhookDestination("https://[fd00::1]/hooks")).toEqual({
+      ok: false,
+      reason: "private_network_denied",
     });
     expect(validateOutboundWebhookDestination("https://[::1]/hooks")).toEqual({
       ok: false,
-      reason: "localhost_or_loopback_denied",
+      reason: "private_network_denied",
     });
+  });
+
+  it("classifies resolved private addresses for worker-side DNS guardrails", () => {
+    expect(isDeniedOutboundWebhookAddress("192.168.1.10")).toBe(true);
+    expect(isDeniedOutboundWebhookAddress("169.254.169.254")).toBe(true);
+    expect(isDeniedOutboundWebhookAddress("::ffff:127.0.0.1")).toBe(true);
+    expect(isDeniedOutboundWebhookAddress("::ffff:7f00:1")).toBe(true);
+    expect(isDeniedOutboundWebhookAddress("::ffff:0a00:5")).toBe(true);
+    expect(isDeniedOutboundWebhookAddress("::ffff:c0a8:10")).toBe(true);
+    expect(isDeniedOutboundWebhookAddress("203.0.113.10")).toBe(false);
   });
 
   it("builds provider-neutral signing metadata without exposing a secret value", () => {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Buffer } from "node:buffer";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { verifyRegistrationResponse } from "@simplewebauthn/server";
 import {
@@ -1112,11 +1113,21 @@ describe("API auth and persistence boundaries", () => {
   });
 
   it("marks completed document uploads with checksum and scan states", async () => {
-    const response = await testServer().inject({
+    const checksumSha256 = "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c";
+    const response = await testServer({
+      s3: {
+        bucket: "open-practice-test-documents",
+        client: {
+          send: async () => ({
+            ChecksumSHA256: Buffer.from(checksumSha256, "hex").toString("base64"),
+          }),
+        } as never,
+      },
+    }).inject({
       method: "POST",
       url: "/api/documents/doc-001/upload-complete",
       payload: {
-        checksumSha256: "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c",
+        checksumSha256,
         scanStatus: "passed",
       },
     });
@@ -1126,7 +1137,7 @@ describe("API auth and persistence boundaries", () => {
       id: "doc-001",
       uploadStatus: "verified",
       checksumStatus: "verified",
-      scanStatus: "passed",
+      scanStatus: "queued",
     });
   });
 

@@ -6,7 +6,12 @@ import type {
   OpenPracticeRepository,
   PracticeOverview,
 } from "@open-practice/database";
-import type { ContactIdentifier, User } from "@open-practice/domain";
+import type {
+  ConflictCandidate,
+  ContactIdentifier,
+  ProfessionalRole,
+  User,
+} from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 
 const provinceSchema = z.enum(["BC", "ON", "CANADA", "OTHER"]);
@@ -76,6 +81,32 @@ function contactIdentifiers(input: { email?: string; phone?: string }): ContactI
   return identifiers;
 }
 
+function canReadFirmWideConflictDetails(role: ProfessionalRole): boolean {
+  return role === "owner_admin" || role === "auditor";
+}
+
+function severityRank(severity: ConflictCandidate["severity"]): number {
+  return severity === "blocker" ? 3 : severity === "review" ? 2 : 1;
+}
+
+function summarizeConflictResults(results: ConflictCandidate[]) {
+  const countsBySeverity = { blocker: 0, review: 0, info: 0 };
+  for (const result of results) countsBySeverity[result.severity] += 1;
+  const topSeverity =
+    results
+      .map((result) => result.severity)
+      .sort((left, right) => severityRank(right) - severityRank(left))[0] ?? "none";
+  return {
+    results: [],
+    summary: {
+      matchCount: results.length,
+      severity: topSeverity,
+      countsBySeverity,
+      detailsRedacted: true,
+    },
+  };
+}
+
 export function registerMatterRoutes(
   server: FastifyInstance,
   options: { repository: OpenPracticeRepository },
@@ -129,10 +160,12 @@ export function registerMatterRoutes(
     const access = requireAccess(request.auth, { resource: "contact", action: "read" });
     if (!access.ok) throw access.error;
     const body = conflictBodySchema.parse(request.body);
-    return options.repository.runConflictCheck({
+    const conflictCheck = await options.repository.runConflictCheck({
       firmId: request.auth.firmId,
       actorId: request.auth.user.id,
       ...body,
     });
+    if (canReadFirmWideConflictDetails(request.auth.user.role)) return conflictCheck;
+    return summarizeConflictResults(conflictCheck.results);
   });
 }

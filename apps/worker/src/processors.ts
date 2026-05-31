@@ -1,4 +1,7 @@
 import { createHmac } from "node:crypto";
+import { lookup as dnsLookup } from "node:dns/promises";
+import { request as httpsRequest } from "node:https";
+import type { LookupFunction } from "node:net";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type {
   ConnectorOutboxRecord,
@@ -19,6 +22,7 @@ import {
   isStaffReportDefinitionKey,
   isStaffReportExportProfileId,
   isStaffReportGroupingKey,
+  isDeniedOutboundWebhookAddress,
   outboundWebhookEventAllowlist,
   validateOutboundWebhookDestination,
 } from "@open-practice/domain";
@@ -63,6 +67,8 @@ export type ConnectorHttpDeliverer = (
   request: ConnectorDeliveryRequest,
 ) => Promise<ConnectorDeliveryResponse>;
 
+export type ConnectorDnsResolver = (hostname: string) => Promise<string[]>;
+
 const CONNECTOR_DELIVERY_JOB_NAME = "deliver_connectors";
 const CONNECTOR_JOB_MAX_ATTEMPTS = 3;
 
@@ -94,6 +100,7 @@ export async function processOpenPracticeJob(input: {
   inboundEmailParser: InboundEmailParser;
   connectorSecretResolver?: ConnectorSecretResolver;
   connectorHttpDeliverer?: ConnectorHttpDeliverer;
+  connectorDnsResolver?: ConnectorDnsResolver;
   connectorJobQueue?: WorkerJobQueue;
 }): Promise<WorkerJobResult> {
   const { data } = input;
@@ -145,6 +152,7 @@ async function processOpenPracticeJobBody(input: {
   inboundEmailParser: InboundEmailParser;
   connectorSecretResolver?: ConnectorSecretResolver;
   connectorHttpDeliverer?: ConnectorHttpDeliverer;
+  connectorDnsResolver?: ConnectorDnsResolver;
   connectorJobQueue?: WorkerJobQueue;
 }): Promise<WorkerJobResult> {
   const { queueName, data } = input;
@@ -685,12 +693,77 @@ function signConnectorBody(input: { body: string; timestamp: string; secret: str
 async function defaultConnectorDeliverer(
   request: ConnectorDeliveryRequest,
 ): Promise<ConnectorDeliveryResponse> {
-  const response = await fetch(request.url, {
-    method: "POST",
-    headers: request.headers,
-    body: request.body,
+  const destination = validateOutboundWebhookDestination(request.url);
+  if (!destination.ok) {
+    throw new Error(`Connector destination rejected: ${destination.reason}`);
+  }
+  const url = new URL(destination.normalizedUrl);
+  const guardedLookup: LookupFunction = (hostname, options, callback) => {
+    dnsLookup(hostname, {
+      all: true,
+      family: options.family === 4 || options.family === 6 ? options.family : 0,
+      verbatim: true,
+    }).then(
+      (records) => {
+        const blocked = records.some((record) => isDeniedOutboundWebhookAddress(record.address));
+        const selected = records.find((record) => !isDeniedOutboundWebhookAddress(record.address));
+        if (!selected || blocked) {
+          const error = new Error(
+            "Connector destination failed socket DNS guardrail validation",
+          ) as NodeJS.ErrnoException;
+          error.code = blocked ? "PRIVATE_NETWORK_DENIED" : "DNS_RESOLUTION_FAILED";
+          callback(error, "", 0);
+          return;
+        }
+        callback(null, selected.address, selected.family);
+      },
+      (error: NodeJS.ErrnoException) => callback(error, "", 0),
+    );
+  };
+
+  return await new Promise<ConnectorDeliveryResponse>((resolve, reject) => {
+    const outgoing = httpsRequest(
+      url,
+      {
+        method: "POST",
+        headers: request.headers,
+        lookup: guardedLookup,
+      },
+      (response) => {
+        response.on("error", reject);
+        response.on("end", () => resolve({ status: response.statusCode ?? 0 }));
+        response.resume();
+      },
+    );
+    outgoing.on("error", reject);
+    outgoing.setTimeout(15_000, () => {
+      outgoing.destroy(new Error("Connector delivery timed out"));
+    });
+    outgoing.end(request.body);
   });
-  return { status: response.status };
+}
+
+async function defaultConnectorDnsResolver(hostname: string): Promise<string[]> {
+  const records = await dnsLookup(hostname, { all: true, verbatim: true });
+  return records.map((record) => record.address);
+}
+
+async function validateConnectorDestinationDns(input: {
+  host: string;
+  resolver: ConnectorDnsResolver;
+}): Promise<
+  { ok: true } | { ok: false; reason: "dns_resolution_failed" | "private_network_denied" }
+> {
+  try {
+    const addresses = await input.resolver(input.host);
+    if (addresses.length === 0) return { ok: false, reason: "dns_resolution_failed" };
+    if (addresses.some((address) => isDeniedOutboundWebhookAddress(address))) {
+      return { ok: false, reason: "private_network_denied" };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "dns_resolution_failed" };
+  }
 }
 
 async function processConnectorJob(input: {
@@ -698,6 +771,7 @@ async function processConnectorJob(input: {
   repository: OpenPracticeRepository;
   connectorSecretResolver?: ConnectorSecretResolver;
   connectorHttpDeliverer?: ConnectorHttpDeliverer;
+  connectorDnsResolver?: ConnectorDnsResolver;
   connectorJobQueue?: WorkerJobQueue;
 }): Promise<WorkerJobResult> {
   const { data, repository } = input;
@@ -722,6 +796,7 @@ async function processConnectorJob(input: {
       ...item,
       repository,
       secretResolver: input.connectorSecretResolver,
+      dnsResolver: input.connectorDnsResolver ?? defaultConnectorDnsResolver,
       deliverer: input.connectorHttpDeliverer ?? defaultConnectorDeliverer,
     });
     if (settled.status === "delivered") deliveredIds.push(item.outbox.id);
@@ -764,6 +839,7 @@ async function deliverConnectorOutbox(input: {
   attempt: Awaited<ReturnType<OpenPracticeRepository["leaseConnectorOutbox"]>>[number]["attempt"];
   repository: OpenPracticeRepository;
   secretResolver?: ConnectorSecretResolver;
+  dnsResolver: ConnectorDnsResolver;
   deliverer: ConnectorHttpDeliverer;
 }): Promise<{ status: "delivered" | "failed" | "dead_letter"; outbox: ConnectorOutboxRecord }> {
   const now = new Date().toISOString();
@@ -806,6 +882,32 @@ async function deliverConnectorOutbox(input: {
       terminal: true,
       errorSummary: "Connector destination failed HTTPS guardrail validation",
       metadata: { ...baseMetadata, reason: destination.reason },
+    });
+    return { status: "dead_letter", outbox: result.outbox };
+  }
+
+  const dnsValidation = await validateConnectorDestinationDns({
+    host: destination.host,
+    resolver: input.dnsResolver,
+  });
+  if (!dnsValidation.ok) {
+    const result = await input.repository.recordConnectorDeliveryResult({
+      firmId: input.outbox.firmId,
+      connectorId: input.outbox.connectorId,
+      outboxId: input.outbox.id,
+      attemptId: input.attempt.id,
+      leaseId: input.attempt.leaseId ?? "",
+      status: "failed",
+      occurredAt: now,
+      terminal: true,
+      errorSummary: "Connector destination failed DNS guardrail validation",
+      metadata: {
+        ...baseMetadata,
+        destinationScheme: destination.scheme,
+        destinationHost: destination.host,
+        destinationPort: destination.port,
+        reason: dnsValidation.reason,
+      },
     });
     return { status: "dead_letter", outbox: result.outbox };
   }

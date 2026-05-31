@@ -19,7 +19,7 @@ export type OutboundWebhookDestinationValidation =
     }
   | {
       ok: false;
-      reason: "invalid_url" | "https_required" | "localhost_or_loopback_denied";
+      reason: "invalid_url" | "https_required" | "credentials_denied" | "private_network_denied";
     };
 
 export interface OutboundWebhookSigningMetadata {
@@ -52,14 +52,14 @@ export interface OutboundWebhookTestDeliverySimulation {
 
 const LOCALHOST_NAMES = new Set(["localhost", "localhost.localdomain", "0.0.0.0"]);
 
-function isLoopbackIpv4(host: string): boolean {
+function parseIpv4(host: string): number[] | undefined {
   const parts = host.split(".");
-  if (parts.length !== 4) return false;
+  if (parts.length !== 4) return undefined;
   const octets = parts.map((part) => Number(part));
   if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
-    return false;
+    return undefined;
   }
-  return octets[0] === 127;
+  return octets;
 }
 
 function normalizedHost(hostname: string): string {
@@ -69,13 +69,64 @@ function normalizedHost(hostname: string): string {
     .replace(/\.$/, "");
 }
 
-function isLocalhostOrLoopback(hostname: string): boolean {
+function isDeniedIpv4(host: string): boolean {
+  const octets = parseIpv4(host);
+  if (!octets) return false;
+  const [first = 0, second = 0] = octets;
+  return (
+    first === 0 ||
+    first === 10 ||
+    first === 127 ||
+    (first === 100 && second >= 64 && second <= 127) ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    (first === 198 && (second === 18 || second === 19)) ||
+    first >= 224
+  );
+}
+
+function isDeniedIpv6(host: string): boolean {
+  const mapped = host.match(/(?:^|:)ffff:(?<suffix>[0-9a-f:.]+)$/i);
+  if (mapped?.groups?.suffix) {
+    const suffix = mapped.groups.suffix;
+    if (suffix.includes(".")) return isDeniedIpv4(suffix);
+    const parts = suffix.split(":");
+    if (parts.length === 2) {
+      const words = parts.map((part) => Number.parseInt(part, 16));
+      if (words.every((word) => Number.isInteger(word) && word >= 0 && word <= 0xffff)) {
+        const [high = 0, low = 0] = words;
+        return isDeniedIpv4(
+          `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`,
+        );
+      }
+    }
+  }
+  if (!host.includes(":")) return false;
+  return (
+    host === "::" ||
+    host === "::1" ||
+    host.startsWith("fc") ||
+    host.startsWith("fd") ||
+    /^fe[89ab][0-9a-f]?:/i.test(host) ||
+    host.startsWith("ff")
+  );
+}
+
+export function isDeniedOutboundWebhookAddress(address: string): boolean {
+  const host = normalizedHost(address);
+  return isDeniedIpv4(host) || isDeniedIpv6(host);
+}
+
+function isPrivateOrInternalHost(hostname: string): boolean {
   const host = normalizedHost(hostname);
   return (
     LOCALHOST_NAMES.has(host) ||
     host.endsWith(".localhost") ||
-    host === "::1" ||
-    isLoopbackIpv4(host)
+    host.endsWith(".local") ||
+    host.endsWith(".internal") ||
+    !host.includes(".") ||
+    isDeniedOutboundWebhookAddress(host)
   );
 }
 
@@ -90,13 +141,12 @@ export function validateOutboundWebhookDestination(
   }
 
   if (parsed.protocol !== "https:") return { ok: false, reason: "https_required" };
-  if (isLocalhostOrLoopback(parsed.hostname)) {
-    return { ok: false, reason: "localhost_or_loopback_denied" };
+  if (parsed.username || parsed.password) return { ok: false, reason: "credentials_denied" };
+  if (isPrivateOrInternalHost(parsed.hostname)) {
+    return { ok: false, reason: "private_network_denied" };
   }
 
   parsed.hash = "";
-  parsed.username = "";
-  parsed.password = "";
   return {
     ok: true,
     normalizedUrl: parsed.toString(),

@@ -1,10 +1,32 @@
 import { S3Client } from "@aws-sdk/client-s3";
+import { Buffer } from "node:buffer";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { createApiServer } from "../server.js";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
+
+function s3Config(checksumSha256 = "a".repeat(64), objectExists = true, includeChecksum = true) {
+  const client = new S3Client({
+    endpoint: "http://127.0.0.1:9000",
+    forcePathStyle: true,
+    region: "local",
+    credentials: {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    },
+  });
+  (client as unknown as { send: () => Promise<{ ChecksumSHA256?: string }> }).send = async () => {
+    if (!objectExists) throw new Error("not found");
+    if (!includeChecksum) return {};
+    return { ChecksumSHA256: Buffer.from(checksumSha256, "hex").toString("base64") };
+  };
+  return {
+    bucket: "open-practice-test-documents",
+    client,
+  };
+}
 
 function testServer(overrides: Partial<CreateServerOptions> = {}) {
   const repository = overrides.repository ?? new InMemoryOpenPracticeRepository();
@@ -32,18 +54,7 @@ describe("document routes", () => {
     const repository = new InMemoryOpenPracticeRepository();
     const response = await testServer({
       repository,
-      s3: {
-        bucket: "open-practice-test-documents",
-        client: new S3Client({
-          endpoint: "http://127.0.0.1:9000",
-          forcePathStyle: true,
-          region: "local",
-          credentials: {
-            accessKeyId: "test-access-key",
-            secretAccessKey: "test-secret-key",
-          },
-        }),
-      },
+      s3: s3Config(),
     }).inject({
       method: "GET",
       url:
@@ -64,6 +75,7 @@ describe("document routes", () => {
         uploadStatus: "intent_created",
       },
       requiredHeaders: {
+        "x-amz-checksum-sha256": expect.any(String),
         "x-open-practice-malware-scan": "required-before-share",
       },
     });
@@ -96,22 +108,11 @@ describe("document routes", () => {
 
   it("records audit events for upload completion and scan status changes", async () => {
     const repository = new InMemoryOpenPracticeRepository();
+    const checksumSha256 = "d".repeat(64);
     const server = testServer({
       repository,
-      s3: {
-        bucket: "open-practice-test-documents",
-        client: new S3Client({
-          endpoint: "http://127.0.0.1:9000",
-          forcePathStyle: true,
-          region: "local",
-          credentials: {
-            accessKeyId: "test-access-key",
-            secretAccessKey: "test-secret-key",
-          },
-        }),
-      },
+      s3: s3Config(checksumSha256),
     });
-    const checksumSha256 = "d".repeat(64);
     const intent = await server.inject({
       method: "GET",
       url:
@@ -125,7 +126,7 @@ describe("document routes", () => {
       url: `/api/documents/${documentId}/upload-complete`,
       payload: {
         checksumSha256,
-        scanStatus: "queued",
+        scanStatus: "passed",
       },
     });
     const scanStatus = await server.inject({
@@ -181,6 +182,78 @@ describe("document routes", () => {
         }),
       ]),
       valid: true,
+    });
+  });
+
+  it("rejects upload completion when the object cannot be verified in storage", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const checksumSha256 = "e".repeat(64);
+    const server = testServer({ repository, s3: s3Config(checksumSha256, false) });
+    const intent = await server.inject({
+      method: "GET",
+      url:
+        "/api/documents/presign-upload?matterId=matter-001&filename=missing.pdf" +
+        `&checksumSha256=${checksumSha256}`,
+    });
+    const documentId = intent.json<{ document: { id: string } }>().document.id;
+
+    const completed = await server.inject({
+      method: "POST",
+      url: `/api/documents/${documentId}/upload-complete`,
+      payload: { checksumSha256 },
+    });
+
+    expect(completed.statusCode).toBe(409);
+    expect(completed.json()).toMatchObject({
+      message: "Uploaded object was not found. Complete the upload before marking it complete.",
+    });
+  });
+
+  it("rejects upload completion when storage cannot return a checksum", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const checksumSha256 = "f".repeat(64);
+    const server = testServer({ repository, s3: s3Config(checksumSha256, true, false) });
+    const intent = await server.inject({
+      method: "GET",
+      url:
+        "/api/documents/presign-upload?matterId=matter-001&filename=missing-checksum.pdf" +
+        `&checksumSha256=${checksumSha256}`,
+    });
+    const documentId = intent.json<{ document: { id: string } }>().document.id;
+
+    const completed = await server.inject({
+      method: "POST",
+      url: `/api/documents/${documentId}/upload-complete`,
+      payload: { checksumSha256 },
+    });
+
+    expect(completed.statusCode).toBe(409);
+    expect(completed.json()).toMatchObject({
+      message: "Uploaded object checksum was not available for verification.",
+    });
+  });
+
+  it("rejects upload completion when the storage checksum does not match the request", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const checksumSha256 = "a".repeat(64);
+    const server = testServer({ repository, s3: s3Config("b".repeat(64)) });
+    const intent = await server.inject({
+      method: "GET",
+      url:
+        "/api/documents/presign-upload?matterId=matter-001&filename=mismatch.pdf" +
+        `&checksumSha256=${checksumSha256}`,
+    });
+    const documentId = intent.json<{ document: { id: string } }>().document.id;
+
+    const completed = await server.inject({
+      method: "POST",
+      url: `/api/documents/${documentId}/upload-complete`,
+      payload: { checksumSha256 },
+    });
+
+    expect(completed.statusCode).toBe(400);
+    expect(completed.json()).toMatchObject({
+      message: "Uploaded object checksum did not match the expected SHA-256 digest.",
     });
   });
 

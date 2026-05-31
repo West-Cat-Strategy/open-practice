@@ -259,9 +259,8 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "apps/api/src/server.test.ts",
     "POST",
     "/api/conflicts/check",
-    "matter",
+    "contact",
     "read",
-    "optional",
   ),
   authRoute(
     "registerContactRoutes",
@@ -1739,13 +1738,15 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "auth_credential",
     "read",
   ),
-  authRoute(
+  multiGuardAuthRoute(
     "registerAuditRoutes",
     "apps/api/src/routes/audit.test.ts",
     "GET",
     "/api/audit",
-    "audit_log",
-    "read",
+    [
+      { resource: "audit_log", action: "read", matterScope: "firm_wide" },
+      { resource: "matter", action: "read", matterScope: "required" },
+    ],
   ),
   authRoute(
     "registerAuditRoutes",

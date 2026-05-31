@@ -728,6 +728,10 @@ export interface OpenPracticeRepository {
   ): Promise<WebAuthnCredentialRecord>;
   listWebAuthnCredentials(firmId: string, userId: string): Promise<WebAuthnCredentialRecord[]>;
   getWebAuthnCredential(credentialId: string): Promise<WebAuthnCredentialRecord | undefined>;
+  getWebAuthnCredentialForFirm(
+    firmId: string,
+    credentialId: string,
+  ): Promise<WebAuthnCredentialRecord | undefined>;
   updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void>;
   deleteWebAuthnCredential(firmId: string, id: string): Promise<void>;
   updateUserMfaStatus(firmId: string, userId: string, mfaEnabled: boolean): Promise<void>;

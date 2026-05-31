@@ -4,15 +4,21 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { AccessRequest } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
+import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
 import type { ApiRouteDependencies } from "./types.js";
+import {
+  normalizeChecksumSha256,
+  sha256HexToBase64,
+  verifyUploadedObject,
+} from "./upload-verification.js";
 
 const presignQuerySchema = z.object({
   matterId: z.string().min(1),
   filename: z.string().min(1),
-  checksumSha256: z.string().min(16).default("pending-client-checksum"),
+  checksumSha256: z.string().transform(normalizeChecksumSha256),
   supersedesDocumentId: z.string().min(1).optional(),
   classification: z
     .enum(["general", "privileged", "work_product", "financial", "identity"])
@@ -21,8 +27,7 @@ const presignQuerySchema = z.object({
 });
 
 const uploadCompleteBodySchema = z.object({
-  checksumSha256: z.string().min(16),
-  scanStatus: z.enum(["pending", "queued", "passed", "failed", "not_required"]).default("queued"),
+  checksumSha256: z.string().transform(normalizeChecksumSha256),
 });
 
 const documentScanStatusBodySchema = z.object({
@@ -43,6 +48,16 @@ function assertMatterAccess(
   if (!access.ok) throw access.error;
 }
 
+function assertManualScanOverrideAccess(context: ApiAuthContext): void {
+  if (context.user.role !== "owner_admin") {
+    throw new ApiHttpError(
+      403,
+      "SCAN_STATUS_OVERRIDE_FORBIDDEN",
+      "Only owner administrators can manually override document scan status.",
+    );
+  }
+}
+
 export function registerDocumentRoutes(
   server: FastifyInstance,
   { repository, s3 }: ApiRouteDependencies,
@@ -60,17 +75,24 @@ export function registerDocumentRoutes(
 
     const documentId = crypto.randomUUID();
     const storageKey = `matters/${query.matterId}/${documentId}-${sanitizeFilename(query.filename)}`;
+    const checksumSha256Base64 = sha256HexToBase64(query.checksumSha256);
+    const requiredHeaders = {
+      "x-amz-checksum-sha256": checksumSha256Base64,
+      "x-open-practice-malware-scan": "required-before-share",
+    };
     const command = new PutObjectCommand({
       Bucket: s3.bucket,
       Key: storageKey,
-      ChecksumSHA256:
-        query.checksumSha256 === "pending-client-checksum" ? undefined : query.checksumSha256,
+      ChecksumSHA256: checksumSha256Base64,
       Metadata: {
         "open-practice-matter-id": query.matterId,
         "open-practice-scan": "required-before-share",
       },
     });
-    const uploadUrl = await getSignedUrl(s3.client, command, { expiresIn: 600 });
+    const uploadUrl = await getSignedUrl(s3.client, command, {
+      expiresIn: 600,
+      unhoistableHeaders: new Set(Object.keys(requiredHeaders)),
+    });
     const document = await repository.createDocumentUploadIntent({
       id: documentId,
       firmId: request.auth.firmId,
@@ -102,9 +124,7 @@ export function registerDocumentRoutes(
       expiresInSeconds: 600,
       storageKey,
       document,
-      requiredHeaders: {
-        "x-open-practice-malware-scan": "required-before-share",
-      },
+      requiredHeaders,
     };
   });
 
@@ -119,12 +139,19 @@ export function registerDocumentRoutes(
       action: "update",
       matterId: document.matterId,
     });
+    if (!s3) {
+      throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
+    }
     const body = parseRequestPart(uploadCompleteBodySchema, request.body, "body");
+    await verifyUploadedObject(s3, {
+      storageKey: document.storageKey,
+      checksumSha256: body.checksumSha256,
+    });
     const completed = await repository.completeDocumentUpload({
       firmId: request.auth.firmId,
       documentId: params.id,
       checksumSha256: body.checksumSha256,
-      scanStatus: body.scanStatus,
+      scanStatus: "queued",
     });
     await appendRouteAuditEvent(repository, request.auth, {
       action: "document.upload.completed",
@@ -154,6 +181,7 @@ export function registerDocumentRoutes(
       action: "update",
       matterId: document.matterId,
     });
+    assertManualScanOverrideAccess(request.auth);
     const body = parseRequestPart(documentScanStatusBodySchema, request.body, "body");
     const updated = await repository.updateDocumentScanStatus({
       firmId: request.auth.firmId,

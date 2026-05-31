@@ -172,34 +172,28 @@ export function registerWebAuthnRoutes(
     },
     // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request) => {
-      const body = loginOptionsSchema.parse(request.body);
+      loginOptionsSchema.parse(request.body);
       const firm = await authService.resolveConfiguredFirm();
-      const user = await options.repository.getUserByEmail(firm.id, body.email);
-      const userCredentials = user
-        ? await options.repository.listWebAuthnCredentials(user.firmId, user.id)
-        : [];
 
       const authOptions = await generateAuthenticationOptions({
         rpID: options.rpID,
-        allowCredentials: userCredentials.map((cred) => ({
-          id: cred.credentialId,
-          type: "public-key",
-          transports: cred.transports as AuthenticatorTransport[],
-        })),
         userVerification: "preferred",
       });
+      const { allowCredentials: _allowCredentials, ...publicAuthOptions } =
+        authOptions as typeof authOptions & {
+          allowCredentials?: unknown;
+        };
 
       await options.repository.createWebAuthnChallenge({
         id: crypto.randomUUID(),
         firmId: firm.id,
-        userId: user?.id,
-        challengeHash: authOptions.challenge,
+        challengeHash: publicAuthOptions.challenge,
         purpose: "passkey_authentication",
         expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS).toISOString(),
         createdAt: new Date().toISOString(),
       });
 
-      return authOptions;
+      return publicAuthOptions;
     },
   );
 
@@ -221,30 +215,32 @@ export function registerWebAuthnRoutes(
       const now = new Date();
       const firm = await authService.resolveConfiguredFirm();
       const challenge = await options.repository.getWebAuthnChallenge(body.challengeHash);
-      const user = await options.repository.getUserByEmail(firm.id, body.email);
       if (
         !challenge ||
         challenge.purpose !== "passkey_authentication" ||
         challenge.consumedAt ||
         challengeIsExpired(challenge.expiresAt, now) ||
-        challenge.firmId !== firm.id ||
-        !user ||
-        challenge.userId !== user.id
+        challenge.firmId !== firm.id
       ) {
         throw invalidWebAuthnRequest("Invalid or expired challenge");
       }
 
       const credentialId = body.response.id;
-      const credential = await options.repository.getWebAuthnCredential(credentialId);
+      const credential = await options.repository.getWebAuthnCredentialForFirm(
+        firm.id,
+        credentialId,
+      );
 
       if (
         !credential ||
-        credential.userId !== user.id ||
-        credential.firmId !== user.firmId ||
+        credential.firmId !== firm.id ||
+        (challenge.userId && challenge.userId !== credential.userId) ||
         credential.disabledAt
       ) {
         throw invalidWebAuthnRequest("Invalid passkey login");
       }
+      const user = await options.repository.getUser(firm.id, credential.userId);
+      if (!user) throw invalidWebAuthnRequest("Invalid passkey login");
 
       const verification = await verifyAuthenticationResponse({
         response: body.response,

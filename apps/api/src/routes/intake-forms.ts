@@ -40,6 +40,11 @@ import {
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import { publicTokenPolicyOptions } from "./public-token-rate-limits.js";
 import type { ApiRouteDependencies } from "./types.js";
+import {
+  normalizeChecksumSha256,
+  sha256HexToBase64,
+  verifyUploadedObject,
+} from "./upload-verification.js";
 
 const SIGNED_URL_EXPIRES_IN_SECONDS = 600;
 
@@ -123,12 +128,12 @@ const publicDraftBodySchema = z.object({
 
 const publicUploadIntentBodySchema = z.object({
   filename: z.string().min(1),
-  checksumSha256: z.string().min(16),
+  checksumSha256: z.string().transform(normalizeChecksumSha256),
   contentType: z.string().min(1),
 });
 
 const publicCompleteBodySchema = z.object({
-  checksumSha256: z.string().min(16),
+  checksumSha256: z.string().transform(normalizeChecksumSha256),
 });
 
 const publicSignatureBodySchema = z.object({
@@ -151,6 +156,20 @@ function defaultExpiry(now: Date): string {
 
 function sanitizeFilename(filename: string): string {
   return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function serializePublicUploadDocument(document: {
+  id: string;
+  title: string;
+  uploadStatus: string;
+  scanStatus: string;
+}) {
+  return {
+    id: document.id,
+    title: document.title,
+    uploadStatus: document.uploadStatus,
+    scanStatus: document.scanStatus === "failed" ? "failed" : "queued",
+  };
 }
 
 function requestUserAgent(request: FastifyRequest): string | undefined {
@@ -1208,19 +1227,29 @@ export function registerIntakeFormRoutes(
       }
       const documentId = crypto.randomUUID();
       const storageKey = `intake-forms/${link.id}/${params.itemId}/${documentId}-${sanitizeFilename(body.filename)}`;
+      const checksumSha256Base64 = sha256HexToBase64(body.checksumSha256);
+      const requiredHeaders = {
+        "Content-Type": body.contentType,
+        "x-amz-checksum-sha256": checksumSha256Base64,
+        "x-amz-meta-open-practice-upload-scope": "intake-form",
+        "x-amz-meta-open-practice-scan": "required-before-share",
+      };
       const uploadUrl = await getSignedUrl(
         s3.client,
         new PutObjectCommand({
           Bucket: s3.bucket,
           Key: storageKey,
-          ChecksumSHA256: body.checksumSha256,
+          ChecksumSHA256: checksumSha256Base64,
           ContentType: body.contentType,
           Metadata: {
             "open-practice-upload-scope": "intake-form",
             "open-practice-scan": "required-before-share",
           },
         }),
-        { expiresIn: SIGNED_URL_EXPIRES_IN_SECONDS },
+        {
+          expiresIn: SIGNED_URL_EXPIRES_IN_SECONDS,
+          unhoistableHeaders: new Set(Object.keys(requiredHeaders)),
+        },
       );
       const document = await repository.createDocumentUploadIntent({
         id: documentId,
@@ -1257,7 +1286,8 @@ export function registerIntakeFormRoutes(
         method: "PUT",
         uploadUrl,
         expiresInSeconds: SIGNED_URL_EXPIRES_IN_SECONDS,
-        document,
+        document: serializePublicUploadDocument(document),
+        requiredHeaders,
         action,
       };
     },
@@ -1278,6 +1308,13 @@ export function registerIntakeFormRoutes(
       const action = actions.find((candidate) => candidate.documentId === params.documentId);
       const document = await repository.getDocument(link.firmId, params.documentId);
       if (!action || !document || document.matterId !== link.matterId) throw denied();
+      if (!s3) {
+        throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
+      }
+      await verifyUploadedObject(s3, {
+        storageKey: document.storageKey,
+        checksumSha256: body.checksumSha256,
+      });
       const completed = await repository.completeDocumentUpload({
         firmId: link.firmId,
         documentId: params.documentId,
@@ -1298,7 +1335,7 @@ export function registerIntakeFormRoutes(
         resourceId: completed.id,
         metadata: { outcome: completed.uploadStatus, itemId: params.itemId },
       });
-      return { document: completed, action: completedAction };
+      return { document: serializePublicUploadDocument(completed), action: completedAction };
     },
   );
 

@@ -1866,6 +1866,22 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return row ? mapWebAuthnCredentialRow(row) : undefined;
   }
 
+  async getWebAuthnCredentialForFirm(
+    firmId: string,
+    credentialId: string,
+  ): Promise<WebAuthnCredentialRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.webAuthnCredentials)
+      .where(
+        and(
+          eq(schema.webAuthnCredentials.firmId, firmId),
+          eq(schema.webAuthnCredentials.credentialId, credentialId),
+        ),
+      );
+    return row ? mapWebAuthnCredentialRow(row) : undefined;
+  }
+
   async updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void> {
     await this.db
       .update(schema.webAuthnCredentials)
