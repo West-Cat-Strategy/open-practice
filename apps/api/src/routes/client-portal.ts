@@ -45,6 +45,7 @@ type ClientPortalActionFamily =
   | "intake"
   | "guest_session"
   | "receipt"
+  | "client_update"
   | "client_action";
 
 type ClientPortalActionTone = "neutral" | "ready" | "risk";
@@ -311,6 +312,39 @@ function receiptActions(input: {
   });
 }
 
+function isClientUpdateEmail(email: EmailOutboxRecord): boolean {
+  return email.templateKey === "client.update" || email.templateKey === "client_update";
+}
+
+function clientUpdateActions(input: {
+  emails: EmailOutboxRecord[];
+  userEmail: string;
+}): ClientPortalActionSummary[] {
+  const normalizedUserEmail = normalizedEmail(input.userEmail);
+  return input.emails.flatMap((email) => {
+    if (!email.matterId) return [];
+    if (!isClientUpdateEmail(email)) return [];
+    if (!email.to.some((recipient) => normalizedEmail(recipient) === normalizedUserEmail)) {
+      return [];
+    }
+    return {
+      id: `client-update:${email.id}`,
+      family: "client_update" as const,
+      matterId: email.matterId,
+      title: "Client update",
+      detail: `Client update is ${email.status}.`,
+      status: email.status,
+      tone:
+        email.status === "sent"
+          ? ("ready" as const)
+          : email.status === "failed"
+            ? "risk"
+            : "neutral",
+      updatedAt: email.sentAt ?? email.failedAt ?? email.lastAttemptAt ?? email.queuedAt,
+    };
+  });
+}
+
 function sortActions(actions: ClientPortalActionSummary[]): ClientPortalActionSummary[] {
   return [...actions].sort((left, right) => {
     const leftRisk = left.tone === "risk" ? 1 : 0;
@@ -400,6 +434,7 @@ async function buildWorkspace(
         intakeActions({ links: intakeLinks, itemActions, contactId, now }),
       ),
       ...guestSessionActions({ links: guestLinks, now }),
+      ...clientUpdateActions({ emails, userEmail: user.email }),
       ...receiptActions({ tokens: receiptTokens, emails, userEmail: user.email, now }),
     ]);
     actionsByMatterId.set(matter.id, matterActions);

@@ -18,6 +18,22 @@ export type TrustTransferRequestStatus =
   | "linked"
   | "cancelled";
 
+export interface BillingTimerDraftPolicy {
+  createsDraftOnly: true;
+  autoSubmitEnabled: false;
+  autoApproveEnabled: false;
+  lockBypassAllowed: false;
+}
+
+export interface BillingExpenseCategoryProfile {
+  id: string;
+  category: string;
+  label: string;
+  descriptionHint: string;
+  reimbursableDefault: boolean;
+  reviewCue: string;
+}
+
 export interface BillingPeriodLockRecord {
   id: string;
   firmId: string;
@@ -139,6 +155,55 @@ export interface TrustTransferRequestRecord {
   reviewedAt?: string;
   ledgerTransactionId?: string;
   evidence?: Record<string, unknown>;
+}
+
+export const billingTimerDraftPolicy: BillingTimerDraftPolicy = {
+  createsDraftOnly: true,
+  autoSubmitEnabled: false,
+  autoApproveEnabled: false,
+  lockBypassAllowed: false,
+};
+
+export const billingExpenseCategoryProfiles: BillingExpenseCategoryProfile[] = [
+  {
+    id: "filing",
+    category: "Filing",
+    label: "Filing",
+    descriptionHint: "Tribunal, court, registry, or filing platform fee.",
+    reimbursableDefault: true,
+    reviewCue: "Check receipt and matter authorization before submit.",
+  },
+  {
+    id: "courier",
+    category: "Courier",
+    label: "Courier",
+    descriptionHint: "Courier, mail, process-service, or delivery record.",
+    reimbursableDefault: true,
+    reviewCue: "Confirm delivery evidence before approve.",
+  },
+  {
+    id: "research",
+    category: "Research",
+    label: "Research",
+    descriptionHint: "Research database, record search, or document retrieval fee.",
+    reimbursableDefault: true,
+    reviewCue: "Confirm the source and redact private search details.",
+  },
+  {
+    id: "office",
+    category: "Office",
+    label: "Office",
+    descriptionHint: "Photocopy, print, scan, or internal office disbursement.",
+    reimbursableDefault: false,
+    reviewCue: "Mark reimbursable only after billing review.",
+  },
+];
+
+export function timerElapsedMsToDraftMinutes(elapsedMs: number): number {
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) {
+    throw new Error("Timer elapsed time must be positive");
+  }
+  return Math.max(1, Math.ceil(elapsedMs / 60_000));
 }
 
 export function timeEntryAmountCents(entry: Pick<TimeEntry, "minutes" | "rateCents">): number {

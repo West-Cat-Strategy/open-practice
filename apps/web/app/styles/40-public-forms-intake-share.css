@@ -58,6 +58,12 @@
 .public-form-action > div {
   display: grid;
   gap: 4px;
+  min-width: 0;
+}
+
+.public-form-action strong,
+.public-form-action small {
+  overflow-wrap: anywhere;
 }
 
 .public-form-action small {
@@ -147,6 +153,7 @@
 .share-row-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -291,7 +298,13 @@
 .row-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
+}
+
+.row-actions > * {
+  min-width: 0;
 }
 
 .share-row-actions .compact-button,

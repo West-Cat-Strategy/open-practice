@@ -151,8 +151,13 @@ import {
   trustControlsForMatter,
 } from "./trust-controls-dashboard";
 import {
+  buildDraftExpenseEntryPayload,
   buildDraftInvoicePayload,
+  buildDraftTimeEntryPayload,
   describeDraftInvoiceCreated,
+  formatTimerElapsed,
+  updateBillingDashboardWithCreatedDraftExpense,
+  updateBillingDashboardWithCreatedDraftTime,
   updateBillingDashboardWithCreatedInvoice,
 } from "./billing-dashboard";
 import {
@@ -238,6 +243,7 @@ import {
 import {
   buildCommunicationsInboxPath,
   describeCommunicationsDeliveryState,
+  describeCommunicationsHistoryState,
   loadCommunicationsInboxDashboardData,
 } from "./communications-inbox-dashboard";
 import {
@@ -1145,6 +1151,25 @@ describe("dashboard client behavior", () => {
       ],
       outboundDeliveryHistory: [],
       conversations: [],
+      channelHistory: [
+        {
+          id: "inbound-email:inbound-message-001",
+          matterId: "matter-001",
+          kind: "inbound_email",
+          channel: "email",
+          direction: "inbound",
+          occurredAt: "2026-05-05T12:00:00.000Z",
+          status: "triage_pending",
+          title: "Inbound email",
+          detail: "1 attachment linked",
+          sourceResourceType: "inbound_email",
+          sourceResourceId: "inbound-message-001",
+          metadataRedacted: true,
+          bodyRedacted: true,
+          attachmentCount: 1,
+        },
+      ],
+      clientUpdateDraftRequests: [],
       contactCues: [],
     };
 
@@ -1386,6 +1411,24 @@ describe("dashboard client behavior", () => {
         events: [],
       }),
     ).toEqual({ label: "failed", tone: "risk" });
+    expect(
+      describeCommunicationsHistoryState({
+        id: "client-update-draft:message-001",
+        matterId: "matter-001",
+        kind: "client_update_draft",
+        channel: "client_update",
+        direction: "planned_outbound",
+        occurredAt: "2026-05-05T12:30:00.000Z",
+        status: "draft_requested",
+        title: "Client update draft",
+        detail: "Draft-only client update request",
+        sourceResourceType: "conversation_message",
+        sourceResourceId: "message-001",
+        metadataRedacted: true,
+        bodyRedacted: true,
+        bodyLength: 42,
+      }),
+    ).toEqual({ label: "draft requested" });
   });
 
   it("uses tenant-neutral public consultation fallback settings", () => {
@@ -2169,6 +2212,12 @@ describe("dashboard client behavior", () => {
         enabled: true,
       }),
       expect.objectContaining({
+        key: "admin",
+        label: "Admin",
+        area: "review",
+        enabled: false,
+      }),
+      expect.objectContaining({
         key: "queues",
         label: "Queues",
         area: "operations",
@@ -2379,9 +2428,74 @@ describe("dashboard client behavior", () => {
     ).toEqual({ error: "Tax rate must be zero or greater." });
   });
 
+  it("builds reviewable time and expense draft capture payloads", () => {
+    expect(formatTimerElapsed(3_661_000)).toBe("01:01:01");
+    expect(
+      buildDraftTimeEntryPayload({
+        matterId: "matter-001",
+        elapsedMs: 60_001,
+        narrative: " Prepare tenancy hearing. ",
+        rateCentsPerHour: "180",
+        performedAt: "2026-05-31T12:00:00.000Z",
+      }).payload,
+    ).toEqual({
+      matterId: "matter-001",
+      performedAt: "2026-05-31T12:00:00.000Z",
+      minutes: 2,
+      rateCents: 18000,
+      narrative: "Prepare tenancy hearing.",
+      billable: true,
+    });
+    expect(
+      buildDraftTimeEntryPayload({
+        matterId: "matter-001",
+        elapsedMs: 0,
+        narrative: "Prepare tenancy hearing.",
+        rateCentsPerHour: "180",
+        performedAt: "2026-05-31T12:00:00.000Z",
+      }),
+    ).toEqual({ error: "Timer must run before saving draft time." });
+    expect(
+      buildDraftExpenseEntryPayload({
+        matterId: "matter-001",
+        amount: "22.50",
+        category: "Courier",
+        description: " Courier evidence package. ",
+        incurredAt: "2026-05-31T12:00:00.000Z",
+        reimbursable: true,
+      }).payload,
+    ).toEqual({
+      matterId: "matter-001",
+      incurredAt: "2026-05-31T12:00:00.000Z",
+      amountCents: 2250,
+      category: "Courier",
+      description: "Courier evidence package.",
+      reimbursable: true,
+    });
+    expect(
+      buildDraftExpenseEntryPayload({
+        matterId: "matter-001",
+        amount: "0",
+        category: "Courier",
+        description: "Courier evidence package.",
+        incurredAt: "2026-05-31T12:00:00.000Z",
+        reimbursable: true,
+      }),
+    ).toEqual({ error: "Expense amount must be greater than zero." });
+  });
+
   it("updates local billing dashboard state after creating a draft invoice", () => {
     const dashboard: BillingDashboardResponse = {
       canView: true,
+      capture: {
+        timerDraftPolicy: {
+          createsDraftOnly: true,
+          autoSubmitEnabled: false,
+          autoApproveEnabled: false,
+          lockBypassAllowed: false,
+        },
+        expenseCategoryProfiles: [],
+      },
       summary: {
         unbilledTimeCents: 18000,
         unbilledExpenseCents: 2500,
@@ -2418,6 +2532,8 @@ describe("dashboard client behavior", () => {
               status: "approved",
             },
           ],
+          draftTime: [],
+          draftExpenses: [],
           invoices: [],
           payments: [],
         },
@@ -2466,6 +2582,32 @@ describe("dashboard client behavior", () => {
         2,
       ),
     ).toBe("Created draft INV-001 from 2 source records.");
+
+    const withDraftTime = updateBillingDashboardWithCreatedDraftTime(updated, {
+      id: "time-draft-001",
+      matterId: "matter-001",
+      userId: "user-licensee",
+      performedAt: "2026-05-31T12:00:00.000Z",
+      minutes: 12,
+      rateCents: 18000,
+      narrative: "Prepare tenancy hearing.",
+      billable: true,
+      billingStatus: "draft",
+    });
+    const withDraftExpense = updateBillingDashboardWithCreatedDraftExpense(withDraftTime, {
+      id: "expense-draft-001",
+      matterId: "matter-001",
+      incurredAt: "2026-05-31T12:00:00.000Z",
+      amountCents: 2250,
+      category: "Courier",
+      description: "Courier evidence package.",
+      reimbursable: true,
+      billingStatus: "draft",
+    });
+    expect(withDraftExpense.matters[0]).toMatchObject({
+      draftTime: [expect.objectContaining({ id: "time-draft-001", amountCents: 3600 })],
+      draftExpenses: [expect.objectContaining({ id: "expense-draft-001", amountCents: 2250 })],
+    });
   });
 
   it("summarizes read-only trust controls for the Funds workbench", async () => {
@@ -3494,6 +3636,8 @@ describe("dashboard client behavior", () => {
         conversations: [
           { id: "conversation-001" } as CommunicationsInboxMatterResponse["conversations"][number],
         ],
+        channelHistory: [],
+        clientUpdateDraftRequests: [],
         contactCues: [],
       },
     });

@@ -211,10 +211,18 @@ import {
 } from "./trust-controls-dashboard";
 import {
   buildDraftInvoicePayload,
+  buildDraftExpenseEntryPayload,
+  buildDraftTimeEntryPayload,
+  describeDraftCaptureCreated,
   describeDraftInvoiceCreated,
   formatDraftInvoiceApiFailure,
+  formatTimerElapsed,
+  updateBillingDashboardWithCreatedDraftExpense,
+  updateBillingDashboardWithCreatedDraftTime,
   updateBillingDashboardWithCreatedInvoice,
+  type CreatedDraftExpenseEntryResponse,
   type CreatedDraftInvoiceResponse,
+  type CreatedDraftTimeEntryResponse,
 } from "./billing-dashboard";
 import {
   describeWorkerRunStatus,
@@ -296,6 +304,7 @@ import { ContactsSection } from "./dashboard/contacts-section";
 import { MatterOverviewSection } from "./dashboard/matter-overview-section";
 import { QueuesSection } from "./dashboard/queues-section";
 import { ReportsSection } from "./dashboard/reports-section";
+import { AdminReadinessSection } from "./dashboard/admin-readiness-section";
 import {
   DeliveryConfirmationPanel,
   OneTimeSecretPanel,
@@ -377,6 +386,7 @@ import type {
   ShareLinkRecord,
   ShareLinksResponse,
   ShareLinksStatusResponse,
+  SetupStatusResponse,
   SignatureRequestsResponse,
   StaffReportExportRequestResponse,
   StaffReportingWorkspaceResponse,
@@ -422,6 +432,7 @@ interface DashboardClientProps {
   session: SessionResponse;
   shareLinksStatus: ShareLinksStatusResponse;
   signatures: SignatureRequestsResponse;
+  setupStatus: SetupStatusResponse;
   taskWorkbench: TaskDeadlineWorkbenchResponse;
   trustControls: TrustControlsDashboardResponse;
   queues: QueuesResponse;
@@ -597,6 +608,7 @@ const currency = new Intl.NumberFormat("en-CA", {
   currency: "CAD",
 });
 const compactDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "UTC",
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
@@ -621,6 +633,7 @@ const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   signatures: FileSignature,
   intake: FileText,
   audit: ShieldCheck,
+  admin: LockKeyhole,
   queues: Clock3,
 };
 
@@ -642,6 +655,16 @@ function compactDate(value?: string): string {
   if (!value) return "none";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : compactDateFormatter.format(date);
+}
+
+function dateInputValueFromDate(date = new Date()): string {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 10);
+}
+
+function isoFromDateInput(value: string): string {
+  const trimmed = value.trim();
+  return trimmed ? `${trimmed}T12:00:00.000Z` : new Date().toISOString();
 }
 
 function formatSavedOperationalViewDefinition(definition: SavedOperationalViewDefinition): string {
@@ -853,6 +876,7 @@ export default function DashboardClient({
   matters: initialMatters,
   session,
   signatures,
+  setupStatus,
   taskWorkbench,
   trustControls,
   queues: initialQueues,
@@ -966,6 +990,28 @@ export default function DashboardClient({
   const [draftInvoiceTaxRate, setDraftInvoiceTaxRate] = useState("0");
   const [draftInvoiceStatus, setDraftInvoiceStatus] = useState("No draft invoice created.");
   const [creatingDraftInvoice, setCreatingDraftInvoice] = useState(false);
+  const firstExpenseProfile = billing.capture.expenseCategoryProfiles[0];
+  const [draftTimerStartedAt, setDraftTimerStartedAt] = useState<number | null>(null);
+  const [draftTimerCaptureStartedAt, setDraftTimerCaptureStartedAt] = useState<number | null>(null);
+  const [draftTimerElapsedMs, setDraftTimerElapsedMs] = useState(0);
+  const [draftTimerTick, setDraftTimerTick] = useState(Date.now());
+  const [draftTimeNarrative, setDraftTimeNarrative] = useState("");
+  const [draftTimeRate, setDraftTimeRate] = useState("180");
+  const [savingDraftTime, setSavingDraftTime] = useState(false);
+  const [draftTimeStatus, setDraftTimeStatus] = useState("No draft time saved.");
+  const [draftExpenseAmount, setDraftExpenseAmount] = useState("");
+  const [draftExpenseCategory, setDraftExpenseCategory] = useState(
+    firstExpenseProfile?.category ?? "Filing",
+  );
+  const [draftExpenseDescription, setDraftExpenseDescription] = useState("");
+  const [draftExpenseIncurredAt, setDraftExpenseIncurredAt] = useState(() =>
+    dateInputValueFromDate(),
+  );
+  const [draftExpenseReimbursable, setDraftExpenseReimbursable] = useState(
+    firstExpenseProfile?.reimbursableDefault ?? true,
+  );
+  const [savingDraftExpense, setSavingDraftExpense] = useState(false);
+  const [draftExpenseStatus, setDraftExpenseStatus] = useState("No draft expense saved.");
   const [draftsByMatterId, setDraftsByMatterId] = useState(drafting.draftsByMatterId);
   const [creatingTemplateId, setCreatingTemplateId] = useState("");
   const [draftStatus, setDraftStatus] = useState("No draft created in this session.");
@@ -1460,8 +1506,17 @@ export default function DashboardClient({
   );
   const activeUnbilledTime = activeBilling?.unbilledTime ?? [];
   const activeUnbilledExpenses = activeBilling?.unbilledExpenses ?? [];
+  const activeDraftTime = activeBilling?.draftTime ?? [];
+  const activeDraftExpenses = activeBilling?.draftExpenses ?? [];
   const activeInvoices = activeBilling?.invoices ?? [];
   const activeManualPayments = activeBilling?.payments ?? [];
+  const draftTimerDisplayMs =
+    draftTimerStartedAt === null
+      ? draftTimerElapsedMs
+      : draftTimerElapsedMs + Math.max(0, draftTimerTick - draftTimerStartedAt);
+  const selectedExpenseProfile = billingDashboard.capture.expenseCategoryProfiles.find(
+    (profile) => profile.category === draftExpenseCategory,
+  );
   const activeBalanceDueCents = activeInvoices.reduce(
     (sum, invoice) => sum + invoice.balanceDueCents,
     0,
@@ -1490,6 +1545,7 @@ export default function DashboardClient({
         capabilitySections: navigationCapabilitySections,
         shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
         externalUploadsEnabled: externalUploadCreateAvailable,
+        adminReadinessEnabled: ["owner_admin", "auditor"].includes(session.user.role),
       }),
       hasAccessibleMatter,
       canCreateMatter,
@@ -1500,6 +1556,7 @@ export default function DashboardClient({
     externalUploadCreateAvailable,
     hasAccessibleMatter,
     navigationCapabilitySections,
+    session.user.role,
     shareLinksStatus.createStatus,
   ]);
   const activeSectionLabel =
@@ -1631,6 +1688,12 @@ export default function DashboardClient({
     const timer = window.setInterval(() => setFreshnessNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (draftTimerStartedAt === null) return;
+    const timer = window.setInterval(() => setDraftTimerTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [draftTimerStartedAt]);
 
   useEffect(() => {
     if (!activeMatter) return;
@@ -2086,6 +2149,122 @@ export default function DashboardClient({
       setDraftInvoiceStatus(formatDraftInvoiceApiFailure(dashboardApiStatus(error)));
     } finally {
       setCreatingDraftInvoice(false);
+    }
+  }
+
+  function startDraftTimer(): void {
+    if (draftTimerStartedAt !== null) return;
+    const now = Date.now();
+    if (draftTimerCaptureStartedAt === null) setDraftTimerCaptureStartedAt(now);
+    setDraftTimerStartedAt(now);
+    setDraftTimerTick(now);
+    setDraftTimeStatus("Timer running.");
+  }
+
+  function pauseDraftTimer(): void {
+    if (draftTimerStartedAt === null) return;
+    const now = Date.now();
+    setDraftTimerElapsedMs((current) => current + Math.max(0, now - draftTimerStartedAt));
+    setDraftTimerStartedAt(null);
+    setDraftTimerTick(now);
+    setDraftTimeStatus("Timer paused.");
+  }
+
+  function resetDraftTimer(): void {
+    setDraftTimerStartedAt(null);
+    setDraftTimerCaptureStartedAt(null);
+    setDraftTimerElapsedMs(0);
+    setDraftTimerTick(Date.now());
+    setDraftTimeStatus("Timer reset.");
+  }
+
+  function selectDraftExpenseCategory(category: string): void {
+    setDraftExpenseCategory(category);
+    const profile = billingDashboard.capture.expenseCategoryProfiles.find(
+      (candidate) => candidate.category === category,
+    );
+    if (profile) setDraftExpenseReimbursable(profile.reimbursableDefault);
+  }
+
+  async function saveDraftTimeEntry(): Promise<void> {
+    if (!activeMatter) return;
+    const payloadResult = buildDraftTimeEntryPayload({
+      matterId: activeMatter.id,
+      elapsedMs: draftTimerDisplayMs,
+      narrative: draftTimeNarrative,
+      rateCentsPerHour: draftTimeRate,
+      performedAt: new Date(
+        draftTimerCaptureStartedAt ?? draftTimerStartedAt ?? Date.now(),
+      ).toISOString(),
+    });
+    if (!payloadResult.payload) {
+      setDraftTimeStatus(payloadResult.error ?? "Draft time payload is incomplete.");
+      return;
+    }
+
+    setSavingDraftTime(true);
+    setDraftTimeStatus("Saving draft time...");
+    try {
+      const entry = await requestDashboardJson<CreatedDraftTimeEntryResponse>(
+        apiBaseUrl,
+        "/api/time-entries",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: payloadResult.payload,
+        },
+      );
+      setBillingDashboard((current) => updateBillingDashboardWithCreatedDraftTime(current, entry));
+      setDraftTimerStartedAt(null);
+      setDraftTimerCaptureStartedAt(null);
+      setDraftTimerElapsedMs(0);
+      setDraftTimerTick(Date.now());
+      setDraftTimeNarrative("");
+      setDraftTimeStatus(describeDraftCaptureCreated("time"));
+    } catch (error) {
+      setDraftTimeStatus(`Draft time save failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setSavingDraftTime(false);
+    }
+  }
+
+  async function saveDraftExpenseEntry(): Promise<void> {
+    if (!activeMatter) return;
+    const payloadResult = buildDraftExpenseEntryPayload({
+      matterId: activeMatter.id,
+      amount: draftExpenseAmount,
+      category: draftExpenseCategory,
+      description: draftExpenseDescription,
+      incurredAt: isoFromDateInput(draftExpenseIncurredAt),
+      reimbursable: draftExpenseReimbursable,
+    });
+    if (!payloadResult.payload) {
+      setDraftExpenseStatus(payloadResult.error ?? "Draft expense payload is incomplete.");
+      return;
+    }
+
+    setSavingDraftExpense(true);
+    setDraftExpenseStatus("Saving draft expense...");
+    try {
+      const entry = await requestDashboardJson<CreatedDraftExpenseEntryResponse>(
+        apiBaseUrl,
+        "/api/expense-entries",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: payloadResult.payload,
+        },
+      );
+      setBillingDashboard((current) =>
+        updateBillingDashboardWithCreatedDraftExpense(current, entry),
+      );
+      setDraftExpenseAmount("");
+      setDraftExpenseDescription("");
+      setDraftExpenseStatus(describeDraftCaptureCreated("expense"));
+    } catch (error) {
+      setDraftExpenseStatus(`Draft expense save failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setSavingDraftExpense(false);
     }
   }
 
@@ -3932,6 +4111,8 @@ export default function DashboardClient({
                 matterId: created.id,
                 unbilledTime: [],
                 unbilledExpenses: [],
+                draftTime: [],
+                draftExpenses: [],
                 invoices: [],
                 payments: [],
               },
@@ -4297,6 +4478,7 @@ export default function DashboardClient({
         </a>
         <DashboardSidebar
           activeSection={activeSection}
+          matterState="empty"
           navigationSections={navigationSections}
           navIcons={navIcons}
           onSelectSection={selectDashboardSection}
@@ -4525,10 +4707,38 @@ export default function DashboardClient({
               </article>
             ) : null}
 
+            {activeSection === "admin" ? (
+              <article
+                aria-labelledby="zero-admin-title"
+                className="panel matter-detail matter-detail-panel"
+                id="matter-workspace"
+                ref={detailPanelRef}
+                tabIndex={-1}
+              >
+                <div className="panel-header matter-detail-header">
+                  <div>
+                    <p className="eyebrow">Admin readiness</p>
+                    <h2 id="zero-admin-title">Admin Readiness</h2>
+                  </div>
+                  <span className="status-chip">Firm surface</span>
+                </div>
+                <AdminReadinessSection
+                  capabilities={capabilities}
+                  matters={matters}
+                  overview={overview}
+                  reportingWorkspace={reportingWorkspace}
+                  session={session}
+                  setupStatus={setupStatus}
+                  workerHealth={workerHealth}
+                />
+              </article>
+            ) : null}
+
             {activeSection !== "contacts" &&
             activeSection !== "audit" &&
             activeSection !== "queues" &&
-            activeSection !== "reports" ? (
+            activeSection !== "reports" &&
+            activeSection !== "admin" ? (
               <FirstMatterWorkspace
                 canCreateMatter={canCreateMatter}
                 creating={creatingFirstMatter}
@@ -4971,6 +5181,195 @@ export default function DashboardClient({
                     {billingDashboard.periodLocks.length === 0 &&
                     billingDashboard.rateRules.length === 0 ? (
                       <p className="inline-empty">No billing locks or rate rules are active.</p>
+                    ) : null}
+                  </div>
+
+                  <div className="section-title">
+                    <h3>Time and expense capture</h3>
+                    <span>{activeDraftTime.length + activeDraftExpenses.length} drafts</span>
+                  </div>
+                  <div className="detail-grid billing-summary-grid">
+                    <div>
+                      <span className="field-label">Timer</span>
+                      <strong>{formatTimerElapsed(draftTimerDisplayMs)}</strong>
+                    </div>
+                    <div>
+                      <span className="field-label">Draft policy</span>
+                      <strong>
+                        {billingDashboard.capture.timerDraftPolicy.createsDraftOnly
+                          ? "draft only"
+                          : "review required"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="field-label">Submit</span>
+                      <strong>
+                        {billingDashboard.capture.timerDraftPolicy.autoSubmitEnabled
+                          ? "automatic"
+                          : "manual"}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="field-label">Lock bypass</span>
+                      <strong>
+                        {billingDashboard.capture.timerDraftPolicy.lockBypassAllowed
+                          ? "allowed"
+                          : "blocked"}
+                      </strong>
+                    </div>
+                  </div>
+                  <div className="billing-action-row">
+                    <label className="search-field compact">
+                      <span>Timer narrative</span>
+                      <input
+                        disabled={savingDraftTime}
+                        onChange={(event) => setDraftTimeNarrative(event.target.value)}
+                        value={draftTimeNarrative}
+                      />
+                    </label>
+                    <label className="search-field compact">
+                      <span>Rate / hr</span>
+                      <input
+                        disabled={savingDraftTime}
+                        inputMode="decimal"
+                        min={0}
+                        onChange={(event) => setDraftTimeRate(event.target.value)}
+                        type="number"
+                        value={draftTimeRate}
+                      />
+                    </label>
+                    <button
+                      className="secondary-button compact-button"
+                      disabled={savingDraftTime}
+                      onClick={draftTimerStartedAt === null ? startDraftTimer : pauseDraftTimer}
+                      type="button"
+                    >
+                      <Clock3 size={16} />
+                      {draftTimerStartedAt === null
+                        ? draftTimerElapsedMs > 0
+                          ? "Resume"
+                          : "Start"
+                        : "Pause"}
+                    </button>
+                    <button
+                      className="secondary-button compact-button"
+                      disabled={savingDraftTime || draftTimerDisplayMs === 0}
+                      onClick={resetDraftTimer}
+                      type="button"
+                    >
+                      <RotateCcw size={16} />
+                      Reset
+                    </button>
+                    <button
+                      className="primary-button"
+                      disabled={savingDraftTime || draftTimerDisplayMs === 0}
+                      onClick={() => void saveDraftTimeEntry()}
+                      type="button"
+                    >
+                      <Save size={16} />
+                      {savingDraftTime ? "Saving..." : "Save time"}
+                    </button>
+                  </div>
+                  <p aria-atomic="true" aria-live="polite" className="inline-empty" role="status">
+                    {draftTimeStatus}
+                  </p>
+                  <div className="billing-action-row">
+                    <label className="search-field compact">
+                      <span>Expense category</span>
+                      <select
+                        disabled={savingDraftExpense}
+                        onChange={(event) => selectDraftExpenseCategory(event.target.value)}
+                        value={draftExpenseCategory}
+                      >
+                        {billingDashboard.capture.expenseCategoryProfiles.map((profile) => (
+                          <option key={profile.id} value={profile.category}>
+                            {profile.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="search-field compact">
+                      <span>Amount</span>
+                      <input
+                        disabled={savingDraftExpense}
+                        inputMode="decimal"
+                        min={0}
+                        onChange={(event) => setDraftExpenseAmount(event.target.value)}
+                        type="number"
+                        value={draftExpenseAmount}
+                      />
+                    </label>
+                    <label className="search-field compact">
+                      <span>Incurred date</span>
+                      <input
+                        disabled={savingDraftExpense}
+                        onChange={(event) => setDraftExpenseIncurredAt(event.target.value)}
+                        type="date"
+                        value={draftExpenseIncurredAt}
+                      />
+                    </label>
+                    <label className="search-field compact">
+                      <span>Description</span>
+                      <input
+                        disabled={savingDraftExpense}
+                        onChange={(event) => setDraftExpenseDescription(event.target.value)}
+                        placeholder={selectedExpenseProfile?.descriptionHint ?? "Expense detail"}
+                        value={draftExpenseDescription}
+                      />
+                    </label>
+                    <label className="checkbox-row compact-checkbox">
+                      <input
+                        checked={draftExpenseReimbursable}
+                        disabled={savingDraftExpense}
+                        onChange={(event) => setDraftExpenseReimbursable(event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>Reimbursable</span>
+                    </label>
+                    <button
+                      className="primary-button"
+                      disabled={savingDraftExpense}
+                      onClick={() => void saveDraftExpenseEntry()}
+                      type="button"
+                    >
+                      <Save size={16} />
+                      {savingDraftExpense ? "Saving..." : "Save expense"}
+                    </button>
+                  </div>
+                  <p aria-atomic="true" aria-live="polite" className="inline-empty" role="status">
+                    {draftExpenseStatus}
+                  </p>
+                  <div className="party-list">
+                    {activeDraftTime.map((entry) => (
+                      <div className="party-row" key={entry.id}>
+                        <span>
+                          <strong>{entry.narrative}</strong>
+                          <small>
+                            {minutes(entry.minutes)} · {cents(entry.rateCents)}/hr · {entry.status}
+                          </small>
+                        </span>
+                        <em>{cents(entry.amountCents)}</em>
+                      </div>
+                    ))}
+                    {activeDraftExpenses.map((entry) => {
+                      const expenseProfile = billingDashboard.capture.expenseCategoryProfiles.find(
+                        (profile) => profile.category === entry.category,
+                      );
+                      return (
+                        <div className="party-row" key={entry.id}>
+                          <span>
+                            <strong>{entry.description}</strong>
+                            <small>
+                              {entry.category} · {entry.status}
+                              {expenseProfile ? ` · ${expenseProfile.reviewCue}` : ""}
+                            </small>
+                          </span>
+                          <em>{cents(entry.amountCents)}</em>
+                        </div>
+                      );
+                    })}
+                    {activeDraftTime.length === 0 && activeDraftExpenses.length === 0 ? (
+                      <p className="inline-empty">No draft time or expenses are waiting review.</p>
                     ) : null}
                   </div>
 
@@ -7945,6 +8344,18 @@ export default function DashboardClient({
               />
             ) : null}
 
+            {activeSection === "admin" ? (
+              <AdminReadinessSection
+                capabilities={capabilities}
+                matters={matters}
+                overview={overview}
+                reportingWorkspace={reportingWorkspace}
+                session={session}
+                setupStatus={setupStatus}
+                workerHealth={workerHealth}
+              />
+            ) : null}
+
             {activeSection === "audit" ? (
               <>
                 <div
@@ -8018,7 +8429,7 @@ export default function DashboardClient({
                     <div className="party-row" key={entry.id}>
                       <span>
                         <strong>{entry.title}</strong>
-                        <small>{new Date(entry.occurredAt).toLocaleString("en-CA")}</small>
+                        <small>{compactDate(entry.occurredAt)}</small>
                       </span>
                       <em>{entry.kind}</em>
                     </div>

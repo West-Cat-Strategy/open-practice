@@ -303,6 +303,7 @@ describe("client portal routes", () => {
         "intake",
         "guest_session",
         "receipt",
+        "client_update",
         "client_action",
       ]),
     );
@@ -311,6 +312,7 @@ describe("client portal routes", () => {
         expect.objectContaining({ family: "secure_share", status: "verification_required" }),
         expect.objectContaining({ family: "external_upload", status: "active" }),
         expect.objectContaining({ family: "client_action", status: "retry_requested" }),
+        expect.objectContaining({ family: "client_update", status: "sent" }),
         expect.objectContaining({ family: "receipt", status: "open" }),
       ]),
     );
@@ -323,6 +325,8 @@ describe("client portal routes", () => {
     expect(serialized).not.toContain("secret-receipt-token-hash");
     expect(serialized).not.toContain("PRIVATE HTML BODY");
     expect(serialized).not.toContain("PRIVATE TEXT BODY");
+    expect(serialized).not.toContain("Synthetic update");
+    expect(serialized).not.toContain("office@example.test");
     expect(serialized).not.toContain("private-intake-storage-key");
     expect(serialized).not.toContain("private-room-id");
   });

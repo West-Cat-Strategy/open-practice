@@ -42,6 +42,7 @@ describe("Open Practice route catalog", () => {
       "intake",
       "audit",
       "reports",
+      "admin",
       "queues",
     ];
 
@@ -68,7 +69,11 @@ describe("Open Practice route catalog", () => {
       "intake",
       "queues",
     ]);
-    expect(getRoutesByArea("review").map((entry) => entry.id)).toEqual(["audit", "reports"]);
+    expect(getRoutesByArea("review").map((entry) => entry.id)).toEqual([
+      "audit",
+      "reports",
+      "admin",
+    ]);
     expect(getRoutesByArea("workspace").map((entry) => entry.id)).toEqual([
       "matters",
       "contacts",
@@ -103,6 +108,7 @@ describe("Open Practice route catalog", () => {
       "intake",
       "audit",
       "reports",
+      "admin",
       "queues",
     ]);
   });
@@ -116,6 +122,7 @@ describe("Open Practice route catalog", () => {
     expect(matchRouteCatalogEntry("/?section=drafting")?.id).toBe("drafting");
     expect(matchRouteCatalogEntry("/?section=calendar")?.id).toBe("calendar");
     expect(matchRouteCatalogEntry("/?section=reports")?.id).toBe("reports");
+    expect(matchRouteCatalogEntry("/?section=admin")?.id).toBe("admin");
     expect(matchRouteCatalogEntry("/?section=queues")?.id).toBe("queues");
     expect(matchRouteCatalogEntry("/?section=unknown")).toBeNull();
   });
@@ -212,6 +219,7 @@ describe("Open Practice route catalog", () => {
           intake: "matched",
           audit: "matched",
           reports: "matched",
+          admin: "disabled",
           shares: "disabled",
           externalUploads: "disabled",
         },
@@ -233,6 +241,7 @@ describe("Open Practice route catalog", () => {
           intake: "matched",
           audit: "matched",
           reports: "disabled",
+          admin: "disabled",
           billing: "disabled",
           shares: "disabled",
           externalUploads: "disabled",
@@ -258,6 +267,7 @@ describe("Open Practice route catalog", () => {
           externalUploads: "disabled",
           audit: "disabled",
           reports: "disabled",
+          admin: "disabled",
         },
       },
     ];

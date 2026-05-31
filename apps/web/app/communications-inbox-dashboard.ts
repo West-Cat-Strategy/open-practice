@@ -1,4 +1,5 @@
 import type {
+  CommunicationsChannelHistoryItem,
   CommunicationsInboxDashboardResponse,
   CommunicationsInboxMatterResponse,
   CommunicationsInboxOutboundDelivery,
@@ -17,6 +18,16 @@ export function describeCommunicationsDeliveryState(email: CommunicationsInboxOu
   if (email.status === "sent") return { label: "sent" };
   if (email.status === "sending") return { label: "sending" };
   return { label: email.status.replaceAll("_", " ") };
+}
+
+export function describeCommunicationsHistoryState(item: CommunicationsChannelHistoryItem): {
+  label: string;
+  tone?: "risk";
+} {
+  if (item.status === "failed" || item.status === "thread_revoked") {
+    return { label: item.status.replaceAll("_", " "), tone: "risk" };
+  }
+  return { label: item.status.replaceAll("_", " ") };
 }
 
 export async function loadCommunicationsInboxDashboardData(input: {

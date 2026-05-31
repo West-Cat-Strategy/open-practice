@@ -3,6 +3,8 @@ import { z } from "zod";
 import {
   assertBillingStatusTransition,
   billingDateFallsInsideLock,
+  billingExpenseCategoryProfiles,
+  billingTimerDraftPolicy,
   billingRuleScope,
   calculateInvoiceTotals,
   clientTrustBalanceByMatter,
@@ -1562,7 +1564,21 @@ export function registerBillingRoutes(
     const now = new Date().toISOString();
     const matterSummaries = matterIds.map((matterId) => {
       const unbilledTime = timeEntries
-        .filter((entry) => entry.matterId === matterId && entry.billingStatus === "approved")
+        .filter((entry) => entry.matterId === matterId && isBillableUnbilled(entry))
+        .map((entry) => ({
+          id: entry.id,
+          matterId: entry.matterId,
+          userId: entry.userId,
+          minutes: entry.minutes,
+          rateCents: entry.rateCents,
+          rateRuleId: entry.rateRuleId,
+          rateSnapshot: entry.rateSnapshot,
+          amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
+          narrative: entry.narrative,
+          status: entry.billingStatus,
+        }));
+      const draftTime = timeEntries
+        .filter((entry) => entry.matterId === matterId && entry.billingStatus === "draft")
         .map((entry) => ({
           id: entry.id,
           matterId: entry.matterId,
@@ -1576,7 +1592,17 @@ export function registerBillingRoutes(
           status: entry.billingStatus,
         }));
       const unbilledExpenses = expenseEntries
-        .filter((entry) => entry.matterId === matterId && entry.billingStatus === "approved")
+        .filter((entry) => entry.matterId === matterId && isBillableUnbilled(entry))
+        .map((entry) => ({
+          id: entry.id,
+          matterId: entry.matterId,
+          amountCents: entry.amountCents,
+          category: entry.category,
+          description: entry.description,
+          status: entry.billingStatus,
+        }));
+      const draftExpenses = expenseEntries
+        .filter((entry) => entry.matterId === matterId && entry.billingStatus === "draft")
         .map((entry) => ({
           id: entry.id,
           matterId: entry.matterId,
@@ -1589,6 +1615,8 @@ export function registerBillingRoutes(
         matterId,
         unbilledTime,
         unbilledExpenses,
+        draftTime,
+        draftExpenses,
         invoices: invoices
           .filter((invoice) => invoice.matterId === matterId)
           .map((invoice) => ({
@@ -1616,6 +1644,10 @@ export function registerBillingRoutes(
     });
     return {
       canView: true,
+      capture: {
+        timerDraftPolicy: billingTimerDraftPolicy,
+        expenseCategoryProfiles: billingExpenseCategoryProfiles,
+      },
       summary: {
         unbilledTimeCents: matterSummaries.reduce(
           (sum, matter) =>

@@ -262,6 +262,136 @@ describe("billing routes", () => {
     });
   });
 
+  it("projects reviewable draft capture rows and policy metadata without leaking bodies to audit", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+
+    const draftTime = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-draft-capture-route",
+        matterId: "matter-001",
+        minutes: 12,
+        rateCents: 18000,
+        narrative: "Synthetic private draft timer narrative.",
+        billable: false,
+      },
+    });
+    const draftExpense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-draft-capture-route",
+        matterId: "matter-001",
+        amountCents: 2200,
+        category: "Courier",
+        description: "Synthetic private draft expense description.",
+        reimbursable: false,
+      },
+    });
+    const nonBillableApprovedTime = await server.inject({
+      method: "POST",
+      url: "/api/time-entries",
+      payload: {
+        id: "time-approved-non-billable-route",
+        matterId: "matter-001",
+        minutes: 15,
+        rateCents: 18000,
+        narrative: "Synthetic non-billable approved time.",
+        billable: false,
+        billingStatus: "approved",
+      },
+    });
+    const nonReimbursableApprovedExpense = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries",
+      payload: {
+        id: "expense-approved-non-reimbursable-route",
+        matterId: "matter-001",
+        amountCents: 1700,
+        category: "Office",
+        description: "Synthetic non-reimbursable approved expense.",
+        reimbursable: false,
+        billingStatus: "approved",
+      },
+    });
+    const dashboard = await server.inject({ method: "GET", url: "/api/billing/dashboard" });
+
+    expect(draftTime.statusCode).toBe(200);
+    expect(draftTime.json()).toMatchObject({
+      id: "time-draft-capture-route",
+      billingStatus: "draft",
+    });
+    expect(draftExpense.statusCode).toBe(200);
+    expect(draftExpense.json()).toMatchObject({
+      id: "expense-draft-capture-route",
+      billingStatus: "draft",
+    });
+    expect(nonBillableApprovedTime.statusCode).toBe(200);
+    expect(nonReimbursableApprovedExpense.statusCode).toBe(200);
+    expect(dashboard.statusCode).toBe(200);
+    expect(dashboard.json()).toMatchObject({
+      capture: {
+        timerDraftPolicy: {
+          createsDraftOnly: true,
+          autoSubmitEnabled: false,
+          autoApproveEnabled: false,
+          lockBypassAllowed: false,
+        },
+        expenseCategoryProfiles: expect.arrayContaining([
+          expect.objectContaining({ id: "courier", category: "Courier" }),
+        ]),
+      },
+      matters: expect.arrayContaining([
+        expect.objectContaining({
+          matterId: "matter-001",
+          draftTime: expect.arrayContaining([
+            expect.objectContaining({
+              id: "time-draft-capture-route",
+              status: "draft",
+              minutes: 12,
+            }),
+          ]),
+          draftExpenses: expect.arrayContaining([
+            expect.objectContaining({
+              id: "expense-draft-capture-route",
+              status: "draft",
+              category: "Courier",
+            }),
+          ]),
+        }),
+      ]),
+    });
+    const matter = dashboard
+      .json<{
+        matters: Array<{
+          matterId: string;
+          unbilledTime: Array<{ id: string }>;
+          unbilledExpenses: Array<{ id: string }>;
+        }>;
+      }>()
+      .matters.find((candidate) => candidate.matterId === "matter-001");
+    expect(matter?.unbilledTime).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "time-draft-capture-route" })]),
+    );
+    expect(matter?.unbilledExpenses).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "expense-draft-capture-route" })]),
+    );
+    expect(matter?.unbilledTime).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "time-approved-non-billable-route" })]),
+    );
+    expect(matter?.unbilledExpenses).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "expense-approved-non-reimbursable-route" }),
+      ]),
+    );
+
+    const serializedAudit = JSON.stringify(await auditEvents(repository));
+    expect(serializedAudit).not.toContain("Synthetic private draft timer narrative");
+    expect(serializedAudit).not.toContain("Synthetic private draft expense description");
+  });
+
   it("resolves rate rules when rate cents are omitted and preserves manual override snapshots", async () => {
     const server = testServer();
 

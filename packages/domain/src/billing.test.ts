@@ -4,6 +4,7 @@ import {
   billingPeriodLocksOverlap,
   billingRateRulesOverlapAtSameActiveScope,
   billingRuleScope,
+  timerElapsedMsToDraftMinutes,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
   trustTransferRequestAvailableBalanceCents,
@@ -11,6 +12,18 @@ import {
 } from "./billing.js";
 
 describe("billing period locks and rate rules", () => {
+  it("rounds timer elapsed milliseconds into reviewable draft minutes", () => {
+    expect(timerElapsedMsToDraftMinutes(1)).toBe(1);
+    expect(timerElapsedMsToDraftMinutes(59_999)).toBe(1);
+    expect(timerElapsedMsToDraftMinutes(60_000)).toBe(1);
+    expect(timerElapsedMsToDraftMinutes(60_001)).toBe(2);
+    expect(timerElapsedMsToDraftMinutes(14 * 60_000 + 1)).toBe(15);
+    expect(() => timerElapsedMsToDraftMinutes(0)).toThrow("Timer elapsed time must be positive");
+    expect(() => timerElapsedMsToDraftMinutes(Number.NaN)).toThrow(
+      "Timer elapsed time must be positive",
+    );
+  });
+
   it("treats billing period locks as start-inclusive and end-exclusive", () => {
     const lock = {
       periodStart: "2026-04-01T00:00:00.000Z",

@@ -484,7 +484,7 @@
 
 .billing-action-row {
   display: grid;
-  grid-template-columns: minmax(130px, 0.8fr) minmax(120px, 0.7fr) minmax(110px, 0.6fr) auto;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
   align-items: end;
 }
@@ -494,6 +494,26 @@
   align-items: center;
   gap: 8px;
   padding: 0 14px;
+}
+
+.checkbox-row {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface), transparent 8%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  display: inline-flex;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.checkbox-row input {
+  margin: 0;
+}
+
+.compact-checkbox {
+  align-self: stretch;
+  min-height: 42px;
 }
 
 .intake-builder-grid {

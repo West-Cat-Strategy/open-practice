@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { billingExpenseCategoryProfiles, billingTimerDraftPolicy } from "@open-practice/domain";
 import {
   buildSidebarNavigationSections,
   resolveDashboardRouteSelection,
@@ -297,10 +298,36 @@ function buildBillingFallback(
         description: entry.description,
         status: "approved" as const,
       }));
+    const draftTime = matter.timeEntries
+      .filter((entry) => entry.billingStatus === "draft")
+      .map((entry) => ({
+        id: entry.id,
+        matterId: entry.matterId,
+        userId: entry.userId,
+        minutes: entry.minutes,
+        rateCents: entry.rateCents,
+        rateRuleId: entry.rateRuleId,
+        rateSnapshot: entry.rateSnapshot,
+        amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
+        narrative: entry.narrative,
+        status: "draft" as const,
+      }));
+    const draftExpenses = matter.expenses
+      .filter((entry) => entry.billingStatus === "draft")
+      .map((entry) => ({
+        id: entry.id,
+        matterId: entry.matterId,
+        amountCents: entry.amountCents,
+        category: entry.category,
+        description: entry.description,
+        status: "draft" as const,
+      }));
     return {
       matterId: matter.id,
       unbilledTime,
       unbilledExpenses,
+      draftTime,
+      draftExpenses,
       invoices: [],
       payments: [],
     };
@@ -308,6 +335,10 @@ function buildBillingFallback(
 
   return {
     canView: canViewBilling(session.user.role),
+    capture: {
+      timerDraftPolicy: billingTimerDraftPolicy,
+      expenseCategoryProfiles: billingExpenseCategoryProfiles,
+    },
     summary: {
       unbilledTimeCents: billingMatters.reduce(
         (sum, matter) =>
@@ -599,6 +630,8 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
             inboundEmail: [],
             outboundDeliveryHistory: [],
             conversations: [],
+            channelHistory: [],
+            clientUpdateDraftRequests: [],
             contactCues: [],
           },
           headers,
@@ -614,6 +647,8 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
             inboundEmail: [],
             outboundDeliveryHistory: [],
             conversations: [],
+            channelHistory: [],
+            clientUpdateDraftRequests: [],
             contactCues: [],
           },
         ),
@@ -747,6 +782,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       capabilitySections: capabilities.sections,
       shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
       externalUploadsEnabled: canCreateExternalUpload(externalUploads.status),
+      adminReadinessEnabled: ["owner_admin", "auditor"].includes(session.user.role),
     }),
     matters.length > 0,
     canCreateMatter,
@@ -790,6 +826,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       session={session}
       shareLinksStatus={shareLinksStatus}
       signatures={signatures}
+      setupStatus={setupStatus}
       taskWorkbench={taskWorkbench}
       jurisdictionalTrustReport={jurisdictionalTrustReport}
       trustControls={trustControls}

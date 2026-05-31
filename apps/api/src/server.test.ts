@@ -708,6 +708,17 @@ describe("API auth and persistence boundaries", () => {
     expect(responses[10]?.statusCode).toBe(429);
   });
 
+  it("raises the global rate-limit ceiling for E2E browser sweeps", async () => {
+    const server = testServer({ e2eSupport: true });
+    const responses = [];
+
+    for (let attempt = 0; attempt < 350; attempt += 1) {
+      responses.push(await server.inject({ method: "GET", url: "/health" }));
+    }
+
+    expect(responses.every((response) => response.statusCode === 200)).toBe(true);
+  });
+
   it("revokes embedded sessions on logout", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const jwtSecret = "production-test-secret-at-least-32-characters";

@@ -66,11 +66,13 @@ export type DashboardMetric = {
 
 export function DashboardSidebar({
   activeSection,
+  matterState = "populated",
   navigationSections,
   navIcons,
   onSelectSection,
 }: {
   activeSection: LocalDashboardSectionKey;
+  matterState?: "empty" | "populated";
   navigationSections: OpenPracticeSidebarNavigationSection[];
   navIcons: Record<LocalDashboardSectionKey, LucideIcon>;
   onSelectSection: (section: LocalDashboardSectionKey) => void;
@@ -96,8 +98,16 @@ export function DashboardSidebar({
     }))
     .filter((group) => group.sections.length > 0);
 
+  const sidebarClassName = [
+    "sidebar",
+    "dashboard-sidebar",
+    matterState === "empty" ? "zero-matter-sidebar" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <aside className="sidebar dashboard-sidebar" aria-label="Primary">
+    <aside className={sidebarClassName} data-matter-state={matterState} aria-label="Primary">
       <div className="brand dashboard-brand">
         <span className="brand-mark">OP</span>
         <div>
@@ -141,18 +151,19 @@ export function DashboardSidebar({
 
               {!isCollapsed && (
                 <div className="nav-group-items" id={groupContentId}>
-                  {group.sections.map(({ key, label, title, enabled }) => {
+                  {group.sections.map(({ key, label, title, enabled, disabledReason }) => {
                     const Icon = navIcons[key];
-                    const disabledReason = describeDisabledNavigationReason({
+                    const resolvedDisabledReason = describeDisabledNavigationReason({
                       key,
                       label,
                       enabled,
+                      disabledReason,
                     });
                     const disabledReasonId = `nav-disabled-${key}`;
                     return (
                       <button
                         aria-current={key === activeSection ? "page" : undefined}
-                        aria-describedby={disabledReason ? disabledReasonId : undefined}
+                        aria-describedby={resolvedDisabledReason ? disabledReasonId : undefined}
                         aria-disabled={!enabled}
                         className={[
                           "nav-item",
@@ -165,15 +176,15 @@ export function DashboardSidebar({
                         onClick={() => {
                           if (enabled) onSelectSection(key);
                         }}
-                        title={disabledReason ?? title}
+                        title={resolvedDisabledReason ?? title}
                         type="button"
                       >
                         <Icon size={18} />
                         <span>
                           <strong>{label}</strong>
-                          {disabledReason ? (
+                          {resolvedDisabledReason ? (
                             <small className="nav-disabled-reason" id={disabledReasonId}>
-                              {disabledReason}
+                              {resolvedDisabledReason}
                             </small>
                           ) : null}
                         </span>
