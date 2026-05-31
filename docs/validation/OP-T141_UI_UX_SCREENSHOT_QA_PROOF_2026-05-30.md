@@ -8,7 +8,7 @@ Adds UI/UX screenshot QA and layout-health coverage over the existing Open Pract
 
 - Added `e2e/ui-ux.spec.ts` to sweep every committed staff dashboard route-catalog section:
   Matters, Contacts, Funds, Billing, Documents, Shares, Uploads, Drafting, Calendar, Signatures,
-  Intake, Audit, Reports, and Queues.
+  Intake, Audit, Reports, Queues, and Admin Readiness.
 - Added reusable UI/UX assertions for app-wide horizontal overflow, clipped readable labels, framework
   overlays, console/page errors, visible route headings, reachable route controls, active nav state,
   review-rail stability, and Playwright screenshot attachments.
@@ -73,6 +73,10 @@ Results:
 - Full Docker E2E passed: 5 passed.
 
 Final docs-aware validation is recorded in the closeout results below.
+
+After OP-T142 landed on `main`, the UI/UX sweep also includes an `admin` route sentinel for the
+Admin Readiness section and checks `Access and support controls` plus `Portability and migration`
+copy.
 
 ## Docker Stack Proof
 
