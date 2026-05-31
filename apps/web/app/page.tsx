@@ -340,6 +340,7 @@ function buildBillingFallback(
       unbilledExpenses,
       invoices: [],
       payments: [],
+      paymentRequests: [],
     };
   });
 
@@ -359,6 +360,7 @@ function buildBillingFallback(
       ),
       draftInvoiceCents: 0,
       issuedBalanceDueCents: 0,
+      hostedPaymentRequestCents: 0,
       lockedPeriodCount: 0,
       activeLockedPeriodCount: 0,
       activeRateRuleCount: 0,

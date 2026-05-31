@@ -84,6 +84,7 @@ import {
   type IntakeFormLinkRecord,
   type IntakeFormReviewRecord,
   type IntakeVariableProposal,
+  type HostedPaymentRequestRecord,
   type InvoiceLineRecord,
   type InvoiceRecord,
   type JobLifecycleRecord,
@@ -146,6 +147,7 @@ import type {
   PublicConsultationIntakeListOptions,
   PublicConsultationIntakeUpdateInput,
   TaskDeadlineCompletionInput,
+  HostedPaymentRequestUpdate,
   TrustTransferRequestUpdate,
   TrustTransferRequestUpdateOptions,
 } from "./contracts.js";
@@ -187,6 +189,7 @@ import {
   integrationApiCredentialInsert,
   integrationDeveloperAppInsert,
   integrationWebhookSubscriptionInsert,
+  hostedPaymentRequestInsert,
   invoiceInsert,
   invoiceLineInsert,
   jobLifecycleInsert,
@@ -240,6 +243,7 @@ import {
   mapIntegrationApiCredentialRow,
   mapIntegrationDeveloperAppRow,
   mapIntegrationWebhookSubscriptionRow,
+  mapHostedPaymentRequestRow,
   mapInvoiceLineRow,
   mapInvoiceRow,
   mapJobLifecycleRow,
@@ -5821,6 +5825,91 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         .filter((allocation) => allocation.paymentId === payment.id)
         .map(mapPaymentAllocationRow),
     }));
+  }
+
+  async createHostedPaymentRequest(
+    request: HostedPaymentRequestRecord,
+  ): Promise<HostedPaymentRequestRecord> {
+    await this.db.insert(schema.hostedPaymentRequests).values(hostedPaymentRequestInsert(request));
+    return clone(request);
+  }
+
+  async getHostedPaymentRequest(
+    firmId: string,
+    requestId: string,
+  ): Promise<HostedPaymentRequestRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.hostedPaymentRequests)
+      .where(
+        and(
+          eq(schema.hostedPaymentRequests.firmId, firmId),
+          eq(schema.hostedPaymentRequests.id, requestId),
+        ),
+      );
+    return row ? mapHostedPaymentRequestRow(row) : undefined;
+  }
+
+  async listHostedPaymentRequests(
+    firmId: string,
+    options: {
+      matterId?: string;
+      invoiceId?: string;
+      status?: HostedPaymentRequestRecord["status"];
+    } = {},
+  ): Promise<HostedPaymentRequestRecord[]> {
+    const filters = [eq(schema.hostedPaymentRequests.firmId, firmId)];
+    if (options.matterId) filters.push(eq(schema.hostedPaymentRequests.matterId, options.matterId));
+    if (options.invoiceId)
+      filters.push(eq(schema.hostedPaymentRequests.invoiceId, options.invoiceId));
+    if (options.status) filters.push(eq(schema.hostedPaymentRequests.status, options.status));
+    const rows = await this.db
+      .select()
+      .from(schema.hostedPaymentRequests)
+      .where(and(...filters));
+    return rows.map(mapHostedPaymentRequestRow);
+  }
+
+  async updateHostedPaymentRequest(
+    firmId: string,
+    requestId: string,
+    updates: HostedPaymentRequestUpdate,
+  ): Promise<HostedPaymentRequestRecord> {
+    const setValues: Partial<typeof schema.hostedPaymentRequests.$inferInsert> = {};
+    if ("status" in updates) setValues.status = updates.status;
+    if ("delivery" in updates) setValues.delivery = updates.delivery;
+    if ("reminder" in updates) setValues.reminder = updates.reminder;
+    if ("paymentPlan" in updates) setValues.paymentPlan = updates.paymentPlan;
+    if ("creditWriteOffPosture" in updates) {
+      setValues.creditWriteOffPosture = updates.creditWriteOffPosture;
+    }
+    if ("processor" in updates) setValues.processor = updates.processor;
+    if ("evidence" in updates) setValues.evidence = updates.evidence;
+    if ("expiresAt" in updates) {
+      setValues.expiresAt = updates.expiresAt ? new Date(updates.expiresAt) : null;
+    }
+    if ("updatedAt" in updates) {
+      setValues.updatedAt = updates.updatedAt ? new Date(updates.updatedAt) : new Date();
+    }
+
+    if (Object.keys(setValues).length === 0) {
+      const existing = await this.getHostedPaymentRequest(firmId, requestId);
+      if (!existing) throw new Error("Hosted payment request was not found");
+      return existing;
+    }
+
+    const [row] = await this.db
+      .update(schema.hostedPaymentRequests)
+      .set(setValues)
+      .where(
+        and(
+          eq(schema.hostedPaymentRequests.firmId, firmId),
+          eq(schema.hostedPaymentRequests.id, requestId),
+        ),
+      )
+      .returning();
+    if (!row) throw new Error("Hosted payment request was not found");
+    return mapHostedPaymentRequestRow(row);
   }
 
   async createTrustTransferRequest(

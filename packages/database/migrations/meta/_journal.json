@@ -309,6 +309,13 @@
       "when": 1779753605000,
       "tag": "0043_calendar_scheduling_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1779753606000,
+      "tag": "0044_hosted_payment_requests",
+      "breakpoints": true
     }
   ]
 }

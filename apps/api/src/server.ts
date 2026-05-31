@@ -15,11 +15,16 @@ import {
 import type {
   DocumentAutomationProvider,
   DraftAssistProvider,
+  PaymentProcessorProvider,
   PublicConsultationIntakeNotificationSettings,
   SignatureProvider,
   User,
 } from "@open-practice/domain";
-import { EmbeddedAutomationProvider, EmbeddedSignatureProvider } from "@open-practice/providers";
+import {
+  EmbeddedAutomationProvider,
+  EmbeddedSignatureProvider,
+  StripePaymentProcessorProvider,
+} from "@open-practice/providers";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerAuthExtensionRoutes } from "./routes/auth-extensions.js";
@@ -136,6 +141,7 @@ export const envSchema = z.object({
   PUBLIC_WEB_BASE_URL: optionalUrl,
   WEBRTC_MEETING_PROVIDER_KEY: optionalString,
   WEBRTC_MEETING_BASE_URL: optionalUrl,
+  STRIPE_SECRET_KEY: optionalString,
   PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS: optionalString,
   PUBLIC_CONSULTATION_INTAKE_FIRM_ID: optionalString,
   PUBLIC_CONSULTATION_INTAKE_ACTOR_USER_ID: optionalString,
@@ -170,6 +176,7 @@ interface ApiOptions {
   signatureProvider?: SignatureProvider;
   automationProvider?: DocumentAutomationProvider;
   draftAssistProvider?: DraftAssistProvider;
+  paymentProcessorProvider?: PaymentProcessorProvider;
   emailJobQueue?: ApiJobQueue;
   connectorJobQueue?: ApiJobQueue;
   reportJobQueue?: ApiJobQueue;
@@ -258,6 +265,11 @@ export function validateProductionReadiness(env: ApiEnv): void {
   }
   if (env.AUTH_JWT_SECRET === DEV_EXAMPLE_JWT_SECRET) {
     throw new Error("AUTH_JWT_SECRET must not use the development example value in production");
+  }
+  if (env.STRIPE_SECRET_KEY) {
+    throw new Error(
+      "STRIPE_SECRET_KEY is not supported in production until Stripe webhook, settlement reconciliation, and refund handling deployment gates are implemented",
+    );
   }
 }
 
@@ -427,6 +439,8 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerBillingRoutes(server, {
     repository: options.repository,
     reportJobQueue: options.reportJobQueue,
+    paymentProcessorProvider: options.paymentProcessorProvider,
+    publicWebBaseUrl: options.publicWebBaseUrl,
   });
   registerCalDavRoutes(server, { repository: options.repository });
   registerCalendarRoutes(server, {
@@ -769,6 +783,11 @@ function createAiAssistJobQueueFromEnv(env: ApiEnv): Queue | undefined {
   });
 }
 
+function createPaymentProcessorFromEnv(env: ApiEnv): PaymentProcessorProvider | undefined {
+  if (!env.STRIPE_SECRET_KEY) return undefined;
+  return new StripePaymentProcessorProvider({ secretKey: env.STRIPE_SECRET_KEY });
+}
+
 if (process.env.NODE_ENV !== "test") {
   const env = envSchema.parse(process.env);
   validateProductionReadiness(env);
@@ -779,6 +798,7 @@ if (process.env.NODE_ENV !== "test") {
   const reportJobQueue = createReportJobQueueFromEnv(env);
   const aiAssistJobQueue = createAiAssistJobQueueFromEnv(env);
   const ocrJobQueue = createOcrJobQueueFromEnv(env);
+  const paymentProcessorProvider = createPaymentProcessorFromEnv(env);
   const server = createApiServer({
     repository,
     jwtSecret: env.AUTH_JWT_SECRET,
@@ -787,6 +807,7 @@ if (process.env.NODE_ENV !== "test") {
     devUserId: env.DEV_AUTH_USER_ID,
     signatureProvider: new EmbeddedSignatureProvider(),
     automationProvider: new EmbeddedAutomationProvider(),
+    paymentProcessorProvider,
     emailJobQueue,
     connectorJobQueue,
     reportJobQueue,

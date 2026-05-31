@@ -58,6 +58,7 @@ import {
   type IntakeFormLinkRecord,
   type IntakeFormReviewRecord,
   type IntakeVariableProposal,
+  type HostedPaymentRequestRecord,
   type InvoiceLineRecord,
   type InvoiceRecord,
   type JobLifecycleRecord,
@@ -2479,6 +2480,43 @@ export function paymentAllocationInsert(
   return {
     ...allocation,
     allocatedAt: new Date(allocation.allocatedAt),
+  };
+}
+
+export function mapHostedPaymentRequestRow(
+  row: typeof schema.hostedPaymentRequests.$inferSelect,
+): HostedPaymentRequestRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    invoiceId: row.invoiceId,
+    clientContactId: row.clientContactId ?? undefined,
+    status: row.status,
+    amountCents: row.amountCents,
+    currency: row.currency,
+    hostedPath: row.hostedPath,
+    delivery: row.delivery,
+    reminder: row.reminder,
+    paymentPlan: row.paymentPlan,
+    creditWriteOffPosture: row.creditWriteOffPosture,
+    processor: row.processor,
+    evidence: row.evidence,
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    expiresAt: dateToIso(row.expiresAt),
+  };
+}
+
+export function hostedPaymentRequestInsert(
+  request: HostedPaymentRequestRecord,
+): typeof schema.hostedPaymentRequests.$inferInsert {
+  return {
+    ...request,
+    createdAt: new Date(request.createdAt),
+    updatedAt: new Date(request.updatedAt),
+    expiresAt: request.expiresAt ? new Date(request.expiresAt) : null,
   };
 }
 

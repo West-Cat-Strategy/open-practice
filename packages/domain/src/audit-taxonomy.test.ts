@@ -298,6 +298,82 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies hosted payment request shells without payment details or evidence bodies", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "hosted_payment_request.created",
+        resourceType: "hosted_payment_request",
+        resourceId: "payment-request-001",
+        metadata: {
+          matterId: "matter-001",
+          paymentRequestId: "payment-request-001",
+          invoiceId: "invoice-001",
+          amountCents: 13230,
+          status: "ready_to_send",
+          deliveryStatus: "not_sent",
+          reminderStatus: "not_scheduled",
+          paymentPlanStatus: "not_offered",
+          creditWriteOffStatus: "none",
+          evidencePresent: true,
+          evidence: { privateNote: "synthetic private body" },
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "billing",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "paymentRequestId",
+        "invoiceId",
+        "amountCents",
+        "status",
+        "deliveryStatus",
+        "reminderStatus",
+        "paymentPlanStatus",
+        "creditWriteOffStatus",
+        "evidencePresent",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(expect.arrayContaining(["evidence"]));
+
+    const checkoutClassification = classifyAuditEvent(
+      auditEvent({
+        action: "hosted_payment_request.checkout_session_created",
+        resourceType: "hosted_payment_request",
+        resourceId: "payment-request-001",
+        metadata: {
+          matterId: "matter-001",
+          paymentRequestId: "payment-request-001",
+          invoiceId: "invoice-001",
+          provider: "stripe",
+          checkoutSessionId: "cs_test_synthetic",
+          checkoutUrlPresent: true,
+          checkoutUrl: "https://checkout.stripe.com/private",
+          amountCents: 13230,
+          status: "ready_to_send",
+          processorStatus: "checkout_session_created",
+        },
+      }),
+    );
+    expect(checkoutClassification).toMatchObject({
+      category: "billing",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(checkoutClassification.metadataHints.resource).toEqual(
+      expect.arrayContaining(["provider", "checkoutSessionId", "checkoutUrlPresent"]),
+    );
+    expect(checkoutClassification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["checkoutUrl"]),
+    );
+  });
+
   it("classifies reconciliation exception resolution events without statement detail hints", () => {
     const classification = classifyAuditEvent(
       auditEvent({

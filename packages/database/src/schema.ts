@@ -20,6 +20,7 @@ import type {
   ConnectorSecretReference,
   BillingRateSnapshot,
   BillingRateRuleRecord,
+  HostedPaymentRequestRecord,
   ConversationThreadRecord,
   DraftAssistRecord,
   EmailReceiptTokenRecord,
@@ -2180,6 +2181,72 @@ export const paymentAllocations = pgTable("payment_allocations", {
   amountCents: integer("amount_cents").notNull(),
   allocatedAt: timestamp("allocated_at", { withTimezone: true }).notNull(),
 });
+
+export const hostedPaymentRequests = pgTable(
+  "hosted_payment_requests",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    invoiceId: text("invoice_id")
+      .notNull()
+      .references(() => invoices.id),
+    clientContactId: text("client_contact_id").references(() => contacts.id),
+    status: text("status").$type<HostedPaymentRequestRecord["status"]>().notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").$type<HostedPaymentRequestRecord["currency"]>().notNull(),
+    hostedPath: text("hosted_path").notNull(),
+    delivery: jsonb("delivery_state")
+      .$type<HostedPaymentRequestRecord["delivery"]>()
+      .notNull()
+      .default({ status: "not_sent", channel: "none", recipientCount: 0 }),
+    reminder: jsonb("reminder_state")
+      .$type<HostedPaymentRequestRecord["reminder"]>()
+      .notNull()
+      .default({ status: "not_scheduled", reminderCount: 0 }),
+    paymentPlan: jsonb("payment_plan_placeholder")
+      .$type<HostedPaymentRequestRecord["paymentPlan"]>()
+      .notNull()
+      .default({ status: "not_offered", enforcement: "none" }),
+    creditWriteOffPosture: jsonb("credit_write_off_posture")
+      .$type<HostedPaymentRequestRecord["creditWriteOffPosture"]>()
+      .notNull()
+      .default({ status: "none", movement: "none" }),
+    processor: jsonb("processor_state")
+      .$type<HostedPaymentRequestRecord["processor"]>()
+      .notNull()
+      .default({ status: "not_started" }),
+    evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+  },
+  (table) => ({
+    firmInvoice: index("hosted_payment_requests_firm_invoice_idx").on(
+      table.firmId,
+      table.invoiceId,
+    ),
+    matterStatus: index("hosted_payment_requests_matter_status_idx").on(
+      table.firmId,
+      table.matterId,
+      table.status,
+    ),
+    hostedPath: uniqueIndex("hosted_payment_requests_hosted_path_idx").on(table.hostedPath),
+    statusValue: check(
+      "hosted_payment_requests_status_value",
+      sql`${table.status} in ('ready_to_send', 'sent', 'viewed', 'cancelled', 'expired')`,
+    ),
+    positiveAmount: check("hosted_payment_requests_positive_amount", sql`${table.amountCents} > 0`),
+    cadCurrency: check("hosted_payment_requests_cad_currency", sql`${table.currency} = 'CAD'`),
+  }),
+);
 
 export const billingTrustTransferRequests = pgTable("billing_trust_transfer_requests", {
   id: text("id").primaryKey(),

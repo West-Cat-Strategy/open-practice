@@ -49,6 +49,53 @@ export type ManualPaymentMethod = "cash" | "cheque" | "card" | "eft" | "other";
 
 export type ManualPaymentStatus = "received" | "void";
 
+export const hostedPaymentRequestStatuses = [
+  "ready_to_send",
+  "sent",
+  "viewed",
+  "cancelled",
+  "expired",
+] as const;
+
+export type HostedPaymentRequestStatus = (typeof hostedPaymentRequestStatuses)[number];
+
+export const billDeliveryStatuses = ["not_sent", "queued", "sent", "failed"] as const;
+
+export type BillDeliveryStatus = (typeof billDeliveryStatuses)[number];
+
+export const billDeliveryChannels = ["none", "email", "portal", "manual"] as const;
+
+export type BillDeliveryChannel = (typeof billDeliveryChannels)[number];
+
+export const billReminderStatuses = ["not_scheduled", "scheduled", "sent", "paused"] as const;
+
+export type BillReminderStatus = (typeof billReminderStatuses)[number];
+
+export const paymentPlanPlaceholderStatuses = [
+  "not_offered",
+  "offered",
+  "client_requested",
+  "staff_review",
+] as const;
+
+export type PaymentPlanPlaceholderStatus = (typeof paymentPlanPlaceholderStatuses)[number];
+
+export const paymentPlanPlaceholderCadences = ["weekly", "biweekly", "monthly"] as const;
+
+export type PaymentPlanPlaceholderCadence = (typeof paymentPlanPlaceholderCadences)[number];
+
+export const creditWriteOffPostureStatuses = ["none", "credit_review", "write_off_review"] as const;
+
+export type CreditWriteOffPostureStatus = (typeof creditWriteOffPostureStatuses)[number];
+
+export const paymentProcessorProviders = ["stripe"] as const;
+
+export type PaymentProcessorProviderKey = (typeof paymentProcessorProviders)[number];
+
+export const hostedPaymentProcessorStatuses = ["not_started", "checkout_session_created"] as const;
+
+export type HostedPaymentProcessorStatus = (typeof hostedPaymentProcessorStatuses)[number];
+
 export type TrustTransferRequestStatus =
   | "pending_approval"
   | "approved"
@@ -162,6 +209,98 @@ export interface PaymentAllocationRecord {
   allocatedAt: string;
 }
 
+export interface BillDeliveryState {
+  status: BillDeliveryStatus;
+  channel: BillDeliveryChannel;
+  recipientCount: number;
+  deliveredAt?: string;
+  lastAttemptAt?: string;
+  failureSummary?: string;
+}
+
+export interface BillReminderState {
+  status: BillReminderStatus;
+  reminderCount: number;
+  nextReminderAt?: string;
+  lastReminderAt?: string;
+  pausedReason?: string;
+}
+
+export interface PaymentPlanPlaceholder {
+  status: PaymentPlanPlaceholderStatus;
+  installmentCount?: number;
+  cadence?: PaymentPlanPlaceholderCadence;
+  startsAt?: string;
+  reviewNote?: string;
+  enforcement: "none";
+}
+
+export interface CreditWriteOffPosture {
+  status: CreditWriteOffPostureStatus;
+  amountCents?: number;
+  reason?: string;
+  movement: "none";
+}
+
+export interface HostedPaymentProcessorState {
+  status: HostedPaymentProcessorStatus;
+  provider?: PaymentProcessorProviderKey;
+  externalSessionId?: string;
+  checkoutUrl?: string;
+  createdAt?: string;
+  expiresAt?: string;
+}
+
+export interface HostedPaymentRequestRecord {
+  id: string;
+  firmId: string;
+  matterId: string;
+  invoiceId: string;
+  clientContactId?: string;
+  status: HostedPaymentRequestStatus;
+  amountCents: number;
+  currency: "CAD";
+  hostedPath: string;
+  delivery: BillDeliveryState;
+  reminder: BillReminderState;
+  paymentPlan: PaymentPlanPlaceholder;
+  creditWriteOffPosture: CreditWriteOffPosture;
+  processor: HostedPaymentProcessorState;
+  evidence?: Record<string, unknown>;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt?: string;
+}
+
+export interface PaymentProcessorCheckoutSessionInput {
+  firmId: string;
+  matterId: string;
+  invoiceId: string;
+  hostedPaymentRequestId: string;
+  amountCents: number;
+  currency: "CAD";
+  description: string;
+  successUrl: string;
+  cancelUrl: string;
+  idempotencyKey: string;
+  metadata?: Record<string, string>;
+}
+
+export interface PaymentProcessorCheckoutSession {
+  provider: PaymentProcessorProviderKey;
+  externalSessionId: string;
+  checkoutUrl: string;
+  expiresAt?: string;
+  evidence?: Record<string, unknown>;
+}
+
+export interface PaymentProcessorProvider {
+  createCheckoutSession(
+    input: PaymentProcessorCheckoutSessionInput,
+  ): Promise<PaymentProcessorCheckoutSession>;
+}
+
 export interface TrustTransferRequestRecord {
   id: string;
   firmId: string;
@@ -246,6 +385,51 @@ export function invoiceStatusForPayment(input: {
   if (input.paidCents <= 0) return "issued";
   if (input.paidCents >= input.totalCents) return "paid";
   return "partially_paid";
+}
+
+export function defaultBillDeliveryState(): BillDeliveryState {
+  return {
+    status: "not_sent",
+    channel: "none",
+    recipientCount: 0,
+  };
+}
+
+export function defaultBillReminderState(): BillReminderState {
+  return {
+    status: "not_scheduled",
+    reminderCount: 0,
+  };
+}
+
+export function defaultPaymentPlanPlaceholder(): PaymentPlanPlaceholder {
+  return {
+    status: "not_offered",
+    enforcement: "none",
+  };
+}
+
+export function defaultCreditWriteOffPosture(): CreditWriteOffPosture {
+  return {
+    status: "none",
+    movement: "none",
+  };
+}
+
+export function defaultHostedPaymentProcessorState(): HostedPaymentProcessorState {
+  return {
+    status: "not_started",
+  };
+}
+
+export function hostedPaymentRequestPath(requestId: string): string {
+  return `/payments/requests/${requestId}`;
+}
+
+export function hasHostedPaymentRequestEvidence(
+  request: Pick<HostedPaymentRequestRecord, "evidence">,
+): boolean {
+  return Boolean(request.evidence && Object.keys(request.evidence).length > 0);
 }
 
 export function isBillableUnbilled(

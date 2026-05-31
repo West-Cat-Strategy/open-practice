@@ -62,6 +62,7 @@ import {
   type IntakeFormLinkRecord,
   type IntakeFormReviewRecord,
   type IntakeVariableProposal,
+  type HostedPaymentRequestRecord,
   type InvoiceLineRecord,
   type InvoiceRecord,
   type JobLifecycleRecord,
@@ -215,6 +216,21 @@ export interface InvoiceWithLines extends InvoiceRecord {
 export interface PaymentWithAllocations extends ManualPaymentRecord {
   allocations: PaymentAllocationRecord[];
 }
+
+export type HostedPaymentRequestUpdate = Partial<
+  Pick<
+    HostedPaymentRequestRecord,
+    | "status"
+    | "delivery"
+    | "reminder"
+    | "paymentPlan"
+    | "creditWriteOffPosture"
+    | "processor"
+    | "evidence"
+    | "expiresAt"
+    | "updatedAt"
+  >
+>;
 
 export interface AuthAccountRecord {
   firmId: string;
@@ -1300,6 +1316,26 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { matterId?: string; invoiceId?: string },
   ): Promise<PaymentWithAllocations[]>;
+  createHostedPaymentRequest(
+    request: HostedPaymentRequestRecord,
+  ): Promise<HostedPaymentRequestRecord>;
+  getHostedPaymentRequest(
+    firmId: string,
+    requestId: string,
+  ): Promise<HostedPaymentRequestRecord | undefined>;
+  listHostedPaymentRequests(
+    firmId: string,
+    options?: {
+      matterId?: string;
+      invoiceId?: string;
+      status?: HostedPaymentRequestRecord["status"];
+    },
+  ): Promise<HostedPaymentRequestRecord[]>;
+  updateHostedPaymentRequest(
+    firmId: string,
+    requestId: string,
+    updates: HostedPaymentRequestUpdate,
+  ): Promise<HostedPaymentRequestRecord>;
   createTrustTransferRequest(
     request: TrustTransferRequestRecord,
   ): Promise<TrustTransferRequestRecord>;

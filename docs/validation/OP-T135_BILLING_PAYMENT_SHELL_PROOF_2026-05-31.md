@@ -1,0 +1,96 @@
+# OP-T135 Billing Payment Shell Proof
+
+## Scope
+
+Implemented the smallest coherent OP-T135 first slice:
+
+- Added hosted payment-request/link shell records tied to issued or partially paid invoices with an
+  outstanding balance.
+- Recorded bill delivery state, reminder state, payment-plan placeholders, credit/write-off review
+  posture, and evidence-present cues without storing card details.
+- Added optional Stripe Checkout Session creation for open hosted payment-request shells, recording
+  provider/session posture and evidence without applying payment status, settlement, reconciliation,
+  invoice-balance mutation, or trust-ledger posting.
+- Kept production Stripe enablement gated: `STRIPE_SECRET_KEY` is rejected in production until
+  webhook, settlement reconciliation, refund, and chargeback gates exist.
+- Surfaced payment request shells and manual-payment evidence flags in billing dashboard and billing
+  export payloads.
+
+## Changed Paths
+
+- `apps/api/src/routes/billing.ts`
+- `apps/api/src/routes/billing.test.ts`
+- `apps/api/src/routes/types.ts`
+- `apps/api/src/server.ts`
+- `apps/api/src/server.test.ts`
+- `apps/web/app/dashboard-client.test.ts`
+- `apps/web/app/dashboard-client.tsx`
+- `apps/web/app/page.tsx`
+- `apps/web/app/types.ts`
+- `docs/api-and-state-machines.md`
+- `docs/deployment-hardening.md`
+- `docs/planning-and-progress.md`
+- `docs/validation/README.md`
+- `docs/validation/OP-T135_BILLING_PAYMENT_SHELL_PROOF_2026-05-31.md`
+- `packages/database/migrations/0044_hosted_payment_requests.sql`
+- `packages/database/migrations/meta/_journal.json`
+- `packages/database/src/repository/contracts.ts`
+- `packages/database/src/repository/drizzle-mappers.ts`
+- `packages/database/src/repository/drizzle.ts`
+- `packages/database/src/repository/memory.ts`
+- `packages/database/src/schema.ts`
+- `packages/database/src/seed.ts`
+- `packages/database/test/schema.test.ts`
+- `packages/domain/src/audit-taxonomy.test.ts`
+- `packages/domain/src/audit-taxonomy.ts`
+- `packages/domain/src/billing.test.ts`
+- `packages/domain/src/billing.ts`
+- `packages/domain/src/sample-data.ts`
+- `packages/providers/package.json`
+- `packages/providers/src/index.ts`
+- `packages/providers/src/operations.ts`
+- `packages/providers/src/payments/stripe.test.ts`
+- `packages/providers/src/payments/stripe.ts`
+- `pnpm-lock.yaml`
+- `scripts/route-authorization-manifest.mjs`
+
+## Validation
+
+- `pnpm verify:select -- --files <changed paths>` selected `pnpm ci:local`,
+  `pnpm deps:audit`, `pnpm deps:licenses`, `pnpm format:check`, `pnpm docs:check`,
+  `pnpm policy:check`, `pnpm test`, focused domain/database/API/providers/worker/web
+  tests and typechecks, database checks, migration parity, provider build, and production build.
+- `pnpm format:check`
+- `pnpm docs:check`
+- `pnpm policy:check`
+- `pnpm deps:licenses`
+- `pnpm deps:audit`
+- `pnpm test`
+- `pnpm --filter @open-practice/domain test`
+- `pnpm --filter @open-practice/domain typecheck`
+- `pnpm --filter @open-practice/database test`
+- `pnpm --filter @open-practice/database db:check`
+- `pnpm migrations:check`
+- `pnpm --filter @open-practice/database typecheck`
+- `pnpm --filter @open-practice/api test`
+- `pnpm --filter @open-practice/api typecheck`
+- `pnpm --filter @open-practice/providers test`
+- `pnpm --filter @open-practice/providers typecheck`
+- `pnpm --filter @open-practice/providers build`
+- `pnpm --filter @open-practice/worker test`
+- `pnpm --filter @open-practice/worker typecheck`
+- `pnpm --filter @open-practice/web test`
+- `pnpm --filter @open-practice/web typecheck`
+- `pnpm build`
+- `pnpm ci:local`
+
+All commands passed. `pnpm deps:licenses` reported the existing review-required license groups and
+did not add a blocked license; `pnpm deps:audit` reported no known vulnerabilities.
+
+## Out Of Scope
+
+- Card storage, processor settlement, tap-to-pay, automatic reconciliation, trust posting,
+  payment-plan enforcement, public payment-page implementation, and automatic invoice-balance
+  changes from hosted payment request shells.
+- Production Stripe enablement, Stripe webhook ingestion, settlement reconciliation, refunds,
+  chargebacks, card vaulting, and PaymentIntents-first custom checkout handling.

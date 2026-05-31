@@ -3,7 +3,11 @@ import type {
   BillingPeriodLockRecord,
   BillingRateRuleRecord,
   BillingRateSnapshot,
+  BillDeliveryState,
+  BillReminderState,
   Contact,
+  CreditWriteOffPosture,
+  HostedPaymentProcessorState,
   ConflictCandidate,
   DocumentAssemblyWorkspace,
   DocumentRecord,
@@ -41,6 +45,7 @@ import type {
   Matter,
   MatterParty,
   MatterSetupProfile,
+  PaymentPlanPlaceholder,
   PublicConsultationIntakeNotificationSettings,
   PublicConsultationIntakeRecord,
   StaffReportHistoryItem,
@@ -1085,6 +1090,26 @@ export interface BillingPaymentSummary {
   method: "cash" | "card" | "eft" | "cheque" | "other";
   receivedAt: string;
   reference?: string;
+  evidencePresent?: boolean;
+}
+
+export interface BillingPaymentRequestSummary {
+  id: string;
+  matterId: string;
+  invoiceId: string;
+  clientContactId?: string;
+  status: "ready_to_send" | "sent" | "viewed" | "cancelled" | "expired";
+  amountCents: number;
+  hostedPath: string;
+  delivery: BillDeliveryState;
+  reminder: BillReminderState;
+  paymentPlan: PaymentPlanPlaceholder;
+  creditWriteOffPosture: CreditWriteOffPosture;
+  processor: HostedPaymentProcessorState;
+  evidencePresent: boolean;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt?: string;
 }
 
 export interface MatterBillingSummary {
@@ -1095,6 +1120,7 @@ export interface MatterBillingSummary {
   unbilledExpenses: BillingExpenseItem[];
   invoices: BillingInvoiceSummary[];
   payments: BillingPaymentSummary[];
+  paymentRequests: BillingPaymentRequestSummary[];
 }
 
 export interface BillingDashboardResponse {
@@ -1104,6 +1130,7 @@ export interface BillingDashboardResponse {
     unbilledExpenseCents: number;
     draftInvoiceCents: number;
     issuedBalanceDueCents: number;
+    hostedPaymentRequestCents: number;
     lockedPeriodCount: number;
     activeLockedPeriodCount: number;
     activeRateRuleCount: number;

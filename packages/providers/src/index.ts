@@ -7,3 +7,4 @@ export * from "./ocr/tesseract.js";
 export * from "./email/parser.js";
 export * from "./email/smtp.js";
 export * from "./draft-exports.js";
+export * from "./payments/stripe.js";

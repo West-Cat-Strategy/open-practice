@@ -1499,6 +1499,7 @@ export default function DashboardClient({
     activeCaptureReviewTime.length + activeCaptureReviewExpenses.length;
   const activeInvoices = activeBilling?.invoices ?? [];
   const activeManualPayments = activeBilling?.payments ?? [];
+  const activePaymentRequests = activeBilling?.paymentRequests ?? [];
   const selectedExpenseProfile = billingDashboard.expenseCategoryProfiles.find(
     (profile) => profile.key === expenseDraftProfileKey,
   );
@@ -4080,6 +4081,7 @@ export default function DashboardClient({
                 unbilledExpenses: [],
                 invoices: [],
                 payments: [],
+                paymentRequests: [],
               },
               ...current.matters,
             ],
@@ -5098,6 +5100,10 @@ export default function DashboardClient({
                       <strong>{cents(activeBalanceDueCents)}</strong>
                     </div>
                     <div>
+                      <span className="field-label">Payment requests</span>
+                      <strong>{cents(billingDashboard.summary.hostedPaymentRequestCents)}</strong>
+                    </div>
+                    <div>
                       <span className="field-label">Locked periods</span>
                       <strong>
                         {billingDashboard.summary.activeLockedPeriodCount}/
@@ -5491,6 +5497,43 @@ export default function DashboardClient({
                   </div>
 
                   <div className="section-title">
+                    <h3>Payment request shells</h3>
+                    <span>{activePaymentRequests.length} records</span>
+                  </div>
+                  <div className="party-list">
+                    {activePaymentRequests.map((paymentRequest) => (
+                      <div className="party-row" key={paymentRequest.id}>
+                        <span>
+                          <strong>{paymentRequest.status.replaceAll("_", " ")}</strong>
+                          <small>
+                            {paymentRequest.delivery.status.replaceAll("_", " ")} · reminder{" "}
+                            {paymentRequest.reminder.status.replaceAll("_", " ")}
+                            {paymentRequest.paymentPlan.status !== "not_offered"
+                              ? ` · plan ${paymentRequest.paymentPlan.status.replaceAll("_", " ")}`
+                              : ""}
+                            {paymentRequest.creditWriteOffPosture.status !== "none"
+                              ? ` · ${paymentRequest.creditWriteOffPosture.status.replaceAll(
+                                  "_",
+                                  " ",
+                                )}`
+                              : ""}
+                            {paymentRequest.processor.status === "checkout_session_created"
+                              ? ` · ${paymentRequest.processor.provider ?? "processor"} checkout`
+                              : ""}
+                            {paymentRequest.evidencePresent ? " · evidence" : ""}
+                          </small>
+                        </span>
+                        <em>{cents(paymentRequest.amountCents)}</em>
+                      </div>
+                    ))}
+                    {activePaymentRequests.length === 0 ? (
+                      <p className="inline-empty">
+                        No hosted payment request shells have been recorded for this matter.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="section-title">
                     <h3>Manual payment history</h3>
                     <span>{activeManualPayments.length} payments</span>
                   </div>
@@ -5499,7 +5542,10 @@ export default function DashboardClient({
                       <div className="party-row" key={payment.id}>
                         <span>
                           <strong>{payment.reference ?? "Manual payment"}</strong>
-                          <small>{new Date(payment.receivedAt).toLocaleDateString("en-CA")}</small>
+                          <small>
+                            {new Date(payment.receivedAt).toLocaleDateString("en-CA")}
+                            {payment.evidencePresent ? " · evidence" : ""}
+                          </small>
                         </span>
                         <em>{cents(payment.amountCents)}</em>
                       </div>

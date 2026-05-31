@@ -3,6 +3,7 @@ import type { OpenPracticeRepository } from "@open-practice/database";
 import type {
   DocumentAutomationProvider,
   DraftAssistProvider,
+  PaymentProcessorProvider,
   SignatureProvider,
 } from "@open-practice/domain";
 
@@ -24,6 +25,8 @@ export interface ApiRouteDependencies {
   automationProvider?: DocumentAutomationProvider;
   draftAssistProvider?: DraftAssistProvider;
   signatureProvider?: SignatureProvider;
+  paymentProcessorProvider?: PaymentProcessorProvider;
+  publicWebBaseUrl?: string;
   meetingLinks?: {
     providerKey: string;
     hostedMeetingBaseUrl?: string;
