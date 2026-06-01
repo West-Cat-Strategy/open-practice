@@ -6,6 +6,7 @@ import type {
   PaymentAllocationRecord,
   TrustTransferRequestRecord,
 } from "./billing.js";
+import type { AiOperationalProposalRecord } from "./ai-operational-proposals.js";
 import type { ContactRelationshipRecord } from "./contacts.js";
 import type {
   DocumentAssemblyPackageRecord,
@@ -615,6 +616,64 @@ export const sampleDraftTemplates = buildBasicDraftTemplates(
   sampleFirm.id,
   "2026-04-01T00:00:00.000Z",
 );
+
+export const sampleAiOperationalProposals: AiOperationalProposalRecord[] = [
+  {
+    id: "ai-proposal-deadline-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    kind: "deadline_extraction",
+    status: "proposed",
+    source: {
+      sourceType: "document",
+      documentId: "doc-001",
+      sourceLabel: "Retainer agreement",
+      sourceTextLength: 360,
+      confidence: "medium",
+    },
+    providerKey: "fake-local-ai",
+    providerModel: "fake-operational-proposals-v1",
+    proposal: {
+      title: "Review possible response deadline",
+      summary: "Synthetic deadline proposal for staff review.",
+      proposedAction: "Review before adding any calendar or task record.",
+      deadline: { suggestedDueAt: "2026-06-15T16:00:00.000Z" },
+    },
+    createdByUserId: "user-licensee",
+    createdAt: "2026-06-01T16:00:00.000Z",
+    updatedAt: "2026-06-01T16:00:00.000Z",
+    metadata: { source: "seed", statusOnlyReview: true },
+  },
+  {
+    id: "ai-proposal-client-update-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    kind: "client_update_draft",
+    status: "approved",
+    source: {
+      sourceType: "document",
+      documentId: "doc-001",
+      sourceLabel: "Retainer agreement",
+      sourceTextLength: 360,
+      confidence: "low",
+    },
+    providerKey: "fake-local-ai",
+    providerModel: "fake-operational-proposals-v1",
+    proposal: {
+      title: "Review client update draft",
+      summary: "Synthetic client-update proposal already accepted as a proposal only.",
+      proposedAction: "Use normal communications review before sending any update.",
+      clientUpdate: { tone: "neutral", audience: "client" },
+    },
+    reviewDecision: "approved",
+    reviewedByUserId: "user-licensee",
+    reviewedAt: "2026-06-01T17:00:00.000Z",
+    createdByUserId: "user-licensee",
+    createdAt: "2026-06-01T16:05:00.000Z",
+    updatedAt: "2026-06-01T17:00:00.000Z",
+    metadata: { source: "seed", statusOnlyReview: true },
+  },
+];
 
 export const samplePortalGrants: PortalGrant[] = [
   {

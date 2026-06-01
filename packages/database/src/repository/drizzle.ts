@@ -33,6 +33,7 @@ import {
   postLedgerTransaction,
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
+  validateAiOperationalProposalRecord,
   validateLedgerAccountingReviewProfileRecord,
   validateBillingPeriodLock,
   validateBillingRateRule,
@@ -44,6 +45,9 @@ import {
   validateLedgerStatementMatchRuleProfileRecord,
   verifyAuditChain,
   type AccessLogRecord,
+  type AiOperationalProposalKind,
+  type AiOperationalProposalRecord,
+  type AiOperationalProposalStatus,
   type AuditEvent,
   type BillingPeriodLockRecord,
   type BillingRateRuleRecord,
@@ -225,6 +229,7 @@ import {
   mapDocumentAssemblyPackageRow,
   mapDocumentAssemblySetDefinitionRow,
   mapDocumentTextExtractionRow,
+  mapAiOperationalProposalRow,
   mapDraftAssistRow,
   mapDraftRow,
   mapDraftTemplateRow,
@@ -6286,6 +6291,83 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .returning();
     if (!row) throw new Error(`Draft assist record ${record.id} was not found`);
     return mapDraftAssistRow(row);
+  }
+
+  async listAiOperationalProposals(
+    firmId: string,
+    options: {
+      matterId?: string;
+      status?: AiOperationalProposalStatus;
+      kind?: AiOperationalProposalKind;
+    } = {},
+  ): Promise<AiOperationalProposalRecord[]> {
+    const conditions = [eq(schema.aiOperationalProposals.firmId, firmId)];
+    if (options.matterId) {
+      conditions.push(eq(schema.aiOperationalProposals.matterId, options.matterId));
+    }
+    if (options.status) conditions.push(eq(schema.aiOperationalProposals.status, options.status));
+    if (options.kind) conditions.push(eq(schema.aiOperationalProposals.kind, options.kind));
+
+    const rows = await this.db
+      .select()
+      .from(schema.aiOperationalProposals)
+      .where(and(...conditions))
+      .orderBy(desc(schema.aiOperationalProposals.createdAt));
+    return rows.map(mapAiOperationalProposalRow);
+  }
+
+  async getAiOperationalProposal(
+    firmId: string,
+    id: string,
+  ): Promise<AiOperationalProposalRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.aiOperationalProposals)
+      .where(
+        and(
+          eq(schema.aiOperationalProposals.firmId, firmId),
+          eq(schema.aiOperationalProposals.id, id),
+        ),
+      );
+    return row ? mapAiOperationalProposalRow(row) : undefined;
+  }
+
+  async createAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+  ): Promise<AiOperationalProposalRecord> {
+    validateAiOperationalProposalRecord(record);
+    await this.db.insert(schema.aiOperationalProposals).values({
+      ...record,
+      reviewedAt: record.reviewedAt ? new Date(record.reviewedAt) : null,
+      createdAt: new Date(record.createdAt),
+      updatedAt: new Date(record.updatedAt),
+    });
+    return clone(record);
+  }
+
+  async updateAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+  ): Promise<AiOperationalProposalRecord> {
+    validateAiOperationalProposalRecord(record);
+    const [row] = await this.db
+      .update(schema.aiOperationalProposals)
+      .set({
+        status: record.status,
+        reviewDecision: record.reviewDecision,
+        reviewedByUserId: record.reviewedByUserId,
+        reviewedAt: record.reviewedAt ? new Date(record.reviewedAt) : null,
+        updatedAt: new Date(record.updatedAt),
+        metadata: record.metadata,
+      })
+      .where(
+        and(
+          eq(schema.aiOperationalProposals.firmId, record.firmId),
+          eq(schema.aiOperationalProposals.id, record.id),
+        ),
+      )
+      .returning();
+    if (!row) throw new Error(`AI operational proposal ${record.id} was not found`);
+    return mapAiOperationalProposalRow(row);
   }
 
   async listDraftTemplates(

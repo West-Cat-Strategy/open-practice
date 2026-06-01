@@ -19,7 +19,8 @@ screenshots, UI structure, assets, private tenant data, or code were copied into
 ## Current Parity State
 
 - OP-T127 through OP-T137 and OP-T140 through OP-T142 are Done.
-- OP-T138 and OP-T139 remain Candidates.
+- OP-T138 is in Review with the first review-only AI operational proposal slice.
+- OP-T139 remains Candidate.
 
 ## Shipped Parity Areas
 
@@ -31,6 +32,9 @@ screenshots, UI structure, assets, private tenant data, or code were copied into
 - Trust foundations: ledger posting guards, transfer review/link flow, statement preview,
   statement import batch metadata, reconciliation exception review notes, jurisdictional aggregate
   reporting, and OP-T136 accounting review profiles.
+- AI assist foundations: review-first draft/document assist, async assist jobs, and OP-T138
+  operational proposal records for deadlines, tasks, document organization, draft invoice cues, and
+  client-update drafts.
 
 ## Deliberate Shell Boundaries
 
@@ -40,13 +44,14 @@ screenshots, UI structure, assets, private tenant data, or code were copied into
 - OP-T136 is review-only accounting depth. It persists statement match-rule profiles and accounting
   review profiles, but it does not connect live bank feeds, auto-match transactions, automate
   disbursement, post trust entries, or certify accounting/compliance conclusions.
-- AI and legal-work rows remain human-reviewed planning candidates, not autonomous legal advice or
+- OP-T138 is a review-only AI proposal shell. It stores generated proposal content only as the
+  authorized review artifact and keeps jobs/audit metadata limited to IDs, counts, kinds, provider
+  provenance, and lengths; approval records status only and does not create downstream records.
+- OP-T139 remains a human-reviewed planning candidate, not autonomous legal advice or
   privileged-content automation.
 
 ## Remaining Gaps
 
-- OP-T138: review-first AI operational proposals for deadlines, tasks, document organization,
-  draft invoice cues, and client-update drafts.
 - OP-T139: legal research workspace shell for cited-source notes, matter-context attachment,
   analysis artifact status, strategy/timeline notes, and review checkpoints.
 - Future post-parity candidates should be created only after comparing against existing proof so
@@ -54,11 +59,12 @@ screenshots, UI structure, assets, private tenant data, or code were copied into
 
 ## Next-Row Ranking
 
-1. OP-T138 Candidate: highest next operating leverage after trust/accounting depth because it turns
-   existing assist infrastructure into review-first operational proposals.
+1. OP-T138 Review: confirm proposal persistence, matter-scoped route authorization, dashboard
+   posture, redacted job/audit metadata, provider-disabled behavior, and migration proof.
 2. OP-T139 Candidate: next legal-work shell after OP-T138, with strict no-provider/no-advice
    boundaries.
 
 ## Validation
 
-Validation is recorded in the OP-T136 row-local proof for the current implementation branch.
+Validation is recorded in the OP-T136 and OP-T138 row-local proof notes for their implementation
+branches.

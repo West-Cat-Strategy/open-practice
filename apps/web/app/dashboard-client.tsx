@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AiOperationalProposalRecord,
   ConflictCandidate,
   DraftExportFormat,
   EmbeddedIntakeTemplateDefinitionV2,
@@ -243,6 +244,15 @@ import {
   summarizeProvidersStatus,
 } from "./provider-status-dashboard";
 import {
+  buildAiOperationalProposalReviewPath,
+  buildAiOperationalProposalsPath,
+  buildAllDraftOperationalProposalKindsPayload,
+  buildDraftOperationalProposalJobPath,
+  canReviewAiOperationalProposals,
+  describeAiOperationalProposalGeneration,
+  replaceAiOperationalProposal,
+} from "./ai-operational-proposals-dashboard";
+import {
   buildConnectorOutboxDeadLetterPath,
   buildConnectorOutboxDeadLetterPayload,
   buildConnectorOutboxRetryPath,
@@ -320,6 +330,7 @@ import {
 } from "./types";
 import type {
   AuditResponse,
+  AiOperationalProposalsResponse,
   CalendarAttendeeMutationResponse,
   BillingDashboardResponse,
   CalendarCredentialCreateResponse,
@@ -404,6 +415,7 @@ import type {
 interface DashboardClientProps {
   apiBaseUrl: string;
   auditProjection: AuditProjectionDashboardResponse;
+  aiOperationalProposals: AiOperationalProposalsResponse;
   billing: BillingDashboardResponse;
   calendar: CalendarDashboardResponse;
   capabilities: CapabilitiesResponse;
@@ -839,6 +851,7 @@ function FirstMatterWorkspace({
 export default function DashboardClient({
   apiBaseUrl,
   auditProjection: initialAuditProjection,
+  aiOperationalProposals: initialAiOperationalProposals,
   billing,
   calendar,
   capabilities,
@@ -886,6 +899,9 @@ export default function DashboardClient({
   const [hasLoadedContextRailPreference, setHasLoadedContextRailPreference] = useState(false);
   const [matters, setMatters] = useState(initialMatters);
   const [queues, setQueues] = useState(initialQueues);
+  const [aiOperationalProposals, setAiOperationalProposals] = useState(
+    initialAiOperationalProposals,
+  );
   const [auditProjection, setAuditProjection] = useState(initialAuditProjection);
   const [providerStatus, setProviderStatus] = useState(initialProviderStatus);
   const [connectorOperations, setConnectorOperations] = useState(initialConnectorOperations);
@@ -1028,6 +1044,11 @@ export default function DashboardClient({
   >({});
   const [draftAssistMessage, setDraftAssistMessage] = useState("Draft assist has not loaded yet.");
   const [runningDraftAssist, setRunningDraftAssist] = useState(false);
+  const [queueingAiOperationalProposals, setQueueingAiOperationalProposals] = useState(false);
+  const [aiOperationalProposalStatus, setAiOperationalProposalStatus] = useState(
+    describeAiOperationalProposalGeneration(initialAiOperationalProposals),
+  );
+  const [reviewingAiOperationalProposalId, setReviewingAiOperationalProposalId] = useState("");
   const [sharesByMatterId, setSharesByMatterId] = useState<Record<string, ShareLinkRecord[]>>({});
   const [shareStatus, setShareStatus] = useState("Share links have not loaded yet.");
   const [sharePermissions, setSharePermissions] = useState<ShareLinkPermission[]>([
@@ -1597,6 +1618,7 @@ export default function DashboardClient({
   const providerRows = useMemo(() => providerPostureRows(providerStatus), [providerStatus]);
   const canManageDocumentProcessingProvider = session.user.role === "owner_admin";
   const canManageConnectorRecovery = session.user.role === "owner_admin";
+  const canReviewAiProposalRecords = canReviewAiOperationalProposals(session.user.role);
   const activeWorkerRuns = useMemo(
     () => workerRunsForFilter(workerRuns, workerRunFilter),
     [workerRuns, workerRunFilter],
@@ -1915,14 +1937,21 @@ export default function DashboardClient({
   async function refreshQueueLane(): Promise<void> {
     setQueueRefreshState((current) => ({ ...current, refreshing: true, error: undefined }));
     try {
-      const [payload, connectorPayload] = await Promise.all([
+      const [payload, connectorPayload, aiProposalPayload] = await Promise.all([
         requestDashboardJson<QueuesResponse>(apiBaseUrl, "/api/queues", {
           headers: devHeaders,
         }),
         requestConnectorOperationsForDashboard(apiBaseUrl, devHeaders),
+        requestDashboardJson<AiOperationalProposalsResponse>(
+          apiBaseUrl,
+          buildAiOperationalProposalsPath(),
+          { headers: devHeaders },
+        ),
       ]);
       setQueues(payload);
       setConnectorOperations(connectorPayload);
+      setAiOperationalProposals(aiProposalPayload);
+      setAiOperationalProposalStatus(describeAiOperationalProposalGeneration(aiProposalPayload));
       setQueueRefreshState({ loadedAt: new Date().toISOString(), refreshing: false });
       setFreshnessNow(new Date());
     } catch (error) {
@@ -2628,6 +2657,67 @@ export default function DashboardClient({
       [selectedDraft.id]: [record, ...(current[selectedDraft.id] ?? [])],
     }));
     setDraftAssistMessage("Suggestion ready for review.");
+  }
+
+  async function queueDraftOperationalProposals(): Promise<void> {
+    if (!selectedDraft || aiOperationalProposals.generation.status !== "configured") return;
+
+    setQueueingAiOperationalProposals(true);
+    setAiOperationalProposalStatus("Queueing operational proposals...");
+    const response = await fetch(
+      `${apiBaseUrl}${buildDraftOperationalProposalJobPath(selectedDraft.id)}`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(buildAllDraftOperationalProposalKindsPayload()),
+      },
+    );
+
+    setQueueingAiOperationalProposals(false);
+    if (!response.ok) {
+      setAiOperationalProposalStatus(`Operational proposal queue failed: ${response.status}`);
+      return;
+    }
+    const payload = (await response.json()) as {
+      proposalKinds: AiOperationalProposalRecord["kind"][];
+      job: { id: string; status: string };
+    };
+    setAiOperationalProposalStatus(
+      `${payload.proposalKinds.length} operational proposal families queued for review.`,
+    );
+  }
+
+  async function reviewAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+    decision: "approved" | "rejected",
+  ): Promise<void> {
+    setReviewingAiOperationalProposalId(record.id);
+    setAiOperationalProposalStatus(`Recording ${decision} proposal review...`);
+    const response = await fetch(
+      `${apiBaseUrl}${buildAiOperationalProposalReviewPath(record.id)}`,
+      {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ decision }),
+      },
+    );
+
+    setReviewingAiOperationalProposalId("");
+    if (!response.ok) {
+      setAiOperationalProposalStatus(`Operational proposal review failed: ${response.status}`);
+      return;
+    }
+    const updated = (await response.json()) as AiOperationalProposalRecord;
+    setAiOperationalProposals((current) => replaceAiOperationalProposal(current, updated));
+    setAiOperationalProposalStatus(`Proposal ${decision}; no downstream record was created.`);
   }
 
   async function reviewDraftAssistRecord(
@@ -4606,6 +4696,9 @@ export default function DashboardClient({
                 <QueuesSection
                   activeSavedOperationalViewDefinition={activeSavedOperationalViewDefinition}
                   activeSavedOperationalViewId={activeSavedOperationalViewId}
+                  aiOperationalProposals={aiOperationalProposals}
+                  aiOperationalProposalStatus={aiOperationalProposalStatus}
+                  aiOperationalProposalReviewBusyId={reviewingAiOperationalProposalId}
                   activeWorkerRuns={activeWorkerRuns}
                   archivingOperationalViewId={archivingOperationalViewId}
                   compactDate={compactDate}
@@ -4616,6 +4709,7 @@ export default function DashboardClient({
                   connectorRecoveryNow={freshnessNow}
                   connectorRecoveryStatus={connectorRecoveryStatus}
                   connectorOperationsSummary={connectorOperationsSummary}
+                  canReviewAiOperationalProposals={canReviewAiProposalRecords}
                   displayedQueues={displayedQueues}
                   formatSavedOperationalViewDefinition={formatSavedOperationalViewDefinition}
                   formatWorkerRunAttempts={formatWorkerRunAttempts}
@@ -4631,6 +4725,9 @@ export default function DashboardClient({
                   onRefreshProviders={() => void refreshProviderLane()}
                   onRefreshQueues={() => void refreshQueueLane()}
                   onRequestConnectorRecovery={requestConnectorRecovery}
+                  onReviewAiOperationalProposal={(record, decision) =>
+                    void reviewAiOperationalProposal(record, decision)
+                  }
                   onSaveQueueOperationalViewDefinition={saveQueueOperationalViewDefinition}
                   onSelectMatter={selectMatter}
                   onSetOcrProviderEnabled={(enabled) => void setOcrProviderEnabled(enabled)}
@@ -7436,8 +7533,21 @@ export default function DashboardClient({
                           <Sparkles size={16} />
                           {runningDraftAssist ? "Drafting..." : "Assist"}
                         </button>
+                        <button
+                          className="secondary-button compact-button"
+                          disabled={
+                            aiOperationalProposals.generation.status !== "configured" ||
+                            queueingAiOperationalProposals
+                          }
+                          onClick={() => void queueDraftOperationalProposals()}
+                          type="button"
+                        >
+                          <Clock3 size={16} />
+                          {queueingAiOperationalProposals ? "Queueing..." : "Queue proposals"}
+                        </button>
                       </div>
                       <p className="inline-empty">{draftAssistMessage}</p>
+                      <p className="inline-empty">{aiOperationalProposalStatus}</p>
                       <div className="party-list">
                         {activeDraftAssistRecords.map((record) => (
                           <div className="party-row draft-assist-row" key={record.id}>
@@ -8592,6 +8702,9 @@ export default function DashboardClient({
               <QueuesSection
                 activeSavedOperationalViewDefinition={activeSavedOperationalViewDefinition}
                 activeSavedOperationalViewId={activeSavedOperationalViewId}
+                aiOperationalProposals={aiOperationalProposals}
+                aiOperationalProposalStatus={aiOperationalProposalStatus}
+                aiOperationalProposalReviewBusyId={reviewingAiOperationalProposalId}
                 activeWorkerRuns={activeWorkerRuns}
                 archivingOperationalViewId={archivingOperationalViewId}
                 compactDate={compactDate}
@@ -8602,6 +8715,7 @@ export default function DashboardClient({
                 connectorRecoveryNow={freshnessNow}
                 connectorRecoveryStatus={connectorRecoveryStatus}
                 connectorOperationsSummary={connectorOperationsSummary}
+                canReviewAiOperationalProposals={canReviewAiProposalRecords}
                 displayedQueues={displayedQueues}
                 formatSavedOperationalViewDefinition={formatSavedOperationalViewDefinition}
                 formatWorkerRunAttempts={formatWorkerRunAttempts}
@@ -8614,6 +8728,9 @@ export default function DashboardClient({
                 onRefreshProviders={() => void refreshProviderLane()}
                 onRefreshQueues={() => void refreshQueueLane()}
                 onRequestConnectorRecovery={requestConnectorRecovery}
+                onReviewAiOperationalProposal={(record, decision) =>
+                  void reviewAiOperationalProposal(record, decision)
+                }
                 onSaveQueueOperationalViewDefinition={saveQueueOperationalViewDefinition}
                 onSelectMatter={selectMatter}
                 onSetOcrProviderEnabled={(enabled) => void setOcrProviderEnabled(enabled)}

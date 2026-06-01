@@ -7,6 +7,7 @@ import {
   authPasswordSetupTokens,
   authSessions,
   accessLogs,
+  aiOperationalProposals,
   aiTriageRecords,
   authActionTokens,
   authChallenges,
@@ -657,6 +658,42 @@ describe("database schema hardening", () => {
         "draft_assist_records_firm_matter_idx",
         "draft_assist_records_firm_draft_idx",
         "draft_assist_records_firm_document_idx",
+      ]),
+    );
+  });
+
+  it("persists review-only AI operational proposals", () => {
+    const config = getTableConfig(aiOperationalProposals);
+
+    expect(config.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "kind",
+        "status",
+        "source",
+        "provider_key",
+        "provider_model",
+        "proposal",
+        "review_decision",
+        "reviewed_by_user_id",
+        "reviewed_at",
+        "metadata",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "ai_operational_proposals_firm_matter_idx",
+        "ai_operational_proposals_firm_status_idx",
+        "ai_operational_proposals_firm_kind_idx",
+      ]),
+    );
+    expect(config.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "ai_operational_proposals_kind_value",
+        "ai_operational_proposals_status_value",
+        "ai_operational_proposals_source_type_value",
+        "ai_operational_proposals_status_only_review",
       ]),
     );
   });

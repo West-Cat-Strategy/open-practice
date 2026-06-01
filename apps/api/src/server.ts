@@ -13,6 +13,7 @@ import {
   type OpenPracticeRepository,
 } from "@open-practice/database";
 import type {
+  AiOperationalProposalProvider,
   DocumentAutomationProvider,
   DraftAssistProvider,
   PaymentProcessorProvider,
@@ -39,6 +40,7 @@ import { registerConversationThreadRoutes } from "./routes/conversation-threads.
 import { registerDocumentProcessingRoutes } from "./routes/document-processing.js";
 import { registerDocumentAssemblyRoutes } from "./routes/document-assembly.js";
 import { registerDocumentRoutes } from "./routes/documents.js";
+import { registerAiOperationalProposalRoutes } from "./routes/ai-operational-proposals.js";
 import { registerDraftAssistRoutes } from "./routes/draft-assist.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
 import { registerE2ESupportRoutes } from "./routes/e2e-support.js";
@@ -175,6 +177,7 @@ interface ApiOptions {
   devFirmId: string;
   signatureProvider?: SignatureProvider;
   automationProvider?: DocumentAutomationProvider;
+  aiOperationalProposalProvider?: AiOperationalProposalProvider;
   draftAssistProvider?: DraftAssistProvider;
   paymentProcessorProvider?: PaymentProcessorProvider;
   emailJobQueue?: ApiJobQueue;
@@ -470,6 +473,11 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerDraftAssistRoutes(server, {
     repository: options.repository,
     draftAssistProvider: options.draftAssistProvider,
+    aiAssistJobQueue: options.aiAssistJobQueue,
+  });
+  registerAiOperationalProposalRoutes(server, {
+    repository: options.repository,
+    aiOperationalProposalProvider: options.aiOperationalProposalProvider,
     aiAssistJobQueue: options.aiAssistJobQueue,
   });
   registerJobsRoutes(server, {

@@ -37,7 +37,8 @@ export type ResourceKind =
   | "provider_setting"
   | "outbound_webhook"
   | "draft"
-  | "draft_template";
+  | "draft_template"
+  | "ai_proposal";
 
 export type Action = "create" | "read" | "update" | "delete" | "approve" | "export";
 
@@ -84,6 +85,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     outbound_webhook: ["create", "read", "update", "delete", "approve", "export"],
     draft: ["create", "read", "update", "delete", "export"],
     draft_template: ["create", "read", "update", "delete", "export"],
+    ai_proposal: ["create", "read", "update", "approve", "export"],
   },
   licensee: {
     contact: ["create", "read", "update", "export"],
@@ -112,6 +114,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     client_portal: ["create", "read", "update"],
     draft: ["create", "read", "update", "delete", "export"],
     draft_template: ["create", "read", "update", "export"],
+    ai_proposal: ["create", "read", "update", "approve", "export"],
   },
   firm_member: {
     contact: ["create", "read", "update"],
@@ -136,6 +139,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     client_portal: ["read"],
     draft: ["create", "read", "update"],
     draft_template: ["read"],
+    ai_proposal: ["create", "read", "update", "approve"],
   },
   billing_bookkeeper: {
     contact: ["read"],
@@ -186,6 +190,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     client_portal: ["read", "export"],
     provider_setting: ["read"],
     outbound_webhook: ["read"],
+    ai_proposal: ["read", "export"],
   },
 };
 
@@ -207,6 +212,7 @@ const matterScopedResources = new Set<ResourceKind>([
   "share_link",
   "external_upload",
   "draft",
+  "ai_proposal",
 ]);
 
 const firmWideJobRoles = new Set<ProfessionalRole>(["owner_admin", "auditor"]);
@@ -248,6 +254,13 @@ const safeJobMetadataKeys = new Set([
   "providerConfigured",
   "providerMessageId",
   "providerModel",
+  "proposalCount",
+  "proposalId",
+  "proposalKind",
+  "proposalKindCount",
+  "proposalKinds",
+  "proposalSummaryLength",
+  "proposalTitleLength",
   "recipientCount",
   "recordCount",
   "reportDefinitionKey",
