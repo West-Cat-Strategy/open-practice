@@ -545,6 +545,62 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies AI operational proposal events without generated text hints", () => {
+    const queued = classifyAuditEvent(
+      auditEvent({
+        action: "ai_operational_proposal.async_queued",
+        resourceType: "ai_proposal",
+        resourceId: "job-001",
+        metadata: {
+          matterId: "matter-001",
+          draftId: "draft-001",
+          proposalKinds: "deadline_extraction,task_creation",
+          proposalKindCount: 2,
+          provider: "fake-local-ai",
+          jobId: "job-001",
+          sourceTextLength: 42,
+        },
+      }),
+    );
+    const reviewed = classifyAuditEvent(
+      auditEvent({
+        action: "ai_operational_proposal.reviewed",
+        resourceType: "ai_proposal",
+        resourceId: "proposal-001",
+        metadata: {
+          matterId: "matter-001",
+          proposalId: "proposal-001",
+          proposalKind: "task_creation",
+          decision: "approved",
+          status: "approved",
+        },
+      }),
+    );
+
+    expect(queued).toMatchObject({
+      category: "operations",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(queued.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "draftId",
+        "proposalKinds",
+        "proposalKindCount",
+        "provider",
+        "jobId",
+      ]),
+    );
+    expect(queued.metadataHints.resource).not.toContain("proposal");
+    expect(reviewed).toMatchObject({
+      category: "operations",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+  });
+
   it("classifies completed task events as matter-scoped operations", () => {
     expect(
       classifyAuditEvent(

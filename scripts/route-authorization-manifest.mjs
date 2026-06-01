@@ -28,6 +28,7 @@ export const VALID_AUTH_RESOURCES = [
   "outbound_webhook",
   "draft",
   "draft_template",
+  "ai_proposal",
   "public_consultation_intake",
 ];
 
@@ -51,6 +52,7 @@ export const MATTER_SCOPED_AUTH_RESOURCES = [
   "share_link",
   "external_upload",
   "draft",
+  "ai_proposal",
 ];
 
 export const VALID_MATTER_SCOPES = ["none", "optional", "required", "derived", "firm_wide"];
@@ -1494,6 +1496,44 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "PATCH",
     "/api/draft-assist/records/:id/review",
     "draft",
+    "approve",
+    "derived",
+  ),
+  authRoute(
+    "registerAiOperationalProposalRoutes",
+    "apps/api/src/routes/ai-operational-proposals.test.ts",
+    "GET",
+    "/api/ai-operational-proposals",
+    "ai_proposal",
+    "read",
+    "optional",
+  ),
+  multiGuardAuthRoute(
+    "registerAiOperationalProposalRoutes",
+    "apps/api/src/routes/ai-operational-proposals.test.ts",
+    "POST",
+    "/api/drafts/:id/operational-proposals/jobs",
+    [
+      { resource: "draft", action: "read", matterScope: "derived" },
+      { resource: "ai_proposal", action: "create", matterScope: "derived" },
+    ],
+  ),
+  multiGuardAuthRoute(
+    "registerAiOperationalProposalRoutes",
+    "apps/api/src/routes/ai-operational-proposals.test.ts",
+    "POST",
+    "/api/documents/:id/operational-proposals/jobs",
+    [
+      { resource: "document", action: "read", matterScope: "derived" },
+      { resource: "ai_proposal", action: "create", matterScope: "derived" },
+    ],
+  ),
+  authRoute(
+    "registerAiOperationalProposalRoutes",
+    "apps/api/src/routes/ai-operational-proposals.test.ts",
+    "PATCH",
+    "/api/ai-operational-proposals/:id/review",
+    "ai_proposal",
     "approve",
     "derived",
   ),

@@ -37,6 +37,9 @@ trust accounting software, accounting software, or tax-advice tooling.
   operational controls around review, evidence, authorization, and reconciliation.
 - No live payment processor is currently part of the product contract.
 - Manual payment records are reviewed evidence, not proof of live settlement.
+- AI draft-invoice cues are review artifacts only. Approving a proposal records reviewer status but
+  does not create an invoice, change balances, schedule payment collection, reconcile payment
+  evidence, or post trust/operating ledger entries.
 - Trust-transfer-request approval must not automatically post trust ledger entries. Approval can
   record reviewer evidence after invoice-balance and matter trust-balance checks; linkage can only
   reference an existing matching ledger transaction that has not already been linked to another

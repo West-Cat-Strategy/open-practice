@@ -30,6 +30,7 @@ import {
   postLedgerTransaction,
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
+  validateAiOperationalProposalRecord,
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
   validateLedgerStatementImportBatchRecord,
@@ -39,6 +40,9 @@ import {
   validateContactRelationshipRecord,
   verifyAuditChain,
   type AccessLogRecord,
+  type AiOperationalProposalKind,
+  type AiOperationalProposalRecord,
+  type AiOperationalProposalStatus,
   type AuditEvent,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
@@ -122,6 +126,7 @@ import {
   sampleContactRelationships,
   sampleDocumentAssemblyPackages,
   sampleDocumentAssemblySetDefinitions,
+  sampleAiOperationalProposals,
   sampleContacts,
   sampleDocuments,
   sampleDraftTemplates,
@@ -302,6 +307,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private documentTextExtractions: DocumentTextExtractionRecord[] = [];
   private drafts: DraftRecord[] = [];
   private draftAssistRecords: DraftAssistRecord[] = [];
+  private aiOperationalProposals: AiOperationalProposalRecord[] = [];
   private draftTemplates: DraftTemplateRecord[] = [];
   private inboundEmailAddresses: InboundEmailAddressRecord[] = [];
   private inboundEmailMessages: InboundEmailMessageRecord[] = [];
@@ -335,6 +341,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.ledgerAccounts = seeded ? clone(sampleLedgerAccounts) : [];
     this.intakeTemplates = seeded ? clone(sampleIntakeTemplates) : [];
     this.draftTemplates = seeded ? clone(sampleDraftTemplates) : [];
+    this.aiOperationalProposals = seeded ? clone(sampleAiOperationalProposals) : [];
     this.signatureRequestSigners = seeded ? clone(sampleSignatureRequestSigners) : [];
     this.signatureProviderEvents = seeded ? clone(sampleSignatureProviderEvents) : [];
     this.signatureWebhookAttempts = seeded ? clone(sampleSignatureWebhookAttempts) : [];
@@ -4525,6 +4532,61 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     );
     if (index === -1) throw new Error(`Draft assist record ${record.id} was not found`);
     this.draftAssistRecords[index] = clone(record);
+    return clone(record);
+  }
+
+  async listAiOperationalProposals(
+    firmId: string,
+    options: {
+      matterId?: string;
+      status?: AiOperationalProposalStatus;
+      kind?: AiOperationalProposalKind;
+    } = {},
+  ): Promise<AiOperationalProposalRecord[]> {
+    return clone(
+      this.aiOperationalProposals
+        .filter(
+          (record) =>
+            record.firmId === firmId &&
+            (!options.matterId || record.matterId === options.matterId) &&
+            (!options.status || record.status === options.status) &&
+            (!options.kind || record.kind === options.kind),
+        )
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    );
+  }
+
+  async getAiOperationalProposal(
+    firmId: string,
+    id: string,
+  ): Promise<AiOperationalProposalRecord | undefined> {
+    return clone(
+      this.aiOperationalProposals.find((record) => record.firmId === firmId && record.id === id),
+    );
+  }
+
+  async createAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+  ): Promise<AiOperationalProposalRecord> {
+    validateAiOperationalProposalRecord(record);
+    if (this.aiOperationalProposals.some((candidate) => candidate.id === record.id)) {
+      throw new Error("AI operational proposal already exists");
+    }
+    this.aiOperationalProposals.push(clone(record));
+    return clone(record);
+  }
+
+  async updateAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+  ): Promise<AiOperationalProposalRecord> {
+    validateAiOperationalProposalRecord(record);
+    const index = this.aiOperationalProposals.findIndex(
+      (candidate) => candidate.firmId === record.firmId && candidate.id === record.id,
+    );
+    if (index === -1) {
+      throw new Error(`AI operational proposal ${record.id} was not found`);
+    }
+    this.aiOperationalProposals[index] = clone(record);
     return clone(record);
   }
 

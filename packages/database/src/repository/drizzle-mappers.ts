@@ -16,6 +16,7 @@ import type {
 import {
   canShareDocumentThroughPortal,
   clientTrustBalanceByMatter,
+  type AiOperationalProposalRecord,
   type AccessLogRecord,
   type ActivityTimelineEntry,
   type AuditEvent,
@@ -2156,6 +2157,30 @@ export function mapDraftAssistRow(
     suggestedText: row.suggestedText,
     summary: row.summary ?? undefined,
     reviewDecision: (row.reviewDecision as DraftAssistRecord["reviewDecision"]) ?? undefined,
+    reviewedByUserId: row.reviewedByUserId ?? undefined,
+    reviewedAt: row.reviewedAt?.toISOString(),
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    metadata: row.metadata as Record<string, unknown>,
+  };
+}
+
+export function mapAiOperationalProposalRow(
+  row: typeof schema.aiOperationalProposals.$inferSelect,
+): AiOperationalProposalRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    kind: row.kind as AiOperationalProposalRecord["kind"],
+    status: row.status as AiOperationalProposalRecord["status"],
+    source: row.source as AiOperationalProposalRecord["source"],
+    providerKey: row.providerKey,
+    providerModel: row.providerModel,
+    proposal: row.proposal as AiOperationalProposalRecord["proposal"],
+    reviewDecision:
+      (row.reviewDecision as AiOperationalProposalRecord["reviewDecision"]) ?? undefined,
     reviewedByUserId: row.reviewedByUserId ?? undefined,
     reviewedAt: row.reviewedAt?.toISOString(),
     createdByUserId: row.createdByUserId,

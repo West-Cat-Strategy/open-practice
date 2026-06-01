@@ -17,6 +17,9 @@ import {
   runConflictCheck,
   type AccessLogRecord,
   type ActivityTimelineEntry,
+  type AiOperationalProposalKind,
+  type AiOperationalProposalRecord,
+  type AiOperationalProposalStatus,
   type AuditEvent,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
@@ -1385,6 +1388,24 @@ export interface OpenPracticeRepository {
   getDraftAssistRecord(firmId: string, id: string): Promise<DraftAssistRecord | undefined>;
   createDraftAssistRecord(record: DraftAssistRecord): Promise<DraftAssistRecord>;
   updateDraftAssistRecord(record: DraftAssistRecord): Promise<DraftAssistRecord>;
+  listAiOperationalProposals(
+    firmId: string,
+    options?: {
+      matterId?: string;
+      status?: AiOperationalProposalStatus;
+      kind?: AiOperationalProposalKind;
+    },
+  ): Promise<AiOperationalProposalRecord[]>;
+  getAiOperationalProposal(
+    firmId: string,
+    id: string,
+  ): Promise<AiOperationalProposalRecord | undefined>;
+  createAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+  ): Promise<AiOperationalProposalRecord>;
+  updateAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+  ): Promise<AiOperationalProposalRecord>;
   listDraftTemplates(
     firmId: string,
     options?: { category?: string; activeOnly?: boolean },

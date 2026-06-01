@@ -281,6 +281,10 @@ are backed by implementation and validation proof.
 | `POST /api/documents/:id/assist`                                                      | Synchronous document summary assist from completed text extraction; missing extraction returns `409`.                                                                                                                                                                                                                                                                    |
 | `POST /api/documents/:id/assist/jobs`                                                 | Queues a review-first async document summary assist job from the latest completed text extraction; missing extraction returns `409`, generated suggestions become normal non-authoritative assist records, and source documents are not mutated.                                                                                                                         |
 | `PATCH /api/draft-assist/records/:id/review`                                          | Mark an assist suggestion reviewed or rejected without changing source draft or document records.                                                                                                                                                                                                                                                                        |
+| `GET /api/ai-operational-proposals?matterId=&status=&kind=`                           | Lists authorized matter-scoped AI operational proposal review artifacts for deadlines, tasks, document organization, draft invoice cues, and client-update drafts, plus review counters and disabled/configured generation posture.                                                                                                                                      |
+| `POST /api/drafts/:id/operational-proposals/jobs`                                     | Queues all or selected review-only operational proposal families from an authorized matter-scoped draft when an enabled AI provider, injected proposal provider, and `ai_triage` queue are configured; returns `202` with redacted job metadata only and does not mutate the draft.                                                                                      |
+| `POST /api/documents/:id/operational-proposals/jobs`                                  | Queues all or selected review-only operational proposal families from an authorized document after completed text extraction; missing extraction returns `409`, generated proposals become review artifacts, and source documents are not mutated.                                                                                                                       |
+| `PATCH /api/ai-operational-proposals/:id/review`                                      | Records `approved` or `rejected` on one proposal and appends safe audit metadata. Approval means the proposal was accepted for review only; it does not create tasks, invoices, documents, messages, calendar entries, or source-record mutations.                                                                                                                       |
 | `GET /api/draft-templates?category=&activeOnly=`                                      | List active firm-scoped drafting templates, including seeded operational basics.                                                                                                                                                                                                                                                                                         |
 | `POST /api/draft-templates`                                                           | Create a firm-scoped drafting template from structured TipTap/ProseMirror JSON.                                                                                                                                                                                                                                                                                          |
 
@@ -315,20 +319,25 @@ queue are configured. OCR is the only actionable document-processing queue in th
 document classification on AI triage, transcription, and media queues are reported as
 reserved/deferred metadata rather than configurable work. A narrow async draft/document assist
 slice may use `ai_triage` for `draft_assist_suggestion` only when an enabled AI provider
-setting, an injected `DraftAssistProvider`, and the async assist queue are all configured. Webhook
-ingestion, provider delivery setup, automatic document promotion, document classification,
-transcription, media processing, and live Ollama/LM Studio adapter work remain deferred.
+setting, an injected `DraftAssistProvider`, and the async assist queue are all configured. OP-T138
+also uses `ai_triage` for `operational_action_proposals` when an enabled AI provider setting, an
+injected operational proposal provider, and the queue are configured. That job metadata may contain
+only IDs, source type, requested-kind/count fields, provider key, requester ID, idempotency presence,
+and source/generated-length metadata. Webhook ingestion, provider delivery setup, automatic document
+promotion, automatic operational mutations, document classification, transcription, media
+processing, and live Ollama/LM Studio adapter work remain deferred.
 `GET /api/providers/status` is read-only configuration posture, not a live health probe: it reports
 safe provider-setting keys, object-storage configured/not-configured state, BullMQ producer and
 reserved worker queue posture, redacted job summaries, and current-user embedded-auth extension
 posture without returning provider config, Redis URLs, storage endpoints, credentials, raw worker
 errors, storage keys, message bodies, generated text, or auth secrets.
 
-| Surface                              | Purpose                                                                                                                                                       |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/providers/status`          | Operator-visible configuration posture for Redis/BullMQ producers, object storage, provider settings, reserved workers, redacted jobs, and auth extensions.   |
-| Media transcription jobs             | Deferred route candidate for FFmpeg normalization and Whisper transcription after media authorization and worker governance land.                             |
-| Async assistive-drafting worker jobs | Queue-first `draft_assist_suggestion` jobs create existing review-first assist records when locally configured; live Ollama/LM Studio adapters stay deferred. |
+| Surface                              | Purpose                                                                                                                                                              |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/providers/status`          | Operator-visible configuration posture for Redis/BullMQ producers, object storage, provider settings, reserved workers, redacted jobs, and auth extensions.          |
+| Media transcription jobs             | Deferred route candidate for FFmpeg normalization and Whisper transcription after media authorization and worker governance land.                                    |
+| Async assistive-drafting worker jobs | Queue-first `draft_assist_suggestion` jobs create existing review-first assist records when locally configured; live Ollama/LM Studio adapters stay deferred.        |
+| AI operational proposal jobs         | Queue-first `operational_action_proposals` jobs create review-only proposal records when locally configured; approvals are status-only and no source records mutate. |
 
 The authenticated and public SimpleWebAuthn routes are live embedded-auth routes in the main API
 surface above. They remain deployment-gated by the configured RP ID/origin and setup/session secrets;
@@ -939,6 +948,19 @@ PostgreSQL and BullMQ. Workers reload draft text or the latest completed extract
 calling the injected `DraftAssistProvider`; raw source text, prompt/evidence values, generated text,
 storage keys, checksums, and private payloads stay out of job metadata and audit metadata. Generated
 text is stored only on the resulting suggested assist record for the existing review flow.
+
+AI operational proposals are a separate review artifact over the same disabled-by-default AI
+posture. `GET /api/ai-operational-proposals` lists only matter-authorized records and allows
+status/kind filtering. Draft and document queue routes require source-record read access plus
+`ai_proposal:create`; document queueing also requires completed extraction. The fake provider returns
+synthetic proposals for deadline extraction, task creation, document organization, draft invoice
+cues, and client-update drafts. Generated proposal content is stored on `ai_operational_proposals`
+because those records are the authorized staff review artifact. Job lifecycle metadata, BullMQ
+payload metadata, and audit metadata remain redacted to IDs, source type, requested kinds/counts,
+provider/model provenance, reviewer/requester IDs, idempotency presence, and source/proposal length
+counts. `PATCH /api/ai-operational-proposals/:id/review` records `approved` or `rejected` only; it
+does not create tasks, invoices, documents, messages, calendar entries, trust entries, or mutate the
+source draft/document.
 
 Provider/bootstrap selection is local-first. `DATABASE_URL` selects PostgreSQL unless
 `OPEN_PRACTICE_USE_MEMORY_REPO=true` or the database URL is absent. `OPEN_PRACTICE_DEV_SEED=true`

@@ -19,12 +19,12 @@ proof.
 
 ### Clio-Informed Functional-Parity Candidates - 2026-05-27
 
-These candidates mirror the remaining live Candidate rows OP-T135, OP-T136, OP-T138, and OP-T139 in
+These candidates mirror the remaining live Candidate rows OP-T135, OP-T136, and OP-T139 in
 `docs/planning-and-progress.md`. They come from the Clio-only product-spec review and the local Open
 Practice audit. Clio remains proprietary public-product research; use this section for independent
 planning only, with no copied Clio prose, assets, screenshots, templates, schemas, API examples, or
-UI structure. OP-T127 through OP-T134 and OP-T137 through OP-T142 are shipped or in Review and should
-not remain here as future work.
+UI structure. OP-T127 through OP-T134, OP-T137, OP-T138, and OP-T140 through OP-T142 are shipped or
+in Review and should not remain here as future work.
 
 - **OP-T135 billing approval and payment collection flow**
   - **First slice:** Add hosted payment-request/link shell records tied to issued invoices, bill
@@ -44,14 +44,6 @@ not remain here as future work.
     still partial.
   - **Out of scope:** Live bank feeds, automatic transaction matching, automatic disbursement,
     accounting certification, and jurisdiction-specific compliance claims.
-
-- **OP-T138 AI operational action proposals**
-  - **First slice:** Expand async assist into review-first operational proposals for deadlines,
-    tasks, document organization, draft invoice cues, and client-update drafts with source context.
-  - **Local gap / shipped boundary:** Async assist jobs create non-authoritative records, but AI does
-    not yet propose operational changes for staff approval.
-  - **Out of scope:** Autonomous mutation, provider-specific LLM commitments, privileged text in
-    jobs/audits, and legal advice claims.
 
 - **OP-T139 legal research workspace shell**
   - **First slice:** Add a staff-only legal research workspace shell for cited-source notes,

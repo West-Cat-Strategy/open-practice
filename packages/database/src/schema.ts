@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type {
+  AiOperationalProposalRecord,
   CalendarGuestLinkRecord,
   CalendarMeetingSessionRecord,
   CalendarSchedulingRequestRecord,
@@ -3128,6 +3129,108 @@ export const draftAssistRecords = pgTable(
     firmDocument: index("draft_assist_records_firm_document_idx").on(
       table.firmId,
       table.documentId,
+    ),
+  }),
+);
+
+export const aiOperationalProposals = pgTable(
+  "ai_operational_proposals",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    kind: text("kind").notNull(),
+    status: text("status").notNull(),
+    source: jsonb("source").$type<AiOperationalProposalRecord["source"]>().notNull(),
+    providerKey: text("provider_key").notNull(),
+    providerModel: text("provider_model").notNull(),
+    proposal: jsonb("proposal").$type<AiOperationalProposalRecord["proposal"]>().notNull(),
+    reviewDecision: text("review_decision"),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata")
+      .$type<AiOperationalProposalRecord["metadata"]>()
+      .notNull()
+      .default({}),
+  },
+  (table) => ({
+    firmMatter: index("ai_operational_proposals_firm_matter_idx").on(
+      table.firmId,
+      table.matterId,
+      table.createdAt,
+    ),
+    firmStatus: index("ai_operational_proposals_firm_status_idx").on(
+      table.firmId,
+      table.status,
+      table.createdAt,
+    ),
+    firmKind: index("ai_operational_proposals_firm_kind_idx").on(
+      table.firmId,
+      table.kind,
+      table.createdAt,
+    ),
+    kindValue: check(
+      "ai_operational_proposals_kind_value",
+      sql`${table.kind} in ('deadline_extraction', 'task_creation', 'document_organization', 'draft_invoice_cue', 'client_update_draft')`,
+    ),
+    statusValue: check(
+      "ai_operational_proposals_status_value",
+      sql`${table.status} in ('proposed', 'approved', 'rejected')`,
+    ),
+    sourceTypeValue: check(
+      "ai_operational_proposals_source_type_value",
+      sql`${table.source}->>'sourceType' in ('draft', 'document')`,
+    ),
+    draftSourceId: check(
+      "ai_operational_proposals_draft_source_id",
+      sql`${table.source}->>'sourceType' <> 'draft' or length(trim(coalesce(${table.source}->>'draftId', ''))) > 0`,
+    ),
+    documentSourceId: check(
+      "ai_operational_proposals_document_source_id",
+      sql`${table.source}->>'sourceType' <> 'document' or length(trim(coalesce(${table.source}->>'documentId', ''))) > 0`,
+    ),
+    sourceTextLength: check(
+      "ai_operational_proposals_source_text_length",
+      sql`jsonb_typeof(${table.source}->'sourceTextLength') = 'number' and (${table.source}->>'sourceTextLength')::integer >= 0`,
+    ),
+    proposalTitle: check(
+      "ai_operational_proposals_proposal_title",
+      sql`length(trim(coalesce(${table.proposal}->>'title', ''))) > 0`,
+    ),
+    proposalSummary: check(
+      "ai_operational_proposals_proposal_summary",
+      sql`length(trim(coalesce(${table.proposal}->>'summary', ''))) > 0`,
+    ),
+    proposalAction: check(
+      "ai_operational_proposals_proposal_action",
+      sql`length(trim(coalesce(${table.proposal}->>'proposedAction', ''))) > 0`,
+    ),
+    reviewDecisionValue: check(
+      "ai_operational_proposals_review_decision_value",
+      sql`${table.reviewDecision} is null or ${table.reviewDecision} in ('approved', 'rejected')`,
+    ),
+    statusOnlyReview: check(
+      "ai_operational_proposals_status_only_review",
+      sql`(
+        ${table.status} = 'proposed'
+        and ${table.reviewDecision} is null
+        and ${table.reviewedByUserId} is null
+        and ${table.reviewedAt} is null
+      ) or (
+        ${table.status} in ('approved', 'rejected')
+        and ${table.reviewDecision} = ${table.status}
+        and ${table.reviewedByUserId} is not null
+        and ${table.reviewedAt} is not null
+      )`,
     ),
   }),
 );
