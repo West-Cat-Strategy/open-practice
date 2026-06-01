@@ -13,6 +13,7 @@ export type AuditEventCategory =
   | "drafting"
   | "intake"
   | "legal_clinic"
+  | "legal_research"
   | "matter_lifecycle"
   | "operations"
   | "outbound_webhooks"
@@ -77,6 +78,7 @@ export interface AuditEventTaxonomySummary {
 }
 
 const RESOURCE_ID_KEYS = [
+  "artifactId",
   "attendeeId",
   "credentialId",
   "documentId",
@@ -523,6 +525,48 @@ export const auditEventTaxonomyDefinitions = [
     matterScope: "matter",
     actorHint: "authenticated_user",
     resourceMetadataKeys: ["proposalId", "proposalKind", "decision", "status"],
+  }),
+  define({
+    action: "legal_research.artifact.created",
+    category: "legal_research",
+    resourceType: "legal_research",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "artifactId",
+      "artifactKind",
+      "status",
+      "sourceReferenceCount",
+      "contextLinkCount",
+      "titleLength",
+      "noteLength",
+      "reviewOnly",
+    ],
+  }),
+  define({
+    action: "legal_research.artifact.updated",
+    category: "legal_research",
+    resourceType: "legal_research",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "artifactId",
+      "artifactKind",
+      "status",
+      "sourceReferenceCount",
+      "contextLinkCount",
+      "titleLength",
+      "noteLength",
+      "reviewOnly",
+    ],
+  }),
+  define({
+    action: "legal_research.artifact.reviewed",
+    category: "legal_research",
+    resourceType: "legal_research",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["artifactId", "artifactKind", "decision", "status", "reviewOnly"],
   }),
   define({
     action: "time_entry.created",

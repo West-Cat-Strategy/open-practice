@@ -330,6 +330,13 @@
       "when": 1780272001000,
       "tag": "0046_ai_operational_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1780272002000,
+      "tag": "0047_legal_research_artifacts",
+      "breakpoints": true
     }
   ]
 }

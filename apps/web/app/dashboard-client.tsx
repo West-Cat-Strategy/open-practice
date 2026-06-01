@@ -33,6 +33,7 @@ import type {
   ConflictCandidate,
   DraftExportFormat,
   EmbeddedIntakeTemplateDefinitionV2,
+  LegalResearchArtifactRecord,
   CalendarMeetingLinkMode,
   StaffReportDefinitionKey,
   StaffReportExportProfileId,
@@ -253,6 +254,12 @@ import {
   replaceAiOperationalProposal,
 } from "./ai-operational-proposals-dashboard";
 import {
+  buildLegalResearchReviewPath,
+  canReviewLegalResearch,
+  emptyLegalResearchWorkspace,
+  replaceLegalResearchArtifact,
+} from "./legal-research-dashboard";
+import {
   buildConnectorOutboxDeadLetterPath,
   buildConnectorOutboxDeadLetterPayload,
   buildConnectorOutboxRetryPath,
@@ -317,6 +324,7 @@ import { MatterOverviewSection } from "./dashboard/matter-overview-section";
 import { QueuesSection } from "./dashboard/queues-section";
 import { ReportsSection } from "./dashboard/reports-section";
 import { AdminReadinessSection } from "./dashboard/admin-readiness-section";
+import { ResearchSection } from "./dashboard/research-section";
 import {
   DeliveryConfirmationPanel,
   OneTimeSecretPanel,
@@ -407,6 +415,8 @@ import type {
   TrustControlsDashboardResponse,
   IntakeVariableProposalsResponse,
   JurisdictionalTrustReportResponse,
+  LegalResearchDashboardResponse,
+  LegalResearchWorkspaceResponse,
   WorkerHealthResponse,
   WorkerRunQueueFilter,
   WorkerRunsDashboardResponse,
@@ -435,6 +445,7 @@ interface DashboardClientProps {
   intakePipeline: IntakePipelineDashboardResponse;
   jurisdictionalTrustReport: JurisdictionalTrustReportResponse;
   legalClinic: LegalClinicDashboardResponse;
+  legalResearch: LegalResearchDashboardResponse;
   initialSection: DashboardNavigationSectionKey;
   overview: PracticeOverview;
   operationalViewDefinitions?: SavedOperationalViewDefinition[];
@@ -640,6 +651,7 @@ const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   billing: CreditCard,
   reports: BarChart3,
   documents: Files,
+  research: Search,
   shares: Link2,
   externalUploads: Upload,
   drafting: FilePenLine,
@@ -871,6 +883,7 @@ export default function DashboardClient({
   intakePipeline,
   jurisdictionalTrustReport,
   legalClinic,
+  legalResearch,
   initialSection,
   overview,
   operationalViewDefinitions = [],
@@ -1073,6 +1086,13 @@ export default function DashboardClient({
     externalUploads.reviewItemsByMatterId,
   );
   const [documentAssemblyByMatterId] = useState(documentAssembly.workbenchesByMatterId);
+  const [legalResearchByMatterId, setLegalResearchByMatterId] = useState(
+    legalResearch.workbenchesByMatterId,
+  );
+  const [legalResearchReviewBusyId, setLegalResearchReviewBusyId] = useState("");
+  const [legalResearchStatus, setLegalResearchStatus] = useState(
+    "Research workspace artifacts loaded.",
+  );
   const [documentProcessingByMatterId, setDocumentProcessingByMatterId] = useState(
     documentProcessing.workbenchesByMatterId,
   );
@@ -1299,6 +1319,9 @@ export default function DashboardClient({
     ? (documentAssemblyByMatterId[activeMatter.id] ??
       emptyDocumentAssemblyWorkbench(activeMatter.id))
     : emptyDocumentAssemblyWorkbench("");
+  const activeLegalResearch = activeMatter
+    ? (legalResearchByMatterId[activeMatter.id] ?? emptyLegalResearchWorkspace(activeMatter.id))
+    : emptyLegalResearchWorkspace("");
   const activeDocumentProcessing = activeMatter
     ? (documentProcessingByMatterId[activeMatter.id] ??
       emptyDocumentProcessingWorkbench(activeMatter.id))
@@ -1619,6 +1642,7 @@ export default function DashboardClient({
   const canManageDocumentProcessingProvider = session.user.role === "owner_admin";
   const canManageConnectorRecovery = session.user.role === "owner_admin";
   const canReviewAiProposalRecords = canReviewAiOperationalProposals(session.user.role);
+  const canReviewLegalResearchArtifacts = canReviewLegalResearch(session.user.role);
   const activeWorkerRuns = useMemo(
     () => workerRunsForFilter(workerRuns, workerRunFilter),
     [workerRuns, workerRunFilter],
@@ -2718,6 +2742,38 @@ export default function DashboardClient({
     const updated = (await response.json()) as AiOperationalProposalRecord;
     setAiOperationalProposals((current) => replaceAiOperationalProposal(current, updated));
     setAiOperationalProposalStatus(`Proposal ${decision}; no downstream record was created.`);
+  }
+
+  async function reviewLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+    decision: "reviewed" | "rejected",
+  ): Promise<void> {
+    setLegalResearchReviewBusyId(record.id);
+    setLegalResearchStatus(`Recording ${decision} research review...`);
+    const response = await fetch(`${apiBaseUrl}${buildLegalResearchReviewPath(record.id)}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: {
+        ...devHeaders,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ decision }),
+    });
+
+    setLegalResearchReviewBusyId("");
+    if (!response.ok) {
+      setLegalResearchStatus(`Research review failed: ${response.status}`);
+      return;
+    }
+    const updated = (await response.json()) as LegalResearchArtifactRecord;
+    setLegalResearchByMatterId((current) => {
+      const workspace = current[updated.matterId] ?? emptyLegalResearchWorkspace(updated.matterId);
+      return {
+        ...current,
+        [updated.matterId]: replaceLegalResearchArtifact(workspace, updated),
+      };
+    });
+    setLegalResearchStatus(`Research artifact ${decision}; no downstream record was created.`);
   }
 
   async function reviewDraftAssistRecord(
@@ -6116,6 +6172,19 @@ export default function DashboardClient({
                   ) : null}
                 </div>
               </>
+            ) : null}
+
+            {activeSection === "research" ? (
+              <ResearchSection
+                canReview={canReviewLegalResearchArtifacts}
+                compactDate={compactDate}
+                onReviewArtifact={(artifact, decision) =>
+                  void reviewLegalResearchArtifact(artifact, decision)
+                }
+                reviewBusyId={legalResearchReviewBusyId}
+                reviewStatus={legalResearchStatus}
+                workspace={activeLegalResearch}
+              />
             ) : null}
 
             {activeSection === "shares" ? (

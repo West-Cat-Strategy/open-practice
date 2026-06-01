@@ -34,6 +34,7 @@ describe("Open Practice route catalog", () => {
       "funds",
       "billing",
       "documents",
+      "research",
       "shares",
       "externalUploads",
       "drafting",
@@ -78,6 +79,7 @@ describe("Open Practice route catalog", () => {
       "matters",
       "contacts",
       "documents",
+      "research",
       "externalUploads",
       "drafting",
       "calendar",
@@ -100,6 +102,7 @@ describe("Open Practice route catalog", () => {
       "funds",
       "billing",
       "documents",
+      "research",
       "shares",
       "externalUploads",
       "drafting",
@@ -117,6 +120,7 @@ describe("Open Practice route catalog", () => {
     expect(matchRouteCatalogEntry("/")?.id).toBe("matters");
     expect(matchRouteCatalogEntry("/?section=contacts")?.id).toBe("contacts");
     expect(matchRouteCatalogEntry("/?section=documents")?.id).toBe("documents");
+    expect(matchRouteCatalogEntry("/?section=research")?.id).toBe("research");
     expect(matchRouteCatalogEntry("/?section=shares")?.id).toBe("shares");
     expect(matchRouteCatalogEntry("/?section=externalUploads")?.id).toBe("externalUploads");
     expect(matchRouteCatalogEntry("/?section=drafting")?.id).toBe("drafting");
@@ -223,6 +227,7 @@ describe("Open Practice route catalog", () => {
           { key: "matters", enabled: true },
           { key: "funds", enabled: true },
           { key: "documents", enabled: true },
+          { key: "research", enabled: true },
           { key: "intake", enabled: true },
           { key: "billing", enabled: true },
           { key: "reports", enabled: true },
@@ -232,6 +237,7 @@ describe("Open Practice route catalog", () => {
           matters: "matched",
           funds: "matched",
           billing: "matched",
+          research: "matched",
           intake: "matched",
           audit: "matched",
           reports: "matched",
@@ -248,12 +254,14 @@ describe("Open Practice route catalog", () => {
         capabilitySections: [
           { key: "matters", enabled: true },
           { key: "documents", enabled: true },
+          { key: "research", enabled: true },
           { key: "intake", enabled: true },
           { key: "audit", enabled: true },
         ],
         expected: {
           matters: "matched",
           documents: "matched",
+          research: "matched",
           intake: "matched",
           audit: "matched",
           reports: "disabled",
@@ -278,6 +286,7 @@ describe("Open Practice route catalog", () => {
           funds: "disabled",
           billing: "disabled",
           documents: "matched",
+          research: "disabled",
           intake: "matched",
           shares: "disabled",
           externalUploads: "disabled",

@@ -80,6 +80,9 @@ import {
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
   type LegalClinicProgram,
+  type LegalResearchArtifactKind,
+  type LegalResearchArtifactRecord,
+  type LegalResearchArtifactStatus,
   type ManualPaymentRecord,
   type Matter,
   type MatterParty,
@@ -1422,6 +1425,24 @@ export interface OpenPracticeRepository {
   updateAiOperationalProposal(
     record: AiOperationalProposalRecord,
   ): Promise<AiOperationalProposalRecord>;
+  listLegalResearchArtifacts(
+    firmId: string,
+    options?: {
+      matterId?: string;
+      status?: LegalResearchArtifactStatus;
+      kind?: LegalResearchArtifactKind;
+    },
+  ): Promise<LegalResearchArtifactRecord[]>;
+  getLegalResearchArtifact(
+    firmId: string,
+    id: string,
+  ): Promise<LegalResearchArtifactRecord | undefined>;
+  createLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+  ): Promise<LegalResearchArtifactRecord>;
+  updateLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+  ): Promise<LegalResearchArtifactRecord>;
   listDraftTemplates(
     firmId: string,
     options?: { category?: string; activeOnly?: boolean },

@@ -140,6 +140,54 @@ describe("matter creation permissions", () => {
       }),
     ).toBe(false);
   });
+
+  it("keeps legal research artifacts matter-scoped and staff-only", () => {
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, assignedMatterIds: ["matter-001"] },
+        firmId: "firm-west-legal",
+        resource: "legal_research",
+        action: "approve",
+        matterId: "matter-001",
+      }),
+    ).toBe(true);
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, role: "firm_member", assignedMatterIds: ["matter-002"] },
+        firmId: "firm-west-legal",
+        resource: "legal_research",
+        action: "update",
+        matterId: "matter-001",
+      }),
+    ).toBe(false);
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, role: "auditor", assignedMatterIds: [] },
+        firmId: "firm-west-legal",
+        resource: "legal_research",
+        action: "read",
+        matterId: "matter-001",
+      }),
+    ).toBe(true);
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, role: "auditor", assignedMatterIds: [] },
+        firmId: "firm-west-legal",
+        resource: "legal_research",
+        action: "approve",
+        matterId: "matter-001",
+      }),
+    ).toBe(false);
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, role: "billing_bookkeeper", assignedMatterIds: [] },
+        firmId: "firm-west-legal",
+        resource: "legal_research",
+        action: "read",
+        matterId: "matter-001",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("job metadata redaction", () => {
