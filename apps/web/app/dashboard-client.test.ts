@@ -328,6 +328,7 @@ const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapabilit
   funds: "trust_ledger",
   billing: "time_entry",
   documents: "document",
+  research: "legal_research",
   drafting: "draft",
   calendar: "calendar_event",
   signatures: "signature_request",

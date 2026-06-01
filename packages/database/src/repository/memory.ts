@@ -31,6 +31,7 @@ import {
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
   validateAiOperationalProposalRecord,
+  validateLegalResearchArtifactRecord,
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerAccountingReviewProfileRecord,
   validateLedgerReconciliationRecord,
@@ -103,6 +104,9 @@ import {
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
   type LegalClinicProgram,
+  type LegalResearchArtifactKind,
+  type LegalResearchArtifactRecord,
+  type LegalResearchArtifactStatus,
   type ManualPaymentRecord,
   type Matter,
   type MatterParty,
@@ -148,6 +152,7 @@ import {
   sampleLedgerStatementMatchRuleProfiles,
   sampleLegalClinicMatterProfiles,
   sampleLegalClinicPrograms,
+  sampleLegalResearchArtifacts,
   sampleManualPayments,
   sampleMatterParties,
   sampleMatters,
@@ -316,6 +321,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private drafts: DraftRecord[] = [];
   private draftAssistRecords: DraftAssistRecord[] = [];
   private aiOperationalProposals: AiOperationalProposalRecord[] = [];
+  private legalResearchArtifacts: LegalResearchArtifactRecord[] = [];
   private draftTemplates: DraftTemplateRecord[] = [];
   private inboundEmailAddresses: InboundEmailAddressRecord[] = [];
   private inboundEmailMessages: InboundEmailMessageRecord[] = [];
@@ -354,6 +360,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.intakeTemplates = seeded ? clone(sampleIntakeTemplates) : [];
     this.draftTemplates = seeded ? clone(sampleDraftTemplates) : [];
     this.aiOperationalProposals = seeded ? clone(sampleAiOperationalProposals) : [];
+    this.legalResearchArtifacts = seeded ? clone(sampleLegalResearchArtifacts) : [];
     this.signatureRequestSigners = seeded ? clone(sampleSignatureRequestSigners) : [];
     this.signatureProviderEvents = seeded ? clone(sampleSignatureProviderEvents) : [];
     this.signatureWebhookAttempts = seeded ? clone(sampleSignatureWebhookAttempts) : [];
@@ -4692,6 +4699,61 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       throw new Error(`AI operational proposal ${record.id} was not found`);
     }
     this.aiOperationalProposals[index] = clone(record);
+    return clone(record);
+  }
+
+  async listLegalResearchArtifacts(
+    firmId: string,
+    options: {
+      matterId?: string;
+      status?: LegalResearchArtifactStatus;
+      kind?: LegalResearchArtifactKind;
+    } = {},
+  ): Promise<LegalResearchArtifactRecord[]> {
+    return clone(
+      this.legalResearchArtifacts
+        .filter(
+          (record) =>
+            record.firmId === firmId &&
+            (!options.matterId || record.matterId === options.matterId) &&
+            (!options.status || record.status === options.status) &&
+            (!options.kind || record.kind === options.kind),
+        )
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    );
+  }
+
+  async getLegalResearchArtifact(
+    firmId: string,
+    id: string,
+  ): Promise<LegalResearchArtifactRecord | undefined> {
+    return clone(
+      this.legalResearchArtifacts.find((record) => record.firmId === firmId && record.id === id),
+    );
+  }
+
+  async createLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+  ): Promise<LegalResearchArtifactRecord> {
+    validateLegalResearchArtifactRecord(record);
+    if (this.legalResearchArtifacts.some((candidate) => candidate.id === record.id)) {
+      throw new Error("Legal research artifact already exists");
+    }
+    this.legalResearchArtifacts.push(clone(record));
+    return clone(record);
+  }
+
+  async updateLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+  ): Promise<LegalResearchArtifactRecord> {
+    validateLegalResearchArtifactRecord(record);
+    const index = this.legalResearchArtifacts.findIndex(
+      (candidate) => candidate.firmId === record.firmId && candidate.id === record.id,
+    );
+    if (index === -1) {
+      throw new Error(`Legal research artifact ${record.id} was not found`);
+    }
+    this.legalResearchArtifacts[index] = clone(record);
     return clone(record);
   }
 

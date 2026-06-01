@@ -34,6 +34,7 @@ import {
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
   validateAiOperationalProposalRecord,
+  validateLegalResearchArtifactRecord,
   validateLedgerAccountingReviewProfileRecord,
   validateBillingPeriodLock,
   validateBillingRateRule,
@@ -105,6 +106,9 @@ import {
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
   type LegalClinicProgram,
+  type LegalResearchArtifactKind,
+  type LegalResearchArtifactRecord,
+  type LegalResearchArtifactStatus,
   type ManualPaymentRecord,
   type Matter,
   type MatterParty,
@@ -230,6 +234,7 @@ import {
   mapDocumentAssemblySetDefinitionRow,
   mapDocumentTextExtractionRow,
   mapAiOperationalProposalRow,
+  mapLegalResearchArtifactRow,
   mapDraftAssistRow,
   mapDraftRow,
   mapDraftTemplateRow,
@@ -6368,6 +6373,100 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .returning();
     if (!row) throw new Error(`AI operational proposal ${record.id} was not found`);
     return mapAiOperationalProposalRow(row);
+  }
+
+  async listLegalResearchArtifacts(
+    firmId: string,
+    options: {
+      matterId?: string;
+      status?: LegalResearchArtifactStatus;
+      kind?: LegalResearchArtifactKind;
+    } = {},
+  ): Promise<LegalResearchArtifactRecord[]> {
+    const conditions = [eq(schema.legalResearchArtifacts.firmId, firmId)];
+    if (options.matterId) {
+      conditions.push(eq(schema.legalResearchArtifacts.matterId, options.matterId));
+    }
+    if (options.status) {
+      conditions.push(eq(schema.legalResearchArtifacts.status, options.status));
+    }
+    if (options.kind) conditions.push(eq(schema.legalResearchArtifacts.kind, options.kind));
+
+    const rows = await this.db
+      .select()
+      .from(schema.legalResearchArtifacts)
+      .where(and(...conditions))
+      .orderBy(desc(schema.legalResearchArtifacts.updatedAt));
+    return rows.map(mapLegalResearchArtifactRow);
+  }
+
+  async getLegalResearchArtifact(
+    firmId: string,
+    id: string,
+  ): Promise<LegalResearchArtifactRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.legalResearchArtifacts)
+      .where(
+        and(
+          eq(schema.legalResearchArtifacts.firmId, firmId),
+          eq(schema.legalResearchArtifacts.id, id),
+        ),
+      );
+    return row ? mapLegalResearchArtifactRow(row) : undefined;
+  }
+
+  async createLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+  ): Promise<LegalResearchArtifactRecord> {
+    validateLegalResearchArtifactRecord(record);
+    await this.db.insert(schema.legalResearchArtifacts).values({
+      ...record,
+      note: record.note ?? null,
+      documentAnalysis: record.documentAnalysis ?? null,
+      timeline: record.timeline ?? null,
+      checkpoint: record.checkpoint ?? null,
+      reviewDecision: record.reviewDecision ?? null,
+      reviewedByUserId: record.reviewedByUserId ?? null,
+      reviewedAt: record.reviewedAt ? new Date(record.reviewedAt) : null,
+      createdAt: new Date(record.createdAt),
+      updatedAt: new Date(record.updatedAt),
+    });
+    return clone(record);
+  }
+
+  async updateLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+  ): Promise<LegalResearchArtifactRecord> {
+    validateLegalResearchArtifactRecord(record);
+    const [row] = await this.db
+      .update(schema.legalResearchArtifacts)
+      .set({
+        kind: record.kind,
+        status: record.status,
+        title: record.title,
+        note: record.note ?? null,
+        sourceReferences: record.sourceReferences,
+        contextLinks: record.contextLinks,
+        documentAnalysis: record.documentAnalysis ?? null,
+        timeline: record.timeline ?? null,
+        checkpoint: record.checkpoint ?? null,
+        reviewDecision: record.reviewDecision ?? null,
+        reviewedByUserId: record.reviewedByUserId ?? null,
+        reviewedAt: record.reviewedAt ? new Date(record.reviewedAt) : null,
+        updatedAt: new Date(record.updatedAt),
+        reviewOnly: record.reviewOnly,
+        metadata: record.metadata,
+      })
+      .where(
+        and(
+          eq(schema.legalResearchArtifacts.firmId, record.firmId),
+          eq(schema.legalResearchArtifacts.id, record.id),
+        ),
+      )
+      .returning();
+    if (!row) throw new Error(`Legal research artifact ${record.id} was not found`);
+    return mapLegalResearchArtifactRow(row);
   }
 
   async listDraftTemplates(

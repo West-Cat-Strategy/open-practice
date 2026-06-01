@@ -289,6 +289,10 @@ are backed by implementation and validation proof.
 | `POST /api/drafts/:id/operational-proposals/jobs`                                     | Queues all or selected review-only operational proposal families from an authorized matter-scoped draft when an enabled AI provider, injected proposal provider, and `ai_triage` queue are configured; returns `202` with redacted job metadata only and does not mutate the draft.                                                                                      |
 | `POST /api/documents/:id/operational-proposals/jobs`                                  | Queues all or selected review-only operational proposal families from an authorized document after completed text extraction; missing extraction returns `409`, generated proposals become review artifacts, and source documents are not mutated.                                                                                                                       |
 | `PATCH /api/ai-operational-proposals/:id/review`                                      | Records `approved` or `rejected` on one proposal and appends safe audit metadata. Approval means the proposal was accepted for review only; it does not create tasks, invoices, documents, messages, calendar entries, or source-record mutations.                                                                                                                       |
+| `GET /api/legal-research/workspace?matterId=&kind=&status=`                           | Returns the staff-only matter-scoped legal research workspace with artifact rows, counters, disabled/reserved provider posture, and optional kind/status filtering. No live research provider or generation endpoint is exposed.                                                                                                                                         |
+| `POST /api/legal-research/artifacts`                                                  | Creates one authorized matter-scoped legal research artifact for cited-source notes, matter-context attachments, document-analysis status, strategy/timeline notes, or review checkpoints, with bounded staff-authored notes and redacted audit metadata.                                                                                                                |
+| `PATCH /api/legal-research/artifacts/:id`                                             | Updates title, bounded note, structured artifact fields, and status for one authorized matter-scoped research artifact; it does not mutate documents, drafts, tasks, messages, calendar events, or provider records.                                                                                                                                                     |
+| `PATCH /api/legal-research/artifacts/:id/review`                                      | Records `reviewed` or `rejected` on one legal research artifact with safe audit metadata only. Review is status-only and makes no citation-verification, legal-advice, provider-evidence, or downstream automation claim.                                                                                                                                                |
 | `GET /api/draft-templates?category=&activeOnly=`                                      | List active firm-scoped drafting templates, including seeded operational basics.                                                                                                                                                                                                                                                                                         |
 | `POST /api/draft-templates`                                                           | Create a firm-scoped drafting template from structured TipTap/ProseMirror JSON.                                                                                                                                                                                                                                                                                          |
 
@@ -329,7 +333,8 @@ injected operational proposal provider, and the queue are configured. That job m
 only IDs, source type, requested-kind/count fields, provider key, requester ID, idempotency presence,
 and source/generated-length metadata. Webhook ingestion, provider delivery setup, automatic document
 promotion, automatic operational mutations, document classification, transcription, media
-processing, and live Ollama/LM Studio adapter work remain deferred.
+processing, live Ollama/LM Studio adapter work, and live legal research provider work remain
+deferred.
 `GET /api/providers/status` is read-only configuration posture, not a live health probe: it reports
 safe provider-setting keys, object-storage configured/not-configured state, BullMQ producer and
 reserved worker queue posture, redacted job summaries, and current-user embedded-auth extension
@@ -342,6 +347,7 @@ errors, storage keys, message bodies, generated text, or auth secrets.
 | Media transcription jobs             | Deferred route candidate for FFmpeg normalization and Whisper transcription after media authorization and worker governance land.                                    |
 | Async assistive-drafting worker jobs | Queue-first `draft_assist_suggestion` jobs create existing review-first assist records when locally configured; live Ollama/LM Studio adapters stay deferred.        |
 | AI operational proposal jobs         | Queue-first `operational_action_proposals` jobs create review-only proposal records when locally configured; approvals are status-only and no source records mutate. |
+| Legal research provider work         | Reserved posture only; the workspace stores staff-authored review artifacts and exposes no generation queue, scraped authority store, or provider health claim.      |
 
 The authenticated and public SimpleWebAuthn routes are live embedded-auth routes in the main API
 surface above. They remain deployment-gated by the configured RP ID/origin and setup/session secrets;
@@ -978,6 +984,16 @@ provider/model provenance, reviewer/requester IDs, idempotency presence, and sou
 counts. `PATCH /api/ai-operational-proposals/:id/review` records `approved` or `rejected` only; it
 does not create tasks, invoices, documents, messages, calendar entries, trust entries, or mutate the
 source draft/document.
+
+Legal research workspace artifacts are staff-only, matter-scoped review records. The workspace API
+returns a disabled/reserved provider posture instead of a provider error because OP-T139 exposes no
+generation route. Artifacts may store bounded staff-authored notes on authorized
+`legal_research_artifacts` records, but audit metadata is limited to IDs, kind/status, counts,
+title/note lengths, source types, reviewer/creator IDs, and review-only posture. Structured source,
+context, document-analysis, timeline, and checkpoint fields are review artifacts only. They must not
+store scraped authority text, provider evidence, prompts, private URLs, storage keys, citation
+verification claims, legal-advice automation output, or downstream task/document/draft/message/calendar
+mutations.
 
 Provider/bootstrap selection is local-first. `DATABASE_URL` selects PostgreSQL unless
 `OPEN_PRACTICE_USE_MEMORY_REPO=true` or the database URL is absent. `OPEN_PRACTICE_DEV_SEED=true`

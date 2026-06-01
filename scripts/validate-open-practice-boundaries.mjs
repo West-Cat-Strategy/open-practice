@@ -144,6 +144,12 @@ export const ROUTE_REGISTRARS = [
     "./routes/ai-operational-proposals.js",
     "registerAiOperationalProposalRoutes",
   ],
+  [
+    "legal research",
+    "apps/api/src/routes/legal-research.ts",
+    "./routes/legal-research.js",
+    "registerLegalResearchRoutes",
+  ],
   ["jobs", "apps/api/src/routes/jobs.ts", "./routes/jobs.js", "registerJobsRoutes"],
   ["email", "apps/api/src/routes/email.ts", "./routes/email.js", "registerEmailRoutes"],
   [
@@ -242,6 +248,7 @@ export const ROUTE_REGISTRAR_TEST_FILES = {
   registerJobsRoutes: ["apps/api/src/routes/jobs.test.ts"],
   registerLedgerRoutes: ["apps/api/src/routes/ledger.test.ts"],
   registerLegalClinicRoutes: ["apps/api/src/routes/legal-clinics.test.ts"],
+  registerLegalResearchRoutes: ["apps/api/src/routes/legal-research.test.ts"],
   registerMatterRoutes: ["apps/api/src/server.test.ts"],
   registerOperationalViewRoutes: ["apps/api/src/routes/operational-views.test.ts"],
   registerOutboundWebhookRoutes: ["apps/api/src/routes/outbound-webhooks.test.ts"],

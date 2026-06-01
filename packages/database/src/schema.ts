@@ -39,6 +39,7 @@ import type {
   DocumentAssemblySetDefinitionRecord,
   LegalClinicMatterProfile,
   LegalClinicProgram,
+  LegalResearchArtifactRecord,
   LedgerAccountingReviewProfileRecord,
   LedgerReconciliationExceptionResolutionStatementRow,
   LedgerReconciliationStatementRow,
@@ -3371,5 +3372,107 @@ export const aiOperationalProposals = pgTable(
         and ${table.reviewedAt} is not null
       )`,
     ),
+  }),
+);
+
+export const legalResearchArtifacts = pgTable(
+  "legal_research_artifacts",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    kind: text("kind").notNull(),
+    status: text("status").notNull(),
+    title: text("title").notNull(),
+    note: text("note"),
+    sourceReferences: jsonb("source_references")
+      .$type<LegalResearchArtifactRecord["sourceReferences"]>()
+      .notNull()
+      .default([]),
+    contextLinks: jsonb("context_links")
+      .$type<LegalResearchArtifactRecord["contextLinks"]>()
+      .notNull()
+      .default([]),
+    documentAnalysis:
+      jsonb("document_analysis").$type<LegalResearchArtifactRecord["documentAnalysis"]>(),
+    timeline: jsonb("timeline").$type<LegalResearchArtifactRecord["timeline"]>(),
+    checkpoint: jsonb("checkpoint").$type<LegalResearchArtifactRecord["checkpoint"]>(),
+    reviewDecision: text("review_decision"),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    reviewOnly: boolean("review_only").notNull().default(true),
+    metadata: jsonb("metadata")
+      .$type<LegalResearchArtifactRecord["metadata"]>()
+      .notNull()
+      .default({}),
+  },
+  (table) => ({
+    firmMatter: index("legal_research_artifacts_firm_matter_idx").on(
+      table.firmId,
+      table.matterId,
+      table.updatedAt,
+    ),
+    firmStatus: index("legal_research_artifacts_firm_status_idx").on(
+      table.firmId,
+      table.status,
+      table.updatedAt,
+    ),
+    firmKind: index("legal_research_artifacts_firm_kind_idx").on(
+      table.firmId,
+      table.kind,
+      table.updatedAt,
+    ),
+    kindValue: check(
+      "legal_research_artifacts_kind_value",
+      sql`${table.kind} in ('cited_source_note', 'matter_context_attachment', 'document_analysis_status', 'strategy_timeline_note', 'review_checkpoint')`,
+    ),
+    statusValue: check(
+      "legal_research_artifacts_status_value",
+      sql`${table.status} in ('draft', 'ready_for_review', 'reviewed', 'rejected')`,
+    ),
+    titlePresent: check(
+      "legal_research_artifacts_title_present",
+      sql`length(trim(${table.title})) > 0`,
+    ),
+    noteLength: check(
+      "legal_research_artifacts_note_length",
+      sql`${table.note} is null or length(${table.note}) <= 4000`,
+    ),
+    sourceReferencesArray: check(
+      "legal_research_artifacts_source_references_array",
+      sql`jsonb_typeof(${table.sourceReferences}) = 'array'`,
+    ),
+    contextLinksArray: check(
+      "legal_research_artifacts_context_links_array",
+      sql`jsonb_typeof(${table.contextLinks}) = 'array'`,
+    ),
+    reviewDecisionValue: check(
+      "legal_research_artifacts_review_decision_value",
+      sql`${table.reviewDecision} is null or ${table.reviewDecision} in ('reviewed', 'rejected')`,
+    ),
+    statusOnlyReview: check(
+      "legal_research_artifacts_status_only_review",
+      sql`(
+        ${table.status} in ('draft', 'ready_for_review')
+        and ${table.reviewDecision} is null
+        and ${table.reviewedByUserId} is null
+        and ${table.reviewedAt} is null
+      ) or (
+        ${table.status} in ('reviewed', 'rejected')
+        and ${table.reviewDecision} = ${table.status}
+        and ${table.reviewedByUserId} is not null
+        and ${table.reviewedAt} is not null
+      )`,
+    ),
+    reviewOnlyValue: check("legal_research_artifacts_review_only", sql`${table.reviewOnly} = true`),
   }),
 );

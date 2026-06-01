@@ -142,4 +142,56 @@ describe("repository drafts", () => {
       expect.arrayContaining([expect.objectContaining({ id: "ai-proposal-deadline-001" })]),
     );
   });
+
+  it("maps legal research artifacts and status-only review decisions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const created = await repository.createLegalResearchArtifact({
+      id: "legal-research-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      kind: "strategy_timeline_note",
+      status: "ready_for_review",
+      title: "Synthetic research timeline",
+      note: "Synthetic staff-authored strategy note.",
+      sourceReferences: [
+        {
+          sourceType: "internal_note",
+          label: "Internal issue label",
+        },
+      ],
+      contextLinks: [{ resourceType: "matter", resourceId: "matter-001" }],
+      timeline: { noteType: "strategy", dueAt: "2026-06-07T17:00:00.000Z" },
+      createdByUserId: "user-admin",
+      createdAt: now,
+      updatedAt: now,
+      reviewOnly: true,
+      metadata: { shellOnly: true },
+    });
+    const reviewed = await repository.updateLegalResearchArtifact({
+      ...created,
+      status: "reviewed",
+      reviewDecision: "reviewed",
+      reviewedByUserId: "user-admin",
+      reviewedAt: "2026-05-01T00:05:00.000Z",
+      updatedAt: "2026-05-01T00:05:00.000Z",
+    });
+
+    expect(reviewed).toMatchObject({
+      id: "legal-research-test",
+      status: "reviewed",
+      reviewDecision: "reviewed",
+      reviewedByUserId: "user-admin",
+      reviewOnly: true,
+    });
+    await expect(
+      repository.listLegalResearchArtifacts("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "legal-research-test" })]),
+    );
+    await expect(
+      repository.listLegalResearchArtifacts("firm-west-legal", { kind: "cited_source_note" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "legal-research-source-note-001" })]),
+    );
+  });
 });

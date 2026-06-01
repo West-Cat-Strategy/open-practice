@@ -145,6 +145,39 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies legal research artifact events as matter-scoped without note bodies", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "legal_research.artifact.created",
+        resourceType: "legal_research",
+        resourceId: "research-artifact-001",
+        metadata: {
+          matterId: "matter-001",
+          artifactId: "research-artifact-001",
+          artifactKind: "cited_source_note",
+          status: "ready_for_review",
+          sourceReferenceCount: 1,
+          contextLinkCount: 2,
+          titleLength: 32,
+          noteLength: 48,
+          reviewOnly: true,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "legal_research",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining(["artifactId", "artifactKind", "noteLength", "reviewOnly"]),
+    );
+    expect(classification.metadataHints.resource).not.toContain("note");
+    expect(classification.metadataHints.resource).not.toContain("sourceLabel");
+  });
+
   it("classifies integration developer boundary events as firm-scoped and redacted", () => {
     expect(
       classifyAuditEvent(
