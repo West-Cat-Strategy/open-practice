@@ -34,8 +34,11 @@ import type {
   IntakeFormReviewRecord,
   IntakeVariableProposal,
   LedgerAccount,
+  LedgerAccountingReviewProfileRecord,
   LedgerEntry,
   LedgerReconciliationRecord,
+  LedgerAccountingReviewSummary,
+  LedgerStatementMatchRuleProfileRecord,
   LedgerTransactionApprovalRecord,
   EmbeddedIntakeTemplateDefinition,
   IntakeFormLinkRecord,
@@ -1150,6 +1153,11 @@ export interface TrustControlsDashboardResponse {
   };
   approvals: LedgerTransactionApprovalRecord[];
   reconciliations: LedgerReconciliationRecord[];
+  accountingReview: {
+    matchRuleProfiles: LedgerStatementMatchRuleProfileRecord[];
+    accountingProfiles: LedgerAccountingReviewProfileRecord[];
+    summary: LedgerAccountingReviewSummary;
+  };
   diagnostics: {
     pendingApprovalTransactionIds: string[];
     rejectedApprovalTransactionIds: string[];

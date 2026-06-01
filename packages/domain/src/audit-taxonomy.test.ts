@@ -441,6 +441,91 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies accounting review profile events without bank source or note details", () => {
+    const matchProfileClassification = classifyAuditEvent(
+      auditEvent({
+        action: "ledger.statement_match_rule_profile.recorded",
+        resourceType: "ledger_statement_match_rule_profile",
+        resourceId: "statement-match-profile-001",
+        metadata: {
+          accountId: "acct-trust-bank",
+          referenceStrategy: "normalized_reference",
+          descriptionStrategy: "normalized_contains",
+          dateWindowDays: 2,
+          amountToleranceCents: 0,
+          varianceCategoryCount: 2,
+          reviewerExplanationRequired: true,
+          reviewOnly: true,
+          varianceCategories: ["ledger_entry_expected", "needs_follow_up"],
+        },
+      }),
+    );
+    const accountingProfileClassification = classifyAuditEvent(
+      auditEvent({
+        action: "ledger.accounting_review_profile.recorded",
+        resourceType: "ledger_accounting_review_profile",
+        resourceId: "accounting-review-profile-001",
+        metadata: {
+          accountId: "acct-trust-bank",
+          accountType: "trust_asset",
+          boundaryPosture: "trust_only",
+          protectedFunds: true,
+          bankFeedImportStatus: "metadata_only",
+          bankFeedSourceLabelPresent: true,
+          automaticMatching: false,
+          vendorTracking: "not_applicable",
+          expenseCategoryTracking: "optional",
+          clientMatterTracking: "required",
+          reviewOnly: true,
+          sourceLabel: "Synthetic private import label",
+          notes: "Synthetic private review note.",
+        },
+      }),
+    );
+
+    expect(matchProfileClassification).toMatchObject({
+      category: "trust",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(matchProfileClassification.metadataHints.resource).toEqual([
+      "accountId",
+      "referenceStrategy",
+      "descriptionStrategy",
+      "dateWindowDays",
+      "amountToleranceCents",
+      "varianceCategoryCount",
+      "reviewerExplanationRequired",
+      "reviewOnly",
+    ]);
+    expect(matchProfileClassification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["varianceCategories"]),
+    );
+    expect(accountingProfileClassification).toMatchObject({
+      category: "trust",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(accountingProfileClassification.metadataHints.resource).toEqual([
+      "accountId",
+      "accountType",
+      "boundaryPosture",
+      "protectedFunds",
+      "bankFeedImportStatus",
+      "bankFeedSourceLabelPresent",
+      "automaticMatching",
+      "vendorTracking",
+      "expenseCategoryTracking",
+      "clientMatterTracking",
+      "reviewOnly",
+    ]);
+    expect(accountingProfileClassification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["sourceLabel", "notes", "protectedFundsReason"]),
+    );
+  });
+
   it("classifies communications triage note and follow-up metadata as safe resource hints", () => {
     const classification = classifyAuditEvent(
       auditEvent({

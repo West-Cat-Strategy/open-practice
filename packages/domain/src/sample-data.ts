@@ -26,7 +26,12 @@ import type {
   TimeEntry,
   User,
 } from "./models.js";
-import type { LedgerAccount, LedgerEntry } from "./ledger.js";
+import type {
+  LedgerAccountingReviewProfileRecord,
+  LedgerAccount,
+  LedgerEntry,
+  LedgerStatementMatchRuleProfileRecord,
+} from "./ledger.js";
 import type { LegalClinicMatterProfile, LegalClinicProgram } from "./legal-clinics.js";
 import type { EmbeddedIntakeTemplateDefinition } from "./intake.js";
 import type {
@@ -955,6 +960,81 @@ export const sampleLedgerEntries: LedgerEntry[] = [
     creditCents: 150000,
     memo: "Client trust liability",
     postedAt: "2026-04-02T17:00:00.000Z",
+  },
+];
+
+export const sampleLedgerStatementMatchRuleProfiles: LedgerStatementMatchRuleProfileRecord[] = [
+  {
+    id: "statement-match-profile-standard-trust",
+    firmId: sampleFirm.id,
+    accountId: "acct-trust-bank",
+    name: "Standard trust statement review",
+    referenceStrategy: "normalized_reference",
+    descriptionStrategy: "normalized_contains",
+    dateWindowDays: 2,
+    amountToleranceCents: 0,
+    varianceCategories: ["ledger_entry_expected", "needs_follow_up"],
+    reviewerExplanationRequired: true,
+    reviewOnly: true,
+    createdByUserId: "user-admin",
+    createdAt: "2026-05-31T18:00:00.000Z",
+    updatedAt: "2026-05-31T18:00:00.000Z",
+  },
+];
+
+export const sampleLedgerAccountingReviewProfiles: LedgerAccountingReviewProfileRecord[] = [
+  {
+    id: "accounting-review-profile-trust-bank",
+    firmId: sampleFirm.id,
+    accountId: "acct-trust-bank",
+    accountType: "trust_asset",
+    boundaryPosture: "trust_only",
+    protectedFunds: {
+      protected: true,
+      reason: "Synthetic pooled trust funds require reviewer confirmation before disbursement.",
+      reviewCadence: "monthly",
+    },
+    bankFeedImport: {
+      status: "metadata_only",
+      sourceLabel: "Synthetic trust statement upload",
+      lastImportedAt: "2026-05-31T18:05:00.000Z",
+      automaticMatching: false,
+    },
+    dimensions: {
+      vendorTracking: "not_applicable",
+      expenseCategoryTracking: "optional",
+      clientMatterTracking: "required",
+      notes: "Review-only accounting posture for trust reconciliation planning.",
+    },
+    reviewOnly: true,
+    createdByUserId: "user-admin",
+    createdAt: "2026-05-31T18:05:00.000Z",
+    updatedAt: "2026-05-31T18:05:00.000Z",
+  },
+  {
+    id: "accounting-review-profile-operating-revenue",
+    firmId: sampleFirm.id,
+    accountId: "acct-operating-revenue",
+    accountType: "operating_revenue",
+    boundaryPosture: "operating_only",
+    protectedFunds: {
+      protected: false,
+      reviewCadence: "monthly",
+    },
+    bankFeedImport: {
+      status: "not_configured",
+      automaticMatching: false,
+    },
+    dimensions: {
+      vendorTracking: "optional",
+      expenseCategoryTracking: "required",
+      clientMatterTracking: "required",
+      notes: "Operating revenue review posture only; no settlement automation.",
+    },
+    reviewOnly: true,
+    createdByUserId: "user-admin",
+    createdAt: "2026-05-31T18:10:00.000Z",
+    updatedAt: "2026-05-31T18:10:00.000Z",
   },
 ];
 

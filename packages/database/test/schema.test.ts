@@ -68,9 +68,11 @@ import {
   signatureRequestSigners,
   signatureRequests,
   totpCredentials,
+  ledgerAccountingReviewProfiles,
   trustClientBalances,
   trustReconciliationExceptionResolutions,
   trustReconciliations,
+  trustStatementMatchRuleProfiles,
   trustStatementImportBatches,
   trustLedgerEntries,
   trustTransactionApprovals,
@@ -1028,6 +1030,66 @@ describe("database schema hardening", () => {
         "trust_statement_import_batches_duplicate_count_range",
         "trust_statement_import_batches_status_value",
         "trust_statement_import_batches_matching_profile_present",
+      ]),
+    );
+    const matchProfileConfig = getTableConfig(trustStatementMatchRuleProfiles);
+    expect(matchProfileConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "account_id",
+        "name",
+        "reference_strategy",
+        "description_strategy",
+        "date_window_days",
+        "amount_tolerance_cents",
+        "variance_categories",
+        "reviewer_explanation_required",
+        "review_only",
+        "created_by_user_id",
+        "created_at",
+        "updated_at",
+      ]),
+    );
+    expect(matchProfileConfig.indexes.map((index) => index.config.name)).toContain(
+      "trust_statement_match_profiles_account_created_idx",
+    );
+    expect(matchProfileConfig.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "trust_statement_match_profiles_name_present",
+        "trust_statement_match_profiles_reference_strategy_value",
+        "trust_statement_match_profiles_description_strategy_value",
+        "trust_statement_match_profiles_date_window_range",
+        "trust_statement_match_profiles_tolerance_range",
+        "trust_statement_match_profiles_variance_categories_nonempty",
+        "trust_statement_match_profiles_review_only_value",
+      ]),
+    );
+    const accountingProfileConfig = getTableConfig(ledgerAccountingReviewProfiles);
+    expect(accountingProfileConfig.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "account_id",
+        "account_type",
+        "boundary_posture",
+        "protected_funds",
+        "bank_feed_import",
+        "dimensions",
+        "review_only",
+        "created_by_user_id",
+        "created_at",
+        "updated_at",
+      ]),
+    );
+    expect(accountingProfileConfig.indexes.map((index) => index.config.name)).toContain(
+      "ledger_accounting_review_profiles_account_created_idx",
+    );
+    expect(accountingProfileConfig.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "ledger_accounting_review_profiles_account_type_value",
+        "ledger_accounting_review_profiles_boundary_posture_value",
+        "ledger_accounting_review_profiles_protected_funds_reason",
+        "ledger_accounting_review_profiles_bank_feed_auto_match_off",
+        "ledger_accounting_review_profiles_bank_feed_source_label",
+        "ledger_accounting_review_profiles_client_matter_required",
+        "ledger_accounting_review_profiles_review_only_value",
       ]),
     );
     const exceptionResolutionConfig = getTableConfig(trustReconciliationExceptionResolutions);

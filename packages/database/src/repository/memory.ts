@@ -31,8 +31,10 @@ import {
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
   validateLedgerReconciliationExceptionResolutionRecord,
+  validateLedgerAccountingReviewProfileRecord,
   validateLedgerReconciliationRecord,
   validateLedgerStatementImportBatchRecord,
+  validateLedgerStatementMatchRuleProfileRecord,
   validateBillingPeriodLock,
   validateBillingRateRule,
   validateContactDataQualityResolutionRecord,
@@ -87,10 +89,12 @@ import {
   type InvoiceRecord,
   type JobLifecycleRecord,
   type LedgerAccount,
+  type LedgerAccountingReviewProfileRecord,
   type LedgerEntry,
   type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerStatementImportBatchRecord,
+  type LedgerStatementMatchRuleProfileRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
@@ -133,8 +137,10 @@ import {
   sampleInvoiceLines,
   sampleInvoices,
   sampleHostedPaymentRequests,
+  sampleLedgerAccountingReviewProfiles,
   sampleLedgerAccounts,
   sampleLedgerEntries,
+  sampleLedgerStatementMatchRuleProfiles,
   sampleLegalClinicMatterProfiles,
   sampleLegalClinicPrograms,
   sampleManualPayments,
@@ -259,6 +265,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private ledgerApprovals: LedgerTransactionApprovalRecord[] = [];
   private ledgerReconciliations: LedgerReconciliationRecord[] = [];
   private ledgerStatementImportBatches: LedgerStatementImportBatchRecord[] = [];
+  private ledgerStatementMatchRuleProfiles: LedgerStatementMatchRuleProfileRecord[] = [];
+  private ledgerAccountingReviewProfiles: LedgerAccountingReviewProfileRecord[] = [];
   private ledgerReconciliationExceptionResolutions: LedgerReconciliationExceptionResolutionRecord[] =
     [];
   private intakeTemplates: IntakeTemplateRecord[];
@@ -333,6 +341,10 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.hostedPaymentRequests = seeded ? clone(sampleHostedPaymentRequests) : [];
     this.trustTransferRequests = seeded ? clone(sampleTrustTransferRequests) : [];
     this.ledgerAccounts = seeded ? clone(sampleLedgerAccounts) : [];
+    this.ledgerStatementMatchRuleProfiles = seeded
+      ? clone(sampleLedgerStatementMatchRuleProfiles)
+      : [];
+    this.ledgerAccountingReviewProfiles = seeded ? clone(sampleLedgerAccountingReviewProfiles) : [];
     this.intakeTemplates = seeded ? clone(sampleIntakeTemplates) : [];
     this.draftTemplates = seeded ? clone(sampleDraftTemplates) : [];
     this.signatureRequestSigners = seeded ? clone(sampleSignatureRequestSigners) : [];
@@ -4025,6 +4037,20 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       throw new Error(`Unknown user ${batch.createdByUserId}`);
     }
     validateLedgerStatementImportBatchRecord(batch);
+    if (batch.matchingProfileId) {
+      this.ledgerStatementMatchRuleProfiles ??= [];
+      const matchingProfile = this.ledgerStatementMatchRuleProfiles.find(
+        (profile) =>
+          profile.firmId === batch.firmId &&
+          profile.accountId === batch.accountId &&
+          profile.id === batch.matchingProfileId,
+      );
+      if (!matchingProfile) {
+        throw new Error(
+          "Statement import batch matching profile must belong to the same trust asset account",
+        );
+      }
+    }
     this.ledgerStatementImportBatches = [...this.ledgerStatementImportBatches, clone(batch)];
     return clone(batch);
   }
@@ -4039,6 +4065,85 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           (batch) =>
             batch.firmId === firmId &&
             (!options.accountId || batch.accountId === options.accountId),
+        )
+        .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)),
+    );
+  }
+
+  async createLedgerStatementMatchRuleProfile(
+    profile: LedgerStatementMatchRuleProfileRecord,
+  ): Promise<LedgerStatementMatchRuleProfileRecord> {
+    this.ledgerStatementMatchRuleProfiles ??= [];
+    const account = this.ledgerAccounts.find(
+      (candidate) => candidate.firmId === profile.firmId && candidate.id === profile.accountId,
+    );
+    if (!account || account.type !== "trust_asset") {
+      throw new Error("Statement match-rule profiles require an existing trust asset account");
+    }
+    const creator = this.users.find(
+      (candidate) =>
+        candidate.firmId === profile.firmId && candidate.id === profile.createdByUserId,
+    );
+    if (!creator) {
+      throw new Error(`Unknown user ${profile.createdByUserId}`);
+    }
+    validateLedgerStatementMatchRuleProfileRecord(profile);
+    this.ledgerStatementMatchRuleProfiles = [
+      ...this.ledgerStatementMatchRuleProfiles,
+      clone(profile),
+    ];
+    return clone(profile);
+  }
+
+  async listLedgerStatementMatchRuleProfiles(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerStatementMatchRuleProfileRecord[]> {
+    return clone(
+      this.ledgerStatementMatchRuleProfiles
+        .filter(
+          (profile) =>
+            profile.firmId === firmId &&
+            (!options.accountId || profile.accountId === options.accountId),
+        )
+        .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)),
+    );
+  }
+
+  async createLedgerAccountingReviewProfile(
+    profile: LedgerAccountingReviewProfileRecord,
+  ): Promise<LedgerAccountingReviewProfileRecord> {
+    const account = this.ledgerAccounts.find(
+      (candidate) => candidate.firmId === profile.firmId && candidate.id === profile.accountId,
+    );
+    if (!account) {
+      throw new Error(`Unknown ledger account ${profile.accountId}`);
+    }
+    if (account.type !== profile.accountType) {
+      throw new Error("Accounting review profile account type must match the ledger account");
+    }
+    const creator = this.users.find(
+      (candidate) =>
+        candidate.firmId === profile.firmId && candidate.id === profile.createdByUserId,
+    );
+    if (!creator) {
+      throw new Error(`Unknown user ${profile.createdByUserId}`);
+    }
+    validateLedgerAccountingReviewProfileRecord(profile);
+    this.ledgerAccountingReviewProfiles = [...this.ledgerAccountingReviewProfiles, clone(profile)];
+    return clone(profile);
+  }
+
+  async listLedgerAccountingReviewProfiles(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerAccountingReviewProfileRecord[]> {
+    return clone(
+      this.ledgerAccountingReviewProfiles
+        .filter(
+          (profile) =>
+            profile.firmId === firmId &&
+            (!options.accountId || profile.accountId === options.accountId),
         )
         .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)),
     );

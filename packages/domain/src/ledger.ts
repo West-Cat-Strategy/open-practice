@@ -201,6 +201,103 @@ export interface LedgerStatementImportBatchRecord {
   createdAt: string;
 }
 
+export const ledgerStatementMatchReferenceStrategies = [
+  "strict_reference",
+  "normalized_reference",
+  "date_amount_reference",
+  "amount_only_review",
+] as const;
+
+export type LedgerStatementMatchReferenceStrategy =
+  (typeof ledgerStatementMatchReferenceStrategies)[number];
+
+export const ledgerStatementMatchDescriptionStrategies = [
+  "exact",
+  "normalized_contains",
+  "review_required",
+] as const;
+
+export type LedgerStatementMatchDescriptionStrategy =
+  (typeof ledgerStatementMatchDescriptionStrategies)[number];
+
+export interface LedgerStatementMatchRuleProfileRecord {
+  id: string;
+  firmId: string;
+  accountId: string;
+  name: string;
+  referenceStrategy: LedgerStatementMatchReferenceStrategy;
+  descriptionStrategy: LedgerStatementMatchDescriptionStrategy;
+  dateWindowDays: number;
+  amountToleranceCents: number;
+  varianceCategories: LedgerReconciliationExceptionVarianceDecision[];
+  reviewerExplanationRequired: boolean;
+  reviewOnly: true;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const ledgerAccountingProtectedFundsReviewCadences = [
+  "monthly",
+  "quarterly",
+  "manual_review",
+] as const;
+
+export type LedgerAccountingProtectedFundsReviewCadence =
+  (typeof ledgerAccountingProtectedFundsReviewCadences)[number];
+
+export const ledgerAccountingBankFeedImportStatuses = [
+  "not_configured",
+  "metadata_only",
+  "review_ready",
+] as const;
+
+export type LedgerAccountingBankFeedImportStatus =
+  (typeof ledgerAccountingBankFeedImportStatuses)[number];
+
+export const ledgerAccountingDimensionPostures = [
+  "not_applicable",
+  "optional",
+  "required",
+] as const;
+
+export type LedgerAccountingDimensionPosture = (typeof ledgerAccountingDimensionPostures)[number];
+
+export type LedgerAccountingBoundaryPosture =
+  | "trust_only"
+  | "operating_only"
+  | "expense_only"
+  | "review_required";
+
+export interface LedgerAccountingReviewProfileRecord {
+  id: string;
+  firmId: string;
+  accountId: string;
+  accountType: LedgerAccountType;
+  boundaryPosture: LedgerAccountingBoundaryPosture;
+  protectedFunds: {
+    protected: boolean;
+    reason?: string;
+    reviewCadence: LedgerAccountingProtectedFundsReviewCadence;
+  };
+  bankFeedImport: {
+    status: LedgerAccountingBankFeedImportStatus;
+    sourceLabel?: string;
+    lastImportedAt?: string;
+    automaticMatching: false;
+  };
+  dimensions: {
+    vendorTracking: LedgerAccountingDimensionPosture;
+    expenseCategoryTracking: LedgerAccountingDimensionPosture;
+    clientMatterTracking: "required";
+    notes?: string;
+  };
+  reviewOnly: true;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ClientTrustBalanceDelta {
   firmId: string;
   matterId: string;
@@ -225,6 +322,14 @@ export interface LedgerControlsDiagnostics {
   unreconciledAccountIds: string[];
   exceptionReconciliationIds: string[];
   overdrawnBalanceKeys: string[];
+}
+
+export interface LedgerAccountingReviewSummary {
+  matchRuleProfileCount: number;
+  accountingProfileCount: number;
+  protectedAccountCount: number;
+  bankFeedShellCount: number;
+  reviewOnly: true;
 }
 
 export interface JurisdictionalTrustReportSummary {
@@ -564,6 +669,23 @@ export function ledgerReconciliationReviewSummary(
   };
 }
 
+export function ledgerAccountingReviewSummary(input: {
+  matchRuleProfiles: LedgerStatementMatchRuleProfileRecord[];
+  accountingProfiles: LedgerAccountingReviewProfileRecord[];
+}): LedgerAccountingReviewSummary {
+  return {
+    matchRuleProfileCount: input.matchRuleProfiles.length,
+    accountingProfileCount: input.accountingProfiles.length,
+    protectedAccountCount: input.accountingProfiles.filter(
+      (profile) => profile.protectedFunds.protected,
+    ).length,
+    bankFeedShellCount: input.accountingProfiles.filter(
+      (profile) => profile.bankFeedImport.status !== "not_configured",
+    ).length,
+    reviewOnly: true,
+  };
+}
+
 export function previewLedgerStatementImport(input: {
   accountId: string;
   statementRows: LedgerStatementImportPreviewRowInput[];
@@ -817,6 +939,112 @@ export function validateLedgerStatementImportBatchRecord(
   if (Number.isNaN(new Date(batch.createdAt).getTime())) {
     throw new Error("Statement import batch timestamp is invalid");
   }
+}
+
+function assertIsoTimestamp(value: string, label: string): void {
+  if (Number.isNaN(new Date(value).getTime())) {
+    throw new Error(`${label} timestamp is invalid`);
+  }
+}
+
+export function validateLedgerStatementMatchRuleProfileRecord(
+  profile: LedgerStatementMatchRuleProfileRecord,
+): void {
+  if (!profile.name.trim()) {
+    throw new Error("Statement match-rule profile name is required");
+  }
+  if (!ledgerStatementMatchReferenceStrategies.includes(profile.referenceStrategy)) {
+    throw new Error("Statement match-rule reference strategy is invalid");
+  }
+  if (!ledgerStatementMatchDescriptionStrategies.includes(profile.descriptionStrategy)) {
+    throw new Error("Statement match-rule description strategy is invalid");
+  }
+  if (
+    !Number.isInteger(profile.dateWindowDays) ||
+    profile.dateWindowDays < 0 ||
+    profile.dateWindowDays > 30
+  ) {
+    throw new Error("Statement match-rule date window must be between 0 and 30 days");
+  }
+  if (
+    !Number.isInteger(profile.amountToleranceCents) ||
+    profile.amountToleranceCents < 0 ||
+    profile.amountToleranceCents > 100_000
+  ) {
+    throw new Error("Statement match-rule amount tolerance must be between 0 and 100000 cents");
+  }
+  if (profile.varianceCategories.length === 0) {
+    throw new Error("Statement match-rule profile needs at least one variance category");
+  }
+  for (const category of profile.varianceCategories) {
+    if (!ledgerReconciliationExceptionVarianceDecisions.includes(category)) {
+      throw new Error("Statement match-rule variance category is invalid");
+    }
+  }
+  if (profile.reviewOnly !== true) {
+    throw new Error("Statement match-rule profiles must be review-only");
+  }
+  assertIsoTimestamp(profile.createdAt, "Statement match-rule profile created");
+  assertIsoTimestamp(profile.updatedAt, "Statement match-rule profile updated");
+}
+
+export function validateLedgerAccountingReviewProfileRecord(
+  profile: LedgerAccountingReviewProfileRecord,
+): void {
+  const expectedBoundaryByType: Record<LedgerAccountType, LedgerAccountingBoundaryPosture> = {
+    trust_asset: "trust_only",
+    client_liability: "trust_only",
+    operating_revenue: "operating_only",
+    expense: "expense_only",
+  };
+  if (
+    profile.boundaryPosture !== expectedBoundaryByType[profile.accountType] &&
+    profile.boundaryPosture !== "review_required"
+  ) {
+    throw new Error(
+      "Accounting review boundary posture must match the account type or require review",
+    );
+  }
+  if (
+    !ledgerAccountingProtectedFundsReviewCadences.includes(profile.protectedFunds.reviewCadence)
+  ) {
+    throw new Error("Accounting protected-funds review cadence is invalid");
+  }
+  if (profile.protectedFunds.protected && !profile.protectedFunds.reason?.trim()) {
+    throw new Error("Protected-funds accounts require a review reason");
+  }
+  if (!ledgerAccountingBankFeedImportStatuses.includes(profile.bankFeedImport.status)) {
+    throw new Error("Accounting bank-feed import status is invalid");
+  }
+  if (
+    profile.bankFeedImport.status !== "not_configured" &&
+    !profile.bankFeedImport.sourceLabel?.trim()
+  ) {
+    throw new Error("Accounting bank-feed shell records require a source label");
+  }
+  if (profile.bankFeedImport.automaticMatching !== false) {
+    throw new Error("Accounting bank-feed shell records cannot enable automatic matching");
+  }
+  if (
+    profile.bankFeedImport.lastImportedAt &&
+    Number.isNaN(new Date(profile.bankFeedImport.lastImportedAt).getTime())
+  ) {
+    throw new Error("Accounting bank-feed import timestamp is invalid");
+  }
+  if (
+    !ledgerAccountingDimensionPostures.includes(profile.dimensions.vendorTracking) ||
+    !ledgerAccountingDimensionPostures.includes(profile.dimensions.expenseCategoryTracking)
+  ) {
+    throw new Error("Accounting dimension posture is invalid");
+  }
+  if (profile.dimensions.clientMatterTracking !== "required") {
+    throw new Error("Accounting review profiles must keep client/matter tracking required");
+  }
+  if (profile.reviewOnly !== true) {
+    throw new Error("Accounting review profiles must be review-only");
+  }
+  assertIsoTimestamp(profile.createdAt, "Accounting review profile created");
+  assertIsoTimestamp(profile.updatedAt, "Accounting review profile updated");
 }
 
 function uniqueInOrder<T extends string>(values: T[]): T[] {

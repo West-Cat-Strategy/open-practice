@@ -67,10 +67,12 @@ import {
   type InvoiceRecord,
   type JobLifecycleRecord,
   type LedgerAccount,
+  type LedgerAccountingReviewProfileRecord,
   type LedgerEntry,
   type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerStatementImportBatchRecord,
+  type LedgerStatementMatchRuleProfileRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
@@ -1249,6 +1251,20 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { accountId?: string },
   ): Promise<LedgerStatementImportBatchRecord[]>;
+  createLedgerStatementMatchRuleProfile(
+    profile: LedgerStatementMatchRuleProfileRecord,
+  ): Promise<LedgerStatementMatchRuleProfileRecord>;
+  listLedgerStatementMatchRuleProfiles(
+    firmId: string,
+    options?: { accountId?: string },
+  ): Promise<LedgerStatementMatchRuleProfileRecord[]>;
+  createLedgerAccountingReviewProfile(
+    profile: LedgerAccountingReviewProfileRecord,
+  ): Promise<LedgerAccountingReviewProfileRecord>;
+  listLedgerAccountingReviewProfiles(
+    firmId: string,
+    options?: { accountId?: string },
+  ): Promise<LedgerAccountingReviewProfileRecord[]>;
   createLedgerReconciliationExceptionResolution(
     resolution: LedgerReconciliationExceptionResolutionRecord,
   ): Promise<LedgerReconciliationExceptionResolutionRecord>;

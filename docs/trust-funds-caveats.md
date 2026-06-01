@@ -23,6 +23,11 @@ trust accounting software, accounting software, or tax-advice tooling.
   optional matching profile ID, creator, and timestamp for operational tracking. They do not store
   statement rows, statement evidence, posting payloads, reconciliation records, approvals, or fund
   movement instructions.
+- Statement match-rule profiles and accounting review profiles persist reviewer-owned posture only:
+  reference and description strategies, date/amount tolerances, variance categories,
+  operating-vs-trust/expense boundary posture, protected-funds cues, metadata-only bank-feed shell
+  state, and vendor/expense/client-matter dimensions. They do not connect live feeds, run automatic
+  matching, authorize disbursements, post trust entries, or certify accounting conclusions.
 - Reconciliation exception resolution records can store staff notes and variance decisions for
   unmatched statement-preview rows. They are review notes only: they do not mutate posted ledger
   entries, create reconciliation records, move funds, or certify accounting conclusions.

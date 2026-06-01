@@ -33,6 +33,7 @@ import {
   postLedgerTransaction,
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
+  validateLedgerAccountingReviewProfileRecord,
   validateBillingPeriodLock,
   validateBillingRateRule,
   validateContactDataQualityResolutionRecord,
@@ -40,6 +41,7 @@ import {
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
   validateLedgerStatementImportBatchRecord,
+  validateLedgerStatementMatchRuleProfileRecord,
   verifyAuditChain,
   type AccessLogRecord,
   type AuditEvent,
@@ -89,10 +91,12 @@ import {
   type InvoiceRecord,
   type JobLifecycleRecord,
   type LedgerAccount,
+  type LedgerAccountingReviewProfileRecord,
   type LedgerEntry,
   type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerStatementImportBatchRecord,
+  type LedgerStatementMatchRuleProfileRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
@@ -249,8 +253,10 @@ import {
   mapJobLifecycleRow,
   mapLedgerApprovalRow,
   mapLedgerReconciliationExceptionResolutionRow,
+  mapLedgerAccountingReviewProfileRow,
   mapLedgerReconciliationRow,
   mapLedgerStatementImportBatchRow,
+  mapLedgerStatementMatchRuleProfileRow,
   mapLegalClinicMatterProfileRow,
   mapLegalClinicProgramRow,
   mapMatter,
@@ -5471,6 +5477,23 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       throw new Error("Statement import batches require an existing trust asset account");
     }
     validateLedgerStatementImportBatchRecord(batch);
+    if (batch.matchingProfileId) {
+      const [matchingProfile] = await this.db
+        .select({ id: schema.trustStatementMatchRuleProfiles.id })
+        .from(schema.trustStatementMatchRuleProfiles)
+        .where(
+          and(
+            eq(schema.trustStatementMatchRuleProfiles.firmId, batch.firmId),
+            eq(schema.trustStatementMatchRuleProfiles.accountId, batch.accountId),
+            eq(schema.trustStatementMatchRuleProfiles.id, batch.matchingProfileId),
+          ),
+        );
+      if (!matchingProfile) {
+        throw new Error(
+          "Statement import batch matching profile must belong to the same trust asset account",
+        );
+      }
+    }
     await this.db.insert(schema.trustStatementImportBatches).values({
       ...batch,
       matchingProfileId: batch.matchingProfileId ?? null,
@@ -5496,6 +5519,95 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       )
       .orderBy(asc(schema.trustStatementImportBatches.createdAt));
     return rows.map(mapLedgerStatementImportBatchRow);
+  }
+
+  async createLedgerStatementMatchRuleProfile(
+    profile: LedgerStatementMatchRuleProfileRecord,
+  ): Promise<LedgerStatementMatchRuleProfileRecord> {
+    const [account] = await this.db
+      .select()
+      .from(schema.ledgerAccounts)
+      .where(
+        and(
+          eq(schema.ledgerAccounts.firmId, profile.firmId),
+          eq(schema.ledgerAccounts.id, profile.accountId),
+        ),
+      );
+    if (!account || account.type !== "trust_asset") {
+      throw new Error("Statement match-rule profiles require an existing trust asset account");
+    }
+    validateLedgerStatementMatchRuleProfileRecord(profile);
+    await this.db.insert(schema.trustStatementMatchRuleProfiles).values({
+      ...profile,
+      createdAt: new Date(profile.createdAt),
+      updatedAt: new Date(profile.updatedAt),
+    });
+    return profile;
+  }
+
+  async listLedgerStatementMatchRuleProfiles(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerStatementMatchRuleProfileRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.trustStatementMatchRuleProfiles)
+      .where(
+        options.accountId
+          ? and(
+              eq(schema.trustStatementMatchRuleProfiles.firmId, firmId),
+              eq(schema.trustStatementMatchRuleProfiles.accountId, options.accountId),
+            )
+          : eq(schema.trustStatementMatchRuleProfiles.firmId, firmId),
+      )
+      .orderBy(asc(schema.trustStatementMatchRuleProfiles.createdAt));
+    return rows.map(mapLedgerStatementMatchRuleProfileRow);
+  }
+
+  async createLedgerAccountingReviewProfile(
+    profile: LedgerAccountingReviewProfileRecord,
+  ): Promise<LedgerAccountingReviewProfileRecord> {
+    const [account] = await this.db
+      .select()
+      .from(schema.ledgerAccounts)
+      .where(
+        and(
+          eq(schema.ledgerAccounts.firmId, profile.firmId),
+          eq(schema.ledgerAccounts.id, profile.accountId),
+        ),
+      );
+    if (!account) {
+      throw new Error(`Unknown ledger account ${profile.accountId}`);
+    }
+    if (account.type !== profile.accountType) {
+      throw new Error("Accounting review profile account type must match the ledger account");
+    }
+    validateLedgerAccountingReviewProfileRecord(profile);
+    await this.db.insert(schema.ledgerAccountingReviewProfiles).values({
+      ...profile,
+      createdAt: new Date(profile.createdAt),
+      updatedAt: new Date(profile.updatedAt),
+    });
+    return profile;
+  }
+
+  async listLedgerAccountingReviewProfiles(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerAccountingReviewProfileRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.ledgerAccountingReviewProfiles)
+      .where(
+        options.accountId
+          ? and(
+              eq(schema.ledgerAccountingReviewProfiles.firmId, firmId),
+              eq(schema.ledgerAccountingReviewProfiles.accountId, options.accountId),
+            )
+          : eq(schema.ledgerAccountingReviewProfiles.firmId, firmId),
+      )
+      .orderBy(asc(schema.ledgerAccountingReviewProfiles.createdAt));
+    return rows.map(mapLedgerAccountingReviewProfileRow);
   }
 
   async createLedgerReconciliationExceptionResolution(

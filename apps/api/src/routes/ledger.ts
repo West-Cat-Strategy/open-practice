@@ -2,9 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type {
   AccessRequest,
+  LedgerAccountingReviewProfileRecord,
+  LedgerAccount,
   JobLifecycleRecord,
   LedgerReconciliationRecord,
   LedgerStatementImportBatchRecord,
+  LedgerStatementMatchRuleProfileRecord,
   LedgerTransaction,
   LedgerTransactionApprovalRecord,
   Province,
@@ -12,9 +15,15 @@ import type {
 import {
   buildLedgerReconciliationExceptionResolutionStatementRow,
   buildJurisdictionalTrustReport,
+  ledgerAccountingBankFeedImportStatuses,
+  ledgerAccountingDimensionPostures,
+  ledgerAccountingProtectedFundsReviewCadences,
+  ledgerAccountingReviewSummary,
   ledgerControlsDiagnostics,
   ledgerReconciliationExceptionVarianceDecisions,
   ledgerReconciliationReviewSummary,
+  ledgerStatementMatchDescriptionStrategies,
+  ledgerStatementMatchReferenceStrategies,
   ledgerStatementImportBatchStatuses,
   previewLedgerStatementImport,
 } from "@open-practice/domain";
@@ -127,6 +136,43 @@ const ledgerStatementImportBatchesQuerySchema = z.object({
   accountId: z.string().min(1),
 });
 
+const ledgerOptionalAccountQuerySchema = z.object({
+  accountId: z.string().min(1).optional(),
+});
+
+const ledgerStatementMatchRuleProfileBodySchema = z.object({
+  accountId: z.string().min(1),
+  name: z.string().min(1),
+  referenceStrategy: z.enum(ledgerStatementMatchReferenceStrategies),
+  descriptionStrategy: z.enum(ledgerStatementMatchDescriptionStrategies),
+  dateWindowDays: z.number().int().min(0).max(30),
+  amountToleranceCents: z.number().int().min(0).max(100_000),
+  varianceCategories: z.array(z.enum(ledgerReconciliationExceptionVarianceDecisions)).min(1),
+  reviewerExplanationRequired: z.boolean().optional(),
+});
+
+const ledgerAccountingReviewProfileBodySchema = z.object({
+  accountId: z.string().min(1),
+  boundaryPosture: z.enum(["trust_only", "operating_only", "expense_only", "review_required"]),
+  protectedFunds: z.object({
+    protected: z.boolean(),
+    reason: z.string().min(1).optional(),
+    reviewCadence: z.enum(ledgerAccountingProtectedFundsReviewCadences),
+  }),
+  bankFeedImport: z.object({
+    status: z.enum(ledgerAccountingBankFeedImportStatuses),
+    sourceLabel: z.string().min(1).optional(),
+    lastImportedAt: z.string().datetime().optional(),
+    automaticMatching: z.literal(false).optional(),
+  }),
+  dimensions: z.object({
+    vendorTracking: z.enum(ledgerAccountingDimensionPostures),
+    expenseCategoryTracking: z.enum(ledgerAccountingDimensionPostures),
+    clientMatterTracking: z.literal("required").optional(),
+    notes: z.string().min(1).optional(),
+  }),
+});
+
 const ledgerReconciliationExceptionResolutionsQuerySchema = z.object({
   accountId: z.string().min(1),
 });
@@ -191,6 +237,17 @@ async function assertTrustAssetAccount(
   if (!account || account.type !== "trust_asset") {
     throw new Error(message);
   }
+}
+
+async function getLedgerAccount(
+  repository: ApiRouteDependencies["repository"],
+  firmId: string,
+  accountId: string,
+): Promise<LedgerAccount> {
+  const ledger = await repository.getLedger(firmId);
+  const account = ledger.accounts.find((candidate) => candidate.id === accountId);
+  if (!account) throw new Error(`Unknown ledger account ${accountId}`);
+  return account;
 }
 
 function compactMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
@@ -315,9 +372,13 @@ export function registerLedgerRoutes(
     const approvals = (await repository.listLedgerTransactionApprovals(request.auth.firmId)).filter(
       (approval) => visibleTransactionIds.has(approval.transactionId),
     );
-    const reconciliations = hasFirmWideAccess
-      ? await repository.listLedgerReconciliations(request.auth.firmId)
-      : [];
+    const [reconciliations, matchRuleProfiles, accountingProfiles] = hasFirmWideAccess
+      ? await Promise.all([
+          repository.listLedgerReconciliations(request.auth.firmId),
+          repository.listLedgerStatementMatchRuleProfiles(request.auth.firmId),
+          repository.listLedgerAccountingReviewProfiles(request.auth.firmId),
+        ])
+      : [[], [], []];
     const diagnostics = ledgerControlsDiagnostics({
       ledger,
       approvals,
@@ -330,6 +391,14 @@ export function registerLedgerRoutes(
       approvals,
       reconciliations,
       diagnostics,
+      accountingReview: {
+        matchRuleProfiles,
+        accountingProfiles,
+        summary: ledgerAccountingReviewSummary({
+          matchRuleProfiles,
+          accountingProfiles,
+        }),
+      },
       trustControlPolicy: {
         automaticTrustPosting: false,
         transferRequestPosting: "requires_explicit_approval_and_manual_post",
@@ -692,6 +761,142 @@ export function registerLedgerRoutes(
         sourceLabelPresent: Boolean(created.sourceLabel.trim()),
         checksumPresent: Boolean(created.checksumSha256),
         matchingProfilePresent: Boolean(created.matchingProfileId),
+      },
+    });
+    return created;
+  });
+
+  server.get("/api/ledger/reconciliations/match-rule-profiles", async (request) => {
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "approve",
+    });
+    const query = parseRequestPart(ledgerOptionalAccountQuerySchema, request.query, "query");
+    if (query.accountId) {
+      await assertTrustAssetAccount(
+        repository,
+        request.auth.firmId,
+        query.accountId,
+        "Statement match-rule profiles require an existing trust asset account",
+      );
+    }
+    return repository.listLedgerStatementMatchRuleProfiles(request.auth.firmId, {
+      accountId: query.accountId,
+    });
+  });
+
+  server.post("/api/ledger/reconciliations/match-rule-profiles", async (request) => {
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "approve",
+    });
+    const body = parseRequestPart(ledgerStatementMatchRuleProfileBodySchema, request.body, "body");
+    await assertTrustAssetAccount(
+      repository,
+      request.auth.firmId,
+      body.accountId,
+      "Statement match-rule profiles require an existing trust asset account",
+    );
+    const now = new Date().toISOString();
+    const profile: LedgerStatementMatchRuleProfileRecord = {
+      id: crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      accountId: body.accountId,
+      name: body.name.trim(),
+      referenceStrategy: body.referenceStrategy,
+      descriptionStrategy: body.descriptionStrategy,
+      dateWindowDays: body.dateWindowDays,
+      amountToleranceCents: body.amountToleranceCents,
+      varianceCategories: body.varianceCategories,
+      reviewerExplanationRequired: body.reviewerExplanationRequired ?? true,
+      reviewOnly: true,
+      createdByUserId: request.auth.user.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const created = await repository.createLedgerStatementMatchRuleProfile(profile);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "ledger.statement_match_rule_profile.recorded",
+      resourceType: "ledger_statement_match_rule_profile",
+      resourceId: created.id,
+      metadata: {
+        accountId: created.accountId,
+        referenceStrategy: created.referenceStrategy,
+        descriptionStrategy: created.descriptionStrategy,
+        dateWindowDays: created.dateWindowDays,
+        amountToleranceCents: created.amountToleranceCents,
+        varianceCategoryCount: created.varianceCategories.length,
+        reviewerExplanationRequired: created.reviewerExplanationRequired,
+        reviewOnly: created.reviewOnly,
+      },
+    });
+    return created;
+  });
+
+  server.get("/api/ledger/accounting-review-profiles", async (request) => {
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "approve",
+    });
+    const query = parseRequestPart(ledgerOptionalAccountQuerySchema, request.query, "query");
+    if (query.accountId) await getLedgerAccount(repository, request.auth.firmId, query.accountId);
+    return repository.listLedgerAccountingReviewProfiles(request.auth.firmId, {
+      accountId: query.accountId,
+    });
+  });
+
+  server.post("/api/ledger/accounting-review-profiles", async (request) => {
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "approve",
+    });
+    const body = parseRequestPart(ledgerAccountingReviewProfileBodySchema, request.body, "body");
+    const account = await getLedgerAccount(repository, request.auth.firmId, body.accountId);
+    const now = new Date().toISOString();
+    const profile: LedgerAccountingReviewProfileRecord = {
+      id: crypto.randomUUID(),
+      firmId: request.auth.firmId,
+      accountId: body.accountId,
+      accountType: account.type,
+      boundaryPosture: body.boundaryPosture,
+      protectedFunds: {
+        ...body.protectedFunds,
+        reason: body.protectedFunds.reason?.trim(),
+      },
+      bankFeedImport: {
+        status: body.bankFeedImport.status,
+        sourceLabel: body.bankFeedImport.sourceLabel?.trim(),
+        lastImportedAt: body.bankFeedImport.lastImportedAt,
+        automaticMatching: false,
+      },
+      dimensions: {
+        vendorTracking: body.dimensions.vendorTracking,
+        expenseCategoryTracking: body.dimensions.expenseCategoryTracking,
+        clientMatterTracking: "required",
+        notes: body.dimensions.notes?.trim(),
+      },
+      reviewOnly: true,
+      createdByUserId: request.auth.user.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const created = await repository.createLedgerAccountingReviewProfile(profile);
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "ledger.accounting_review_profile.recorded",
+      resourceType: "ledger_accounting_review_profile",
+      resourceId: created.id,
+      metadata: {
+        accountId: created.accountId,
+        accountType: created.accountType,
+        boundaryPosture: created.boundaryPosture,
+        protectedFunds: created.protectedFunds.protected,
+        bankFeedImportStatus: created.bankFeedImport.status,
+        bankFeedSourceLabelPresent: Boolean(created.bankFeedImport.sourceLabel),
+        automaticMatching: created.bankFeedImport.automaticMatching,
+        vendorTracking: created.dimensions.vendorTracking,
+        expenseCategoryTracking: created.dimensions.expenseCategoryTracking,
+        clientMatterTracking: created.dimensions.clientMatterTracking,
+        reviewOnly: created.reviewOnly,
       },
     });
     return created;

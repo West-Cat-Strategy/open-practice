@@ -58,7 +58,7 @@ async function addClientPortalRecords(repository: InMemoryOpenPracticeRepository
     grantedByUserId: "user-admin",
     permissions: ["view_documents"],
     requireEmailVerification: true,
-    expiresAt: "2026-06-01T00:00:00.000Z",
+    expiresAt: "2026-07-01T00:00:00.000Z",
     createdAt: "2026-05-20T12:00:00.000Z",
   });
 
@@ -68,7 +68,7 @@ async function addClientPortalRecords(repository: InMemoryOpenPracticeRepository
     matterId: "matter-001",
     tokenHash: "secret-upload-token-hash",
     requestedByUserId: "user-admin",
-    expiresAt: "2026-06-01T00:00:00.000Z",
+    expiresAt: "2026-07-01T00:00:00.000Z",
     maxUploads: 2,
     usedUploads: 1,
     createdAt: "2026-05-20T13:00:00.000Z",

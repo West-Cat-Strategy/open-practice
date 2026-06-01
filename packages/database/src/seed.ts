@@ -19,8 +19,10 @@ import {
   sampleInvoices,
   sampleLegalClinicMatterProfiles,
   sampleLegalClinicPrograms,
+  sampleLedgerAccountingReviewProfiles,
   sampleLedgerAccounts,
   sampleLedgerEntries,
+  sampleLedgerStatementMatchRuleProfiles,
   sampleManualPayments,
   sampleMatterParties,
   sampleMatters,
@@ -220,6 +222,26 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
         clientId: delta.clientId,
         balanceCents: delta.deltaCents,
         updatedAt: new Date("2026-04-02T17:00:00.000Z"),
+      })),
+    )
+    .onConflictDoNothing();
+  await db
+    .insert(schema.trustStatementMatchRuleProfiles)
+    .values(
+      sampleLedgerStatementMatchRuleProfiles.map((profile) => ({
+        ...profile,
+        createdAt: new Date(profile.createdAt),
+        updatedAt: new Date(profile.updatedAt),
+      })),
+    )
+    .onConflictDoNothing();
+  await db
+    .insert(schema.ledgerAccountingReviewProfiles)
+    .values(
+      sampleLedgerAccountingReviewProfiles.map((profile) => ({
+        ...profile,
+        createdAt: new Date(profile.createdAt),
+        updatedAt: new Date(profile.updatedAt),
       })),
     )
     .onConflictDoNothing();

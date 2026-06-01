@@ -972,6 +972,62 @@ function trustControls(
       exceptionReconciliationIds: ["reconciliation-001"],
       overdrawnBalanceKeys: [],
     },
+    accountingReview: {
+      matchRuleProfiles: [
+        {
+          id: "statement-match-profile-standard-trust",
+          firmId: "firm-west-legal",
+          accountId: "acct-trust-bank",
+          name: "Standard trust review profile",
+          referenceStrategy: "normalized_reference",
+          descriptionStrategy: "normalized_contains",
+          dateWindowDays: 2,
+          amountToleranceCents: 0,
+          varianceCategories: ["ledger_entry_expected", "needs_follow_up"],
+          reviewerExplanationRequired: true,
+          reviewOnly: true,
+          createdByUserId: "user-admin",
+          createdAt: "2026-04-02T18:00:00.000Z",
+          updatedAt: "2026-04-02T18:00:00.000Z",
+        },
+      ],
+      accountingProfiles: [
+        {
+          id: "accounting-review-profile-trust-bank",
+          firmId: "firm-west-legal",
+          accountId: "acct-trust-bank",
+          accountType: "trust_asset",
+          boundaryPosture: "trust_only",
+          protectedFunds: {
+            protected: true,
+            reason: "Synthetic trust account requires protected-funds review cues.",
+            reviewCadence: "monthly",
+          },
+          bankFeedImport: {
+            status: "metadata_only",
+            sourceLabel: "Synthetic trust statement export",
+            automaticMatching: false,
+          },
+          dimensions: {
+            vendorTracking: "not_applicable",
+            expenseCategoryTracking: "optional",
+            clientMatterTracking: "required",
+            notes: "Synthetic review note.",
+          },
+          reviewOnly: true,
+          createdByUserId: "user-admin",
+          createdAt: "2026-04-02T18:00:00.000Z",
+          updatedAt: "2026-04-02T18:00:00.000Z",
+        },
+      ],
+      summary: {
+        matchRuleProfileCount: 1,
+        accountingProfileCount: 1,
+        protectedAccountCount: 1,
+        bankFeedShellCount: 1,
+        reviewOnly: true,
+      },
+    },
   };
 
   return {

@@ -38,8 +38,10 @@ import type {
   DocumentAssemblySetDefinitionRecord,
   LegalClinicMatterProfile,
   LegalClinicProgram,
+  LedgerAccountingReviewProfileRecord,
   LedgerReconciliationExceptionResolutionStatementRow,
   LedgerReconciliationStatementRow,
+  LedgerStatementMatchRuleProfileRecord,
   PublicConsultationIntakeRecord,
   SavedOperationalViewDefinition,
   SignatureEnvelopeRecord,
@@ -1690,6 +1692,143 @@ export const trustStatementImportBatches = pgTable(
     matchingProfilePresent: check(
       "trust_statement_import_batches_matching_profile_present",
       sql`${table.matchingProfileId} is null or length(trim(${table.matchingProfileId})) > 0`,
+    ),
+  }),
+);
+
+export const trustStatementMatchRuleProfiles = pgTable(
+  "trust_statement_match_rule_profiles",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id),
+    name: text("name").notNull(),
+    referenceStrategy: text("reference_strategy")
+      .$type<LedgerStatementMatchRuleProfileRecord["referenceStrategy"]>()
+      .notNull(),
+    descriptionStrategy: text("description_strategy")
+      .$type<LedgerStatementMatchRuleProfileRecord["descriptionStrategy"]>()
+      .notNull(),
+    dateWindowDays: integer("date_window_days").notNull(),
+    amountToleranceCents: integer("amount_tolerance_cents").notNull(),
+    varianceCategories: jsonb("variance_categories")
+      .$type<LedgerStatementMatchRuleProfileRecord["varianceCategories"]>()
+      .notNull()
+      .default([]),
+    reviewerExplanationRequired: boolean("reviewer_explanation_required").notNull().default(true),
+    reviewOnly: boolean("review_only").notNull().default(true),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    accountCreatedAt: index("trust_statement_match_profiles_account_created_idx").on(
+      table.firmId,
+      table.accountId,
+      table.createdAt,
+    ),
+    namePresent: check(
+      "trust_statement_match_profiles_name_present",
+      sql`length(trim(${table.name})) > 0`,
+    ),
+    referenceStrategyValue: check(
+      "trust_statement_match_profiles_reference_strategy_value",
+      sql`${table.referenceStrategy} in ('strict_reference', 'normalized_reference', 'date_amount_reference', 'amount_only_review')`,
+    ),
+    descriptionStrategyValue: check(
+      "trust_statement_match_profiles_description_strategy_value",
+      sql`${table.descriptionStrategy} in ('exact', 'normalized_contains', 'review_required')`,
+    ),
+    dateWindowRange: check(
+      "trust_statement_match_profiles_date_window_range",
+      sql`${table.dateWindowDays} >= 0 and ${table.dateWindowDays} <= 30`,
+    ),
+    toleranceRange: check(
+      "trust_statement_match_profiles_tolerance_range",
+      sql`${table.amountToleranceCents} >= 0 and ${table.amountToleranceCents} <= 100000`,
+    ),
+    varianceCategoriesNonempty: check(
+      "trust_statement_match_profiles_variance_categories_nonempty",
+      sql`jsonb_typeof(${table.varianceCategories}) = 'array' and jsonb_array_length(${table.varianceCategories}) > 0`,
+    ),
+    reviewOnlyValue: check(
+      "trust_statement_match_profiles_review_only_value",
+      sql`${table.reviewOnly} = true`,
+    ),
+  }),
+);
+
+export const ledgerAccountingReviewProfiles = pgTable(
+  "ledger_accounting_review_profiles",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id),
+    accountType: text("account_type")
+      .$type<LedgerAccountingReviewProfileRecord["accountType"]>()
+      .notNull(),
+    boundaryPosture: text("boundary_posture")
+      .$type<LedgerAccountingReviewProfileRecord["boundaryPosture"]>()
+      .notNull(),
+    protectedFunds: jsonb("protected_funds")
+      .$type<LedgerAccountingReviewProfileRecord["protectedFunds"]>()
+      .notNull(),
+    bankFeedImport: jsonb("bank_feed_import")
+      .$type<LedgerAccountingReviewProfileRecord["bankFeedImport"]>()
+      .notNull(),
+    dimensions: jsonb("dimensions")
+      .$type<LedgerAccountingReviewProfileRecord["dimensions"]>()
+      .notNull(),
+    reviewOnly: boolean("review_only").notNull().default(true),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    accountCreatedAt: index("ledger_accounting_review_profiles_account_created_idx").on(
+      table.firmId,
+      table.accountId,
+      table.createdAt,
+    ),
+    accountTypeValue: check(
+      "ledger_accounting_review_profiles_account_type_value",
+      sql`${table.accountType} in ('trust_asset', 'client_liability', 'operating_revenue', 'expense')`,
+    ),
+    boundaryPostureValue: check(
+      "ledger_accounting_review_profiles_boundary_posture_value",
+      sql`${table.boundaryPosture} in ('trust_only', 'operating_only', 'expense_only', 'review_required')`,
+    ),
+    protectedFundsReason: check(
+      "ledger_accounting_review_profiles_protected_funds_reason",
+      sql`(${table.protectedFunds}->>'protected') <> 'true' or length(trim(coalesce(${table.protectedFunds}->>'reason', ''))) > 0`,
+    ),
+    bankFeedAutomaticMatchingOff: check(
+      "ledger_accounting_review_profiles_bank_feed_auto_match_off",
+      sql`${table.bankFeedImport}->>'automaticMatching' = 'false'`,
+    ),
+    bankFeedSourceLabel: check(
+      "ledger_accounting_review_profiles_bank_feed_source_label",
+      sql`${table.bankFeedImport}->>'status' = 'not_configured' or length(trim(coalesce(${table.bankFeedImport}->>'sourceLabel', ''))) > 0`,
+    ),
+    clientMatterTrackingRequired: check(
+      "ledger_accounting_review_profiles_client_matter_required",
+      sql`${table.dimensions}->>'clientMatterTracking' = 'required'`,
+    ),
+    reviewOnlyValue: check(
+      "ledger_accounting_review_profiles_review_only_value",
+      sql`${table.reviewOnly} = true`,
     ),
   }),
 );

@@ -63,12 +63,14 @@ import {
   type InvoiceRecord,
   type JobLifecycleRecord,
   type LedgerAccount,
+  type LedgerAccountingReviewProfileRecord,
   type LedgerEntry,
   type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationExceptionResolutionStatementRow,
   type LedgerReconciliationRecord,
   type LedgerReconciliationStatementRow,
   type LedgerStatementImportBatchRecord,
+  type LedgerStatementMatchRuleProfileRecord,
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
   type LegalClinicProgram,
@@ -1634,6 +1636,46 @@ export function mapLedgerStatementImportBatchRow(
     matchingProfileId: row.matchingProfileId ?? undefined,
     createdByUserId: row.createdByUserId,
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function mapLedgerStatementMatchRuleProfileRow(
+  row: typeof schema.trustStatementMatchRuleProfiles.$inferSelect,
+): LedgerStatementMatchRuleProfileRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    accountId: row.accountId,
+    name: row.name,
+    referenceStrategy: row.referenceStrategy,
+    descriptionStrategy: row.descriptionStrategy,
+    dateWindowDays: row.dateWindowDays,
+    amountToleranceCents: row.amountToleranceCents,
+    varianceCategories: row.varianceCategories,
+    reviewerExplanationRequired: row.reviewerExplanationRequired,
+    reviewOnly: true,
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function mapLedgerAccountingReviewProfileRow(
+  row: typeof schema.ledgerAccountingReviewProfiles.$inferSelect,
+): LedgerAccountingReviewProfileRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    accountId: row.accountId,
+    accountType: row.accountType,
+    boundaryPosture: row.boundaryPosture,
+    protectedFunds: row.protectedFunds,
+    bankFeedImport: row.bankFeedImport,
+    dimensions: row.dimensions,
+    reviewOnly: true,
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 

@@ -228,6 +228,15 @@ describe("ledger routes", () => {
         exceptionReconciliationIds: ["reconciliation-exception"],
         overdrawnBalanceKeys: [],
       },
+      accountingReview: {
+        summary: {
+          matchRuleProfileCount: 1,
+          accountingProfileCount: 2,
+          protectedAccountCount: 1,
+          bankFeedShellCount: 1,
+          reviewOnly: true,
+        },
+      },
       trustControlPolicy: {
         automaticTrustPosting: false,
         transferRequestPosting: "requires_explicit_approval_and_manual_post",
@@ -891,7 +900,7 @@ describe("ledger routes", () => {
         checksumSha256: "a".repeat(64),
         importedStatementRowCount: 12,
         duplicateStatementRowCount: 2,
-        matchingProfileId: "profile-standard-trust",
+        matchingProfileId: "statement-match-profile-standard-trust",
       },
     });
 
@@ -903,7 +912,7 @@ describe("ledger routes", () => {
       importedStatementRowCount: 12,
       duplicateStatementRowCount: 2,
       status: "previewed",
-      matchingProfileId: "profile-standard-trust",
+      matchingProfileId: "statement-match-profile-standard-trust",
       createdByUserId: "user-admin",
     });
     expect(response.json()).not.toHaveProperty("statementRows");
@@ -989,6 +998,11 @@ describe("ledger routes", () => {
       url: "/api/ledger/reconciliations/import-batches",
       payload: { ...basePayload, accountId: "acct-operating-revenue" },
     });
+    const missingProfile = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/import-batches",
+      payload: { ...basePayload, matchingProfileId: "missing-profile" },
+    });
 
     expect(blankSource.statusCode).toBe(400);
     expect(blankSource.json()).toMatchObject({
@@ -1015,12 +1029,259 @@ describe("ledger routes", () => {
       error: "Error",
       message: "Statement import batches require an existing trust asset account",
     });
+    expect(missingProfile.statusCode).toBe(400);
+    expect(missingProfile.json()).toMatchObject({
+      error: "Error",
+      message:
+        "Statement import batch matching profile must belong to the same trust asset account",
+    });
     await expect(
       repository.listLedgerStatementImportBatches("firm-west-legal", {
         accountId: "acct-trust-bank",
       }),
     ).resolves.toEqual([]);
     await expect(repository.listLedgerReconciliations("firm-west-legal")).resolves.toEqual([]);
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: auditBefore.events,
+      valid: true,
+    });
+  });
+
+  it("records statement match-rule and accounting review profiles without posting", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const ledgerBefore = await repository.getLedger("firm-west-legal");
+
+    const matchRule = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/match-rule-profiles",
+      payload: {
+        accountId: "acct-trust-bank",
+        name: "  Synthetic trust match profile  ",
+        referenceStrategy: "normalized_reference",
+        descriptionStrategy: "normalized_contains",
+        dateWindowDays: 2,
+        amountToleranceCents: 0,
+        varianceCategories: ["ledger_entry_expected", "needs_follow_up"],
+      },
+    });
+    const accountingReview = await server.inject({
+      method: "POST",
+      url: "/api/ledger/accounting-review-profiles",
+      payload: {
+        accountId: "acct-client-liability",
+        boundaryPosture: "trust_only",
+        protectedFunds: {
+          protected: true,
+          reason: "Synthetic liability account review cue.",
+          reviewCadence: "monthly",
+        },
+        bankFeedImport: {
+          status: "not_configured",
+        },
+        dimensions: {
+          vendorTracking: "not_applicable",
+          expenseCategoryTracking: "optional",
+        },
+      },
+    });
+
+    expect(matchRule.statusCode).toBe(200);
+    expect(matchRule.json()).toMatchObject({
+      accountId: "acct-trust-bank",
+      name: "Synthetic trust match profile",
+      referenceStrategy: "normalized_reference",
+      descriptionStrategy: "normalized_contains",
+      dateWindowDays: 2,
+      amountToleranceCents: 0,
+      varianceCategories: ["ledger_entry_expected", "needs_follow_up"],
+      reviewerExplanationRequired: true,
+      reviewOnly: true,
+      createdByUserId: "user-admin",
+    });
+    expect(accountingReview.statusCode).toBe(200);
+    expect(accountingReview.json()).toMatchObject({
+      accountId: "acct-client-liability",
+      accountType: "client_liability",
+      boundaryPosture: "trust_only",
+      protectedFunds: {
+        protected: true,
+        reason: "Synthetic liability account review cue.",
+        reviewCadence: "monthly",
+      },
+      bankFeedImport: {
+        status: "not_configured",
+        automaticMatching: false,
+      },
+      dimensions: {
+        vendorTracking: "not_applicable",
+        expenseCategoryTracking: "optional",
+        clientMatterTracking: "required",
+      },
+      reviewOnly: true,
+      createdByUserId: "user-admin",
+    });
+
+    const matchRuleList = await server.inject({
+      method: "GET",
+      url: "/api/ledger/reconciliations/match-rule-profiles?accountId=acct-trust-bank",
+    });
+    const accountingReviewList = await server.inject({
+      method: "GET",
+      url: "/api/ledger/accounting-review-profiles?accountId=acct-client-liability",
+    });
+    expect(matchRuleList.statusCode).toBe(200);
+    expect(matchRuleList.json()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "Synthetic trust match profile" })]),
+    );
+    expect(accountingReviewList.statusCode).toBe(200);
+    expect(accountingReviewList.json()).toEqual([
+      expect.objectContaining({ accountId: "acct-client-liability" }),
+    ]);
+    await expect(repository.getLedger("firm-west-legal")).resolves.toMatchObject({
+      entries: ledgerBefore.entries,
+    });
+    await expect(repository.listLedgerReconciliations("firm-west-legal")).resolves.toEqual([]);
+
+    const auditEvents = await repository.listAuditEvents("firm-west-legal");
+    expect(auditEvents).toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "ledger.statement_match_rule_profile.recorded",
+          resourceType: "ledger_statement_match_rule_profile",
+          metadata: expect.objectContaining({
+            accountId: "acct-trust-bank",
+            varianceCategoryCount: 2,
+            reviewOnly: true,
+          }),
+        }),
+        expect.objectContaining({
+          action: "ledger.accounting_review_profile.recorded",
+          resourceType: "ledger_accounting_review_profile",
+          metadata: expect.objectContaining({
+            accountId: "acct-client-liability",
+            accountType: "client_liability",
+            automaticMatching: false,
+            clientMatterTracking: "required",
+            reviewOnly: true,
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+    const accountingEvent = auditEvents.events.find(
+      (candidate) => candidate.action === "ledger.accounting_review_profile.recorded",
+    );
+    expect(accountingEvent?.metadata).not.toHaveProperty("sourceLabel");
+    expect(accountingEvent?.metadata).not.toHaveProperty("protectedFundsReason");
+    expect(accountingEvent?.metadata).not.toHaveProperty("notes");
+  });
+
+  it("rejects unsafe statement match-rule and accounting review profile inputs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const auditBefore = await repository.listAuditEvents("firm-west-legal");
+
+    const operatingMatchProfile = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/match-rule-profiles",
+      payload: {
+        accountId: "acct-operating-revenue",
+        name: "Synthetic operating match profile",
+        referenceStrategy: "normalized_reference",
+        descriptionStrategy: "normalized_contains",
+        dateWindowDays: 2,
+        amountToleranceCents: 0,
+        varianceCategories: ["ledger_entry_expected"],
+      },
+    });
+    const automaticMatching = await server.inject({
+      method: "POST",
+      url: "/api/ledger/accounting-review-profiles",
+      payload: {
+        accountId: "acct-trust-bank",
+        boundaryPosture: "trust_only",
+        protectedFunds: {
+          protected: true,
+          reason: "Synthetic trust account review cue.",
+          reviewCadence: "monthly",
+        },
+        bankFeedImport: {
+          status: "metadata_only",
+          sourceLabel: "Synthetic trust statement export",
+          automaticMatching: true,
+        },
+        dimensions: {
+          vendorTracking: "not_applicable",
+          expenseCategoryTracking: "optional",
+        },
+      },
+    });
+    const missingSourceLabel = await server.inject({
+      method: "POST",
+      url: "/api/ledger/accounting-review-profiles",
+      payload: {
+        accountId: "acct-trust-bank",
+        boundaryPosture: "trust_only",
+        protectedFunds: {
+          protected: true,
+          reason: "Synthetic trust account review cue.",
+          reviewCadence: "monthly",
+        },
+        bankFeedImport: {
+          status: "metadata_only",
+        },
+        dimensions: {
+          vendorTracking: "not_applicable",
+          expenseCategoryTracking: "optional",
+        },
+      },
+    });
+    const invalidBoundary = await server.inject({
+      method: "POST",
+      url: "/api/ledger/accounting-review-profiles",
+      payload: {
+        accountId: "acct-operating-revenue",
+        boundaryPosture: "trust_only",
+        protectedFunds: {
+          protected: false,
+          reviewCadence: "monthly",
+        },
+        bankFeedImport: {
+          status: "not_configured",
+        },
+        dimensions: {
+          vendorTracking: "optional",
+          expenseCategoryTracking: "required",
+        },
+      },
+    });
+
+    expect(operatingMatchProfile.statusCode).toBe(400);
+    expect(operatingMatchProfile.json()).toMatchObject({
+      error: "Error",
+      message: "Statement match-rule profiles require an existing trust asset account",
+    });
+    expect(automaticMatching.statusCode).toBe(400);
+    expect(automaticMatching.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Invalid request body",
+    });
+    expect(missingSourceLabel.statusCode).toBe(400);
+    expect(missingSourceLabel.json()).toMatchObject({
+      error: "Error",
+      message: "Accounting bank-feed shell records require a source label",
+    });
+    expect(invalidBoundary.statusCode).toBe(400);
+    expect(invalidBoundary.json()).toMatchObject({
+      error: "Error",
+      message: "Accounting review boundary posture must match the account type or require review",
+    });
+    await expect(
+      repository.listLedgerAccountingReviewProfiles("firm-west-legal", {
+        accountId: "acct-client-liability",
+      }),
+    ).resolves.toEqual([]);
     await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
       events: auditBefore.events,
       valid: true,
@@ -1361,6 +1622,63 @@ describe("ledger routes", () => {
         "x-open-practice-firm-id": "firm-west-legal",
       },
     });
+    const matchRuleProfile = await server.inject({
+      method: "POST",
+      url: "/api/ledger/reconciliations/match-rule-profiles",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: {
+        accountId: "acct-trust-bank",
+        name: "Synthetic trust match profile",
+        referenceStrategy: "normalized_reference",
+        descriptionStrategy: "normalized_contains",
+        dateWindowDays: 2,
+        amountToleranceCents: 0,
+        varianceCategories: ["ledger_entry_expected"],
+      },
+    });
+    const matchRuleProfileList = await server.inject({
+      method: "GET",
+      url: "/api/ledger/reconciliations/match-rule-profiles?accountId=acct-trust-bank",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+    const accountingReviewProfile = await server.inject({
+      method: "POST",
+      url: "/api/ledger/accounting-review-profiles",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+      payload: {
+        accountId: "acct-client-liability",
+        boundaryPosture: "trust_only",
+        protectedFunds: {
+          protected: true,
+          reason: "Synthetic liability account review cue.",
+          reviewCadence: "monthly",
+        },
+        bankFeedImport: {
+          status: "not_configured",
+        },
+        dimensions: {
+          vendorTracking: "not_applicable",
+          expenseCategoryTracking: "optional",
+        },
+      },
+    });
+    const accountingReviewProfileList = await server.inject({
+      method: "GET",
+      url: "/api/ledger/accounting-review-profiles?accountId=acct-client-liability",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
     const exceptionResolution = await server.inject({
       method: "POST",
       url: "/api/ledger/reconciliation-exception-resolutions",
@@ -1411,6 +1729,26 @@ describe("ledger routes", () => {
     });
     expect(importBatchList.statusCode).toBe(403);
     expect(importBatchList.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Trust ledger access required",
+    });
+    expect(matchRuleProfile.statusCode).toBe(403);
+    expect(matchRuleProfile.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Trust ledger access required",
+    });
+    expect(matchRuleProfileList.statusCode).toBe(403);
+    expect(matchRuleProfileList.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Trust ledger access required",
+    });
+    expect(accountingReviewProfile.statusCode).toBe(403);
+    expect(accountingReviewProfile.json()).toMatchObject({
+      error: "ApiHttpError",
+      message: "Trust ledger access required",
+    });
+    expect(accountingReviewProfileList.statusCode).toBe(403);
+    expect(accountingReviewProfileList.json()).toMatchObject({
       error: "ApiHttpError",
       message: "Trust ledger access required",
     });

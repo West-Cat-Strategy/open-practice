@@ -1482,6 +1482,14 @@ export default function DashboardClient({
     ? matterTrustBalanceCents(activeTrustControls, activeMatter.id, activeMatter.trustBalanceCents)
     : 0;
   const trustReviewSummary = summarizeTrustControls(activeTrustControls);
+  const accountingReview = activeTrustControls.accountingReview;
+  const accountingSummary = accountingReview.summary;
+  const protectedAccountingProfiles = accountingReview.accountingProfiles.filter(
+    (profile) => profile.protectedFunds.protected,
+  );
+  const bankFeedAccountingProfiles = accountingReview.accountingProfiles.filter(
+    (profile) => profile.bankFeedImport.status !== "not_configured",
+  );
   const activeJurisdictionTrustSummary = activeJurisdictionTrustReportSummary({
     matter: activeMatter,
     report: jurisdictionalTrustReport,
@@ -4918,6 +4926,81 @@ export default function DashboardClient({
                     <strong>{activeTrustPostings.length} recent postings</strong>
                     <span>{cents(trustReviewSummary.totalVarianceCents)} total variance</span>
                   </div>
+                  <div className="activity-card">
+                    <FileText size={18} />
+                    <strong>{accountingSummary.matchRuleProfileCount} match profiles</strong>
+                    <span>
+                      {accountingSummary.accountingProfileCount} accounting review records
+                    </span>
+                  </div>
+                  <div className="activity-card">
+                    <ShieldCheck size={18} />
+                    <strong>{accountingSummary.protectedAccountCount} protected cues</strong>
+                    <span>{accountingSummary.bankFeedShellCount} bank-feed shells</span>
+                  </div>
+                </div>
+
+                <div className="section-title">
+                  <h3>Accounting review depth</h3>
+                  <span>review-only profiles · no automatic matching</span>
+                </div>
+                <div className="party-list">
+                  {accountingReview.matchRuleProfiles.slice(0, 4).map((profile) => (
+                    <div className="party-row" key={profile.id}>
+                      <span>
+                        <strong>{profile.name}</strong>
+                        <small>
+                          {accountLabel(activeTrustControls, profile.accountId)} ·{" "}
+                          {profile.referenceStrategy.replaceAll("_", " ")} ·{" "}
+                          {profile.descriptionStrategy.replaceAll("_", " ")}
+                        </small>
+                        <small>
+                          {profile.dateWindowDays} day window ·{" "}
+                          {cents(profile.amountToleranceCents)} tolerance ·{" "}
+                          {profile.varianceCategories.length} variance categories
+                        </small>
+                      </span>
+                      <em>review only</em>
+                    </div>
+                  ))}
+                  {protectedAccountingProfiles.slice(0, 4).map((profile) => (
+                    <div className="party-row" key={profile.id}>
+                      <span>
+                        <strong>{accountLabel(activeTrustControls, profile.accountId)}</strong>
+                        <small>
+                          {profile.boundaryPosture.replaceAll("_", " ")} · protected funds ·{" "}
+                          {profile.protectedFunds.reviewCadence.replaceAll("_", " ")}
+                        </small>
+                        {profile.protectedFunds.reason ? (
+                          <small>{profile.protectedFunds.reason}</small>
+                        ) : null}
+                      </span>
+                      <em>{profile.accountType.replaceAll("_", " ")}</em>
+                    </div>
+                  ))}
+                  {bankFeedAccountingProfiles.slice(0, 4).map((profile) => (
+                    <div className="party-row" key={`${profile.id}-bank-feed`}>
+                      <span>
+                        <strong>{accountLabel(activeTrustControls, profile.accountId)}</strong>
+                        <small>
+                          {profile.bankFeedImport.status.replaceAll("_", " ")} ·{" "}
+                          {profile.bankFeedImport.sourceLabel ?? "source pending"}
+                        </small>
+                        <small>
+                          vendor {profile.dimensions.vendorTracking.replaceAll("_", " ")} · expense{" "}
+                          {profile.dimensions.expenseCategoryTracking.replaceAll("_", " ")} ·
+                          client/matter required
+                        </small>
+                      </span>
+                      <em>no auto-match</em>
+                    </div>
+                  ))}
+                  {accountingReview.matchRuleProfiles.length === 0 &&
+                  accountingReview.accountingProfiles.length === 0 ? (
+                    <p className="inline-empty">
+                      No accounting review profiles are recorded for the current controls payload.
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="section-title">
