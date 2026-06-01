@@ -5,6 +5,7 @@ import {
   sampleCalendarSchedulingRequests,
   sampleContactRelationships,
   sampleContacts,
+  sampleAiOperationalProposals,
   sampleDocumentAssemblyPackages,
   sampleDocumentAssemblySetDefinitions,
   sampleDraftTemplates,
@@ -420,6 +421,17 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
         ...template,
         createdAt: new Date(template.createdAt),
         updatedAt: new Date(template.updatedAt),
+      })),
+    )
+    .onConflictDoNothing();
+  await db
+    .insert(schema.aiOperationalProposals)
+    .values(
+      sampleAiOperationalProposals.map((proposal) => ({
+        ...proposal,
+        reviewedAt: proposal.reviewedAt ? new Date(proposal.reviewedAt) : null,
+        createdAt: new Date(proposal.createdAt),
+        updatedAt: new Date(proposal.updatedAt),
       })),
     )
     .onConflictDoNothing();

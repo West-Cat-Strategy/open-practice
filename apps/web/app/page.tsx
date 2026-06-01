@@ -73,12 +73,17 @@ import {
 } from "./provider-status-dashboard";
 import { emptyConnectorOperationsResponse } from "./connector-outbox-dashboard";
 import {
+  buildAiOperationalProposalsPath,
+  emptyAiOperationalProposalsResponse,
+} from "./ai-operational-proposals-dashboard";
+import {
   emptyAuditProjectionDashboard,
   type AuditProjectionDashboardResponse,
 } from "./audit-dashboard";
 import { emptyStaffReportingWorkspace } from "./reporting-dashboard";
 import type {
   AuditResponse,
+  AiOperationalProposalsResponse,
   BillingDashboardResponse,
   CalendarCredentialsResponse,
   CalendarDashboardResponse,
@@ -534,6 +539,12 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     headers,
     { definitions: [] },
   );
+  const aiOperationalProposals = await apiGetOptional<AiOperationalProposalsResponse>(
+    buildAiOperationalProposalsPath(),
+    emptyAiOperationalProposalsResponse(),
+    headers,
+    emptyAiOperationalProposalsResponse(),
+  );
   const reportingWorkspace = await apiGetOptional<StaffReportingWorkspaceResponse>(
     "/api/reports/workspace",
     emptyStaffReportingWorkspace(),
@@ -805,6 +816,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     <DashboardClient
       apiBaseUrl={browserApiBaseUrl}
       auditProjection={auditProjection}
+      aiOperationalProposals={aiOperationalProposals}
       billing={billing}
       calendar={calendar}
       capabilities={capabilities}

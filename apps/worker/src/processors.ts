@@ -4,6 +4,8 @@ import { request as httpsRequest } from "node:https";
 import type { LookupFunction } from "node:net";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type {
+  AiOperationalProposalKind,
+  AiOperationalProposalProvider,
   ConnectorOutboxRecord,
   DocumentTextExtractionRecord,
   DraftAssistProvider,
@@ -15,6 +17,8 @@ import type {
 } from "@open-practice/domain";
 import {
   assertDraftAssistTask,
+  assertAiOperationalProposalKinds,
+  buildAiOperationalProposalAuditMetadata,
   buildStaffReportProjection,
   buildDraftAssistAuditMetadata,
   extractTipTapPlainText,
@@ -95,6 +99,7 @@ export async function processOpenPracticeJob(input: {
   repository: OpenPracticeRepository;
   s3: { client: S3Client; bucket: string };
   ocrProvider: OcrProvider;
+  aiOperationalProposalProvider?: AiOperationalProposalProvider;
   draftAssistProvider?: DraftAssistProvider;
   mailSender: MailSender;
   inboundEmailParser: InboundEmailParser;
@@ -147,6 +152,7 @@ async function processOpenPracticeJobBody(input: {
   repository: OpenPracticeRepository;
   s3: { client: S3Client; bucket: string };
   ocrProvider: OcrProvider;
+  aiOperationalProposalProvider?: AiOperationalProposalProvider;
   draftAssistProvider?: DraftAssistProvider;
   mailSender: MailSender;
   inboundEmailParser: InboundEmailParser;
@@ -164,6 +170,9 @@ async function processOpenPracticeJobBody(input: {
   if (queueName === "reports") return processReportJob(input);
   if (queueName === "ai_triage" && input.jobName === "draft_assist_suggestion") {
     return processDraftAssistJob(input);
+  }
+  if (queueName === "ai_triage" && input.jobName === "operational_action_proposals") {
+    return processOperationalProposalJob(input);
   }
 
   return {
@@ -240,6 +249,7 @@ async function resolveDraftAssistSource(input: {
       matterId: string;
       draftId?: string;
       documentId?: string;
+      sourceLabel?: string;
       sourceText: string;
     }
   | { ok: false; reason: string; metadata: Record<string, unknown> }
@@ -265,6 +275,7 @@ async function resolveDraftAssistSource(input: {
       sourceType: "draft",
       matterId: draft.matterId,
       draftId: draft.id,
+      sourceLabel: draft.title,
       sourceText: extractTipTapPlainText(draft.editorJson),
     };
   }
@@ -297,6 +308,7 @@ async function resolveDraftAssistSource(input: {
       sourceType: "document",
       matterId: document.matterId,
       documentId: document.id,
+      sourceLabel: document.title,
       sourceText: extraction.extractedText,
     };
   }
@@ -435,6 +447,142 @@ async function processDraftAssistJob(input: {
       sourceTextLength: source.sourceText.length,
       suggestedTextLength: created.suggestedText.length,
       summaryLength: created.summary?.length ?? 0,
+      requestedByUserId,
+    },
+  };
+}
+
+function metadataProposalKinds(metadata: Record<string, unknown>): AiOperationalProposalKind[] {
+  const value = metadataString(metadata, "proposalKinds");
+  const kinds = value
+    ? value
+        .split(",")
+        .map((kind) => kind.trim())
+        .filter(Boolean)
+    : [];
+  assertAiOperationalProposalKinds(kinds);
+  return kinds;
+}
+
+async function processOperationalProposalJob(input: {
+  data: WorkerJobEnvelope;
+  jobLifecycleId?: string;
+  repository: OpenPracticeRepository;
+  aiOperationalProposalProvider?: AiOperationalProposalProvider;
+}): Promise<WorkerJobResult> {
+  const { data, repository, aiOperationalProposalProvider } = input;
+  const metadata = data.metadata ?? {};
+  const providerKey = await enabledAiProviderKey(repository, data.firmId);
+  if (!providerKey || !aiOperationalProposalProvider) {
+    return {
+      status: "skipped",
+      reason: "AI operational proposal provider is not configured",
+      metadata: {
+        firmId: data.firmId,
+        resourceType: data.resourceType,
+        resourceId: data.resourceId,
+        queueStatus: "configured",
+        reason: "not_configured",
+        providerConfigured: false,
+      },
+    };
+  }
+
+  const requestedByUserId = metadataString(metadata, "requestedByUserId");
+  if (!requestedByUserId) {
+    return {
+      status: "skipped",
+      reason: "Missing requesting user for operational proposal job",
+      metadata: {
+        firmId: data.firmId,
+        resourceType: data.resourceType,
+        resourceId: data.resourceId,
+      },
+    };
+  }
+  const proposalKinds = metadataProposalKinds(metadata);
+  const source = await resolveDraftAssistSource({ data, repository });
+  if (!source.ok) {
+    return {
+      status: "skipped",
+      reason: source.reason,
+      metadata: { firmId: data.firmId, ...source.metadata },
+    };
+  }
+
+  const result = await aiOperationalProposalProvider.createOperationalProposals({
+    firmId: data.firmId,
+    matterId: source.matterId,
+    sourceType: source.sourceType,
+    draftId: source.draftId,
+    documentId: source.documentId,
+    sourceLabel: source.sourceLabel,
+    sourceText: source.sourceText,
+    requestedKinds: proposalKinds,
+    metadata: {
+      asyncJob: true,
+      jobId: input.jobLifecycleId,
+    },
+  });
+  const now = new Date().toISOString();
+  const created = [];
+  for (const suggestion of result.proposals) {
+    assertAiOperationalProposalKinds([suggestion.kind]);
+    const record = await repository.createAiOperationalProposal({
+      id: crypto.randomUUID(),
+      firmId: data.firmId,
+      matterId: source.matterId,
+      kind: suggestion.kind,
+      status: "proposed",
+      source: {
+        sourceType: source.sourceType,
+        draftId: source.draftId,
+        documentId: source.documentId,
+        sourceLabel: source.sourceLabel,
+        sourceTextLength: source.sourceText.length,
+      },
+      providerKey,
+      providerModel: result.providerModel,
+      proposal: suggestion.proposal,
+      createdByUserId: requestedByUserId,
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        asyncJobId: input.jobLifecycleId,
+        requestedKindCount: proposalKinds.length,
+        providerMetadataKeyCount: Object.keys(suggestion.metadata ?? {}).length,
+        statusOnlyReview: true,
+      },
+    });
+    created.push(record);
+    await repository.appendAuditEvent({
+      id: crypto.randomUUID(),
+      firmId: data.firmId,
+      actorId: requestedByUserId,
+      occurredAt: now,
+      action: "ai_operational_proposal.created",
+      resourceType: "ai_proposal",
+      resourceId: record.id,
+      metadata: compactMetadata(buildAiOperationalProposalAuditMetadata(record)),
+    });
+  }
+
+  return {
+    status: "completed",
+    metadata: {
+      firmId: data.firmId,
+      matterId: source.matterId,
+      resourceType: data.resourceType,
+      resourceId: data.resourceId,
+      sourceType: source.sourceType,
+      draftId: source.draftId,
+      documentId: source.documentId,
+      proposalKinds: proposalKinds.join(","),
+      proposalKindCount: proposalKinds.length,
+      proposalCount: created.length,
+      provider: providerKey,
+      providerModel: result.providerModel,
+      sourceTextLength: source.sourceText.length,
       requestedByUserId,
     },
   };

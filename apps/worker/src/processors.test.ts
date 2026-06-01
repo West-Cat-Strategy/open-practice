@@ -911,6 +911,198 @@ describe("worker processors", () => {
     expect(serialized).not.toContain("Do not persist worker prompt context");
   });
 
+  it("creates status-only AI operational proposals from async ai_triage jobs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableAi(repository);
+    await repository.createDraft({
+      id: "draft-worker-ai-proposals",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      title: "Synthetic proposal draft",
+      editorJson: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Synthetic privileged proposal source text" }],
+          },
+        ],
+      },
+      version: 1,
+      createdByUserId: "user-admin",
+      updatedByUserId: "user-admin",
+      createdAt: "2026-06-01T10:00:00.000Z",
+      updatedAt: "2026-06-01T10:00:00.000Z",
+      metadata: {},
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-operational-proposals-worker-test",
+      firmId: "firm-west-legal",
+      queueName: "ai_triage",
+      jobName: "operational_action_proposals",
+      status: "queued",
+      targetResourceType: "draft",
+      targetResourceId: "draft-worker-ai-proposals",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-06-01T10:00:00.000Z",
+      metadata: {
+        matterId: "matter-001",
+        sourceType: "draft",
+        draftId: "draft-worker-ai-proposals",
+        proposalKinds: "deadline_extraction,client_update_draft",
+        proposalKindCount: 2,
+        provider: "fake-local-ai",
+        requestedByUserId: "user-admin",
+        sourceTextLength: "Synthetic privileged proposal source text".length,
+        rawPromptContext: "Do not persist operational prompt context",
+      },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "ai_triage",
+      jobName: "operational_action_proposals",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "draft",
+        resourceId: "draft-worker-ai-proposals",
+        metadata: {
+          matterId: "matter-001",
+          sourceType: "draft",
+          draftId: "draft-worker-ai-proposals",
+          proposalKinds: "deadline_extraction,client_update_draft",
+          proposalKindCount: 2,
+          provider: "fake-local-ai",
+          requestedByUserId: "user-admin",
+          sourceTextLength: "Synthetic privileged proposal source text".length,
+          rawPromptContext: "Do not persist operational prompt context",
+        },
+      },
+      jobLifecycleId: "job-operational-proposals-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      aiOperationalProposalProvider: new FakeDraftAssistProvider({ model: "fake-model" }),
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      metadata: {
+        matterId: "matter-001",
+        sourceType: "draft",
+        draftId: "draft-worker-ai-proposals",
+        proposalKinds: "deadline_extraction,client_update_draft",
+        proposalKindCount: 2,
+        proposalCount: 2,
+        provider: "fake-local-ai",
+        providerModel: "fake-model",
+        sourceTextLength: "Synthetic privileged proposal source text".length,
+        requestedByUserId: "user-admin",
+      },
+    });
+    const proposals = await repository.listAiOperationalProposals("firm-west-legal", {
+      matterId: "matter-001",
+    });
+    expect(proposals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: expect.objectContaining({ draftId: "draft-worker-ai-proposals" }),
+          kind: "deadline_extraction",
+          status: "proposed",
+          providerModel: "fake-model",
+          createdByUserId: "user-admin",
+        }),
+        expect.objectContaining({
+          source: expect.objectContaining({ draftId: "draft-worker-ai-proposals" }),
+          kind: "client_update_draft",
+          status: "proposed",
+        }),
+      ]),
+    );
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "ai_triage" }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "job-operational-proposals-worker-test",
+        status: "completed",
+        metadata: expect.objectContaining({
+          proposalCount: 2,
+          proposalKindCount: 2,
+          proposalKinds: "deadline_extraction,client_update_draft",
+        }),
+      }),
+    ]);
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    expect(
+      audit.events.filter((event) => event.action === "ai_operational_proposal.created"),
+    ).toHaveLength(2);
+    const serialized = JSON.stringify({
+      result,
+      jobs: await repository.listJobLifecycleRecords("firm-west-legal"),
+      audit,
+    });
+    expect(serialized).not.toContain("Synthetic privileged proposal source text");
+    expect(serialized).not.toContain("Do not persist operational prompt context");
+  });
+
+  it("skips operational proposal jobs safely when the provider is unavailable", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-operational-proposals-disabled-test",
+      firmId: "firm-west-legal",
+      queueName: "ai_triage",
+      jobName: "operational_action_proposals",
+      status: "queued",
+      targetResourceType: "draft",
+      targetResourceId: "draft-missing-provider",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-06-01T10:00:00.000Z",
+      metadata: {
+        matterId: "matter-001",
+        proposalKinds: "task_creation",
+        requestedByUserId: "user-admin",
+      },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "ai_triage",
+      jobName: "operational_action_proposals",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "draft",
+        resourceId: "draft-missing-provider",
+        metadata: {
+          matterId: "matter-001",
+          proposalKinds: "task_creation",
+          requestedByUserId: "user-admin",
+        },
+      },
+      jobLifecycleId: "job-operational-proposals-disabled-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "skipped",
+      reason: "AI operational proposal provider is not configured",
+      metadata: {
+        queueStatus: "configured",
+        reason: "not_configured",
+        providerConfigured: false,
+      },
+    });
+  });
+
   it("completes audit report export jobs with bounded metadata only", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createJobLifecycleRecord({

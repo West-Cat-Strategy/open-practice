@@ -1,6 +1,7 @@
 import type { S3Client } from "@aws-sdk/client-s3";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import type {
+  AiOperationalProposalProvider,
   DocumentAutomationProvider,
   DraftAssistProvider,
   PaymentProcessorProvider,
@@ -25,6 +26,7 @@ export type ConnectorDnsResolver = (hostname: string) => Promise<string[]>;
 export interface ApiRouteDependencies {
   repository: OpenPracticeRepository;
   automationProvider?: DocumentAutomationProvider;
+  aiOperationalProposalProvider?: AiOperationalProposalProvider;
   draftAssistProvider?: DraftAssistProvider;
   signatureProvider?: SignatureProvider;
   paymentProcessorProvider?: PaymentProcessorProvider;

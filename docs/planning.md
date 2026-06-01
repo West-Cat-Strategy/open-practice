@@ -60,8 +60,8 @@ Next operational scale priorities:
 
 1.  **Clio-Informed Product Suite Completion**: Use the 2026-05-26
     [Clio product specification review](reference-review-clio-2026-05-26.md) as the planning lens
-    for the remaining live parity rows. OP-T135 is Done, OP-T136 is in Review, and OP-T138 and
-    OP-T139 remain the next Candidate picks. Shipped OP-T127 through OP-T135 and OP-T137 through
+    for the remaining live parity rows. OP-T135 is Done, OP-T136 and OP-T138 are in Review, and
+    OP-T139 remains the next Candidate pick. Shipped OP-T127 through OP-T135 and OP-T137 through
     OP-T142 work remains archived proof rather than future backlog.
 
 ### Phase 4: Clio-Informed Functional Parity (Candidate)
@@ -80,10 +80,11 @@ rows live in `docs/planning-and-progress.md`; this section holds the durable pro
     dashboards. Live settlement, card storage, bank-feed automation, automatic trust posting,
     payment-plan enforcement, automatic matching/disbursement, and certified accounting claims stay
     out of scope until their processor, reconciliation, and compliance profiles are approved.
-3.  **AI And Legal Work**: OP-T138 and OP-T139 should expand async assist into review-first
-    operational proposals and a staff-only legal research workspace shell. Generated content, source
-    text, and research artifacts must remain redacted from jobs/audit metadata, and AI output must
-    require human approval before changing source records.
+3.  **AI And Legal Work**: OP-T138 adds review-first operational proposals over the existing async
+    assist boundary, while OP-T139 remains the staff-only legal research workspace shell candidate.
+    Generated content can live only on authorized review artifacts; source text, prompts, generated
+    proposal bodies, and research artifacts must remain redacted from jobs/audit metadata, and AI
+    output must require human approval before any future source-record change.
 
 Phase 4 validation should continue to start with
 `pnpm verify:select -- --files <changed paths...>`, then run the selected package checks plus

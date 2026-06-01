@@ -1,5 +1,7 @@
 import type {
   AuditEventTaxonomySummary,
+  AiOperationalProposalRecord,
+  AiOperationalProposalSummary,
   BillingPeriodLockRecord,
   BillingRateRuleRecord,
   BillingRateSnapshot,
@@ -1195,6 +1197,18 @@ export interface QueueSection {
 
 export interface QueuesResponse {
   sections: QueueSection[];
+}
+
+export interface AiOperationalProposalsResponse {
+  proposals: AiOperationalProposalRecord[];
+  summary: AiOperationalProposalSummary;
+  generation: {
+    status: "configured" | "disabled";
+    reason?: string;
+    provider?: string;
+    queue: WorkerQueueStatus;
+    jobName: "operational_action_proposals";
+  };
 }
 
 export interface ConnectorSummary {
