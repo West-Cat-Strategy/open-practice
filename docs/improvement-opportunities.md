@@ -13,18 +13,17 @@ These candidates name the next smallest useful unimplemented slice. Each row als
 surface it must not duplicate.
 
 The persistent trust statement import batch metadata gap is shipped as OP-T118, and the review-only
-statement match-rule/accounting-profile depth is in OP-T136 Review. Future trust/accounting
+statement match-rule/accounting-profile depth is shipped as OP-T136. Future trust/accounting
 candidates should compare against OP-T104 preview, OP-T107 exception-resolution, OP-T118 batch
 metadata, and OP-T136 accounting-review proof before proposing another slice.
 
 ### Clio-Informed Functional-Parity Candidates - 2026-05-27
 
-The 2026-05-27 Clio-informed candidate list is empty for now. OP-T139 has been promoted to Review in
-`docs/planning-and-progress.md`, and OP-T127 through OP-T138 plus OP-T140 through OP-T142 are shipped
-or in Review. Future Clio-informed candidates should come from a fresh clean-room gap audit and must
-not duplicate these shipped or review-ready slices. Clio remains proprietary public-product research:
-use this section for independent planning only, with no copied Clio prose, assets, screenshots,
-templates, schemas, API examples, or UI structure.
+The 2026-05-27 Clio-informed candidate list is empty for now. OP-T127 through OP-T142 are shipped in
+`docs/planning-and-progress.md`. Future Clio-informed candidates should come from a fresh clean-room
+gap audit and must not duplicate these shipped slices. Clio remains proprietary public-product
+research: use this section for independent planning only, with no copied Clio prose, assets,
+screenshots, templates, schemas, API examples, or UI structure.
 
 ### Reference Review Candidates - 2026-05-22
 
