@@ -47,6 +47,7 @@ import type {
   IntakeFormItemActionRecord,
   IntakeTemplatePreviewResult,
   JurisdictionalTrustReport,
+  LegalResearchWorkspace,
   Matter,
   MatterParty,
   MatterSetupProfile,
@@ -161,6 +162,16 @@ export type DocumentAssemblyWorkbenchResponse = DocumentAssemblyWorkspace & {
 
 export interface DocumentAssemblyDashboardResponse {
   workbenchesByMatterId: Record<string, DocumentAssemblyWorkbenchResponse>;
+}
+
+export type LegalResearchWorkspaceStatus = "available" | "access_denied" | "unavailable";
+
+export type LegalResearchWorkspaceResponse = LegalResearchWorkspace & {
+  status: LegalResearchWorkspaceStatus;
+};
+
+export interface LegalResearchDashboardResponse {
+  workbenchesByMatterId: Record<string, LegalResearchWorkspaceResponse>;
 }
 
 export interface IntakeSessionsResponse {

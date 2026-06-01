@@ -5,6 +5,7 @@ export type OpenPracticeRouteId =
   | "contacts"
   | "billing"
   | "documents"
+  | "research"
   | "shares"
   | "externalUploads"
   | "drafting"
@@ -124,6 +125,17 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     area: "workspace",
     requiresMatterContext: true,
     order: 40,
+    showInSidebar: true,
+  },
+  {
+    id: "research",
+    title: "Research",
+    shortLabel: "Research",
+    path: "/?section=research",
+    sectionKey: "research",
+    area: "workspace",
+    requiresMatterContext: true,
+    order: 41,
     showInSidebar: true,
   },
   {

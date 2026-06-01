@@ -53,6 +53,7 @@ import { registerIntakeRoutes } from "./routes/intake.js";
 import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerLedgerRoutes } from "./routes/ledger.js";
 import { registerLegalClinicRoutes } from "./routes/legal-clinics.js";
+import { registerLegalResearchRoutes } from "./routes/legal-research.js";
 import { registerMatterRoutes } from "./routes/matters.js";
 import { registerOperationalViewRoutes } from "./routes/operational-views.js";
 import { registerOutboundWebhookRoutes } from "./routes/outbound-webhooks.js";
@@ -461,6 +462,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   });
   registerDocumentRoutes(server, { repository: options.repository, s3: options.s3 });
   registerDocumentAssemblyRoutes(server, { repository: options.repository });
+  registerLegalResearchRoutes(server, { repository: options.repository });
   if (options.e2eSupport) {
     registerE2ESupportRoutes(server, { repository: options.repository });
   }

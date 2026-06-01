@@ -19,21 +19,12 @@ metadata, and OP-T136 accounting-review proof before proposing another slice.
 
 ### Clio-Informed Functional-Parity Candidates - 2026-05-27
 
-These candidates mirror the remaining live Candidate row OP-T139 in
-`docs/planning-and-progress.md`. They come from the Clio-only product-spec review and the local Open
-Practice audit. Clio remains proprietary public-product research; use this section for independent
-planning only, with no copied Clio prose, assets, screenshots, templates, schemas, API examples, or
-UI structure. OP-T127 through OP-T137 and OP-T140 through OP-T142 are shipped, and OP-T138 is in
-Review. Those rows should not remain here as future work.
-
-- **OP-T139 legal research workspace shell**
-  - **First slice:** Add a staff-only legal research workspace shell for cited-source notes,
-    matter-context attachment, document-analysis artifact status, strategy/timeline notes, and review
-    checkpoints without connecting a live provider.
-  - **Local gap / shipped boundary:** OP has drafting and document review foundations, but no
-    substantive legal research workspace boundary.
-  - **Out of scope:** Proprietary research content, scraped authority storage, automated advice, and
-    source-citation claims.
+The 2026-05-27 Clio-informed candidate list is empty for now. OP-T139 has been promoted to Review in
+`docs/planning-and-progress.md`, and OP-T127 through OP-T138 plus OP-T140 through OP-T142 are shipped
+or in Review. Future Clio-informed candidates should come from a fresh clean-room gap audit and must
+not duplicate these shipped or review-ready slices. Clio remains proprietary public-product research:
+use this section for independent planning only, with no copied Clio prose, assets, screenshots,
+templates, schemas, API examples, or UI structure.
 
 ### Reference Review Candidates - 2026-05-22
 

@@ -56,6 +56,7 @@ import {
   jobLifecycleRecords,
   legalClinicMatterProfiles,
   legalClinicPrograms,
+  legalResearchArtifacts,
   manualPayments,
   mediaDerivatives,
   mediaTranscripts,
@@ -801,6 +802,28 @@ describe("database schema hardening", () => {
         "model",
         "classification",
         "extracted_entities",
+      ]),
+    );
+    expect(getTableConfig(legalResearchArtifacts).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "kind",
+        "status",
+        "title",
+        "note",
+        "source_references",
+        "context_links",
+        "document_analysis",
+        "review_only",
+      ]),
+    );
+    expect(getTableConfig(legalResearchArtifacts).checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "legal_research_artifacts_kind_value",
+        "legal_research_artifacts_status_value",
+        "legal_research_artifacts_status_only_review",
+        "legal_research_artifacts_review_only",
       ]),
     );
   });

@@ -77,6 +77,11 @@ import {
   emptyAiOperationalProposalsResponse,
 } from "./ai-operational-proposals-dashboard";
 import {
+  buildLegalResearchWorkspacePath,
+  emptyLegalResearchWorkspace,
+  loadLegalResearchDashboardData,
+} from "./legal-research-dashboard";
+import {
   emptyAuditProjectionDashboard,
   type AuditProjectionDashboardResponse,
 } from "./audit-dashboard";
@@ -116,6 +121,8 @@ import type {
   IntakeVariableProposalsResponse,
   JurisdictionalTrustReportResponse,
   LegalClinicDashboardResponse,
+  LegalResearchDashboardResponse,
+  LegalResearchWorkspaceResponse,
   LegalClinicProfileResponse,
   LegalClinicProfilesResponse,
   LegalClinicProgramsResponse,
@@ -586,6 +593,9 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   const canViewDocuments = capabilities.sections.some(
     (section) => section.key === "documents" && section.enabled,
   );
+  const canViewResearch = capabilities.sections.some(
+    (section) => section.key === "research" && section.enabled,
+  );
   const drafting: DraftingDashboardResponse = canViewDrafting
     ? await loadDraftingDashboardData({
         matters,
@@ -694,6 +704,18 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
             emptyDocumentAssemblyWorkbench(matterId),
             headers,
             emptyDocumentAssemblyWorkbench(matterId, "access_denied"),
+          ),
+      })
+    : { workbenchesByMatterId: {} };
+  const legalResearch: LegalResearchDashboardResponse = canViewResearch
+    ? await loadLegalResearchDashboardData({
+        matters,
+        getWorkspace: (matterId) =>
+          apiGetOptional<LegalResearchWorkspaceResponse>(
+            buildLegalResearchWorkspacePath(matterId),
+            emptyLegalResearchWorkspace(matterId),
+            headers,
+            emptyLegalResearchWorkspace(matterId, "access_denied"),
           ),
       })
     : { workbenchesByMatterId: {} };
@@ -837,6 +859,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       intakePipeline={intakePipeline}
       publicConsultation={publicConsultation}
       legalClinic={legalClinic}
+      legalResearch={legalResearch}
       matters={matters}
       overview={overview}
       operationalViewDefinitions={operationalViewDefinitions.definitions}

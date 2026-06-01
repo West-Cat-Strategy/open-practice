@@ -900,6 +900,7 @@ describe("API auth and persistence boundaries", () => {
         expect.objectContaining({ key: "matters", enabled: true }),
         expect.objectContaining({ key: "contacts", enabled: true }),
         expect.objectContaining({ key: "documents", enabled: true }),
+        expect.objectContaining({ key: "research", enabled: true }),
         expect.objectContaining({ key: "drafting", enabled: true }),
         expect.objectContaining({ key: "calendar", enabled: true }),
         expect.objectContaining({ key: "signatures", enabled: true }),

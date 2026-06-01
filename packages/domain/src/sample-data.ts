@@ -34,6 +34,7 @@ import type {
   LedgerStatementMatchRuleProfileRecord,
 } from "./ledger.js";
 import type { LegalClinicMatterProfile, LegalClinicProgram } from "./legal-clinics.js";
+import type { LegalResearchArtifactRecord } from "./legal-research.js";
 import type { EmbeddedIntakeTemplateDefinition } from "./intake.js";
 import type {
   GeneratedDocumentRecord,
@@ -671,6 +672,84 @@ export const sampleAiOperationalProposals: AiOperationalProposalRecord[] = [
     createdByUserId: "user-licensee",
     createdAt: "2026-06-01T16:05:00.000Z",
     updatedAt: "2026-06-01T17:00:00.000Z",
+    metadata: { source: "seed", statusOnlyReview: true },
+  },
+];
+
+export const sampleLegalResearchArtifacts: LegalResearchArtifactRecord[] = [
+  {
+    id: "legal-research-source-note-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    kind: "cited_source_note",
+    status: "ready_for_review",
+    title: "Residential tenancy source note",
+    note: "Synthetic staff-authored issue note for internal legal research review.",
+    sourceReferences: [
+      {
+        sourceType: "statute",
+        label: "Residential tenancy statute review label",
+        jurisdiction: "BC",
+        staffCitationLabel: "Staff-entered citation label",
+      },
+    ],
+    contextLinks: [
+      { resourceType: "matter", resourceId: "matter-001", label: "Matter context" },
+      { resourceType: "document", resourceId: "doc-001", label: "Retainer agreement" },
+    ],
+    createdByUserId: "user-licensee",
+    createdAt: "2026-06-01T18:00:00.000Z",
+    updatedAt: "2026-06-01T18:00:00.000Z",
+    reviewOnly: true,
+    metadata: { source: "seed", shellOnly: true },
+  },
+  {
+    id: "legal-research-analysis-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    kind: "document_analysis_status",
+    status: "draft",
+    title: "Document analysis posture",
+    note: "Synthetic metadata-only review note for document analysis status.",
+    sourceReferences: [],
+    contextLinks: [
+      { resourceType: "document", resourceId: "doc-001", label: "Retainer agreement" },
+    ],
+    documentAnalysis: {
+      documentId: "doc-001",
+      status: "in_review",
+      extractionStatus: "completed",
+      artifactStatus: "metadata_only",
+      sourceTextLength: 360,
+    },
+    createdByUserId: "user-licensee",
+    createdAt: "2026-06-01T18:05:00.000Z",
+    updatedAt: "2026-06-01T18:05:00.000Z",
+    reviewOnly: true,
+    metadata: { source: "seed", storesExtractedText: false },
+  },
+  {
+    id: "legal-research-checkpoint-001",
+    firmId: sampleFirm.id,
+    matterId: "matter-001",
+    kind: "review_checkpoint",
+    status: "reviewed",
+    title: "Supervising lawyer research checkpoint",
+    note: "Synthetic checkpoint note confirming this shell record was reviewed.",
+    sourceReferences: [],
+    contextLinks: [{ resourceType: "matter", resourceId: "matter-001", label: "Matter context" }],
+    checkpoint: {
+      checkpointType: "supervising_lawyer_review",
+      assignedUserId: "user-admin",
+      dueAt: "2026-06-07T17:00:00.000Z",
+    },
+    reviewDecision: "reviewed",
+    reviewedByUserId: "user-admin",
+    reviewedAt: "2026-06-01T19:00:00.000Z",
+    createdByUserId: "user-licensee",
+    createdAt: "2026-06-01T18:10:00.000Z",
+    updatedAt: "2026-06-01T19:00:00.000Z",
+    reviewOnly: true,
     metadata: { source: "seed", statusOnlyReview: true },
   },
 ];

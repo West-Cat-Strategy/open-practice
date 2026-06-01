@@ -75,6 +75,7 @@ import {
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
   type LegalClinicProgram,
+  type LegalResearchArtifactRecord,
   type ManualPaymentRecord,
   type Matter,
   type MatterParty,
@@ -2228,6 +2229,35 @@ export function mapAiOperationalProposalRow(
     createdByUserId: row.createdByUserId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    metadata: row.metadata as Record<string, unknown>,
+  };
+}
+
+export function mapLegalResearchArtifactRow(
+  row: typeof schema.legalResearchArtifacts.$inferSelect,
+): LegalResearchArtifactRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    kind: row.kind as LegalResearchArtifactRecord["kind"],
+    status: row.status as LegalResearchArtifactRecord["status"],
+    title: row.title,
+    note: row.note ?? undefined,
+    sourceReferences: row.sourceReferences as LegalResearchArtifactRecord["sourceReferences"],
+    contextLinks: row.contextLinks as LegalResearchArtifactRecord["contextLinks"],
+    documentAnalysis:
+      (row.documentAnalysis as LegalResearchArtifactRecord["documentAnalysis"]) ?? undefined,
+    timeline: (row.timeline as LegalResearchArtifactRecord["timeline"]) ?? undefined,
+    checkpoint: (row.checkpoint as LegalResearchArtifactRecord["checkpoint"]) ?? undefined,
+    reviewDecision:
+      (row.reviewDecision as LegalResearchArtifactRecord["reviewDecision"]) ?? undefined,
+    reviewedByUserId: row.reviewedByUserId ?? undefined,
+    reviewedAt: row.reviewedAt?.toISOString(),
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    reviewOnly: row.reviewOnly as true,
     metadata: row.metadata as Record<string, unknown>,
   };
 }

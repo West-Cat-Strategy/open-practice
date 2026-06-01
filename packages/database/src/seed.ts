@@ -20,6 +20,7 @@ import {
   sampleInvoices,
   sampleLegalClinicMatterProfiles,
   sampleLegalClinicPrograms,
+  sampleLegalResearchArtifacts,
   sampleLedgerAccountingReviewProfiles,
   sampleLedgerAccounts,
   sampleLedgerEntries,
@@ -432,6 +433,23 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
         reviewedAt: proposal.reviewedAt ? new Date(proposal.reviewedAt) : null,
         createdAt: new Date(proposal.createdAt),
         updatedAt: new Date(proposal.updatedAt),
+      })),
+    )
+    .onConflictDoNothing();
+  await db
+    .insert(schema.legalResearchArtifacts)
+    .values(
+      sampleLegalResearchArtifacts.map((artifact) => ({
+        ...artifact,
+        note: artifact.note ?? null,
+        documentAnalysis: artifact.documentAnalysis ?? null,
+        timeline: artifact.timeline ?? null,
+        checkpoint: artifact.checkpoint ?? null,
+        reviewDecision: artifact.reviewDecision ?? null,
+        reviewedByUserId: artifact.reviewedByUserId ?? null,
+        reviewedAt: artifact.reviewedAt ? new Date(artifact.reviewedAt) : null,
+        createdAt: new Date(artifact.createdAt),
+        updatedAt: new Date(artifact.updatedAt),
       })),
     )
     .onConflictDoNothing();
