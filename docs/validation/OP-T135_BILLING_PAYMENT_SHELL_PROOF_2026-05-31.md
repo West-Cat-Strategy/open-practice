@@ -16,7 +16,25 @@ Implemented the smallest coherent OP-T135 first slice:
 - Surfaced payment request shells and manual-payment evidence flags in billing dashboard and billing
   export payloads.
 
-## Changed Paths
+## Closeout Reconciliation - 2026-06-01
+
+`main` contains the OP-T135 merge commit `acdc724` and implementation commit `b971e72`. The merged
+state includes the hosted payment-request API routes, repository methods, migration and seed data,
+Stripe Checkout Session shell provider, dashboard/export payloads, route-authorization manifest
+entries, deployment caveats, and focused tests described below.
+
+No implementation blocker remains beyond the status/proof loop that kept OP-T135 in `Review`.
+Production Stripe enablement, public payment-page UX, processor settlement, automatic reconciliation,
+invoice-balance mutation from hosted payment requests, and trust posting remain intentionally out of
+scope for later rows.
+
+The closeout diff is limited to:
+
+- `docs/planning-and-progress.md`
+- `docs/validation/README.md`
+- `docs/validation/OP-T135_BILLING_PAYMENT_SHELL_PROOF_2026-05-31.md`
+
+## Merged Implementation Paths
 
 - `apps/api/src/routes/billing.ts`
 - `apps/api/src/routes/billing.test.ts`
@@ -55,6 +73,38 @@ Implemented the smallest coherent OP-T135 first slice:
 - `scripts/route-authorization-manifest.mjs`
 
 ## Validation
+
+2026-06-01 closeout selector:
+
+- `pnpm verify:select -- --files <merged implementation paths>` matched the implementation proof
+  selection below.
+- `pnpm verify:select -- --files docs/planning-and-progress.md docs/validation/README.md docs/validation/OP-T135_BILLING_PAYMENT_SHELL_PROOF_2026-05-31.md` selected docs and policy checks for
+  the closeout diff.
+
+2026-06-01 closeout validation:
+
+- `pnpm --filter @open-practice/domain build`
+- `pnpm --filter @open-practice/database build`
+- `pnpm --filter @open-practice/providers build`
+- `pnpm --filter @open-practice/domain test`
+- `pnpm --filter @open-practice/database test`
+- `pnpm --dir apps/api exec vitest run src/routes/billing.test.ts src/server.test.ts`
+- `pnpm --filter @open-practice/providers test`
+- `pnpm --filter @open-practice/web test`
+- `pnpm migrations:check`
+- `pnpm --filter @open-practice/database db:check`
+- `pnpm format:check`
+- `pnpm docs:check`
+- `pnpm policy:check`
+- `git diff --check`
+
+The package-wide `pnpm --filter @open-practice/api test` was also attempted after the fresh-worktree
+build setup. It failed in `src/routes/client-portal.test.ts` because the expected client portal
+action statuses (`secure_share` `verification_required`, `external_upload` `active`) no longer match
+the merged sample-data response (`secure_share` `expired`, `external_upload` `expired`). The focused
+OP-T135 billing/server API tests passed and no OP-T135 implementation blocker was found.
+
+2026-05-31 implementation validation:
 
 - `pnpm verify:select -- --files <changed paths>` selected `pnpm ci:local`,
   `pnpm deps:audit`, `pnpm deps:licenses`, `pnpm format:check`, `pnpm docs:check`,
