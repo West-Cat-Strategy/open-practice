@@ -7,6 +7,20 @@ export type InvoiceStatus = "draft" | "approved" | "issued" | "partially_paid" |
 
 export type InvoiceLineKind = "time" | "expense" | "adjustment";
 
+export interface BillingTimerDraftPolicy {
+  createsDraftOnly: true;
+  autoSubmitEnabled: false;
+  autoApproveEnabled: false;
+  lockBypassAllowed: false;
+}
+
+export const billingTimerDraftPolicy: BillingTimerDraftPolicy = {
+  createsDraftOnly: true,
+  autoSubmitEnabled: false,
+  autoApproveEnabled: false,
+  lockBypassAllowed: false,
+};
+
 export const expenseCategoryProfileCues = [
   {
     key: "filing_service",

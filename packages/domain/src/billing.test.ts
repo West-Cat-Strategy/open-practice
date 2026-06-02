@@ -4,6 +4,7 @@ import {
   billingPeriodLocksOverlap,
   billingRateRulesOverlapAtSameActiveScope,
   billingRuleScope,
+  billingTimerDraftPolicy,
   billingTimerWindowOverlapsLock,
   defaultBillDeliveryState,
   defaultBillReminderState,
@@ -209,7 +210,13 @@ describe("billing period locks and rate rules", () => {
     ).toBeUndefined();
   });
 
-  it("keeps expense category profiles as review-only cues", () => {
+  it("keeps billing capture helper metadata review-only", () => {
+    expect(billingTimerDraftPolicy).toEqual({
+      createsDraftOnly: true,
+      autoSubmitEnabled: false,
+      autoApproveEnabled: false,
+      lockBypassAllowed: false,
+    });
     expect(expenseCategoryProfileForKey("filing_service")).toMatchObject({
       category: "Filing and service",
       defaultReimbursable: true,

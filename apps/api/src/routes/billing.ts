@@ -4,6 +4,7 @@ import {
   assertBillingStatusTransition,
   billingDateFallsInsideLock,
   billingRuleScope,
+  billingTimerDraftPolicy,
   billingTimerWindowOverlapsLock,
   billDeliveryChannels,
   billDeliveryStatuses,
@@ -2158,6 +2159,7 @@ export function registerBillingRoutes(
           rateSnapshot: entry.rateSnapshot,
           amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
           narrative: entry.narrative,
+          billable: entry.billable,
           status: entry.billingStatus,
         }));
       const unbilledExpenses = expenseEntries
@@ -2177,9 +2179,7 @@ export function registerBillingRoutes(
       const captureReviewTime = timeEntries
         .filter(
           (entry) =>
-            entry.matterId === matterId &&
-            entry.billable &&
-            ["draft", "submitted"].includes(entry.billingStatus),
+            entry.matterId === matterId && ["draft", "submitted"].includes(entry.billingStatus),
         )
         .map((entry) => ({
           id: entry.id,
@@ -2192,6 +2192,7 @@ export function registerBillingRoutes(
           rateSnapshot: entry.rateSnapshot,
           amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
           narrative: entry.narrative,
+          billable: entry.billable,
           status: entry.billingStatus,
         }));
       const captureReviewExpenses = expenseEntries
@@ -2299,6 +2300,7 @@ export function registerBillingRoutes(
       },
       periodLocks,
       rateRules,
+      timerDraftPolicy: billingTimerDraftPolicy,
       expenseCategoryProfiles: expenseCategoryProfileCues,
       matters: matterSummaries,
     };

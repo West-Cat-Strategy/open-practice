@@ -13,6 +13,10 @@ import { registerClientPortalRoutes } from "./client-portal.js";
 const jwtSecret = "client-portal-test-secret-at-least-32-chars";
 const servers: FastifyInstance[] = [];
 
+function futureIso(daysFromNow: number): string {
+  return new Date(Date.now() + daysFromNow * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
   const idByRole: Partial<Record<ProfessionalRole, string>> = {
     owner_admin: "user-admin",
@@ -58,7 +62,7 @@ async function addClientPortalRecords(repository: InMemoryOpenPracticeRepository
     grantedByUserId: "user-admin",
     permissions: ["view_documents"],
     requireEmailVerification: true,
-    expiresAt: "2026-06-01T00:00:00.000Z",
+    expiresAt: futureIso(30),
     createdAt: "2026-05-20T12:00:00.000Z",
   });
 
@@ -68,7 +72,7 @@ async function addClientPortalRecords(repository: InMemoryOpenPracticeRepository
     matterId: "matter-001",
     tokenHash: "secret-upload-token-hash",
     requestedByUserId: "user-admin",
-    expiresAt: "2026-06-01T00:00:00.000Z",
+    expiresAt: futureIso(30),
     maxUploads: 2,
     usedUploads: 1,
     createdAt: "2026-05-20T13:00:00.000Z",
@@ -109,7 +113,7 @@ async function addClientPortalRecords(repository: InMemoryOpenPracticeRepository
     tokenHash: "secret-intake-token-hash",
     requestedByUserId: "user-admin",
     clientContactId: "contact-ada",
-    expiresAt: "2026-06-02T00:00:00.000Z",
+    expiresAt: futureIso(31),
     createdAt: "2026-05-20T14:00:00.000Z",
   });
   await repository.upsertIntakeFormItemAction({
@@ -147,7 +151,7 @@ async function addClientPortalRecords(repository: InMemoryOpenPracticeRepository
     sessionId: "meeting-session-001",
     tokenHash: "secret-guest-token-hash",
     status: "issued",
-    expiresAt: "2026-06-03T00:00:00.000Z",
+    expiresAt: futureIso(32),
     createdAt: "2026-05-20T15:00:00.000Z",
     updatedAt: "2026-05-20T15:00:00.000Z",
     createdByUserId: "user-admin",
@@ -228,7 +232,7 @@ async function addClientPortalRecords(repository: InMemoryOpenPracticeRepository
     emailId: email.id,
     tokenHash: "secret-receipt-token-hash",
     purpose: "delivery_receipt",
-    expiresAt: "2026-06-04T00:00:00.000Z",
+    expiresAt: futureIso(33),
     createdAt: "2026-05-20T16:01:00.000Z",
     metadata: { privateReceiptMetadata: "do not expose" },
   });

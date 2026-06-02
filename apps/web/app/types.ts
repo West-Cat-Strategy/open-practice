@@ -3,6 +3,7 @@ import type {
   BillingPeriodLockRecord,
   BillingRateRuleRecord,
   BillingRateSnapshot,
+  BillingTimerDraftPolicy,
   BillDeliveryState,
   BillReminderState,
   Contact,
@@ -1057,6 +1058,7 @@ export interface BillingTimeItem {
   rateSnapshot?: BillingRateSnapshot;
   amountCents: number;
   narrative: string;
+  billable?: boolean;
   status: BillingEntryStatus;
 }
 
@@ -1137,6 +1139,7 @@ export interface BillingDashboardResponse {
   };
   periodLocks: BillingPeriodLockRecord[];
   rateRules: BillingRateRuleRecord[];
+  timerDraftPolicy: BillingTimerDraftPolicy;
   expenseCategoryProfiles: readonly ExpenseCategoryProfileCue[];
   matters: MatterBillingSummary[];
 }
