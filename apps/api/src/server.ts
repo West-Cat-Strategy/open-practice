@@ -77,7 +77,7 @@ import {
   readSessionToken,
   isPublicRoute,
 } from "./http/auth-helpers.js";
-import { ApiHttpError } from "./http/response.js";
+import { ApiHttpError, apiRouteErrorBody, UNEXPECTED_API_ERROR_MESSAGE } from "./http/response.js";
 
 const DEV_EXAMPLE_JWT_SECRET = "dev-only-change-me-at-least-16-chars";
 
@@ -337,8 +337,20 @@ async function authenticate(
   return { user, firmId };
 }
 
-function routePath(url: string): string {
-  return url.split("?")[0] ?? url;
+function routePath(url: string | undefined): string {
+  return url?.split("?")[0] ?? "";
+}
+
+function isPublicConsultationIntakePath(url: string): boolean {
+  return routePath(url) === "/api/public/consultation-intakes";
+}
+
+function corsOriginsForRequest(request: FastifyRequest, publicConsultationOrigins: string[]) {
+  return [
+    /^http:\/\/localhost:\d+$/,
+    /^http:\/\/127\.0\.0\.1:\d+$/,
+    ...(isPublicConsultationIntakePath(request.url) ? publicConsultationOrigins : []),
+  ];
 }
 
 export function createApiServer(options: ApiOptions): FastifyInstance {
@@ -366,13 +378,13 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
 function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   const publicConsultationOrigins = options.publicConsultationIntake?.allowedOrigins ?? [];
   server.register(cors, {
-    origin: [
-      /^http:\/\/localhost:\d+$/,
-      /^http:\/\/127\.0\.0\.1:\d+$/,
-      ...publicConsultationOrigins,
-    ],
-    credentials: true,
-    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    delegator: (request, callback) => {
+      callback(null, {
+        origin: corsOriginsForRequest(request, publicConsultationOrigins),
+        credentials: true,
+        methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      });
+    },
   });
 
   server.get("/health", async () => ({
@@ -580,21 +592,49 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
         ? normalizedError.statusCode
         : reply.statusCode >= 400
           ? reply.statusCode
-          : 400;
-    if (error instanceof ApiHttpError) {
-      const body = {
-        error: error.name,
-        code: error.code,
-        message: error.message,
-        ...(error.details === undefined ? {} : { details: error.details }),
-      };
-      reply.status(statusCode).send(body);
+          : 500;
+    const apiHttpError =
+      error instanceof ApiHttpError ||
+      (normalizedError.name === "ApiHttpError" && typeof normalizedError.code === "string");
+    if (apiHttpError) {
+      reply.status(statusCode).send(
+        apiRouteErrorBody({
+          error: normalizedError.name ?? "ApiHttpError",
+          code: normalizedError.code,
+          message: normalizedError.message,
+          details: "details" in normalizedError ? normalizedError.details : undefined,
+        }),
+      );
       return;
     }
-    reply.status(statusCode).send({
-      error: normalizedError.name ?? normalizedError.error ?? normalizedError.code ?? "Error",
-      message: normalizedError.message,
-    });
+    if (error instanceof z.ZodError) {
+      reply.status(400).send(apiRouteErrorBody({ error: error.name, message: error.message }));
+      return;
+    }
+    if (statusCode === 429 && normalizedError.error === "RATE_LIMIT_EXCEEDED") {
+      reply.status(statusCode).send(
+        apiRouteErrorBody({
+          error: normalizedError.error,
+          message: normalizedError.message ?? "Too many requests",
+        }),
+      );
+      return;
+    }
+    if (statusCode >= 400 && statusCode < 500) {
+      reply.status(statusCode).send(
+        apiRouteErrorBody({
+          error: normalizedError.name ?? normalizedError.error ?? normalizedError.code ?? "Error",
+          message: normalizedError.message ?? UNEXPECTED_API_ERROR_MESSAGE,
+        }),
+      );
+      return;
+    }
+    reply.status(statusCode).send(
+      apiRouteErrorBody({
+        error: normalizedError.name ?? normalizedError.error ?? normalizedError.code ?? "Error",
+        message: UNEXPECTED_API_ERROR_MESSAGE,
+      }),
+    );
   });
 }
 

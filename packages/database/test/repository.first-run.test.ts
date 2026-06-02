@@ -25,6 +25,46 @@ function drizzleRepositoryWithSetupRows(input: {
   return new DrizzleOpenPracticeRepository(db);
 }
 
+function drizzleRepositoryWithPoisonedMatterAssignments() {
+  const userRow = {
+    id: "user-poisoned",
+    firmId: "firm-west-legal",
+    displayName: "Poisoned Assignment User",
+    email: "poisoned@example.test",
+    role: "licensee",
+    mfaEnabled: false,
+    practitionerProfile: null,
+  };
+  const allAssignments = [{ matterId: "matter-001" }, { matterId: "matter-cross-firm-poisoned" }];
+  const scopedAssignments = [{ matterId: "matter-001" }];
+  let joinedMattersForFirmScope = false;
+  const db = {
+    select: () => ({
+      from: (table: unknown) => {
+        if (table === schema.users) {
+          return { where: async () => [userRow] };
+        }
+        if (table === schema.matterAssignments) {
+          return {
+            where: async () => allAssignments,
+            innerJoin: (joinTable: unknown) => {
+              joinedMattersForFirmScope = joinTable === schema.matters;
+              return {
+                where: async () => (joinedMattersForFirmScope ? scopedAssignments : allAssignments),
+              };
+            },
+          };
+        }
+        return { where: async () => [] };
+      },
+    }),
+  } as unknown as DrizzleDb;
+  return {
+    repository: new DrizzleOpenPracticeRepository(db),
+    joinedMattersForFirmScope: () => joinedMattersForFirmScope,
+  };
+}
+
 describe("repository first-run setup", () => {
   it("reports setup as required only for an empty repository", async () => {
     await expect(new InMemoryOpenPracticeRepository().getSetupStatus()).resolves.toEqual({
@@ -141,6 +181,16 @@ describe("repository first-run setup", () => {
       status: "ready",
       firm: input.firm,
     });
+  });
+
+  it("filters Drizzle user assignments through same-firm matters", async () => {
+    const { repository, joinedMattersForFirmScope } =
+      drizzleRepositoryWithPoisonedMatterAssignments();
+
+    const user = await repository.getUser("firm-west-legal", "user-poisoned");
+
+    expect(joinedMattersForFirmScope()).toBe(true);
+    expect(user?.assignedMatterIds).toEqual(["matter-001"]);
   });
 
   it("reports setup-required or blocked firm resolution states", async () => {

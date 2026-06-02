@@ -47,6 +47,7 @@ export interface PublicExternalUploadIntentResponse {
   expiresInSeconds: number;
   document: PublicExternalUploadDocument;
   requiredHeaders?: Record<string, string>;
+  maxFileSizeBytes?: number;
 }
 
 export function buildPublicExternalUploadPath(token: string): string {
@@ -108,13 +109,14 @@ export function externalUploadLifecycleMessage(
 }
 
 export function buildExternalUploadIntentPayload(input: {
-  file: Pick<File, "name" | "type">;
+  file: Pick<File, "name" | "type" | "size">;
   checksumSha256: string;
   classification: ExternalUploadClassification;
   legalHold: boolean;
 }): {
   filename: string;
   checksumSha256: string;
+  fileSizeBytes: number;
   contentType: string;
   classification: ExternalUploadClassification;
   legalHold: boolean;
@@ -122,6 +124,7 @@ export function buildExternalUploadIntentPayload(input: {
   return {
     filename: input.file.name,
     checksumSha256: input.checksumSha256,
+    fileSizeBytes: input.file.size,
     contentType: input.file.type || "application/octet-stream",
     classification: input.classification,
     legalHold: input.legalHold,

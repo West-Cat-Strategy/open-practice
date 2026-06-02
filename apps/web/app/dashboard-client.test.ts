@@ -1080,7 +1080,6 @@ function publicRunnerPayload(
 ): PublicIntakeFormPayload {
   return {
     link: {
-      id: "intake-form-link-001",
       status: "active",
       expiresAt: "2099-06-01T00:00:00.000Z",
     },
@@ -5880,16 +5879,9 @@ describe("dashboard client behavior", () => {
     const payload = publicRunnerPayload({
       actions: [
         {
-          id: "action-001",
-          firmId: "firm-west-legal",
-          matterId: "matter-001",
-          intakeSessionId: "intake-session-001",
-          formLinkId: "intake-form-link-001",
           itemId: "evidence-upload",
           kind: "upload",
           status: "uploaded",
-          evidence: { contentType: "application/pdf" },
-          createdAt: "2026-04-29T12:00:00.000Z",
         },
       ],
     });

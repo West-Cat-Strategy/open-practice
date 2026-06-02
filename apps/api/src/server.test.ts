@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Buffer } from "node:buffer";
-import { InMemoryOpenPracticeRepository } from "@open-practice/database";
+import { InMemoryOpenPracticeRepository, type MatterSummary } from "@open-practice/database";
 import { verifyRegistrationResponse } from "@simplewebauthn/server";
 import {
   buildPublicConsultationIntakeSettingsFromEnv,
@@ -871,6 +871,58 @@ describe("API auth and persistence boundaries", () => {
     });
   });
 
+  it("scopes configured public consultation CORS origins to the public intake route", async () => {
+    const origin = "https://consult.example.test";
+    const server = testServer({
+      publicConsultationIntake: {
+        allowedOrigins: [origin],
+        firmId: "firm-west-legal",
+        actorUserId: "user-admin",
+      },
+    });
+    const publicPreflight = await server.inject({
+      method: "OPTIONS",
+      url: "/api/public/consultation-intakes",
+      headers: {
+        origin,
+        "access-control-request-method": "POST",
+      },
+    });
+    const authenticatedPreflight = await server.inject({
+      method: "OPTIONS",
+      url: "/api/overview",
+      headers: {
+        origin,
+        "access-control-request-method": "GET",
+      },
+    });
+
+    expect(publicPreflight.statusCode).toBe(204);
+    expect(publicPreflight.headers["access-control-allow-origin"]).toBe(origin);
+    expect(authenticatedPreflight.statusCode).toBe(204);
+    expect(authenticatedPreflight.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("redacts unexpected server error messages", async () => {
+    class ThrowingMatterRepository extends InMemoryOpenPracticeRepository {
+      override async listMattersForUser(): Promise<MatterSummary[]> {
+        throw new Error("database password leaked in stack");
+      }
+    }
+    const server = testServer({ repository: new ThrowingMatterRepository() });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/matters",
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toMatchObject({
+      message: "Unexpected API error",
+    });
+    expect(response.body).not.toContain("database password leaked in stack");
+  });
+
   it("scopes matter lists to the authenticated user", async () => {
     const response = await testServer().inject({
       method: "GET",
@@ -1121,6 +1173,7 @@ describe("API auth and persistence boundaries", () => {
         client: {
           send: async () => ({
             ChecksumSHA256: Buffer.from(checksumSha256, "hex").toString("base64"),
+            ContentLength: 4096,
           }),
         } as never,
       },

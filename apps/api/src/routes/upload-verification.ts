@@ -5,6 +5,7 @@ import { ApiHttpError } from "../http/response.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 export const checksumSha256HexSchema = /^[a-fA-F0-9]{64}$/;
+export const MAX_UPLOAD_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 
 export function normalizeChecksumSha256(value: string): string {
   if (!checksumSha256HexSchema.test(value)) {
@@ -21,11 +22,31 @@ export function sha256HexToBase64(checksumSha256: string): string {
   return Buffer.from(normalizeChecksumSha256(checksumSha256), "hex").toString("base64");
 }
 
+export function normalizeUploadSizeBytes(value: number): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new ApiHttpError(
+      400,
+      "INVALID_FILE_SIZE_BYTES",
+      "fileSizeBytes must be a positive integer byte count",
+    );
+  }
+  if (value > MAX_UPLOAD_FILE_SIZE_BYTES) {
+    throw new ApiHttpError(
+      413,
+      "UPLOAD_SIZE_LIMIT_EXCEEDED",
+      "Uploaded file exceeds the maximum allowed size",
+      { maxFileSizeBytes: MAX_UPLOAD_FILE_SIZE_BYTES },
+    );
+  }
+  return value;
+}
+
 export async function verifyUploadedObject(
   s3: NonNullable<ApiRouteDependencies["s3"]>,
-  input: { storageKey: string; checksumSha256: string },
+  input: { storageKey: string; checksumSha256: string; expectedSizeBytes: number },
 ): Promise<void> {
   const expectedChecksum = sha256HexToBase64(input.checksumSha256);
+  const expectedSizeBytes = normalizeUploadSizeBytes(input.expectedSizeBytes);
   let result: HeadObjectCommandOutput;
   try {
     result = await s3.client.send(
@@ -56,6 +77,21 @@ export async function verifyUploadedObject(
       400,
       "UPLOAD_CHECKSUM_MISMATCH",
       "Uploaded object checksum did not match the expected SHA-256 digest.",
+    );
+  }
+  if (typeof result.ContentLength !== "number") {
+    throw new ApiHttpError(
+      409,
+      "UPLOAD_SIZE_UNAVAILABLE",
+      "Uploaded object size was not available for verification.",
+    );
+  }
+  if (result.ContentLength !== expectedSizeBytes) {
+    throw new ApiHttpError(
+      400,
+      "UPLOAD_SIZE_MISMATCH",
+      "Uploaded object size did not match the expected byte count.",
+      { expectedSizeBytes, actualSizeBytes: result.ContentLength },
     );
   }
 }

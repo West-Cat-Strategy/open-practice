@@ -12,6 +12,7 @@ import { PUBLIC_TOKEN_UPLOAD_INTENT_RATE_LIMIT } from "./public-token-rate-limit
 
 const jwtSecret = "test-intake-form-secret-at-least-32-chars";
 const checksum = "f".repeat(64);
+const fileSizeBytes = 4096;
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
 
@@ -19,7 +20,10 @@ function futureIso(msFromNow = 7 * 24 * 60 * 60 * 1000): string {
   return new Date(Date.now() + msFromNow).toISOString();
 }
 
-function s3Config(checksumSha256 = checksum): NonNullable<CreateServerOptions["s3"]> {
+function s3Config(
+  checksumSha256 = checksum,
+  contentLength = fileSizeBytes,
+): NonNullable<CreateServerOptions["s3"]> {
   const client = new S3Client({
     endpoint: "http://127.0.0.1:9000",
     forcePathStyle: true,
@@ -29,8 +33,11 @@ function s3Config(checksumSha256 = checksum): NonNullable<CreateServerOptions["s
       secretAccessKey: "test-secret-key",
     },
   });
-  (client as unknown as { send: () => Promise<{ ChecksumSHA256: string }> }).send = async () => ({
+  (
+    client as unknown as { send: () => Promise<{ ChecksumSHA256: string; ContentLength: number }> }
+  ).send = async () => ({
     ChecksumSHA256: Buffer.from(checksumSha256, "hex").toString("base64"),
+    ContentLength: contentLength,
   });
   return {
     bucket: "open-practice-test-documents",
@@ -285,6 +292,7 @@ describe("intake form builder routes", () => {
       },
     });
     const token = created.json<{ token: string }>().token;
+    const linkId = created.json<{ link: { id: string } }>().link.id;
 
     const incomplete = await server.inject({
       method: "POST",
@@ -310,6 +318,7 @@ describe("intake form builder routes", () => {
       payload: {
         filename: "repair notes.txt",
         checksumSha256: checksum,
+        fileSizeBytes,
         contentType: "text/plain",
       },
     });
@@ -328,6 +337,7 @@ describe("intake form builder routes", () => {
       payload: {
         filename: "repair photos.pdf",
         checksumSha256: checksum,
+        fileSizeBytes,
         contentType: "application/pdf",
       },
     });
@@ -336,8 +346,14 @@ describe("intake form builder routes", () => {
       requiredHeaders: {
         "x-amz-checksum-sha256": expect.any(String),
         "x-amz-meta-open-practice-upload-scope": "intake-form",
+        "x-amz-meta-open-practice-size-bytes": String(fileSizeBytes),
       },
+      maxFileSizeBytes: expect.any(Number),
     });
+    expect(uploadIntent.json<{ uploadUrl: string }>().uploadUrl).not.toContain(linkId);
+    const uploadUrl = new URL(uploadIntent.json<{ uploadUrl: string }>().uploadUrl);
+    const signedHeaders = uploadUrl.searchParams.get("X-Amz-SignedHeaders")?.split(";") ?? [];
+    expect(signedHeaders).toContain("content-length");
     const documentId = uploadIntent.json<{ document: { id: string } }>().document.id;
 
     const completeUpload = await server.inject({
@@ -372,44 +388,51 @@ describe("intake form builder routes", () => {
     expect(completeUpload.json()).toMatchObject({
       action: expect.objectContaining({
         status: "uploaded",
-        evidence: expect.objectContaining({ contentType: "application/pdf" }),
+        itemId: "evidence-upload",
+        kind: "upload",
+        documentId,
       }),
     });
+    expect(completeUpload.json().action).not.toHaveProperty("evidence");
     expect(signature.statusCode).toBe(200);
     expect(signature.json()).toMatchObject({
       action: expect.objectContaining({
         status: "completed",
-        evidence: expect.objectContaining({
-          mode: "embedded_intake_attestation",
-          consentText: "I confirm these synthetic intake answers are accurate.",
-          userAgent: expect.any(String),
-        }),
+        itemId: "client-attestation",
+        kind: "signature",
       }),
     });
+    expect(signature.json().action).not.toHaveProperty("evidence");
     expect(submitted.statusCode).toBe(200);
     expect(submitted.json()).toMatchObject({
       status: "submitted",
-      link: expect.objectContaining({
-        answerSnapshotId: expect.any(String),
-      }),
-      snapshot: expect.objectContaining({
-        id: expect.any(String),
-        answers: expect.objectContaining({ matter_title: "Ada tenancy repairs" }),
-      }),
-      proposals: [
-        expect.objectContaining({ targetScope: "client", status: "pending" }),
-        expect.objectContaining({ targetScope: "matter", status: "pending" }),
-      ],
+      link: expect.objectContaining({ status: "submitted" }),
+      submission: {
+        capturedAt: expect.any(String),
+        answerCount: 4,
+      },
+      proposalCount: 2,
     });
     const submittedLinkId = created.json<{ link: { id: string } }>().link.id;
-    const snapshotId = submitted.json<{ snapshot: { id: string } }>().snapshot.id;
-    await expect(repository.getIntakeFormLink("firm-west-legal", submittedLinkId)).resolves.toEqual(
+    const storedSubmittedLink = await repository.getIntakeFormLink(
+      "firm-west-legal",
+      submittedLinkId,
+    );
+    expect(storedSubmittedLink).toEqual(
       expect.objectContaining({
-        answerSnapshotId: snapshotId,
+        answerSnapshotId: expect.any(String),
         clientSubmissionId: "browser-submit-001",
         submissionFingerprint: expect.any(String),
       }),
     );
+    const snapshotId = storedSubmittedLink!.answerSnapshotId!;
+    const publicSubmissionBody = JSON.stringify(submitted.json());
+    expect(publicSubmissionBody).not.toContain(submittedLinkId);
+    expect(publicSubmissionBody).not.toContain(snapshotId);
+    expect(publicSubmissionBody).not.toContain("firm-west-legal");
+    expect(publicSubmissionBody).not.toContain("matter-001");
+    expect(publicSubmissionBody).not.toContain("intake-session-001");
+    expect(publicSubmissionBody).not.toContain("user-admin");
     await expect(
       repository.getTaskDeadline("firm-west-legal", `intake-review:${submittedLinkId}`),
     ).resolves.toEqual(
@@ -441,12 +464,14 @@ describe("intake form builder routes", () => {
     expect(replayed.statusCode).toBe(200);
     expect(replayed.json()).toMatchObject({
       status: "submitted",
-      link: expect.objectContaining({ id: submittedLinkId, answerSnapshotId: snapshotId }),
-      snapshot: expect.objectContaining({ id: snapshotId }),
-      proposals: expect.arrayContaining([
-        expect.objectContaining({ answerSnapshotId: snapshotId, status: "pending" }),
-      ]),
+      link: expect.objectContaining({ status: "submitted" }),
+      submission: {
+        capturedAt: expect.any(String),
+        answerCount: 4,
+      },
+      proposalCount: proposalsAfterSubmit.length,
     });
+    expect(JSON.stringify(replayed.json())).not.toContain(snapshotId);
     expect(conflictingReplay.statusCode).toBe(409);
     expect(conflictingReplay.json()).toMatchObject({
       code: "INTAKE_FORM_SUBMISSION_CONFLICT",
@@ -521,12 +546,12 @@ describe("intake form builder routes", () => {
         expect.objectContaining({ id: expect.any(String), status: "pending" }),
       ]),
     );
-    const proposalId = submitted
-      .json<{ proposals: Array<{ id: string; targetScope: string }> }>()
-      .proposals.find((proposal) => proposal.targetScope === "matter")!.id;
-    const clientProposalId = submitted
-      .json<{ proposals: Array<{ id: string; targetScope: string }> }>()
-      .proposals.find((proposal) => proposal.targetScope === "client")!.id;
+    const proposalId = proposalsAfterSubmit.find(
+      (proposal) => proposal.targetScope === "matter",
+    )!.id;
+    const clientProposalId = proposalsAfterSubmit.find(
+      (proposal) => proposal.targetScope === "client",
+    )!.id;
 
     const approved = await server.inject({
       method: "POST",
@@ -568,6 +593,45 @@ describe("intake form builder routes", () => {
     );
   });
 
+  it("rejects public intake upload completion when storage size differs from the intent", async () => {
+    const { repository, server } = testServer({ s3: s3Config(checksum, fileSizeBytes + 1) });
+    await restrictEvidenceUpload(repository);
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/intake-form-links",
+      payload: {
+        intakeSessionId: "intake-session-001",
+        expiresAt: "2099-06-01T00:00:00.000Z",
+      },
+    });
+    const token = created.json<{ token: string }>().token;
+    const uploadIntent = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${token}/items/evidence-upload/uploads`,
+      payload: {
+        filename: "repair photos.pdf",
+        checksumSha256: checksum,
+        fileSizeBytes,
+        contentType: "application/pdf",
+      },
+    });
+
+    const completeUpload = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${token}/items/evidence-upload/documents/${
+        uploadIntent.json<{ document: { id: string } }>().document.id
+      }/complete`,
+      payload: { checksumSha256: checksum },
+    });
+
+    expect(uploadIntent.statusCode).toBe(200);
+    expect(completeUpload.statusCode).toBe(400);
+    expect(completeUpload.json()).toMatchObject({
+      code: "UPLOAD_SIZE_MISMATCH",
+      details: { expectedSizeBytes: fileSizeBytes, actualSizeBytes: fileSizeBytes + 1 },
+    });
+  });
+
   it("creates document-backed signature requests from public signature items", async () => {
     const { repository, server } = testServer({ s3: s3Config() });
     await setClientSignatureDocument(repository, "doc-001");
@@ -580,6 +644,7 @@ describe("intake form builder routes", () => {
       },
     });
     const token = created.json<{ token: string }>().token;
+    const linkId = created.json<{ link: { id: string } }>().link.id;
 
     const signature = await server.inject({
       method: "POST",
@@ -593,28 +658,35 @@ describe("intake form builder routes", () => {
 
     expect(signature.statusCode).toBe(200);
     const signatureAction = signature.json<{
-      action: { signatureRequestId: string; evidence: Record<string, unknown> };
+      action: { signatureRequestId: string };
     }>().action;
     expect(signature.json()).toMatchObject({
       action: expect.objectContaining({
         status: "completed",
+        itemId: "client-attestation",
+        kind: "signature",
         documentId: "doc-001",
         signatureRequestId: expect.any(String),
-        evidence: {
-          mode: "embedded_intake_signature_request",
-          provider: "embedded",
-          documentId: "doc-001",
-          signatureRequestId: expect.any(String),
-          signerCount: 1,
-        },
       }),
       signatureRequest: {
         id: signatureAction.signatureRequestId,
         status: "completed",
       },
     });
-    expect(signatureAction.evidence).not.toHaveProperty("consentText");
-    expect(signatureAction.evidence).not.toHaveProperty("ip");
+    expect(signature.json().action).not.toHaveProperty("evidence");
+    const [storedAction] = await repository.listIntakeFormItemActions("firm-west-legal", {
+      formLinkId: linkId,
+      itemId: "client-attestation",
+    });
+    expect(storedAction?.evidence).toMatchObject({
+      mode: "embedded_intake_signature_request",
+      provider: "embedded",
+      documentId: "doc-001",
+      signatureRequestId: signatureAction.signatureRequestId,
+      signerCount: 1,
+    });
+    expect(storedAction?.evidence).not.toHaveProperty("consentText");
+    expect(storedAction?.evidence).not.toHaveProperty("ip");
     await expect(repository.listSignatureRequests("firm-west-legal")).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -643,7 +715,7 @@ describe("intake form builder routes", () => {
     ]);
     await expect(
       repository.listAccessLogs("firm-west-legal", {
-        intakeFormLinkId: created.json().link.id,
+        intakeFormLinkId: linkId,
       }),
     ).resolves.toEqual(
       expect.arrayContaining([
@@ -903,6 +975,7 @@ describe("intake form builder routes", () => {
       payload: {
         filename: "repair notes.txt",
         checksumSha256: checksum,
+        fileSizeBytes,
         contentType: "text/plain",
       },
     });
@@ -914,6 +987,7 @@ describe("intake form builder routes", () => {
         payload: {
           filename: `repair notes ${index}.txt`,
           checksumSha256: checksum,
+          fileSizeBytes,
           contentType: "text/plain",
         },
       });
@@ -949,10 +1023,28 @@ describe("intake form builder routes", () => {
     });
     expect(loaded.statusCode).toBe(200);
     expect(loaded.json()).toMatchObject({
-      link: expect.objectContaining({ id: activeLinkId, status: "active" }),
+      link: expect.objectContaining({ status: "active" }),
       draft: null,
       template: expect.objectContaining({ name: "Residential tenancy intake" }),
     });
+    for (const question of loaded.json().template.definition.questions) {
+      expect(question).not.toHaveProperty("variableMapping");
+    }
+    expect(loaded.json().template.definition.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          items: expect.arrayContaining([
+            expect.objectContaining({ id: "evidence-upload", kind: "upload" }),
+            expect.objectContaining({ id: "client-attestation", kind: "signature" }),
+          ]),
+        }),
+      ]),
+    );
+    const loadedBody = JSON.stringify(loaded.json());
+    expect(loadedBody).not.toContain("classification");
+    expect(loadedBody).not.toContain("legalHold");
+    expect(loadedBody).not.toContain("documentId");
+    expect(JSON.stringify(loaded.json())).not.toContain(activeLinkId);
     const draft = await server.inject({
       method: "POST",
       url: `/api/portal/intake-forms/${activeToken}/draft`,
@@ -1039,6 +1131,7 @@ describe("intake form builder routes", () => {
       payload: {
         filename: "repair photos.pdf",
         checksumSha256: checksum,
+        fileSizeBytes,
         contentType: "application/pdf",
       },
     });
@@ -1091,7 +1184,13 @@ describe("intake form builder routes", () => {
       payload: { answers: { issue_type: "repair" } },
     });
     expect(draftAfterSubmit.statusCode).toBe(403);
-    expect(JSON.stringify(submittedLoad.json())).not.toContain("tokenHash");
+    const submittedLoadBody = JSON.stringify(submittedLoad.json());
+    expect(submittedLoadBody).not.toContain(activeLinkId);
+    expect(submittedLoadBody).not.toContain("tokenHash");
+    expect(submittedLoadBody).not.toContain("firm-west-legal");
+    expect(submittedLoadBody).not.toContain("matter-001");
+    expect(submittedLoadBody).not.toContain("intake-session-001");
+    expect(submittedLoadBody).not.toContain("user-admin");
 
     await expect(
       repository.listAccessLogs("firm-west-legal", { intakeFormLinkId: activeLinkId }),

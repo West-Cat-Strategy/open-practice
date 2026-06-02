@@ -1661,8 +1661,15 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .where(and(eq(schema.users.firmId, firmId), eq(schema.users.id, userId)));
     if (!row) return undefined;
     const assignments = await this.db
-      .select()
+      .select({ matterId: schema.matterAssignments.matterId })
       .from(schema.matterAssignments)
+      .innerJoin(
+        schema.matters,
+        and(
+          eq(schema.matters.id, schema.matterAssignments.matterId),
+          eq(schema.matters.firmId, firmId),
+        ),
+      )
       .where(eq(schema.matterAssignments.userId, userId));
     return {
       id: row.id,
@@ -2019,7 +2026,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       : await this.db
           .select()
           .from(schema.matters)
-          .where(inArray(schema.matters.id, user.assignedMatterIds));
+          .where(
+            and(
+              eq(schema.matters.firmId, user.firmId),
+              inArray(schema.matters.id, user.assignedMatterIds),
+            ),
+          );
     const visibleMatterIds = matterRows.map((matter) => matter.id);
     if (visibleMatterIds.length === 0) return [];
     const ledger = await this.getLedger(user.firmId);
@@ -4647,6 +4659,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       title: input.title,
       storageKey: input.storageKey,
       checksumSha256: input.checksumSha256,
+      sizeBytes: input.sizeBytes,
       version: supersededDocument ? supersededDocument.version + 1 : 1,
       classification: input.classification,
       legalHold: input.legalHold,

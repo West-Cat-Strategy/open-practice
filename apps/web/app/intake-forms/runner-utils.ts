@@ -3,17 +3,24 @@ import type {
   EmbeddedIntakeFormItem,
   EmbeddedIntakeQuestion,
   EmbeddedIntakeTemplateDefinition,
-  IntakeFormItemActionRecord,
 } from "@open-practice/domain";
 import type { PublicTokenActionItem } from "../publicTokenActions";
 
+export interface PublicIntakeFormItemAction {
+  itemId: string;
+  kind: "upload" | "signature";
+  status: "intent_created" | "uploaded" | "completed" | "declined";
+  documentId?: string;
+  signatureRequestId?: string;
+  completedAt?: string;
+}
+
 export interface PublicIntakeFormPayload {
   link: {
-    id: string;
     status: string;
     expiresAt: string;
+    createdAt?: string;
     submittedAt?: string;
-    revokedAt?: string;
   };
   template: {
     id: string;
@@ -21,13 +28,11 @@ export interface PublicIntakeFormPayload {
     definitionVersion: number;
     definition: EmbeddedIntakeTemplateDefinition;
   };
-  actions: IntakeFormItemActionRecord[];
+  actions: PublicIntakeFormItemAction[];
   draft?: { answers: Record<string, unknown>; updatedAt: string } | null;
   review?: {
     decision: "accepted" | "rejected" | "request_more_info";
     decidedAt: string;
-    reason?: string;
-    followUpFormLinkId?: string;
   } | null;
 }
 
@@ -48,14 +53,14 @@ export interface ApiErrorBody {
   };
 }
 
-export function actionComplete(action?: IntakeFormItemActionRecord): boolean {
+export function actionComplete(action?: PublicIntakeFormItemAction): boolean {
   return action?.status === "uploaded" || action?.status === "completed";
 }
 
 export function itemAction(
-  actions: IntakeFormItemActionRecord[],
+  actions: PublicIntakeFormItemAction[],
   item: EmbeddedIntakeFormItem,
-): IntakeFormItemActionRecord | undefined {
+): PublicIntakeFormItemAction | undefined {
   return actions.find((action) => action.itemId === item.id);
 }
 

@@ -117,6 +117,7 @@ describe("database schema hardening", () => {
         "upload_status",
         "checksum_status",
         "scan_status",
+        "size_bytes",
         "supersedes_document_id",
         "superseded_at",
         "verified_at",

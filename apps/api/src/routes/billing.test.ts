@@ -1052,6 +1052,8 @@ describe("billing routes", () => {
 
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({
+      error: "ApiHttpError",
+      code: "PAYMENT_PROCESSOR_NOT_CONFIGURED",
       message: "Payment processor provider is not configured",
     });
   });

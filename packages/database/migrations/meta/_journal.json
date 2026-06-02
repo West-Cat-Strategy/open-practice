@@ -337,6 +337,13 @@
       "when": 1780272002000,
       "tag": "0047_legal_research_artifacts",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1780272003000,
+      "tag": "0048_document_upload_size_policy",
+      "breakpoints": true
     }
   ]
 }

@@ -11,11 +11,16 @@ All `/api/*` routes require authentication except first-run setup status/complet
 options, embedded-auth login, password setup, recovery-code verification, public passkey login
 options/verification, and token-scoped public portal routes such as `GET /api/portal/shares/:token`,
 external-upload collection links, intake-form links, guest-session status links, and the
-origin-restricted public consultation intake submission route. Production
+origin-restricted public consultation intake submission route. Configured public consultation
+origins are scoped to that unauthenticated submission route only; authenticated APIs continue to
+use localhost/development origins unless a separate app-origin policy is configured. Production
 accepts embedded session cookies or
 `x-open-practice-session` tokens backed by PostgreSQL session records. Development may use
 `x-open-practice-user-id`, `x-open-practice-firm-id`, and bearer JWT helpers. Production rejects
 unauthenticated requests, development headers, and bearer JWTs.
+The web app publishes explicit security headers. Production CSP allows scripts and API connections
+from `self` only, while local development keeps loopback API targets and inline script support for
+the dev toolchain; inline styles remain allowed for existing rendered UI.
 Open Practice is a single-tenant application at the user-facing auth boundary: public embedded-auth
 login, passkey login, recovery-code verification, and password setup accept user credentials only
 and resolve the sole configured practice internally. `firmId` remains an internal authorization,
@@ -82,8 +87,8 @@ are backed by implementation and validation proof.
 | `POST /api/audit/export-requests`                                                     | Creates an audit export job request with redacted job metadata and poll/download links.                                                                                                                                                                                                                                                                                  |
 | `GET /api/audit/export-requests/:exportJobId`                                         | Reads one audit export request status after audit-export authorization.                                                                                                                                                                                                                                                                                                  |
 | `GET /api/audit/export-requests/:exportJobId/download`                                | Downloads a completed audit export with event metadata keys and taxonomy summaries, not raw metadata values.                                                                                                                                                                                                                                                             |
-| `GET /api/documents/presign-upload`                                                   | S3 PUT upload intent, storage key, document intent record, and required scan marker.                                                                                                                                                                                                                                                                                     |
-| `POST /api/documents/:id/upload-complete`                                             | Storage-verified checksum completion for an upload intent. Client-provided scan state is ignored and completed uploads enter queued scan state.                                                                                                                                                                                                                          |
+| `GET /api/documents/presign-upload`                                                   | S3 PUT upload intent, storage key, document intent record, required scan marker, and required `fileSizeBytes` contract.                                                                                                                                                                                                                                                  |
+| `POST /api/documents/:id/upload-complete`                                             | Storage-verified checksum and byte-size completion for an upload intent. Client-provided scan state is ignored and completed uploads enter queued scan state.                                                                                                                                                                                                            |
 | `POST /api/documents/:id/scan-status`                                                 | Owner-admin-only manual malware/scan-state override for an existing document.                                                                                                                                                                                                                                                                                            |
 | `GET /api/signature-requests?matterId=`                                               | Signature requests visible firm-wide or across assigned matters.                                                                                                                                                                                                                                                                                                         |
 | `POST /api/signature-requests`                                                        | Provider-neutral signature submission, initial provider event, and confirmation-gated SMTP signer email queueing.                                                                                                                                                                                                                                                        |
@@ -120,7 +125,7 @@ are backed by implementation and validation proof.
 | `POST /api/public-consultation-intakes/:id/convert`                                   | Staff conversion of a pending public consultation intake into an intake-status matter, prospective-client contact/party, opposing-party contacts/parties, and a link back to the source public intake submission.                                                                                                                                                        |
 | `GET /api/portal/intake-forms/:token`                                                 | Public token-scoped form load with sanitized link metadata, template definition, item actions, and access logging.                                                                                                                                                                                                                                                       |
 | `POST /api/portal/intake-forms/:token/submit`                                         | Public answer submission that gates required items, accepts an optional `clientSubmissionId` for idempotent browser retries, creates an answer snapshot, links it to the form link, creates a review task/queue signal, and creates pending proposals only.                                                                                                              |
-| `POST /api/portal/intake-forms/:token/items/:itemId/uploads`                          | Public token-scoped S3 upload intent for an intake upload item, including accepted MIME-type validation, signed checksum headers, and scope metadata.                                                                                                                                                                                                                    |
+| `POST /api/portal/intake-forms/:token/items/:itemId/uploads`                          | Public token-scoped S3 upload intent for an intake upload item, including accepted MIME-type validation, signed checksum and byte-size headers, and scope metadata.                                                                                                                                                                                                      |
 | `POST /api/portal/intake-forms/:token/items/:itemId/documents/:documentId/complete`   | Public storage-verified checksum completion for an intake upload item document, returning generic upload receipt state rather than checksum/duplicate details.                                                                                                                                                                                                           |
 | `POST /api/portal/intake-forms/:token/items/:itemId/signature`                        | Public embedded attestation fallback or document-backed signature request creation for an intake signature item.                                                                                                                                                                                                                                                         |
 | `POST /api/ledger/transactions/:id/approvals`                                         | Maker-checker approval decision for a trust transaction boundary.                                                                                                                                                                                                                                                                                                        |
@@ -270,8 +275,8 @@ are backed by implementation and validation proof.
 | `POST /api/external-uploads/:id/revoke`                                               | Revokes an existing matter-scoped external-upload link and records audit evidence.                                                                                                                                                                                                                                                                                       |
 | `PATCH /api/external-uploads/documents/:documentId/review`                            | Records an authenticated matter-scoped review decision for an external-upload document without deleting the original record.                                                                                                                                                                                                                                             |
 | `GET /api/portal/external-uploads/:token`                                             | Public token-scoped read of safe external-upload link status, remaining upload count, expiry, accepted classification values, and uploaded-document review statuses without exposing matter, firm, staff, storage, review-note, or token-hash details.                                                                                                                   |
-| `POST /api/portal/external-uploads/:token/intents`                                    | Public token-scoped S3 PUT upload intent for one external-upload link; upload capacity is claimed before creating the pending document record.                                                                                                                                                                                                                           |
-| `POST /api/portal/external-uploads/:token/documents/:documentId/complete`             | Public token-scoped storage-verified checksum and scan-state completion for a document upload intent, returning generic upload receipt state rather than checksum/duplicate details.                                                                                                                                                                                     |
+| `POST /api/portal/external-uploads/:token/intents`                                    | Public token-scoped S3 PUT upload intent for one external-upload link with required `fileSizeBytes`; upload capacity is claimed before creating the pending document record.                                                                                                                                                                                             |
+| `POST /api/portal/external-uploads/:token/documents/:documentId/complete`             | Public token-scoped storage-verified checksum, byte-size, and scan-state completion for a document upload intent, returning generic upload receipt state rather than checksum/duplicate details.                                                                                                                                                                         |
 | `GET /api/drafts?matterId=&userId=`                                                   | Matter-scoped structured drafts with TipTap/ProseMirror JSON and sanitized rendered snapshots.                                                                                                                                                                                                                                                                           |
 | `POST /api/drafts`                                                                    | Create a structured draft from either TipTap/ProseMirror JSON or an active draft template.                                                                                                                                                                                                                                                                               |
 | `GET /api/drafts/:id`                                                                 | Fetch an authorized draft by ID.                                                                                                                                                                                                                                                                                                                                         |
@@ -426,13 +431,16 @@ upload link ID, and duplicate/supersession references; they do not expose storag
 review metadata, token hashes, evidence, or uploaded content.
 
 Document upload state starts at `intent_created` with `checksumStatus=pending` and
-`scanStatus=pending`. Upload completion moves to `verified` only after the server verifies the
-expected storage object exists and the object checksum exactly matches the upload intent checksum.
-Checksum mismatch moves upload to `rejected`, checksum to `mismatch`, and scan to `failed`. Matching
-checksums set checksum to `verified` or `duplicate`; scan becomes server-controlled `queued` until an
-owner-admin scan-status override or internal scan worker updates it. Portal sharing remains blocked
-unless upload is verified, checksum is verified, scan has passed or is not required, and legal hold is
-clear.
+`scanStatus=pending`. Upload intents for staff document uploads, public external uploads, and public
+intake item uploads require `fileSizeBytes`, reject non-positive or over-limit byte counts, sign that
+byte count into the presigned PUT `Content-Length` plus required S3 metadata headers, and return
+`maxFileSizeBytes`. Upload completion moves to `verified` only after the server verifies the expected
+storage object exists and the object checksum and storage-reported byte size exactly match the upload
+intent. Checksum mismatch moves upload to `rejected`, checksum to `mismatch`, and scan to `failed`.
+Matching checksums set checksum to `verified` or `duplicate`; scan becomes server-controlled `queued`
+until an owner-admin scan-status override or internal scan worker updates it. Portal sharing remains
+blocked unless upload is verified, checksum is verified, scan has passed or is not required, and legal
+hold is clear.
 
 Secure share links store only HMAC token hashes. Authenticated v1 creation accepts document-view
 shares only, requires matter-scoped `share_link:create` access, a future expiry, and at least one
@@ -569,11 +577,16 @@ a deterministic `intake-review:<formLinkId>` task plus an intake queue item usin
 IDs, review status, and generic titles. Public submit accepts an optional `clientSubmissionId`;
 exact retries with the same ID and equivalent answers return the original submitted response, while
 conflicting retries return `409 INTAKE_FORM_SUBMISSION_CONFLICT` before creating another snapshot,
-review task, or proposal set. Staff review decisions are persisted separately from intake variable
-proposals: accept/reject/request-more-info records do not apply proposed client or matter field
-changes. Request-more-info creates a child form link with only the token hash stored; the raw token
-and URL are returned once in that create-time response. Task, queue, and audit metadata must not
-include raw answers, raw tokens, token hashes, or client-facing follow-up reason text.
+review task, or proposal set. Public intake-form reads, upload/signature actions, and submission
+responses omit firm IDs, matter IDs, session IDs, internal form-link IDs, token hashes, storage keys,
+staff/user IDs, and staff-shaped action evidence. Public template definitions also omit server-only
+variable mappings, upload classification/legal-hold defaults, and signature source document IDs;
+staff review routes keep the full internal review projection. Staff review decisions are persisted
+separately from intake variable proposals: accept/reject/request-more-info records do not apply
+proposed client or matter field changes.
+Request-more-info creates a child form link with only the token hash stored; the raw token and URL are
+returned once in that create-time response. Task, queue, and audit metadata must not include raw
+answers, raw tokens, token hashes, or client-facing follow-up reason text.
 `POST /api/intake-sessions/:id/generated-packages` accepts a package ID and renders package document
 records from the latest stored resolution snapshot, so later template edits do not change the
 documents selected by a captured answer set. The response includes a `packageRuntime` replay proof

@@ -3,7 +3,14 @@ import { z } from "zod";
 import type { ApiAuthContext } from "../server.js";
 import { requireAccess } from "./auth-guards.js";
 import { isPublicRoute } from "./auth-helpers.js";
-import { ApiHttpError, errorEnvelope, normalizeApiError, successEnvelope } from "./response.js";
+import {
+  ApiHttpError,
+  UNEXPECTED_API_ERROR_CODE,
+  UNEXPECTED_API_ERROR_MESSAGE,
+  errorEnvelope,
+  normalizeApiError,
+  successEnvelope,
+} from "./response.js";
 import { parseRequestPart, validateRequestPart } from "./validation.js";
 
 const context: ApiAuthContext = {
@@ -47,6 +54,22 @@ describe("API HTTP helpers", () => {
         details: { matterId: "matter-002" },
       },
     });
+  });
+
+  it("redacts generic Error messages in normalized API envelopes", () => {
+    const result = normalizeApiError(
+      Object.assign(new Error("postgres://private.example.test leaked"), { statusCode: 500 }),
+    );
+
+    expect(result.statusCode).toBe(500);
+    expect(result.body).toEqual({
+      success: false,
+      error: {
+        code: UNEXPECTED_API_ERROR_CODE,
+        message: UNEXPECTED_API_ERROR_MESSAGE,
+      },
+    });
+    expect(JSON.stringify(result.body)).not.toContain("postgres://private.example.test");
   });
 
   it("returns structured validation errors for request parts", () => {

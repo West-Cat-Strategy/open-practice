@@ -951,6 +951,7 @@ export function mapDocumentRow(row: typeof schema.documents.$inferSelect): Docum
     title: row.title,
     storageKey: row.storageKey,
     checksumSha256: row.checksumSha256,
+    sizeBytes: row.sizeBytes ?? undefined,
     version: row.version,
     classification: row.classification,
     legalHold: row.legalHold,

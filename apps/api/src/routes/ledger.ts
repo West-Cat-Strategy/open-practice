@@ -614,10 +614,17 @@ export function registerLedgerRoutes(
         firmId: entry.firmId ?? request.auth.firmId,
       })),
     };
-    await repository.validateLedgerTransactionScope({
-      user: request.auth.user,
-      transaction,
-    });
+    try {
+      await repository.validateLedgerTransactionScope({
+        user: request.auth.user,
+        transaction,
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new ApiHttpError(400, "LEDGER_TRANSACTION_SCOPE_INVALID", error.message);
+      }
+      throw error;
+    }
     let posted: Awaited<ReturnType<typeof repository.postLedgerTransaction>>;
     try {
       posted = await repository.postLedgerTransaction(transaction);

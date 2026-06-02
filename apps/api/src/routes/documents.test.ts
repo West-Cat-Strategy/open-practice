@@ -6,8 +6,14 @@ import { createApiServer } from "../server.js";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
+const fileSizeBytes = 4096;
 
-function s3Config(checksumSha256 = "a".repeat(64), objectExists = true, includeChecksum = true) {
+function s3Config(
+  checksumSha256 = "a".repeat(64),
+  objectExists = true,
+  includeChecksum = true,
+  contentLength = fileSizeBytes,
+) {
   const client = new S3Client({
     endpoint: "http://127.0.0.1:9000",
     forcePathStyle: true,
@@ -17,10 +23,17 @@ function s3Config(checksumSha256 = "a".repeat(64), objectExists = true, includeC
       secretAccessKey: "test-secret-key",
     },
   });
-  (client as unknown as { send: () => Promise<{ ChecksumSHA256?: string }> }).send = async () => {
+  (
+    client as unknown as {
+      send: () => Promise<{ ChecksumSHA256?: string; ContentLength?: number }>;
+    }
+  ).send = async () => {
     if (!objectExists) throw new Error("not found");
-    if (!includeChecksum) return {};
-    return { ChecksumSHA256: Buffer.from(checksumSha256, "hex").toString("base64") };
+    if (!includeChecksum) return { ContentLength: contentLength };
+    return {
+      ChecksumSHA256: Buffer.from(checksumSha256, "hex").toString("base64"),
+      ContentLength: contentLength,
+    };
   };
   return {
     bucket: "open-practice-test-documents",
@@ -59,7 +72,8 @@ describe("document routes", () => {
       method: "GET",
       url:
         "/api/documents/presign-upload?matterId=matter-001&filename=client retainer!!.pdf" +
-        `&checksumSha256=${"a".repeat(64)}&classification=privileged&legalHold=true`,
+        `&checksumSha256=${"a".repeat(64)}&classification=privileged&legalHold=true` +
+        `&fileSizeBytes=${fileSizeBytes}`,
     });
 
     expect(response.statusCode).toBe(200);
@@ -73,11 +87,14 @@ describe("document routes", () => {
         classification: "privileged",
         legalHold: true,
         uploadStatus: "intent_created",
+        sizeBytes: fileSizeBytes,
       },
       requiredHeaders: {
         "x-amz-checksum-sha256": expect.any(String),
+        "x-amz-meta-open-practice-size-bytes": String(fileSizeBytes),
         "x-open-practice-malware-scan": "required-before-share",
       },
+      maxFileSizeBytes: expect.any(Number),
     });
     expect(response.json<{ storageKey: string }>().storageKey).toMatch(
       /^matters\/matter-001\/.+-client_retainer__.pdf$/,
@@ -85,6 +102,9 @@ describe("document routes", () => {
     expect(response.json<{ uploadUrl: string }>().uploadUrl).toContain(
       "open-practice-test-documents",
     );
+    const uploadUrl = new URL(response.json<{ uploadUrl: string }>().uploadUrl);
+    const signedHeaders = uploadUrl.searchParams.get("X-Amz-SignedHeaders")?.split(";") ?? [];
+    expect(signedHeaders).toContain("content-length");
     expect(response.json()).not.toHaveProperty("success");
     await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
       events: expect.arrayContaining([
@@ -99,6 +119,7 @@ describe("document routes", () => {
             status: "intent_created",
             checksumStatus: "pending",
             scanStatus: "pending",
+            sizeBytes: fileSizeBytes,
           },
         }),
       ]),
@@ -117,7 +138,7 @@ describe("document routes", () => {
       method: "GET",
       url:
         "/api/documents/presign-upload?matterId=matter-001&filename=retainer.pdf" +
-        `&checksumSha256=${checksumSha256}`,
+        `&checksumSha256=${checksumSha256}&fileSizeBytes=${fileSizeBytes}`,
     });
     const documentId = intent.json<{ document: { id: string } }>().document.id;
 
@@ -193,7 +214,7 @@ describe("document routes", () => {
       method: "GET",
       url:
         "/api/documents/presign-upload?matterId=matter-001&filename=missing.pdf" +
-        `&checksumSha256=${checksumSha256}`,
+        `&checksumSha256=${checksumSha256}&fileSizeBytes=${fileSizeBytes}`,
     });
     const documentId = intent.json<{ document: { id: string } }>().document.id;
 
@@ -217,7 +238,7 @@ describe("document routes", () => {
       method: "GET",
       url:
         "/api/documents/presign-upload?matterId=matter-001&filename=missing-checksum.pdf" +
-        `&checksumSha256=${checksumSha256}`,
+        `&checksumSha256=${checksumSha256}&fileSizeBytes=${fileSizeBytes}`,
     });
     const documentId = intent.json<{ document: { id: string } }>().document.id;
 
@@ -241,7 +262,7 @@ describe("document routes", () => {
       method: "GET",
       url:
         "/api/documents/presign-upload?matterId=matter-001&filename=mismatch.pdf" +
-        `&checksumSha256=${checksumSha256}`,
+        `&checksumSha256=${checksumSha256}&fileSizeBytes=${fileSizeBytes}`,
     });
     const documentId = intent.json<{ document: { id: string } }>().document.id;
 
@@ -257,17 +278,47 @@ describe("document routes", () => {
     });
   });
 
+  it("rejects upload completion when the storage size does not match the intent", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const checksumSha256 = "a".repeat(64);
+    const server = testServer({
+      repository,
+      s3: s3Config(checksumSha256, true, true, fileSizeBytes + 1),
+    });
+    const intent = await server.inject({
+      method: "GET",
+      url:
+        "/api/documents/presign-upload?matterId=matter-001&filename=size-mismatch.pdf" +
+        `&checksumSha256=${checksumSha256}&fileSizeBytes=${fileSizeBytes}`,
+    });
+    const documentId = intent.json<{ document: { id: string } }>().document.id;
+
+    const completed = await server.inject({
+      method: "POST",
+      url: `/api/documents/${documentId}/upload-complete`,
+      payload: { checksumSha256 },
+    });
+
+    expect(completed.statusCode).toBe(400);
+    expect(completed.json()).toMatchObject({
+      code: "UPLOAD_SIZE_MISMATCH",
+      message: "Uploaded object size did not match the expected byte count.",
+      details: { expectedSizeBytes: fileSizeBytes, actualSizeBytes: fileSizeBytes + 1 },
+    });
+  });
+
   it("keeps document upload signing disabled when S3 is not configured", async () => {
     const response = await testServer().inject({
       method: "GET",
       url: `/api/documents/presign-upload?matterId=matter-001&filename=retainer.pdf&checksumSha256=${"b".repeat(
         64,
-      )}`,
+      )}&fileSizeBytes=${fileSizeBytes}`,
     });
 
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({
-      error: "Error",
+      error: "ApiHttpError",
+      code: "S3_UPLOAD_SIGNING_NOT_CONFIGURED",
       message: "S3 upload signing is not configured",
     });
   });
@@ -277,7 +328,7 @@ describe("document routes", () => {
       method: "GET",
       url: `/api/documents/presign-upload?matterId=matter-002&filename=retainer.pdf&checksumSha256=${"c".repeat(
         64,
-      )}`,
+      )}&fileSizeBytes=${fileSizeBytes}`,
       headers: {
         "x-open-practice-user-id": "user-licensee",
         "x-open-practice-firm-id": "firm-west-legal",
