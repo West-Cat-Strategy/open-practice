@@ -70,25 +70,25 @@ S3-compatible storage at `http://localhost:39000`.
 
 Worker/provider defaults:
 
-| Variable                              | Default                                                 | Purpose                                                           |
-| ------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------- |
-| `REDIS_URL`                           | API: empty; worker: `redis://localhost:36379/0`         | Queue broker for BullMQ email enqueueing and workers.             |
-| `WORKER_QUEUES`                       | `email,inbound_email,ai_triage,ocr,transcription,media` | Queue allow-list for the worker runtime.                          |
-| `WORKER_CONCURRENCY`                  | `2`                                                     | Per-queue BullMQ worker concurrency.                              |
-| `SMTP_HOST` / `SMTP_PORT`             | `localhost` / `31025`                                   | Mailpit SMTP endpoint for local capture.                          |
-| `SMTP_SECURE`                         | `false`                                                 | TLS toggle for SMTP delivery profiles.                            |
-| `SMTP_FROM`                           | `Open Practice <no-reply@open-practice.local>`          | Default outbound sender identity.                                 |
-| `SMTP_USERNAME` / `SMTP_PASSWORD`     | empty                                                   | Optional authenticated SMTP credentials.                          |
-| `INBOUND_EMAIL_WEBHOOK_SECRET`        | empty                                                   | Empty value keeps inbound webhook verification unconfigured.      |
-| `INBOUND_EMAIL_DOMAIN`                | empty                                                   | Optional firm-address domain for inbound email routing.           |
-| `AI_PROVIDER`                         | `disabled`                                              | Keeps AI triage and draft assist disabled until setup opts in.    |
-| `AI_ENDPOINT`                         | `http://localhost:11434/v1`                             | OpenAI-compatible local endpoint for Ollama or LM Studio.         |
-| `AI_MODEL`                            | empty                                                   | Empty model keeps assistive AI inactive.                          |
-| `OCR_DEFAULT_LANGUAGE`                | `eng`                                                   | Tesseract language baseline for OCR jobs.                         |
-| `OCR_CONFIDENCE_THRESHOLD`            | `70`                                                    | Confidence threshold for review/escalation decisions.             |
-| `WHISPER_MODEL`                       | empty                                                   | Empty model keeps transcription providers inactive.               |
-| `MEDIA_TEMP_DIR`                      | `.tmp/open-practice-media`                              | Local scratch path for future FFmpeg/Whisper processing.          |
-| `OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY` | empty                                                   | Required before storing encrypted provider configuration secrets. |
+| Variable                              | Default                                                 | Purpose                                                                                                                                                            |
+| ------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `REDIS_URL`                           | API: empty; worker: `redis://localhost:36379/0`         | Queue broker for BullMQ email enqueueing and workers.                                                                                                              |
+| `WORKER_QUEUES`                       | `email,inbound_email,ai_triage,ocr,transcription,media` | Queue allow-list for the worker runtime.                                                                                                                           |
+| `WORKER_CONCURRENCY`                  | `2`                                                     | Per-queue BullMQ worker concurrency.                                                                                                                               |
+| `SMTP_HOST` / `SMTP_PORT`             | `localhost` / `31025`                                   | Mailpit SMTP endpoint for local capture.                                                                                                                           |
+| `SMTP_SECURE`                         | `false`                                                 | TLS toggle for SMTP delivery profiles.                                                                                                                             |
+| `SMTP_FROM`                           | `Open Practice <no-reply@open-practice.local>`          | Default outbound sender identity.                                                                                                                                  |
+| `SMTP_USERNAME` / `SMTP_PASSWORD`     | empty                                                   | Optional authenticated SMTP credentials.                                                                                                                           |
+| `INBOUND_EMAIL_WEBHOOK_SECRET`        | empty                                                   | Empty value keeps inbound webhook verification unconfigured.                                                                                                       |
+| `INBOUND_EMAIL_DOMAIN`                | empty                                                   | Optional firm-address domain for inbound email routing.                                                                                                            |
+| `AI_PROVIDER`                         | `disabled`                                              | Keeps AI triage and draft assist disabled until setup opts in.                                                                                                     |
+| `AI_ENDPOINT`                         | `http://localhost:11434/v1`                             | OpenAI-compatible local endpoint for Ollama or LM Studio.                                                                                                          |
+| `AI_MODEL`                            | empty                                                   | Empty model keeps assistive AI inactive.                                                                                                                           |
+| `OCR_DEFAULT_LANGUAGE`                | `eng`                                                   | Tesseract language baseline for OCR jobs.                                                                                                                          |
+| `OCR_CONFIDENCE_THRESHOLD`            | `70`                                                    | Confidence threshold for review/escalation decisions.                                                                                                              |
+| `WHISPER_MODEL`                       | empty                                                   | Empty model keeps transcription providers inactive.                                                                                                                |
+| `MEDIA_TEMP_DIR`                      | `.tmp/open-practice-media`                              | Local scratch path for future FFmpeg/Whisper processing.                                                                                                           |
+| `OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY` | empty                                                   | Required for PostgreSQL-backed API and worker runtimes before provider configuration secrets are written or read; accepts a 32-byte base64, base64url, or hex key. |
 
 ## Privacy Posture
 

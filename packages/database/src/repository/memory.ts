@@ -168,6 +168,7 @@ import {
   sampleTrustTransferRequests,
   sampleUsers,
 } from "@open-practice/domain/sample-data";
+import { isEncryptedProviderConfig, type ProviderConfigCipher } from "../config-encryption.js";
 import type {
   AuthAccountRecord,
   AuthPasswordSetupTokenRecord,
@@ -329,7 +330,14 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private shareLinks: ShareLinkRecord[] = [];
   private accessLogs: AccessLogRecord[] = [];
 
-  constructor(options: { seedSampleData?: boolean; firms?: Firm[]; users?: User[] } = {}) {
+  constructor(
+    private readonly options: {
+      seedSampleData?: boolean;
+      firms?: Firm[];
+      users?: User[];
+      providerConfigCipher?: ProviderConfigCipher;
+    } = {},
+  ) {
     const seeded = options.seedSampleData ?? true;
     this.firms = options.firms ? clone(options.firms) : seeded ? [clone(sampleFirm)] : [];
     this.users = options.users ? clone(options.users) : seeded ? clone(sampleUsers) : [];
@@ -454,30 +462,64 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(this.firmSettings.find((settings) => settings.firmId === firmId));
   }
 
+  private encryptProviderSetting(setting: ProviderSettingRecord): ProviderSettingRecord {
+    if (!this.options.providerConfigCipher) return setting;
+    return {
+      ...setting,
+      encryptedConfig: this.options.providerConfigCipher.encryptProviderConfig({
+        firmId: setting.firmId,
+        kind: setting.kind,
+        key: setting.key,
+        plaintext: setting.encryptedConfig,
+      }),
+    };
+  }
+
+  private decryptProviderSetting(setting: ProviderSettingRecord): ProviderSettingRecord {
+    if (!this.options.providerConfigCipher) {
+      if (isEncryptedProviderConfig(setting.encryptedConfig)) {
+        throw new Error(
+          "OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY is required to read provider settings",
+        );
+      }
+      return setting;
+    }
+    return {
+      ...setting,
+      encryptedConfig: this.options.providerConfigCipher.decryptProviderConfig({
+        firmId: setting.firmId,
+        kind: setting.kind,
+        key: setting.key,
+        encryptedConfig: setting.encryptedConfig,
+      }),
+    };
+  }
+
   async listProviderSettings(
     firmId: string,
     options: { kind?: ProviderSettingRecord["kind"] } = {},
   ): Promise<ProviderSettingRecord[]> {
-    return clone(
-      this.providerSettings.filter(
+    return this.providerSettings
+      .filter(
         (setting) => setting.firmId === firmId && (!options.kind || setting.kind === options.kind),
-      ),
-    );
+      )
+      .map((setting) => clone(this.decryptProviderSetting(setting)));
   }
 
   async upsertProviderSetting(setting: ProviderSettingRecord): Promise<ProviderSettingRecord> {
+    const encryptedSetting = this.encryptProviderSetting(setting);
     const existingIndex = this.providerSettings.findIndex(
       (candidate) =>
-        candidate.firmId === setting.firmId &&
-        candidate.kind === setting.kind &&
-        candidate.key === setting.key,
+        candidate.firmId === encryptedSetting.firmId &&
+        candidate.kind === encryptedSetting.kind &&
+        candidate.key === encryptedSetting.key,
     );
     if (existingIndex >= 0) {
-      this.providerSettings[existingIndex] = clone(setting);
+      this.providerSettings[existingIndex] = clone(encryptedSetting);
     } else {
-      this.providerSettings.push(clone(setting));
+      this.providerSettings.push(clone(encryptedSetting));
     }
-    return clone(setting);
+    return clone(this.decryptProviderSetting(encryptedSetting));
   }
 
   async createConnector(connector: ConnectorRecord): Promise<ConnectorRecord> {

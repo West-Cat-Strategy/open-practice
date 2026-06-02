@@ -132,6 +132,7 @@ import {
 import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../runtime.js";
 import * as schema from "../schema.js";
+import { isEncryptedProviderConfig, type ProviderConfigCipher } from "../config-encryption.js";
 
 import type {
   AuthAccountRecord,
@@ -320,7 +321,43 @@ function nextMatterNumber(
 }
 
 export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
-  constructor(private readonly db: OpenPracticeDatabase) {}
+  constructor(
+    private readonly db: OpenPracticeDatabase,
+    private readonly options: { providerConfigCipher?: ProviderConfigCipher } = {},
+  ) {}
+
+  private encryptProviderSetting(setting: ProviderSettingRecord): ProviderSettingRecord {
+    if (!this.options.providerConfigCipher) return setting;
+    return {
+      ...setting,
+      encryptedConfig: this.options.providerConfigCipher.encryptProviderConfig({
+        firmId: setting.firmId,
+        kind: setting.kind,
+        key: setting.key,
+        plaintext: setting.encryptedConfig,
+      }),
+    };
+  }
+
+  private decryptProviderSetting(setting: ProviderSettingRecord): ProviderSettingRecord {
+    if (!this.options.providerConfigCipher) {
+      if (isEncryptedProviderConfig(setting.encryptedConfig)) {
+        throw new Error(
+          "OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY is required to read provider settings",
+        );
+      }
+      return setting;
+    }
+    return {
+      ...setting,
+      encryptedConfig: this.options.providerConfigCipher.decryptProviderConfig({
+        firmId: setting.firmId,
+        kind: setting.kind,
+        key: setting.key,
+        encryptedConfig: setting.encryptedConfig,
+      }),
+    };
+  }
 
   async getSetupStatus(): Promise<FirstRunSetupStatus> {
     const firms = await this.db.select({ id: schema.firms.id }).from(schema.firms).limit(2);
@@ -488,16 +525,17 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .from(schema.providerSettings)
       .where(and(...conditions))
       .orderBy(asc(schema.providerSettings.kind), asc(schema.providerSettings.key));
-    return rows.map(mapProviderSettingRow);
+    return rows.map((row) => this.decryptProviderSetting(mapProviderSettingRow(row)));
   }
 
   async upsertProviderSetting(setting: ProviderSettingRecord): Promise<ProviderSettingRecord> {
+    const encryptedSetting = this.encryptProviderSetting(setting);
     const [row] = await this.db
       .insert(schema.providerSettings)
       .values({
-        ...setting,
-        createdAt: new Date(setting.createdAt),
-        updatedAt: new Date(setting.updatedAt),
+        ...encryptedSetting,
+        createdAt: new Date(encryptedSetting.createdAt),
+        updatedAt: new Date(encryptedSetting.updatedAt),
       })
       .onConflictDoUpdate({
         target: [
@@ -506,13 +544,13 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           schema.providerSettings.key,
         ],
         set: {
-          enabled: setting.enabled,
-          encryptedConfig: setting.encryptedConfig,
-          updatedAt: new Date(setting.updatedAt),
+          enabled: encryptedSetting.enabled,
+          encryptedConfig: encryptedSetting.encryptedConfig,
+          updatedAt: new Date(encryptedSetting.updatedAt),
         },
       })
       .returning();
-    return mapProviderSettingRow(row);
+    return this.decryptProviderSetting(mapProviderSettingRow(row));
   }
 
   async createConnector(connector: ConnectorRecord): Promise<ConnectorRecord> {

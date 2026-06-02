@@ -7,8 +7,11 @@ import { jwtVerify } from "jose";
 import { z } from "zod";
 import {
   createDatabaseRuntime,
+  createProviderConfigCipherFromKey,
   DrizzleOpenPracticeRepository,
   InMemoryOpenPracticeRepository,
+  isProviderConfigEncryptionKey,
+  type ProviderConfigCipher,
   seedSampleData,
   type OpenPracticeRepository,
 } from "@open-practice/database";
@@ -86,6 +89,18 @@ const optionalString = z.preprocess(
   z.string().min(1).optional(),
 );
 
+const optionalConfigEncryptionKey = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z
+    .string()
+    .min(1)
+    .refine(isProviderConfigEncryptionKey, {
+      message:
+        "OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY must decode to exactly 32 bytes using base64, base64url, or hex",
+    })
+    .optional(),
+);
+
 const optionalUrl = z.preprocess(
   (value) => (value === "" ? undefined : value),
   z.string().url().optional(),
@@ -101,6 +116,16 @@ const optionalBoolean = z.preprocess((value) => {
   return value;
 }, z.boolean().optional());
 
+const booleanFromEnv = z.preprocess((value) => {
+  if (value === undefined || value === "") return undefined;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+  }
+  return value;
+}, z.boolean().default(false));
+
 const publicConsultationBootstrapSettingsSchema = z.object({
   enabled: z.boolean(),
   senderAddress: z.union([z.literal(""), z.string().trim().email().max(254)]),
@@ -113,8 +138,9 @@ export const envSchema = z.object({
   NODE_ENV: z.string().default("development"),
   API_PORT: z.coerce.number().default(4000),
   DATABASE_URL: optionalString,
-  OPEN_PRACTICE_USE_MEMORY_REPO: z.coerce.boolean().default(false),
-  OPEN_PRACTICE_DEV_SEED: z.coerce.boolean().default(false),
+  OPEN_PRACTICE_USE_MEMORY_REPO: booleanFromEnv,
+  OPEN_PRACTICE_DEV_SEED: booleanFromEnv,
+  OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: optionalConfigEncryptionKey,
   E2E_MODE: z.enum(["host", "docker"]).optional(),
   AUTH_JWT_SECRET: optionalString,
   DEV_AUTH_USER_ID: z.string().default("user-admin"),
@@ -270,6 +296,9 @@ export function validateProductionReadiness(env: ApiEnv): void {
   }
   if (env.AUTH_JWT_SECRET === DEV_EXAMPLE_JWT_SECRET) {
     throw new Error("AUTH_JWT_SECRET must not use the development example value in production");
+  }
+  if (!env.OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY) {
+    throw new Error("OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY is required in production");
   }
   if (env.STRIPE_SECRET_KEY) {
     throw new Error(
@@ -604,7 +633,16 @@ declare module "fastify" {
   }
 }
 
-async function createRepositoryFromEnv(env: ApiEnv): Promise<{
+function createProviderConfigCipherForPostgres(env: ApiEnv): ProviderConfigCipher {
+  if (!env.OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY) {
+    throw new Error(
+      "OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY is required when DATABASE_URL is configured",
+    );
+  }
+  return createProviderConfigCipherFromKey(env.OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY);
+}
+
+export async function createRepositoryFromEnv(env: ApiEnv): Promise<{
   repository: OpenPracticeRepository;
   close?: () => Promise<void>;
 }> {
@@ -612,12 +650,13 @@ async function createRepositoryFromEnv(env: ApiEnv): Promise<{
     return { repository: new InMemoryOpenPracticeRepository() };
   }
 
+  const providerConfigCipher = createProviderConfigCipherForPostgres(env);
   const runtime = createDatabaseRuntime(env.DATABASE_URL);
   if (env.OPEN_PRACTICE_DEV_SEED) {
     await seedSampleData(runtime.db);
   }
   return {
-    repository: new DrizzleOpenPracticeRepository(runtime.db),
+    repository: new DrizzleOpenPracticeRepository(runtime.db, { providerConfigCipher }),
     close: runtime.close,
   };
 }
