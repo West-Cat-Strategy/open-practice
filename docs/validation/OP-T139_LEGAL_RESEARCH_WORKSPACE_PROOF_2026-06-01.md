@@ -137,3 +137,32 @@ Package builds were refreshed with `pnpm --filter @open-practice/domain build` a
 could see the newly exported domain and database methods.
 
 No validation checks were skipped.
+
+## Stacked Integration Closeout
+
+OP-T139 was applied after OP-T136 and OP-T138 on
+`codex/op-clio-parity-t135-t136-2026-06-01`. The selected OP-T139 validation suite was rerun on the
+stacked branch and passed:
+
+- `pnpm format:check`
+- `pnpm docs:check`
+- `pnpm policy:check`
+- `pnpm test`
+- `pnpm --filter @open-practice/domain test`
+- `pnpm --filter @open-practice/domain typecheck`
+- `pnpm --filter @open-practice/database test`
+- `pnpm --filter @open-practice/database db:check`
+- `pnpm migrations:check`
+- `pnpm --filter @open-practice/database typecheck`
+- `pnpm --filter @open-practice/api test`
+- `pnpm --filter @open-practice/api typecheck`
+- `pnpm --filter @open-practice/providers test`
+- `pnpm --filter @open-practice/worker test`
+- `pnpm --filter @open-practice/web test`
+- `pnpm --filter @open-practice/web typecheck`
+- `pnpm build`
+
+The stacked rerun kept migration parity at 48 SQL files and 48 journal entries. Package evidence in
+the output included domain 24 files/166 tests, database 16 files/92 tests, API 41 files/439 tests,
+providers 7 files/18 tests, worker 3 files/29 tests, web 18 files/132 tests, workspace tests, 38
+script-contract tests, and the full workspace build.

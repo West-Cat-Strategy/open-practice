@@ -18,9 +18,10 @@ screenshots, UI structure, assets, private tenant data, or code were copied into
 
 ## Current Parity State
 
-- OP-T127 through OP-T137 and OP-T140 through OP-T142 are Done.
-- OP-T138 is in Review with the first review-only AI operational proposal slice.
-- OP-T139 remains Candidate.
+- OP-T127 through OP-T142 are Done.
+- No live Clio-informed parity rows remain in `docs/planning-and-progress.md`.
+- Future parity work requires a fresh clean-room gap audit against the shipped proof set before new
+  candidate rows are created.
 
 ## Shipped Parity Areas
 
@@ -32,9 +33,11 @@ screenshots, UI structure, assets, private tenant data, or code were copied into
 - Trust foundations: ledger posting guards, transfer review/link flow, statement preview,
   statement import batch metadata, reconciliation exception review notes, jurisdictional aggregate
   reporting, and OP-T136 accounting review profiles.
-- AI assist foundations: review-first draft/document assist, async assist jobs, and OP-T138
+- AI and legal-work foundations: review-first draft/document assist, async assist jobs, OP-T138
   operational proposal records for deadlines, tasks, document organization, draft invoice cues, and
-  client-update drafts.
+  client-update drafts, plus OP-T139 staff-only legal research workspace artifacts for cited-source
+  notes, matter-context attachments, document-analysis status, strategy/timeline notes, and review
+  checkpoints.
 
 ## Deliberate Shell Boundaries
 
@@ -47,24 +50,27 @@ screenshots, UI structure, assets, private tenant data, or code were copied into
 - OP-T138 is a review-only AI proposal shell. It stores generated proposal content only as the
   authorized review artifact and keeps jobs/audit metadata limited to IDs, counts, kinds, provider
   provenance, and lengths; approval records status only and does not create downstream records.
-- OP-T139 remains a human-reviewed planning candidate, not autonomous legal advice or
-  privileged-content automation.
+- OP-T139 is a staff-only legal research workspace shell. It stores bounded staff-authored notes
+  only on authorized review artifacts and keeps audit metadata limited to IDs, kind/status values,
+  counts, title/note lengths, source types, creator/reviewer IDs, and review-only posture; it does
+  not add live research providers, queues, scraped authority storage, citation-verification claims,
+  public/client research surfaces, legal-advice automation, or downstream source-record mutation.
 
 ## Remaining Gaps
 
-- OP-T139: legal research workspace shell for cited-source notes, matter-context attachment,
-  analysis artifact status, strategy/timeline notes, and review checkpoints.
+- No remaining live OP-T127 through OP-T142 Clio-informed parity rows.
 - Future post-parity candidates should be created only after comparing against existing proof so
   shipped shell boundaries are not reimplemented under new names.
 
-## Next-Row Ranking
+## Post-Parity Guidance
 
-1. OP-T138 Review: confirm proposal persistence, matter-scoped route authorization, dashboard
-   posture, redacted job/audit metadata, provider-disabled behavior, and migration proof.
-2. OP-T139 Candidate: next legal-work shell after OP-T138, with strict no-provider/no-advice
-   boundaries.
+Run a fresh clean-room gap audit before creating new parity candidates. New rows must preserve the
+same boundaries used here: synthetic data only, no copied Clio structure or assets, no live provider
+claims without provider proof, no prompts/source text/generated legal content in job or audit
+metadata, and no automatic legal, billing, trust, or communications mutations without a separately
+approved review gate.
 
 ## Validation
 
-Validation is recorded in the OP-T136 and OP-T138 row-local proof notes for their implementation
-branches.
+Validation is recorded in the OP-T136, OP-T138, and OP-T139 row-local proof notes for their
+implementation branches and stacked closeout reruns.

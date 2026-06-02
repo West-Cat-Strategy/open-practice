@@ -58,22 +58,20 @@ Completed Phase 3 slices:
 
 Next operational scale priorities:
 
-1.  **Clio-Informed Product Suite Completion**: Use the 2026-05-26
-    [Clio product specification review](reference-review-clio-2026-05-26.md) as the planning lens
-    for the remaining live parity rows. OP-T135 and OP-T136 are Done, and OP-T138 and OP-T139 are in
-    Review. Shipped OP-T127 through OP-T137 and OP-T140 through OP-T142 work remains archived proof
-    rather than future backlog.
+1.  **Clio-Informed Product Suite Completion**: The 2026-05-26
+    [Clio product specification review](reference-review-clio-2026-05-26.md) has been reconciled
+    through OP-T142. OP-T127 through OP-T142 are Done, and future Clio-informed candidates require a
+    fresh clean-room gap audit instead of replaying shipped parity rows.
 
-### Phase 4: Clio-Informed Functional Parity (Candidate)
+### Phase 4: Clio-Informed Functional Parity (Complete)
 
 This product phase translates the Clio-only product-spec review into independently authored Open
 Practice planning. Clio remains proprietary reference research: no Clio assets, prose, screenshots,
 schemas, templates, API examples, or UI structure should be copied into Open Practice. Candidate
 rows live in `docs/planning-and-progress.md`; this section holds the durable product direction.
 
-1.  **Completed Parity Slices**: OP-T127 through OP-T137 and OP-T140 through OP-T142 are shipped in
-    the live workboard. Their future work belongs in new candidate rows rather than stale
-    reimplementation language here.
+1.  **Completed Parity Slices**: OP-T127 through OP-T142 are shipped in the live workboard. Their
+    future work belongs in new candidate rows rather than stale reimplementation language here.
 2.  **Billing, Payments, Trust, And Accounting**: OP-T135 delivered the hosted payment-request shell
     boundary, and OP-T136 delivered operating-vs-trust account posture, match-rule profiles,
     protected-funds cues, metadata-only bank-feed shell posture, and review-only accounting

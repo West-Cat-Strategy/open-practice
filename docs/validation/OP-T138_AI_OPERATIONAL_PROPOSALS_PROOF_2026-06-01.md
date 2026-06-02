@@ -127,3 +127,15 @@ An initial full build failed when the new web proposal helper imported runtime v
 domain index. The helper now imports domain types only and keeps the small proposal-kind list and
 summary calculation local to the web layer; `pnpm --filter @open-practice/web typecheck`, the focused
 web test, and `pnpm build` passed after that fix.
+
+## Stacked Integration Closeout
+
+OP-T138 was applied after OP-T136 and before OP-T139 on
+`codex/op-clio-parity-t135-t136-2026-06-01`. Its selected cross-package suite passed before OP-T139
+was added, including migration parity at 47 SQL files and 47 journal entries.
+
+After OP-T139 was stacked, the OP-T139 selected suite was rerun on the same branch and passed the
+full build with migration parity at 48 SQL files and 48 journal entries. That rerun exercised the
+combined OP-T138/OP-T139 route manifests, permissions, domain exports, API tests, worker tests, web
+tests, typechecks, docs, policy, and build without changing OP-T138's review-only or metadata
+redaction boundaries.

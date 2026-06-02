@@ -19,12 +19,11 @@ metadata, and OP-T136 accounting-review proof before proposing another slice.
 
 ### Clio-Informed Functional-Parity Candidates - 2026-05-27
 
-The 2026-05-27 Clio-informed candidate list is empty for now. OP-T139 has been promoted to Review in
-`docs/planning-and-progress.md`, and OP-T127 through OP-T138 plus OP-T140 through OP-T142 are shipped
-or in Review. Future Clio-informed candidates should come from a fresh clean-room gap audit and must
-not duplicate these shipped or review-ready slices. Clio remains proprietary public-product research:
-use this section for independent planning only, with no copied Clio prose, assets, screenshots,
-templates, schemas, API examples, or UI structure.
+The 2026-05-27 Clio-informed candidate list is empty for now. OP-T127 through OP-T142 are Done in
+`docs/planning-and-progress.md`. Future Clio-informed candidates should come from a fresh clean-room
+gap audit and must not duplicate these shipped slices. Clio remains proprietary public-product
+research: use this section for independent planning only, with no copied Clio prose, assets,
+screenshots, templates, schemas, API examples, or UI structure.
 
 ### Reference Review Candidates - 2026-05-22
 
