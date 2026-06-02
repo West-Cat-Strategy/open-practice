@@ -48,7 +48,6 @@ describe("shared intake renderer inputs", () => {
     const publicRunnerSections = visibleSections(
       {
         link: {
-          id: "link-001",
           status: "active",
           expiresAt: "2099-01-01T00:00:00.000Z",
         },
@@ -67,7 +66,6 @@ describe("shared intake renderer inputs", () => {
     const staffPreviewSections = visibleSections(
       {
         link: {
-          id: "preview-link",
           status: "active",
           expiresAt: "2099-01-01T00:00:00.000Z",
         },
@@ -102,7 +100,6 @@ describe("shared intake renderer inputs", () => {
     expect(
       intakeLifecycleMessage({
         link: {
-          id: "submitted-link",
           status: "submitted",
           expiresAt: "2099-01-01T00:00:00.000Z",
         },
@@ -122,7 +119,6 @@ describe("shared intake renderer inputs", () => {
   it("summarizes public intake actions and locks unsupported schema versions", () => {
     const activePayload = {
       link: {
-        id: "active-link",
         status: "active",
         expiresAt: "2099-01-01T00:00:00.000Z",
       },

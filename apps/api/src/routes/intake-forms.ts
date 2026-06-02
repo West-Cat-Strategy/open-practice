@@ -41,7 +41,9 @@ import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-ema
 import { publicTokenPolicyOptions } from "./public-token-rate-limits.js";
 import type { ApiRouteDependencies } from "./types.js";
 import {
+  MAX_UPLOAD_FILE_SIZE_BYTES,
   normalizeChecksumSha256,
+  normalizeUploadSizeBytes,
   sha256HexToBase64,
   verifyUploadedObject,
 } from "./upload-verification.js";
@@ -129,6 +131,7 @@ const publicDraftBodySchema = z.object({
 const publicUploadIntentBodySchema = z.object({
   filename: z.string().min(1),
   checksumSha256: z.string().transform(normalizeChecksumSha256),
+  fileSizeBytes: z.coerce.number().transform(normalizeUploadSizeBytes),
   contentType: z.string().min(1),
 });
 
@@ -245,6 +248,79 @@ function serializeLink(link: IntakeFormLinkRecord): Omit<IntakeFormLinkRecord, "
     submittedAt: link.submittedAt,
     createdAt: link.createdAt,
     status: linkStatus(link),
+  };
+}
+
+function serializePublicLink(link: IntakeFormLinkRecord) {
+  return {
+    expiresAt: link.expiresAt,
+    submittedAt: link.submittedAt,
+    createdAt: link.createdAt,
+    status: linkStatus(link),
+  };
+}
+
+function serializePublicReview(review: IntakeFormReviewRecord | undefined) {
+  if (!review) return null;
+  return {
+    decision: review.decision,
+    decidedAt: review.decidedAt,
+  };
+}
+
+function serializePublicItemAction(action: IntakeFormItemActionRecord) {
+  return {
+    itemId: action.itemId,
+    kind: action.kind,
+    status: action.status,
+    documentId: action.documentId,
+    signatureRequestId: action.signatureRequestId,
+    completedAt: action.completedAt,
+  };
+}
+
+function serializePublicTemplateDefinition(
+  definition: EmbeddedIntakeTemplateDefinition,
+): EmbeddedIntakeTemplateDefinition {
+  const publicQuestions = definition.questions.map(
+    ({ variableMapping: _variableMapping, ...question }) => question,
+  );
+  if (definition.schemaVersion !== 2) {
+    return { ...definition, questions: publicQuestions };
+  }
+  return {
+    ...definition,
+    questions: publicQuestions,
+    sections: definition.sections.map((section) => ({
+      ...section,
+      items: section.items.map((item) => {
+        if (item.kind === "upload") {
+          const { classification: _classification, legalHold: _legalHold, ...publicItem } = item;
+          return publicItem;
+        }
+        if (item.kind === "signature") {
+          const { documentId: _documentId, ...publicItem } = item;
+          return publicItem;
+        }
+        return item;
+      }),
+    })),
+  };
+}
+
+function serializePublicSubmission(input: {
+  link: IntakeFormLinkRecord;
+  snapshot: AnswerSnapshotRecord;
+  proposalCount: number;
+}) {
+  return {
+    status: "submitted",
+    link: serializePublicLink(input.link),
+    submission: {
+      capturedAt: input.snapshot.capturedAt,
+      answerCount: Object.keys(input.snapshot.answers).length,
+    },
+    proposalCount: input.proposalCount,
   };
 }
 
@@ -499,10 +575,12 @@ async function buildIdempotentSubmissionReplay(input: {
   ).filter((proposal) => proposal.answerSnapshotId === snapshot.id);
 
   return {
-    status: "submitted",
-    link: serializeLink(input.link),
+    response: serializePublicSubmission({
+      link: input.link,
+      snapshot,
+      proposalCount: proposals.length,
+    }),
     snapshot,
-    proposals,
   };
 }
 
@@ -1020,26 +1098,19 @@ export function registerIntakeFormRoutes(
         metadata: { outcome: "granted", status },
       });
       return {
-        link: serializeLink(link),
+        link: serializePublicLink(link),
         draft:
           status === "active" && link.draftUpdatedAt
             ? { answers: link.draftAnswers ?? {}, updatedAt: link.draftUpdatedAt }
             : null,
-        review: latestReview
-          ? {
-              decision: latestReview.decision,
-              decidedAt: latestReview.decidedAt,
-              reason: latestReview.reason,
-              followUpFormLinkId: latestReview.followUpFormLinkId,
-            }
-          : null,
+        review: serializePublicReview(latestReview),
         template: {
           id: template.id,
           name: template.name,
           definitionVersion: template.definitionVersion,
-          definition: template.definition,
+          definition: serializePublicTemplateDefinition(template.definition),
         },
-        actions,
+        actions: actions.map(serializePublicItemAction),
       };
     },
   );
@@ -1120,7 +1191,7 @@ export function registerIntakeFormRoutes(
           resourceId: replay.snapshot.id,
           metadata: { outcome: "idempotent_replay" },
         });
-        return replay;
+        return replay.response;
       }
       const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
       if (!session) throw denied();
@@ -1197,12 +1268,11 @@ export function registerIntakeFormRoutes(
           proposalCount: createdProposals.length,
         },
       });
-      return {
-        status: "submitted",
-        link: submitted ? serializeLink(submitted) : serializeLink(link),
+      return serializePublicSubmission({
+        link: submitted ?? link,
         snapshot,
-        proposals: createdProposals,
-      };
+        proposalCount: createdProposals.length,
+      });
     },
   );
 
@@ -1214,7 +1284,11 @@ export function registerIntakeFormRoutes(
       const body = parseRequestPart(publicUploadIntentBodySchema, request.body, "body");
       if (!jwtSecret) throw denied();
       if (!s3) {
-        throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
+        throw new ApiHttpError(
+          503,
+          "S3_UPLOAD_SIGNING_NOT_CONFIGURED",
+          "S3 upload signing is not configured",
+        );
       }
       const link = await resolvePublicLink(repository, { token: params.token, jwtSecret, request });
       const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
@@ -1226,13 +1300,14 @@ export function registerIntakeFormRoutes(
         throw unsupportedUploadContentType(body.contentType, item.acceptedFileTypes ?? []);
       }
       const documentId = crypto.randomUUID();
-      const storageKey = `intake-forms/${link.id}/${params.itemId}/${documentId}-${sanitizeFilename(body.filename)}`;
+      const storageKey = `intake-forms/${sanitizeFilename(params.itemId)}/${documentId}-${sanitizeFilename(body.filename)}`;
       const checksumSha256Base64 = sha256HexToBase64(body.checksumSha256);
       const requiredHeaders = {
         "Content-Type": body.contentType,
         "x-amz-checksum-sha256": checksumSha256Base64,
         "x-amz-meta-open-practice-upload-scope": "intake-form",
         "x-amz-meta-open-practice-scan": "required-before-share",
+        "x-amz-meta-open-practice-size-bytes": String(body.fileSizeBytes),
       };
       const uploadUrl = await getSignedUrl(
         s3.client,
@@ -1241,9 +1316,11 @@ export function registerIntakeFormRoutes(
           Key: storageKey,
           ChecksumSHA256: checksumSha256Base64,
           ContentType: body.contentType,
+          ContentLength: body.fileSizeBytes,
           Metadata: {
             "open-practice-upload-scope": "intake-form",
             "open-practice-scan": "required-before-share",
+            "open-practice-size-bytes": String(body.fileSizeBytes),
           },
         }),
         {
@@ -1258,6 +1335,7 @@ export function registerIntakeFormRoutes(
         title: body.filename,
         storageKey,
         checksumSha256: body.checksumSha256,
+        sizeBytes: body.fileSizeBytes,
         classification: item.classification ?? "general",
         legalHold: item.legalHold ?? false,
       });
@@ -1271,7 +1349,11 @@ export function registerIntakeFormRoutes(
         kind: "upload",
         status: "intent_created",
         documentId: document.id,
-        evidence: { filename: body.filename, contentType: body.contentType },
+        evidence: {
+          filename: body.filename,
+          contentType: body.contentType,
+          fileSizeBytes: body.fileSizeBytes,
+        },
         createdAt: new Date().toISOString(),
       });
       await recordAccessLog(repository, {
@@ -1288,7 +1370,8 @@ export function registerIntakeFormRoutes(
         expiresInSeconds: SIGNED_URL_EXPIRES_IN_SECONDS,
         document: serializePublicUploadDocument(document),
         requiredHeaders,
-        action,
+        maxFileSizeBytes: MAX_UPLOAD_FILE_SIZE_BYTES,
+        action: serializePublicItemAction(action),
       };
     },
   );
@@ -1309,11 +1392,16 @@ export function registerIntakeFormRoutes(
       const document = await repository.getDocument(link.firmId, params.documentId);
       if (!action || !document || document.matterId !== link.matterId) throw denied();
       if (!s3) {
-        throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
+        throw new ApiHttpError(
+          503,
+          "S3_UPLOAD_SIGNING_NOT_CONFIGURED",
+          "S3 upload signing is not configured",
+        );
       }
       await verifyUploadedObject(s3, {
         storageKey: document.storageKey,
         checksumSha256: body.checksumSha256,
+        expectedSizeBytes: document.sizeBytes ?? 0,
       });
       const completed = await repository.completeDocumentUpload({
         firmId: link.firmId,
@@ -1335,7 +1423,10 @@ export function registerIntakeFormRoutes(
         resourceId: completed.id,
         metadata: { outcome: completed.uploadStatus, itemId: params.itemId },
       });
-      return { document: serializePublicUploadDocument(completed), action: completedAction };
+      return {
+        document: serializePublicUploadDocument(completed),
+        action: serializePublicItemAction(completedAction),
+      };
     },
   );
 
@@ -1359,7 +1450,7 @@ export function registerIntakeFormRoutes(
         })
       ).find((candidate) => candidate.kind === "signature");
       if (existingAction?.status === "completed" || existingAction?.status === "declined") {
-        return { action: existingAction };
+        return { action: serializePublicItemAction(existingAction) };
       }
       const now = new Date().toISOString();
       if (item.documentId) {
@@ -1511,7 +1602,10 @@ export function registerIntakeFormRoutes(
             signatureRequestId: signatureRequest.id,
           },
         });
-        return { action, signatureRequest: { id: signatureRequest.id, status: body.status } };
+        return {
+          action: serializePublicItemAction(action),
+          signatureRequest: { id: signatureRequest.id, status: body.status },
+        };
       }
 
       const action: IntakeFormItemActionRecord = {
@@ -1542,7 +1636,7 @@ export function registerIntakeFormRoutes(
         resourceId: params.itemId,
         metadata: { outcome: body.status },
       });
-      return { action: recorded };
+      return { action: serializePublicItemAction(recorded) };
     },
   );
 }

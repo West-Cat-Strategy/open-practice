@@ -193,6 +193,7 @@ export interface DocumentUploadIntent {
   title: string;
   storageKey: string;
   checksumSha256: string;
+  sizeBytes?: number;
   classification: DocumentRecord["classification"];
   legalHold: boolean;
   reviewStatus?: DocumentRecord["reviewStatus"];

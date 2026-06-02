@@ -3468,6 +3468,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       title: input.title,
       storageKey: input.storageKey,
       checksumSha256: input.checksumSha256,
+      sizeBytes: input.sizeBytes,
       version: supersededDocument ? supersededDocument.version + 1 : 1,
       classification: input.classification,
       legalHold: input.legalHold,

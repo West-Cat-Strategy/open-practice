@@ -10,7 +10,9 @@ import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
 import type { ApiRouteDependencies } from "./types.js";
 import {
+  MAX_UPLOAD_FILE_SIZE_BYTES,
   normalizeChecksumSha256,
+  normalizeUploadSizeBytes,
   sha256HexToBase64,
   verifyUploadedObject,
 } from "./upload-verification.js";
@@ -19,6 +21,7 @@ const presignQuerySchema = z.object({
   matterId: z.string().min(1),
   filename: z.string().min(1),
   checksumSha256: z.string().transform(normalizeChecksumSha256),
+  fileSizeBytes: z.coerce.number().transform(normalizeUploadSizeBytes),
   supersedesDocumentId: z.string().min(1).optional(),
   classification: z
     .enum(["general", "privileged", "work_product", "financial", "identity"])
@@ -70,7 +73,11 @@ export function registerDocumentRoutes(
       matterId: query.matterId,
     });
     if (!s3) {
-      throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
+      throw new ApiHttpError(
+        503,
+        "S3_UPLOAD_SIGNING_NOT_CONFIGURED",
+        "S3 upload signing is not configured",
+      );
     }
 
     const documentId = crypto.randomUUID();
@@ -78,15 +85,18 @@ export function registerDocumentRoutes(
     const checksumSha256Base64 = sha256HexToBase64(query.checksumSha256);
     const requiredHeaders = {
       "x-amz-checksum-sha256": checksumSha256Base64,
+      "x-amz-meta-open-practice-size-bytes": String(query.fileSizeBytes),
       "x-open-practice-malware-scan": "required-before-share",
     };
     const command = new PutObjectCommand({
       Bucket: s3.bucket,
       Key: storageKey,
       ChecksumSHA256: checksumSha256Base64,
+      ContentLength: query.fileSizeBytes,
       Metadata: {
         "open-practice-matter-id": query.matterId,
         "open-practice-scan": "required-before-share",
+        "open-practice-size-bytes": String(query.fileSizeBytes),
       },
     });
     const uploadUrl = await getSignedUrl(s3.client, command, {
@@ -100,6 +110,7 @@ export function registerDocumentRoutes(
       title: query.filename,
       storageKey,
       checksumSha256: query.checksumSha256,
+      sizeBytes: query.fileSizeBytes,
       classification: query.classification,
       legalHold: query.legalHold,
       supersedesDocumentId: query.supersedesDocumentId,
@@ -115,6 +126,7 @@ export function registerDocumentRoutes(
         status: document.uploadStatus,
         checksumStatus: document.checksumStatus,
         scanStatus: document.scanStatus,
+        sizeBytes: document.sizeBytes,
       },
     });
 
@@ -125,6 +137,7 @@ export function registerDocumentRoutes(
       storageKey,
       document,
       requiredHeaders,
+      maxFileSizeBytes: MAX_UPLOAD_FILE_SIZE_BYTES,
     };
   });
 
@@ -140,12 +153,17 @@ export function registerDocumentRoutes(
       matterId: document.matterId,
     });
     if (!s3) {
-      throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
+      throw new ApiHttpError(
+        503,
+        "S3_UPLOAD_SIGNING_NOT_CONFIGURED",
+        "S3 upload signing is not configured",
+      );
     }
     const body = parseRequestPart(uploadCompleteBodySchema, request.body, "body");
     await verifyUploadedObject(s3, {
       storageKey: document.storageKey,
       checksumSha256: body.checksumSha256,
+      expectedSizeBytes: document.sizeBytes ?? 0,
     });
     const completed = await repository.completeDocumentUpload({
       firmId: request.auth.firmId,

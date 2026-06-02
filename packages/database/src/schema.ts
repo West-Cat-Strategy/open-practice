@@ -1240,6 +1240,7 @@ export const documents = pgTable("documents", {
   title: text("title").notNull(),
   storageKey: text("storage_key").notNull(),
   checksumSha256: text("checksum_sha256").notNull(),
+  sizeBytes: integer("size_bytes"),
   version: integer("version").notNull().default(1),
   classification: documentClassification("classification").notNull(),
   legalHold: boolean("legal_hold").notNull().default(false),

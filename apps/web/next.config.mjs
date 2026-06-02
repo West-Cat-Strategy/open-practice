@@ -3,6 +3,27 @@ import { env } from "node:process";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+const isProduction = env.NODE_ENV === "production";
+
+export function buildContentSecurityPolicy({ production = isProduction } = {}) {
+  const scriptSrc = production ? "script-src 'self'" : "script-src 'self' 'unsafe-inline'";
+  const connectSrc = production
+    ? "connect-src 'self'"
+    : "connect-src 'self' http://localhost:* http://127.0.0.1:*";
+  return [
+    "default-src 'self'",
+    scriptSrc,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    connectSrc,
+    "font-src 'self' data:",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+}
 
 // Linux production builds need ProseMirror ESM modules directly instead of TipTap's wrapper re-exports.
 const prosemirrorAliases = {
@@ -28,11 +49,11 @@ const securityHeaders = [
   },
   {
     key: "Content-Security-Policy",
-    value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+    value: buildContentSecurityPolicy(),
   },
 ];
 
-if (env.NODE_ENV === "production") {
+if (isProduction) {
   securityHeaders.push({
     key: "Strict-Transport-Security",
     value: "max-age=31536000; includeSubDomains",

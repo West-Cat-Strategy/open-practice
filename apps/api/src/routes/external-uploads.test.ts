@@ -8,6 +8,7 @@ import { PUBLIC_TOKEN_UPLOAD_INTENT_RATE_LIMIT } from "./public-token-rate-limit
 
 const jwtSecret = "test-external-upload-secret-at-least-32-chars";
 const checksum = "d".repeat(64);
+const fileSizeBytes = 4096;
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
 const emailJobQueue = {
@@ -20,7 +21,10 @@ function deliveryConfirmation(recipientCount = 1) {
   return { confirmed: true, channel: "email", recipientCount };
 }
 
-function s3Config(checksumSha256 = checksum): NonNullable<CreateServerOptions["s3"]> {
+function s3Config(
+  checksumSha256 = checksum,
+  contentLength = fileSizeBytes,
+): NonNullable<CreateServerOptions["s3"]> {
   const client = new S3Client({
     endpoint: "http://127.0.0.1:9000",
     forcePathStyle: true,
@@ -30,8 +34,11 @@ function s3Config(checksumSha256 = checksum): NonNullable<CreateServerOptions["s
       secretAccessKey: "test-secret-key",
     },
   });
-  (client as unknown as { send: () => Promise<{ ChecksumSHA256: string }> }).send = async () => ({
+  (
+    client as unknown as { send: () => Promise<{ ChecksumSHA256: string; ContentLength: number }> }
+  ).send = async () => ({
     ChecksumSHA256: Buffer.from(checksumSha256, "hex").toString("base64"),
+    ContentLength: contentLength,
   });
   return {
     bucket: "open-practice-test-documents",
@@ -465,6 +472,7 @@ describe("external upload routes", () => {
       payload: {
         filename: "external evidence.pdf",
         checksumSha256: checksum,
+        fileSizeBytes,
         classification: "general",
         supersedesDocumentId: "doc-001",
       },
@@ -480,6 +488,7 @@ describe("external upload routes", () => {
         uploadStatus: "intent_created",
         reviewStatus: "pending_review",
       },
+      maxFileSizeBytes: expect.any(Number),
     });
     expect(intent.json()).not.toHaveProperty("storageKey");
     expect(intent.json().document).not.toHaveProperty("storageKey");
@@ -490,6 +499,7 @@ describe("external upload routes", () => {
     expect(intent.json().requiredHeaders).toMatchObject({
       "x-amz-meta-open-practice-upload-scope": "external-upload",
       "x-amz-meta-open-practice-scan": "required-before-share",
+      "x-amz-meta-open-practice-size-bytes": String(fileSizeBytes),
       "x-amz-checksum-sha256": Buffer.from(checksum, "hex").toString("base64"),
     });
     expect(intent.json().requiredHeaders["x-amz-checksum-sha256"]).not.toBe(checksum);
@@ -498,6 +508,7 @@ describe("external upload routes", () => {
     expect(signedHeaders).toEqual(
       expect.arrayContaining(Object.keys(intent.json().requiredHeaders)),
     );
+    expect(signedHeaders).toContain("content-length");
     expect(uploadUrl.searchParams.has("x-amz-checksum-sha256")).toBe(false);
     await expect(repository.getDocument("firm-west-legal", "doc-001")).resolves.not.toHaveProperty(
       "supersededAt",
@@ -509,6 +520,7 @@ describe("external upload routes", () => {
     expect(externalDocument?.version).toBe(1);
     expect(externalDocument?.supersedesDocumentId).toBeUndefined();
     expect(externalDocument?.reviewStatus).toBe("pending_review");
+    expect(externalDocument?.sizeBytes).toBe(fileSizeBytes);
 
     const listedWithDocument = await server.inject({
       method: "GET",
@@ -617,6 +629,42 @@ describe("external upload routes", () => {
     });
   });
 
+  it("rejects public upload completion when storage size differs from the intent", async () => {
+    const { server } = testServer({ s3: s3Config(checksum, fileSizeBytes + 1) });
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/external-uploads",
+      payload: {
+        matterId: "matter-001",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        maxUploads: 1,
+      },
+    });
+    const token = created.json().token as string;
+    const intent = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${token}/intents`,
+      payload: {
+        filename: "external evidence.pdf",
+        checksumSha256: checksum,
+        fileSizeBytes,
+      },
+    });
+
+    const complete = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${token}/documents/${intent.json().document.id}/complete`,
+      payload: { checksumSha256: checksum },
+    });
+
+    expect(intent.statusCode).toBe(200);
+    expect(complete.statusCode).toBe(400);
+    expect(complete.json()).toMatchObject({
+      code: "UPLOAD_SIZE_MISMATCH",
+      details: { expectedSizeBytes: fileSizeBytes, actualSizeBytes: fileSizeBytes + 1 },
+    });
+  });
+
   it("rejects public upload intents when checksum input is not hex SHA-256", async () => {
     const { server } = testServer({ s3: s3Config() });
     const created = await server.inject({
@@ -635,6 +683,7 @@ describe("external upload routes", () => {
       payload: {
         filename: "external evidence.pdf",
         checksumSha256: "not-a-sha256",
+        fileSizeBytes,
       },
     });
 
@@ -848,7 +897,7 @@ describe("external upload routes", () => {
     const intent = await server.inject({
       method: "POST",
       url: `/api/portal/external-uploads/${token}/intents`,
-      payload: { filename: "extra.pdf", checksumSha256: checksum },
+      payload: { filename: "extra.pdf", checksumSha256: checksum, fileSizeBytes },
     });
     expect(intent.statusCode).toBe(403);
     expect(intent.json()).toMatchObject({
@@ -894,7 +943,7 @@ describe("external upload routes", () => {
     const intent = await server.inject({
       method: "POST",
       url: `/api/portal/external-uploads/${token}/intents`,
-      payload: { filename: "race.pdf", checksumSha256: checksum },
+      payload: { filename: "race.pdf", checksumSha256: checksum, fileSizeBytes },
     });
 
     expect(intent.statusCode).toBe(403);
@@ -930,14 +979,18 @@ describe("external upload routes", () => {
     let limited = await server.inject({
       method: "POST",
       url: `/api/portal/external-uploads/${token}/intents`,
-      payload: { filename: "rate-limited-0.pdf", checksumSha256: checksum },
+      payload: { filename: "rate-limited-0.pdf", checksumSha256: checksum, fileSizeBytes },
     });
 
     for (let index = 1; index <= PUBLIC_TOKEN_UPLOAD_INTENT_RATE_LIMIT.max; index += 1) {
       limited = await server.inject({
         method: "POST",
         url: `/api/portal/external-uploads/${token}/intents`,
-        payload: { filename: `rate-limited-${index}.pdf`, checksumSha256: checksum },
+        payload: {
+          filename: `rate-limited-${index}.pdf`,
+          checksumSha256: checksum,
+          fileSizeBytes,
+        },
       });
     }
 
@@ -968,6 +1021,7 @@ describe("external upload routes", () => {
       payload: {
         filename: "original.pdf",
         checksumSha256: checksum,
+        fileSizeBytes,
       },
     });
     await server.inject({
@@ -991,6 +1045,7 @@ describe("external upload routes", () => {
       payload: {
         filename: "duplicate.pdf",
         checksumSha256: checksum,
+        fileSizeBytes,
       },
     });
     const duplicateComplete = await server.inject({
@@ -1057,7 +1112,7 @@ describe("external upload routes", () => {
     const intent = await server.inject({
       method: "POST",
       url: `/api/portal/external-uploads/${token}/intents`,
-      payload: { filename: "matter-two.pdf", checksumSha256: checksum },
+      payload: { filename: "matter-two.pdf", checksumSha256: checksum, fileSizeBytes },
     });
     expect(intent.statusCode).toBe(200);
 
@@ -1121,7 +1176,7 @@ describe("external upload routes", () => {
       const response = await server.inject({
         method: "POST",
         url: `/api/portal/external-uploads/${token}/intents`,
-        payload: { filename: "blocked.pdf", checksumSha256: checksum },
+        payload: { filename: "blocked.pdf", checksumSha256: checksum, fileSizeBytes },
         headers: { "user-agent": "external-upload-denial-test" },
       });
       expect(response.statusCode).toBe(403);

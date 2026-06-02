@@ -27,7 +27,9 @@ import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-ema
 import { publicTokenPolicyOptions } from "./public-token-rate-limits.js";
 import type { ApiRouteDependencies } from "./types.js";
 import {
+  MAX_UPLOAD_FILE_SIZE_BYTES,
   normalizeChecksumSha256,
+  normalizeUploadSizeBytes,
   sha256HexToBase64,
   verifyUploadedObject,
 } from "./upload-verification.js";
@@ -81,6 +83,7 @@ const publicCompleteParamsSchema = z.object({
 const publicIntentBodySchema = z.object({
   filename: z.string().min(1),
   checksumSha256: z.string().transform(normalizeChecksumSha256),
+  fileSizeBytes: z.coerce.number().transform(normalizeUploadSizeBytes),
   classification: z.enum(publicExternalUploadClassifications).default("general"),
   legalHold: z.coerce.boolean().default(false),
 });
@@ -133,18 +136,22 @@ function requireExternalUploadRepository(
   repository: ApiRouteDependencies["repository"],
 ): ExternalUploadRepository {
   if (!isExternalUploadRepository(repository)) {
-    throw Object.assign(new Error("External upload repository is not configured"), {
-      statusCode: 503,
-    });
+    throw new ApiHttpError(
+      503,
+      "EXTERNAL_UPLOAD_REPOSITORY_NOT_CONFIGURED",
+      "External upload repository is not configured",
+    );
   }
   return repository;
 }
 
 function requireJwtSecret(jwtSecret?: string): string {
   if (!jwtSecret) {
-    throw Object.assign(new Error("External upload token signing is not configured"), {
-      statusCode: 503,
-    });
+    throw new ApiHttpError(
+      503,
+      "EXTERNAL_UPLOAD_TOKEN_SIGNING_NOT_CONFIGURED",
+      "External upload token signing is not configured",
+    );
   }
   return jwtSecret;
 }
@@ -465,7 +472,11 @@ export function registerExternalUploadRoutes(
     const externalUploadRepository = requireExternalUploadRepository(repository);
     const signingSecret = requireJwtSecret(jwtSecret);
     if (!s3) {
-      throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
+      throw new ApiHttpError(
+        503,
+        "S3_UPLOAD_SIGNING_NOT_CONFIGURED",
+        "S3 upload signing is not configured",
+      );
     }
     const now = new Date();
     const expiresAt = body.expiresAt ?? defaultExpiry(now);
@@ -736,7 +747,11 @@ export function registerExternalUploadRoutes(
       const externalUploadRepository = requireExternalUploadRepository(repository);
       const signingSecret = requireJwtSecret(jwtSecret);
       if (!s3) {
-        throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
+        throw new ApiHttpError(
+          503,
+          "S3_UPLOAD_SIGNING_NOT_CONFIGURED",
+          "S3 upload signing is not configured",
+        );
       }
 
       const link = await resolvePublicLink(externalUploadRepository, {
@@ -751,15 +766,18 @@ export function registerExternalUploadRoutes(
       const requiredHeaders = {
         "x-amz-meta-open-practice-upload-scope": "external-upload",
         "x-amz-meta-open-practice-scan": "required-before-share",
+        "x-amz-meta-open-practice-size-bytes": String(body.fileSizeBytes),
         "x-amz-checksum-sha256": checksumSha256Base64,
       };
       const command = new PutObjectCommand({
         Bucket: s3.bucket,
         Key: storageKey,
         ChecksumSHA256: checksumSha256Base64,
+        ContentLength: body.fileSizeBytes,
         Metadata: {
           "open-practice-upload-scope": "external-upload",
           "open-practice-scan": "required-before-share",
+          "open-practice-size-bytes": String(body.fileSizeBytes),
         },
       });
       const uploadUrl = await getSignedUrl(s3.client, command, {
@@ -788,6 +806,7 @@ export function registerExternalUploadRoutes(
         title: body.filename,
         storageKey,
         checksumSha256: body.checksumSha256,
+        sizeBytes: body.fileSizeBytes,
         classification: body.classification,
         legalHold: body.legalHold,
         reviewStatus: "pending_review",
@@ -807,6 +826,7 @@ export function registerExternalUploadRoutes(
         expiresInSeconds: SIGNED_URL_EXPIRES_IN_SECONDS,
         document: serializePublicDocument(document),
         requiredHeaders,
+        maxFileSizeBytes: MAX_UPLOAD_FILE_SIZE_BYTES,
       };
     },
   );
@@ -841,11 +861,16 @@ export function registerExternalUploadRoutes(
         throw externalUploadDenied();
       }
       if (!s3) {
-        throw Object.assign(new Error("S3 upload signing is not configured"), { statusCode: 503 });
+        throw new ApiHttpError(
+          503,
+          "S3_UPLOAD_SIGNING_NOT_CONFIGURED",
+          "S3 upload signing is not configured",
+        );
       }
       await verifyUploadedObject(s3, {
         storageKey: document.storageKey,
         checksumSha256: body.checksumSha256,
+        expectedSizeBytes: document.sizeBytes ?? 0,
       });
 
       const completed = await repository.completeDocumentUpload({

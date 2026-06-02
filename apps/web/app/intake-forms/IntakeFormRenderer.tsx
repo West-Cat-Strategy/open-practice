@@ -6,17 +6,17 @@ import type {
   EmbeddedIntakeFormItem,
   EmbeddedIntakeQuestion,
   EmbeddedIntakeTemplateDefinition,
-  IntakeFormItemActionRecord,
 } from "@open-practice/domain";
 import {
   actionComplete,
   itemAction,
   type Answers,
+  type PublicIntakeFormItemAction,
   type VisibleIntakeSection,
 } from "./runner-utils";
 
 interface IntakeFormRendererProps {
-  actions: IntakeFormItemActionRecord[];
+  actions: PublicIntakeFormItemAction[];
   answers: Answers;
   acceptedSignatures: Record<string, boolean>;
   busyItemId: string;
@@ -114,9 +114,7 @@ export default function IntakeFormRenderer({
                         ? action?.signatureRequestId
                           ? "signature request completed"
                           : "signed"
-                        : item.documentId
-                          ? "signature request"
-                          : item.consentText}
+                        : item.consentText}
                     </small>
                   </div>
                   <label className="check-row share-check-row signature-consent">

@@ -268,6 +268,7 @@ export const sampleDocuments: DocumentRecord[] = [
     title: "Retainer agreement.pdf",
     storageKey: "matters/matter-001/retainer-v1.pdf",
     checksumSha256: "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c",
+    sizeBytes: 4096,
     version: 1,
     classification: "privileged",
     legalHold: true,

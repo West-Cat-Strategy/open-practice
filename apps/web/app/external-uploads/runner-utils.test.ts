@@ -145,7 +145,7 @@ describe("public external upload runner helpers", () => {
   it("builds intent payloads and describes completion, review, or failed PUT states", () => {
     expect(
       buildExternalUploadIntentPayload({
-        file: { name: "synthetic evidence.pdf", type: "application/pdf" },
+        file: { name: "synthetic evidence.pdf", size: 4096, type: "application/pdf" },
         checksumSha256: "a".repeat(64),
         classification: "privileged",
         legalHold: true,
@@ -153,6 +153,7 @@ describe("public external upload runner helpers", () => {
     ).toEqual({
       filename: "synthetic evidence.pdf",
       checksumSha256: "a".repeat(64),
+      fileSizeBytes: 4096,
       contentType: "application/pdf",
       classification: "privileged",
       legalHold: true,

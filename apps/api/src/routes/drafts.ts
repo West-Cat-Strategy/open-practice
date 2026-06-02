@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { requireAccess } from "../http/auth-guards.js";
+import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
@@ -267,9 +268,11 @@ export function registerDraftRoutes(
     }
     assertAccess(request.auth, "draft", "read", draft.matterId);
     if (!s3) {
-      throw Object.assign(new Error("Document export storage is not configured"), {
-        statusCode: 503,
-      });
+      throw new ApiHttpError(
+        503,
+        "DOCUMENT_EXPORT_STORAGE_NOT_CONFIGURED",
+        "Document export storage is not configured",
+      );
     }
 
     const exportTitle = body.title ?? draft.title;

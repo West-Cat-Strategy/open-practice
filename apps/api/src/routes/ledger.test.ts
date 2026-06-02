@@ -707,7 +707,7 @@ describe("ledger routes", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({
-      error: "Error",
+      error: "ApiHttpError",
       message: "Ledger client must be a non-adverse party on the matter",
     });
   });

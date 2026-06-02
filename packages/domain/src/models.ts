@@ -156,6 +156,7 @@ export interface DocumentRecord {
   title: string;
   storageKey: string;
   checksumSha256: string;
+  sizeBytes?: number;
   version: number;
   classification: DocumentClassification;
   legalHold: boolean;

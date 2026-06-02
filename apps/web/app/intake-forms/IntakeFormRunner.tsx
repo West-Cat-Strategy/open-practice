@@ -2,11 +2,7 @@
 
 import { FileText } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-  EmbeddedIntakeFormItem,
-  EmbeddedIntakeQuestion,
-  IntakeFormItemActionRecord,
-} from "@open-practice/domain";
+import type { EmbeddedIntakeFormItem, EmbeddedIntakeQuestion } from "@open-practice/domain";
 import {
   buildPublicTokenPath,
   publicTokenErrorMessage,
@@ -25,6 +21,7 @@ import {
   requiredIncompleteItemIds,
   visibleSections,
   type Answers,
+  type PublicIntakeFormItemAction,
   type PublicIntakeFormPayload,
 } from "./runner-utils";
 
@@ -166,7 +163,12 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: file.name, checksumSha256, contentType }),
+          body: JSON.stringify({
+            filename: file.name,
+            checksumSha256,
+            fileSizeBytes: file.size,
+            contentType,
+          }),
         },
       );
       if (!intent.ok) {
@@ -213,14 +215,18 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
         setStatus(publicTokenErrorMessage(body, `Upload completion failed: ${completed.status}`));
         return;
       }
-      const completedPayload = (await completed.json()) as { action: IntakeFormItemActionRecord };
+      const completedPayload = (await completed.json()) as { action: PublicIntakeFormItemAction };
       setPayload((current) =>
         current
           ? {
               ...current,
               actions: [
                 completedPayload.action,
-                ...current.actions.filter((action) => action.id !== completedPayload.action.id),
+                ...current.actions.filter(
+                  (action) =>
+                    action.kind !== completedPayload.action.kind ||
+                    action.itemId !== completedPayload.action.itemId,
+                ),
               ],
             }
           : current,
@@ -235,7 +241,7 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
 
   async function recordSignature(item: Extract<EmbeddedIntakeFormItem, { kind: "signature" }>) {
     setBusyItemId(item.id);
-    setStatus(item.documentId ? "Creating signature request..." : "Recording attestation...");
+    setStatus("Recording signature...");
     try {
       const response = await fetch(
         `${apiBaseUrl}${buildPublicTokenPath(
@@ -260,19 +266,27 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
         setStatus(publicTokenErrorMessage(body, `Signature failed: ${response.status}`));
         return;
       }
-      const signaturePayload = (await response.json()) as { action: IntakeFormItemActionRecord };
+      const signaturePayload = (await response.json()) as { action: PublicIntakeFormItemAction };
       setPayload((current) =>
         current
           ? {
               ...current,
               actions: [
                 signaturePayload.action,
-                ...current.actions.filter((action) => action.id !== signaturePayload.action.id),
+                ...current.actions.filter(
+                  (action) =>
+                    action.kind !== signaturePayload.action.kind ||
+                    action.itemId !== signaturePayload.action.itemId,
+                ),
               ],
             }
           : current,
       );
-      setStatus(item.documentId ? "Signature request completed." : "Attestation recorded.");
+      setStatus(
+        signaturePayload.action.signatureRequestId
+          ? "Signature request completed."
+          : "Signature recorded.",
+      );
     } catch (error) {
       setStatus(publicTokenNetworkErrorMessage("Signature", error));
     } finally {

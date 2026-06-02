@@ -1679,9 +1679,11 @@ export function registerBillingRoutes(
   server.post("/api/billing/payment-requests/:id/checkout-session", async (request) => {
     const params = parseRequestPart(idParamsSchema, request.params, "params");
     if (!paymentProcessorProvider) {
-      throw Object.assign(new Error("Payment processor provider is not configured"), {
-        statusCode: 503,
-      });
+      throw new ApiHttpError(
+        503,
+        "PAYMENT_PROCESSOR_NOT_CONFIGURED",
+        "Payment processor provider is not configured",
+      );
     }
     const existing = await repository.getHostedPaymentRequest(request.auth.firmId, params.id);
     if (!existing) {

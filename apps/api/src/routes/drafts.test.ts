@@ -615,7 +615,8 @@ describe("draft routes", () => {
 
     expect(exported.statusCode).toBe(503);
     expect(exported.json()).toMatchObject({
-      error: "Error",
+      error: "ApiHttpError",
+      code: "DOCUMENT_EXPORT_STORAGE_NOT_CONFIGURED",
       message: "Document export storage is not configured",
     });
   });
