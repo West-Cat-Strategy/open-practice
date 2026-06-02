@@ -1,6 +1,38 @@
 import { describe, expect, it } from "vitest";
+import type { ProviderSettingRecord } from "@open-practice/domain";
+import {
+  createProviderConfigCipherFromKey,
+  providerConfigEnvelopePrefix,
+} from "../src/config-encryption.js";
+import { DrizzleOpenPracticeRepository } from "../src/repository/drizzle.js";
 import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
 import { now } from "./repository.fixtures.js";
+
+const providerConfigKey = "base64:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+type DrizzleDb = ConstructorParameters<typeof DrizzleOpenPracticeRepository>[0];
+
+function drizzleProviderSettingsRepositoryWithRows(rows: Record<string, unknown>[] = []) {
+  const db = {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          orderBy: async () => rows,
+        }),
+      }),
+    }),
+    insert: () => ({
+      values: (value: Record<string, unknown>) => ({
+        onConflictDoUpdate: () => ({
+          returning: async () => {
+            rows.push(value);
+            return [value];
+          },
+        }),
+      }),
+    }),
+  } as unknown as DrizzleDb;
+  return { db, rows };
+}
 
 describe("repository providers, jobs, and email delivery", () => {
   it("upserts firm-scoped provider settings", async () => {
@@ -34,6 +66,72 @@ describe("repository providers, jobs, and email delivery", () => {
     await expect(
       repository.listProviderSettings("firm-west-legal", { kind: "smtp" }),
     ).resolves.toMatchObject([{ enabled: true, encryptedConfig: "sealed:updated" }]);
+  });
+
+  it("stores encrypted provider settings while returning plaintext through the repository", async () => {
+    const repository = new InMemoryOpenPracticeRepository({
+      providerConfigCipher: createProviderConfigCipherFromKey(providerConfigKey),
+    });
+    const plaintextConfig = JSON.stringify({
+      senderAddress: "consultations@example.test",
+      privateValue: "synthetic-provider-secret",
+    });
+
+    await expect(
+      repository.upsertProviderSetting({
+        id: "provider-public-intake-firm-west-legal",
+        firmId: "firm-west-legal",
+        kind: "public_intake",
+        key: "consultation",
+        enabled: true,
+        encryptedConfig: plaintextConfig,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).resolves.toMatchObject({ encryptedConfig: plaintextConfig });
+
+    const [provider] = await repository.listProviderSettings("firm-west-legal", {
+      kind: "public_intake",
+    });
+    expect(provider?.encryptedConfig).toBe(plaintextConfig);
+
+    const rawSettings = (repository as unknown as { providerSettings: ProviderSettingRecord[] })
+      .providerSettings;
+    expect(rawSettings[0]?.encryptedConfig).toMatch(
+      new RegExp(`^${providerConfigEnvelopePrefix()}`),
+    );
+    expect(rawSettings[0]?.encryptedConfig).not.toContain("synthetic-provider-secret");
+  });
+
+  it("stores encrypted provider settings in Drizzle rows while returning plaintext", async () => {
+    const { db, rows } = drizzleProviderSettingsRepositoryWithRows();
+    const configuredRepository = new DrizzleOpenPracticeRepository(db, {
+      providerConfigCipher: createProviderConfigCipherFromKey(providerConfigKey),
+    });
+    const plaintextConfig = JSON.stringify({
+      senderAddress: "consultations@example.test",
+      privateValue: "synthetic-drizzle-provider-secret",
+    });
+
+    await expect(
+      configuredRepository.upsertProviderSetting({
+        id: "provider-public-intake-firm-west-legal",
+        firmId: "firm-west-legal",
+        kind: "public_intake",
+        key: "consultation",
+        enabled: true,
+        encryptedConfig: plaintextConfig,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).resolves.toMatchObject({ encryptedConfig: plaintextConfig });
+
+    const [provider] = await configuredRepository.listProviderSettings("firm-west-legal", {
+      kind: "public_intake",
+    });
+    expect(provider?.encryptedConfig).toBe(plaintextConfig);
+    expect(rows[0]?.encryptedConfig).toMatch(new RegExp(`^${providerConfigEnvelopePrefix()}`));
+    expect(rows[0]?.encryptedConfig).not.toContain("synthetic-drizzle-provider-secret");
   });
 
   it("records job lifecycle state transitions", async () => {

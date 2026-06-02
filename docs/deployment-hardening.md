@@ -11,6 +11,10 @@
 - Back up PostgreSQL and object storage together, test restores, and include migration rollback/roll-forward drills in release readiness.
 - Store secrets outside git and outside container images.
 - Configure production embedded auth explicitly; dev header auth, bearer JWT auth, and weak secrets must not be accepted in production.
+- Configure `OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY` through the secret manager for PostgreSQL-backed
+  API and worker runtimes. Provider settings store authenticated AES-256-GCM envelopes in
+  `provider_settings.encrypted_config`; legacy plaintext values stay readable until normal updates
+  rewrite them under encryption.
 - Keep user-facing embedded auth single-tenant: users sign in with email/password, passkey, or
   recovery code only, while the API resolves the sole configured practice internally and blocks
   operator review if multiple firm records exist.
@@ -60,6 +64,10 @@ Environment variables must be treated as deployment inputs, not application defa
   setup route only proceeds while both firm and user tables are empty; any missing production setup
   key or partial bootstrap state is blocked for operator review. The web setup flow is intentionally
   minimal and creates editable operational defaults after the first owner admin is created.
+- `OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY` must decode to exactly 32 bytes as base64, base64url, or
+  hex. PostgreSQL-backed API and worker startup fails without it, while synthetic memory-mode tests
+  can omit it. Rotate it through the secret manager; do not bake it into images or checked-in env
+  files.
 - `DEV_AUTH_FIRM_ID` and `x-open-practice-firm-id` are development-only helpers for seeded local
   requests. They must not be part of production user-facing sign-in, password setup, passkey login,
   or recovery-code payloads.

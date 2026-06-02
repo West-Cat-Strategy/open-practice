@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Buffer } from "node:buffer";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import {
   createQueuedJobLifecycleRecord,
@@ -14,6 +15,8 @@ import {
   workerEnvSchema,
   type WorkerEnv,
 } from "./worker.js";
+
+const providerConfigEncryptionKey = Buffer.alloc(32, 7).toString("base64url");
 
 function workerEnv(overrides: Partial<WorkerEnv> = {}): WorkerEnv {
   return workerEnvSchema.parse({
@@ -134,6 +137,38 @@ describe("worker queue foundation", () => {
     expect(runtime.close).toBeUndefined();
   });
 
+  it("rejects invalid worker provider config encryption keys", () => {
+    expect(() =>
+      workerEnvSchema.parse({ OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: "not-a-32-byte-key" }),
+    ).toThrow(/OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY/);
+  });
+
+  it("parses worker boolean env strings before provider config key readiness checks", () => {
+    const parsed = workerEnvSchema.parse({
+      DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+      OPEN_PRACTICE_USE_MEMORY_REPO: "false",
+      OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
+      SMTP_SECURE: "false",
+    });
+
+    expect(parsed.OPEN_PRACTICE_USE_MEMORY_REPO).toBe(false);
+    expect(parsed.SMTP_SECURE).toBe(false);
+    expect(
+      workerEnvSchema.parse({ OPEN_PRACTICE_USE_MEMORY_REPO: "true" })
+        .OPEN_PRACTICE_USE_MEMORY_REPO,
+    ).toBe(true);
+  });
+
+  it("requires a provider config encryption key when the worker uses PostgreSQL", () => {
+    expect(() =>
+      createWorkerRepositoryFromEnv(
+        workerEnv({
+          DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+        }),
+      ),
+    ).toThrow(/OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY/);
+  });
+
   it("rejects worker memory mode when a database URL is also present", () => {
     expect(() =>
       createWorkerRepositoryFromEnv(
@@ -154,7 +189,16 @@ describe("worker queue foundation", () => {
         workerEnv({
           NODE_ENV: "production",
           DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+        }),
+      ),
+    ).toThrow("OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY is required when DATABASE_URL is configured");
+    expect(() =>
+      validateWorkerReadiness(
+        workerEnv({
+          NODE_ENV: "production",
+          DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
           OPEN_PRACTICE_USE_MEMORY_REPO: true,
+          OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
         }),
       ),
     ).toThrow("OPEN_PRACTICE_USE_MEMORY_REPO cannot be true in production");

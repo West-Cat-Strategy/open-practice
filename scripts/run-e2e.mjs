@@ -15,6 +15,7 @@ let dockerStarted = false;
 let nextEnvSnapshot;
 
 const commonSecret = "e2e-local-secret-at-least-32-characters";
+const syntheticConfigEncryptionKey = "base64:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
 const dockerComposeBaseArgs = ["compose", "-p", "open-practice-e2e"];
 const nextEnvPath = join(root, "apps/web/next-env.d.ts");
 
@@ -274,6 +275,7 @@ async function startDockerRuntime() {
     S3_SECRET_KEY: "open_practice_secret",
     SMTP_HOST: "localhost",
     SMTP_PORT: "31025",
+    OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: syntheticConfigEncryptionKey,
     OPEN_PRACTICE_DEV_SEED: "true",
     WORKER_QUEUES: "email,inbound_email,ai_triage,ocr,transcription,media",
   };

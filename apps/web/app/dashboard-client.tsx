@@ -416,7 +416,6 @@ import type {
   IntakeVariableProposalsResponse,
   JurisdictionalTrustReportResponse,
   LegalResearchDashboardResponse,
-  LegalResearchWorkspaceResponse,
   WorkerHealthResponse,
   WorkerRunQueueFilter,
   WorkerRunsDashboardResponse,
