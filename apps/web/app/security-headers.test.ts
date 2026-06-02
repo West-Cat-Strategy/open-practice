@@ -22,13 +22,14 @@ describe("web security headers", () => {
       }),
     ]);
     expect(csp).toContain("default-src 'self'");
-    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval'");
     expect(csp).toContain("connect-src 'self' http://localhost:* http://127.0.0.1:*");
     expect(csp).toContain("img-src 'self' data: blob:");
     expect(csp).toContain("form-action 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("base-uri 'self'");
     expect(csp).toContain("object-src 'none'");
+    expect(csp).not.toContain("upgrade-insecure-requests");
   });
 
   it("keeps production CSP free of inline script and loopback connect allowances", () => {
@@ -39,7 +40,9 @@ describe("web security headers", () => {
       .find((directive) => directive.startsWith("script-src"));
     expect(scriptSrc).toBe("script-src 'self'");
     expect(productionCsp).toContain("connect-src 'self'");
+    expect(productionCsp).toContain("upgrade-insecure-requests");
     expect(productionCsp).not.toContain("http://localhost:*");
     expect(productionCsp).not.toContain("http://127.0.0.1:*");
+    expect(productionCsp).not.toContain("'unsafe-eval'");
   });
 });

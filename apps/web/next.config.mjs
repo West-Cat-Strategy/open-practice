@@ -6,11 +6,13 @@ const projectRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const isProduction = env.NODE_ENV === "production";
 
 export function buildContentSecurityPolicy({ production = isProduction } = {}) {
-  const scriptSrc = production ? "script-src 'self'" : "script-src 'self' 'unsafe-inline'";
+  const scriptSrc = production
+    ? "script-src 'self'"
+    : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
   const connectSrc = production
     ? "connect-src 'self'"
     : "connect-src 'self' http://localhost:* http://127.0.0.1:*";
-  return [
+  const directives = [
     "default-src 'self'",
     scriptSrc,
     "style-src 'self' 'unsafe-inline'",
@@ -21,8 +23,11 @@ export function buildContentSecurityPolicy({ production = isProduction } = {}) {
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "object-src 'none'",
-    "upgrade-insecure-requests",
-  ].join("; ");
+  ];
+  if (production) {
+    directives.push("upgrade-insecure-requests");
+  }
+  return directives.join("; ");
 }
 
 // Linux production builds need ProseMirror ESM modules directly instead of TipTap's wrapper re-exports.
