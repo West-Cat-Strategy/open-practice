@@ -282,9 +282,10 @@ function serializePublicItemAction(action: IntakeFormItemActionRecord) {
 function serializePublicTemplateDefinition(
   definition: EmbeddedIntakeTemplateDefinition,
 ): EmbeddedIntakeTemplateDefinition {
-  const publicQuestions = definition.questions.map(
-    ({ variableMapping: _variableMapping, ...question }) => question,
-  );
+  const publicQuestions = definition.questions.map(({ variableMapping, ...question }) => {
+    void variableMapping;
+    return question;
+  });
   if (definition.schemaVersion !== 2) {
     return { ...definition, questions: publicQuestions };
   }
@@ -295,11 +296,14 @@ function serializePublicTemplateDefinition(
       ...section,
       items: section.items.map((item) => {
         if (item.kind === "upload") {
-          const { classification: _classification, legalHold: _legalHold, ...publicItem } = item;
+          const { classification, legalHold, ...publicItem } = item;
+          void classification;
+          void legalHold;
           return publicItem;
         }
         if (item.kind === "signature") {
-          const { documentId: _documentId, ...publicItem } = item;
+          const { documentId, ...publicItem } = item;
+          void documentId;
           return publicItem;
         }
         return item;
