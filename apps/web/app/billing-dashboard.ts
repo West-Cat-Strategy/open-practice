@@ -356,6 +356,7 @@ function timerDraftDashboardItem(
     rateSnapshot: entry.rateSnapshot,
     amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
     narrative: entry.narrative,
+    billable: entry.billable,
     status: entry.billingStatus,
   };
 }

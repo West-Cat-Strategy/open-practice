@@ -567,7 +567,8 @@ describe("billing routes", () => {
   });
 
   it("creates timer and expense-profile drafts as review-only billing capture rows", async () => {
-    const server = testServer();
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
 
     const lock = await server.inject({
       method: "POST",
@@ -630,8 +631,29 @@ describe("billing routes", () => {
       id: "time-timer-review-draft",
       performedAt: "2026-05-05T10:00:00.000Z",
       minutes: 45,
+      billable: true,
       billingStatus: "draft",
       rateSnapshot: expect.objectContaining({ source: "manual", rateCents: 18000 }),
+    });
+
+    const nonBillableTimerDraft = await server.inject({
+      method: "POST",
+      url: "/api/time-entries/timer-drafts",
+      payload: {
+        id: "time-timer-non-billable-review-draft",
+        matterId: "matter-001",
+        startedAt: "2026-05-05T12:00:00.000Z",
+        stoppedAt: "2026-05-05T12:10:00.000Z",
+        rateCents: 18000,
+        narrative: "Synthetic private non-billable timer capture.",
+        billable: false,
+      },
+    });
+    expect(nonBillableTimerDraft.statusCode).toBe(200);
+    expect(nonBillableTimerDraft.json()).toMatchObject({
+      id: "time-timer-non-billable-review-draft",
+      billable: false,
+      billingStatus: "draft",
     });
 
     const expenseOverride = await server.inject({
@@ -670,6 +692,27 @@ describe("billing routes", () => {
       billingStatus: "draft",
     });
 
+    const nonReimbursableExpenseDraft = await server.inject({
+      method: "POST",
+      url: "/api/expense-entries/review-drafts",
+      payload: {
+        id: "expense-review-non-reimbursable-draft",
+        matterId: "matter-001",
+        incurredAt: "2026-05-05T12:30:00.000Z",
+        amountCents: 1900,
+        categoryProfileKey: "research_database",
+        description: "Synthetic private non-reimbursable expense.",
+        reimbursable: false,
+      },
+    });
+    expect(nonReimbursableExpenseDraft.statusCode).toBe(200);
+    expect(nonReimbursableExpenseDraft.json()).toMatchObject({
+      id: "expense-review-non-reimbursable-draft",
+      category: "Research database",
+      reimbursable: false,
+      billingStatus: "draft",
+    });
+
     const invoice = await server.inject({
       method: "POST",
       url: "/api/invoices",
@@ -689,22 +732,40 @@ describe("billing routes", () => {
     const dashboard = await server.inject({ method: "GET", url: "/api/billing/dashboard" });
     expect(dashboard.statusCode).toBe(200);
     const dashboardBody = dashboard.json<{
+      timerDraftPolicy: {
+        createsDraftOnly: true;
+        autoSubmitEnabled: false;
+        autoApproveEnabled: false;
+        lockBypassAllowed: false;
+      };
       expenseCategoryProfiles: Array<{ key: string; reviewOnly: boolean }>;
       matters: Array<{
         matterId: string;
         unbilledTime: Array<{ id: string }>;
         unbilledExpenses: Array<{ id: string }>;
-        captureReviewTime: Array<{ id: string; status: string }>;
+        captureReviewTime: Array<{ id: string; status: string; billable?: boolean }>;
         captureReviewExpenses: Array<{ id: string; status: string }>;
       }>;
     }>();
+    expect(dashboardBody.timerDraftPolicy).toEqual({
+      createsDraftOnly: true,
+      autoSubmitEnabled: false,
+      autoApproveEnabled: false,
+      lockBypassAllowed: false,
+    });
     const matterBilling = dashboardBody.matters.find((matter) => matter.matterId === "matter-001");
     expect(matterBilling).toMatchObject({
       captureReviewTime: expect.arrayContaining([
-        expect.objectContaining({ id: "time-timer-review-draft", status: "draft" }),
+        expect.objectContaining({ id: "time-timer-review-draft", status: "draft", billable: true }),
+        expect.objectContaining({
+          id: "time-timer-non-billable-review-draft",
+          status: "draft",
+          billable: false,
+        }),
       ]),
       captureReviewExpenses: expect.arrayContaining([
         expect.objectContaining({ id: "expense-review-profile-draft", status: "draft" }),
+        expect.objectContaining({ id: "expense-review-non-reimbursable-draft", status: "draft" }),
       ]),
     });
     expect(matterBilling?.unbilledTime).not.toEqual(
@@ -713,11 +774,19 @@ describe("billing routes", () => {
     expect(matterBilling?.unbilledExpenses).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "expense-review-profile-draft" })]),
     );
+    expect(matterBilling?.unbilledExpenses).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "expense-review-non-reimbursable-draft" }),
+      ]),
+    );
     expect(dashboardBody.expenseCategoryProfiles).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: "filing_service", reviewOnly: true }),
       ]),
     );
+    const serializedAudit = JSON.stringify(await auditEvents(repository));
+    expect(serializedAudit).not.toContain("Synthetic private non-billable timer capture");
+    expect(serializedAudit).not.toContain("Synthetic private non-reimbursable expense");
   });
 
   it("creates a draft invoice from approved billing dashboard sources without trust ledger postings", async () => {

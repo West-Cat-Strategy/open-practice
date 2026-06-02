@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  billingTimerDraftPolicy,
   buildMatterSetupProfile,
   expenseCategoryProfileCues,
   summarizeAiOperationalProposals,
@@ -2513,6 +2514,7 @@ describe("dashboard client behavior", () => {
       },
       periodLocks: [],
       rateRules: [],
+      timerDraftPolicy: billingTimerDraftPolicy,
       expenseCategoryProfiles: expenseCategoryProfileCues,
       matters: [
         {
@@ -2669,6 +2671,7 @@ describe("dashboard client behavior", () => {
       },
       periodLocks,
       rateRules: [],
+      timerDraftPolicy: billingTimerDraftPolicy,
       expenseCategoryProfiles: expenseCategoryProfileCues,
       matters: [
         {

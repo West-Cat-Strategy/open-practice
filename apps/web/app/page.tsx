@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { expenseCategoryProfileCues } from "@open-practice/domain";
+import { billingTimerDraftPolicy, expenseCategoryProfileCues } from "@open-practice/domain";
 import {
   buildSidebarNavigationSections,
   resolveDashboardRouteSelection,
@@ -287,7 +287,7 @@ function buildBillingFallback(
 ): BillingDashboardResponse {
   const billingMatters = matters.map((matter) => {
     const captureReviewTime = matter.timeEntries
-      .filter((entry) => entry.billable && ["draft", "submitted"].includes(entry.billingStatus))
+      .filter((entry) => ["draft", "submitted"].includes(entry.billingStatus))
       .map((entry) => ({
         id: entry.id,
         matterId: entry.matterId,
@@ -299,6 +299,7 @@ function buildBillingFallback(
         rateSnapshot: entry.rateSnapshot,
         amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
         narrative: entry.narrative,
+        billable: entry.billable,
         status: entry.billingStatus,
       }));
     const captureReviewExpenses = matter.expenses
@@ -331,6 +332,7 @@ function buildBillingFallback(
         rateSnapshot: entry.rateSnapshot,
         amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
         narrative: entry.narrative,
+        billable: entry.billable,
         status: "approved" as const,
       }));
     const unbilledExpenses = matter.expenses
@@ -379,6 +381,7 @@ function buildBillingFallback(
     },
     periodLocks: [],
     rateRules: [],
+    timerDraftPolicy: billingTimerDraftPolicy,
     expenseCategoryProfiles: expenseCategoryProfileCues,
     matters: billingMatters,
   };
