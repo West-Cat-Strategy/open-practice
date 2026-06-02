@@ -145,6 +145,39 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies legal research artifact events as matter-scoped without note bodies", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "legal_research.artifact.created",
+        resourceType: "legal_research",
+        resourceId: "research-artifact-001",
+        metadata: {
+          matterId: "matter-001",
+          artifactId: "research-artifact-001",
+          artifactKind: "cited_source_note",
+          status: "ready_for_review",
+          sourceReferenceCount: 1,
+          contextLinkCount: 2,
+          titleLength: 32,
+          noteLength: 48,
+          reviewOnly: true,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "legal_research",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining(["artifactId", "artifactKind", "noteLength", "reviewOnly"]),
+    );
+    expect(classification.metadataHints.resource).not.toContain("note");
+    expect(classification.metadataHints.resource).not.toContain("sourceLabel");
+  });
+
   it("classifies integration developer boundary events as firm-scoped and redacted", () => {
     expect(
       classifyAuditEvent(
@@ -441,6 +474,91 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies accounting review profile events without bank source or note details", () => {
+    const matchProfileClassification = classifyAuditEvent(
+      auditEvent({
+        action: "ledger.statement_match_rule_profile.recorded",
+        resourceType: "ledger_statement_match_rule_profile",
+        resourceId: "statement-match-profile-001",
+        metadata: {
+          accountId: "acct-trust-bank",
+          referenceStrategy: "normalized_reference",
+          descriptionStrategy: "normalized_contains",
+          dateWindowDays: 2,
+          amountToleranceCents: 0,
+          varianceCategoryCount: 2,
+          reviewerExplanationRequired: true,
+          reviewOnly: true,
+          varianceCategories: ["ledger_entry_expected", "needs_follow_up"],
+        },
+      }),
+    );
+    const accountingProfileClassification = classifyAuditEvent(
+      auditEvent({
+        action: "ledger.accounting_review_profile.recorded",
+        resourceType: "ledger_accounting_review_profile",
+        resourceId: "accounting-review-profile-001",
+        metadata: {
+          accountId: "acct-trust-bank",
+          accountType: "trust_asset",
+          boundaryPosture: "trust_only",
+          protectedFunds: true,
+          bankFeedImportStatus: "metadata_only",
+          bankFeedSourceLabelPresent: true,
+          automaticMatching: false,
+          vendorTracking: "not_applicable",
+          expenseCategoryTracking: "optional",
+          clientMatterTracking: "required",
+          reviewOnly: true,
+          sourceLabel: "Synthetic private import label",
+          notes: "Synthetic private review note.",
+        },
+      }),
+    );
+
+    expect(matchProfileClassification).toMatchObject({
+      category: "trust",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(matchProfileClassification.metadataHints.resource).toEqual([
+      "accountId",
+      "referenceStrategy",
+      "descriptionStrategy",
+      "dateWindowDays",
+      "amountToleranceCents",
+      "varianceCategoryCount",
+      "reviewerExplanationRequired",
+      "reviewOnly",
+    ]);
+    expect(matchProfileClassification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["varianceCategories"]),
+    );
+    expect(accountingProfileClassification).toMatchObject({
+      category: "trust",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(accountingProfileClassification.metadataHints.resource).toEqual([
+      "accountId",
+      "accountType",
+      "boundaryPosture",
+      "protectedFunds",
+      "bankFeedImportStatus",
+      "bankFeedSourceLabelPresent",
+      "automaticMatching",
+      "vendorTracking",
+      "expenseCategoryTracking",
+      "clientMatterTracking",
+      "reviewOnly",
+    ]);
+    expect(accountingProfileClassification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["sourceLabel", "notes", "protectedFundsReason"]),
+    );
+  });
+
   it("classifies communications triage note and follow-up metadata as safe resource hints", () => {
     const classification = classifyAuditEvent(
       auditEvent({
@@ -543,6 +661,62 @@ describe("audit event taxonomy", () => {
     expect(classification.metadataHints.resource).toEqual(
       expect.arrayContaining(["draftId", "task", "provider", "jobId"]),
     );
+  });
+
+  it("classifies AI operational proposal events without generated text hints", () => {
+    const queued = classifyAuditEvent(
+      auditEvent({
+        action: "ai_operational_proposal.async_queued",
+        resourceType: "ai_proposal",
+        resourceId: "job-001",
+        metadata: {
+          matterId: "matter-001",
+          draftId: "draft-001",
+          proposalKinds: "deadline_extraction,task_creation",
+          proposalKindCount: 2,
+          provider: "fake-local-ai",
+          jobId: "job-001",
+          sourceTextLength: 42,
+        },
+      }),
+    );
+    const reviewed = classifyAuditEvent(
+      auditEvent({
+        action: "ai_operational_proposal.reviewed",
+        resourceType: "ai_proposal",
+        resourceId: "proposal-001",
+        metadata: {
+          matterId: "matter-001",
+          proposalId: "proposal-001",
+          proposalKind: "task_creation",
+          decision: "approved",
+          status: "approved",
+        },
+      }),
+    );
+
+    expect(queued).toMatchObject({
+      category: "operations",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
+    expect(queued.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "draftId",
+        "proposalKinds",
+        "proposalKindCount",
+        "provider",
+        "jobId",
+      ]),
+    );
+    expect(queued.metadataHints.resource).not.toContain("proposal");
+    expect(reviewed).toMatchObject({
+      category: "operations",
+      known: true,
+      matterScope: "matter",
+      resourceTypeMatches: true,
+    });
   });
 
   it("classifies completed task events as matter-scoped operations", () => {

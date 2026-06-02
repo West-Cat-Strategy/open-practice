@@ -72,7 +72,7 @@ are backed by implementation and validation proof.
 | `PUT /api/legal-clinic/profiles/:matterId`                                            | Upserts the authorized matter's clinic profile and records redacted eligibility/referral audit metadata.                                                                                                                                                                                                                                                                 |
 | `POST /api/conflicts/check`                                                           | Conflict search with audit recording for prospective names, aliases, identifiers, and party role. Owner-admin and auditor users receive detailed matches; other authorized contact readers receive aggregate severity/counts only.                                                                                                                                       |
 | `GET /api/ledger?matterId=`                                                           | Trust ledger accounts, entries, posted transactions, and balances. Matter-scoped users must provide matter ID.                                                                                                                                                                                                                                                           |
-| `GET /api/ledger/controls?matterId=`                                                  | Read-only trust controls workbench payload with ledger balances, approvals, reconciliations, diagnostics, and cautious trust-control policy. Matter-scoped users must provide matter ID.                                                                                                                                                                                 |
+| `GET /api/ledger/controls?matterId=`                                                  | Read-only trust controls workbench payload with ledger balances, approvals, reconciliations, diagnostics, review-only accounting profile summaries for firm-wide users, and cautious trust-control policy. Matter-scoped users must provide matter ID.                                                                                                                   |
 | `GET /api/ledger/reports/jurisdictional-trust?jurisdiction=`                          | Firm-wide, read-only aggregate trust report grouped by matter jurisdiction. It exposes counts and totals only; downloadable exports are requested through the reports job lifecycle and remain explicitly not jurisdiction-certified.                                                                                                                                    |
 | `POST /api/ledger/reports/jurisdictional-trust/export-requests`                       | Creates a jurisdictional trust export request using the existing reports job lifecycle with redacted job/audit metadata and poll/download links.                                                                                                                                                                                                                         |
 | `GET /api/ledger/reports/jurisdictional-trust/export-requests/:exportJobId`           | Reads one jurisdictional trust export request status after trust-ledger export authorization.                                                                                                                                                                                                                                                                            |
@@ -127,6 +127,10 @@ are backed by implementation and validation proof.
 | `POST /api/ledger/reconciliations/preview`                                            | Firm-wide, review-only trust statement import preview that dedupes statement rows and proposes matches to existing ledger entries for a trust asset account. It does not post ledger entries, create reconciliation records, or emit audit events.                                                                                                                       |
 | `GET /api/ledger/reconciliations/import-batches?accountId=`                           | Lists firm-wide persistent statement import batch metadata for one trust asset account, including source label, checksum, row counts, duplicate count, status, optional matching profile ID, creator, and timestamp. Statement rows and evidence bodies are not stored on this record.                                                                                   |
 | `POST /api/ledger/reconciliations/import-batches`                                     | Records firm-wide statement import batch metadata for an existing trust asset account with safe audit metadata only. It does not post ledger entries, create reconciliation records, approve transactions, move funds, store statement rows, or store statement evidence.                                                                                                |
+| `GET /api/ledger/reconciliations/match-rule-profiles?accountId=`                      | Lists firm-wide review-only statement match-rule profiles, optionally for one trust asset account, including reference/description strategy, date window, amount tolerance, variance-category count source fields, and reviewer-explanation posture.                                                                                                                     |
+| `POST /api/ledger/reconciliations/match-rule-profiles`                                | Records a review-only statement match-rule profile for an existing trust asset account with safe audit metadata only. It does not run a live bank feed, auto-match transactions, post ledger entries, create reconciliations, or move funds.                                                                                                                             |
+| `GET /api/ledger/accounting-review-profiles?accountId=`                               | Lists firm-wide review-only accounting profile records, optionally for one ledger account, including account posture, protected-funds cues, metadata-only bank-feed import posture, and vendor/expense/client-matter dimension posture.                                                                                                                                  |
+| `POST /api/ledger/accounting-review-profiles`                                         | Records a review-only accounting profile for an existing ledger account with automatic matching forced off. It does not connect bank feeds, post transactions, disburse funds, reconcile statements automatically, or certify accounting/compliance conclusions.                                                                                                         |
 | `GET /api/ledger/reconciliation-exception-resolutions?accountId=`                     | Lists firm-wide staff resolution records for unmatched statement-preview rows on one trust asset account.                                                                                                                                                                                                                                                                |
 | `POST /api/ledger/reconciliation-exception-resolutions`                               | Records a staff resolution note and variance decision for an unmatched statement-preview row with redacted audit metadata only. It does not post ledger entries, create reconciliation records, move funds, or certify accounting conclusions.                                                                                                                           |
 | `POST /api/ledger/reconciliations`                                                    | Trust-account reconciliation record with imported statement rows, row-level matched/unmatched review decisions, immutable beginning/ending balance snapshots, and variance explanation.                                                                                                                                                                                  |
@@ -281,6 +285,14 @@ are backed by implementation and validation proof.
 | `POST /api/documents/:id/assist`                                                      | Synchronous document summary assist from completed text extraction; missing extraction returns `409`.                                                                                                                                                                                                                                                                    |
 | `POST /api/documents/:id/assist/jobs`                                                 | Queues a review-first async document summary assist job from the latest completed text extraction; missing extraction returns `409`, generated suggestions become normal non-authoritative assist records, and source documents are not mutated.                                                                                                                         |
 | `PATCH /api/draft-assist/records/:id/review`                                          | Mark an assist suggestion reviewed or rejected without changing source draft or document records.                                                                                                                                                                                                                                                                        |
+| `GET /api/ai-operational-proposals?matterId=&status=&kind=`                           | Lists authorized matter-scoped AI operational proposal review artifacts for deadlines, tasks, document organization, draft invoice cues, and client-update drafts, plus review counters and disabled/configured generation posture.                                                                                                                                      |
+| `POST /api/drafts/:id/operational-proposals/jobs`                                     | Queues all or selected review-only operational proposal families from an authorized matter-scoped draft when an enabled AI provider, injected proposal provider, and `ai_triage` queue are configured; returns `202` with redacted job metadata only and does not mutate the draft.                                                                                      |
+| `POST /api/documents/:id/operational-proposals/jobs`                                  | Queues all or selected review-only operational proposal families from an authorized document after completed text extraction; missing extraction returns `409`, generated proposals become review artifacts, and source documents are not mutated.                                                                                                                       |
+| `PATCH /api/ai-operational-proposals/:id/review`                                      | Records `approved` or `rejected` on one proposal and appends safe audit metadata. Approval means the proposal was accepted for review only; it does not create tasks, invoices, documents, messages, calendar entries, or source-record mutations.                                                                                                                       |
+| `GET /api/legal-research/workspace?matterId=&kind=&status=`                           | Returns the staff-only matter-scoped legal research workspace with artifact rows, counters, disabled/reserved provider posture, and optional kind/status filtering. No live research provider or generation endpoint is exposed.                                                                                                                                         |
+| `POST /api/legal-research/artifacts`                                                  | Creates one authorized matter-scoped legal research artifact for cited-source notes, matter-context attachments, document-analysis status, strategy/timeline notes, or review checkpoints, with bounded staff-authored notes and redacted audit metadata.                                                                                                                |
+| `PATCH /api/legal-research/artifacts/:id`                                             | Updates title, bounded note, structured artifact fields, and status for one authorized matter-scoped research artifact; it does not mutate documents, drafts, tasks, messages, calendar events, or provider records.                                                                                                                                                     |
+| `PATCH /api/legal-research/artifacts/:id/review`                                      | Records `reviewed` or `rejected` on one legal research artifact with safe audit metadata only. Review is status-only and makes no citation-verification, legal-advice, provider-evidence, or downstream automation claim.                                                                                                                                                |
 | `GET /api/draft-templates?category=&activeOnly=`                                      | List active firm-scoped drafting templates, including seeded operational basics.                                                                                                                                                                                                                                                                                         |
 | `POST /api/draft-templates`                                                           | Create a firm-scoped drafting template from structured TipTap/ProseMirror JSON.                                                                                                                                                                                                                                                                                          |
 
@@ -315,20 +327,27 @@ queue are configured. OCR is the only actionable document-processing queue in th
 document classification on AI triage, transcription, and media queues are reported as
 reserved/deferred metadata rather than configurable work. A narrow async draft/document assist
 slice may use `ai_triage` for `draft_assist_suggestion` only when an enabled AI provider
-setting, an injected `DraftAssistProvider`, and the async assist queue are all configured. Webhook
-ingestion, provider delivery setup, automatic document promotion, document classification,
-transcription, media processing, and live Ollama/LM Studio adapter work remain deferred.
+setting, an injected `DraftAssistProvider`, and the async assist queue are all configured. OP-T138
+also uses `ai_triage` for `operational_action_proposals` when an enabled AI provider setting, an
+injected operational proposal provider, and the queue are configured. That job metadata may contain
+only IDs, source type, requested-kind/count fields, provider key, requester ID, idempotency presence,
+and source/generated-length metadata. Webhook ingestion, provider delivery setup, automatic document
+promotion, automatic operational mutations, document classification, transcription, media
+processing, live Ollama/LM Studio adapter work, and live legal research provider work remain
+deferred.
 `GET /api/providers/status` is read-only configuration posture, not a live health probe: it reports
 safe provider-setting keys, object-storage configured/not-configured state, BullMQ producer and
 reserved worker queue posture, redacted job summaries, and current-user embedded-auth extension
 posture without returning provider config, Redis URLs, storage endpoints, credentials, raw worker
 errors, storage keys, message bodies, generated text, or auth secrets.
 
-| Surface                              | Purpose                                                                                                                                                       |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/providers/status`          | Operator-visible configuration posture for Redis/BullMQ producers, object storage, provider settings, reserved workers, redacted jobs, and auth extensions.   |
-| Media transcription jobs             | Deferred route candidate for FFmpeg normalization and Whisper transcription after media authorization and worker governance land.                             |
-| Async assistive-drafting worker jobs | Queue-first `draft_assist_suggestion` jobs create existing review-first assist records when locally configured; live Ollama/LM Studio adapters stay deferred. |
+| Surface                              | Purpose                                                                                                                                                              |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/providers/status`          | Operator-visible configuration posture for Redis/BullMQ producers, object storage, provider settings, reserved workers, redacted jobs, and auth extensions.          |
+| Media transcription jobs             | Deferred route candidate for FFmpeg normalization and Whisper transcription after media authorization and worker governance land.                                    |
+| Async assistive-drafting worker jobs | Queue-first `draft_assist_suggestion` jobs create existing review-first assist records when locally configured; live Ollama/LM Studio adapters stay deferred.        |
+| AI operational proposal jobs         | Queue-first `operational_action_proposals` jobs create review-only proposal records when locally configured; approvals are status-only and no source records mutate. |
+| Legal research provider work         | Reserved posture only; the workspace stores staff-authored review artifacts and exposes no generation queue, scraped authority store, or provider health claim.      |
 
 The authenticated and public SimpleWebAuthn routes are live embedded-auth routes in the main API
 surface above. They remain deployment-gated by the configured RP ID/origin and setup/session secrets;
@@ -665,6 +684,18 @@ candidate matches against existing entries for the selected trust asset account,
 `review_only_no_automatic_ledger_posting` policy marker. It does not create ledger entries,
 reconciliation records, approvals, or audit events.
 
+Statement match-rule profiles persist reviewer-owned matching posture for trust statement imports:
+reference strategy, description strategy, date-window tolerance, amount tolerance, variance
+categories, reviewer-explanation posture, and timestamps. These profiles are inputs for operational
+review only; they do not start live feeds, run automatic matching, post ledger entries, create
+reconciliation records, or move funds.
+
+Accounting review profiles persist account posture for operator review: operating/trust/expense
+boundary posture, protected-funds cues, metadata-only bank-feed import posture with automatic
+matching forced off, and vendor/expense/client-matter dimension posture. They are not accounting
+certification, jurisdictional compliance proof, settlement records, disbursement authority, or bank
+feed integrations.
+
 Reconciliation exception resolution records are immutable staff review notes for unmatched
 statement-preview rows. They store a statement-row snapshot with a server-computed duplicate key,
 one variance decision, reviewer metadata, and a staff note. Recording a resolution
@@ -674,9 +705,10 @@ decision, and note-presence flags.
 
 The read-only trust controls workbench surfaces existing balances, approval decisions,
 reconciliation exceptions, unreconciled accounts, statement-row counts, variance explanations, recent
-postings, and invariant diagnostics for operator review. It does not post ledger entries, approve
-transactions, create reconciliations, place holds, add accounting dimensions, or claim
-compliance-pack coverage.
+postings, review-only statement match-rule profiles, accounting posture profiles, protected-funds
+cues, bank-feed shell counts, and invariant diagnostics for operator review. It does not post ledger
+entries, approve transactions, create reconciliations, place holds, run automatic matching, connect
+bank feeds, or claim compliance-pack coverage.
 
 The jurisdictional trust report is a firm-wide, read-only aggregate over the same trust controls
 data. It groups accessible matter balances, approval counts, reconciliation exception counts,
@@ -939,6 +971,29 @@ PostgreSQL and BullMQ. Workers reload draft text or the latest completed extract
 calling the injected `DraftAssistProvider`; raw source text, prompt/evidence values, generated text,
 storage keys, checksums, and private payloads stay out of job metadata and audit metadata. Generated
 text is stored only on the resulting suggested assist record for the existing review flow.
+
+AI operational proposals are a separate review artifact over the same disabled-by-default AI
+posture. `GET /api/ai-operational-proposals` lists only matter-authorized records and allows
+status/kind filtering. Draft and document queue routes require source-record read access plus
+`ai_proposal:create`; document queueing also requires completed extraction. The fake provider returns
+synthetic proposals for deadline extraction, task creation, document organization, draft invoice
+cues, and client-update drafts. Generated proposal content is stored on `ai_operational_proposals`
+because those records are the authorized staff review artifact. Job lifecycle metadata, BullMQ
+payload metadata, and audit metadata remain redacted to IDs, source type, requested kinds/counts,
+provider/model provenance, reviewer/requester IDs, idempotency presence, and source/proposal length
+counts. `PATCH /api/ai-operational-proposals/:id/review` records `approved` or `rejected` only; it
+does not create tasks, invoices, documents, messages, calendar entries, trust entries, or mutate the
+source draft/document.
+
+Legal research workspace artifacts are staff-only, matter-scoped review records. The workspace API
+returns a disabled/reserved provider posture instead of a provider error because OP-T139 exposes no
+generation route. Artifacts may store bounded staff-authored notes on authorized
+`legal_research_artifacts` records, but audit metadata is limited to IDs, kind/status, counts,
+title/note lengths, source types, reviewer/creator IDs, and review-only posture. Structured source,
+context, document-analysis, timeline, and checkpoint fields are review artifacts only. They must not
+store scraped authority text, provider evidence, prompts, private URLs, storage keys, citation
+verification claims, legal-advice automation output, or downstream task/document/draft/message/calendar
+mutations.
 
 Provider/bootstrap selection is local-first. `DATABASE_URL` selects PostgreSQL unless
 `OPEN_PRACTICE_USE_MEMORY_REPO=true` or the database URL is absent. `OPEN_PRACTICE_DEV_SEED=true`

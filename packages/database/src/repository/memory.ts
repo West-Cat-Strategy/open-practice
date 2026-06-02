@@ -30,15 +30,22 @@ import {
   postLedgerTransaction,
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
+  validateAiOperationalProposalRecord,
+  validateLegalResearchArtifactRecord,
   validateLedgerReconciliationExceptionResolutionRecord,
+  validateLedgerAccountingReviewProfileRecord,
   validateLedgerReconciliationRecord,
   validateLedgerStatementImportBatchRecord,
+  validateLedgerStatementMatchRuleProfileRecord,
   validateBillingPeriodLock,
   validateBillingRateRule,
   validateContactDataQualityResolutionRecord,
   validateContactRelationshipRecord,
   verifyAuditChain,
   type AccessLogRecord,
+  type AiOperationalProposalKind,
+  type AiOperationalProposalRecord,
+  type AiOperationalProposalStatus,
   type AuditEvent,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
@@ -87,14 +94,19 @@ import {
   type InvoiceRecord,
   type JobLifecycleRecord,
   type LedgerAccount,
+  type LedgerAccountingReviewProfileRecord,
   type LedgerEntry,
   type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerStatementImportBatchRecord,
+  type LedgerStatementMatchRuleProfileRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
   type LegalClinicProgram,
+  type LegalResearchArtifactKind,
+  type LegalResearchArtifactRecord,
+  type LegalResearchArtifactStatus,
   type ManualPaymentRecord,
   type Matter,
   type MatterParty,
@@ -122,6 +134,7 @@ import {
   sampleContactRelationships,
   sampleDocumentAssemblyPackages,
   sampleDocumentAssemblySetDefinitions,
+  sampleAiOperationalProposals,
   sampleContacts,
   sampleDocuments,
   sampleDraftTemplates,
@@ -133,10 +146,13 @@ import {
   sampleInvoiceLines,
   sampleInvoices,
   sampleHostedPaymentRequests,
+  sampleLedgerAccountingReviewProfiles,
   sampleLedgerAccounts,
   sampleLedgerEntries,
+  sampleLedgerStatementMatchRuleProfiles,
   sampleLegalClinicMatterProfiles,
   sampleLegalClinicPrograms,
+  sampleLegalResearchArtifacts,
   sampleManualPayments,
   sampleMatterParties,
   sampleMatters,
@@ -152,6 +168,7 @@ import {
   sampleTrustTransferRequests,
   sampleUsers,
 } from "@open-practice/domain/sample-data";
+import { isEncryptedProviderConfig, type ProviderConfigCipher } from "../config-encryption.js";
 import type {
   AuthAccountRecord,
   AuthPasswordSetupTokenRecord,
@@ -259,6 +276,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private ledgerApprovals: LedgerTransactionApprovalRecord[] = [];
   private ledgerReconciliations: LedgerReconciliationRecord[] = [];
   private ledgerStatementImportBatches: LedgerStatementImportBatchRecord[] = [];
+  private ledgerStatementMatchRuleProfiles: LedgerStatementMatchRuleProfileRecord[] = [];
+  private ledgerAccountingReviewProfiles: LedgerAccountingReviewProfileRecord[] = [];
   private ledgerReconciliationExceptionResolutions: LedgerReconciliationExceptionResolutionRecord[] =
     [];
   private intakeTemplates: IntakeTemplateRecord[];
@@ -302,6 +321,8 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private documentTextExtractions: DocumentTextExtractionRecord[] = [];
   private drafts: DraftRecord[] = [];
   private draftAssistRecords: DraftAssistRecord[] = [];
+  private aiOperationalProposals: AiOperationalProposalRecord[] = [];
+  private legalResearchArtifacts: LegalResearchArtifactRecord[] = [];
   private draftTemplates: DraftTemplateRecord[] = [];
   private inboundEmailAddresses: InboundEmailAddressRecord[] = [];
   private inboundEmailMessages: InboundEmailMessageRecord[] = [];
@@ -309,7 +330,14 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private shareLinks: ShareLinkRecord[] = [];
   private accessLogs: AccessLogRecord[] = [];
 
-  constructor(options: { seedSampleData?: boolean; firms?: Firm[]; users?: User[] } = {}) {
+  constructor(
+    private readonly options: {
+      seedSampleData?: boolean;
+      firms?: Firm[];
+      users?: User[];
+      providerConfigCipher?: ProviderConfigCipher;
+    } = {},
+  ) {
     const seeded = options.seedSampleData ?? true;
     this.firms = options.firms ? clone(options.firms) : seeded ? [clone(sampleFirm)] : [];
     this.users = options.users ? clone(options.users) : seeded ? clone(sampleUsers) : [];
@@ -333,8 +361,14 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.hostedPaymentRequests = seeded ? clone(sampleHostedPaymentRequests) : [];
     this.trustTransferRequests = seeded ? clone(sampleTrustTransferRequests) : [];
     this.ledgerAccounts = seeded ? clone(sampleLedgerAccounts) : [];
+    this.ledgerStatementMatchRuleProfiles = seeded
+      ? clone(sampleLedgerStatementMatchRuleProfiles)
+      : [];
+    this.ledgerAccountingReviewProfiles = seeded ? clone(sampleLedgerAccountingReviewProfiles) : [];
     this.intakeTemplates = seeded ? clone(sampleIntakeTemplates) : [];
     this.draftTemplates = seeded ? clone(sampleDraftTemplates) : [];
+    this.aiOperationalProposals = seeded ? clone(sampleAiOperationalProposals) : [];
+    this.legalResearchArtifacts = seeded ? clone(sampleLegalResearchArtifacts) : [];
     this.signatureRequestSigners = seeded ? clone(sampleSignatureRequestSigners) : [];
     this.signatureProviderEvents = seeded ? clone(sampleSignatureProviderEvents) : [];
     this.signatureWebhookAttempts = seeded ? clone(sampleSignatureWebhookAttempts) : [];
@@ -428,30 +462,64 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return clone(this.firmSettings.find((settings) => settings.firmId === firmId));
   }
 
+  private encryptProviderSetting(setting: ProviderSettingRecord): ProviderSettingRecord {
+    if (!this.options.providerConfigCipher) return setting;
+    return {
+      ...setting,
+      encryptedConfig: this.options.providerConfigCipher.encryptProviderConfig({
+        firmId: setting.firmId,
+        kind: setting.kind,
+        key: setting.key,
+        plaintext: setting.encryptedConfig,
+      }),
+    };
+  }
+
+  private decryptProviderSetting(setting: ProviderSettingRecord): ProviderSettingRecord {
+    if (!this.options.providerConfigCipher) {
+      if (isEncryptedProviderConfig(setting.encryptedConfig)) {
+        throw new Error(
+          "OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY is required to read provider settings",
+        );
+      }
+      return setting;
+    }
+    return {
+      ...setting,
+      encryptedConfig: this.options.providerConfigCipher.decryptProviderConfig({
+        firmId: setting.firmId,
+        kind: setting.kind,
+        key: setting.key,
+        encryptedConfig: setting.encryptedConfig,
+      }),
+    };
+  }
+
   async listProviderSettings(
     firmId: string,
     options: { kind?: ProviderSettingRecord["kind"] } = {},
   ): Promise<ProviderSettingRecord[]> {
-    return clone(
-      this.providerSettings.filter(
+    return this.providerSettings
+      .filter(
         (setting) => setting.firmId === firmId && (!options.kind || setting.kind === options.kind),
-      ),
-    );
+      )
+      .map((setting) => clone(this.decryptProviderSetting(setting)));
   }
 
   async upsertProviderSetting(setting: ProviderSettingRecord): Promise<ProviderSettingRecord> {
+    const encryptedSetting = this.encryptProviderSetting(setting);
     const existingIndex = this.providerSettings.findIndex(
       (candidate) =>
-        candidate.firmId === setting.firmId &&
-        candidate.kind === setting.kind &&
-        candidate.key === setting.key,
+        candidate.firmId === encryptedSetting.firmId &&
+        candidate.kind === encryptedSetting.kind &&
+        candidate.key === encryptedSetting.key,
     );
     if (existingIndex >= 0) {
-      this.providerSettings[existingIndex] = clone(setting);
+      this.providerSettings[existingIndex] = clone(encryptedSetting);
     } else {
-      this.providerSettings.push(clone(setting));
+      this.providerSettings.push(clone(encryptedSetting));
     }
-    return clone(setting);
+    return clone(this.decryptProviderSetting(encryptedSetting));
   }
 
   async createConnector(connector: ConnectorRecord): Promise<ConnectorRecord> {
@@ -4025,6 +4093,20 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       throw new Error(`Unknown user ${batch.createdByUserId}`);
     }
     validateLedgerStatementImportBatchRecord(batch);
+    if (batch.matchingProfileId) {
+      this.ledgerStatementMatchRuleProfiles ??= [];
+      const matchingProfile = this.ledgerStatementMatchRuleProfiles.find(
+        (profile) =>
+          profile.firmId === batch.firmId &&
+          profile.accountId === batch.accountId &&
+          profile.id === batch.matchingProfileId,
+      );
+      if (!matchingProfile) {
+        throw new Error(
+          "Statement import batch matching profile must belong to the same trust asset account",
+        );
+      }
+    }
     this.ledgerStatementImportBatches = [...this.ledgerStatementImportBatches, clone(batch)];
     return clone(batch);
   }
@@ -4039,6 +4121,85 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
           (batch) =>
             batch.firmId === firmId &&
             (!options.accountId || batch.accountId === options.accountId),
+        )
+        .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)),
+    );
+  }
+
+  async createLedgerStatementMatchRuleProfile(
+    profile: LedgerStatementMatchRuleProfileRecord,
+  ): Promise<LedgerStatementMatchRuleProfileRecord> {
+    this.ledgerStatementMatchRuleProfiles ??= [];
+    const account = this.ledgerAccounts.find(
+      (candidate) => candidate.firmId === profile.firmId && candidate.id === profile.accountId,
+    );
+    if (!account || account.type !== "trust_asset") {
+      throw new Error("Statement match-rule profiles require an existing trust asset account");
+    }
+    const creator = this.users.find(
+      (candidate) =>
+        candidate.firmId === profile.firmId && candidate.id === profile.createdByUserId,
+    );
+    if (!creator) {
+      throw new Error(`Unknown user ${profile.createdByUserId}`);
+    }
+    validateLedgerStatementMatchRuleProfileRecord(profile);
+    this.ledgerStatementMatchRuleProfiles = [
+      ...this.ledgerStatementMatchRuleProfiles,
+      clone(profile),
+    ];
+    return clone(profile);
+  }
+
+  async listLedgerStatementMatchRuleProfiles(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerStatementMatchRuleProfileRecord[]> {
+    return clone(
+      this.ledgerStatementMatchRuleProfiles
+        .filter(
+          (profile) =>
+            profile.firmId === firmId &&
+            (!options.accountId || profile.accountId === options.accountId),
+        )
+        .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)),
+    );
+  }
+
+  async createLedgerAccountingReviewProfile(
+    profile: LedgerAccountingReviewProfileRecord,
+  ): Promise<LedgerAccountingReviewProfileRecord> {
+    const account = this.ledgerAccounts.find(
+      (candidate) => candidate.firmId === profile.firmId && candidate.id === profile.accountId,
+    );
+    if (!account) {
+      throw new Error(`Unknown ledger account ${profile.accountId}`);
+    }
+    if (account.type !== profile.accountType) {
+      throw new Error("Accounting review profile account type must match the ledger account");
+    }
+    const creator = this.users.find(
+      (candidate) =>
+        candidate.firmId === profile.firmId && candidate.id === profile.createdByUserId,
+    );
+    if (!creator) {
+      throw new Error(`Unknown user ${profile.createdByUserId}`);
+    }
+    validateLedgerAccountingReviewProfileRecord(profile);
+    this.ledgerAccountingReviewProfiles = [...this.ledgerAccountingReviewProfiles, clone(profile)];
+    return clone(profile);
+  }
+
+  async listLedgerAccountingReviewProfiles(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerAccountingReviewProfileRecord[]> {
+    return clone(
+      this.ledgerAccountingReviewProfiles
+        .filter(
+          (profile) =>
+            profile.firmId === firmId &&
+            (!options.accountId || profile.accountId === options.accountId),
         )
         .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)),
     );
@@ -4525,6 +4686,116 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     );
     if (index === -1) throw new Error(`Draft assist record ${record.id} was not found`);
     this.draftAssistRecords[index] = clone(record);
+    return clone(record);
+  }
+
+  async listAiOperationalProposals(
+    firmId: string,
+    options: {
+      matterId?: string;
+      status?: AiOperationalProposalStatus;
+      kind?: AiOperationalProposalKind;
+    } = {},
+  ): Promise<AiOperationalProposalRecord[]> {
+    return clone(
+      this.aiOperationalProposals
+        .filter(
+          (record) =>
+            record.firmId === firmId &&
+            (!options.matterId || record.matterId === options.matterId) &&
+            (!options.status || record.status === options.status) &&
+            (!options.kind || record.kind === options.kind),
+        )
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    );
+  }
+
+  async getAiOperationalProposal(
+    firmId: string,
+    id: string,
+  ): Promise<AiOperationalProposalRecord | undefined> {
+    return clone(
+      this.aiOperationalProposals.find((record) => record.firmId === firmId && record.id === id),
+    );
+  }
+
+  async createAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+  ): Promise<AiOperationalProposalRecord> {
+    validateAiOperationalProposalRecord(record);
+    if (this.aiOperationalProposals.some((candidate) => candidate.id === record.id)) {
+      throw new Error("AI operational proposal already exists");
+    }
+    this.aiOperationalProposals.push(clone(record));
+    return clone(record);
+  }
+
+  async updateAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+  ): Promise<AiOperationalProposalRecord> {
+    validateAiOperationalProposalRecord(record);
+    const index = this.aiOperationalProposals.findIndex(
+      (candidate) => candidate.firmId === record.firmId && candidate.id === record.id,
+    );
+    if (index === -1) {
+      throw new Error(`AI operational proposal ${record.id} was not found`);
+    }
+    this.aiOperationalProposals[index] = clone(record);
+    return clone(record);
+  }
+
+  async listLegalResearchArtifacts(
+    firmId: string,
+    options: {
+      matterId?: string;
+      status?: LegalResearchArtifactStatus;
+      kind?: LegalResearchArtifactKind;
+    } = {},
+  ): Promise<LegalResearchArtifactRecord[]> {
+    return clone(
+      this.legalResearchArtifacts
+        .filter(
+          (record) =>
+            record.firmId === firmId &&
+            (!options.matterId || record.matterId === options.matterId) &&
+            (!options.status || record.status === options.status) &&
+            (!options.kind || record.kind === options.kind),
+        )
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    );
+  }
+
+  async getLegalResearchArtifact(
+    firmId: string,
+    id: string,
+  ): Promise<LegalResearchArtifactRecord | undefined> {
+    return clone(
+      this.legalResearchArtifacts.find((record) => record.firmId === firmId && record.id === id),
+    );
+  }
+
+  async createLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+  ): Promise<LegalResearchArtifactRecord> {
+    validateLegalResearchArtifactRecord(record);
+    if (this.legalResearchArtifacts.some((candidate) => candidate.id === record.id)) {
+      throw new Error("Legal research artifact already exists");
+    }
+    this.legalResearchArtifacts.push(clone(record));
+    return clone(record);
+  }
+
+  async updateLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+  ): Promise<LegalResearchArtifactRecord> {
+    validateLegalResearchArtifactRecord(record);
+    const index = this.legalResearchArtifacts.findIndex(
+      (candidate) => candidate.firmId === record.firmId && candidate.id === record.id,
+    );
+    if (index === -1) {
+      throw new Error(`Legal research artifact ${record.id} was not found`);
+    }
+    this.legalResearchArtifacts[index] = clone(record);
     return clone(record);
   }
 

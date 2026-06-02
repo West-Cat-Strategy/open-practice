@@ -1,5 +1,7 @@
 import type {
   AuditEventTaxonomySummary,
+  AiOperationalProposalRecord,
+  AiOperationalProposalSummary,
   BillingPeriodLockRecord,
   BillingRateRuleRecord,
   BillingRateSnapshot,
@@ -34,14 +36,18 @@ import type {
   IntakeFormReviewRecord,
   IntakeVariableProposal,
   LedgerAccount,
+  LedgerAccountingReviewProfileRecord,
   LedgerEntry,
   LedgerReconciliationRecord,
+  LedgerAccountingReviewSummary,
+  LedgerStatementMatchRuleProfileRecord,
   LedgerTransactionApprovalRecord,
   EmbeddedIntakeTemplateDefinition,
   IntakeFormLinkRecord,
   IntakeFormItemActionRecord,
   IntakeTemplatePreviewResult,
   JurisdictionalTrustReport,
+  LegalResearchWorkspace,
   Matter,
   MatterParty,
   MatterSetupProfile,
@@ -156,6 +162,16 @@ export type DocumentAssemblyWorkbenchResponse = DocumentAssemblyWorkspace & {
 
 export interface DocumentAssemblyDashboardResponse {
   workbenchesByMatterId: Record<string, DocumentAssemblyWorkbenchResponse>;
+}
+
+export type LegalResearchWorkspaceStatus = "available" | "access_denied" | "unavailable";
+
+export type LegalResearchWorkspaceResponse = LegalResearchWorkspace & {
+  status: LegalResearchWorkspaceStatus;
+};
+
+export interface LegalResearchDashboardResponse {
+  workbenchesByMatterId: Record<string, LegalResearchWorkspaceResponse>;
 }
 
 export interface IntakeSessionsResponse {
@@ -1150,6 +1166,11 @@ export interface TrustControlsDashboardResponse {
   };
   approvals: LedgerTransactionApprovalRecord[];
   reconciliations: LedgerReconciliationRecord[];
+  accountingReview: {
+    matchRuleProfiles: LedgerStatementMatchRuleProfileRecord[];
+    accountingProfiles: LedgerAccountingReviewProfileRecord[];
+    summary: LedgerAccountingReviewSummary;
+  };
   diagnostics: {
     pendingApprovalTransactionIds: string[];
     rejectedApprovalTransactionIds: string[];
@@ -1187,6 +1208,18 @@ export interface QueueSection {
 
 export interface QueuesResponse {
   sections: QueueSection[];
+}
+
+export interface AiOperationalProposalsResponse {
+  proposals: AiOperationalProposalRecord[];
+  summary: AiOperationalProposalSummary;
+  generation: {
+    status: "configured" | "disabled";
+    reason?: string;
+    provider?: string;
+    queue: WorkerQueueStatus;
+    jobName: "operational_action_proposals";
+  };
 }
 
 export interface ConnectorSummary {

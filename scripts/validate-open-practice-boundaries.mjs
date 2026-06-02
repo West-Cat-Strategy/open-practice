@@ -138,6 +138,18 @@ export const ROUTE_REGISTRARS = [
     "./routes/draft-assist.js",
     "registerDraftAssistRoutes",
   ],
+  [
+    "AI operational proposals",
+    "apps/api/src/routes/ai-operational-proposals.ts",
+    "./routes/ai-operational-proposals.js",
+    "registerAiOperationalProposalRoutes",
+  ],
+  [
+    "legal research",
+    "apps/api/src/routes/legal-research.ts",
+    "./routes/legal-research.js",
+    "registerLegalResearchRoutes",
+  ],
   ["jobs", "apps/api/src/routes/jobs.ts", "./routes/jobs.js", "registerJobsRoutes"],
   ["email", "apps/api/src/routes/email.ts", "./routes/email.js", "registerEmailRoutes"],
   [
@@ -225,6 +237,7 @@ export const ROUTE_REGISTRAR_TEST_FILES = {
   registerDocumentRoutes: ["apps/api/src/routes/documents.test.ts"],
   registerE2ESupportRoutes: ["apps/api/src/routes/e2e-support.test.ts"],
   registerDraftAssistRoutes: ["apps/api/src/routes/draft-assist.test.ts"],
+  registerAiOperationalProposalRoutes: ["apps/api/src/routes/ai-operational-proposals.test.ts"],
   registerDraftRoutes: ["apps/api/src/routes/drafts.test.ts"],
   registerEmailRoutes: ["apps/api/src/routes/email.test.ts"],
   registerExternalUploadRoutes: ["apps/api/src/routes/external-uploads.test.ts"],
@@ -235,6 +248,7 @@ export const ROUTE_REGISTRAR_TEST_FILES = {
   registerJobsRoutes: ["apps/api/src/routes/jobs.test.ts"],
   registerLedgerRoutes: ["apps/api/src/routes/ledger.test.ts"],
   registerLegalClinicRoutes: ["apps/api/src/routes/legal-clinics.test.ts"],
+  registerLegalResearchRoutes: ["apps/api/src/routes/legal-research.test.ts"],
   registerMatterRoutes: ["apps/api/src/server.test.ts"],
   registerOperationalViewRoutes: ["apps/api/src/routes/operational-views.test.ts"],
   registerOutboundWebhookRoutes: ["apps/api/src/routes/outbound-webhooks.test.ts"],
@@ -298,6 +312,8 @@ export const FORBIDDEN_SERVER_ROUTE_GROUPS = [
       "/api/ledger/transactions/:id/approvals",
       "/api/ledger/reconciliations/preview",
       "/api/ledger/reconciliations/import-batches",
+      "/api/ledger/reconciliations/match-rule-profiles",
+      "/api/ledger/accounting-review-profiles",
       "/api/ledger/reconciliation-exception-resolutions",
       "/api/ledger/reconciliations",
     ],
@@ -368,6 +384,14 @@ export const FORBIDDEN_PREFIX_ROUTE_GROUPS = [
   {
     family: "draft assist",
     routeLiterals: ["/api/draft-assist/", "/api/drafts/:id/assist", "/api/documents/:id/assist"],
+  },
+  {
+    family: "AI operational proposal",
+    routeLiterals: [
+      "/api/ai-operational-proposals",
+      "/api/drafts/:id/operational-proposals/jobs",
+      "/api/documents/:id/operational-proposals/jobs",
+    ],
   },
   { family: "job", routeLiterals: ["/api/jobs"] },
   { family: "email", routeLiterals: ["/api/email/", "/api/mail/"] },

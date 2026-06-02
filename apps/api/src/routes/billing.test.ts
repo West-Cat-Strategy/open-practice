@@ -7,6 +7,10 @@ const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
 type QueuedReportJob = { name: string; data: unknown; jobId?: string };
 
+function futureIso(msFromNow = 60 * 60 * 1000): string {
+  return new Date(Date.now() + msFromNow).toISOString();
+}
+
 function testServer(overrides: Partial<CreateServerOptions> = {}) {
   const repository = overrides.repository ?? new InMemoryOpenPracticeRepository();
   const server = createApiServer({
@@ -45,6 +49,7 @@ function fakeReportQueue(
 
 function fakePaymentProcessor(
   calls: PaymentProcessorCheckoutSessionInput[] = [],
+  expiresAt = futureIso(),
 ): NonNullable<CreateServerOptions["paymentProcessorProvider"]> {
   return {
     async createCheckoutSession(input) {
@@ -53,7 +58,7 @@ function fakePaymentProcessor(
         provider: "stripe",
         externalSessionId: "cs_test_payment_request_route",
         checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_payment_request_route",
-        expiresAt: "2026-06-01T21:00:00.000Z",
+        expiresAt,
         evidence: {
           mode: "checkout_session",
           liveMode: false,
@@ -936,9 +941,10 @@ describe("billing routes", () => {
   it("creates Stripe checkout sessions for payment request shells without applying settlement", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const checkoutCalls: PaymentProcessorCheckoutSessionInput[] = [];
+    const checkoutExpiresAt = futureIso();
     const server = testServer({
       repository,
-      paymentProcessorProvider: fakePaymentProcessor(checkoutCalls),
+      paymentProcessorProvider: fakePaymentProcessor(checkoutCalls, checkoutExpiresAt),
       publicWebBaseUrl: "https://app.open-practice.test/dashboard",
     });
     const ledgerBefore = await server.inject({ method: "GET", url: "/api/ledger" });
@@ -967,7 +973,7 @@ describe("billing routes", () => {
         provider: "stripe",
         externalSessionId: "cs_test_payment_request_route",
         checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_payment_request_route",
-        expiresAt: "2026-06-01T21:00:00.000Z",
+        expiresAt: checkoutExpiresAt,
         reused: false,
       },
       request: {
@@ -977,7 +983,7 @@ describe("billing routes", () => {
           provider: "stripe",
           externalSessionId: "cs_test_payment_request_route",
           checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_payment_request_route",
-          expiresAt: "2026-06-01T21:00:00.000Z",
+          expiresAt: checkoutExpiresAt,
         },
       },
     });

@@ -88,4 +88,110 @@ describe("repository drafts", () => {
       repository.listDraftAssistRecords("firm-west-legal", { draftId: "missing" }),
     ).resolves.toEqual([]);
   });
+
+  it("maps AI operational proposals and status-only review decisions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const created = await repository.createAiOperationalProposal({
+      id: "ai-proposal-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      kind: "task_creation",
+      status: "proposed",
+      source: {
+        sourceType: "draft",
+        draftId: "draft-001",
+        sourceLabel: "Synthetic draft",
+        sourceTextLength: 42,
+      },
+      providerKey: "fake-local-ai",
+      providerModel: "fake-operational-proposals-v1",
+      proposal: {
+        title: "Review proposed task",
+        summary: "Synthetic task proposal",
+        proposedAction: "Review before creating any task record.",
+        task: { title: "Review action item" },
+      },
+      createdByUserId: "user-admin",
+      createdAt: now,
+      updatedAt: now,
+      metadata: { statusOnlyReview: true },
+    });
+    const reviewed = await repository.updateAiOperationalProposal({
+      ...created,
+      status: "approved",
+      reviewDecision: "approved",
+      reviewedByUserId: "user-admin",
+      reviewedAt: "2026-05-01T00:05:00.000Z",
+      updatedAt: "2026-05-01T00:05:00.000Z",
+    });
+
+    expect(reviewed).toMatchObject({
+      id: "ai-proposal-test",
+      status: "approved",
+      reviewDecision: "approved",
+      reviewedByUserId: "user-admin",
+    });
+    await expect(
+      repository.listAiOperationalProposals("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "ai-proposal-test" })]),
+    );
+    await expect(
+      repository.listAiOperationalProposals("firm-west-legal", { kind: "deadline_extraction" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "ai-proposal-deadline-001" })]),
+    );
+  });
+
+  it("maps legal research artifacts and status-only review decisions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const created = await repository.createLegalResearchArtifact({
+      id: "legal-research-test",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      kind: "strategy_timeline_note",
+      status: "ready_for_review",
+      title: "Synthetic research timeline",
+      note: "Synthetic staff-authored strategy note.",
+      sourceReferences: [
+        {
+          sourceType: "internal_note",
+          label: "Internal issue label",
+        },
+      ],
+      contextLinks: [{ resourceType: "matter", resourceId: "matter-001" }],
+      timeline: { noteType: "strategy", dueAt: "2026-06-07T17:00:00.000Z" },
+      createdByUserId: "user-admin",
+      createdAt: now,
+      updatedAt: now,
+      reviewOnly: true,
+      metadata: { shellOnly: true },
+    });
+    const reviewed = await repository.updateLegalResearchArtifact({
+      ...created,
+      status: "reviewed",
+      reviewDecision: "reviewed",
+      reviewedByUserId: "user-admin",
+      reviewedAt: "2026-05-01T00:05:00.000Z",
+      updatedAt: "2026-05-01T00:05:00.000Z",
+    });
+
+    expect(reviewed).toMatchObject({
+      id: "legal-research-test",
+      status: "reviewed",
+      reviewDecision: "reviewed",
+      reviewedByUserId: "user-admin",
+      reviewOnly: true,
+    });
+    await expect(
+      repository.listLegalResearchArtifacts("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "legal-research-test" })]),
+    );
+    await expect(
+      repository.listLegalResearchArtifacts("firm-west-legal", { kind: "cited_source_note" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "legal-research-source-note-001" })]),
+    );
+  });
 });

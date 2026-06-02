@@ -110,6 +110,84 @@ describe("matter creation permissions", () => {
       }),
     ).toBe(false);
   });
+
+  it("keeps AI proposal review matter-scoped and staff-only", () => {
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, assignedMatterIds: ["matter-001"] },
+        firmId: "firm-west-legal",
+        resource: "ai_proposal",
+        action: "approve",
+        matterId: "matter-001",
+      }),
+    ).toBe(true);
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, role: "firm_member", assignedMatterIds: ["matter-002"] },
+        firmId: "firm-west-legal",
+        resource: "ai_proposal",
+        action: "approve",
+        matterId: "matter-001",
+      }),
+    ).toBe(false);
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, role: "client_external", assignedMatterIds: [] },
+        firmId: "firm-west-legal",
+        resource: "ai_proposal",
+        action: "read",
+        matterId: "matter-001",
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps legal research artifacts matter-scoped and staff-only", () => {
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, assignedMatterIds: ["matter-001"] },
+        firmId: "firm-west-legal",
+        resource: "legal_research",
+        action: "approve",
+        matterId: "matter-001",
+      }),
+    ).toBe(true);
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, role: "firm_member", assignedMatterIds: ["matter-002"] },
+        firmId: "firm-west-legal",
+        resource: "legal_research",
+        action: "update",
+        matterId: "matter-001",
+      }),
+    ).toBe(false);
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, role: "auditor", assignedMatterIds: [] },
+        firmId: "firm-west-legal",
+        resource: "legal_research",
+        action: "read",
+        matterId: "matter-001",
+      }),
+    ).toBe(true);
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, role: "auditor", assignedMatterIds: [] },
+        firmId: "firm-west-legal",
+        resource: "legal_research",
+        action: "approve",
+        matterId: "matter-001",
+      }),
+    ).toBe(false);
+    expect(
+      canAccess({
+        user: { ...licenseeWithoutMatters, role: "billing_bookkeeper", assignedMatterIds: [] },
+        firmId: "firm-west-legal",
+        resource: "legal_research",
+        action: "read",
+        matterId: "matter-001",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("job metadata redaction", () => {
@@ -241,6 +319,40 @@ describe("job metadata redaction", () => {
       requestedByUserId: "user-admin",
       messageCount: 2,
       enqueueStatus: "queued_for_local_report_worker",
+    });
+  });
+
+  it("allows AI proposal routing metadata while dropping generated and source text", () => {
+    expect(
+      redactJobMetadata({
+        proposalId: "proposal-001",
+        proposalKind: "task_creation",
+        proposalKinds: "deadline_extraction,task_creation",
+        proposalKindCount: 2,
+        proposalCount: 2,
+        draftId: "draft-001",
+        sourceType: "draft",
+        sourceTextLength: 42,
+        provider: "fake-local-ai",
+        providerModel: "fake-model",
+        proposalTitleLength: 21,
+        proposalSummaryLength: 34,
+        generatedProposal: "Synthetic generated proposal",
+        sourceText: "Synthetic source text",
+      }),
+    ).toEqual({
+      proposalId: "proposal-001",
+      proposalKind: "task_creation",
+      proposalKinds: "deadline_extraction,task_creation",
+      proposalKindCount: 2,
+      proposalCount: 2,
+      draftId: "draft-001",
+      sourceType: "draft",
+      sourceTextLength: 42,
+      provider: "fake-local-ai",
+      providerModel: "fake-model",
+      proposalTitleLength: 21,
+      proposalSummaryLength: 34,
     });
   });
 });

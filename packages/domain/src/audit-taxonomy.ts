@@ -13,6 +13,7 @@ export type AuditEventCategory =
   | "drafting"
   | "intake"
   | "legal_clinic"
+  | "legal_research"
   | "matter_lifecycle"
   | "operations"
   | "outbound_webhooks"
@@ -77,6 +78,7 @@ export interface AuditEventTaxonomySummary {
 }
 
 const RESOURCE_ID_KEYS = [
+  "artifactId",
   "attendeeId",
   "credentialId",
   "documentId",
@@ -88,6 +90,7 @@ const RESOURCE_ID_KEYS = [
   "jobId",
   "linkId",
   "packageId",
+  "proposalId",
   "ratePresetId",
   "providerEventId",
   "providerRequestId",
@@ -482,6 +485,88 @@ export const auditEventTaxonomyDefinitions = [
     matterScope: "matter",
     actorHint: "authenticated_user",
     resourceMetadataKeys: ["draftId", "documentId", "decision", "status"],
+  }),
+  define({
+    action: "ai_operational_proposal.async_queued",
+    category: "operations",
+    resourceType: "ai_proposal",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "draftId",
+      "documentId",
+      "proposalKinds",
+      "proposalKindCount",
+      "provider",
+      "jobId",
+    ],
+  }),
+  define({
+    action: "ai_operational_proposal.created",
+    category: "operations",
+    resourceType: "ai_proposal",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "proposalId",
+      "proposalKind",
+      "sourceType",
+      "draftId",
+      "documentId",
+      "provider",
+      "model",
+      "status",
+    ],
+  }),
+  define({
+    action: "ai_operational_proposal.reviewed",
+    category: "operations",
+    resourceType: "ai_proposal",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["proposalId", "proposalKind", "decision", "status"],
+  }),
+  define({
+    action: "legal_research.artifact.created",
+    category: "legal_research",
+    resourceType: "legal_research",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "artifactId",
+      "artifactKind",
+      "status",
+      "sourceReferenceCount",
+      "contextLinkCount",
+      "titleLength",
+      "noteLength",
+      "reviewOnly",
+    ],
+  }),
+  define({
+    action: "legal_research.artifact.updated",
+    category: "legal_research",
+    resourceType: "legal_research",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: [
+      "artifactId",
+      "artifactKind",
+      "status",
+      "sourceReferenceCount",
+      "contextLinkCount",
+      "titleLength",
+      "noteLength",
+      "reviewOnly",
+    ],
+  }),
+  define({
+    action: "legal_research.artifact.reviewed",
+    category: "legal_research",
+    resourceType: "legal_research",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["artifactId", "artifactKind", "decision", "status", "reviewOnly"],
   }),
   define({
     action: "time_entry.created",
@@ -884,6 +969,45 @@ export const auditEventTaxonomyDefinitions = [
       "sourceLabelPresent",
       "checksumPresent",
       "matchingProfilePresent",
+    ],
+  }),
+  define({
+    action: "ledger.statement_match_rule_profile.recorded",
+    category: "trust",
+    resourceType: "ledger_statement_match_rule_profile",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    matterMetadataKeys: [],
+    resourceMetadataKeys: [
+      "accountId",
+      "referenceStrategy",
+      "descriptionStrategy",
+      "dateWindowDays",
+      "amountToleranceCents",
+      "varianceCategoryCount",
+      "reviewerExplanationRequired",
+      "reviewOnly",
+    ],
+  }),
+  define({
+    action: "ledger.accounting_review_profile.recorded",
+    category: "trust",
+    resourceType: "ledger_accounting_review_profile",
+    matterScope: "firm",
+    actorHint: "authenticated_user",
+    matterMetadataKeys: [],
+    resourceMetadataKeys: [
+      "accountId",
+      "accountType",
+      "boundaryPosture",
+      "protectedFunds",
+      "bankFeedImportStatus",
+      "bankFeedSourceLabelPresent",
+      "automaticMatching",
+      "vendorTracking",
+      "expenseCategoryTracking",
+      "clientMatterTracking",
+      "reviewOnly",
     ],
   }),
   define({

@@ -2,17 +2,22 @@ import { describe, expect, it } from "vitest";
 import {
   buildLedgerReconciliationExceptionResolutionStatementRow,
   buildJurisdictionalTrustReport,
+  ledgerAccountingReviewSummary,
   ledgerControlsDiagnostics,
   ledgerReconciliationReviewSummary,
   previewLedgerStatementImport,
+  validateLedgerAccountingReviewProfileRecord,
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
+  validateLedgerStatementMatchRuleProfileRecord,
   validateLedgerStatementImportBatchRecord,
 } from "./ledger.js";
 import type {
+  LedgerAccountingReviewProfileRecord,
   LedgerAccount,
   LedgerEntry,
   LedgerReconciliationRecord,
+  LedgerStatementMatchRuleProfileRecord,
   LedgerTransactionApprovalRecord,
 } from "./ledger.js";
 
@@ -447,5 +452,136 @@ describe("ledger controls diagnostics", () => {
         createdAt: "2026-05-22T12:00:00.000Z",
       }),
     ).toThrow(/duplicate count/);
+  });
+
+  it("summarizes and validates review-only statement match-rule profiles", () => {
+    const profile: LedgerStatementMatchRuleProfileRecord = {
+      id: "statement-match-profile-001",
+      firmId: "firm-west-legal",
+      accountId: "acct-trust-bank",
+      name: "Standard trust statement review",
+      referenceStrategy: "normalized_reference",
+      descriptionStrategy: "normalized_contains",
+      dateWindowDays: 2,
+      amountToleranceCents: 0,
+      varianceCategories: ["ledger_entry_expected", "needs_follow_up"],
+      reviewerExplanationRequired: true,
+      reviewOnly: true,
+      createdByUserId: "user-admin",
+      createdAt: "2026-05-22T12:00:00.000Z",
+      updatedAt: "2026-05-22T12:00:00.000Z",
+    };
+
+    expect(() => validateLedgerStatementMatchRuleProfileRecord(profile)).not.toThrow();
+    expect(() =>
+      validateLedgerStatementMatchRuleProfileRecord({
+        ...profile,
+        varianceCategories: [],
+      }),
+    ).toThrow(/variance category/);
+    expect(() =>
+      validateLedgerStatementMatchRuleProfileRecord({
+        ...profile,
+        reviewOnly: false as true,
+      }),
+    ).toThrow(/review-only/);
+    expect(() =>
+      validateLedgerStatementMatchRuleProfileRecord({
+        ...profile,
+        dateWindowDays: 31,
+      }),
+    ).toThrow(/date window/);
+  });
+
+  it("summarizes and validates review-only accounting review profiles", () => {
+    const matchRuleProfile: LedgerStatementMatchRuleProfileRecord = {
+      id: "statement-match-profile-001",
+      firmId: "firm-west-legal",
+      accountId: "acct-trust-bank",
+      name: "Standard trust statement review",
+      referenceStrategy: "normalized_reference",
+      descriptionStrategy: "normalized_contains",
+      dateWindowDays: 2,
+      amountToleranceCents: 0,
+      varianceCategories: ["ledger_entry_expected", "needs_follow_up"],
+      reviewerExplanationRequired: true,
+      reviewOnly: true,
+      createdByUserId: "user-admin",
+      createdAt: "2026-05-22T12:00:00.000Z",
+      updatedAt: "2026-05-22T12:00:00.000Z",
+    };
+    const accountingProfile: LedgerAccountingReviewProfileRecord = {
+      id: "accounting-review-profile-001",
+      firmId: "firm-west-legal",
+      accountId: "acct-trust-bank",
+      accountType: "trust_asset",
+      boundaryPosture: "trust_only",
+      protectedFunds: {
+        protected: true,
+        reason: "Synthetic trust account requires protected-funds review cues.",
+        reviewCadence: "monthly",
+      },
+      bankFeedImport: {
+        status: "metadata_only",
+        sourceLabel: "Synthetic trust statement export",
+        automaticMatching: false,
+      },
+      dimensions: {
+        vendorTracking: "not_applicable",
+        expenseCategoryTracking: "optional",
+        clientMatterTracking: "required",
+      },
+      reviewOnly: true,
+      createdByUserId: "user-admin",
+      createdAt: "2026-05-22T12:00:00.000Z",
+      updatedAt: "2026-05-22T12:00:00.000Z",
+    };
+
+    expect(() => validateLedgerAccountingReviewProfileRecord(accountingProfile)).not.toThrow();
+    expect(
+      ledgerAccountingReviewSummary({
+        matchRuleProfiles: [matchRuleProfile],
+        accountingProfiles: [accountingProfile],
+      }),
+    ).toEqual({
+      matchRuleProfileCount: 1,
+      accountingProfileCount: 1,
+      protectedAccountCount: 1,
+      bankFeedShellCount: 1,
+      reviewOnly: true,
+    });
+    expect(() =>
+      validateLedgerAccountingReviewProfileRecord({
+        ...accountingProfile,
+        protectedFunds: {
+          protected: true,
+          reviewCadence: "monthly",
+        },
+      }),
+    ).toThrow(/Protected-funds/);
+    expect(() =>
+      validateLedgerAccountingReviewProfileRecord({
+        ...accountingProfile,
+        bankFeedImport: {
+          status: "metadata_only",
+          automaticMatching: false,
+        },
+      }),
+    ).toThrow(/source label/);
+    expect(() =>
+      validateLedgerAccountingReviewProfileRecord({
+        ...accountingProfile,
+        bankFeedImport: {
+          ...accountingProfile.bankFeedImport,
+          automaticMatching: true as false,
+        },
+      }),
+    ).toThrow(/automatic matching/);
+    expect(() =>
+      validateLedgerAccountingReviewProfileRecord({
+        ...accountingProfile,
+        boundaryPosture: "operating_only",
+      }),
+    ).toThrow(/boundary posture/);
   });
 });

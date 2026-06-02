@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type {
+  AiOperationalProposalRecord,
   CalendarGuestLinkRecord,
   CalendarMeetingSessionRecord,
   CalendarSchedulingRequestRecord,
@@ -38,8 +39,11 @@ import type {
   DocumentAssemblySetDefinitionRecord,
   LegalClinicMatterProfile,
   LegalClinicProgram,
+  LegalResearchArtifactRecord,
+  LedgerAccountingReviewProfileRecord,
   LedgerReconciliationExceptionResolutionStatementRow,
   LedgerReconciliationStatementRow,
+  LedgerStatementMatchRuleProfileRecord,
   PublicConsultationIntakeRecord,
   SavedOperationalViewDefinition,
   SignatureEnvelopeRecord,
@@ -1694,6 +1698,143 @@ export const trustStatementImportBatches = pgTable(
   }),
 );
 
+export const trustStatementMatchRuleProfiles = pgTable(
+  "trust_statement_match_rule_profiles",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id),
+    name: text("name").notNull(),
+    referenceStrategy: text("reference_strategy")
+      .$type<LedgerStatementMatchRuleProfileRecord["referenceStrategy"]>()
+      .notNull(),
+    descriptionStrategy: text("description_strategy")
+      .$type<LedgerStatementMatchRuleProfileRecord["descriptionStrategy"]>()
+      .notNull(),
+    dateWindowDays: integer("date_window_days").notNull(),
+    amountToleranceCents: integer("amount_tolerance_cents").notNull(),
+    varianceCategories: jsonb("variance_categories")
+      .$type<LedgerStatementMatchRuleProfileRecord["varianceCategories"]>()
+      .notNull()
+      .default([]),
+    reviewerExplanationRequired: boolean("reviewer_explanation_required").notNull().default(true),
+    reviewOnly: boolean("review_only").notNull().default(true),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    accountCreatedAt: index("trust_statement_match_profiles_account_created_idx").on(
+      table.firmId,
+      table.accountId,
+      table.createdAt,
+    ),
+    namePresent: check(
+      "trust_statement_match_profiles_name_present",
+      sql`length(trim(${table.name})) > 0`,
+    ),
+    referenceStrategyValue: check(
+      "trust_statement_match_profiles_reference_strategy_value",
+      sql`${table.referenceStrategy} in ('strict_reference', 'normalized_reference', 'date_amount_reference', 'amount_only_review')`,
+    ),
+    descriptionStrategyValue: check(
+      "trust_statement_match_profiles_description_strategy_value",
+      sql`${table.descriptionStrategy} in ('exact', 'normalized_contains', 'review_required')`,
+    ),
+    dateWindowRange: check(
+      "trust_statement_match_profiles_date_window_range",
+      sql`${table.dateWindowDays} >= 0 and ${table.dateWindowDays} <= 30`,
+    ),
+    toleranceRange: check(
+      "trust_statement_match_profiles_tolerance_range",
+      sql`${table.amountToleranceCents} >= 0 and ${table.amountToleranceCents} <= 100000`,
+    ),
+    varianceCategoriesNonempty: check(
+      "trust_statement_match_profiles_variance_categories_nonempty",
+      sql`jsonb_typeof(${table.varianceCategories}) = 'array' and jsonb_array_length(${table.varianceCategories}) > 0`,
+    ),
+    reviewOnlyValue: check(
+      "trust_statement_match_profiles_review_only_value",
+      sql`${table.reviewOnly} = true`,
+    ),
+  }),
+);
+
+export const ledgerAccountingReviewProfiles = pgTable(
+  "ledger_accounting_review_profiles",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id),
+    accountType: text("account_type")
+      .$type<LedgerAccountingReviewProfileRecord["accountType"]>()
+      .notNull(),
+    boundaryPosture: text("boundary_posture")
+      .$type<LedgerAccountingReviewProfileRecord["boundaryPosture"]>()
+      .notNull(),
+    protectedFunds: jsonb("protected_funds")
+      .$type<LedgerAccountingReviewProfileRecord["protectedFunds"]>()
+      .notNull(),
+    bankFeedImport: jsonb("bank_feed_import")
+      .$type<LedgerAccountingReviewProfileRecord["bankFeedImport"]>()
+      .notNull(),
+    dimensions: jsonb("dimensions")
+      .$type<LedgerAccountingReviewProfileRecord["dimensions"]>()
+      .notNull(),
+    reviewOnly: boolean("review_only").notNull().default(true),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    accountCreatedAt: index("ledger_accounting_review_profiles_account_created_idx").on(
+      table.firmId,
+      table.accountId,
+      table.createdAt,
+    ),
+    accountTypeValue: check(
+      "ledger_accounting_review_profiles_account_type_value",
+      sql`${table.accountType} in ('trust_asset', 'client_liability', 'operating_revenue', 'expense')`,
+    ),
+    boundaryPostureValue: check(
+      "ledger_accounting_review_profiles_boundary_posture_value",
+      sql`${table.boundaryPosture} in ('trust_only', 'operating_only', 'expense_only', 'review_required')`,
+    ),
+    protectedFundsReason: check(
+      "ledger_accounting_review_profiles_protected_funds_reason",
+      sql`(${table.protectedFunds}->>'protected') <> 'true' or length(trim(coalesce(${table.protectedFunds}->>'reason', ''))) > 0`,
+    ),
+    bankFeedAutomaticMatchingOff: check(
+      "ledger_accounting_review_profiles_bank_feed_auto_match_off",
+      sql`${table.bankFeedImport}->>'automaticMatching' = 'false'`,
+    ),
+    bankFeedSourceLabel: check(
+      "ledger_accounting_review_profiles_bank_feed_source_label",
+      sql`${table.bankFeedImport}->>'status' = 'not_configured' or length(trim(coalesce(${table.bankFeedImport}->>'sourceLabel', ''))) > 0`,
+    ),
+    clientMatterTrackingRequired: check(
+      "ledger_accounting_review_profiles_client_matter_required",
+      sql`${table.dimensions}->>'clientMatterTracking' = 'required'`,
+    ),
+    reviewOnlyValue: check(
+      "ledger_accounting_review_profiles_review_only_value",
+      sql`${table.reviewOnly} = true`,
+    ),
+  }),
+);
+
 export const trustReconciliationExceptionResolutions = pgTable(
   "trust_reconciliation_exception_resolutions",
   {
@@ -3129,5 +3270,209 @@ export const draftAssistRecords = pgTable(
       table.firmId,
       table.documentId,
     ),
+  }),
+);
+
+export const aiOperationalProposals = pgTable(
+  "ai_operational_proposals",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    kind: text("kind").notNull(),
+    status: text("status").notNull(),
+    source: jsonb("source").$type<AiOperationalProposalRecord["source"]>().notNull(),
+    providerKey: text("provider_key").notNull(),
+    providerModel: text("provider_model").notNull(),
+    proposal: jsonb("proposal").$type<AiOperationalProposalRecord["proposal"]>().notNull(),
+    reviewDecision: text("review_decision"),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata")
+      .$type<AiOperationalProposalRecord["metadata"]>()
+      .notNull()
+      .default({}),
+  },
+  (table) => ({
+    firmMatter: index("ai_operational_proposals_firm_matter_idx").on(
+      table.firmId,
+      table.matterId,
+      table.createdAt,
+    ),
+    firmStatus: index("ai_operational_proposals_firm_status_idx").on(
+      table.firmId,
+      table.status,
+      table.createdAt,
+    ),
+    firmKind: index("ai_operational_proposals_firm_kind_idx").on(
+      table.firmId,
+      table.kind,
+      table.createdAt,
+    ),
+    kindValue: check(
+      "ai_operational_proposals_kind_value",
+      sql`${table.kind} in ('deadline_extraction', 'task_creation', 'document_organization', 'draft_invoice_cue', 'client_update_draft')`,
+    ),
+    statusValue: check(
+      "ai_operational_proposals_status_value",
+      sql`${table.status} in ('proposed', 'approved', 'rejected')`,
+    ),
+    sourceTypeValue: check(
+      "ai_operational_proposals_source_type_value",
+      sql`${table.source}->>'sourceType' in ('draft', 'document')`,
+    ),
+    draftSourceId: check(
+      "ai_operational_proposals_draft_source_id",
+      sql`${table.source}->>'sourceType' <> 'draft' or length(trim(coalesce(${table.source}->>'draftId', ''))) > 0`,
+    ),
+    documentSourceId: check(
+      "ai_operational_proposals_document_source_id",
+      sql`${table.source}->>'sourceType' <> 'document' or length(trim(coalesce(${table.source}->>'documentId', ''))) > 0`,
+    ),
+    sourceTextLength: check(
+      "ai_operational_proposals_source_text_length",
+      sql`jsonb_typeof(${table.source}->'sourceTextLength') = 'number' and (${table.source}->>'sourceTextLength')::integer >= 0`,
+    ),
+    proposalTitle: check(
+      "ai_operational_proposals_proposal_title",
+      sql`length(trim(coalesce(${table.proposal}->>'title', ''))) > 0`,
+    ),
+    proposalSummary: check(
+      "ai_operational_proposals_proposal_summary",
+      sql`length(trim(coalesce(${table.proposal}->>'summary', ''))) > 0`,
+    ),
+    proposalAction: check(
+      "ai_operational_proposals_proposal_action",
+      sql`length(trim(coalesce(${table.proposal}->>'proposedAction', ''))) > 0`,
+    ),
+    reviewDecisionValue: check(
+      "ai_operational_proposals_review_decision_value",
+      sql`${table.reviewDecision} is null or ${table.reviewDecision} in ('approved', 'rejected')`,
+    ),
+    statusOnlyReview: check(
+      "ai_operational_proposals_status_only_review",
+      sql`(
+        ${table.status} = 'proposed'
+        and ${table.reviewDecision} is null
+        and ${table.reviewedByUserId} is null
+        and ${table.reviewedAt} is null
+      ) or (
+        ${table.status} in ('approved', 'rejected')
+        and ${table.reviewDecision} = ${table.status}
+        and ${table.reviewedByUserId} is not null
+        and ${table.reviewedAt} is not null
+      )`,
+    ),
+  }),
+);
+
+export const legalResearchArtifacts = pgTable(
+  "legal_research_artifacts",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    kind: text("kind").notNull(),
+    status: text("status").notNull(),
+    title: text("title").notNull(),
+    note: text("note"),
+    sourceReferences: jsonb("source_references")
+      .$type<LegalResearchArtifactRecord["sourceReferences"]>()
+      .notNull()
+      .default([]),
+    contextLinks: jsonb("context_links")
+      .$type<LegalResearchArtifactRecord["contextLinks"]>()
+      .notNull()
+      .default([]),
+    documentAnalysis:
+      jsonb("document_analysis").$type<LegalResearchArtifactRecord["documentAnalysis"]>(),
+    timeline: jsonb("timeline").$type<LegalResearchArtifactRecord["timeline"]>(),
+    checkpoint: jsonb("checkpoint").$type<LegalResearchArtifactRecord["checkpoint"]>(),
+    reviewDecision: text("review_decision"),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    reviewOnly: boolean("review_only").notNull().default(true),
+    metadata: jsonb("metadata")
+      .$type<LegalResearchArtifactRecord["metadata"]>()
+      .notNull()
+      .default({}),
+  },
+  (table) => ({
+    firmMatter: index("legal_research_artifacts_firm_matter_idx").on(
+      table.firmId,
+      table.matterId,
+      table.updatedAt,
+    ),
+    firmStatus: index("legal_research_artifacts_firm_status_idx").on(
+      table.firmId,
+      table.status,
+      table.updatedAt,
+    ),
+    firmKind: index("legal_research_artifacts_firm_kind_idx").on(
+      table.firmId,
+      table.kind,
+      table.updatedAt,
+    ),
+    kindValue: check(
+      "legal_research_artifacts_kind_value",
+      sql`${table.kind} in ('cited_source_note', 'matter_context_attachment', 'document_analysis_status', 'strategy_timeline_note', 'review_checkpoint')`,
+    ),
+    statusValue: check(
+      "legal_research_artifacts_status_value",
+      sql`${table.status} in ('draft', 'ready_for_review', 'reviewed', 'rejected')`,
+    ),
+    titlePresent: check(
+      "legal_research_artifacts_title_present",
+      sql`length(trim(${table.title})) > 0`,
+    ),
+    noteLength: check(
+      "legal_research_artifacts_note_length",
+      sql`${table.note} is null or length(${table.note}) <= 4000`,
+    ),
+    sourceReferencesArray: check(
+      "legal_research_artifacts_source_references_array",
+      sql`jsonb_typeof(${table.sourceReferences}) = 'array'`,
+    ),
+    contextLinksArray: check(
+      "legal_research_artifacts_context_links_array",
+      sql`jsonb_typeof(${table.contextLinks}) = 'array'`,
+    ),
+    reviewDecisionValue: check(
+      "legal_research_artifacts_review_decision_value",
+      sql`${table.reviewDecision} is null or ${table.reviewDecision} in ('reviewed', 'rejected')`,
+    ),
+    statusOnlyReview: check(
+      "legal_research_artifacts_status_only_review",
+      sql`(
+        ${table.status} in ('draft', 'ready_for_review')
+        and ${table.reviewDecision} is null
+        and ${table.reviewedByUserId} is null
+        and ${table.reviewedAt} is null
+      ) or (
+        ${table.status} in ('reviewed', 'rejected')
+        and ${table.reviewDecision} = ${table.status}
+        and ${table.reviewedByUserId} is not null
+        and ${table.reviewedAt} is not null
+      )`,
+    ),
+    reviewOnlyValue: check("legal_research_artifacts_review_only", sql`${table.reviewOnly} = true`),
   }),
 );

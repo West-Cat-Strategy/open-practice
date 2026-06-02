@@ -5,6 +5,7 @@ import {
   sampleCalendarSchedulingRequests,
   sampleContactRelationships,
   sampleContacts,
+  sampleAiOperationalProposals,
   sampleDocumentAssemblyPackages,
   sampleDocumentAssemblySetDefinitions,
   sampleDraftTemplates,
@@ -19,8 +20,11 @@ import {
   sampleInvoices,
   sampleLegalClinicMatterProfiles,
   sampleLegalClinicPrograms,
+  sampleLegalResearchArtifacts,
+  sampleLedgerAccountingReviewProfiles,
   sampleLedgerAccounts,
   sampleLedgerEntries,
+  sampleLedgerStatementMatchRuleProfiles,
   sampleManualPayments,
   sampleMatterParties,
   sampleMatters,
@@ -224,6 +228,26 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
     )
     .onConflictDoNothing();
   await db
+    .insert(schema.trustStatementMatchRuleProfiles)
+    .values(
+      sampleLedgerStatementMatchRuleProfiles.map((profile) => ({
+        ...profile,
+        createdAt: new Date(profile.createdAt),
+        updatedAt: new Date(profile.updatedAt),
+      })),
+    )
+    .onConflictDoNothing();
+  await db
+    .insert(schema.ledgerAccountingReviewProfiles)
+    .values(
+      sampleLedgerAccountingReviewProfiles.map((profile) => ({
+        ...profile,
+        createdAt: new Date(profile.createdAt),
+        updatedAt: new Date(profile.updatedAt),
+      })),
+    )
+    .onConflictDoNothing();
+  await db
     .insert(schema.auditEvents)
     .values(
       sampleAuditEvents.map((event) => ({
@@ -398,6 +422,34 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
         ...template,
         createdAt: new Date(template.createdAt),
         updatedAt: new Date(template.updatedAt),
+      })),
+    )
+    .onConflictDoNothing();
+  await db
+    .insert(schema.aiOperationalProposals)
+    .values(
+      sampleAiOperationalProposals.map((proposal) => ({
+        ...proposal,
+        reviewedAt: proposal.reviewedAt ? new Date(proposal.reviewedAt) : null,
+        createdAt: new Date(proposal.createdAt),
+        updatedAt: new Date(proposal.updatedAt),
+      })),
+    )
+    .onConflictDoNothing();
+  await db
+    .insert(schema.legalResearchArtifacts)
+    .values(
+      sampleLegalResearchArtifacts.map((artifact) => ({
+        ...artifact,
+        note: artifact.note ?? null,
+        documentAnalysis: artifact.documentAnalysis ?? null,
+        timeline: artifact.timeline ?? null,
+        checkpoint: artifact.checkpoint ?? null,
+        reviewDecision: artifact.reviewDecision ?? null,
+        reviewedByUserId: artifact.reviewedByUserId ?? null,
+        reviewedAt: artifact.reviewedAt ? new Date(artifact.reviewedAt) : null,
+        createdAt: new Date(artifact.createdAt),
+        updatedAt: new Date(artifact.updatedAt),
       })),
     )
     .onConflictDoNothing();

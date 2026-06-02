@@ -99,6 +99,37 @@ describe("draft assist providers", () => {
       metadata: { sourceWordCount: 3, instructionLength: 14 },
     });
   });
+
+  it("returns synthetic operational proposals for every review family", async () => {
+    const provider = new FakeDraftAssistProvider({ providerKey: "fake-ai", model: "fake-model" });
+
+    await expect(
+      provider.createOperationalProposals({
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        sourceType: "draft",
+        draftId: "draft-001",
+        sourceText: "Synthetic source text for operational review.",
+        requestedKinds: [
+          "deadline_extraction",
+          "task_creation",
+          "document_organization",
+          "draft_invoice_cue",
+          "client_update_draft",
+        ],
+      }),
+    ).resolves.toMatchObject({
+      providerKey: "fake-ai",
+      providerModel: "fake-model",
+      proposals: [
+        { kind: "deadline_extraction", proposal: { deadline: expect.any(Object) } },
+        { kind: "task_creation", proposal: { task: expect.any(Object) } },
+        { kind: "document_organization", proposal: { documentOrganization: expect.any(Object) } },
+        { kind: "draft_invoice_cue", proposal: { invoiceCue: expect.any(Object) } },
+        { kind: "client_update_draft", proposal: { clientUpdate: expect.any(Object) } },
+      ],
+    });
+  });
 });
 
 describe("signature provider lifecycle helpers", () => {

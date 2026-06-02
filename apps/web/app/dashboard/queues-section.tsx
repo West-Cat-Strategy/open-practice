@@ -1,6 +1,8 @@
 import { Clock3, Power, RotateCcw, Save, X } from "lucide-react";
+import type { AiOperationalProposalRecord } from "@open-practice/domain";
 import type { DashboardLaneFreshnessCue } from "../dashboard-utils";
 import type {
+  AiOperationalProposalsResponse,
   ConnectorOperationsResponse,
   ProvidersStatusResponse,
   QueuesResponse,
@@ -10,6 +12,10 @@ import type {
   WorkerRunQueueFilter,
   WorkerRunSummaryItem,
 } from "../types";
+import {
+  describeAiOperationalProposalGeneration,
+  formatAiOperationalProposalKind,
+} from "../ai-operational-proposals-dashboard";
 import {
   compactConnectorActionReason,
   connectorDisplayName,
@@ -37,6 +43,9 @@ export interface WorkerRunStatusSummary {
 export interface QueuesSectionProps {
   activeSavedOperationalViewDefinition?: SavedOperationalViewDefinition | null;
   activeSavedOperationalViewId?: string;
+  aiOperationalProposals: AiOperationalProposalsResponse;
+  aiOperationalProposalStatus: string;
+  aiOperationalProposalReviewBusyId?: string;
   activeWorkerRuns: {
     jobs: WorkerRunSummaryItem[];
   };
@@ -49,6 +58,7 @@ export interface QueuesSectionProps {
   connectorRecoveryNow: Date;
   connectorRecoveryStatus: string;
   connectorOperationsSummary: string;
+  canReviewAiOperationalProposals: boolean;
   displayedQueues: QueuesResponse;
   formatSavedOperationalViewDefinition: (definition: SavedOperationalViewDefinition) => string;
   formatWorkerRunAttempts: (job: WorkerRunSummaryItem) => string;
@@ -66,6 +76,10 @@ export interface QueuesSectionProps {
   onRequestConnectorRecovery: (
     item: ConnectorOperationsResponse["outbox"][number],
     action: ConnectorRecoveryAction,
+  ) => void;
+  onReviewAiOperationalProposal: (
+    record: AiOperationalProposalRecord,
+    decision: "approved" | "rejected",
   ) => void;
   onSaveQueueOperationalViewDefinition: () => void;
   onSelectMatter: (matterId: string) => void;
@@ -99,6 +113,9 @@ export interface QueuesSectionProps {
 export function QueuesSection({
   activeSavedOperationalViewDefinition,
   activeSavedOperationalViewId,
+  aiOperationalProposals,
+  aiOperationalProposalStatus,
+  aiOperationalProposalReviewBusyId = "",
   activeWorkerRuns,
   archivingOperationalViewId,
   compactDate,
@@ -109,6 +126,7 @@ export function QueuesSection({
   connectorRecoveryNow,
   connectorRecoveryStatus,
   connectorOperationsSummary,
+  canReviewAiOperationalProposals,
   displayedQueues,
   formatSavedOperationalViewDefinition,
   formatWorkerRunAttempts,
@@ -124,6 +142,7 @@ export function QueuesSection({
   onRefreshProviders,
   onRefreshQueues,
   onRequestConnectorRecovery,
+  onReviewAiOperationalProposal,
   onSaveQueueOperationalViewDefinition,
   onSelectMatter,
   onSetOcrProviderEnabled,
@@ -202,6 +221,16 @@ export function QueuesSection({
         savedOperationalViewDefinitions={savedOperationalViewDefinitions}
         savedOperationalViewStatus={savedOperationalViewStatus}
         savingOperationalView={savingOperationalView}
+      />
+
+      <AiOperationalProposalsBlock
+        aiOperationalProposals={aiOperationalProposals}
+        canReviewAiOperationalProposals={canReviewAiOperationalProposals}
+        compactDate={compactDate}
+        compactStatus={compactStatus}
+        onReviewAiOperationalProposal={onReviewAiOperationalProposal}
+        reviewBusyId={aiOperationalProposalReviewBusyId}
+        status={aiOperationalProposalStatus}
       />
 
       <ProviderPostureBlock
@@ -286,6 +315,113 @@ function DashboardLaneRefreshPanel({
         {refreshing ? "Refreshing" : cue.label}
       </button>
     </div>
+  );
+}
+
+function AiOperationalProposalsBlock({
+  aiOperationalProposals,
+  canReviewAiOperationalProposals,
+  compactDate,
+  compactStatus,
+  onReviewAiOperationalProposal,
+  reviewBusyId,
+  status,
+}: Pick<
+  QueuesSectionProps,
+  | "aiOperationalProposals"
+  | "canReviewAiOperationalProposals"
+  | "compactDate"
+  | "compactStatus"
+  | "onReviewAiOperationalProposal"
+> & {
+  reviewBusyId: string;
+  status: string;
+}) {
+  const proposals = aiOperationalProposals.proposals.slice(0, 6);
+  const summary = aiOperationalProposals.summary;
+  const reviewedCount = summary.approved + summary.rejected;
+
+  return (
+    <>
+      <div className="section-title">
+        <h3>AI operational proposals</h3>
+        <span>{compactStatus(aiOperationalProposals.generation.status)}</span>
+      </div>
+      <p className="inline-empty" role="status" aria-live="polite">
+        {status}
+      </p>
+      <div className="detail-grid queue-summary-grid">
+        <div>
+          <span className="field-label">Proposal rows</span>
+          <strong>{summary.total}</strong>
+          <small>{describeAiOperationalProposalGeneration(aiOperationalProposals)}</small>
+        </div>
+        <div>
+          <span className="field-label">Proposed</span>
+          <strong>{summary.proposed}</strong>
+          <small>Awaiting review</small>
+        </div>
+        <div>
+          <span className="field-label">Reviewed</span>
+          <strong>{reviewedCount}</strong>
+          <small>Status-only approvals and rejections</small>
+        </div>
+        <div>
+          <span className="field-label">Families</span>
+          <strong>{Object.values(summary.byKind).filter((count) => count > 0).length}</strong>
+          <small>Deadlines, tasks, docs, billing, updates</small>
+        </div>
+      </div>
+      <div className="party-list queue-section-list">
+        {proposals.map((proposal) => {
+          const busy = reviewBusyId === proposal.id;
+          return (
+            <div className="party-row queue-item-row" key={proposal.id}>
+              <span>
+                <strong>{proposal.proposal.title}</strong>
+                <small>
+                  {formatAiOperationalProposalKind(proposal.kind)} ·{" "}
+                  {proposal.source.sourceLabel ?? proposal.source.sourceType} · matter{" "}
+                  {proposal.matterId}
+                </small>
+                <small>{proposal.proposal.summary}</small>
+                <small>{proposal.proposal.proposedAction}</small>
+                <small>
+                  {proposal.providerKey} · {proposal.providerModel} · source{" "}
+                  {proposal.source.sourceTextLength} chars · created{" "}
+                  {compactDate(proposal.createdAt)}
+                </small>
+              </span>
+              {canReviewAiOperationalProposals && proposal.status === "proposed" ? (
+                <span className="queue-row-actions">
+                  <button
+                    className="secondary-button compact-button"
+                    disabled={busy}
+                    onClick={() => onReviewAiOperationalProposal(proposal, "approved")}
+                    type="button"
+                  >
+                    {busy ? "Recording" : "Approve"}
+                  </button>
+                  <button
+                    className="secondary-button compact-button"
+                    disabled={busy}
+                    onClick={() => onReviewAiOperationalProposal(proposal, "rejected")}
+                    type="button"
+                  >
+                    Reject
+                  </button>
+                </span>
+              ) : (
+                <em>{proposal.reviewDecision ?? proposal.status}</em>
+              )}
+            </div>
+          );
+        })}
+        {proposals.length === 0 ? (
+          <p className="inline-empty">No AI operational proposals are queued for review.</p>
+        ) : null}
+      </div>
+    </>
   );
 }
 

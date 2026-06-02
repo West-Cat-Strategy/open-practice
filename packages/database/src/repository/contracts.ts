@@ -17,6 +17,9 @@ import {
   runConflictCheck,
   type AccessLogRecord,
   type ActivityTimelineEntry,
+  type AiOperationalProposalKind,
+  type AiOperationalProposalRecord,
+  type AiOperationalProposalStatus,
   type AuditEvent,
   type CalendarCredentialRecord,
   type CalendarEventAttendeeRecord,
@@ -67,14 +70,19 @@ import {
   type InvoiceRecord,
   type JobLifecycleRecord,
   type LedgerAccount,
+  type LedgerAccountingReviewProfileRecord,
   type LedgerEntry,
   type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerStatementImportBatchRecord,
+  type LedgerStatementMatchRuleProfileRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
   type LegalClinicProgram,
+  type LegalResearchArtifactKind,
+  type LegalResearchArtifactRecord,
+  type LegalResearchArtifactStatus,
   type ManualPaymentRecord,
   type Matter,
   type MatterParty,
@@ -1249,6 +1257,20 @@ export interface OpenPracticeRepository {
     firmId: string,
     options?: { accountId?: string },
   ): Promise<LedgerStatementImportBatchRecord[]>;
+  createLedgerStatementMatchRuleProfile(
+    profile: LedgerStatementMatchRuleProfileRecord,
+  ): Promise<LedgerStatementMatchRuleProfileRecord>;
+  listLedgerStatementMatchRuleProfiles(
+    firmId: string,
+    options?: { accountId?: string },
+  ): Promise<LedgerStatementMatchRuleProfileRecord[]>;
+  createLedgerAccountingReviewProfile(
+    profile: LedgerAccountingReviewProfileRecord,
+  ): Promise<LedgerAccountingReviewProfileRecord>;
+  listLedgerAccountingReviewProfiles(
+    firmId: string,
+    options?: { accountId?: string },
+  ): Promise<LedgerAccountingReviewProfileRecord[]>;
   createLedgerReconciliationExceptionResolution(
     resolution: LedgerReconciliationExceptionResolutionRecord,
   ): Promise<LedgerReconciliationExceptionResolutionRecord>;
@@ -1385,6 +1407,42 @@ export interface OpenPracticeRepository {
   getDraftAssistRecord(firmId: string, id: string): Promise<DraftAssistRecord | undefined>;
   createDraftAssistRecord(record: DraftAssistRecord): Promise<DraftAssistRecord>;
   updateDraftAssistRecord(record: DraftAssistRecord): Promise<DraftAssistRecord>;
+  listAiOperationalProposals(
+    firmId: string,
+    options?: {
+      matterId?: string;
+      status?: AiOperationalProposalStatus;
+      kind?: AiOperationalProposalKind;
+    },
+  ): Promise<AiOperationalProposalRecord[]>;
+  getAiOperationalProposal(
+    firmId: string,
+    id: string,
+  ): Promise<AiOperationalProposalRecord | undefined>;
+  createAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+  ): Promise<AiOperationalProposalRecord>;
+  updateAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+  ): Promise<AiOperationalProposalRecord>;
+  listLegalResearchArtifacts(
+    firmId: string,
+    options?: {
+      matterId?: string;
+      status?: LegalResearchArtifactStatus;
+      kind?: LegalResearchArtifactKind;
+    },
+  ): Promise<LegalResearchArtifactRecord[]>;
+  getLegalResearchArtifact(
+    firmId: string,
+    id: string,
+  ): Promise<LegalResearchArtifactRecord | undefined>;
+  createLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+  ): Promise<LegalResearchArtifactRecord>;
+  updateLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+  ): Promise<LegalResearchArtifactRecord>;
   listDraftTemplates(
     firmId: string,
     options?: { category?: string; activeOnly?: boolean },

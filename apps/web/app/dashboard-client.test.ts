@@ -4,7 +4,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   buildMatterSetupProfile,
   expenseCategoryProfileCues,
+  summarizeAiOperationalProposals,
   type ActivityTimelineEntry,
+  type AiOperationalProposalRecord,
   type CalendarEventRecord,
   type DashboardSectionCapability,
   type DashboardSectionKey,
@@ -290,6 +292,13 @@ import {
 } from "./types";
 import { ContactsSection } from "./dashboard/contacts-section";
 import { MatterOverviewSection } from "./dashboard/matter-overview-section";
+import { QueuesSection } from "./dashboard/queues-section";
+import {
+  buildAllDraftOperationalProposalKindsPayload,
+  buildDraftOperationalProposalJobPath,
+  canReviewAiOperationalProposals,
+  emptyAiOperationalProposalsResponse,
+} from "./ai-operational-proposals-dashboard";
 import type {
   ExternalUploadLinkRecord,
   ExternalUploadReviewItem,
@@ -319,6 +328,7 @@ const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapabilit
   funds: "trust_ledger",
   billing: "time_entry",
   documents: "document",
+  research: "legal_research",
   drafting: "draft",
   calendar: "calendar_event",
   signatures: "signature_request",
@@ -971,6 +981,62 @@ function trustControls(
       unreconciledAccountIds: ["acct-client-liability"],
       exceptionReconciliationIds: ["reconciliation-001"],
       overdrawnBalanceKeys: [],
+    },
+    accountingReview: {
+      matchRuleProfiles: [
+        {
+          id: "statement-match-profile-standard-trust",
+          firmId: "firm-west-legal",
+          accountId: "acct-trust-bank",
+          name: "Standard trust review profile",
+          referenceStrategy: "normalized_reference",
+          descriptionStrategy: "normalized_contains",
+          dateWindowDays: 2,
+          amountToleranceCents: 0,
+          varianceCategories: ["ledger_entry_expected", "needs_follow_up"],
+          reviewerExplanationRequired: true,
+          reviewOnly: true,
+          createdByUserId: "user-admin",
+          createdAt: "2026-04-02T18:00:00.000Z",
+          updatedAt: "2026-04-02T18:00:00.000Z",
+        },
+      ],
+      accountingProfiles: [
+        {
+          id: "accounting-review-profile-trust-bank",
+          firmId: "firm-west-legal",
+          accountId: "acct-trust-bank",
+          accountType: "trust_asset",
+          boundaryPosture: "trust_only",
+          protectedFunds: {
+            protected: true,
+            reason: "Synthetic trust account requires protected-funds review cues.",
+            reviewCadence: "monthly",
+          },
+          bankFeedImport: {
+            status: "metadata_only",
+            sourceLabel: "Synthetic trust statement export",
+            automaticMatching: false,
+          },
+          dimensions: {
+            vendorTracking: "not_applicable",
+            expenseCategoryTracking: "optional",
+            clientMatterTracking: "required",
+            notes: "Synthetic review note.",
+          },
+          reviewOnly: true,
+          createdByUserId: "user-admin",
+          createdAt: "2026-04-02T18:00:00.000Z",
+          updatedAt: "2026-04-02T18:00:00.000Z",
+        },
+      ],
+      summary: {
+        matchRuleProfileCount: 1,
+        accountingProfileCount: 1,
+        protectedAccountCount: 1,
+        bankFeedShellCount: 1,
+        reviewOnly: true,
+      },
     },
   };
 
@@ -2842,6 +2908,151 @@ describe("dashboard client behavior", () => {
       }),
     ).toBe("2 queue items need attention. 1 high priority item.");
     expect(summarizeQueues({ sections: [] })).toBe("No queue items need attention.");
+  });
+
+  it("renders AI operational proposal counters and hides review controls for read-only roles", () => {
+    const proposal: AiOperationalProposalRecord = {
+      id: "ai-proposal-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      kind: "client_update_draft",
+      status: "proposed",
+      source: {
+        sourceType: "draft",
+        draftId: "draft-001",
+        sourceLabel: "Synthetic status draft",
+        sourceTextLength: 144,
+      },
+      providerKey: "fake-ai",
+      providerModel: "fake-operational-proposals-v1",
+      proposal: {
+        title: "Review client update",
+        summary: "Synthetic review-only update proposal.",
+        proposedAction: "Review before sending any message.",
+        clientUpdate: { tone: "neutral", audience: "client" },
+      },
+      createdByUserId: "user-admin",
+      createdAt: "2026-06-01T10:00:00.000Z",
+      updatedAt: "2026-06-01T10:00:00.000Z",
+      metadata: { statusOnlyReview: true },
+    };
+    const taskWorkbench: TaskDeadlineWorkbenchResponse = {
+      tasks: [],
+      counters: {
+        my: { overdue: 0, today: 0, upcoming: 0 },
+        team: { overdue: 0, today: 0, upcoming: 0 },
+        matterQueues: [],
+        contactQueues: [],
+      },
+      focusQueues: {
+        myOverdueTaskIds: [],
+        teamTodayTaskIds: [],
+        upcomingTaskIds: [],
+        unassignedTaskIds: [],
+      },
+    };
+    const commonProps = {
+      activeWorkerRuns: { jobs: [] },
+      aiOperationalProposals: {
+        proposals: [proposal],
+        summary: summarizeAiOperationalProposals([proposal]),
+        generation: {
+          status: "configured" as const,
+          provider: "fake-ai",
+          queue: { queueName: "ai_triage", status: "configured" },
+          jobName: "operational_action_proposals" as const,
+        },
+      },
+      aiOperationalProposalStatus: "1 proposal ready for review.",
+      compactDate: (value?: string) => value ?? "",
+      compactProviderStatus: (value?: string) => value ?? "",
+      compactStatus: (value?: string) => value ?? "",
+      connectorOperations: emptyConnectorOperationsResponse("available"),
+      connectorRecoveryNow: new Date("2026-06-01T10:00:00.000Z"),
+      connectorRecoveryStatus: "No connector action.",
+      connectorOperationsSummary: "No connector outbox items.",
+      displayedQueues: { sections: [] },
+      formatSavedOperationalViewDefinition: () => "Saved queue view",
+      formatWorkerRunAttempts: () => "0/0 attempts",
+      formatWorkerRunTiming: () => "No timing",
+      canManageDocumentProcessingProvider: false,
+      ocrProviderUpdateStatus: "No OCR provider changes.",
+      ocrProviderUpdating: false,
+      onApplyQueueOperationalViewDefinition: () => {},
+      onArchiveQueueOperationalViewDefinition: () => {},
+      onCancelConnectorRecovery: () => {},
+      onClearQueueOperationalViewDefinition: () => {},
+      onConfirmConnectorRecovery: () => {},
+      onRefreshProviders: () => {},
+      onRefreshQueues: () => {},
+      onRequestConnectorRecovery: () => {},
+      onReviewAiOperationalProposal: () => {},
+      onSaveQueueOperationalViewDefinition: () => {},
+      onSelectMatter: () => {},
+      onSetOcrProviderEnabled: () => {},
+      onWorkerRunFilterChange: () => {},
+      providerFreshnessCue: {
+        label: "Fresh",
+        detail: "Loaded now",
+        tone: "ready" as const,
+        stale: false,
+      },
+      providerRows: [],
+      providerStatus: emptyProvidersStatusResponse(),
+      providerStatusSummary: "Providers ready.",
+      providerRefreshing: false,
+      canManageConnectorRecovery: false,
+      queueFreshnessCue: {
+        label: "Fresh",
+        detail: "Loaded now",
+        tone: "ready" as const,
+        stale: false,
+      },
+      queueSummary: "No queue items need attention.",
+      queueRefreshing: false,
+      savedOperationalViewDefinitions: [],
+      savedOperationalViewStatus: "No saved queue views yet.",
+      savingOperationalView: false,
+      taskDeadlineSummary: "0 overdue, 0 due today, 0 upcoming",
+      taskWorkbench,
+      workerHealth: emptyWorkerHealthResponse(),
+      workerHealthStateTone: "neutral" as const,
+      workerHealthSummary: "No worker queues observed.",
+      workerRunFilter: "all" as const,
+      workerRunFilterOptions: [{ key: "all" as const, label: "All" }],
+      workerRunSafeContext: () => "No worker context.",
+      workerRunStatus: () => ({ label: "completed", tone: "neutral" as const }),
+      workerRunSummary: "No worker runs.",
+    };
+
+    const writableHtml = renderToStaticMarkup(
+      createElement(QueuesSection, {
+        ...commonProps,
+        canReviewAiOperationalProposals: true,
+      }),
+    );
+    const readOnlyHtml = renderToStaticMarkup(
+      createElement(QueuesSection, {
+        ...commonProps,
+        canReviewAiOperationalProposals: false,
+      }),
+    );
+
+    expect(writableHtml).toContain("AI operational proposals");
+    expect(writableHtml).toContain("Review client update");
+    expect(writableHtml).toContain("client update draft");
+    expect(writableHtml).toContain("Review before sending any message.");
+    expect(writableHtml).toContain("Approve");
+    expect(readOnlyHtml).toContain("Review client update");
+    expect(readOnlyHtml).not.toContain("Approve");
+    expect(readOnlyHtml).not.toContain("Reject");
+    expect(canReviewAiOperationalProposals("auditor")).toBe(false);
+    expect(canReviewAiOperationalProposals("firm_member")).toBe(true);
+    expect(buildDraftOperationalProposalJobPath("draft/001")).toBe(
+      "/api/drafts/draft%2F001/operational-proposals/jobs",
+    );
+    expect(buildAllDraftOperationalProposalKindsPayload().proposalKinds).toHaveLength(5);
+    expect(emptyAiOperationalProposalsResponse().summary.total).toBe(0);
   });
 
   it("keeps operational navigation available while disabling matter-scoped surfaces", () => {

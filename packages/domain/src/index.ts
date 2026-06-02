@@ -1,5 +1,6 @@
 export * from "./audit.js";
 export * from "./audit-taxonomy.js";
+export * from "./ai-operational-proposals.js";
 export * from "./billing.js";
 export * from "./calendar.js";
 export * from "./contacts.js";
@@ -12,6 +13,7 @@ export * from "./intake.js";
 export * from "./intake-pipeline.js";
 export * from "./ledger.js";
 export * from "./legal-clinics.js";
+export * from "./legal-research.js";
 export * from "./matter-setup.js";
 export * from "./models.js";
 export * from "./operational-views.js";

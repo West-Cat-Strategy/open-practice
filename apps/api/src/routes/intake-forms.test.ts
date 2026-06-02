@@ -15,6 +15,10 @@ const checksum = "f".repeat(64);
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
 
+function futureIso(msFromNow = 7 * 24 * 60 * 60 * 1000): string {
+  return new Date(Date.now() + msFromNow).toISOString();
+}
+
 function s3Config(checksumSha256 = checksum): NonNullable<CreateServerOptions["s3"]> {
   const client = new S3Client({
     endpoint: "http://127.0.0.1:9000",
@@ -869,7 +873,7 @@ describe("intake form builder routes", () => {
       url: "/api/intake-form-links",
       payload: {
         intakeSessionId: "intake-session-001",
-        expiresAt: "2026-06-01T00:00:00.000Z",
+        expiresAt: futureIso(),
       },
       headers: {
         "x-open-practice-user-id": "user-staff",

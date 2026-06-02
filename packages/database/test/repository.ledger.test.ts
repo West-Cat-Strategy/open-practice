@@ -210,14 +210,14 @@ describe("repository ledger approvals and reconciliations", () => {
         importedStatementRowCount: 12,
         duplicateStatementRowCount: 2,
         status: "review_ready",
-        matchingProfileId: "profile-standard-trust",
+        matchingProfileId: "statement-match-profile-standard-trust",
         createdByUserId: "user-admin",
         createdAt: now,
       }),
     ).resolves.toMatchObject({
       accountId: "acct-trust-bank",
       status: "review_ready",
-      matchingProfileId: "profile-standard-trust",
+      matchingProfileId: "statement-match-profile-standard-trust",
     });
     await expect(
       repository.createLedgerStatementImportBatch({
@@ -257,6 +257,21 @@ describe("repository ledger approvals and reconciliations", () => {
     ).rejects.toThrow(/trust asset account/);
     await expect(
       repository.createLedgerStatementImportBatch({
+        id: "statement-import-batch-missing-profile",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        sourceLabel: "Synthetic May trust statement",
+        checksumSha256: "e".repeat(64),
+        importedStatementRowCount: 1,
+        duplicateStatementRowCount: 0,
+        status: "previewed",
+        matchingProfileId: "missing-profile",
+        createdByUserId: "user-admin",
+        createdAt: now,
+      }),
+    ).rejects.toThrow(/matching profile/);
+    await expect(
+      repository.createLedgerStatementImportBatch({
         id: "statement-import-batch-invalid-counts",
         firmId: "firm-west-legal",
         accountId: "acct-trust-bank",
@@ -269,6 +284,123 @@ describe("repository ledger approvals and reconciliations", () => {
         createdAt: now,
       }),
     ).rejects.toThrow(/duplicate count/);
+
+    await expect(
+      repository.createLedgerStatementMatchRuleProfile({
+        id: "statement-match-profile-route-test",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        name: "Synthetic statement review profile",
+        referenceStrategy: "normalized_reference",
+        descriptionStrategy: "normalized_contains",
+        dateWindowDays: 2,
+        amountToleranceCents: 0,
+        varianceCategories: ["ledger_entry_expected", "needs_follow_up"],
+        reviewerExplanationRequired: true,
+        reviewOnly: true,
+        createdByUserId: "user-admin",
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).resolves.toMatchObject({
+      accountId: "acct-trust-bank",
+      referenceStrategy: "normalized_reference",
+      reviewOnly: true,
+    });
+    await expect(
+      repository.listLedgerStatementMatchRuleProfiles("firm-west-legal", {
+        accountId: "acct-trust-bank",
+      }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "statement-match-profile-route-test" }),
+      ]),
+    );
+    await expect(
+      repository.createLedgerStatementMatchRuleProfile({
+        id: "statement-match-profile-operating",
+        firmId: "firm-west-legal",
+        accountId: "acct-operating-revenue",
+        name: "Synthetic operating statement review profile",
+        referenceStrategy: "normalized_reference",
+        descriptionStrategy: "normalized_contains",
+        dateWindowDays: 2,
+        amountToleranceCents: 0,
+        varianceCategories: ["ledger_entry_expected"],
+        reviewerExplanationRequired: true,
+        reviewOnly: true,
+        createdByUserId: "user-admin",
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).rejects.toThrow(/trust asset account/);
+
+    await expect(
+      repository.createLedgerAccountingReviewProfile({
+        id: "accounting-review-profile-client-liability",
+        firmId: "firm-west-legal",
+        accountId: "acct-client-liability",
+        accountType: "client_liability",
+        boundaryPosture: "trust_only",
+        protectedFunds: {
+          protected: true,
+          reason: "Synthetic client liability account requires protected-funds cues.",
+          reviewCadence: "monthly",
+        },
+        bankFeedImport: {
+          status: "not_configured",
+          automaticMatching: false,
+        },
+        dimensions: {
+          vendorTracking: "not_applicable",
+          expenseCategoryTracking: "optional",
+          clientMatterTracking: "required",
+        },
+        reviewOnly: true,
+        createdByUserId: "user-admin",
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).resolves.toMatchObject({
+      accountId: "acct-client-liability",
+      accountType: "client_liability",
+      boundaryPosture: "trust_only",
+      reviewOnly: true,
+    });
+    await expect(
+      repository.listLedgerAccountingReviewProfiles("firm-west-legal", {
+        accountId: "acct-client-liability",
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: "accounting-review-profile-client-liability" }),
+    ]);
+    await expect(
+      repository.createLedgerAccountingReviewProfile({
+        id: "accounting-review-profile-invalid-boundary",
+        firmId: "firm-west-legal",
+        accountId: "acct-operating-revenue",
+        accountType: "operating_revenue",
+        boundaryPosture: "trust_only",
+        protectedFunds: {
+          protected: false,
+          reviewCadence: "monthly",
+        },
+        bankFeedImport: {
+          status: "metadata_only",
+          sourceLabel: "Synthetic operating statement export",
+          automaticMatching: false,
+        },
+        dimensions: {
+          vendorTracking: "optional",
+          expenseCategoryTracking: "required",
+          clientMatterTracking: "required",
+        },
+        reviewOnly: true,
+        createdByUserId: "user-admin",
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).rejects.toThrow(/boundary posture/);
 
     await expect(
       repository.createLedgerReconciliationExceptionResolution({

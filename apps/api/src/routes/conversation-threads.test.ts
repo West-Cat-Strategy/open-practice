@@ -8,6 +8,10 @@ import type { ApiJobQueue } from "./types.js";
 const servers: FastifyInstance[] = [];
 type QueuedReportJob = { name: string; data: unknown; jobId?: string };
 
+function futureIso(msFromNow = 7 * 24 * 60 * 60 * 1000): string {
+  return new Date(Date.now() + msFromNow).toISOString();
+}
+
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
   const idByRole: Partial<Record<ProfessionalRole, string>> = {
     owner_admin: "user-admin",
@@ -69,6 +73,7 @@ describe("conversation thread routes", () => {
   it("creates and lists matter-scoped threads with boundary fields and redacted audit metadata", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository, authUser: user("firm_member", ["matter-001"]) });
+    const retentionUntil = futureIso();
 
     const created = await server.inject({
       method: "POST",
@@ -76,7 +81,7 @@ describe("conversation thread routes", () => {
       payload: {
         matterId: "matter-001",
         topic: "Synthetic intake follow-up",
-        retentionUntil: "2026-06-02T00:00:00.000Z",
+        retentionUntil,
         exportState: "requested",
         notificationBoundary: "internal_only",
         metadata: {
@@ -95,7 +100,7 @@ describe("conversation thread routes", () => {
         matterId: "matter-001",
         topic: "Synthetic intake follow-up",
         status: "open",
-        retentionUntil: "2026-06-02T00:00:00.000Z",
+        retentionUntil,
         exportState: "requested",
         notificationBoundary: "internal_only",
         createdByUserId: "user-staff",

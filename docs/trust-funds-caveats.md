@@ -23,6 +23,11 @@ trust accounting software, accounting software, or tax-advice tooling.
   optional matching profile ID, creator, and timestamp for operational tracking. They do not store
   statement rows, statement evidence, posting payloads, reconciliation records, approvals, or fund
   movement instructions.
+- Statement match-rule profiles and accounting review profiles persist reviewer-owned posture only:
+  reference and description strategies, date/amount tolerances, variance categories,
+  operating-vs-trust/expense boundary posture, protected-funds cues, metadata-only bank-feed shell
+  state, and vendor/expense/client-matter dimensions. They do not connect live feeds, run automatic
+  matching, authorize disbursements, post trust entries, or certify accounting conclusions.
 - Reconciliation exception resolution records can store staff notes and variance decisions for
   unmatched statement-preview rows. They are review notes only: they do not mutate posted ledger
   entries, create reconciliation records, move funds, or certify accounting conclusions.
@@ -37,6 +42,9 @@ trust accounting software, accounting software, or tax-advice tooling.
   operational controls around review, evidence, authorization, and reconciliation.
 - No live payment processor is currently part of the product contract.
 - Manual payment records are reviewed evidence, not proof of live settlement.
+- AI draft-invoice cues are review artifacts only. Approving a proposal records reviewer status but
+  does not create an invoice, change balances, schedule payment collection, reconcile payment
+  evidence, or post trust/operating ledger entries.
 - Trust-transfer-request approval must not automatically post trust ledger entries. Approval can
   record reviewer evidence after invoice-balance and matter trust-balance checks; linkage can only
   reference an existing matching ledger transaction that has not already been linked to another

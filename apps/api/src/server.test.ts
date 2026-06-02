@@ -6,6 +6,7 @@ import {
   buildPublicConsultationIntakeSettingsFromEnv,
   configurePublicConsultationIntakeSettingsFromEnv,
   createApiServer,
+  createRepositoryFromEnv,
   envSchema,
   validateProductionReadiness,
 } from "./server.js";
@@ -45,6 +46,7 @@ vi.mock("@simplewebauthn/server", () => ({
 
 const servers: Array<{ close: () => Promise<void> }> = [];
 type CreateServerOptions = Parameters<typeof createApiServer>[0];
+const providerConfigEncryptionKey = Buffer.alloc(32, 7).toString("base64url");
 
 function deliveryConfirmation(recipientCount = 1) {
   return { confirmed: true, channel: "email", recipientCount };
@@ -72,6 +74,7 @@ function productionEnv(overrides: Record<string, unknown> = {}) {
     NODE_ENV: "production",
     DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
     AUTH_JWT_SECRET: "production-test-secret-at-least-32-characters",
+    OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
     ...overrides,
   });
 }
@@ -801,6 +804,14 @@ describe("API auth and persistence boundaries", () => {
       ),
     ).toThrow(/development example/);
     expect(() =>
+      validateProductionReadiness(
+        productionEnv({ OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: undefined }),
+      ),
+    ).toThrow(/OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY/);
+    expect(() =>
+      envSchema.parse({ OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: "not-a-32-byte-key" }),
+    ).toThrow(/OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY/);
+    expect(() =>
       validateProductionReadiness(productionEnv({ S3_ENDPOINT: "http://localhost:9000" })),
     ).toThrow(/S3/);
     expect(() =>
@@ -827,6 +838,31 @@ describe("API auth and persistence boundaries", () => {
 
   it("accepts minimal production readiness configuration", () => {
     expect(() => validateProductionReadiness(productionEnv())).not.toThrow();
+  });
+
+  it("parses boolean env strings before provider config key readiness checks", () => {
+    const parsed = envSchema.parse({
+      DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+      OPEN_PRACTICE_USE_MEMORY_REPO: "false",
+      OPEN_PRACTICE_DEV_SEED: "false",
+      OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
+    });
+
+    expect(parsed.OPEN_PRACTICE_USE_MEMORY_REPO).toBe(false);
+    expect(parsed.OPEN_PRACTICE_DEV_SEED).toBe(false);
+    expect(
+      envSchema.parse({ OPEN_PRACTICE_USE_MEMORY_REPO: "true" }).OPEN_PRACTICE_USE_MEMORY_REPO,
+    ).toBe(true);
+  });
+
+  it("requires a provider config encryption key before API PostgreSQL repository startup", async () => {
+    await expect(
+      createRepositoryFromEnv(
+        envSchema.parse({
+          DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+        }),
+      ),
+    ).rejects.toThrow(/OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY/);
   });
 
   it("builds explicit public consultation intake settings from deployment env", async () => {
@@ -900,6 +936,7 @@ describe("API auth and persistence boundaries", () => {
         expect.objectContaining({ key: "matters", enabled: true }),
         expect.objectContaining({ key: "contacts", enabled: true }),
         expect.objectContaining({ key: "documents", enabled: true }),
+        expect.objectContaining({ key: "research", enabled: true }),
         expect.objectContaining({ key: "drafting", enabled: true }),
         expect.objectContaining({ key: "calendar", enabled: true }),
         expect.objectContaining({ key: "signatures", enabled: true }),

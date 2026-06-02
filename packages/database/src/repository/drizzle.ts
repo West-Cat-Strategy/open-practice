@@ -33,6 +33,9 @@ import {
   postLedgerTransaction,
   runConflictCheck,
   shouldUpdateSignatureRequestStatus,
+  validateAiOperationalProposalRecord,
+  validateLegalResearchArtifactRecord,
+  validateLedgerAccountingReviewProfileRecord,
   validateBillingPeriodLock,
   validateBillingRateRule,
   validateContactDataQualityResolutionRecord,
@@ -40,8 +43,12 @@ import {
   validateLedgerReconciliationExceptionResolutionRecord,
   validateLedgerReconciliationRecord,
   validateLedgerStatementImportBatchRecord,
+  validateLedgerStatementMatchRuleProfileRecord,
   verifyAuditChain,
   type AccessLogRecord,
+  type AiOperationalProposalKind,
+  type AiOperationalProposalRecord,
+  type AiOperationalProposalStatus,
   type AuditEvent,
   type BillingPeriodLockRecord,
   type BillingRateRuleRecord,
@@ -89,14 +96,19 @@ import {
   type InvoiceRecord,
   type JobLifecycleRecord,
   type LedgerAccount,
+  type LedgerAccountingReviewProfileRecord,
   type LedgerEntry,
   type LedgerReconciliationExceptionResolutionRecord,
   type LedgerReconciliationRecord,
   type LedgerStatementImportBatchRecord,
+  type LedgerStatementMatchRuleProfileRecord,
   type LedgerTransaction,
   type LedgerTransactionApprovalRecord,
   type LegalClinicMatterProfile,
   type LegalClinicProgram,
+  type LegalResearchArtifactKind,
+  type LegalResearchArtifactRecord,
+  type LegalResearchArtifactStatus,
   type ManualPaymentRecord,
   type Matter,
   type MatterParty,
@@ -120,6 +132,7 @@ import {
 import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../runtime.js";
 import * as schema from "../schema.js";
+import { isEncryptedProviderConfig, type ProviderConfigCipher } from "../config-encryption.js";
 
 import type {
   AuthAccountRecord,
@@ -221,6 +234,8 @@ import {
   mapDocumentAssemblyPackageRow,
   mapDocumentAssemblySetDefinitionRow,
   mapDocumentTextExtractionRow,
+  mapAiOperationalProposalRow,
+  mapLegalResearchArtifactRow,
   mapDraftAssistRow,
   mapDraftRow,
   mapDraftTemplateRow,
@@ -249,8 +264,10 @@ import {
   mapJobLifecycleRow,
   mapLedgerApprovalRow,
   mapLedgerReconciliationExceptionResolutionRow,
+  mapLedgerAccountingReviewProfileRow,
   mapLedgerReconciliationRow,
   mapLedgerStatementImportBatchRow,
+  mapLedgerStatementMatchRuleProfileRow,
   mapLegalClinicMatterProfileRow,
   mapLegalClinicProgramRow,
   mapMatter,
@@ -304,7 +321,43 @@ function nextMatterNumber(
 }
 
 export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
-  constructor(private readonly db: OpenPracticeDatabase) {}
+  constructor(
+    private readonly db: OpenPracticeDatabase,
+    private readonly options: { providerConfigCipher?: ProviderConfigCipher } = {},
+  ) {}
+
+  private encryptProviderSetting(setting: ProviderSettingRecord): ProviderSettingRecord {
+    if (!this.options.providerConfigCipher) return setting;
+    return {
+      ...setting,
+      encryptedConfig: this.options.providerConfigCipher.encryptProviderConfig({
+        firmId: setting.firmId,
+        kind: setting.kind,
+        key: setting.key,
+        plaintext: setting.encryptedConfig,
+      }),
+    };
+  }
+
+  private decryptProviderSetting(setting: ProviderSettingRecord): ProviderSettingRecord {
+    if (!this.options.providerConfigCipher) {
+      if (isEncryptedProviderConfig(setting.encryptedConfig)) {
+        throw new Error(
+          "OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY is required to read provider settings",
+        );
+      }
+      return setting;
+    }
+    return {
+      ...setting,
+      encryptedConfig: this.options.providerConfigCipher.decryptProviderConfig({
+        firmId: setting.firmId,
+        kind: setting.kind,
+        key: setting.key,
+        encryptedConfig: setting.encryptedConfig,
+      }),
+    };
+  }
 
   async getSetupStatus(): Promise<FirstRunSetupStatus> {
     const firms = await this.db.select({ id: schema.firms.id }).from(schema.firms).limit(2);
@@ -472,16 +525,17 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .from(schema.providerSettings)
       .where(and(...conditions))
       .orderBy(asc(schema.providerSettings.kind), asc(schema.providerSettings.key));
-    return rows.map(mapProviderSettingRow);
+    return rows.map((row) => this.decryptProviderSetting(mapProviderSettingRow(row)));
   }
 
   async upsertProviderSetting(setting: ProviderSettingRecord): Promise<ProviderSettingRecord> {
+    const encryptedSetting = this.encryptProviderSetting(setting);
     const [row] = await this.db
       .insert(schema.providerSettings)
       .values({
-        ...setting,
-        createdAt: new Date(setting.createdAt),
-        updatedAt: new Date(setting.updatedAt),
+        ...encryptedSetting,
+        createdAt: new Date(encryptedSetting.createdAt),
+        updatedAt: new Date(encryptedSetting.updatedAt),
       })
       .onConflictDoUpdate({
         target: [
@@ -490,13 +544,13 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
           schema.providerSettings.key,
         ],
         set: {
-          enabled: setting.enabled,
-          encryptedConfig: setting.encryptedConfig,
-          updatedAt: new Date(setting.updatedAt),
+          enabled: encryptedSetting.enabled,
+          encryptedConfig: encryptedSetting.encryptedConfig,
+          updatedAt: new Date(encryptedSetting.updatedAt),
         },
       })
       .returning();
-    return mapProviderSettingRow(row);
+    return this.decryptProviderSetting(mapProviderSettingRow(row));
   }
 
   async createConnector(connector: ConnectorRecord): Promise<ConnectorRecord> {
@@ -5471,6 +5525,23 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       throw new Error("Statement import batches require an existing trust asset account");
     }
     validateLedgerStatementImportBatchRecord(batch);
+    if (batch.matchingProfileId) {
+      const [matchingProfile] = await this.db
+        .select({ id: schema.trustStatementMatchRuleProfiles.id })
+        .from(schema.trustStatementMatchRuleProfiles)
+        .where(
+          and(
+            eq(schema.trustStatementMatchRuleProfiles.firmId, batch.firmId),
+            eq(schema.trustStatementMatchRuleProfiles.accountId, batch.accountId),
+            eq(schema.trustStatementMatchRuleProfiles.id, batch.matchingProfileId),
+          ),
+        );
+      if (!matchingProfile) {
+        throw new Error(
+          "Statement import batch matching profile must belong to the same trust asset account",
+        );
+      }
+    }
     await this.db.insert(schema.trustStatementImportBatches).values({
       ...batch,
       matchingProfileId: batch.matchingProfileId ?? null,
@@ -5496,6 +5567,95 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       )
       .orderBy(asc(schema.trustStatementImportBatches.createdAt));
     return rows.map(mapLedgerStatementImportBatchRow);
+  }
+
+  async createLedgerStatementMatchRuleProfile(
+    profile: LedgerStatementMatchRuleProfileRecord,
+  ): Promise<LedgerStatementMatchRuleProfileRecord> {
+    const [account] = await this.db
+      .select()
+      .from(schema.ledgerAccounts)
+      .where(
+        and(
+          eq(schema.ledgerAccounts.firmId, profile.firmId),
+          eq(schema.ledgerAccounts.id, profile.accountId),
+        ),
+      );
+    if (!account || account.type !== "trust_asset") {
+      throw new Error("Statement match-rule profiles require an existing trust asset account");
+    }
+    validateLedgerStatementMatchRuleProfileRecord(profile);
+    await this.db.insert(schema.trustStatementMatchRuleProfiles).values({
+      ...profile,
+      createdAt: new Date(profile.createdAt),
+      updatedAt: new Date(profile.updatedAt),
+    });
+    return profile;
+  }
+
+  async listLedgerStatementMatchRuleProfiles(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerStatementMatchRuleProfileRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.trustStatementMatchRuleProfiles)
+      .where(
+        options.accountId
+          ? and(
+              eq(schema.trustStatementMatchRuleProfiles.firmId, firmId),
+              eq(schema.trustStatementMatchRuleProfiles.accountId, options.accountId),
+            )
+          : eq(schema.trustStatementMatchRuleProfiles.firmId, firmId),
+      )
+      .orderBy(asc(schema.trustStatementMatchRuleProfiles.createdAt));
+    return rows.map(mapLedgerStatementMatchRuleProfileRow);
+  }
+
+  async createLedgerAccountingReviewProfile(
+    profile: LedgerAccountingReviewProfileRecord,
+  ): Promise<LedgerAccountingReviewProfileRecord> {
+    const [account] = await this.db
+      .select()
+      .from(schema.ledgerAccounts)
+      .where(
+        and(
+          eq(schema.ledgerAccounts.firmId, profile.firmId),
+          eq(schema.ledgerAccounts.id, profile.accountId),
+        ),
+      );
+    if (!account) {
+      throw new Error(`Unknown ledger account ${profile.accountId}`);
+    }
+    if (account.type !== profile.accountType) {
+      throw new Error("Accounting review profile account type must match the ledger account");
+    }
+    validateLedgerAccountingReviewProfileRecord(profile);
+    await this.db.insert(schema.ledgerAccountingReviewProfiles).values({
+      ...profile,
+      createdAt: new Date(profile.createdAt),
+      updatedAt: new Date(profile.updatedAt),
+    });
+    return profile;
+  }
+
+  async listLedgerAccountingReviewProfiles(
+    firmId: string,
+    options: { accountId?: string } = {},
+  ): Promise<LedgerAccountingReviewProfileRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.ledgerAccountingReviewProfiles)
+      .where(
+        options.accountId
+          ? and(
+              eq(schema.ledgerAccountingReviewProfiles.firmId, firmId),
+              eq(schema.ledgerAccountingReviewProfiles.accountId, options.accountId),
+            )
+          : eq(schema.ledgerAccountingReviewProfiles.firmId, firmId),
+      )
+      .orderBy(asc(schema.ledgerAccountingReviewProfiles.createdAt));
+    return rows.map(mapLedgerAccountingReviewProfileRow);
   }
 
   async createLedgerReconciliationExceptionResolution(
@@ -6174,6 +6334,177 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .returning();
     if (!row) throw new Error(`Draft assist record ${record.id} was not found`);
     return mapDraftAssistRow(row);
+  }
+
+  async listAiOperationalProposals(
+    firmId: string,
+    options: {
+      matterId?: string;
+      status?: AiOperationalProposalStatus;
+      kind?: AiOperationalProposalKind;
+    } = {},
+  ): Promise<AiOperationalProposalRecord[]> {
+    const conditions = [eq(schema.aiOperationalProposals.firmId, firmId)];
+    if (options.matterId) {
+      conditions.push(eq(schema.aiOperationalProposals.matterId, options.matterId));
+    }
+    if (options.status) conditions.push(eq(schema.aiOperationalProposals.status, options.status));
+    if (options.kind) conditions.push(eq(schema.aiOperationalProposals.kind, options.kind));
+
+    const rows = await this.db
+      .select()
+      .from(schema.aiOperationalProposals)
+      .where(and(...conditions))
+      .orderBy(desc(schema.aiOperationalProposals.createdAt));
+    return rows.map(mapAiOperationalProposalRow);
+  }
+
+  async getAiOperationalProposal(
+    firmId: string,
+    id: string,
+  ): Promise<AiOperationalProposalRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.aiOperationalProposals)
+      .where(
+        and(
+          eq(schema.aiOperationalProposals.firmId, firmId),
+          eq(schema.aiOperationalProposals.id, id),
+        ),
+      );
+    return row ? mapAiOperationalProposalRow(row) : undefined;
+  }
+
+  async createAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+  ): Promise<AiOperationalProposalRecord> {
+    validateAiOperationalProposalRecord(record);
+    await this.db.insert(schema.aiOperationalProposals).values({
+      ...record,
+      reviewedAt: record.reviewedAt ? new Date(record.reviewedAt) : null,
+      createdAt: new Date(record.createdAt),
+      updatedAt: new Date(record.updatedAt),
+    });
+    return clone(record);
+  }
+
+  async updateAiOperationalProposal(
+    record: AiOperationalProposalRecord,
+  ): Promise<AiOperationalProposalRecord> {
+    validateAiOperationalProposalRecord(record);
+    const [row] = await this.db
+      .update(schema.aiOperationalProposals)
+      .set({
+        status: record.status,
+        reviewDecision: record.reviewDecision,
+        reviewedByUserId: record.reviewedByUserId,
+        reviewedAt: record.reviewedAt ? new Date(record.reviewedAt) : null,
+        updatedAt: new Date(record.updatedAt),
+        metadata: record.metadata,
+      })
+      .where(
+        and(
+          eq(schema.aiOperationalProposals.firmId, record.firmId),
+          eq(schema.aiOperationalProposals.id, record.id),
+        ),
+      )
+      .returning();
+    if (!row) throw new Error(`AI operational proposal ${record.id} was not found`);
+    return mapAiOperationalProposalRow(row);
+  }
+
+  async listLegalResearchArtifacts(
+    firmId: string,
+    options: {
+      matterId?: string;
+      status?: LegalResearchArtifactStatus;
+      kind?: LegalResearchArtifactKind;
+    } = {},
+  ): Promise<LegalResearchArtifactRecord[]> {
+    const conditions = [eq(schema.legalResearchArtifacts.firmId, firmId)];
+    if (options.matterId) {
+      conditions.push(eq(schema.legalResearchArtifacts.matterId, options.matterId));
+    }
+    if (options.status) {
+      conditions.push(eq(schema.legalResearchArtifacts.status, options.status));
+    }
+    if (options.kind) conditions.push(eq(schema.legalResearchArtifacts.kind, options.kind));
+
+    const rows = await this.db
+      .select()
+      .from(schema.legalResearchArtifacts)
+      .where(and(...conditions))
+      .orderBy(desc(schema.legalResearchArtifacts.updatedAt));
+    return rows.map(mapLegalResearchArtifactRow);
+  }
+
+  async getLegalResearchArtifact(
+    firmId: string,
+    id: string,
+  ): Promise<LegalResearchArtifactRecord | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(schema.legalResearchArtifacts)
+      .where(
+        and(
+          eq(schema.legalResearchArtifacts.firmId, firmId),
+          eq(schema.legalResearchArtifacts.id, id),
+        ),
+      );
+    return row ? mapLegalResearchArtifactRow(row) : undefined;
+  }
+
+  async createLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+  ): Promise<LegalResearchArtifactRecord> {
+    validateLegalResearchArtifactRecord(record);
+    await this.db.insert(schema.legalResearchArtifacts).values({
+      ...record,
+      note: record.note ?? null,
+      documentAnalysis: record.documentAnalysis ?? null,
+      timeline: record.timeline ?? null,
+      checkpoint: record.checkpoint ?? null,
+      reviewDecision: record.reviewDecision ?? null,
+      reviewedByUserId: record.reviewedByUserId ?? null,
+      reviewedAt: record.reviewedAt ? new Date(record.reviewedAt) : null,
+      createdAt: new Date(record.createdAt),
+      updatedAt: new Date(record.updatedAt),
+    });
+    return clone(record);
+  }
+
+  async updateLegalResearchArtifact(
+    record: LegalResearchArtifactRecord,
+  ): Promise<LegalResearchArtifactRecord> {
+    validateLegalResearchArtifactRecord(record);
+    const [row] = await this.db
+      .update(schema.legalResearchArtifacts)
+      .set({
+        kind: record.kind,
+        status: record.status,
+        title: record.title,
+        note: record.note ?? null,
+        sourceReferences: record.sourceReferences,
+        contextLinks: record.contextLinks,
+        documentAnalysis: record.documentAnalysis ?? null,
+        timeline: record.timeline ?? null,
+        checkpoint: record.checkpoint ?? null,
+        reviewDecision: record.reviewDecision ?? null,
+        reviewedByUserId: record.reviewedByUserId ?? null,
+        reviewedAt: record.reviewedAt ? new Date(record.reviewedAt) : null,
+        updatedAt: new Date(record.updatedAt),
+        reviewOnly: record.reviewOnly,
+        metadata: record.metadata,
+      })
+      .where(
+        and(
+          eq(schema.legalResearchArtifacts.firmId, record.firmId),
+          eq(schema.legalResearchArtifacts.id, record.id),
+        ),
+      )
+      .returning();
+    if (!row) throw new Error(`Legal research artifact ${record.id} was not found`);
+    return mapLegalResearchArtifactRow(row);
   }
 
   async listDraftTemplates(

@@ -1,11 +1,17 @@
 import { Worker } from "bullmq";
 import { S3Client } from "@aws-sdk/client-s3";
 import { z } from "zod";
-import type { DraftAssistProvider, OpenPracticeQueueName } from "@open-practice/domain";
+import type {
+  AiOperationalProposalProvider,
+  DraftAssistProvider,
+  OpenPracticeQueueName,
+} from "@open-practice/domain";
 import {
   createDatabaseRuntime,
+  createProviderConfigCipherFromKey,
   DrizzleOpenPracticeRepository,
   InMemoryOpenPracticeRepository,
+  isProviderConfigEncryptionKey,
   type OpenPracticeRepository,
 } from "@open-practice/database";
 import {
@@ -27,10 +33,32 @@ const optionalString = z.preprocess(
   z.string().min(1).optional(),
 );
 
+const optionalConfigEncryptionKey = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z
+    .string()
+    .min(1)
+    .refine(isProviderConfigEncryptionKey, {
+      message:
+        "OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY must decode to exactly 32 bytes using base64, base64url, or hex",
+    })
+    .optional(),
+);
+
 const optionalUrl = z.preprocess(
   (value) => (value === "" ? undefined : value),
   z.string().url().optional(),
 );
+
+const booleanFromEnv = z.preprocess((value) => {
+  if (value === undefined || value === "") return undefined;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+  }
+  return value;
+}, z.boolean().default(false));
 
 export const workerEnvSchema = z.object({
   NODE_ENV: z.string().default("development"),
@@ -38,7 +66,8 @@ export const workerEnvSchema = z.object({
   WORKER_QUEUES: z.string().optional(),
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
   DATABASE_URL: optionalString,
-  OPEN_PRACTICE_USE_MEMORY_REPO: z.coerce.boolean().default(false),
+  OPEN_PRACTICE_USE_MEMORY_REPO: booleanFromEnv,
+  OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: optionalConfigEncryptionKey,
   S3_ENDPOINT: optionalUrl,
   S3_REGION: z.string().default("local"),
   S3_BUCKET: z.string().default("open-practice-documents"),
@@ -46,7 +75,7 @@ export const workerEnvSchema = z.object({
   S3_SECRET_KEY: optionalString,
   SMTP_HOST: z.string().default("localhost"),
   SMTP_PORT: z.coerce.number().default(1025),
-  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_SECURE: booleanFromEnv,
   SMTP_FROM: z.string().default("Open Practice <no-reply@open-practice.local>"),
   SMTP_USERNAME: optionalString,
   SMTP_PASSWORD: optionalString,
@@ -88,6 +117,16 @@ export function validateWorkerReadiness(env: WorkerEnv): void {
       "Worker memory repository cannot be combined with DATABASE_URL; unset DATABASE_URL or disable OPEN_PRACTICE_USE_MEMORY_REPO",
     );
   }
+
+  if (
+    env.DATABASE_URL &&
+    !env.OPEN_PRACTICE_USE_MEMORY_REPO &&
+    !env.OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY
+  ) {
+    throw new Error(
+      "OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY is required when DATABASE_URL is configured",
+    );
+  }
 }
 
 export function createWorkerRepositoryFromEnv(env: WorkerEnv): {
@@ -100,8 +139,16 @@ export function createWorkerRepositoryFromEnv(env: WorkerEnv): {
   }
 
   const runtime = createDatabaseRuntime(env.DATABASE_URL);
+  const rawProviderConfigKey = env.OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY;
+  if (!rawProviderConfigKey) {
+    throw new Error(
+      "OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY is required when DATABASE_URL is configured",
+    );
+  }
   return {
-    repository: new DrizzleOpenPracticeRepository(runtime.db),
+    repository: new DrizzleOpenPracticeRepository(runtime.db, {
+      providerConfigCipher: createProviderConfigCipherFromKey(rawProviderConfigKey),
+    }),
     close: runtime.close,
   };
 }
@@ -113,6 +160,7 @@ export function createWorkers(input: {
   repository: OpenPracticeRepository;
   s3: { client: S3Client; bucket: string };
   ocrProvider: TesseractOcrProvider;
+  aiOperationalProposalProvider?: AiOperationalProposalProvider;
   draftAssistProvider?: DraftAssistProvider;
   mailSender: SmtpMailSender | DisabledMailSender;
   inboundEmailParser: MailParserProvider;
@@ -138,6 +186,7 @@ export function createWorkers(input: {
             repository: input.repository,
             s3: input.s3,
             ocrProvider: input.ocrProvider,
+            aiOperationalProposalProvider: input.aiOperationalProposalProvider,
             draftAssistProvider: input.draftAssistProvider,
             mailSender: input.mailSender,
             inboundEmailParser: input.inboundEmailParser,

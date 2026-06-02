@@ -12,55 +12,18 @@ row should not stay here as future work.
 These candidates name the next smallest useful unimplemented slice. Each row also states the shipped
 surface it must not duplicate.
 
-The persistent trust statement import batch metadata gap is shipped as OP-T118; future trust
-statement match-rule profiles should be promoted as their own candidate only after comparing
-against the shipped OP-T104 preview, OP-T107 exception-resolution, and OP-T118 batch metadata
-proof.
+The persistent trust statement import batch metadata gap is shipped as OP-T118, and the review-only
+statement match-rule/accounting-profile depth is shipped as OP-T136. Future trust/accounting
+candidates should compare against OP-T104 preview, OP-T107 exception-resolution, OP-T118 batch
+metadata, and OP-T136 accounting-review proof before proposing another slice.
 
 ### Clio-Informed Functional-Parity Candidates - 2026-05-27
 
-These candidates mirror the remaining live Candidate rows OP-T135, OP-T136, OP-T138, and OP-T139 in
-`docs/planning-and-progress.md`. They come from the Clio-only product-spec review and the local Open
-Practice audit. Clio remains proprietary public-product research; use this section for independent
-planning only, with no copied Clio prose, assets, screenshots, templates, schemas, API examples, or
-UI structure. OP-T127 through OP-T134 and OP-T137 through OP-T142 are shipped or in Review and should
-not remain here as future work.
-
-- **OP-T135 billing approval and payment collection flow**
-  - **First slice:** Add hosted payment-request/link shell records tied to issued invoices, bill
-    delivery/reminder state, payment-plan placeholders, credits/write-offs posture, and manual
-    payment evidence without moving funds.
-  - **Local gap / shipped boundary:** Manual payments and trust-transfer review exist, but no hosted
-    client-facing payment request shell or payment-plan posture exists.
-  - **Out of scope:** Card storage, processor settlement, tap-to-pay, automatic reconciliation, trust
-    posting, and payment-plan enforcement.
-
-- **OP-T136 trust/accounting reconciliation depth**
-  - **First slice:** Add operating-vs-trust account posture, reconciliation freshness, statement
-    match-rule profiles, protected-funds cues, bank-feed import shell records, vendor/expense
-    accounting dimensions, and review-only accounting dashboards.
-  - **Local gap / shipped boundary:** Trust ledger guards, statement previews, exception decisions,
-    import batches, and jurisdictional reports exist, but accounting-style reconciliation depth is
-    still partial.
-  - **Out of scope:** Live bank feeds, automatic transaction matching, automatic disbursement,
-    accounting certification, and jurisdiction-specific compliance claims.
-
-- **OP-T138 AI operational action proposals**
-  - **First slice:** Expand async assist into review-first operational proposals for deadlines,
-    tasks, document organization, draft invoice cues, and client-update drafts with source context.
-  - **Local gap / shipped boundary:** Async assist jobs create non-authoritative records, but AI does
-    not yet propose operational changes for staff approval.
-  - **Out of scope:** Autonomous mutation, provider-specific LLM commitments, privileged text in
-    jobs/audits, and legal advice claims.
-
-- **OP-T139 legal research workspace shell**
-  - **First slice:** Add a staff-only legal research workspace shell for cited-source notes,
-    matter-context attachment, document-analysis artifact status, strategy/timeline notes, and review
-    checkpoints without connecting a live provider.
-  - **Local gap / shipped boundary:** OP has drafting and document review foundations, but no
-    substantive legal research workspace boundary.
-  - **Out of scope:** Proprietary research content, scraped authority storage, automated advice, and
-    source-citation claims.
+The 2026-05-27 Clio-informed candidate list is empty for now. OP-T127 through OP-T142 are Done in
+`docs/planning-and-progress.md`. Future Clio-informed candidates should come from a fresh clean-room
+gap audit and must not duplicate these shipped slices. Clio remains proprietary public-product
+research: use this section for independent planning only, with no copied Clio prose, assets,
+screenshots, templates, schemas, API examples, or UI structure.
 
 ### Reference Review Candidates - 2026-05-22
 
@@ -270,15 +233,6 @@ assets, or distinctive prose are copied into this repo by this catalogue.
     reconciliation progress concepts.
   - **Reuse and snippets:** LedgerSMB is GPL/reference-only; no snippets. Blnk patterns may inform
     original OP code.
-
-- **Trust statement match-rule profiles**
-  - **First slice:** Persist review-only match-rule profiles for statement previews, including
-    normalized date/amount/reference strategy, variance category, and reviewer explanation.
-  - **Local gap / shipped boundary:** OP-T104 and OP-T107 added import previews and exception
-    resolutions, but match rules are not persisted as operator-reviewable profiles.
-  - **References:** `blnkfinance__blnk`, `apache__fineract`, and `ledgersmb__ledgersmb`.
-  - **Reuse and snippets:** Blnk/Fineract are Apache-2.0 adopt-selectively; LedgerSMB is GPL
-    reference-only. Prefer clean-room implementation over snippets.
 
 - **Ledger balance snapshot comparison**
   - **First slice:** Add a read-only balance snapshot comparison between current OP trust balances,

@@ -23,6 +23,7 @@ export type ResourceKind =
   | "audit_log"
   | "intake_session"
   | "legal_clinic"
+  | "legal_research"
   | "job"
   | "report"
   | "email"
@@ -37,7 +38,8 @@ export type ResourceKind =
   | "provider_setting"
   | "outbound_webhook"
   | "draft"
-  | "draft_template";
+  | "draft_template"
+  | "ai_proposal";
 
 export type Action = "create" | "read" | "update" | "delete" | "approve" | "export";
 
@@ -69,6 +71,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     audit_log: ["read", "export"],
     intake_session: ["create", "read", "update", "delete", "approve", "export"],
     legal_clinic: ["create", "read", "update", "delete", "approve", "export"],
+    legal_research: ["create", "read", "update", "approve", "export"],
     job: ["read", "update", "export"],
     report: ["read", "export"],
     email: ["create", "read", "update", "export"],
@@ -84,6 +87,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     outbound_webhook: ["create", "read", "update", "delete", "approve", "export"],
     draft: ["create", "read", "update", "delete", "export"],
     draft_template: ["create", "read", "update", "delete", "export"],
+    ai_proposal: ["create", "read", "update", "approve", "export"],
   },
   licensee: {
     contact: ["create", "read", "update", "export"],
@@ -100,6 +104,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     audit_log: ["read"],
     intake_session: ["create", "read", "update", "approve", "export"],
     legal_clinic: ["create", "read", "update", "approve", "export"],
+    legal_research: ["create", "read", "update", "approve", "export"],
     job: ["read"],
     email: ["create", "read", "update"],
     inbound_email: ["create", "read", "update"],
@@ -112,6 +117,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     client_portal: ["create", "read", "update"],
     draft: ["create", "read", "update", "delete", "export"],
     draft_template: ["create", "read", "update", "export"],
+    ai_proposal: ["create", "read", "update", "approve", "export"],
   },
   firm_member: {
     contact: ["create", "read", "update"],
@@ -126,6 +132,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     calendar_event: ["create", "read", "update", "delete"],
     intake_session: ["create", "read", "update"],
     legal_clinic: ["read", "update"],
+    legal_research: ["create", "read", "update", "approve"],
     email: ["create", "read"],
     inbound_email: ["read", "update"],
     document_processing: ["create", "read"],
@@ -136,6 +143,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     client_portal: ["read"],
     draft: ["create", "read", "update"],
     draft_template: ["read"],
+    ai_proposal: ["create", "read", "update", "approve"],
   },
   billing_bookkeeper: {
     contact: ["read"],
@@ -173,6 +181,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     intake_session: ["read", "export"],
     conversation_thread: ["read", "export"],
     legal_clinic: ["read", "export"],
+    legal_research: ["read", "export"],
     job: ["read", "export"],
     report: ["read", "export"],
     email: ["read", "export"],
@@ -186,6 +195,7 @@ const rolePermissions: Record<ProfessionalRole, Partial<Record<ResourceKind, Act
     client_portal: ["read", "export"],
     provider_setting: ["read"],
     outbound_webhook: ["read"],
+    ai_proposal: ["read", "export"],
   },
 };
 
@@ -201,12 +211,14 @@ const matterScopedResources = new Set<ResourceKind>([
   "task",
   "calendar_event",
   "intake_session",
+  "legal_research",
   "email",
   "inbound_email",
   "document_processing",
   "share_link",
   "external_upload",
   "draft",
+  "ai_proposal",
 ]);
 
 const firmWideJobRoles = new Set<ProfessionalRole>(["owner_admin", "auditor"]);
@@ -214,6 +226,8 @@ const firmWideJobRoles = new Set<ProfessionalRole>(["owner_admin", "auditor"]);
 const safeJobMetadataKeys = new Set([
   "attachmentCount",
   "attachmentId",
+  "artifactId",
+  "artifactKind",
   "attemptNumber",
   "bullJobId",
   "checksumStatus",
@@ -248,6 +262,14 @@ const safeJobMetadataKeys = new Set([
   "providerConfigured",
   "providerMessageId",
   "providerModel",
+  "proposalCount",
+  "proposalId",
+  "proposalKind",
+  "proposalKindCount",
+  "proposalKinds",
+  "reviewOnly",
+  "proposalSummaryLength",
+  "proposalTitleLength",
   "recipientCount",
   "recordCount",
   "reportDefinitionKey",
@@ -263,6 +285,7 @@ const safeJobMetadataKeys = new Set([
   "source",
   "sourceTextLength",
   "sourceType",
+  "sourceTypes",
   "summaryCount",
   "summaryLength",
   "suggestedTextLength",
@@ -406,6 +429,7 @@ export type DashboardSectionKey =
   | "contacts"
   | "funds"
   | "documents"
+  | "research"
   | "drafting"
   | "calendar"
   | "billing"
@@ -435,6 +459,12 @@ const dashboardSections: Array<{
     key: "documents",
     label: "Documents",
     resource: "document",
+    preferredMatterScopedAction: "read",
+  },
+  {
+    key: "research",
+    label: "Research",
+    resource: "legal_research",
     preferredMatterScopedAction: "read",
   },
   {

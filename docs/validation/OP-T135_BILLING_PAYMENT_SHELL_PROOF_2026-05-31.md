@@ -16,6 +16,17 @@ Implemented the smallest coherent OP-T135 first slice:
 - Surfaced payment request shells and manual-payment evidence flags in billing dashboard and billing
   export payloads.
 
+## Closeout
+
+Status is now Done as the billing/payment shell, not as full Clio-class payments. The shell records
+operational payment-request posture, optional provider-session posture, reminder/delivery state, and
+evidence-present cues, while settlement, public payment-page UX, live reconciliation, refunds,
+chargebacks, card storage, payment-plan enforcement, tap-to-pay, and trust-ledger posting remain
+future scoped work.
+
+The Clio parity review stayed clean-room planning input only. No Clio prose, schemas, examples,
+screenshots, UI structure, assets, private tenant data, or code were copied into Open Practice.
+
 ## Changed Paths
 
 - `apps/api/src/routes/billing.ts`

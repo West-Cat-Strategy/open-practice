@@ -61,6 +61,17 @@ export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
     },
     approvals: [],
     reconciliations: [],
+    accountingReview: {
+      matchRuleProfiles: [],
+      accountingProfiles: [],
+      summary: {
+        matchRuleProfileCount: 0,
+        accountingProfileCount: 0,
+        protectedAccountCount: 0,
+        bankFeedShellCount: 0,
+        reviewOnly: true,
+      },
+    },
     diagnostics: {
       pendingApprovalTransactionIds: [],
       rejectedApprovalTransactionIds: [],

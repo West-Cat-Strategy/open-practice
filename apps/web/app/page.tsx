@@ -73,12 +73,22 @@ import {
 } from "./provider-status-dashboard";
 import { emptyConnectorOperationsResponse } from "./connector-outbox-dashboard";
 import {
+  buildAiOperationalProposalsPath,
+  emptyAiOperationalProposalsResponse,
+} from "./ai-operational-proposals-dashboard";
+import {
+  buildLegalResearchWorkspacePath,
+  emptyLegalResearchWorkspace,
+  loadLegalResearchDashboardData,
+} from "./legal-research-dashboard";
+import {
   emptyAuditProjectionDashboard,
   type AuditProjectionDashboardResponse,
 } from "./audit-dashboard";
 import { emptyStaffReportingWorkspace } from "./reporting-dashboard";
 import type {
   AuditResponse,
+  AiOperationalProposalsResponse,
   BillingDashboardResponse,
   CalendarCredentialsResponse,
   CalendarDashboardResponse,
@@ -111,6 +121,8 @@ import type {
   IntakeVariableProposalsResponse,
   JurisdictionalTrustReportResponse,
   LegalClinicDashboardResponse,
+  LegalResearchDashboardResponse,
+  LegalResearchWorkspaceResponse,
   LegalClinicProfileResponse,
   LegalClinicProfilesResponse,
   LegalClinicProgramsResponse,
@@ -534,6 +546,12 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     headers,
     { definitions: [] },
   );
+  const aiOperationalProposals = await apiGetOptional<AiOperationalProposalsResponse>(
+    buildAiOperationalProposalsPath(),
+    emptyAiOperationalProposalsResponse(),
+    headers,
+    emptyAiOperationalProposalsResponse(),
+  );
   const reportingWorkspace = await apiGetOptional<StaffReportingWorkspaceResponse>(
     "/api/reports/workspace",
     emptyStaffReportingWorkspace(),
@@ -574,6 +592,9 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   );
   const canViewDocuments = capabilities.sections.some(
     (section) => section.key === "documents" && section.enabled,
+  );
+  const canViewResearch = capabilities.sections.some(
+    (section) => section.key === "research" && section.enabled,
   );
   const drafting: DraftingDashboardResponse = canViewDrafting
     ? await loadDraftingDashboardData({
@@ -683,6 +704,18 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
             emptyDocumentAssemblyWorkbench(matterId),
             headers,
             emptyDocumentAssemblyWorkbench(matterId, "access_denied"),
+          ),
+      })
+    : { workbenchesByMatterId: {} };
+  const legalResearch: LegalResearchDashboardResponse = canViewResearch
+    ? await loadLegalResearchDashboardData({
+        matters,
+        getWorkspace: (matterId) =>
+          apiGetOptional<LegalResearchWorkspaceResponse>(
+            buildLegalResearchWorkspacePath(matterId),
+            emptyLegalResearchWorkspace(matterId),
+            headers,
+            emptyLegalResearchWorkspace(matterId, "access_denied"),
           ),
       })
     : { workbenchesByMatterId: {} };
@@ -805,6 +838,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     <DashboardClient
       apiBaseUrl={browserApiBaseUrl}
       auditProjection={auditProjection}
+      aiOperationalProposals={aiOperationalProposals}
       billing={billing}
       calendar={calendar}
       capabilities={capabilities}
@@ -825,6 +859,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       intakePipeline={intakePipeline}
       publicConsultation={publicConsultation}
       legalClinic={legalClinic}
+      legalResearch={legalResearch}
       matters={matters}
       overview={overview}
       operationalViewDefinitions={operationalViewDefinitions.definitions}
