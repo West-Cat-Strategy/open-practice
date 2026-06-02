@@ -55,11 +55,31 @@ rotation workflow, and proactive migration of existing plaintext rows.
 `apps/web/app/dashboard-client.tsx` changed only to remove a stale unused type import that blocked
 the required `pnpm ci:local` lint gate; it is not part of the encryption behavior.
 
+## Main Replay Reconciliation
+
+- Current local `main` at `877dd1b` already contains the landed OP-T143 implementation commit
+  `8a497fb`, with OP-T143 marked `Done` in `docs/planning-and-progress.md` and indexed in
+  `docs/validation/README.md`.
+- Comparing the amended source branch `codex/op-t143-provider-config-encryption` (`54f84b0`) with
+  the landed OP-T143 commit (`8a497fb`) leaves only this proof note as the surviving delta.
+- The clean replay branch `codex/op-t143-provider-config-encryption-main-replay` was created from
+  `main` without cherry-picking the full source commit, so the final branch diff is limited to
+  `docs/validation/OP-T143_PROVIDER_CONFIG_ENCRYPTION_PROOF_2026-06-02.md`.
+- `docs/planning-and-progress.md` and `docs/validation/README.md` remain unchanged on the replay
+  branch because current `main` already reflects the shipped row status and proof-index entry.
+
 ## Validation
 
 - `pnpm verify:select -- --files <changed paths>` passed and selected format, docs, policy, root
   test/build, database test/db/typecheck, API test/typecheck, worker test/typecheck/build, and web
   test/typecheck checks.
+- Main replay on 2026-06-02: `pnpm verify:select -- --files docs/validation/OP-T143_PROVIDER_CONFIG_ENCRYPTION_PROOF_2026-06-02.md`
+  selected `pnpm format:check`, `pnpm docs:check`, and `pnpm policy:check` for the one-path
+  proof-only diff.
+- Main replay on 2026-06-02: `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`,
+  `git diff --check`, `git diff --name-only main...HEAD`, and
+  `git diff --exit-code main...HEAD -- docs/planning-and-progress.md docs/validation/README.md`
+  passed.
 - `pnpm --filter @open-practice/database test -- config-encryption.test.ts repository.providers-jobs-email.test.ts`
   passed: 17 files, 99 tests.
 - `pnpm --filter @open-practice/database build` passed.
