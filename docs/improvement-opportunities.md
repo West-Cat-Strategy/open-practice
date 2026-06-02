@@ -13,7 +13,7 @@ These candidates name the next smallest useful unimplemented slice. Each row als
 surface it must not duplicate.
 
 The persistent trust statement import batch metadata gap is shipped as OP-T118, and the review-only
-statement match-rule/accounting-profile depth is in OP-T136 Review. Future trust/accounting
+statement match-rule/accounting-profile depth is shipped as OP-T136. Future trust/accounting
 candidates should compare against OP-T104 preview, OP-T107 exception-resolution, OP-T118 batch
 metadata, and OP-T136 accounting-review proof before proposing another slice.
 
@@ -23,8 +23,8 @@ These candidates mirror the remaining live Candidate rows OP-T138 and OP-T139 in
 `docs/planning-and-progress.md`. They come from the Clio-only product-spec review and the local Open
 Practice audit. Clio remains proprietary public-product research; use this section for independent
 planning only, with no copied Clio prose, assets, screenshots, templates, schemas, API examples, or
-UI structure. OP-T127 through OP-T136 and OP-T137 through OP-T142 are shipped or in Review and should
-not remain here as future work.
+UI structure. OP-T127 through OP-T137 and OP-T140 through OP-T142 are shipped and should not remain
+here as future work.
 
 - **OP-T138 AI operational action proposals**
   - **First slice:** Expand async assist into review-first operational proposals for deadlines,

@@ -60,9 +60,9 @@ Next operational scale priorities:
 
 1.  **Clio-Informed Product Suite Completion**: Use the 2026-05-26
     [Clio product specification review](reference-review-clio-2026-05-26.md) as the planning lens
-    for the remaining live parity rows. OP-T135 is Done, OP-T136 is in Review, and OP-T138 and
-    OP-T139 remain the next Candidate picks. Shipped OP-T127 through OP-T135 and OP-T137 through
-    OP-T142 work remains archived proof rather than future backlog.
+    for the remaining live parity rows. OP-T135 and OP-T136 are Done, and OP-T138 and OP-T139
+    remain the next Candidate picks. Shipped OP-T127 through OP-T137 and OP-T140 through OP-T142
+    work remains archived proof rather than future backlog.
 
 ### Phase 4: Clio-Informed Functional Parity (Candidate)
 
@@ -71,11 +71,11 @@ Practice planning. Clio remains proprietary reference research: no Clio assets, 
 schemas, templates, API examples, or UI structure should be copied into Open Practice. Candidate
 rows live in `docs/planning-and-progress.md`; this section holds the durable product direction.
 
-1.  **Completed Parity Slices**: OP-T127 through OP-T135 and OP-T137 through OP-T142 are shipped or
-    in Review in the live workboard. Their future work belongs in new candidate rows rather than
-    stale reimplementation language here.
+1.  **Completed Parity Slices**: OP-T127 through OP-T137 and OP-T140 through OP-T142 are shipped in
+    the live workboard. Their future work belongs in new candidate rows rather than stale
+    reimplementation language here.
 2.  **Billing, Payments, Trust, And Accounting**: OP-T135 delivered the hosted payment-request shell
-    boundary, and OP-T136 is in Review with operating-vs-trust account posture, match-rule profiles,
+    boundary, and OP-T136 delivered operating-vs-trust account posture, match-rule profiles,
     protected-funds cues, metadata-only bank-feed shell posture, and review-only accounting
     dashboards. Live settlement, card storage, bank-feed automation, automatic trust posting,
     payment-plan enforcement, automatic matching/disbursement, and certified accounting claims stay

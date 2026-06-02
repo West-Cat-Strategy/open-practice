@@ -18,8 +18,7 @@ screenshots, UI structure, assets, private tenant data, or code were copied into
 
 ## Current Parity State
 
-- OP-T127 through OP-T135, OP-T137, and OP-T140 through OP-T142 are Done.
-- OP-T136 is in Review with the first trust/accounting reconciliation-depth slice.
+- OP-T127 through OP-T137 and OP-T140 through OP-T142 are Done.
 - OP-T138 and OP-T139 remain Candidates.
 
 ## Shipped Parity Areas
@@ -55,11 +54,9 @@ screenshots, UI structure, assets, private tenant data, or code were copied into
 
 ## Next-Row Ranking
 
-1. OP-T136 Review: confirm accounting profile persistence, route authorization, dashboard posture,
-   audit metadata, docs, and migration proof.
-2. OP-T138 Candidate: highest next operating leverage after trust/accounting depth because it turns
+1. OP-T138 Candidate: highest next operating leverage after trust/accounting depth because it turns
    existing assist infrastructure into review-first operational proposals.
-3. OP-T139 Candidate: next legal-work shell after OP-T138, with strict no-provider/no-advice
+2. OP-T139 Candidate: next legal-work shell after OP-T138, with strict no-provider/no-advice
    boundaries.
 
 ## Validation

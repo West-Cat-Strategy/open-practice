@@ -31,9 +31,12 @@ private tenant data, or code were copied into Open Practice.
 
 ## Changed Paths
 
+- `apps/api/src/routes/billing.test.ts`
+- `apps/api/src/routes/client-portal.test.ts`
+- `apps/api/src/routes/conversation-threads.test.ts`
+- `apps/api/src/routes/intake-forms.test.ts`
 - `apps/api/src/routes/ledger.test.ts`
 - `apps/api/src/routes/ledger.ts`
-- `apps/api/src/routes/client-portal.test.ts`
 - `apps/web/app/dashboard-client.test.ts`
 - `apps/web/app/dashboard-client.tsx`
 - `apps/web/app/trust-controls-dashboard.ts`
@@ -65,9 +68,17 @@ private tenant data, or code were copied into Open Practice.
 - `scripts/route-authorization-manifest.mjs`
 - `scripts/validate-open-practice-boundaries.mjs`
 
+## Closeout Drift
+
+The closeout pass found date-sensitive API tests that had expired after the 2026-06-01 parity audit:
+Stripe Checkout Session reuse used a fixed same-day expiry, client portal/intake action links used
+near-term fixed expiries, and conversation-thread creation used a fixed retention boundary that had
+become past-tense in PDT. Those assertions are now future-relative while preserving the same
+behavioral coverage.
+
 ## Validation
 
-- `pnpm verify:select -- --files $(git diff --name-only) $(git ls-files --others --exclude-standard)`
+- `pnpm verify:select -- --files $(git diff --name-only main)`
   passed and selected format, docs, policy, root/package tests, package typechecks, database checks,
   migration parity, and build.
 - `pnpm format:check` passed.
@@ -79,8 +90,13 @@ private tenant data, or code were copied into Open Practice.
 - `pnpm --filter @open-practice/database db:check` passed.
 - `pnpm migrations:check` passed: 46 SQL files match 46 journal entries.
 - `pnpm --filter @open-practice/database typecheck` passed.
+- Targeted API drift rerun passed for `src/routes/billing.test.ts`,
+  `src/routes/client-portal.test.ts`, `src/routes/conversation-threads.test.ts`, and
+  `src/routes/intake-forms.test.ts`: 4 files, 56 tests.
 - `pnpm --filter @open-practice/api test` passed: 39 files, 430 tests.
-- `pnpm --filter @open-practice/api typecheck` passed.
+- `pnpm --filter @open-practice/api typecheck` passed after rebuilding local package artifacts with
+  `pnpm --filter @open-practice/domain build`, `pnpm --filter @open-practice/database build`, and
+  `pnpm --filter @open-practice/providers build`.
 - `pnpm --filter @open-practice/providers test` passed: 7 files, 17 tests.
 - `pnpm --filter @open-practice/worker test` passed: 3 files, 27 tests.
 - `pnpm --filter @open-practice/web test` passed: 16 files, 128 tests.
