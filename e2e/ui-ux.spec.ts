@@ -25,6 +25,7 @@ const sectionSentinels: Record<OpenPracticeRouteId, RegExp[]> = {
   funds: [/Trust controls workbench/i],
   billing: [/Create draft invoice/i],
   documents: [/Document processing workbench/i],
+  research: [/Research workspace/i],
   shares: [/Create share link/i],
   externalUploads: [/Uploaded document review/i],
   drafting: [/Templates/i, /Matter drafts/i],
