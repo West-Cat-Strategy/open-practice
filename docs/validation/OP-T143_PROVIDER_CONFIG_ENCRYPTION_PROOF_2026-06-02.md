@@ -55,11 +55,31 @@ rotation workflow, and proactive migration of existing plaintext rows.
 `apps/web/app/dashboard-client.tsx` changed only to remove a stale unused type import that blocked
 the required `pnpm ci:local` lint gate; it is not part of the encryption behavior.
 
+## Current Main Replay
+
+- Replayed the surviving OP-T143 delta onto
+  `codex/op-t143-provider-config-encryption-surviving-replay` from current `main` (`877dd1b`).
+- Compared source branch `codex/op-t143-provider-config-encryption` (`54f84b0`) with the OP-T143
+  implementation commit already present on `main` (`8a497fb`); the only provider-config encryption
+  delta that remained unique to the source branch was this proof-note reconciliation.
+- The live board row in `docs/planning-and-progress.md` and the validation index entry in
+  `docs/validation/README.md` already point OP-T143 at this provider-config proof, so no replay
+  edits were needed in those files.
+- The source branch's validation-index diff would remove unrelated active proof rows that landed on
+  `main` after the original OP-T143 branch point; that README drift was deliberately not replayed.
+- Final replay changed path:
+  `docs/validation/OP-T143_PROVIDER_CONFIG_ENCRYPTION_PROOF_2026-06-02.md`.
+
 ## Validation
 
 - `pnpm verify:select -- --files <changed paths>` passed and selected format, docs, policy, root
   test/build, database test/db/typecheck, API test/typecheck, worker test/typecheck/build, and web
   test/typecheck checks.
+- Current-main replay: `pnpm verify:select -- --files docs/validation/OP-T143_PROVIDER_CONFIG_ENCRYPTION_PROOF_2026-06-02.md`
+  passed and selected `pnpm format:check`, `pnpm docs:check`, and `pnpm policy:check`.
+- Current-main replay selected checks passed: `pnpm format:check`, `pnpm docs:check`, and
+  `pnpm policy:check`.
+- Current-main replay whitespace check passed: `git diff --check`.
 - `pnpm --filter @open-practice/database test -- config-encryption.test.ts repository.providers-jobs-email.test.ts`
   passed: 17 files, 99 tests.
 - `pnpm --filter @open-practice/database build` passed.
