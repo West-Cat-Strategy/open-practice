@@ -124,7 +124,7 @@ are backed by implementation and validation proof.
 | `POST /api/public-consultation-intakes/:id/dismiss`                                   | Staff dismissal for a pending public consultation intake with reviewer metadata and no matter creation.                                                                                                                                                                                                                                                                  |
 | `POST /api/public-consultation-intakes/:id/convert`                                   | Staff conversion of a pending public consultation intake into an intake-status matter, prospective-client contact/party, opposing-party contacts/parties, and a link back to the source public intake submission.                                                                                                                                                        |
 | `GET /api/portal/intake-forms/:token`                                                 | Public token-scoped form load with sanitized link metadata, template definition, item actions, and access logging.                                                                                                                                                                                                                                                       |
-| `POST /api/portal/intake-forms/:token/submit`                                         | Public answer submission that gates required items, accepts an optional `clientSubmissionId` for idempotent browser retries, creates an answer snapshot, links it to the form link, creates a review task/queue signal, and creates pending proposals only.                                                                                                              |
+| `POST /api/portal/intake-forms/:token/submit`                                         | Public answer submission that gates required items, accepts an optional `clientSubmissionId` for idempotent browser retries, creates an answer snapshot, links it to the form link, creates a review task/queue signal, creates pending proposals only, and returns sanitized link/submission/proposal-count metadata without raw snapshots or proposals.                |
 | `POST /api/portal/intake-forms/:token/items/:itemId/uploads`                          | Public token-scoped S3 upload intent for an intake upload item, including accepted MIME-type validation, signed checksum and byte-size headers, and scope metadata.                                                                                                                                                                                                      |
 | `POST /api/portal/intake-forms/:token/items/:itemId/documents/:documentId/complete`   | Public storage-verified checksum completion for an intake upload item document, returning generic upload receipt state rather than checksum/duplicate details.                                                                                                                                                                                                           |
 | `POST /api/portal/intake-forms/:token/items/:itemId/signature`                        | Public embedded attestation fallback or document-backed signature request creation for an intake signature item.                                                                                                                                                                                                                                                         |
@@ -268,7 +268,7 @@ are backed by implementation and validation proof.
 | `POST /api/shares`                                                                    | Creates an expiring token-hashed share link, returns the raw token once, and can queue one confirmed token email.                                                                                                                                                                                                                                                        |
 | `POST /api/shares/:id/revoke`                                                         | Revokes an existing matter-scoped share link and records audit evidence.                                                                                                                                                                                                                                                                                                 |
 | `GET /api/portal/shares/:token`                                                       | Public token-scoped read of eligible shared document metadata with access logging; verification-required links return an email-verification challenge.                                                                                                                                                                                                                   |
-| `POST /api/portal/shares/:token/email-verification`                                   | Completes the first email-delivered share-link verification step, then returns eligible shared document metadata while preserving token-hash storage and access-log evidence.                                                                                                                                                                                            |
+| `POST /api/portal/shares/:token/email-verification`                                   | Accepts `{ verificationCode }`, completes the email-delivered share-link verification step, then returns eligible shared document metadata while preserving token-hash/code-hash storage and access-log evidence.                                                                                                                                                        |
 | `GET /api/external-uploads/status`                                                    | External upload capability status, token-signing signal, and S3 configuration signal.                                                                                                                                                                                                                                                                                    |
 | `GET /api/external-uploads?matterId=`                                                 | Persisted external-upload link listing plus external-upload document review state with matter-scoped authorization and no token hashes.                                                                                                                                                                                                                                  |
 | `POST /api/external-uploads`                                                          | Creates an expiring token-hashed upload link, returns the raw token once, and can queue one confirmed token email.                                                                                                                                                                                                                                                       |
@@ -446,11 +446,16 @@ Secure share links store only HMAC token hashes. Authenticated v1 creation accep
 shares only, requires matter-scoped `share_link:create` access, a future expiry, and at least one
 shareable document. The create response returns the raw token once; when `notificationEmail` is
 provided and SMTP is configured, the create flow queues one outbox email while the raw token is
-still available. List and revoke responses never expose token hashes. Public share reads resolve the
-supplied token to its hash, reject missing, revoked, expired, or email-verification-required links,
-filter documents through the same upload/checksum/scan/legal-hold/supersession gates as portal
-grants, and record access-log outcomes for granted and denied reads. Upload, message, signature,
-and email-verification share flows remain future scoped until those public flows are implemented.
+still available. Links with `requireEmailVerification` also require a notification email and
+configured SMTP delivery, store a separate HMAC verification-code hash plus expiry, and include the
+one-time verification code in the queued share email. List and revoke responses never expose token
+or verifier hashes. Public share reads resolve the supplied token to its hash, reject missing,
+revoked, expired, or email-verification-required links, filter documents through the same
+upload/checksum/scan/legal-hold/supersession gates as portal grants, and record access-log outcomes
+for granted and denied reads. `POST /api/portal/shares/:token/email-verification` requires
+`{ verificationCode }`, compares it to the stored verifier hash, logs failed attempts, and returns
+the same public document metadata only after verification. Upload, message, and signature share
+flows remain future scoped until those public flows are implemented.
 
 External upload links store only HMAC token hashes. Authenticated creation requires matter-scoped
 `external_upload:create` access, configured token signing, configured S3 upload signing, a future
@@ -622,7 +627,8 @@ Deployments may bootstrap that same firm-owned setting from
 `PUBLIC_CONSULTATION_INTAKE_RECIPIENT_EMAILS`,
 `PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS`, and
 `PUBLIC_CONSULTATION_INTAKE_REVIEW_OWNER_USER_ID`. Supplying only allowed origins opens the CORS
-allowlist for the public route but does not overwrite stored notification settings.
+allowlist only for `POST`/preflight requests to `/api/public/consultation-intakes` and does not
+permit those public origins on authenticated API routes or overwrite stored notification settings.
 
 When enabled and SMTP/outbox infrastructure is available, public consultation submission queues a
 matter-less staff notification through the same outbound email helper used elsewhere. The email
@@ -879,7 +885,9 @@ creates OAuth-style app registrations with generated client IDs, HTTPS redirect/
 constrained scopes (`matter.read`, `document.read`, `signature_request.read`,
 `intake_session.read`, `invoice.read`, `email_outbox.read`, and `webhook.deliver`), regional
 endpoint cues marked `cue_only`, documented rate-limit posture with enforcement reserved, and
-reserved custom-action placeholders only. Scoped API credential records store worker-resolved
+reserved custom-action placeholders only. Redirect, origin, endpoint, and webhook URLs reject
+embedded username/password credentials instead of normalizing them away. Scoped API credential
+records store worker-resolved
 secret references and return only masked secret metadata. Webhook subscription posture validates
 allowlisted connector events and HTTPS destinations, then returns destination hosts rather than full
 destination URLs. The developer delivery-history route reads the linked connector outbox and

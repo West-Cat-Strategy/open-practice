@@ -1403,6 +1403,8 @@ export const shareLinks = pgTable(
       .references(() => users.id),
     permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
     requireEmailVerification: boolean("require_email_verification").notNull().default(false),
+    emailVerificationCodeHash: text("email_verification_code_hash"),
+    emailVerificationExpiresAt: timestamp("email_verification_expires_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -422,6 +422,8 @@ export interface ShareLinkRecord {
   expiresAt?: string;
   revokedAt?: string;
   requireEmailVerification: boolean;
+  emailVerificationCodeHash?: string;
+  emailVerificationExpiresAt?: string;
   createdAt: string;
 }
 

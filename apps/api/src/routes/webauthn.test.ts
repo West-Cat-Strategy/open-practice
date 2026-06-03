@@ -274,4 +274,61 @@ describe("WebAuthn routes", () => {
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({ message: "Invalid passkey login" });
   });
+
+  it("deletes only the current user's credential records", async () => {
+    const repository = testRepository();
+    await seedUser(repository, true);
+    await repository.createUser({
+      id: "user-2",
+      firmId: "firm-1",
+      displayName: "Other User",
+      email: "other@example.test",
+      role: "firm_member",
+      assignedMatterIds: [],
+      mfaEnabled: true,
+    });
+    await repository.registerWebAuthnCredential({
+      id: "cred-self",
+      firmId: "firm-1",
+      userId: "user-1",
+      credentialId: "credential-self",
+      publicKey: Buffer.from([1, 2, 3]).toString("base64url"),
+      counter: 0,
+      transports: [],
+      deviceType: "singleDevice",
+      backedUp: false,
+      createdAt: new Date().toISOString(),
+    });
+    await repository.registerWebAuthnCredential({
+      id: "cred-other",
+      firmId: "firm-1",
+      userId: "user-2",
+      credentialId: "credential-other",
+      publicKey: Buffer.from([4, 5, 6]).toString("base64url"),
+      counter: 0,
+      transports: [],
+      deviceType: "singleDevice",
+      backedUp: false,
+      createdAt: new Date().toISOString(),
+    });
+    const server = testServer(repository);
+
+    const crossUserDelete = await server.inject({
+      method: "DELETE",
+      url: "/api/auth/credentials/cred-other",
+      headers: { "x-open-practice-session": "session-token" },
+    });
+    const ownDelete = await server.inject({
+      method: "DELETE",
+      url: "/api/auth/credentials/cred-self",
+      headers: { "x-open-practice-session": "session-token" },
+    });
+
+    expect(crossUserDelete.statusCode).toBe(200);
+    await expect(repository.listWebAuthnCredentials("firm-1", "user-2")).resolves.toEqual([
+      expect.objectContaining({ id: "cred-other" }),
+    ]);
+    expect(ownDelete.statusCode).toBe(200);
+    await expect(repository.listWebAuthnCredentials("firm-1", "user-1")).resolves.toEqual([]);
+  });
 });

@@ -742,7 +742,7 @@ export interface OpenPracticeRepository {
     credentialId: string,
   ): Promise<WebAuthnCredentialRecord | undefined>;
   updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void>;
-  deleteWebAuthnCredential(firmId: string, id: string): Promise<void>;
+  deleteWebAuthnCredential(firmId: string, userId: string, id: string): Promise<void>;
   updateUserMfaStatus(firmId: string, userId: string, mfaEnabled: boolean): Promise<void>;
   createRecoveryCodes(firmId: string, userId: string, codes: RecoveryCodeRecord[]): Promise<void>;
   useRecoveryCode(

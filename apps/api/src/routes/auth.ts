@@ -87,6 +87,14 @@ export function registerAuthRoutes(
     async (request) => {
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
+      if (request.auth.user.role !== "owner_admin") {
+        throw Object.assign(
+          new Error("Owner-admin access is required to create password setup tokens"),
+          {
+            statusCode: 403,
+          },
+        );
+      }
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Password setup tokens are not configured"), {
           statusCode: 503,

@@ -775,6 +775,42 @@ describe("connector routes", () => {
     expect(conflict.json()).toMatchObject({ code: "IDEMPOTENCY_KEY_CONFLICT" });
   });
 
+  it("rejects connector redirect and origin URLs that contain userinfo credentials", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    const connector = await createRecoveryConnector(repository);
+
+    const redirect = await server.inject({
+      method: "POST",
+      url: "/api/connectors/developer/apps",
+      payload: {
+        connectorId: connector.id,
+        displayName: "Synthetic Developer App",
+        redirectUris: ["https://client:secret@developer.example.test/oauth/callback"],
+      },
+    });
+    const origin = await server.inject({
+      method: "POST",
+      url: "/api/connectors/developer/apps",
+      payload: {
+        connectorId: connector.id,
+        displayName: "Synthetic Developer App",
+        allowedOrigins: ["https://client:secret@developer.example.test/app"],
+      },
+    });
+
+    expect(redirect.statusCode).toBe(400);
+    expect(redirect.json()).toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+    expect(redirect.body).not.toContain("client:secret");
+    expect(origin.statusCode).toBe(400);
+    expect(origin.json()).toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+    expect(origin.body).not.toContain("client:secret");
+  });
+
   it("keeps connector outbox durable without scheduling when the connector queue is absent", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository });

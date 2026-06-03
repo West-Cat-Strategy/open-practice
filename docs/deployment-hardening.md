@@ -3,6 +3,8 @@
 - Require TLS for all browser, API, portal, and object-storage traffic.
 - Serve the web app with baseline response hardening headers, including no powered-by header,
   `nosniff`, no-referrer policy, restrictive permissions policy, and frame/object/base CSP guards.
+  Keep the stricter `Content-Security-Policy-Report-Only` directives enabled while nonce-compatible
+  script/style enforcement is prepared.
 - Configure embedded session auth with strong password setup/invitation flows for practice users and portal users.
 - Configure a one-time `OPEN_PRACTICE_SETUP_KEY` for production first-run setup and remove or rotate it after the first owner admin is created.
 - Keep S3 buckets private; serve files only through expiring signed URLs after server-side authorization.
@@ -33,7 +35,8 @@
 - Validate outbound connector delivery URLs before persistence and again in the worker immediately
   before delivery, including DNS resolution checks that reject private, loopback, link-local, and
   other reserved addresses. Worker delivery should use a guarded HTTPS socket lookup and must not
-  automatically follow redirects to unvalidated destinations.
+  automatically follow redirects to unvalidated destinations. Connector redirect, origin, endpoint,
+  and webhook URLs must also reject embedded username/password credentials.
 - Keep audit exports in immutable or write-once storage where available.
 - Separate production trust/funds operations from test data and demo data.
 - Keep billing, invoice, manual-payment, and trust-transfer workflows behind role-scoped operational controls; do not describe them as jurisdiction-certified accounting, tax, or trust-compliance advice.
@@ -73,6 +76,9 @@ Environment variables must be treated as deployment inputs, not application defa
   or recovery-code payloads.
 - `API_BASE_URL`, `WEB_PORT`, and `API_PORT` should be explicit per environment, with TLS termination
   and allowed origins configured at the edge.
+- Public-consultation website origins configured in the API should be treated as route-specific:
+  they are allowed only for public intake `POST`/preflight CORS and must not become credentialed CORS
+  origins for authenticated dashboard routes.
 - Local Docker Compose host ports bind to `127.0.0.1` by default. Set
   `OPEN_PRACTICE_DOCKER_HOST_BIND` only for intentional LAN testing on a trusted network.
 - `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY` must reference a

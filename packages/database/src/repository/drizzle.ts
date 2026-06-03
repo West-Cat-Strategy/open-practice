@@ -1950,11 +1950,15 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .where(eq(schema.webAuthnCredentials.id, id));
   }
 
-  async deleteWebAuthnCredential(firmId: string, id: string): Promise<void> {
+  async deleteWebAuthnCredential(firmId: string, userId: string, id: string): Promise<void> {
     await this.db
       .delete(schema.webAuthnCredentials)
       .where(
-        and(eq(schema.webAuthnCredentials.firmId, firmId), eq(schema.webAuthnCredentials.id, id)),
+        and(
+          eq(schema.webAuthnCredentials.firmId, firmId),
+          eq(schema.webAuthnCredentials.userId, userId),
+          eq(schema.webAuthnCredentials.id, id),
+        ),
       );
   }
 
@@ -4375,6 +4379,10 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       grantedByUserId: link.grantedByUserId,
       permissions: link.permissions,
       requireEmailVerification: link.requireEmailVerification,
+      emailVerificationCodeHash: link.emailVerificationCodeHash ?? null,
+      emailVerificationExpiresAt: link.emailVerificationExpiresAt
+        ? new Date(link.emailVerificationExpiresAt)
+        : null,
       expiresAt: link.expiresAt ? new Date(link.expiresAt) : null,
       revokedAt: link.revokedAt ? new Date(link.revokedAt) : null,
       createdAt: new Date(link.createdAt),

@@ -469,6 +469,9 @@ function normalizeHttpsUrl(value: string, code: string, field: string): string {
   if (parsed.protocol !== "https:") {
     throw new ApiHttpError(400, code, `${field} must use HTTPS`);
   }
+  if (parsed.username || parsed.password) {
+    throw new ApiHttpError(400, code, `${field} must not include URL credentials`);
+  }
   parsed.username = "";
   parsed.password = "";
   parsed.hash = "";

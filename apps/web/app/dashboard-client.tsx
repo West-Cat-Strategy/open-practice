@@ -4279,6 +4279,12 @@ export default function DashboardClient({
 
   async function createShareLink(): Promise<void> {
     if (!activeMatter || shareLinksStatus.createStatus !== "enabled") return;
+    if (requireEmailVerification && !shareNotificationEmail.trim()) {
+      setShareStatus(
+        "Share link creation failed: notification email is required for verification.",
+      );
+      return;
+    }
 
     setCreatingShare(true);
     setShareStatus("Creating share link...");

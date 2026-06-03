@@ -4640,14 +4640,14 @@ describe("dashboard client behavior", () => {
         matterId: "matter-001",
         permissions: ["view_documents"],
         expiresAt: "",
-        notificationEmail: " ",
+        notificationEmail: " verify@example.test ",
         requireEmailVerification: true,
       }),
     ).toEqual({
       matterId: "matter-001",
       permissions: ["view_documents"],
       expiresAt: undefined,
-      notificationEmail: undefined,
+      notificationEmail: "verify@example.test",
       requireEmailVerification: true,
     });
     expect(formatSharePermission("view_documents")).toBe("View documents");

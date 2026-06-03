@@ -858,7 +858,14 @@ describe("database schema hardening", () => {
       expect.arrayContaining(["document_id", "kind", "storage_key", "content_type"]),
     );
     expect(getTableConfig(shareLinks).columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["matter_id", "token_hash", "permissions", "expires_at"]),
+      expect.arrayContaining([
+        "matter_id",
+        "token_hash",
+        "permissions",
+        "email_verification_code_hash",
+        "email_verification_expires_at",
+        "expires_at",
+      ]),
     );
     expect(getTableConfig(externalUploadLinks).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["matter_id", "token_hash", "max_uploads", "used_uploads"]),
