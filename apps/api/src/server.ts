@@ -71,7 +71,7 @@ import { registerSignatureRoutes } from "./routes/signatures.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
 import { registerWebAuthnRoutes } from "./routes/webauthn.js";
-import type { ApiJobQueue, ConnectorDnsResolver } from "./routes/types.js";
+import type { ApiJobQueue, ApiRouteDependencies, ConnectorDnsResolver } from "./routes/types.js";
 import {
   hashToken,
   hashPassword,
@@ -104,6 +104,11 @@ const optionalConfigEncryptionKey = z.preprocess(
 const optionalUrl = z.preprocess(
   (value) => (value === "" ? undefined : value),
   z.string().url().optional(),
+);
+
+const optionalS3ServerSideEncryption = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.enum(["AES256"]).optional(),
 );
 
 const optionalBoolean = z.preprocess((value) => {
@@ -150,6 +155,7 @@ export const envSchema = z.object({
   S3_BUCKET: z.string().default("open-practice-documents"),
   S3_ACCESS_KEY: optionalString,
   S3_SECRET_KEY: optionalString,
+  S3_SERVER_SIDE_ENCRYPTION: optionalS3ServerSideEncryption,
   REDIS_URL: optionalUrl,
   SESSION_TTL_HOURS: z.coerce.number().int().positive().default(12),
   OPEN_PRACTICE_SETUP_KEY: optionalString,
@@ -226,10 +232,7 @@ interface ApiOptions {
     guestAccessTokenSigningConfigured?: boolean;
   };
   setupKey?: string;
-  s3?: {
-    client: S3Client;
-    bucket: string;
-  };
+  s3?: ApiRouteDependencies["s3"];
   e2eSupport?: boolean;
   webAuthn: {
     rpName: string;
@@ -299,6 +302,14 @@ export function validateProductionReadiness(env: ApiEnv): void {
   }
   if (!env.OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY) {
     throw new Error("OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY is required in production");
+  }
+  if (
+    env.S3_ENDPOINT &&
+    env.S3_ACCESS_KEY &&
+    env.S3_SECRET_KEY &&
+    env.S3_SERVER_SIDE_ENCRYPTION !== "AES256"
+  ) {
+    throw new Error("S3_SERVER_SIDE_ENCRYPTION=AES256 is required when S3 is configured");
   }
   if (env.STRIPE_SECRET_KEY) {
     throw new Error(
@@ -726,6 +737,7 @@ function createS3FromEnv(env: ApiEnv): ApiOptions["s3"] {
   if (!env.S3_ENDPOINT || !env.S3_ACCESS_KEY || !env.S3_SECRET_KEY) return undefined;
   return {
     bucket: env.S3_BUCKET,
+    serverSideEncryption: env.S3_SERVER_SIDE_ENCRYPTION,
     client: new S3Client({
       endpoint: env.S3_ENDPOINT,
       forcePathStyle: true,

@@ -105,6 +105,34 @@ describe("worker queue foundation", () => {
     });
   });
 
+  it("redacts inbound email job metadata to safe routing fields", () => {
+    expect(
+      createQueuedJobLifecycleRecord({
+        id: "job-inbound-1",
+        firmId: "firm-1",
+        queueName: "inbound_email",
+        jobName: "parse_inbound_email",
+        targetResourceType: "inbound_email",
+        targetResourceId: "inbound-message-1",
+        metadata: {
+          firmId: "firm-1",
+          inboundMessageId: "inbound-message-1",
+          matterId: "matter-1",
+          attachmentCount: 2,
+          rawStorageKey: "inbound-email/firm-1/raw/message.eml",
+          storageKey: "inbound-email/firm-1/inbound-message-1/body.html",
+          upstreamMessageId: "<provider-private@example.test>",
+          attachments: [{ filename: "private filing.pdf", storageKey: "private/path.pdf" }],
+        },
+      }).metadata,
+    ).toEqual({
+      firmId: "firm-1",
+      inboundMessageId: "inbound-message-1",
+      matterId: "matter-1",
+      attachmentCount: 2,
+    });
+  });
+
   it("keeps processors disabled until providers are configured", async () => {
     await expect(
       processOpenPracticeJob({
@@ -141,6 +169,9 @@ describe("worker queue foundation", () => {
     expect(() =>
       workerEnvSchema.parse({ OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: "not-a-32-byte-key" }),
     ).toThrow(/OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY/);
+    expect(() => workerEnvSchema.parse({ S3_SERVER_SIDE_ENCRYPTION: "aws:kms" })).toThrow(
+      /S3_SERVER_SIDE_ENCRYPTION/,
+    );
   });
 
   it("parses worker boolean env strings before provider config key readiness checks", () => {
@@ -157,6 +188,9 @@ describe("worker queue foundation", () => {
       workerEnvSchema.parse({ OPEN_PRACTICE_USE_MEMORY_REPO: "true" })
         .OPEN_PRACTICE_USE_MEMORY_REPO,
     ).toBe(true);
+    expect(workerEnvSchema.parse({ S3_SERVER_SIDE_ENCRYPTION: "AES256" })).toMatchObject({
+      S3_SERVER_SIDE_ENCRYPTION: "AES256",
+    });
   });
 
   it("requires a provider config encryption key when the worker uses PostgreSQL", () => {
@@ -202,5 +236,30 @@ describe("worker queue foundation", () => {
         }),
       ),
     ).toThrow("OPEN_PRACTICE_USE_MEMORY_REPO cannot be true in production");
+    expect(() =>
+      validateWorkerReadiness(
+        workerEnv({
+          NODE_ENV: "production",
+          DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+          OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
+          S3_ENDPOINT: "http://localhost:9000",
+          S3_ACCESS_KEY: "open_practice",
+          S3_SECRET_KEY: "open_practice_secret",
+        }),
+      ),
+    ).toThrow("S3_SERVER_SIDE_ENCRYPTION=AES256 is required when S3 is configured");
+    expect(() =>
+      validateWorkerReadiness(
+        workerEnv({
+          NODE_ENV: "production",
+          DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
+          OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
+          S3_ENDPOINT: "http://localhost:9000",
+          S3_ACCESS_KEY: "open_practice",
+          S3_SECRET_KEY: "open_practice_secret",
+          S3_SERVER_SIDE_ENCRYPTION: "AES256",
+        }),
+      ),
+    ).not.toThrow();
   });
 });

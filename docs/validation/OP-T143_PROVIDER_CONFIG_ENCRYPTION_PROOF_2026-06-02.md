@@ -55,20 +55,18 @@ rotation workflow, and proactive migration of existing plaintext rows.
 `apps/web/app/dashboard-client.tsx` changed only to remove a stale unused type import that blocked
 the required `pnpm ci:local` lint gate; it is not part of the encryption behavior.
 
-## Current Main Replay
+## Main Replay Reconciliation
 
-- Replayed the surviving OP-T143 delta onto
-  `codex/op-t143-provider-config-encryption-surviving-replay` from current `main` (`877dd1b`).
-- Compared source branch `codex/op-t143-provider-config-encryption` (`54f84b0`) with the OP-T143
-  implementation commit already present on `main` (`8a497fb`); the only provider-config encryption
-  delta that remained unique to the source branch was this proof-note reconciliation.
-- The live board row in `docs/planning-and-progress.md` and the validation index entry in
-  `docs/validation/README.md` already point OP-T143 at this provider-config proof, so no replay
-  edits were needed in those files.
-- The source branch's validation-index diff would remove unrelated active proof rows that landed on
-  `main` after the original OP-T143 branch point; that README drift was deliberately not replayed.
-- Final replay changed path:
-  `docs/validation/OP-T143_PROVIDER_CONFIG_ENCRYPTION_PROOF_2026-06-02.md`.
+- Current local `main` at `877dd1b` already contains the landed OP-T143 implementation commit
+  `8a497fb`, with OP-T143 marked `Done` in `docs/planning-and-progress.md` and indexed in
+  `docs/validation/README.md`.
+- Comparing the amended source branch `codex/op-t143-provider-config-encryption` (`54f84b0`) with
+  the landed OP-T143 commit (`8a497fb`) leaves only this proof note as the surviving delta.
+- The proof-only surviving replay changed
+  `docs/validation/OP-T143_PROVIDER_CONFIG_ENCRYPTION_PROOF_2026-06-02.md` without replaying stale
+  validation-index drift from the original source branch.
+- The later main-replay branch kept this provider-config proof focused while separate follow-up
+  proofs recorded object-storage encryption and inbound-email role posture.
 
 ## Validation
 

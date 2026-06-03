@@ -94,4 +94,11 @@ export async function verifyUploadedObject(
       { expectedSizeBytes, actualSizeBytes: result.ContentLength },
     );
   }
+  if (s3.serverSideEncryption && result.ServerSideEncryption !== s3.serverSideEncryption) {
+    throw new ApiHttpError(
+      409,
+      "UPLOAD_ENCRYPTION_MISMATCH",
+      "Uploaded object encryption did not match the configured server-side encryption setting.",
+    );
+  }
 }

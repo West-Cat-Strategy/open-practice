@@ -87,12 +87,16 @@ export function registerDocumentRoutes(
       "x-amz-checksum-sha256": checksumSha256Base64,
       "x-amz-meta-open-practice-size-bytes": String(query.fileSizeBytes),
       "x-open-practice-malware-scan": "required-before-share",
+      ...(s3.serverSideEncryption
+        ? { "x-amz-server-side-encryption": s3.serverSideEncryption }
+        : {}),
     };
     const command = new PutObjectCommand({
       Bucket: s3.bucket,
       Key: storageKey,
       ChecksumSHA256: checksumSha256Base64,
       ContentLength: query.fileSizeBytes,
+      ...(s3.serverSideEncryption ? { ServerSideEncryption: s3.serverSideEncryption } : {}),
       Metadata: {
         "open-practice-matter-id": query.matterId,
         "open-practice-scan": "required-before-share",

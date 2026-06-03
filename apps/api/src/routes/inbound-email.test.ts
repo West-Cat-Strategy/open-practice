@@ -248,6 +248,37 @@ describe("inbound email routes", () => {
     expect(JSON.stringify(response.json())).not.toContain("general@open-practice.test");
   });
 
+  it("denies direct inbound email status to client-external users", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-inbound-default",
+      firmId,
+      kind: "inbound_email",
+      key: "mailgun",
+      enabled: true,
+      encryptedConfig: "sealed:provider-secret",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await repository.createInboundEmailAddress({
+      id: "inbound-address-001",
+      firmId,
+      address: "matter-001@open-practice.test",
+      matterId: "matter-001",
+      enabled: true,
+      createdAt: now,
+    });
+
+    const response = await testServer(repository, user("client_external", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/inbound-email/status",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(JSON.stringify(response.json())).not.toContain("mailgun");
+    expect(JSON.stringify(response.json())).not.toContain("matter-001@open-practice.test");
+  });
+
   it("returns one parsed message with only that message's inbound attachments", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createInboundEmailMessage(message());
@@ -310,6 +341,77 @@ describe("inbound email routes", () => {
       url: "/api/inbound-email/messages?matterId=matter-002",
     });
     expect(denied.statusCode).toBe(403);
+  });
+
+  it("allows owner and auditor firm-wide inbound email review but requires matter scope for staff", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message());
+    await repository.createInboundEmailMessage(
+      message({
+        id: "inbound-message-unscoped",
+        matterId: undefined,
+        addressId: undefined,
+        status: "triage_pending",
+      }),
+    );
+
+    const owner = await testServer(repository, user("owner_admin", [])).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages",
+    });
+    expect(owner.statusCode).toBe(200);
+    expect(owner.json().messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "inbound-message-001" }),
+        expect.objectContaining({ id: "inbound-message-unscoped" }),
+      ]),
+    );
+
+    const auditor = await testServer(repository, user("auditor", [])).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages",
+    });
+    expect(auditor.statusCode).toBe(200);
+    expect(auditor.json().messages).toHaveLength(2);
+
+    const staff = await testServer(repository, user("firm_member", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages",
+    });
+    expect(staff.statusCode).toBe(403);
+  });
+
+  it("denies client-external users across direct inbound email APIs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message());
+    await repository.createInboundEmailAttachment(attachment());
+    const client = user("client_external", ["matter-001"]);
+
+    const list = await testServer(repository, client).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages?matterId=matter-001",
+    });
+    expect(list.statusCode).toBe(403);
+
+    const detail = await testServer(repository, client).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages/inbound-message-001",
+    });
+    expect(detail.statusCode).toBe(403);
+
+    const triage = await testServer(repository, client).inject({
+      method: "PATCH",
+      url: "/api/communications/inbox/inbound-email/inbound-message-001",
+      payload: { status: "triaged" },
+    });
+    expect(triage.statusCode).toBe(403);
+
+    const promote = await testServer(repository, client).inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-001/promote-document",
+      payload: { queueOcr: false },
+    });
+    expect(promote.statusCode).toBe(403);
   });
 
   it("allows authorized staff to triage-route unscoped inbound email to an accessible matter", async () => {

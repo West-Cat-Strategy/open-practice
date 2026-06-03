@@ -92,6 +92,24 @@ function assertInboundEmailAccess(
   if (!access.ok) throw access.error;
 }
 
+function assertInboundEmailStatusAccess(context: ApiAuthContext): void {
+  if (context.user.role === "owner_admin" || context.user.role === "auditor") return;
+  const canReadAnyAssignedMatter = context.user.assignedMatterIds.some((matterId) =>
+    canAccess({
+      user: context.user,
+      firmId: context.firmId,
+      resource: "inbound_email",
+      action: "read",
+      matterId,
+    }),
+  );
+  if (canReadAnyAssignedMatter) return;
+  assertInboundEmailAccess(context, {
+    resource: "inbound_email",
+    action: "read",
+  });
+}
+
 function currentStaffTriage(message: InboundEmailMessageRecord): Record<string, unknown> {
   const triage = message.metadata.staffTriage;
   if (!triage || typeof triage !== "object" || Array.isArray(triage)) return {};
@@ -264,6 +282,7 @@ export function registerInboundEmailRoutes(
   { repository, ocrJobQueue, s3 }: ApiRouteDependencies,
 ): void {
   server.get("/api/inbound-email/status", async (request) => {
+    assertInboundEmailStatusAccess(request.auth);
     return buildInboundEmailStatus({ repository, firmId: request.auth.firmId, auth: request.auth });
   });
 

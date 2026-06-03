@@ -88,13 +88,15 @@ Worker/provider defaults:
 | `OCR_CONFIDENCE_THRESHOLD`            | `70`                                                    | Confidence threshold for review/escalation decisions.                                                                                                              |
 | `WHISPER_MODEL`                       | empty                                                   | Empty model keeps transcription providers inactive.                                                                                                                |
 | `MEDIA_TEMP_DIR`                      | `.tmp/open-practice-media`                              | Local scratch path for future FFmpeg/Whisper processing.                                                                                                           |
+| `S3_SERVER_SIDE_ENCRYPTION`           | empty                                                   | Optional locally; required as `AES256` in production when S3 is configured so server-owned writes and staff/public upload intents request SSE-S3 encryption.       |
 | `OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY` | empty                                                   | Required for PostgreSQL-backed API and worker runtimes before provider configuration secrets are written or read; accepts a 32-byte base64, base64url, or hex key. |
 
 ## Privacy Posture
 
 Open Practice defaults to self-hosted infrastructure. Documents, intake answers, audio, transcripts,
 signature evidence, billing records, trust/funds records, and audit events stay in PostgreSQL and private
-object storage. Workers fetch sensitive content through matter-scoped service authorization; queue messages
+object storage. Server-owned draft-export/inbound-email writes and staff/public upload intents
+request SSE-S3 encryption when configured. Workers fetch sensitive content through matter-scoped service authorization; queue messages
 must contain only identifiers, small control metadata, and idempotency keys. Optional
 AI/OCR/transcription outputs are drafts with provenance, review state, and retention controls.
 Draft assist records are non-authoritative suggestions; raw source text, prompts, instructions, and

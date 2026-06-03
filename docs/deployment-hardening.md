@@ -83,8 +83,11 @@ Environment variables must be treated as deployment inputs, not application defa
   `OPEN_PRACTICE_DOCKER_HOST_BIND` only for intentional LAN testing on a trusted network.
 - `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY` must reference a
   private bucket or compatible object store. Endpoint, access key, and secret key must be provided
-  together when S3 is enabled. Upload completion must verify the expected key, checksum, size policy,
-  and malware-scan state before portal sharing.
+  together when S3 is enabled. Production S3 deployments must set `S3_SERVER_SIDE_ENCRYPTION=AES256`
+  so server-owned draft-export/inbound-email writes and staff/public upload intents request SSE-S3
+  encryption at rest; MinIO deployments must configure the matching KMS/KES support before enabling
+  the setting. Upload completion must verify the expected key, checksum, size policy, configured
+  server-side encryption, and malware-scan state before portal sharing.
 - `DOCUSEAL_*`, `DOCASSEMBLE_*`, and `OIDC_*` configuration is deprecated and must not be present in
   production. Signature, intake, and auth are embedded local workflows.
 - Worker/provider configuration should be explicit and disabled by default. Reserved defaults are

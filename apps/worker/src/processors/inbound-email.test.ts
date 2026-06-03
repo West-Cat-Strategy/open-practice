@@ -8,20 +8,41 @@ import type {
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { processInboundEmailJob } from "./inbound-email.js";
 
-function fakeS3(rawContent: Uint8Array) {
-  const puts: Array<{ key: string; body: unknown; contentType?: string }> = [];
+function fakeS3(rawContent: Uint8Array, serverSideEncryption?: "AES256") {
+  const copies: Array<{
+    key: string;
+    copySource?: string;
+    metadataDirective?: string;
+    serverSideEncryption?: string;
+  }> = [];
+  const puts: Array<{
+    key: string;
+    body: unknown;
+    contentType?: string;
+    serverSideEncryption?: string;
+  }> = [];
   return {
+    copies,
     puts,
     s3: {
       bucket: "open-practice-mail",
+      serverSideEncryption,
       client: {
         async send(command: unknown) {
           const input = (
-            command as { input: { Key: string; Body?: unknown; ContentType?: string } }
+            command as {
+              input: {
+                Key: string;
+                Body?: unknown;
+                ContentType?: string;
+                CopySource?: string;
+                MetadataDirective?: string;
+                ServerSideEncryption?: string;
+              };
+            }
           ).input;
-          if (
-            (command as { constructor: { name: string } }).constructor.name === "GetObjectCommand"
-          ) {
+          const commandName = (command as { constructor: { name: string } }).constructor.name;
+          if (commandName === "GetObjectCommand") {
             return {
               Body: {
                 async transformToByteArray() {
@@ -30,10 +51,20 @@ function fakeS3(rawContent: Uint8Array) {
               },
             };
           }
+          if (commandName === "CopyObjectCommand") {
+            copies.push({
+              key: input.Key,
+              copySource: input.CopySource,
+              metadataDirective: input.MetadataDirective,
+              serverSideEncryption: input.ServerSideEncryption,
+            });
+            return {};
+          }
           puts.push({
             key: input.Key,
             body: input.Body,
             contentType: input.ContentType,
+            serverSideEncryption: input.ServerSideEncryption,
           });
           return {};
         },
@@ -96,12 +127,12 @@ describe("processInboundEmailJob", () => {
         };
       },
     };
-    const { s3, puts } = fakeS3(new TextEncoder().encode("raw mail"));
+    const { s3, puts, copies } = fakeS3(new TextEncoder().encode("raw mail"), "AES256");
 
     const result = await processInboundEmailJob({
       data: {
         firmId: "firm-west-legal",
-        metadata: { rawStorageKey: "mail/raw/message.eml" },
+        metadata: { rawStorageKey: "inbound-email/firm-west-legal/raw/message.eml" },
       },
       repository,
       s3,
@@ -112,18 +143,23 @@ describe("processInboundEmailJob", () => {
       status: "completed",
       metadata: {
         firmId: "firm-west-legal",
+        inboundMessageId: expect.any(String),
         matterId: "matter-001",
-        upstreamMessageId: "<provider-message@example.test>",
         attachmentCount: 1,
       },
     });
+    expect(result.metadata).not.toHaveProperty("messageId");
+    expect(result.metadata).not.toHaveProperty("upstreamMessageId");
+    expect(result.metadata).not.toHaveProperty("attachments");
+    expect(JSON.stringify(result.metadata)).not.toContain("storageKey");
+    expect(JSON.stringify(result.metadata)).not.toContain("filing notice.pdf");
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({
       addressId: "inbound-address-001",
       matterId: "matter-001",
       messageId: "<provider-message@example.test>",
       status: "triaged",
-      rawStorageKey: "mail/raw/message.eml",
+      rawStorageKey: "inbound-email/firm-west-legal/raw/message.eml",
       parsedText: "Please review.",
       parsedHtmlStorageKey: expect.stringContaining("/body.html"),
     });
@@ -138,6 +174,15 @@ describe("processInboundEmailJob", () => {
       expect.stringContaining("/body.html"),
       expect.stringContaining("/attachments/"),
     ]);
+    expect(copies).toEqual([
+      {
+        key: "inbound-email/firm-west-legal/raw/message.eml",
+        copySource: "open-practice-mail/inbound-email/firm-west-legal/raw/message.eml",
+        metadataDirective: "COPY",
+        serverSideEncryption: "AES256",
+      },
+    ]);
+    expect(puts.map((put) => put.serverSideEncryption)).toEqual(["AES256", "AES256"]);
   });
 
   it("rejects jobs without a raw storage key", async () => {
@@ -156,5 +201,36 @@ describe("processInboundEmailJob", () => {
         },
       }),
     ).rejects.toThrow("Missing rawStorageKey");
+  });
+
+  it("rejects raw storage keys outside the job firm inbound namespace", async () => {
+    const invalidKeys = [
+      "mail/raw/message.eml",
+      "inbound-email/firm-east-legal/raw/message.eml",
+      "inbound-email/firm-west-legal/raw/../message.eml",
+      "inbound-email/firm-west-legal/raw/",
+      "inbound-email/firm-west-legal/raw//message.eml",
+    ];
+
+    for (const rawStorageKey of invalidKeys) {
+      const { repository } = fakeRepository();
+      const { s3 } = fakeS3(new TextEncoder().encode("raw mail"));
+
+      await expect(
+        processInboundEmailJob({
+          data: {
+            firmId: "firm-west-legal",
+            metadata: { rawStorageKey },
+          },
+          repository,
+          s3,
+          inboundEmailParser: {
+            async parse() {
+              throw new Error("Parser should not run");
+            },
+          },
+        }),
+      ).rejects.toThrow("Inbound email raw storage key must be scoped to the job firm");
+    }
   });
 });

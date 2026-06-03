@@ -839,9 +839,21 @@ describe("API auth and persistence boundaries", () => {
     expect(() =>
       envSchema.parse({ OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: "not-a-32-byte-key" }),
     ).toThrow(/OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY/);
+    expect(() => envSchema.parse({ S3_SERVER_SIDE_ENCRYPTION: "aws:kms" })).toThrow(
+      /S3_SERVER_SIDE_ENCRYPTION/,
+    );
     expect(() =>
       validateProductionReadiness(productionEnv({ S3_ENDPOINT: "http://localhost:9000" })),
     ).toThrow(/S3/);
+    expect(() =>
+      validateProductionReadiness(
+        productionEnv({
+          S3_ENDPOINT: "http://localhost:9000",
+          S3_ACCESS_KEY: "open_practice",
+          S3_SECRET_KEY: "open_practice_secret",
+        }),
+      ),
+    ).toThrow(/S3_SERVER_SIDE_ENCRYPTION/);
     expect(() =>
       validateProductionReadiness(productionEnv({ DOCUSEAL_BASE_URL: "http://localhost:8080" })),
     ).toThrow(/Deprecated external provider/);
@@ -866,6 +878,19 @@ describe("API auth and persistence boundaries", () => {
 
   it("accepts minimal production readiness configuration", () => {
     expect(() => validateProductionReadiness(productionEnv())).not.toThrow();
+    expect(() =>
+      validateProductionReadiness(
+        productionEnv({
+          S3_ENDPOINT: "http://localhost:9000",
+          S3_ACCESS_KEY: "open_practice",
+          S3_SECRET_KEY: "open_practice_secret",
+          S3_SERVER_SIDE_ENCRYPTION: "AES256",
+        }),
+      ),
+    ).not.toThrow();
+    expect(envSchema.parse({ S3_SERVER_SIDE_ENCRYPTION: "AES256" })).toMatchObject({
+      S3_SERVER_SIDE_ENCRYPTION: "AES256",
+    });
   });
 
   it("parses boolean env strings before provider config key readiness checks", () => {

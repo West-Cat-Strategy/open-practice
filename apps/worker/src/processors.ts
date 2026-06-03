@@ -73,6 +73,12 @@ export type ConnectorHttpDeliverer = (
 
 export type ConnectorDnsResolver = (hostname: string) => Promise<string[]>;
 
+type WorkerS3Storage = {
+  client: S3Client;
+  bucket: string;
+  serverSideEncryption?: "AES256";
+};
+
 const CONNECTOR_DELIVERY_JOB_NAME = "deliver_connectors";
 const CONNECTOR_JOB_MAX_ATTEMPTS = 3;
 
@@ -97,7 +103,7 @@ export async function processOpenPracticeJob(input: {
   attemptsMade?: number;
   maxAttempts?: number;
   repository: OpenPracticeRepository;
-  s3: { client: S3Client; bucket: string };
+  s3: WorkerS3Storage;
   ocrProvider: OcrProvider;
   aiOperationalProposalProvider?: AiOperationalProposalProvider;
   draftAssistProvider?: DraftAssistProvider;
@@ -150,7 +156,7 @@ async function processOpenPracticeJobBody(input: {
   attemptsMade?: number;
   maxAttempts?: number;
   repository: OpenPracticeRepository;
-  s3: { client: S3Client; bucket: string };
+  s3: WorkerS3Storage;
   ocrProvider: OcrProvider;
   aiOperationalProposalProvider?: AiOperationalProposalProvider;
   draftAssistProvider?: DraftAssistProvider;
@@ -1393,7 +1399,7 @@ async function processEmailJob(input: {
 async function processOcrJob(input: {
   data: WorkerJobEnvelope;
   repository: OpenPracticeRepository;
-  s3: { client: S3Client; bucket: string };
+  s3: WorkerS3Storage;
   ocrProvider: OcrProvider;
 }): Promise<WorkerJobResult> {
   const { data, repository, s3, ocrProvider } = input;

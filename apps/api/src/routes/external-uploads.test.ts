@@ -24,6 +24,7 @@ function deliveryConfirmation(recipientCount = 1) {
 function s3Config(
   checksumSha256 = checksum,
   contentLength = fileSizeBytes,
+  serverSideEncryption?: "AES256",
 ): NonNullable<CreateServerOptions["s3"]> {
   const client = new S3Client({
     endpoint: "http://127.0.0.1:9000",
@@ -35,14 +36,22 @@ function s3Config(
     },
   });
   (
-    client as unknown as { send: () => Promise<{ ChecksumSHA256: string; ContentLength: number }> }
+    client as unknown as {
+      send: () => Promise<{
+        ChecksumSHA256: string;
+        ContentLength: number;
+        ServerSideEncryption?: string;
+      }>;
+    }
   ).send = async () => ({
     ChecksumSHA256: Buffer.from(checksumSha256, "hex").toString("base64"),
     ContentLength: contentLength,
+    ...(serverSideEncryption ? { ServerSideEncryption: serverSideEncryption } : {}),
   });
   return {
     bucket: "open-practice-test-documents",
     client,
+    serverSideEncryption,
   };
 }
 
@@ -454,7 +463,7 @@ describe("external upload routes", () => {
   });
 
   it("creates public token-scoped upload intents and completes matching documents", async () => {
-    const { repository, server } = testServer({ s3: s3Config() });
+    const { repository, server } = testServer({ s3: s3Config(checksum, fileSizeBytes, "AES256") });
     const created = await server.inject({
       method: "POST",
       url: "/api/external-uploads",
@@ -501,6 +510,7 @@ describe("external upload routes", () => {
       "x-amz-meta-open-practice-scan": "required-before-share",
       "x-amz-meta-open-practice-size-bytes": String(fileSizeBytes),
       "x-amz-checksum-sha256": Buffer.from(checksum, "hex").toString("base64"),
+      "x-amz-server-side-encryption": "AES256",
     });
     expect(intent.json().requiredHeaders["x-amz-checksum-sha256"]).not.toBe(checksum);
     const uploadUrl = new URL(intent.json().uploadUrl);
@@ -510,6 +520,7 @@ describe("external upload routes", () => {
     );
     expect(signedHeaders).toContain("content-length");
     expect(uploadUrl.searchParams.has("x-amz-checksum-sha256")).toBe(false);
+    expect(uploadUrl.searchParams.has("x-amz-server-side-encryption")).toBe(false);
     await expect(repository.getDocument("firm-west-legal", "doc-001")).resolves.not.toHaveProperty(
       "supersededAt",
     );
