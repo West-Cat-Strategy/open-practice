@@ -134,6 +134,9 @@ describe("API HTTP helpers", () => {
     expect(isPublicRoute("POST", "/api/portal/email-receipts/token-001")).toBe(true);
     expect(isPublicRoute("GET", "/api/portal/mail/receipts/token-001")).toBe(true);
     expect(isPublicRoute("POST", "/api/portal/mail/receipts/token-001")).toBe(true);
+    expect(isPublicRoute("POST", "/api/inbound-email/provider-webhooks/mailgun/raw-mime")).toBe(
+      true,
+    );
     expect(isPublicRoute("POST", "/api/portal/mail/receipts/token-001/acknowledge")).toBe(false);
   });
 });

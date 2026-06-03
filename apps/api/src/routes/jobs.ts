@@ -69,6 +69,7 @@ export function registerJobsRoutes(
     repository,
     emailJobQueue,
     connectorJobQueue,
+    inboundEmailJobQueue,
     reportJobQueue,
     aiAssistJobQueue,
     ocrJobQueue,
@@ -82,13 +83,15 @@ export function registerJobsRoutes(
           ? emailJobQueue
           : queueName === "connectors"
             ? connectorJobQueue
-            : queueName === "reports"
-              ? reportJobQueue
-              : queueName === "ai_triage"
-                ? aiAssistJobQueue
-                : queueName === "ocr"
-                  ? ocrJobQueue
-                  : undefined,
+            : queueName === "inbound_email"
+              ? inboundEmailJobQueue
+              : queueName === "reports"
+                ? reportJobQueue
+                : queueName === "ai_triage"
+                  ? aiAssistJobQueue
+                  : queueName === "ocr"
+                    ? ocrJobQueue
+                    : undefined,
       ),
     );
   }

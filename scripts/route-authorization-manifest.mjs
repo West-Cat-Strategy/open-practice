@@ -1753,6 +1753,12 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "create",
     "derived",
   ),
+  publicRoute(
+    "registerInboundEmailRoutes",
+    "apps/api/src/routes/inbound-email.test.ts",
+    "POST",
+    "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+  ),
 
   authRoute(
     "registerShareRoutes",

@@ -134,6 +134,11 @@ const publicConsultationBootstrapSettingsSchema = z.object({
   reviewOwnerUserId: z.string().trim().min(1).optional(),
 });
 
+const inboundEmailMailgunBootstrapSettingsSchema = z.object({
+  webhookSigningKey: z.string().trim().min(1),
+  domain: z.string().trim().min(1).optional(),
+});
+
 export const envSchema = z.object({
   NODE_ENV: z.string().default("development"),
   API_PORT: z.coerce.number().default(4000),
@@ -178,6 +183,8 @@ export const envSchema = z.object({
   PUBLIC_CONSULTATION_INTAKE_SENDER_ADDRESS: optionalString,
   PUBLIC_CONSULTATION_INTAKE_RECIPIENT_EMAILS: optionalString,
   PUBLIC_CONSULTATION_INTAKE_REVIEW_OWNER_USER_ID: optionalString,
+  INBOUND_EMAIL_WEBHOOK_SECRET: optionalString,
+  INBOUND_EMAIL_DOMAIN: optionalString,
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;
@@ -187,6 +194,8 @@ const DEFAULT_RATE_LIMIT = { max: 300, timeWindow: "1 minute" };
 const E2E_RATE_LIMIT = { max: 2_000, timeWindow: "1 minute" };
 const PUBLIC_CONSULTATION_SETTINGS_KIND = "public_intake";
 const PUBLIC_CONSULTATION_SETTINGS_KEY = "consultation";
+const INBOUND_EMAIL_SETTINGS_KIND = "inbound_email";
+const INBOUND_EMAIL_MAILGUN_SETTINGS_KEY = "mailgun";
 // Auth rate limits moved to routes/auth.ts
 
 // Auth schemas moved to routes/auth.ts
@@ -210,6 +219,7 @@ interface ApiOptions {
   emailJobQueue?: ApiJobQueue;
   connectorJobQueue?: ApiJobQueue;
   connectorDnsResolver?: ConnectorDnsResolver;
+  inboundEmailJobQueue?: ApiJobQueue;
   reportJobQueue?: ApiJobQueue;
   aiAssistJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
@@ -527,6 +537,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     repository: options.repository,
     emailJobQueue: options.emailJobQueue,
     connectorJobQueue: options.connectorJobQueue,
+    inboundEmailJobQueue: options.inboundEmailJobQueue,
     reportJobQueue: options.reportJobQueue,
     aiAssistJobQueue: options.aiAssistJobQueue,
     ocrJobQueue: options.ocrJobQueue,
@@ -536,6 +547,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     draftAssistProvider: options.draftAssistProvider,
     emailJobQueue: options.emailJobQueue,
     connectorJobQueue: options.connectorJobQueue,
+    inboundEmailJobQueue: options.inboundEmailJobQueue,
     aiAssistJobQueue: options.aiAssistJobQueue,
     ocrJobQueue: options.ocrJobQueue,
     s3: options.s3,
@@ -560,6 +572,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   registerInboundEmailRoutes(server, {
     repository: options.repository,
     ocrJobQueue: options.ocrJobQueue,
+    inboundEmailJobQueue: options.inboundEmailJobQueue,
     s3: options.s3,
   });
   registerShareRoutes(server, {
@@ -790,6 +803,46 @@ export async function configurePublicConsultationIntakeSettingsFromEnv(
   return settings;
 }
 
+export type InboundEmailMailgunBootstrapSettings = z.infer<
+  typeof inboundEmailMailgunBootstrapSettingsSchema
+>;
+
+export function buildInboundEmailMailgunSettingsFromEnv(
+  env: ApiEnv,
+): InboundEmailMailgunBootstrapSettings | undefined {
+  const webhookSigningKey = env.INBOUND_EMAIL_WEBHOOK_SECRET?.trim();
+  if (!webhookSigningKey) return undefined;
+  const domain = env.INBOUND_EMAIL_DOMAIN?.trim();
+  return inboundEmailMailgunBootstrapSettingsSchema.parse({
+    webhookSigningKey,
+    ...(domain ? { domain } : {}),
+  });
+}
+
+export async function configureInboundEmailMailgunSettingsFromEnv(
+  repository: OpenPracticeRepository,
+  env: ApiEnv,
+): Promise<InboundEmailMailgunBootstrapSettings | undefined> {
+  const settings = buildInboundEmailMailgunSettingsFromEnv(env);
+  if (!settings) return undefined;
+  const firmResolution = await repository.resolveConfiguredFirm();
+  if (firmResolution.status !== "ready") {
+    throw new Error("INBOUND_EMAIL_WEBHOOK_SECRET requires exactly one configured firm");
+  }
+  const now = new Date().toISOString();
+  await repository.upsertProviderSetting({
+    id: `provider-inbound-email-mailgun-${firmResolution.firm.id}`,
+    firmId: firmResolution.firm.id,
+    kind: INBOUND_EMAIL_SETTINGS_KIND,
+    key: INBOUND_EMAIL_MAILGUN_SETTINGS_KEY,
+    enabled: true,
+    encryptedConfig: JSON.stringify(settings),
+    createdAt: now,
+    updatedAt: now,
+  });
+  return settings;
+}
+
 function redisConnectionFromUrl(redisUrl: string): {
   host: string;
   port: number;
@@ -830,6 +883,19 @@ function createConnectorJobQueueFromEnv(env: ApiEnv): Queue | undefined {
     defaultJobOptions: {
       attempts: 3,
       backoff: { type: "exponential", delay: 30_000 },
+      removeOnComplete: 1_000,
+      removeOnFail: false,
+    },
+  });
+}
+
+function createInboundEmailJobQueueFromEnv(env: ApiEnv): Queue | undefined {
+  if (!env.REDIS_URL) return undefined;
+  return new Queue("inbound_email", {
+    connection: redisConnectionFromUrl(env.REDIS_URL),
+    defaultJobOptions: {
+      attempts: 4,
+      backoff: { type: "exponential", delay: 15_000 },
       removeOnComplete: 1_000,
       removeOnFail: false,
     },
@@ -885,8 +951,10 @@ if (process.env.NODE_ENV !== "test") {
   validateProductionReadiness(env);
   const { repository, close } = await createRepositoryFromEnv(env);
   await configurePublicConsultationIntakeSettingsFromEnv(repository, env);
+  await configureInboundEmailMailgunSettingsFromEnv(repository, env);
   const emailJobQueue = createEmailJobQueueFromEnv(env);
   const connectorJobQueue = createConnectorJobQueueFromEnv(env);
+  const inboundEmailJobQueue = createInboundEmailJobQueueFromEnv(env);
   const reportJobQueue = createReportJobQueueFromEnv(env);
   const aiAssistJobQueue = createAiAssistJobQueueFromEnv(env);
   const ocrJobQueue = createOcrJobQueueFromEnv(env);
@@ -902,6 +970,7 @@ if (process.env.NODE_ENV !== "test") {
     paymentProcessorProvider,
     emailJobQueue,
     connectorJobQueue,
+    inboundEmailJobQueue,
     reportJobQueue,
     aiAssistJobQueue,
     ocrJobQueue,
@@ -926,6 +995,7 @@ if (process.env.NODE_ENV !== "test") {
     void Promise.all([
       emailJobQueue?.close(),
       connectorJobQueue?.close(),
+      inboundEmailJobQueue?.close(),
       reportJobQueue?.close(),
       aiAssistJobQueue?.close(),
       ocrJobQueue?.close(),

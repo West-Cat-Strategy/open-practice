@@ -33,6 +33,7 @@ const providerSettingKinds = [
 const bullMqProducerQueueNames = [
   "email",
   "connectors",
+  "inbound_email",
   "ai_triage",
   "ocr",
 ] as const satisfies readonly OpenPracticeQueueName[];
@@ -49,11 +50,16 @@ function queueForName(
   queueName: OpenPracticeQueueName,
   queues: Pick<
     RegisterProviderStatusRouteOptions,
-    "emailJobQueue" | "connectorJobQueue" | "aiAssistJobQueue" | "ocrJobQueue"
+    | "emailJobQueue"
+    | "connectorJobQueue"
+    | "inboundEmailJobQueue"
+    | "aiAssistJobQueue"
+    | "ocrJobQueue"
   >,
 ): ApiJobQueue | undefined {
   if (queueName === "email") return queues.emailJobQueue;
   if (queueName === "connectors") return queues.connectorJobQueue;
+  if (queueName === "inbound_email") return queues.inboundEmailJobQueue;
   if (queueName === "ai_triage") return queues.aiAssistJobQueue;
   if (queueName === "ocr") return queues.ocrJobQueue;
   return undefined;
@@ -170,7 +176,7 @@ export function registerProviderStatusRoutes(
       },
       inboundEmail: {
         ...inboundEmail,
-        workerQueue: queueStatus("inbound_email", undefined),
+        workerQueue: queueStatus("inbound_email", options.inboundEmailJobQueue),
       },
       externalUploads,
       draftAssist,

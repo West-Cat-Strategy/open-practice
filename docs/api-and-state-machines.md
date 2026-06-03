@@ -242,6 +242,7 @@ are backed by implementation and validation proof.
 | `GET /api/portal/email-receipts/:token`                                               | Public token-scoped, no-store delivery receipt confirmation page for opt-in outbound email receipt links. It does not record receipt state or expose sessions, recipient lists, message bodies, matter IDs, or email IDs.                                                                                                                                                |
 | `POST /api/portal/email-receipts/:token`                                              | Public token-scoped idempotent delivery receipt recording for opt-in outbound email receipt links; returns status without exposing sessions, recipient lists, message bodies, matter IDs, or email IDs.                                                                                                                                                                  |
 | `POST /api/outbound-webhooks/test-deliveries`                                         | Provider-neutral outbound-webhook guardrail preview and test-delivery simulation with HTTPS destination validation, event allowlist, signing metadata, and audit.                                                                                                                                                                                                        |
+| `POST /api/inbound-email/provider-webhooks/mailgun/raw-mime`                          | Public signed Mailgun raw-MIME receiving endpoint that verifies the provider HMAC, stores the raw MIME object, creates an idempotent `inbound_email` parser job, and returns only accepted/job status without storage keys, raw MIME, or signing material.                                                                                                               |
 | `GET /api/inbound-email/status`                                                       | Inbound email provider status plus configured inbound addresses without provider secrets; matter-scoped readers see only assigned-matter addresses and no provider key.                                                                                                                                                                                                  |
 | `GET /api/inbound-email/messages?matterId=`                                           | Matter-scoped parsed inbound email messages, or firm-wide owner/auditor review queue.                                                                                                                                                                                                                                                                                    |
 | `GET /api/inbound-email/messages/:id`                                                 | Matter-scoped parsed inbound email detail with inbound-email attachment records and promoted `documentId` links when present.                                                                                                                                                                                                                                            |
@@ -336,10 +337,11 @@ setting, an injected `DraftAssistProvider`, and the async assist queue are all c
 also uses `ai_triage` for `operational_action_proposals` when an enabled AI provider setting, an
 injected operational proposal provider, and the queue are configured. That job metadata may contain
 only IDs, source type, requested-kind/count fields, provider key, requester ID, idempotency presence,
-and source/generated-length metadata. Webhook ingestion, provider delivery setup, automatic document
-promotion, automatic operational mutations, document classification, transcription, media
-processing, live Ollama/LM Studio adapter work, and live legal research provider work remain
-deferred.
+and source/generated-length metadata. Mailgun raw-MIME webhook ingestion is the first concrete
+inbound provider adapter; other inbound provider webhooks, durable replay recovery, provider delivery
+setup, automatic document promotion, automatic operational mutations, document classification,
+transcription, media processing, live Ollama/LM Studio adapter work, and live legal research
+provider work remain deferred.
 `GET /api/providers/status` is read-only configuration posture, not a live health probe: it reports
 safe provider-setting keys, object-storage configured/not-configured state, BullMQ producer and
 reserved worker queue posture, redacted job summaries, and current-user embedded-auth extension
@@ -1036,10 +1038,12 @@ Client portal account setup is an authenticated staff operation over existing ma
 portal grants. The logged-in client workspace is read-only and summarizes the client's granted
 matter actions across existing portal-adjacent records without replacing token-scoped public routes,
 exposing raw tokens or storage keys, or adding chat, payments, or native mobile behavior.
-Inbound email parsing is implemented for raw messages already stored in object storage, with
-matter-scoped message detail and attachment-record reads; provider webhooks and automatic document
-promotion remain deferred. Concrete Postal, Tesseract, Whisper/FFmpeg, and live Ollama/LM Studio
-adapters still require explicit setup, provider adapters, review states, and deployment profiles.
+Inbound email parsing is implemented for raw messages stored in object storage, with matter-scoped
+message detail and attachment-record reads. The first Mailgun raw-MIME webhook adapter stores signed
+provider posts for the existing parser; other provider webhooks, durable replay recovery, and
+automatic document promotion remain deferred. Concrete Postal, Tesseract, Whisper/FFmpeg, and live
+Ollama/LM Studio adapters still require explicit setup, provider adapters, review states, and
+deployment profiles.
 SimpleWebAuthn passkey routes and TipTap-backed drafting/template routes are embedded app surfaces;
 production still must configure RP ID/origin, session secrets, setup keys, authorization, and
 retention controls before exposing them. `DOCUSEAL_*`, `DOCASSEMBLE_*`, and `OIDC_*` variables are
