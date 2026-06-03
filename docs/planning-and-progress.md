@@ -8,17 +8,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                |
-| --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Mainline consolidation is in final validation.                       |
-| Next recommended pick | Plan the broader PII and object-storage encryption gap audit.        |
-| Ready rows            | 0                                                                    |
-| Candidate rows        | 0                                                                    |
-| In progress rows      | 0                                                                    |
-| Review rows           | 0                                                                    |
-| Blocked rows          | 0                                                                    |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
+| Snapshot              | Value                                                                                      |
+| --------------------- | ------------------------------------------------------------------------------------------ |
+| Current focus         | Mainline consolidation is pushed and pruned; stale OP-T143 duplicate preserved for review. |
+| Next recommended pick | Plan the broader PII and object-storage encryption gap audit.                              |
+| Ready rows            | 0                                                                                          |
+| Candidate rows        | 0                                                                                          |
+| In progress rows      | 0                                                                                          |
+| Review rows           | 0                                                                                          |
+| Blocked rows          | 0                                                                                          |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                       |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                           |
 
 ## Forward Development Plan
 
