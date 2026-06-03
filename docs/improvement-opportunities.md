@@ -122,10 +122,10 @@ assets, or distinctive prose are copied into this repo by this catalogue.
   - **Reuse and snippets:** MIT/adapt-with-attribution; behavior-level reuse should be enough.
 
 - **Inbound provider webhook intake boundary**
-  - **First slice:** Add one inbound-email provider webhook adapter that validates a provider
-    signature and stores raw messages for the existing parser.
-  - **Local gap / shipped boundary:** Existing inbound parsing handles raw messages already stored in
-    object storage; provider webhooks remain deferred.
+  - **Shipped slice:** The first Mailgun raw-MIME provider webhook validates the provider
+    signature, stores raw MIME in object storage, and queues the existing inbound parser.
+  - **Remaining gap / future boundary:** Other provider adapters, durable replay recovery, and
+    automatic document promotion remain future work.
   - **References:** `chatwoot__chatwoot` and inbound-channel patterns in `paperless-ngx__paperless-ngx`.
   - **Reuse and snippets:** Chatwoot has MIT core plus enterprise directories; use architecture only
     unless a file-level review excludes enterprise-only material.

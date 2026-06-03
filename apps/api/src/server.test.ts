@@ -4,7 +4,9 @@ import { InMemoryOpenPracticeRepository, type MatterSummary } from "@open-practi
 import { verifyRegistrationResponse } from "@simplewebauthn/server";
 import {
   buildPublicConsultationIntakeSettingsFromEnv,
+  buildInboundEmailMailgunSettingsFromEnv,
   configurePublicConsultationIntakeSettingsFromEnv,
+  configureInboundEmailMailgunSettingsFromEnv,
   createApiServer,
   createRepositoryFromEnv,
   envSchema,
@@ -957,6 +959,34 @@ describe("API auth and persistence boundaries", () => {
     expect(JSON.parse(provider?.encryptedConfig ?? "{}")).toMatchObject({
       senderAddress: "consultations@example.test",
       recipientEmails: ["review@example.test"],
+    });
+  });
+
+  it("builds Mailgun inbound-email provider settings from deployment env", async () => {
+    const domainOnly = envSchema.parse({ INBOUND_EMAIL_DOMAIN: "mail.example.test" });
+    const configured = envSchema.parse({
+      INBOUND_EMAIL_WEBHOOK_SECRET: "synthetic-mailgun-signing-key",
+      INBOUND_EMAIL_DOMAIN: "mail.example.test",
+    });
+    const repository = new InMemoryOpenPracticeRepository();
+
+    expect(buildInboundEmailMailgunSettingsFromEnv(domainOnly)).toBeUndefined();
+    expect(buildInboundEmailMailgunSettingsFromEnv(configured)).toEqual({
+      webhookSigningKey: "synthetic-mailgun-signing-key",
+      domain: "mail.example.test",
+    });
+
+    await configureInboundEmailMailgunSettingsFromEnv(repository, configured);
+    const [provider] = await repository.listProviderSettings("firm-west-legal", {
+      kind: "inbound_email",
+    });
+    expect(provider).toMatchObject({
+      enabled: true,
+      key: "mailgun",
+    });
+    expect(JSON.parse(provider?.encryptedConfig ?? "{}")).toEqual({
+      webhookSigningKey: "synthetic-mailgun-signing-key",
+      domain: "mail.example.test",
     });
   });
 

@@ -39,6 +39,7 @@ export interface ApiRouteDependencies {
   emailJobQueue?: ApiJobQueue;
   connectorJobQueue?: ApiJobQueue;
   connectorDnsResolver?: ConnectorDnsResolver;
+  inboundEmailJobQueue?: ApiJobQueue;
   reportJobQueue?: ApiJobQueue;
   aiAssistJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;

@@ -30,6 +30,7 @@ function testServer(input: {
   repository: InMemoryOpenPracticeRepository;
   emailJobQueue?: ApiJobQueue;
   connectorJobQueue?: ApiJobQueue;
+  inboundEmailJobQueue?: ApiJobQueue;
   aiAssistJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
   role?: ProfessionalRole;
@@ -93,6 +94,22 @@ describe("jobs routes", () => {
     expect(response.json().reservedQueues).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ queueName: "ai_triage" })]),
     );
+  });
+
+  it("reports inbound_email as configured when the parser producer queue is injected", async () => {
+    const response = await testServer({
+      repository: new InMemoryOpenPracticeRepository(),
+      inboundEmailJobQueue: fakeQueue,
+    }).inject({
+      method: "GET",
+      url: "/api/jobs",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      workers: expect.arrayContaining([{ queueName: "inbound_email", status: "configured" }]),
+      workerQueues: expect.arrayContaining([{ queueName: "inbound_email", status: "configured" }]),
+    });
   });
 
   it("returns queue status and redacted lifecycle run summaries", async () => {

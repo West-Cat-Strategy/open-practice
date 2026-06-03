@@ -49,6 +49,7 @@ function testServer(
     authUser?: User;
     emailJobQueue?: ApiJobQueue;
     connectorJobQueue?: ApiJobQueue;
+    inboundEmailJobQueue?: ApiJobQueue;
     aiAssistJobQueue?: ApiJobQueue;
     ocrJobQueue?: ApiJobQueue;
     s3?: ApiRouteDependencies["s3"];
@@ -66,6 +67,7 @@ function testServer(
     repository: input.repository ?? new InMemoryOpenPracticeRepository({ seedSampleData: false }),
     emailJobQueue: input.emailJobQueue,
     connectorJobQueue: input.connectorJobQueue,
+    inboundEmailJobQueue: input.inboundEmailJobQueue,
     aiAssistJobQueue: input.aiAssistJobQueue,
     ocrJobQueue: input.ocrJobQueue,
     s3: input.s3,
@@ -166,6 +168,11 @@ describe("provider status route", () => {
         producerQueues: [
           { queueName: "email", status: "not_configured", reason: "queue_not_configured" },
           { queueName: "connectors", status: "not_configured", reason: "queue_not_configured" },
+          {
+            queueName: "inbound_email",
+            status: "not_configured",
+            reason: "queue_not_configured",
+          },
           { queueName: "ai_triage", status: "not_configured", reason: "queue_not_configured" },
           { queueName: "ocr", status: "not_configured", reason: "queue_not_configured" },
         ],
@@ -274,6 +281,7 @@ describe("provider status route", () => {
       authUser,
       emailJobQueue: fakeQueue,
       connectorJobQueue: fakeQueue,
+      inboundEmailJobQueue: fakeQueue,
       aiAssistJobQueue: fakeQueue,
       ocrJobQueue: fakeQueue,
       s3: s3Config(),
@@ -307,8 +315,7 @@ describe("provider status route", () => {
         reason: "not_configured",
         workerQueue: {
           queueName: "inbound_email",
-          status: "not_configured",
-          reason: "queue_not_configured",
+          status: "configured",
         },
       },
       externalUploads: {
@@ -337,12 +344,14 @@ describe("provider status route", () => {
         producerQueues: [
           { queueName: "email", status: "configured" },
           { queueName: "connectors", status: "configured" },
+          { queueName: "inbound_email", status: "configured" },
           { queueName: "ai_triage", status: "configured" },
           { queueName: "ocr", status: "configured" },
         ],
         workerQueues: expect.arrayContaining([
           { queueName: "email", status: "configured" },
           { queueName: "connectors", status: "configured" },
+          { queueName: "inbound_email", status: "configured" },
           { queueName: "ai_triage", status: "configured" },
           { queueName: "ocr", status: "configured" },
         ]),

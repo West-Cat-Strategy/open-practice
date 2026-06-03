@@ -1,5 +1,7 @@
+import { PutObjectCommand } from "@aws-sdk/client-s3";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { S3Client } from "@aws-sdk/client-s3";
+import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type {
@@ -39,12 +41,18 @@ function testServer(
   authUser: User = user("owner_admin", ["matter-001", "matter-002"]),
   ocrJobQueue?: ApiJobQueue,
   s3: { client: S3Client; bucket: string } | null = fakeS3(),
+  inboundEmailJobQueue?: ApiJobQueue,
 ): FastifyInstance {
   const server = Fastify({ logger: false });
   server.addHook("preHandler", async (request) => {
     request.auth = { firmId: authUser.firmId, user: authUser };
   });
-  registerInboundEmailRoutes(server, { repository, ocrJobQueue, s3: s3 ?? undefined });
+  registerInboundEmailRoutes(server, {
+    repository,
+    ocrJobQueue,
+    inboundEmailJobQueue,
+    s3: s3 ?? undefined,
+  });
   servers.push(server);
   return server;
 }
@@ -96,11 +104,58 @@ function fakeOcrQueue() {
   return { queue, jobs };
 }
 
+function fakeInboundEmailQueue(input: { reject?: boolean } = {}) {
+  const jobs: Array<{ name: string; data: unknown; jobId?: string }> = [];
+  const queue: ApiJobQueue = {
+    async add(name, data, options) {
+      if (input.reject) throw new Error("synthetic queue failure");
+      jobs.push({ name, data, jobId: options?.jobId });
+      return { id: options?.jobId ?? "bull-inbound-email-job" };
+    },
+  };
+  return { queue, jobs };
+}
+
 function fakeS3(): { client: S3Client; bucket: string } {
   return {
     client: {} as S3Client,
     bucket: "open-practice-test-documents",
   };
+}
+
+function writableFakeS3(): { s3: { client: S3Client; bucket: string }; puts: PutObjectCommand[] } {
+  const puts: PutObjectCommand[] = [];
+  return {
+    s3: {
+      client: {
+        async send(command: PutObjectCommand) {
+          puts.push(command);
+          return {};
+        },
+      } as unknown as S3Client,
+      bucket: "open-practice-test-documents",
+    },
+    puts,
+  };
+}
+
+async function enableMailgunProvider(
+  repository: InMemoryOpenPracticeRepository,
+  config: Record<string, unknown> | string = {
+    webhookSigningKey: "synthetic-mailgun-signing-key",
+    domain: "mail.example.test",
+  },
+): Promise<void> {
+  await repository.upsertProviderSetting({
+    id: "provider-inbound-mailgun",
+    firmId,
+    kind: "inbound_email",
+    key: "mailgun",
+    enabled: true,
+    encryptedConfig: typeof config === "string" ? config : JSON.stringify(config),
+    createdAt: now,
+    updatedAt: now,
+  });
 }
 
 async function enableOcrProvider(repository: InMemoryOpenPracticeRepository): Promise<void> {
@@ -116,11 +171,316 @@ async function enableOcrProvider(repository: InMemoryOpenPracticeRepository): Pr
   });
 }
 
+function mailgunSignature(secret: string, timestamp: string, token: string): string {
+  return createHmac("sha256", secret).update(`${timestamp}${token}`).digest("hex");
+}
+
+function mailgunRawMimePayload(
+  input: {
+    secret?: string;
+    timestamp?: string;
+    token?: string;
+    rawMime?: string;
+    signature?: string;
+  } = {},
+): string {
+  const secret = input.secret ?? "synthetic-mailgun-signing-key";
+  const timestamp = input.timestamp ?? Math.floor(Date.now() / 1000).toString();
+  const token = input.token ?? "synthetic-mailgun-token";
+  const signature = input.signature ?? mailgunSignature(secret, timestamp, token);
+  const form = new URLSearchParams();
+  form.set("timestamp", timestamp);
+  form.set("token", token);
+  form.set("signature", signature);
+  if (input.rawMime !== undefined) form.set("body-mime", input.rawMime);
+  else form.set("body-mime", "From: client@example.test\nTo: matter@example.test\n\nHello");
+  return form.toString();
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
 describe("inbound email routes", () => {
+  it("accepts signed Mailgun raw MIME webhooks, stores the raw body, and queues parsing", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableMailgunProvider(repository);
+    const { s3, puts } = writableFakeS3();
+    const inboundQueue = fakeInboundEmailQueue();
+    const rawMime =
+      "From: client@example.test\nTo: matter-001@mail.example.test\nSubject: Evidence\n\nSynthetic body.";
+
+    const response = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      s3,
+      inboundQueue.queue,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: mailgunRawMimePayload({ rawMime }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "accepted",
+      provider: "mailgun",
+      duplicate: false,
+      job: {
+        queueName: "inbound_email",
+        jobName: "parse_inbound_email",
+        status: "queued",
+        idempotencyKeyPresent: true,
+      },
+    });
+    expect(response.body).not.toContain("rawStorageKey");
+    expect(response.body).not.toContain("Synthetic body");
+    expect(response.body).not.toContain("synthetic-mailgun-signing-key");
+
+    expect(puts).toHaveLength(1);
+    const putInput = puts[0]!.input;
+    expect(putInput).toMatchObject({
+      Bucket: "open-practice-test-documents",
+      ContentType: "message/rfc822",
+    });
+    expect(putInput.Key).toMatch(
+      /^inbound-email\/firm-west-legal\/provider-webhooks\/mailgun\/raw-mime\//,
+    );
+    expect(Buffer.from(putInput.Body as Uint8Array).toString("utf8")).toBe(rawMime);
+
+    expect(inboundQueue.jobs).toHaveLength(1);
+    expect(inboundQueue.jobs[0]).toMatchObject({
+      name: "parse_inbound_email",
+      jobId: response.json().job.id,
+      data: {
+        firmId,
+        resourceType: "inbound_email_raw",
+      },
+    });
+    expect(
+      (inboundQueue.jobs[0]!.data as { metadata: Record<string, unknown> }).metadata.rawStorageKey,
+    ).toBe(putInput.Key);
+
+    const [job] = await repository.listJobLifecycleRecords(firmId, {
+      queueName: "inbound_email",
+    });
+    expect(job).toMatchObject({
+      id: response.json().job.id,
+      queueName: "inbound_email",
+      jobName: "parse_inbound_email",
+      targetResourceType: "inbound_email_raw",
+      metadata: {
+        provider: "mailgun",
+        source: "mailgun.raw_mime_webhook",
+        rawStorageKey: putInput.Key,
+      },
+    });
+  });
+
+  it("accepts legacy plaintext Mailgun provider signing secrets", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableMailgunProvider(repository, "legacy-plaintext-mailgun-secret");
+    const { s3 } = writableFakeS3();
+    const inboundQueue = fakeInboundEmailQueue();
+
+    const response = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      s3,
+      inboundQueue.queue,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: mailgunRawMimePayload({ secret: "legacy-plaintext-mailgun-secret" }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(inboundQueue.jobs).toHaveLength(1);
+  });
+
+  it("rejects Mailgun raw MIME webhooks with invalid or stale signatures", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableMailgunProvider(repository);
+    const { s3, puts } = writableFakeS3();
+    const inboundQueue = fakeInboundEmailQueue();
+    const server = testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      s3,
+      inboundQueue.queue,
+    );
+
+    const invalid = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: mailgunRawMimePayload({ signature: "f".repeat(64) }),
+    });
+    const staleTimestamp = Math.floor((Date.now() - 60 * 60 * 1000) / 1000).toString();
+    const stale = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: mailgunRawMimePayload({ timestamp: staleTimestamp }),
+    });
+
+    expect(invalid.statusCode).toBe(406);
+    expect(stale.statusCode).toBe(406);
+    expect(puts).toHaveLength(0);
+    expect(inboundQueue.jobs).toHaveLength(0);
+  });
+
+  it("rejects Mailgun raw MIME webhooks that omit body-mime", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableMailgunProvider(repository);
+    const { s3, puts } = writableFakeS3();
+    const inboundQueue = fakeInboundEmailQueue();
+
+    const response = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      s3,
+      inboundQueue.queue,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: mailgunRawMimePayload({ rawMime: undefined }).replace(/&body-mime=[^&]*/, ""),
+    });
+
+    expect(response.statusCode).toBe(406);
+    expect(puts).toHaveLength(0);
+    expect(inboundQueue.jobs).toHaveLength(0);
+  });
+
+  it("returns 503 when Mailgun signing, object storage, or inbound queue is unavailable", async () => {
+    const missingSecretRepository = new InMemoryOpenPracticeRepository();
+    await enableMailgunProvider(missingSecretRepository, { domain: "mail.example.test" });
+    const missingS3Repository = new InMemoryOpenPracticeRepository();
+    await enableMailgunProvider(missingS3Repository);
+    const missingQueueRepository = new InMemoryOpenPracticeRepository();
+    await enableMailgunProvider(missingQueueRepository);
+    const { s3, puts } = writableFakeS3();
+    const inboundQueue = fakeInboundEmailQueue();
+
+    const missingSecret = await testServer(
+      missingSecretRepository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      s3,
+      inboundQueue.queue,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: mailgunRawMimePayload(),
+    });
+    const missingS3 = await testServer(
+      missingS3Repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      null,
+      inboundQueue.queue,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: mailgunRawMimePayload(),
+    });
+    const missingQueue = await testServer(
+      missingQueueRepository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      s3,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: mailgunRawMimePayload(),
+    });
+
+    expect(missingSecret.statusCode).toBe(503);
+    expect(missingS3.statusCode).toBe(503);
+    expect(missingQueue.statusCode).toBe(503);
+    expect(puts).toHaveLength(0);
+    expect(inboundQueue.jobs).toHaveLength(0);
+  });
+
+  it("keeps Mailgun token replays idempotent without enqueueing duplicate parser jobs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableMailgunProvider(repository);
+    const { s3 } = writableFakeS3();
+    const inboundQueue = fakeInboundEmailQueue();
+    const token = "synthetic-duplicate-mailgun-token";
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const payload = mailgunRawMimePayload({ token, timestamp });
+    const server = testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      s3,
+      inboundQueue.queue,
+    );
+
+    const first = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload,
+    });
+    const second = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload,
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(second.json()).toMatchObject({ duplicate: true });
+    expect(second.json().job.id).toBe(first.json().job.id);
+    expect(inboundQueue.jobs).toHaveLength(1);
+    expect(
+      await repository.listJobLifecycleRecords(firmId, { queueName: "inbound_email" }),
+    ).toHaveLength(1);
+  });
+
+  it("marks Mailgun lifecycle jobs failed when the parser queue rejects enqueue", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await enableMailgunProvider(repository);
+    const { s3 } = writableFakeS3();
+    const inboundQueue = fakeInboundEmailQueue({ reject: true });
+
+    const response = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      s3,
+      inboundQueue.queue,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: mailgunRawMimePayload(),
+    });
+
+    const [job] = await repository.listJobLifecycleRecords(firmId, {
+      queueName: "inbound_email",
+    });
+    expect(response.statusCode).toBe(503);
+    expect(job).toMatchObject({
+      status: "failed",
+      attemptsMade: 1,
+      metadata: expect.objectContaining({ enqueueStatus: "failed" }),
+    });
+  });
+
   it("reports inbound email disabled when no provider is configured", async () => {
     const response = await testServer(new InMemoryOpenPracticeRepository()).inject({
       method: "GET",

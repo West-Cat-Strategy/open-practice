@@ -91,6 +91,7 @@ export const PUBLIC_ROUTE_SAMPLES = [
   { method: "POST", path: "/api/auth/password-setup" },
   { method: "POST", path: "/api/auth/recovery-codes/verify" },
   { method: "POST", path: "/api/public/consultation-intakes" },
+  { method: "POST", path: "/api/inbound-email/provider-webhooks/mailgun/raw-mime" },
   { method: "GET", path: "/api/portal/shares/sample" },
   { method: "POST", path: "/api/portal/shares/sample/email-verification" },
   { method: "GET", path: "/api/portal/email-receipts/sample" },
@@ -136,6 +137,7 @@ export function isPublicRoute(method: string, url: string): boolean {
     (method === "POST" && path === "/api/auth/password-setup") ||
     (method === "POST" && path === "/api/auth/recovery-codes/verify") ||
     (method === "POST" && path === "/api/public/consultation-intakes") ||
+    (method === "POST" && path === "/api/inbound-email/provider-webhooks/mailgun/raw-mime") ||
     (method === "GET" && path?.startsWith("/api/portal/shares/")) ||
     (method === "POST" && /^\/api\/portal\/shares\/[^/]+\/email-verification$/.test(path ?? "")) ||
     (method === "GET" && /^\/api\/portal\/email-receipts\/[^/]+$/.test(path ?? "")) ||
