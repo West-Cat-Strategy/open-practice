@@ -50,6 +50,11 @@ const optionalUrl = z.preprocess(
   z.string().url().optional(),
 );
 
+const optionalS3ServerSideEncryption = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.enum(["AES256"]).optional(),
+);
+
 const booleanFromEnv = z.preprocess((value) => {
   if (value === undefined || value === "") return undefined;
   if (typeof value === "string") {
@@ -73,6 +78,7 @@ export const workerEnvSchema = z.object({
   S3_BUCKET: z.string().default("open-practice-documents"),
   S3_ACCESS_KEY: optionalString,
   S3_SECRET_KEY: optionalString,
+  S3_SERVER_SIDE_ENCRYPTION: optionalS3ServerSideEncryption,
   SMTP_HOST: z.string().default("localhost"),
   SMTP_PORT: z.coerce.number().default(1025),
   SMTP_SECURE: booleanFromEnv,
@@ -127,6 +133,16 @@ export function validateWorkerReadiness(env: WorkerEnv): void {
       "OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY is required when DATABASE_URL is configured",
     );
   }
+
+  if (
+    env.NODE_ENV === "production" &&
+    env.S3_ENDPOINT &&
+    env.S3_ACCESS_KEY &&
+    env.S3_SECRET_KEY &&
+    env.S3_SERVER_SIDE_ENCRYPTION !== "AES256"
+  ) {
+    throw new Error("S3_SERVER_SIDE_ENCRYPTION=AES256 is required when S3 is configured");
+  }
 }
 
 export function createWorkerRepositoryFromEnv(env: WorkerEnv): {
@@ -158,7 +174,7 @@ export function createWorkers(input: {
   queues: OpenPracticeQueueName[];
   concurrency: number;
   repository: OpenPracticeRepository;
-  s3: { client: S3Client; bucket: string };
+  s3: { client: S3Client; bucket: string; serverSideEncryption?: "AES256" };
   ocrProvider: TesseractOcrProvider;
   aiOperationalProposalProvider?: AiOperationalProposalProvider;
   draftAssistProvider?: DraftAssistProvider;
@@ -241,7 +257,11 @@ if (process.env.NODE_ENV !== "test") {
     queues,
     concurrency: env.WORKER_CONCURRENCY,
     repository,
-    s3: { client: s3Client, bucket: env.S3_BUCKET },
+    s3: {
+      client: s3Client,
+      bucket: env.S3_BUCKET,
+      serverSideEncryption: env.S3_SERVER_SIDE_ENCRYPTION,
+    },
     ocrProvider,
     mailSender,
     inboundEmailParser: new MailParserProvider(),

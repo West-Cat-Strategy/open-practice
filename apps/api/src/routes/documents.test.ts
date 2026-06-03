@@ -13,6 +13,8 @@ function s3Config(
   objectExists = true,
   includeChecksum = true,
   contentLength = fileSizeBytes,
+  serverSideEncryption?: "AES256",
+  reportServerSideEncryption = true,
 ) {
   const client = new S3Client({
     endpoint: "http://127.0.0.1:9000",
@@ -25,7 +27,11 @@ function s3Config(
   });
   (
     client as unknown as {
-      send: () => Promise<{ ChecksumSHA256?: string; ContentLength?: number }>;
+      send: () => Promise<{
+        ChecksumSHA256?: string;
+        ContentLength?: number;
+        ServerSideEncryption?: string;
+      }>;
     }
   ).send = async () => {
     if (!objectExists) throw new Error("not found");
@@ -33,11 +39,15 @@ function s3Config(
     return {
       ChecksumSHA256: Buffer.from(checksumSha256, "hex").toString("base64"),
       ContentLength: contentLength,
+      ...(serverSideEncryption && reportServerSideEncryption
+        ? { ServerSideEncryption: serverSideEncryption }
+        : {}),
     };
   };
   return {
     bucket: "open-practice-test-documents",
     client,
+    serverSideEncryption,
   };
 }
 
@@ -67,7 +77,7 @@ describe("document routes", () => {
     const repository = new InMemoryOpenPracticeRepository();
     const response = await testServer({
       repository,
-      s3: s3Config(),
+      s3: s3Config("a".repeat(64), true, true, fileSizeBytes, "AES256"),
     }).inject({
       method: "GET",
       url:
@@ -92,6 +102,7 @@ describe("document routes", () => {
       requiredHeaders: {
         "x-amz-checksum-sha256": expect.any(String),
         "x-amz-meta-open-practice-size-bytes": String(fileSizeBytes),
+        "x-amz-server-side-encryption": "AES256",
         "x-open-practice-malware-scan": "required-before-share",
       },
       maxFileSizeBytes: expect.any(Number),
@@ -105,6 +116,8 @@ describe("document routes", () => {
     const uploadUrl = new URL(response.json<{ uploadUrl: string }>().uploadUrl);
     const signedHeaders = uploadUrl.searchParams.get("X-Amz-SignedHeaders")?.split(";") ?? [];
     expect(signedHeaders).toContain("content-length");
+    expect(signedHeaders).toContain("x-amz-server-side-encryption");
+    expect(uploadUrl.searchParams.has("x-amz-server-side-encryption")).toBe(false);
     expect(response.json()).not.toHaveProperty("success");
     await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
       events: expect.arrayContaining([
@@ -132,7 +145,7 @@ describe("document routes", () => {
     const checksumSha256 = "d".repeat(64);
     const server = testServer({
       repository,
-      s3: s3Config(checksumSha256),
+      s3: s3Config(checksumSha256, true, true, fileSizeBytes, "AES256"),
     });
     const intent = await server.inject({
       method: "GET",
@@ -304,6 +317,36 @@ describe("document routes", () => {
       code: "UPLOAD_SIZE_MISMATCH",
       message: "Uploaded object size did not match the expected byte count.",
       details: { expectedSizeBytes: fileSizeBytes, actualSizeBytes: fileSizeBytes + 1 },
+    });
+  });
+
+  it("rejects upload completion when configured storage encryption is missing", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const checksumSha256 = "a".repeat(64);
+    const server = testServer({
+      repository,
+      s3: s3Config(checksumSha256, true, true, fileSizeBytes, "AES256", false),
+    });
+    const intent = await server.inject({
+      method: "GET",
+      url:
+        "/api/documents/presign-upload?matterId=matter-001&filename=unencrypted.pdf" +
+        `&checksumSha256=${checksumSha256}&fileSizeBytes=${fileSizeBytes}`,
+    });
+    const documentId = intent.json<{ document: { id: string } }>().document.id;
+
+    const completed = await server.inject({
+      method: "POST",
+      url: `/api/documents/${documentId}/upload-complete`,
+      payload: { checksumSha256 },
+    });
+
+    expect(intent.statusCode).toBe(200);
+    expect(completed.statusCode).toBe(409);
+    expect(completed.json()).toMatchObject({
+      code: "UPLOAD_ENCRYPTION_MISMATCH",
+      message:
+        "Uploaded object encryption did not match the configured server-side encryption setting.",
     });
   });
 

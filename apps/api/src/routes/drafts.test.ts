@@ -26,9 +26,13 @@ const staffHeaders = {
   "x-open-practice-firm-id": "firm-west-legal",
 };
 
-function s3Config(calls: unknown[]): NonNullable<CreateServerOptions["s3"]> {
+function s3Config(
+  calls: unknown[],
+  serverSideEncryption?: "AES256",
+): NonNullable<CreateServerOptions["s3"]> {
   return {
     bucket: "open-practice-test-documents",
+    serverSideEncryption,
     client: {
       async send(command: unknown) {
         calls.push(command);
@@ -502,7 +506,7 @@ describe("draft routes", () => {
   it("exports saved matter drafts to PDF and DOCX with generated-document metadata", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const s3Calls: unknown[] = [];
-    const server = testServer({ repository, s3: s3Config(s3Calls) });
+    const server = testServer({ repository, s3: s3Config(s3Calls, "AES256") });
     const created = await server.inject({
       method: "POST",
       url: "/api/drafts",
@@ -571,6 +575,39 @@ describe("draft routes", () => {
     }
 
     expect(s3Calls).toHaveLength(2);
+    expect(
+      s3Calls.map(
+        (command) =>
+          (
+            command as {
+              input: {
+                ChecksumSHA256?: string;
+                Metadata?: Record<string, string>;
+                ServerSideEncryption?: string;
+              };
+            }
+          ).input,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        ChecksumSHA256: expect.any(String),
+        ServerSideEncryption: "AES256",
+        Metadata: expect.objectContaining({
+          "open-practice-matter-id": "matter-001",
+          "open-practice-draft-id": created.json<{ id: string }>().id,
+          "open-practice-export-format": "pdf",
+        }),
+      }),
+      expect.objectContaining({
+        ChecksumSHA256: expect.any(String),
+        ServerSideEncryption: "AES256",
+        Metadata: expect.objectContaining({
+          "open-practice-matter-id": "matter-001",
+          "open-practice-draft-id": created.json<{ id: string }>().id,
+          "open-practice-export-format": "docx",
+        }),
+      }),
+    ]);
     await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
       events: expect.arrayContaining([
         expect.objectContaining({

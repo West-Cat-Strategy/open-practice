@@ -23,6 +23,7 @@ function futureIso(msFromNow = 7 * 24 * 60 * 60 * 1000): string {
 function s3Config(
   checksumSha256 = checksum,
   contentLength = fileSizeBytes,
+  serverSideEncryption?: "AES256",
 ): NonNullable<CreateServerOptions["s3"]> {
   const client = new S3Client({
     endpoint: "http://127.0.0.1:9000",
@@ -34,14 +35,22 @@ function s3Config(
     },
   });
   (
-    client as unknown as { send: () => Promise<{ ChecksumSHA256: string; ContentLength: number }> }
+    client as unknown as {
+      send: () => Promise<{
+        ChecksumSHA256: string;
+        ContentLength: number;
+        ServerSideEncryption?: string;
+      }>;
+    }
   ).send = async () => ({
     ChecksumSHA256: Buffer.from(checksumSha256, "hex").toString("base64"),
     ContentLength: contentLength,
+    ...(serverSideEncryption ? { ServerSideEncryption: serverSideEncryption } : {}),
   });
   return {
     bucket: "open-practice-test-documents",
     client,
+    serverSideEncryption,
   };
 }
 
@@ -281,7 +290,7 @@ describe("intake form builder routes", () => {
   });
 
   it("runs public upload, signature, submission, and reviewed variable merge", async () => {
-    const { repository, server } = testServer({ s3: s3Config() });
+    const { repository, server } = testServer({ s3: s3Config(checksum, fileSizeBytes, "AES256") });
     await restrictEvidenceUpload(repository);
     const created = await server.inject({
       method: "POST",
@@ -347,13 +356,22 @@ describe("intake form builder routes", () => {
         "x-amz-checksum-sha256": expect.any(String),
         "x-amz-meta-open-practice-upload-scope": "intake-form",
         "x-amz-meta-open-practice-size-bytes": String(fileSizeBytes),
+        "x-amz-server-side-encryption": "AES256",
       },
       maxFileSizeBytes: expect.any(Number),
     });
     expect(uploadIntent.json<{ uploadUrl: string }>().uploadUrl).not.toContain(linkId);
     const uploadUrl = new URL(uploadIntent.json<{ uploadUrl: string }>().uploadUrl);
     const signedHeaders = uploadUrl.searchParams.get("X-Amz-SignedHeaders")?.split(";") ?? [];
+    expect(signedHeaders).toEqual(
+      expect.arrayContaining(
+        Object.keys(uploadIntent.json<{ requiredHeaders: object }>().requiredHeaders)
+          .filter((header) => header.toLowerCase() !== "content-type")
+          .map((header) => header.toLowerCase()),
+      ),
+    );
     expect(signedHeaders).toContain("content-length");
+    expect(uploadUrl.searchParams.has("x-amz-server-side-encryption")).toBe(false);
     const documentId = uploadIntent.json<{ document: { id: string } }>().document.id;
 
     const completeUpload = await server.inject({

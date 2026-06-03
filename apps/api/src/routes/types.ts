@@ -45,5 +45,6 @@ export interface ApiRouteDependencies {
   s3?: {
     client: S3Client;
     bucket: string;
+    serverSideEncryption?: "AES256";
   };
 }

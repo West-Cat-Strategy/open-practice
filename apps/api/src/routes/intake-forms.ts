@@ -1312,6 +1312,9 @@ export function registerIntakeFormRoutes(
         "x-amz-meta-open-practice-upload-scope": "intake-form",
         "x-amz-meta-open-practice-scan": "required-before-share",
         "x-amz-meta-open-practice-size-bytes": String(body.fileSizeBytes),
+        ...(s3.serverSideEncryption
+          ? { "x-amz-server-side-encryption": s3.serverSideEncryption }
+          : {}),
       };
       const uploadUrl = await getSignedUrl(
         s3.client,
@@ -1321,6 +1324,7 @@ export function registerIntakeFormRoutes(
           ChecksumSHA256: checksumSha256Base64,
           ContentType: body.contentType,
           ContentLength: body.fileSizeBytes,
+          ...(s3.serverSideEncryption ? { ServerSideEncryption: s3.serverSideEncryption } : {}),
           Metadata: {
             "open-practice-upload-scope": "intake-form",
             "open-practice-scan": "required-before-share",

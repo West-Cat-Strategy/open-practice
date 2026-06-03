@@ -312,6 +312,7 @@ export function registerDraftRoutes(
         Body: rendered.buffer,
         ContentType: rendered.contentType,
         ChecksumSHA256: checksumSha256Base64,
+        ...(s3.serverSideEncryption ? { ServerSideEncryption: s3.serverSideEncryption } : {}),
         Metadata: {
           "open-practice-matter-id": draft.matterId,
           "open-practice-draft-id": draft.id,

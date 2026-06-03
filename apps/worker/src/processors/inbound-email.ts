@@ -1,7 +1,18 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import type { InboundEmailAttachmentRecord, InboundEmailParser } from "@open-practice/domain";
+import {
+  CopyObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import type { InboundEmailParser } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import type { WorkerJobEnvelope, WorkerJobResult } from "../processors.js";
+
+type InboundEmailS3Storage = {
+  client: S3Client;
+  bucket: string;
+  serverSideEncryption?: "AES256";
+};
 
 function metadataString(
   metadata: Record<string, unknown> | undefined,
@@ -19,10 +30,34 @@ function safePathPart(value: string): string {
   return normalized || "attachment";
 }
 
+function copySource(bucket: string, key: string): string {
+  return `${bucket}/${key.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function s3EncryptionOptions(s3: InboundEmailS3Storage) {
+  return s3.serverSideEncryption ? { ServerSideEncryption: s3.serverSideEncryption } : {};
+}
+
+function rawStorageKeyPrefix(firmId: string): string {
+  return `inbound-email/${firmId}/raw/`;
+}
+
+function assertRawStorageKey(firmId: string, rawStorageKey: string): void {
+  const prefix = rawStorageKeyPrefix(firmId);
+  const segments = rawStorageKey.split("/");
+  if (
+    !rawStorageKey.startsWith(prefix) ||
+    rawStorageKey.length <= prefix.length ||
+    segments.some((segment) => segment === "" || segment === "." || segment === "..")
+  ) {
+    throw new Error("Inbound email raw storage key must be scoped to the job firm");
+  }
+}
+
 export async function processInboundEmailJob(input: {
   data: WorkerJobEnvelope;
   repository: OpenPracticeRepository;
-  s3: { client: S3Client; bucket: string };
+  s3: InboundEmailS3Storage;
   inboundEmailParser: InboundEmailParser;
 }): Promise<WorkerJobResult> {
   const { data, repository, s3, inboundEmailParser } = input;
@@ -30,6 +65,7 @@ export async function processInboundEmailJob(input: {
   if (!rawStorageKey) {
     throw new Error("Missing rawStorageKey in inbound_email job data");
   }
+  assertRawStorageKey(data.firmId, rawStorageKey);
 
   const getObjectResponse = await s3.client.send(
     new GetObjectCommand({
@@ -40,6 +76,17 @@ export async function processInboundEmailJob(input: {
   const rawContent = await getObjectResponse.Body?.transformToByteArray();
   if (!rawContent) {
     throw new Error("Failed to read raw email content from S3");
+  }
+  if (s3.serverSideEncryption) {
+    await s3.client.send(
+      new CopyObjectCommand({
+        Bucket: s3.bucket,
+        Key: rawStorageKey,
+        CopySource: copySource(s3.bucket, rawStorageKey),
+        MetadataDirective: "COPY",
+        ...s3EncryptionOptions(s3),
+      }),
+    );
   }
 
   const parsed = await inboundEmailParser.parse({
@@ -72,6 +119,7 @@ export async function processInboundEmailJob(input: {
         Key: parsedHtmlStorageKey,
         Body: Buffer.from(parsed.html),
         ContentType: "text/html; charset=utf-8",
+        ...s3EncryptionOptions(s3),
       }),
     );
   }
@@ -97,8 +145,7 @@ export async function processInboundEmailJob(input: {
     },
   });
 
-  const attachments: Array<Pick<InboundEmailAttachmentRecord, "id" | "filename" | "storageKey">> =
-    [];
+  let attachmentCount = 0;
   for (const attachment of parsed.attachments) {
     const attachmentId = crypto.randomUUID();
     const storageKey = `inbound-email/${data.firmId}/${messageId}/attachments/${attachmentId}-${safePathPart(
@@ -110,9 +157,10 @@ export async function processInboundEmailJob(input: {
         Key: storageKey,
         Body: Buffer.from(attachment.content),
         ContentType: attachment.contentType,
+        ...s3EncryptionOptions(s3),
       }),
     );
-    const record = await repository.createInboundEmailAttachment({
+    await repository.createInboundEmailAttachment({
       id: attachmentId,
       firmId: data.firmId,
       inboundMessageId: messageId,
@@ -122,22 +170,16 @@ export async function processInboundEmailJob(input: {
       storageKey,
       checksumSha256: attachment.checksumSha256,
     });
-    attachments.push({
-      id: record.id,
-      filename: record.filename,
-      storageKey: record.storageKey,
-    });
+    attachmentCount += 1;
   }
 
   return {
     status: "completed",
     metadata: {
       firmId: data.firmId,
-      messageId,
-      ...(parsed.messageId ? { upstreamMessageId: parsed.messageId } : {}),
+      inboundMessageId: messageId,
       matterId,
-      attachmentCount: attachments.length,
-      attachments,
+      attachmentCount,
     },
   };
 }

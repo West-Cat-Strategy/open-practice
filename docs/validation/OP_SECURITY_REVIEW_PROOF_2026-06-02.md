@@ -70,4 +70,7 @@ No Docker or browser coverage is claimed for this remediation.
 
 ## Follow-Up Items
 
-- Audit-chain concurrency, direct ledger repository callers, inbound-email role posture, DNS rebinding edges, and route-catalog capability drift remain follow-up review topics unless separately confirmed.
+- Inbound-email role posture was separately confirmed in
+  [OP_INBOUND_EMAIL_ROLE_POSTURE_FOLLOWUP_PROOF_2026-06-03.md](OP_INBOUND_EMAIL_ROLE_POSTURE_FOLLOWUP_PROOF_2026-06-03.md).
+- Audit-chain concurrency, direct ledger repository callers, DNS rebinding edges, and route-catalog
+  capability drift remain follow-up review topics unless separately confirmed.
