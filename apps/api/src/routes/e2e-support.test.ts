@@ -23,6 +23,61 @@ function testServer(options: { e2eSupport?: boolean } = {}) {
   return { repository, server };
 }
 
+async function seedShareVerificationEmail(
+  repository: InMemoryOpenPracticeRepository,
+  input: { token: string; verificationCode: string },
+) {
+  const now = "2026-05-01T00:00:00.000Z";
+  await repository.createQueuedEmailOutbox({
+    email: {
+      id: "email-outbox-e2e-share-code",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      templateKey: "share_link.created",
+      status: "queued",
+      to: ["client@example.test"],
+      cc: [],
+      bcc: [],
+      from: "Open Practice <no-reply@open-practice.local>",
+      subject: "Secure document share",
+      htmlBody: "",
+      textBody: [
+        "A secure document share is available.",
+        `Share token: ${input.token}`,
+        `Email verification code: ${input.verificationCode}`,
+      ].join("\n"),
+      relatedResourceType: "share_link",
+      relatedResourceId: "share-e2e-code",
+      queuedAt: now,
+      attemptCount: 0,
+      metadata: { source: "e2e-support-test" },
+    },
+    event: {
+      id: "email-event-e2e-share-code",
+      firmId: "firm-west-legal",
+      emailId: "email-outbox-e2e-share-code",
+      eventType: "queued",
+      occurredAt: now,
+      jobId: "job-e2e-share-code",
+      source: "api",
+      metadata: { source: "e2e-support-test" },
+    },
+    job: {
+      id: "job-e2e-share-code",
+      firmId: "firm-west-legal",
+      queueName: "email",
+      jobName: "send_email",
+      status: "queued",
+      targetResourceType: "email_outbox",
+      targetResourceId: "email-outbox-e2e-share-code",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      queuedAt: now,
+      metadata: { emailId: "email-outbox-e2e-share-code", matterId: "matter-001" },
+    },
+  });
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
@@ -60,6 +115,22 @@ describe("e2e support routes", () => {
     );
   });
 
+  it("returns the synthetic share verification code for e2e share links", async () => {
+    const { repository, server } = testServer({ e2eSupport: true });
+    await seedShareVerificationEmail(repository, {
+      token: "synthetic-share-token",
+      verificationCode: "ABC123DEF456",
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/e2e/share-verification-code?matterId=matter-001&token=synthetic-share-token",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ verificationCode: "ABC123DEF456" });
+  });
+
   it("does not register e2e support routes by default", async () => {
     const { server } = testServer();
 
@@ -73,5 +144,12 @@ describe("e2e support routes", () => {
     });
 
     expect(response.statusCode).toBe(404);
+
+    const codeResponse = await server.inject({
+      method: "GET",
+      url: "/api/e2e/share-verification-code?matterId=matter-001&token=synthetic-share-token",
+    });
+
+    expect(codeResponse.statusCode).toBe(404);
   });
 });

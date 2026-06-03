@@ -33,16 +33,17 @@ test.describe("host Playwright suite", () => {
   });
 
   test("verifies a secure share before showing documents", async ({ app, page }) => {
-    const token = await app.createShareLink();
+    const share = await app.createShareLink();
 
-    await page.goto(app.url(`/share-links/${token}`));
+    await page.goto(app.url(`/share-links/${share.token}`));
     await expectPageHealthy(page);
     await expect(page.getByText("Email verification is required")).toBeVisible();
+    await page.getByLabel("Email verification code").fill(share.verificationCode);
     await page.getByRole("button", { name: /Verify email/i }).click();
 
     await expect(page.getByRole("heading", { name: "Shared documents" })).toBeVisible();
     await expect(page.getByText("Synthetic shareable disclosure.pdf")).toBeVisible();
-    await expect(page.locator("body")).not.toContainText(token);
+    await expect(page.locator("body")).not.toContainText(share.token);
     await expect(page.locator("body")).not.toContainText(/tokenHash|matter-001/i);
   });
 

@@ -40,9 +40,10 @@ test.describe("Docker-backed Playwright suite @docker", () => {
   });
 
   test("reuses public-token flows against the Docker-backed API", async ({ app, page }) => {
-    const shareToken = await app.createShareLink();
-    await page.goto(app.url(`/share-links/${shareToken}`));
+    const share = await app.createShareLink();
+    await page.goto(app.url(`/share-links/${share.token}`));
     await expectPageHealthy(page);
+    await page.getByLabel("Email verification code").fill(share.verificationCode);
     await page.getByRole("button", { name: /Verify email/i }).click();
     await expect(page.getByText("Synthetic shareable disclosure.pdf")).toBeVisible();
 

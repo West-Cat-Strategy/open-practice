@@ -66,14 +66,15 @@ const cspReportOnly = [
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "form-action 'self'",
-  "frame-ancestors 'none'",
   "base-uri 'self'",
   "object-src 'none'",
+  "report-to csp-endpoint",
 ].join("; ");
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "no-referrer" },
+  { key: "Reporting-Endpoints", value: 'csp-endpoint="/api/csp-report"' },
   {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), payment=()",

@@ -17,6 +17,7 @@ describe("web security headers", () => {
         headers: expect.arrayContaining([
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Reporting-Endpoints", value: 'csp-endpoint="/api/csp-report"' },
           {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=(), payment=()",
@@ -46,6 +47,8 @@ describe("web security headers", () => {
     expect(reportOnly).toContain("style-src 'self' 'unsafe-inline'");
     expect(reportOnly).toContain("font-src 'self' data:");
     expect(reportOnly).toContain("form-action 'self'");
+    expect(reportOnly).toContain("report-to csp-endpoint");
+    expect(reportOnly).not.toContain("frame-ancestors");
   });
 
   it("keeps production CSP free of inline script and loopback connect allowances", () => {

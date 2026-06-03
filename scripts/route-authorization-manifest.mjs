@@ -1885,6 +1885,15 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "create",
     "required",
   ),
+  authRoute(
+    "registerE2ESupportRoutes",
+    "apps/api/src/routes/e2e-support.test.ts",
+    "GET",
+    "/api/e2e/share-verification-code",
+    "email",
+    "read",
+    "required",
+  ),
 
   authRoute(
     "registerAuthExtensionRoutes",

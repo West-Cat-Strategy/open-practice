@@ -202,6 +202,7 @@ const PUBLIC_CONSULTATION_SETTINGS_KIND = "public_intake";
 const PUBLIC_CONSULTATION_SETTINGS_KEY = "consultation";
 const INBOUND_EMAIL_SETTINGS_KIND = "inbound_email";
 const INBOUND_EMAIL_MAILGUN_SETTINGS_KEY = "mailgun";
+const E2E_SMTP_SETTINGS_KIND = "smtp";
 // Auth rate limits moved to routes/auth.ts
 
 // Auth schemas moved to routes/auth.ts
@@ -876,6 +877,27 @@ export async function configureInboundEmailMailgunSettingsFromEnv(
   return settings;
 }
 
+async function configureE2ESmtpSettingsFromEnv(
+  repository: OpenPracticeRepository,
+  env: ApiEnv,
+): Promise<void> {
+  if (!env.E2E_MODE) return;
+  const now = new Date().toISOString();
+  await repository.upsertProviderSetting({
+    id: `provider-smtp-e2e-${env.E2E_MODE}-${env.DEV_AUTH_FIRM_ID}`,
+    firmId: env.DEV_AUTH_FIRM_ID,
+    kind: E2E_SMTP_SETTINGS_KIND,
+    key: `${env.E2E_MODE}-synthetic-smtp`,
+    enabled: true,
+    encryptedConfig: JSON.stringify({
+      mode: env.E2E_MODE,
+      provider: "synthetic-e2e-smtp",
+    }),
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 function redisConnectionFromUrl(redisUrl: string): {
   host: string;
   port: number;
@@ -896,8 +918,20 @@ function redisConnectionFromUrl(redisUrl: string): {
   };
 }
 
-function createEmailJobQueueFromEnv(env: ApiEnv): Queue | undefined {
-  if (!env.REDIS_URL) return undefined;
+type ClosableApiJobQueue = ApiJobQueue & { close?: () => Promise<void> };
+
+function createSyntheticE2EJobQueue(queueName: string): ClosableApiJobQueue {
+  return {
+    async add(_name, _data, options) {
+      return { id: options?.jobId ?? `${queueName}-e2e-job` };
+    },
+  };
+}
+
+function createEmailJobQueueFromEnv(env: ApiEnv): ClosableApiJobQueue | undefined {
+  if (!env.REDIS_URL) {
+    return env.E2E_MODE === "host" ? createSyntheticE2EJobQueue("email") : undefined;
+  }
   return new Queue("email", {
     connection: redisConnectionFromUrl(env.REDIS_URL),
     defaultJobOptions: {
@@ -985,6 +1019,7 @@ if (process.env.NODE_ENV !== "test") {
   const { repository, close } = await createRepositoryFromEnv(env);
   await configurePublicConsultationIntakeSettingsFromEnv(repository, env);
   await configureInboundEmailMailgunSettingsFromEnv(repository, env);
+  await configureE2ESmtpSettingsFromEnv(repository, env);
   const emailJobQueue = createEmailJobQueueFromEnv(env);
   const connectorJobQueue = createConnectorJobQueueFromEnv(env);
   const inboundEmailJobQueue = createInboundEmailJobQueueFromEnv(env);
@@ -1026,7 +1061,7 @@ if (process.env.NODE_ENV !== "test") {
   });
   process.once("SIGTERM", () => {
     void Promise.all([
-      emailJobQueue?.close(),
+      emailJobQueue?.close?.(),
       connectorJobQueue?.close(),
       inboundEmailJobQueue?.close(),
       reportJobQueue?.close(),

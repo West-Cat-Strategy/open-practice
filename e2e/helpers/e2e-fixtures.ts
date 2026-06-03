@@ -6,6 +6,11 @@ type ApiOptions = {
   method?: string;
 };
 
+type ShareLinkFixture = {
+  token: string;
+  verificationCode: string;
+};
+
 export const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://localhost:34110";
 export const webBaseUrl = process.env.E2E_WEB_BASE_URL ?? "http://localhost:33110";
 
@@ -68,7 +73,7 @@ export class OpenPracticeE2EClient {
     return (await response.json()) as T;
   }
 
-  async createShareLink(): Promise<string> {
+  async createShareLink(): Promise<ShareLinkFixture> {
     await this.apiJson("/api/e2e/shareable-document", {
       body: { matterId: "matter-001", title: "Synthetic shareable disclosure.pdf" },
     });
@@ -77,10 +82,17 @@ export class OpenPracticeE2EClient {
         matterId: "matter-001",
         permissions: ["view_documents"],
         requireEmailVerification: true,
+        notificationEmail: "ada.morgan@example.test",
+        deliveryConfirmation: { confirmed: true, channel: "email", recipientCount: 1 },
         expiresAt: futureIso(),
       },
     });
-    return response.token;
+    const code = await this.apiJson<{ verificationCode: string }>(
+      `/api/e2e/share-verification-code?matterId=matter-001&token=${encodeURIComponent(
+        response.token,
+      )}`,
+    );
+    return { token: response.token, verificationCode: code.verificationCode };
   }
 
   async createIntakeFormLink(): Promise<string> {

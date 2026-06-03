@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAccess } from "../http/auth-guards.js";
+import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
 import type { ApiRouteDependencies } from "./types.js";
@@ -8,6 +9,11 @@ import type { ApiRouteDependencies } from "./types.js";
 const shareableDocumentBodySchema = z.object({
   matterId: z.string().min(1).default("matter-001"),
   title: z.string().min(1).default("Synthetic shareable disclosure.pdf"),
+});
+
+const shareVerificationCodeQuerySchema = z.object({
+  matterId: z.string().min(1).default("matter-001"),
+  token: z.string().min(1),
 });
 
 function sanitizeFilename(filename: string): string {
@@ -83,5 +89,32 @@ export function registerE2ESupportRoutes(
         scanStatus: completed.scanStatus,
       },
     };
+  });
+
+  server.get("/api/e2e/share-verification-code", async (request) => {
+    const query = parseRequestPart(shareVerificationCodeQuerySchema, request.query, "query");
+    const access = requireAccess(request.auth, {
+      resource: "email",
+      action: "read",
+      matterId: query.matterId,
+    });
+    if (!access.ok) throw access.error;
+
+    const emails = await repository.listEmailOutbox(request.auth.firmId, {
+      matterId: query.matterId,
+      limit: 25,
+    });
+    const email = emails.find((candidate) =>
+      candidate.textBody.includes(`Share token: ${query.token}`),
+    );
+    const code = email?.textBody.match(/^Email verification code:\s*([A-Z0-9]+)$/m)?.[1];
+    if (!code) {
+      throw new ApiHttpError(
+        404,
+        "E2E_SHARE_VERIFICATION_CODE_NOT_FOUND",
+        "E2E share verification code was not found",
+      );
+    }
+    return { verificationCode: code };
   });
 }

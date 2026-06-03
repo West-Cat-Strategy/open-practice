@@ -213,16 +213,17 @@ test.describe("UI/UX screenshot QA", () => {
     app,
     page,
   }, testInfo) => {
-    const shareToken = await app.createShareLink();
-    await page.goto(app.url(`/share-links/${shareToken}`));
+    const share = await app.createShareLink();
+    await page.goto(app.url(`/share-links/${share.token}`));
     await expectPageHealthy(page);
     await expect(page.getByText("Email verification is required")).toBeVisible();
     await expectNoUnexpectedHorizontalOverflow(page, "share verification gate");
     await attachUiScreenshot(page, testInfo, "public-share-verification-gate");
 
+    await page.getByLabel("Email verification code").fill(share.verificationCode);
     await page.getByRole("button", { name: /Verify email/i }).click();
     await expect(page.getByRole("heading", { name: "Shared documents" })).toBeVisible();
-    await expect(page.locator("body")).not.toContainText(shareToken);
+    await expect(page.locator("body")).not.toContainText(share.token);
     await expectNoUnexpectedHorizontalOverflow(page, "verified share documents");
     await attachUiScreenshot(page, testInfo, "public-share-verified");
 
