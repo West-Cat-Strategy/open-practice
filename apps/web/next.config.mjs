@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 import { env } from "node:process";
-import { fileURLToPath } from "node:url";
+import { URL, fileURLToPath } from "node:url";
 
 const projectRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const isProduction = env.NODE_ENV === "production";
@@ -45,6 +45,32 @@ const prosemirrorAliases = {
   "@tiptap/pm/view": "prosemirror-view",
 };
 
+function originFromUrl(value) {
+  if (!value) return undefined;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+const apiOrigin = originFromUrl(env.NEXT_PUBLIC_API_BASE_URL ?? env.API_BASE_URL);
+const cspConnectSources = ["'self'", "http://localhost:*", "http://127.0.0.1:*", apiOrigin].filter(
+  Boolean,
+);
+const cspReportOnly = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  `connect-src ${[...new Set(cspConnectSources)].join(" ")}`,
+  "img-src 'self' data: blob:",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self' data:",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "object-src 'none'",
+].join("; ");
+
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "no-referrer" },
@@ -55,6 +81,10 @@ const securityHeaders = [
   {
     key: "Content-Security-Policy",
     value: buildContentSecurityPolicy(),
+  },
+  {
+    key: "Content-Security-Policy-Report-Only",
+    value: cspReportOnly,
   },
 ];
 

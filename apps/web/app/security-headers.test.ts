@@ -7,6 +7,10 @@ describe("web security headers", () => {
     const routes = await nextConfig.headers?.();
     const headers = routes?.[0]?.headers ?? [];
     const csp = headers.find((header) => header.key === "Content-Security-Policy")?.value ?? "";
+    const reportOnly = headers.find(
+      (header) => header.key === "Content-Security-Policy-Report-Only",
+    )?.value;
+
     expect(routes).toEqual([
       expect.objectContaining({
         source: "/:path*",
@@ -18,6 +22,10 @@ describe("web security headers", () => {
             value: "camera=(), microphone=(), geolocation=(), payment=()",
           },
           expect.objectContaining({ key: "Content-Security-Policy", value: expect.any(String) }),
+          expect.objectContaining({
+            key: "Content-Security-Policy-Report-Only",
+            value: expect.any(String),
+          }),
         ]),
       }),
     ]);
@@ -30,6 +38,14 @@ describe("web security headers", () => {
     expect(csp).toContain("base-uri 'self'");
     expect(csp).toContain("object-src 'none'");
     expect(csp).not.toContain("upgrade-insecure-requests");
+    expect(reportOnly).toEqual(expect.any(String));
+    expect(reportOnly).toContain("default-src 'self'");
+    expect(reportOnly).toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval'");
+    expect(reportOnly).toContain("connect-src 'self'");
+    expect(reportOnly).toContain("img-src 'self' data: blob:");
+    expect(reportOnly).toContain("style-src 'self' 'unsafe-inline'");
+    expect(reportOnly).toContain("font-src 'self' data:");
+    expect(reportOnly).toContain("form-action 'self'");
   });
 
   it("keeps production CSP free of inline script and loopback connect allowances", () => {

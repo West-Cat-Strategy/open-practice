@@ -1568,9 +1568,9 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     }
   }
 
-  async deleteWebAuthnCredential(firmId: string, id: string): Promise<void> {
+  async deleteWebAuthnCredential(firmId: string, userId: string, id: string): Promise<void> {
     this.webAuthnCredentials = this.webAuthnCredentials.filter(
-      (c) => !(c.firmId === firmId && c.id === id),
+      (c) => !(c.firmId === firmId && c.userId === userId && c.id === id),
     );
   }
 

@@ -27,17 +27,32 @@ const sharesQuerySchema = z.object({
   matterId: z.string().min(1).optional(),
 });
 
-const createShareBodySchema = z.object({
-  matterId: z.string().min(1),
-  permissions: z.array(sharePermissionSchema).nonempty().default(["view_documents"]),
-  expiresAt: z.string().datetime().optional(),
-  requireEmailVerification: z.boolean().default(false),
-  notificationEmail: z.string().email().optional(),
-  deliveryConfirmation: deliveryConfirmationSchema.optional(),
+const createShareBodySchema = z
+  .object({
+    matterId: z.string().min(1),
+    permissions: z.array(sharePermissionSchema).nonempty().default(["view_documents"]),
+    expiresAt: z.string().datetime().optional(),
+    requireEmailVerification: z.boolean().default(false),
+    notificationEmail: z.string().email().optional(),
+    deliveryConfirmation: deliveryConfirmationSchema.optional(),
+  })
+  .superRefine((body, context) => {
+    if (body.requireEmailVerification && !body.notificationEmail) {
+      context.addIssue({
+        code: "custom",
+        path: ["notificationEmail"],
+        message: "notificationEmail is required when email verification is required",
+      });
+    }
+  });
+
+const shareEmailVerificationBodySchema = z.object({
+  verificationCode: z.string().min(6).max(128),
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
 const tokenParamsSchema = z.object({ token: z.string().min(32) });
+const SHARE_EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 
 type RegisterShareRouteOptions = ApiRouteDependencies & {
   jwtSecret?: string;
@@ -97,6 +112,47 @@ function publicDocument(document: DocumentRecord): PublicDocument {
   };
 }
 
+function createShareVerificationCode(): string {
+  return crypto.randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase();
+}
+
+function normalizeShareVerificationCode(code: string): string {
+  return code.trim().toUpperCase();
+}
+
+function shareVerificationExpiresAt(createdAt: Date, shareExpiresAt: string): string {
+  const verificationExpiry = createdAt.getTime() + SHARE_EMAIL_VERIFICATION_TTL_MS;
+  return new Date(Math.min(verificationExpiry, Date.parse(shareExpiresAt))).toISOString();
+}
+
+function assertShareEmailVerification(
+  link: ShareLinkRecord,
+  verificationCode: string,
+  secret: string,
+  now: string,
+): void {
+  if (!link.requireEmailVerification) return;
+  if (
+    !link.emailVerificationCodeHash ||
+    !link.emailVerificationExpiresAt ||
+    Date.parse(link.emailVerificationExpiresAt) <= Date.parse(now)
+  ) {
+    throw new ApiHttpError(
+      403,
+      "EMAIL_VERIFICATION_FAILED",
+      "Email verification could not be completed for this share link",
+    );
+  }
+  const candidateHash = hashToken(normalizeShareVerificationCode(verificationCode), secret);
+  if (candidateHash !== link.emailVerificationCodeHash) {
+    throw new ApiHttpError(
+      403,
+      "EMAIL_VERIFICATION_FAILED",
+      "Email verification could not be completed for this share link",
+    );
+  }
+}
+
 function shareLinkAsPortalGrant(link: ShareLinkRecord): PortalGrant {
   return {
     id: link.id,
@@ -127,6 +183,20 @@ function requireShareSecret(jwtSecret: string | undefined): string {
     "SHARE_TOKEN_SIGNING_NOT_CONFIGURED",
     "Share link token signing is not configured",
   );
+}
+
+async function assertEmailVerificationDeliveryConfigured(
+  repository: RegisterShareRouteOptions["repository"],
+  emailJobQueue: RegisterShareRouteOptions["emailJobQueue"],
+  firmId: string,
+): Promise<void> {
+  if (!emailJobQueue) {
+    throw new ApiHttpError(503, "EMAIL_QUEUE_NOT_CONFIGURED", "Email queue is not configured");
+  }
+  const providers = await repository.listProviderSettings(firmId, { kind: "smtp" });
+  if (!providers.some((provider) => provider.enabled)) {
+    throw new ApiHttpError(503, "SMTP_NOT_CONFIGURED", "SMTP email delivery is not configured");
+  }
 }
 
 function defaultExpiry(now: Date): string {
@@ -218,8 +288,21 @@ export function registerShareRoutes(
     if (body.notificationEmail) {
       requireEmailDeliveryConfirmation(body.deliveryConfirmation, { recipientCount: 1 });
     }
+    if (body.requireEmailVerification) {
+      await assertEmailVerificationDeliveryConfigured(
+        repository,
+        emailJobQueue,
+        request.auth.firmId,
+      );
+    }
 
     const token = createSessionToken();
+    const verificationCode = body.requireEmailVerification
+      ? createShareVerificationCode()
+      : undefined;
+    const emailVerificationExpiresAt = verificationCode
+      ? shareVerificationExpiresAt(now, expiresAt)
+      : undefined;
     const share: ShareLinkRecord = {
       id: crypto.randomUUID(),
       firmId: request.auth.firmId,
@@ -228,6 +311,11 @@ export function registerShareRoutes(
       grantedByUserId: request.auth.user.id,
       permissions: [...body.permissions],
       requireEmailVerification: body.requireEmailVerification,
+      emailVerificationCodeHash:
+        verificationCode && emailVerificationExpiresAt
+          ? hashToken(normalizeShareVerificationCode(verificationCode), secret)
+          : undefined,
+      emailVerificationExpiresAt,
       expiresAt,
       createdAt: now.toISOString(),
     };
@@ -266,14 +354,25 @@ export function registerShareRoutes(
           templateKey: "share_link.created",
           to: [body.notificationEmail],
           subject: "Secure document share",
-          textBody: `A secure document share is available. Share token: ${token}`,
+          textBody: [
+            "A secure document share is available.",
+            `Share token: ${token}`,
+            verificationCode ? `Email verification code: ${verificationCode}` : undefined,
+            emailVerificationExpiresAt
+              ? `Email verification code expires: ${emailVerificationExpiresAt}`
+              : undefined,
+          ]
+            .filter((line): line is string => Boolean(line))
+            .join("\n"),
           relatedResourceType: "share_link",
           relatedResourceId: created.id,
           metadata: {
             permissions: created.permissions,
             expiresAt: created.expiresAt,
             requireEmailVerification: created.requireEmailVerification,
+            emailVerificationRequired: body.requireEmailVerification,
           },
+          required: body.requireEmailVerification,
         })
       : undefined;
     reply.code(201);
@@ -398,6 +497,7 @@ export function registerShareRoutes(
     async (request) => {
       const secret = requireShareSecret(jwtSecret);
       const params = parseRequestPart(tokenParamsSchema, request.params, "params");
+      const body = parseRequestPart(shareEmailVerificationBodySchema, request.body, "body");
       const link = await repository.getShareLinkByTokenHash(hashToken(params.token, secret));
       if (!link) {
         throw new ApiHttpError(404, "SHARE_LINK_NOT_FOUND", "Share link was not found");
@@ -422,6 +522,24 @@ export function registerShareRoutes(
                     : "expired"
                   : "unavailable",
               emailVerification: "completion_attempted",
+            },
+          }),
+        );
+        throw error;
+      }
+      try {
+        assertShareEmailVerification(link, body.verificationCode, secret, now);
+      } catch (error) {
+        await repository.createAccessLog(
+          accessLogForShare({
+            link,
+            action: "view",
+            resourceType: "share_link",
+            resourceId: link.id,
+            request,
+            metadata: {
+              outcome: "email_verification_failed",
+              emailVerification: "failed",
             },
           }),
         );

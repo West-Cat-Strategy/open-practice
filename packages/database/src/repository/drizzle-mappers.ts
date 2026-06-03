@@ -140,6 +140,8 @@ export function mapShareLinkRow(row: typeof schema.shareLinks.$inferSelect): Sha
     grantedByUserId: row.grantedByUserId,
     permissions: row.permissions as ShareLinkRecord["permissions"],
     requireEmailVerification: row.requireEmailVerification,
+    emailVerificationCodeHash: row.emailVerificationCodeHash ?? undefined,
+    emailVerificationExpiresAt: dateToIso(row.emailVerificationExpiresAt),
     expiresAt: dateToIso(row.expiresAt),
     revokedAt: dateToIso(row.revokedAt),
     createdAt: row.createdAt.toISOString(),

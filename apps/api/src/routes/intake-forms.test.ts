@@ -413,6 +413,8 @@ describe("intake form builder routes", () => {
       },
       proposalCount: 2,
     });
+    expect(submitted.json()).not.toHaveProperty("snapshot");
+    expect(submitted.json()).not.toHaveProperty("proposals");
     const submittedLinkId = created.json<{ link: { id: string } }>().link.id;
     const storedSubmittedLink = await repository.getIntakeFormLink(
       "firm-west-legal",
@@ -472,6 +474,8 @@ describe("intake form builder routes", () => {
       proposalCount: proposalsAfterSubmit.length,
     });
     expect(JSON.stringify(replayed.json())).not.toContain(snapshotId);
+    expect(replayed.json()).not.toHaveProperty("snapshot");
+    expect(replayed.json()).not.toHaveProperty("proposals");
     expect(conflictingReplay.statusCode).toBe(409);
     expect(conflictingReplay.json()).toMatchObject({
       code: "INTAKE_FORM_SUBMISSION_CONFLICT",

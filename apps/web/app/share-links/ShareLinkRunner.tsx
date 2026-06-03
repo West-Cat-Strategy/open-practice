@@ -24,6 +24,7 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
   const [payload, setPayload] = useState<PublicShareLinkResponse | null>(null);
   const [status, setStatus] = useState("Loading share link...");
   const [verificationRequired, setVerificationRequired] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
   const [verifying, setVerifying] = useState(false);
   const attentionItems = shareLinkAttentionItems({ payload, verificationRequired });
 
@@ -61,10 +62,17 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
   }, [apiBaseUrl, token]);
 
   async function completeEmailVerification(): Promise<void> {
+    const code = verificationCode.trim();
+    if (!code) {
+      setStatus("Enter the email verification code from the share message.");
+      return;
+    }
     setVerifying(true);
     setStatus("Completing email verification...");
     const response = await fetch(`${apiBaseUrl}${buildShareEmailVerificationPath(token)}`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verificationCode: code }),
     });
     if (!response.ok) {
       const body = (await readPublicTokenError(response)) as PublicShareErrorBody;
@@ -75,6 +83,7 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
     const nextPayload = (await response.json()) as PublicShareLinkResponse;
     setPayload(nextPayload);
     setVerificationRequired(false);
+    setVerificationCode("");
     setStatus(describePublicShareStatus(nextPayload));
     setVerifying(false);
   }
@@ -105,13 +114,18 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
         <div className="public-form-action">
           <div>
             <strong>Email verification</strong>
-            <small>
-              Complete verification from this email-delivered link to open this metadata view.
-            </small>
+            <small>Enter the verification code from the email-delivered share message.</small>
           </div>
+          <input
+            aria-label="Email verification code"
+            className="compact-input"
+            disabled={verifying}
+            onChange={(event) => setVerificationCode(event.target.value)}
+            value={verificationCode}
+          />
           <button
             className="secondary-button"
-            disabled={verifying}
+            disabled={verifying || !verificationCode.trim()}
             onClick={() => void completeEmailVerification()}
             type="button"
           >

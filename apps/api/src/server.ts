@@ -370,16 +370,37 @@ function routePath(url: string | undefined): string {
   return url?.split("?")[0] ?? "";
 }
 
-function isPublicConsultationIntakePath(url: string): boolean {
-  return routePath(url) === "/api/public/consultation-intakes";
+const LOCAL_BROWSER_ORIGINS = [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/];
+const CORS_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+
+function isLocalBrowserOrigin(origin: string): boolean {
+  return LOCAL_BROWSER_ORIGINS.some((pattern) => pattern.test(origin));
 }
 
-function corsOriginsForRequest(request: FastifyRequest, publicConsultationOrigins: string[]) {
-  return [
-    /^http:\/\/localhost:\d+$/,
-    /^http:\/\/127\.0\.0\.1:\d+$/,
-    ...(isPublicConsultationIntakePath(request.url) ? publicConsultationOrigins : []),
-  ];
+function corsRequestMethod(request: FastifyRequest): string {
+  if (request.method !== "OPTIONS") return request.method.toUpperCase();
+  const preflightMethod = request.headers["access-control-request-method"];
+  return typeof preflightMethod === "string" ? preflightMethod.toUpperCase() : "";
+}
+
+function isPublicConsultationCorsRequest(request: FastifyRequest): boolean {
+  return (
+    routePath(request.url) === "/api/public/consultation-intakes" &&
+    corsRequestMethod(request) === "POST"
+  );
+}
+
+function corsOriginForRequest(
+  request: FastifyRequest,
+  publicConsultationOrigins: string[],
+): string | false {
+  const origin = request.headers.origin;
+  if (!origin) return false;
+  if (isLocalBrowserOrigin(origin)) return origin;
+  if (publicConsultationOrigins.includes(origin) && isPublicConsultationCorsRequest(request)) {
+    return origin;
+  }
+  return false;
 }
 
 export function createApiServer(options: ApiOptions): FastifyInstance {
@@ -409,9 +430,9 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   server.register(cors, {
     delegator: (request, callback) => {
       callback(null, {
-        origin: corsOriginsForRequest(request, publicConsultationOrigins),
+        origin: corsOriginForRequest(request, publicConsultationOrigins),
         credentials: true,
-        methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        methods: CORS_METHODS,
       });
     },
   });

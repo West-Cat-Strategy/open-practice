@@ -13,7 +13,9 @@ describe("repository portal links and access logs", () => {
       tokenHash: "share-token-hash-001",
       grantedByUserId: "user-admin",
       permissions: ["view_documents"],
-      requireEmailVerification: false,
+      requireEmailVerification: true,
+      emailVerificationCodeHash: "share-code-hash-001",
+      emailVerificationExpiresAt: "2026-04-26T12:00:00.000Z",
       expiresAt: "2026-05-01T00:00:00.000Z",
       createdAt: now,
     });
@@ -35,9 +37,15 @@ describe("repository portal links and access logs", () => {
     ]);
     await expect(repository.getShareLink("firm-west-legal", share.id)).resolves.toMatchObject({
       id: share.id,
+      emailVerificationCodeHash: "share-code-hash-001",
+      emailVerificationExpiresAt: "2026-04-26T12:00:00.000Z",
     });
     await expect(repository.getShareLinkByTokenHash("share-token-hash-001")).resolves.toMatchObject(
-      { id: share.id },
+      {
+        id: share.id,
+        emailVerificationCodeHash: "share-code-hash-001",
+        emailVerificationExpiresAt: "2026-04-26T12:00:00.000Z",
+      },
     );
     await expect(repository.createShareLink({ ...share, id: "duplicate-token" })).rejects.toThrow(
       "Share link token hash already exists",

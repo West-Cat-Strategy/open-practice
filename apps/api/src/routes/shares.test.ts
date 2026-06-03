@@ -116,7 +116,7 @@ describe("share routes", () => {
       payload: {
         matterId: "matter-001",
         permissions: ["view_documents"],
-        requireEmailVerification: true,
+        requireEmailVerification: false,
       },
     });
 
@@ -127,7 +127,7 @@ describe("share routes", () => {
       matterId: "matter-001",
       permissions: ["view_documents"],
       grantedByUserId: "user-licensee",
-      requireEmailVerification: true,
+      requireEmailVerification: false,
     });
     expect(body.share).not.toHaveProperty("tokenHash");
 
@@ -145,7 +145,7 @@ describe("share routes", () => {
             matterId: "matter-001",
             permissions: ["view_documents"],
             expiresAt: body.share.expiresAt,
-            requireEmailVerification: true,
+            requireEmailVerification: false,
           }),
         }),
       ]),
@@ -259,6 +259,44 @@ describe("share routes", () => {
     const queuedAudit = audit.events.find((event) => event.action === "email_outbox.queued");
     expect(queuedAudit?.metadata).not.toHaveProperty("token");
     expect(queuedAudit?.metadata).not.toHaveProperty("textBody");
+    const [queuedEmail] = await repository.listEmailOutbox("firm-west-legal");
+    expect(queuedEmail?.textBody).toContain(`Share token: ${response.json().token}`);
+    expect(queuedEmail?.textBody).not.toContain("Email verification code:");
+  });
+
+  it("requires configured email delivery before creating email-verification shares", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await addShareableDocument(repository);
+    const server = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
+
+    const missingEmail = await server.inject({
+      method: "POST",
+      url: "/api/shares",
+      payload: {
+        matterId: "matter-001",
+        permissions: ["view_documents"],
+        requireEmailVerification: true,
+      },
+    });
+    const missingSmtp = await server.inject({
+      method: "POST",
+      url: "/api/shares",
+      payload: {
+        matterId: "matter-001",
+        permissions: ["view_documents"],
+        notificationEmail: "client@example.test",
+        requireEmailVerification: true,
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+
+    expect(missingEmail.statusCode).toBe(400);
+    expect(missingEmail.json()).toMatchObject({ message: "Invalid request body" });
+    expect(missingSmtp.statusCode).toBe(503);
+    expect(missingSmtp.json()).toMatchObject({ code: "SMTP_NOT_CONFIGURED" });
+    await expect(
+      repository.listShareLinks("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toEqual([]);
   });
 
   it("rejects optional share notification emails without delivery confirmation", async () => {
@@ -380,6 +418,7 @@ describe("share routes", () => {
   it("rate-limits public share email verification without leaking token material", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await addShareableDocument(repository);
+    await enableSmtp(repository);
     const authedServer = testServer({ repository });
     const created = await authedServer.inject({
       method: "POST",
@@ -387,7 +426,9 @@ describe("share routes", () => {
       payload: {
         matterId: "matter-001",
         permissions: ["view_documents"],
+        notificationEmail: "client@example.test",
         requireEmailVerification: true,
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
     const token = created.json<{ token: string }>().token;
@@ -396,12 +437,14 @@ describe("share routes", () => {
     let limited = await publicServer.inject({
       method: "POST",
       url: `/api/portal/shares/${token}/email-verification`,
+      payload: { verificationCode: "WRONG-CODE" },
     });
 
     for (let index = 0; index < PUBLIC_TOKEN_MUTATION_RATE_LIMIT.max; index += 1) {
       limited = await publicServer.inject({
         method: "POST",
         url: `/api/portal/shares/${token}/email-verification`,
+        payload: { verificationCode: "WRONG-CODE" },
       });
     }
 
@@ -501,6 +544,7 @@ describe("share routes", () => {
   it("requires email verification before public share reads while logging the denial", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await addShareableDocument(repository);
+    await enableSmtp(repository);
     const authedServer = testServer({ repository });
     const created = await authedServer.inject({
       method: "POST",
@@ -508,7 +552,9 @@ describe("share routes", () => {
       payload: {
         matterId: "matter-001",
         permissions: ["view_documents"],
+        notificationEmail: "client@example.test",
         requireEmailVerification: true,
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
     expect(created.statusCode).toBe(201);
@@ -540,6 +586,7 @@ describe("share routes", () => {
   it("completes email verification for a public share without exposing token hashes", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await addShareableDocument(repository);
+    await enableSmtp(repository);
     const authedServer = testServer({ repository });
     const created = await authedServer.inject({
       method: "POST",
@@ -547,20 +594,42 @@ describe("share routes", () => {
       payload: {
         matterId: "matter-001",
         permissions: ["view_documents"],
+        notificationEmail: "client@example.test",
         requireEmailVerification: true,
+        deliveryConfirmation: deliveryConfirmation(),
       },
     });
     expect(created.statusCode).toBe(201);
+    expect(created.json().share).not.toHaveProperty("emailVerificationCodeHash");
+    const [stored] = await repository.listShareLinks("firm-west-legal", {
+      matterId: "matter-001",
+    });
+    expect(stored?.emailVerificationCodeHash).toHaveLength(64);
+    expect(stored?.emailVerificationExpiresAt).toEqual(expect.any(String));
+    const [queuedEmail] = await repository.listEmailOutbox("firm-west-legal");
+    const verificationCode = queuedEmail?.textBody.match(
+      /Email verification code: ([A-Z0-9]+)/,
+    )?.[1];
+    expect(verificationCode).toEqual(expect.any(String));
+    if (!verificationCode) throw new Error("Expected queued share verification code");
 
     const publicServer = testServer({ repository, withAuthHook: false });
     await publicServer.inject({
       method: "GET",
       url: `/api/portal/shares/${created.json().token}`,
     });
+    const failedVerification = await publicServer.inject({
+      method: "POST",
+      url: `/api/portal/shares/${created.json().token}/email-verification`,
+      payload: { verificationCode: "WRONG-CODE" },
+    });
+    expect(failedVerification.statusCode).toBe(403);
+
     const verified = await publicServer.inject({
       method: "POST",
       url: `/api/portal/shares/${created.json().token}/email-verification`,
       headers: { "user-agent": "share-verification-test" },
+      payload: { verificationCode },
     });
 
     expect(verified.statusCode).toBe(200);

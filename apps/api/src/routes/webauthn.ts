@@ -307,7 +307,11 @@ export function registerWebAuthnRoutes(
       if (!access.ok) throw access.error;
 
       const params = z.object({ id: z.string().min(1) }).parse(request.params);
-      await options.repository.deleteWebAuthnCredential(request.auth.firmId, params.id);
+      await options.repository.deleteWebAuthnCredential(
+        request.auth.firmId,
+        request.auth.user.id,
+        params.id,
+      );
       return { ok: true };
     },
   );

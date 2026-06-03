@@ -46,7 +46,7 @@ export function shareLinkAttentionItems(input: {
       {
         id: "share-email-verification",
         title: "Verify email",
-        detail: "Complete verification before reviewing the shared document records.",
+        detail: "Enter the email-delivered verification code before reviewing shared records.",
         status: "required",
         tone: "risk",
       },

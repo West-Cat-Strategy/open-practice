@@ -216,9 +216,37 @@ describe("API auth and persistence boundaries", () => {
         "access-control-request-method": "POST",
       },
     });
+    const authenticatedRoute = await testServer({
+      publicConsultationIntake: {
+        firmId: "firm-west-legal",
+        actorUserId: "user-admin",
+        allowedOrigins: ["https://consult.example.test"],
+      },
+    }).inject({
+      method: "OPTIONS",
+      url: "/api/auth/session",
+      headers: {
+        origin: "https://consult.example.test",
+        "access-control-request-method": "GET",
+      },
+    });
 
     expect(unconfigured.headers["access-control-allow-origin"]).toBeUndefined();
     expect(configured.headers["access-control-allow-origin"]).toBe("https://consult.example.test");
+    expect(authenticatedRoute.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("restricts password setup token creation to owner admins", async () => {
+    const response = await testServer({ devUserId: "user-licensee" }).inject({
+      method: "POST",
+      url: "/api/auth/password-setup-tokens",
+      payload: { userId: "user-licensee" },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      message: "Owner-admin access is required to create password setup tokens",
+    });
   });
 
   it("requires a configured setup key for production setup completion", async () => {
@@ -935,7 +963,7 @@ describe("API auth and persistence boundaries", () => {
 
     expect(publicPreflight.statusCode).toBe(204);
     expect(publicPreflight.headers["access-control-allow-origin"]).toBe(origin);
-    expect(authenticatedPreflight.statusCode).toBe(204);
+    expect(authenticatedPreflight.statusCode).toBe(404);
     expect(authenticatedPreflight.headers["access-control-allow-origin"]).toBeUndefined();
   });
 
