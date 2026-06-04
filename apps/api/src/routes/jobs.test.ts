@@ -689,6 +689,73 @@ describe("jobs routes", () => {
     expect(response.statusCode).toBe(404);
   });
 
+  it("redacts inbound parser raw-object metadata from lifecycle list and detail", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-inbound-parser-recovery",
+      firmId,
+      queueName: "inbound_email",
+      jobName: "parse_inbound_email",
+      status: "failed",
+      targetResourceType: "inbound_email_raw",
+      targetResourceId: "synthetic-token-hash",
+      attemptsMade: 1,
+      maxAttempts: 4,
+      queuedAt: "2026-05-02T10:00:00.000Z",
+      failedAt: "2026-05-02T10:01:00.000Z",
+      errorMessage: "Synthetic parser failed with private raw MIME content",
+      metadata: {
+        provider: "mailgun",
+        source: "api.inbound_email.parser_job.retry",
+        resourceType: "inbound_email_raw",
+        resourceId: "synthetic-token-hash",
+        retryOfJobId: "job-inbound-parser-original",
+        rawStorageKey:
+          "inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/private.eml",
+        rawContentSha256: "a".repeat(64),
+        webhookSigningKey: "synthetic-mailgun-signing-key",
+        rawMime: "From: client@example.test\n\nSynthetic body",
+      },
+    });
+
+    const server = testServer({ repository, inboundEmailJobQueue: fakeQueue });
+    const list = await server.inject({ method: "GET", url: "/api/jobs?queueName=inbound_email" });
+    const detail = await server.inject({
+      method: "GET",
+      url: "/api/jobs/job-inbound-parser-recovery",
+    });
+
+    expect(list.statusCode).toBe(200);
+    expect(detail.statusCode).toBe(200);
+    expect(list.json().jobs[0]).toMatchObject({
+      id: "job-inbound-parser-recovery",
+      queueName: "inbound_email",
+      metadata: {
+        provider: "mailgun",
+        source: "api.inbound_email.parser_job.retry",
+        resourceType: "inbound_email_raw",
+        resourceId: "synthetic-token-hash",
+      },
+    });
+    expect(detail.json().job).toMatchObject({
+      id: "job-inbound-parser-recovery",
+      queueName: "inbound_email",
+      metadata: {
+        provider: "mailgun",
+        source: "api.inbound_email.parser_job.retry",
+        resourceType: "inbound_email_raw",
+        resourceId: "synthetic-token-hash",
+      },
+    });
+    expect(list.body).not.toContain("rawStorageKey");
+    expect(list.body).not.toContain("private.eml");
+    expect(list.body).not.toContain("Synthetic body");
+    expect(list.body).not.toContain("synthetic-mailgun-signing-key");
+    expect(detail.body).not.toContain("rawStorageKey");
+    expect(detail.body).not.toContain("private.eml");
+    expect(detail.body).not.toContain("private raw MIME content");
+  });
+
   it("returns one firm-scoped redacted job detail", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createJobLifecycleRecord({

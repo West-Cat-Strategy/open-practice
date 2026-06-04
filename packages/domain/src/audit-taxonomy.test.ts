@@ -596,6 +596,81 @@ describe("audit event taxonomy", () => {
     );
   });
 
+  it("classifies inbound parser recovery metadata without raw object hints", () => {
+    const retry = classifyAuditEvent(
+      auditEvent({
+        action: "inbound_email.parser_job.manual_retry",
+        resourceType: "inbound_email",
+        resourceId: "job-inbound-parser-failed",
+        metadata: {
+          jobId: "job-inbound-parser-failed",
+          retryJobId: "job-inbound-parser-retry",
+          queueName: "inbound_email",
+          jobName: "parse_inbound_email",
+          beforeStatus: "failed",
+          expectedStatus: "failed",
+          afterStatus: "queued",
+          provider: "mailgun",
+          source: "mailgun.raw_mime_webhook",
+          idempotencyKeyPresent: true,
+          retryJobQueued: true,
+          rawStorageKey:
+            "inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/message.eml",
+          signingSecret: "synthetic-mailgun-signing-key",
+        },
+      }),
+    );
+    const deadLetter = classifyAuditEvent(
+      auditEvent({
+        action: "inbound_email.parser_job.manual_dead_letter",
+        resourceType: "inbound_email",
+        resourceId: "job-inbound-parser-failed",
+        metadata: {
+          jobId: "job-inbound-parser-failed",
+          queueName: "inbound_email",
+          jobName: "parse_inbound_email",
+          beforeStatus: "failed",
+          expectedStatus: "failed",
+          afterStatus: "dead_letter",
+          provider: "mailgun",
+          source: "mailgun.raw_mime_webhook",
+          idempotencyKeyPresent: true,
+          retryJobQueued: false,
+        },
+      }),
+    );
+
+    expect(retry).toMatchObject({
+      category: "communications",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(deadLetter).toMatchObject({
+      category: "communications",
+      known: true,
+      matterScope: "firm",
+      resourceTypeMatches: true,
+    });
+    expect(retry.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "jobId",
+        "retryJobId",
+        "queueName",
+        "jobName",
+        "beforeStatus",
+        "expectedStatus",
+        "afterStatus",
+        "provider",
+        "source",
+        "idempotencyKeyPresent",
+        "retryJobQueued",
+      ]),
+    );
+    expect(retry.metadataHints.resource).not.toContain("rawStorageKey");
+    expect(retry.metadataHints.resource).not.toContain("signingSecret");
+  });
+
   it("classifies communications triage note and follow-up metadata as safe resource hints", () => {
     const classification = classifyAuditEvent(
       auditEvent({
