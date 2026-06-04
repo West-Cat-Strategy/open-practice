@@ -16,6 +16,7 @@ import {
   buildLedgerReconciliationExceptionResolutionStatementRow,
   buildJurisdictionalTrustReport,
   ledgerAccountingBankFeedImportStatuses,
+  ledgerBankFeedReconciliationReviewSummary,
   ledgerAccountingDimensionPostures,
   ledgerAccountingProtectedFundsReviewCadences,
   ledgerAccountingReviewSummary,
@@ -372,13 +373,15 @@ export function registerLedgerRoutes(
     const approvals = (await repository.listLedgerTransactionApprovals(request.auth.firmId)).filter(
       (approval) => visibleTransactionIds.has(approval.transactionId),
     );
-    const [reconciliations, matchRuleProfiles, accountingProfiles] = hasFirmWideAccess
-      ? await Promise.all([
-          repository.listLedgerReconciliations(request.auth.firmId),
-          repository.listLedgerStatementMatchRuleProfiles(request.auth.firmId),
-          repository.listLedgerAccountingReviewProfiles(request.auth.firmId),
-        ])
-      : [[], [], []];
+    const [reconciliations, importBatches, matchRuleProfiles, accountingProfiles] =
+      hasFirmWideAccess
+        ? await Promise.all([
+            repository.listLedgerReconciliations(request.auth.firmId),
+            repository.listLedgerStatementImportBatches(request.auth.firmId),
+            repository.listLedgerStatementMatchRuleProfiles(request.auth.firmId),
+            repository.listLedgerAccountingReviewProfiles(request.auth.firmId),
+          ])
+        : [[], [], [], []];
     const diagnostics = ledgerControlsDiagnostics({
       ledger,
       approvals,
@@ -392,11 +395,18 @@ export function registerLedgerRoutes(
       reconciliations,
       diagnostics,
       accountingReview: {
+        importBatches,
         matchRuleProfiles,
         accountingProfiles,
         summary: ledgerAccountingReviewSummary({
           matchRuleProfiles,
           accountingProfiles,
+        }),
+        bankFeedReviewSummary: ledgerBankFeedReconciliationReviewSummary({
+          accountingProfiles,
+          importBatches,
+          reconciliations,
+          diagnostics,
         }),
       },
       trustControlPolicy: {

@@ -11,6 +11,8 @@ import {
   defaultCreditWriteOffPosture,
   defaultHostedPaymentProcessorState,
   defaultPaymentPlanPlaceholder,
+  buildPaymentSettlementReview,
+  defaultPaymentSettlementReview,
   expenseCategoryProfileCues,
   expenseCategoryProfileForKey,
   hostedPaymentRequestPath,
@@ -249,6 +251,55 @@ describe("billing period locks and rate rules", () => {
     });
     expect(defaultHostedPaymentProcessorState()).toEqual({
       status: "not_started",
+    });
+  });
+
+  it("keeps processor settlement review as staff-only evidence without automatic mutation", () => {
+    expect(defaultPaymentSettlementReview()).toMatchObject({
+      status: "not_received",
+      reviewAction: "staff_reconciliation_review_required",
+      invoiceBalanceMutation: "none",
+      reconciliationMutation: "none",
+      trustPosting: "none",
+      webhookBoundary: {
+        signatureVerified: false,
+        rawWebhookBodyStored: false,
+        automaticInvoiceMutation: false,
+        automaticReconciliation: false,
+        trustPosting: false,
+        refundHandling: "review_only",
+        chargebackHandling: "review_only",
+      },
+    });
+
+    expect(
+      buildPaymentSettlementReview({
+        provider: "stripe",
+        eventType: "checkout_session_completed",
+        paymentStatus: "paid",
+        externalEventId: "evt_synthetic_settlement",
+        externalSessionId: "cs_synthetic_settlement",
+        amountCents: 5000,
+        currency: "CAD",
+        observedAt: "2026-06-04T12:00:00.000Z",
+        receivedAt: "2026-06-04T12:01:00.000Z",
+      }),
+    ).toMatchObject({
+      status: "needs_review",
+      provider: "stripe",
+      eventType: "checkout_session_completed",
+      paymentStatus: "paid",
+      externalEventId: "evt_synthetic_settlement",
+      externalSessionId: "cs_synthetic_settlement",
+      amountCents: 5000,
+      currency: "CAD",
+      invoiceBalanceMutation: "none",
+      reconciliationMutation: "none",
+      trustPosting: "none",
+      webhookBoundary: expect.objectContaining({
+        signatureVerified: false,
+        rawWebhookBodyStored: false,
+      }),
     });
   });
 });

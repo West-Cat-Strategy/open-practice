@@ -38,9 +38,11 @@ import type {
   IntakeVariableProposal,
   LedgerAccount,
   LedgerAccountingReviewProfileRecord,
+  LedgerBankFeedReconciliationReviewSummary,
   LedgerEntry,
   LedgerReconciliationRecord,
   LedgerAccountingReviewSummary,
+  LedgerStatementImportBatchRecord,
   LedgerStatementMatchRuleProfileRecord,
   LedgerTransactionApprovalRecord,
   EmbeddedIntakeTemplateDefinition,
@@ -1176,9 +1178,11 @@ export interface TrustControlsDashboardResponse {
   approvals: LedgerTransactionApprovalRecord[];
   reconciliations: LedgerReconciliationRecord[];
   accountingReview: {
+    importBatches: LedgerStatementImportBatchRecord[];
     matchRuleProfiles: LedgerStatementMatchRuleProfileRecord[];
     accountingProfiles: LedgerAccountingReviewProfileRecord[];
     summary: LedgerAccountingReviewSummary;
+    bankFeedReviewSummary: LedgerBankFeedReconciliationReviewSummary;
   };
   diagnostics: {
     pendingApprovalTransactionIds: string[];
@@ -1549,7 +1553,14 @@ export type ClientPortalActionFamily =
   | "guest_session"
   | "receipt"
   | "client_update"
-  | "client_action";
+  | "client_action"
+  | "payment_request";
+
+export interface ClientPortalActionDetail {
+  label: string;
+  value: string;
+  tone?: "neutral" | "ready" | "risk";
+}
 
 export interface ClientPortalActionSummary {
   id: string;
@@ -1560,6 +1571,63 @@ export interface ClientPortalActionSummary {
   status: string;
   tone: "neutral" | "ready" | "risk";
   updatedAt?: string;
+  details?: ClientPortalActionDetail[];
+}
+
+export interface ClientPortalMatterActionGroup {
+  matterId: string;
+  matterNumber: string;
+  matterTitle: string;
+  actionCount: number;
+  attentionCount: number;
+  actions: ClientPortalActionSummary[];
+}
+
+export interface ClientPortalPaymentRequestSummary {
+  id: string;
+  status: string;
+  amountCents: number;
+  currency: "CAD";
+  deliveryStatus: string;
+  reminderStatus: string;
+  paymentPlanStatus: string;
+  expiresAt?: string;
+  updatedAt: string;
+}
+
+export interface ClientPortalBillSummary {
+  id: string;
+  matterId: string;
+  invoiceNumber: string;
+  status: string;
+  issuedAt?: string;
+  dueAt?: string;
+  totalCents: number;
+  paidCents: number;
+  balanceDueCents: number;
+  currency: "CAD";
+  tone: "neutral" | "ready" | "risk";
+  paymentRequestCount: number;
+  paymentRequests: ClientPortalPaymentRequestSummary[];
+}
+
+export interface ClientPortalMatterBillingGroup {
+  matterId: string;
+  matterNumber: string;
+  matterTitle: string;
+  billCount: number;
+  balanceDueCents: number;
+  attentionCount: number;
+  bills: ClientPortalBillSummary[];
+}
+
+export interface ClientPortalBillingWorkspace {
+  currency: "CAD";
+  billCount: number;
+  totalBalanceDueCents: number;
+  openPaymentRequestCount: number;
+  attentionBillCount: number;
+  matterBills: ClientPortalMatterBillingGroup[];
 }
 
 export interface ClientPortalWorkspaceResponse {
@@ -1578,6 +1646,8 @@ export interface ClientPortalWorkspaceResponse {
     permissions: ClientPortalPermission[];
     actionCount: number;
   }>;
+  billing?: ClientPortalBillingWorkspace;
+  matterActions?: ClientPortalMatterActionGroup[];
   actions: ClientPortalActionSummary[];
 }
 

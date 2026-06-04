@@ -240,6 +240,190 @@ async function addClientPortalRecords(repository: InMemoryOpenPracticeRepository
     createdAt: "2026-05-20T16:01:00.000Z",
     metadata: { privateReceiptMetadata: "do not expose" },
   });
+
+  await repository.createConversationThread({
+    id: "thread-client-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    topic: "PRIVATE client message topic",
+    status: "open",
+    exportState: "not_requested",
+    notificationBoundary: "internal_only",
+    createdAt: "2026-05-20T16:30:00.000Z",
+    updatedAt: "2026-05-20T16:35:00.000Z",
+    createdByUserId: "user-admin",
+    updatedByUserId: "user-admin",
+    metadata: { privateThreadMetadata: "do not expose" },
+  });
+
+  await repository.createInvoice({
+    invoice: {
+      id: "invoice-client-paid-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      clientContactId: "contact-ada",
+      invoiceNumber: "INV-2026-PAID",
+      status: "paid",
+      issuedAt: "2026-05-19T12:00:00.000Z",
+      dueAt: "2026-05-30T12:00:00.000Z",
+      memo: "PRIVATE paid invoice memo",
+      createdByUserId: "user-admin",
+      createdAt: "2026-05-19T12:00:00.000Z",
+      subtotalCents: 5000,
+      taxCents: 250,
+      totalCents: 5250,
+      paidCents: 5250,
+      balanceDueCents: 0,
+    },
+    lines: [
+      {
+        id: "invoice-line-client-paid-001",
+        firmId: "firm-west-legal",
+        invoiceId: "invoice-client-paid-001",
+        matterId: "matter-001",
+        kind: "adjustment",
+        description: "PRIVATE paid line detail",
+        quantity: 1,
+        unitAmountCents: 5000,
+        subtotalCents: 5000,
+        taxRateBps: 500,
+        taxCents: 250,
+        totalCents: 5250,
+        createdAt: "2026-05-19T12:00:00.000Z",
+      },
+    ],
+  });
+
+  for (const invoice of [
+    {
+      id: "invoice-client-draft-001",
+      clientContactId: "contact-ada",
+      invoiceNumber: "INV-2026-DRAFT",
+      status: "draft" as const,
+      memo: "PRIVATE draft invoice memo",
+    },
+    {
+      id: "invoice-client-approved-001",
+      clientContactId: "contact-ada",
+      invoiceNumber: "INV-2026-APPROVED",
+      status: "approved" as const,
+      memo: "PRIVATE approved invoice memo",
+    },
+    {
+      id: "invoice-client-void-001",
+      clientContactId: "contact-ada",
+      invoiceNumber: "INV-2026-VOID",
+      status: "void" as const,
+      memo: "PRIVATE void invoice memo",
+    },
+    {
+      id: "invoice-other-client-001",
+      clientContactId: "contact-other-client",
+      invoiceNumber: "INV-2026-OTHER",
+      status: "issued" as const,
+      memo: "PRIVATE other-client invoice memo",
+    },
+  ]) {
+    await repository.createInvoice({
+      invoice: {
+        ...invoice,
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        createdByUserId: "user-admin",
+        createdAt: "2026-05-19T12:30:00.000Z",
+        issuedAt: invoice.status === "issued" ? "2026-05-19T12:30:00.000Z" : undefined,
+        dueAt: "2026-05-30T12:30:00.000Z",
+        subtotalCents: 1000,
+        taxCents: 50,
+        totalCents: 1050,
+        paidCents: 0,
+        balanceDueCents: 1050,
+      },
+      lines: [
+        {
+          id: `line-${invoice.id}`,
+          firmId: "firm-west-legal",
+          invoiceId: invoice.id,
+          matterId: "matter-001",
+          kind: "adjustment",
+          description: `PRIVATE ${invoice.invoiceNumber} line detail`,
+          quantity: 1,
+          unitAmountCents: 1000,
+          subtotalCents: 1000,
+          taxRateBps: 500,
+          taxCents: 50,
+          totalCents: 1050,
+          createdAt: "2026-05-19T12:30:00.000Z",
+        },
+      ],
+    });
+  }
+
+  await repository.createHostedPaymentRequest({
+    id: "payment-request-client-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    invoiceId: "invoice-001",
+    clientContactId: "contact-ada",
+    status: "sent",
+    amountCents: 13230,
+    currency: "CAD",
+    hostedPath: "/payments/private-client-path",
+    delivery: {
+      status: "sent",
+      channel: "portal",
+      recipientCount: 1,
+      deliveredAt: "2026-05-20T17:01:00.000Z",
+    },
+    reminder: {
+      status: "scheduled",
+      reminderCount: 1,
+      nextReminderAt: futureIso(2 * dayMs),
+    },
+    paymentPlan: {
+      status: "not_offered",
+      enforcement: "none",
+    },
+    creditWriteOffPosture: {
+      status: "none",
+      movement: "none",
+    },
+    processor: {
+      status: "checkout_session_created",
+      provider: "stripe",
+      externalSessionId: "private-stripe-session",
+      checkoutUrl: "https://payments.example.test/private-checkout",
+      createdAt: "2026-05-20T17:00:00.000Z",
+      expiresAt: futureIso(),
+    },
+    evidence: { privatePaymentEvidence: "do not expose" },
+    createdByUserId: "user-admin",
+    createdAt: "2026-05-20T17:00:00.000Z",
+    updatedAt: "2026-05-20T17:01:00.000Z",
+    expiresAt: futureIso(),
+  });
+
+  await repository.createHostedPaymentRequest({
+    id: "payment-request-other-client-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    invoiceId: "invoice-001",
+    clientContactId: "contact-other-client",
+    status: "sent",
+    amountCents: 5000,
+    currency: "CAD",
+    hostedPath: "/payments/other-client-private-path",
+    delivery: { status: "sent", channel: "portal", recipientCount: 1 },
+    reminder: { status: "not_scheduled", reminderCount: 0 },
+    paymentPlan: { status: "not_offered", enforcement: "none" },
+    creditWriteOffPosture: { status: "none", movement: "none" },
+    processor: { status: "not_started" },
+    evidence: { privateOtherClientEvidence: "do not expose" },
+    createdByUserId: "user-admin",
+    createdAt: "2026-05-20T17:05:00.000Z",
+    updatedAt: "2026-05-20T17:05:00.000Z",
+    expiresAt: futureIso(),
+  });
 }
 
 afterEach(async () => {
@@ -309,6 +493,13 @@ describe("client portal routes", () => {
     );
     expect(clientAccount).toBeTruthy();
     await addClientPortalRecords(repository);
+    const invoiceBefore = await repository.getInvoice("firm-west-legal", "invoice-001");
+    const paymentRequestBefore = await repository.getHostedPaymentRequest(
+      "firm-west-legal",
+      "payment-request-client-001",
+    );
+    const auditBefore = await repository.listAuditEvents("firm-west-legal");
+    const ledgerBefore = await repository.getLedger("firm-west-legal", { matterId: "matter-001" });
 
     const server = testServer({ repository, authUser: clientAccount! });
     const response = await server.inject({
@@ -321,22 +512,160 @@ describe("client portal routes", () => {
       account: { role: string };
       access: { posture: string; activeGrantCount: number };
       matters: Array<{ number: string; actionCount: number }>;
-      actions: Array<{ id: string; family: string; status: string; detail: string }>;
+      billing: {
+        billCount: number;
+        totalBalanceDueCents: number;
+        openPaymentRequestCount: number;
+        attentionBillCount: number;
+        matterBills: Array<{
+          matterNumber: string;
+          billCount: number;
+          balanceDueCents: number;
+          bills: Array<{
+            invoiceNumber: string;
+            status: string;
+            totalCents: number;
+            paidCents: number;
+            balanceDueCents: number;
+            paymentRequests: Array<{
+              id: string;
+              status: string;
+              amountCents: number;
+              currency: string;
+              deliveryStatus: string;
+              reminderStatus: string;
+              paymentPlanStatus: string;
+              expiresAt?: string;
+              updatedAt: string;
+            }>;
+          }>;
+        }>;
+      };
+      matterActions: Array<{
+        matterNumber: string;
+        actionCount: number;
+        attentionCount: number;
+        actions: Array<{ id: string; family: string; status: string; detail: string }>;
+      }>;
+      actions: Array<{
+        id: string;
+        family: string;
+        status: string;
+        detail: string;
+        details?: Array<{ label: string; value: string }>;
+      }>;
     }>();
     expect(body.account.role).toBe("client_external");
     expect(body.access).toMatchObject({ posture: "active", activeGrantCount: 1 });
     expect(body.matters).toEqual([
       expect.objectContaining({ number: "2026-0001", actionCount: expect.any(Number) }),
     ]);
-    const families = body.actions.map((action) => action.family);
-    expect(families).toEqual(expect.arrayContaining(["intake", "receipt", "client_update"]));
-    expect(families).not.toEqual(
-      expect.arrayContaining(["secure_share", "external_upload", "guest_session"]),
+    expect(body.billing).toMatchObject({
+      billCount: 2,
+      totalBalanceDueCents: 13230,
+      openPaymentRequestCount: 1,
+      attentionBillCount: 1,
+    });
+    expect(body.billing.matterBills).toEqual([
+      expect.objectContaining({
+        matterNumber: "2026-0001",
+        billCount: 2,
+        balanceDueCents: 13230,
+        bills: expect.arrayContaining([
+          expect.objectContaining({
+            invoiceNumber: "INV-2026-0001",
+            status: "issued",
+            totalCents: 13230,
+            paidCents: 0,
+            balanceDueCents: 13230,
+            paymentRequests: expect.arrayContaining([
+              expect.objectContaining({
+                id: "payment-request-client-001",
+                status: "sent",
+                amountCents: 13230,
+                deliveryStatus: "sent",
+                reminderStatus: "scheduled",
+                paymentPlanStatus: "not_offered",
+              }),
+            ]),
+          }),
+          expect.objectContaining({
+            invoiceNumber: "INV-2026-PAID",
+            status: "paid",
+            totalCents: 5250,
+            paidCents: 5250,
+            balanceDueCents: 0,
+            paymentRequests: [],
+          }),
+        ]),
+      }),
+    ]);
+    const visibleInvoiceNumbers = body.billing.matterBills.flatMap((group) =>
+      group.bills.map((bill) => bill.invoiceNumber),
     );
+    expect(visibleInvoiceNumbers).toEqual(
+      expect.arrayContaining(["INV-2026-0001", "INV-2026-PAID"]),
+    );
+    expect(visibleInvoiceNumbers).not.toEqual(
+      expect.arrayContaining([
+        "INV-2026-DRAFT",
+        "INV-2026-APPROVED",
+        "INV-2026-VOID",
+        "INV-2026-OTHER",
+      ]),
+    );
+    const visiblePaymentRequest = body.billing.matterBills
+      .flatMap((group) => group.bills)
+      .flatMap((bill) => bill.paymentRequests)
+      .find((request) => request.id === "payment-request-client-001");
+    expect(Object.keys(visiblePaymentRequest ?? {}).sort()).toEqual([
+      "amountCents",
+      "currency",
+      "deliveryStatus",
+      "expiresAt",
+      "id",
+      "paymentPlanStatus",
+      "reminderStatus",
+      "status",
+      "updatedAt",
+    ]);
+    const families = body.actions.map((action) => action.family);
+    expect(families).toEqual(
+      expect.arrayContaining([
+        "secure_share",
+        "external_upload",
+        "intake",
+        "guest_session",
+        "receipt",
+        "client_update",
+        "client_action",
+        "payment_request",
+      ]),
+    );
+    expect(body.matterActions).toEqual([
+      expect.objectContaining({
+        matterNumber: "2026-0001",
+        actionCount: body.actions.length,
+        attentionCount: expect.any(Number),
+      }),
+    ]);
     expect(body.actions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ family: "client_update", status: "sent" }),
         expect.objectContaining({ family: "receipt", status: "open" }),
+        expect.objectContaining({ family: "external_upload", status: "retry_requested" }),
+        expect.objectContaining({ family: "guest_session", status: "issued" }),
+        expect.objectContaining({ family: "client_action", status: "open" }),
+        expect.objectContaining({ family: "payment_request", status: "sent" }),
+      ]),
+    );
+    const paymentAction = body.actions.find(
+      (action) => action.id === "payment-request:payment-request-client-001",
+    );
+    expect(paymentAction?.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "Amount", value: "CAD 132.30" }),
+        expect.objectContaining({ label: "Delivery", value: "sent" }),
       ]),
     );
     expect(
@@ -356,6 +685,33 @@ describe("client portal routes", () => {
     expect(serialized).not.toContain("office@example.test");
     expect(serialized).not.toContain("private-intake-storage-key");
     expect(serialized).not.toContain("private-room-id");
+    expect(serialized).not.toContain("PRIVATE client message topic");
+    expect(serialized).not.toContain("privateThreadMetadata");
+    expect(serialized).not.toContain("/payments/private-client-path");
+    expect(serialized).not.toContain("/payments/other-client-private-path");
+    expect(serialized).not.toContain("private-stripe-session");
+    expect(serialized).not.toContain("private-checkout");
+    expect(serialized).not.toContain("privatePaymentEvidence");
+    expect(serialized).not.toContain("privateOtherClientEvidence");
+    expect(serialized).not.toContain("payment-request-other-client-001");
+    expect(serialized).not.toContain("Initial tenancy dispute invoice");
+    expect(serialized).not.toContain("Reviewed tenancy branch materials");
+    expect(serialized).not.toContain("contact-other-client");
+    expect(serialized).not.toContain("PRIVATE paid invoice memo");
+    expect(serialized).not.toContain("PRIVATE paid line detail");
+    expect(serialized).not.toContain("PRIVATE draft invoice memo");
+    expect(serialized).not.toContain("PRIVATE approved invoice memo");
+    expect(serialized).not.toContain("PRIVATE void invoice memo");
+    expect(serialized).not.toContain("PRIVATE other-client invoice memo");
+
+    expect(await repository.getInvoice("firm-west-legal", "invoice-001")).toEqual(invoiceBefore);
+    expect(
+      await repository.getHostedPaymentRequest("firm-west-legal", "payment-request-client-001"),
+    ).toEqual(paymentRequestBefore);
+    expect(await repository.listAuditEvents("firm-west-legal")).toEqual(auditBefore);
+    expect(await repository.getLedger("firm-west-legal", { matterId: "matter-001" })).toEqual(
+      ledgerBefore,
+    );
   });
 
   it("rejects non-client users from the client workspace", async () => {

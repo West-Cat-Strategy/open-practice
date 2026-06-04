@@ -317,6 +317,43 @@ describe("API auth and persistence boundaries", () => {
     expect(validKey.json<{ challenge: string }>().challenge).toEqual(expect.any(String));
   });
 
+  it("requires an explicit dev flag before accepting Docker bridge setup requests", async () => {
+    const payload = { email: "avery@example.test" };
+    const blockedServer = testServer({
+      repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
+    });
+    const allowedServer = testServer({
+      repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
+      allowDockerBridgeSetup: true,
+    });
+
+    const blocked = await blockedServer.inject({
+      method: "POST",
+      url: "/api/setup/webauthn-options",
+      remoteAddress: "172.18.0.1",
+      payload,
+    });
+    const allowed = await allowedServer.inject({
+      method: "POST",
+      url: "/api/setup/webauthn-options",
+      remoteAddress: "172.18.0.1",
+      payload,
+    });
+    const nonGateway = await allowedServer.inject({
+      method: "POST",
+      url: "/api/setup/webauthn-options",
+      remoteAddress: "172.18.1.1",
+      payload,
+    });
+
+    expect(blocked.statusCode).toBe(403);
+    expect(blocked.json()).toMatchObject({
+      message: "First-run setup is limited to loopback access",
+    });
+    expect(allowed.statusCode).toBe(200);
+    expect(nonGateway.statusCode).toBe(403);
+  });
+
   it("rejects expired first-run passkey challenges", async () => {
     const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
     const server = testServer({
@@ -824,6 +861,9 @@ describe("API auth and persistence boundaries", () => {
     expect(() =>
       validateProductionReadiness(productionEnv({ OPEN_PRACTICE_DEV_SEED: true })),
     ).toThrow(/OPEN_PRACTICE_DEV_SEED/);
+    expect(() =>
+      validateProductionReadiness(productionEnv({ OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP: true })),
+    ).toThrow(/OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP/);
     expect(() => validateProductionReadiness(productionEnv({ E2E_MODE: "host" }))).toThrow(
       /E2E_MODE/,
     );
@@ -902,11 +942,13 @@ describe("API auth and persistence boundaries", () => {
       DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
       OPEN_PRACTICE_USE_MEMORY_REPO: "false",
       OPEN_PRACTICE_DEV_SEED: "false",
+      OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP: "true",
       OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
     });
 
     expect(parsed.OPEN_PRACTICE_USE_MEMORY_REPO).toBe(false);
     expect(parsed.OPEN_PRACTICE_DEV_SEED).toBe(false);
+    expect(parsed.OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP).toBe(true);
     expect(
       envSchema.parse({ OPEN_PRACTICE_USE_MEMORY_REPO: "true" }).OPEN_PRACTICE_USE_MEMORY_REPO,
     ).toBe(true);

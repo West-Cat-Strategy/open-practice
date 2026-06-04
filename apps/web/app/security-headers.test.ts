@@ -64,4 +64,12 @@ describe("web security headers", () => {
     expect(productionCsp).not.toContain("http://127.0.0.1:*");
     expect(productionCsp).not.toContain("'unsafe-eval'");
   });
+
+  it("allows the local Docker dev stack to hydrate a production-built Next app", () => {
+    const dockerDevCsp = buildContentSecurityPolicy({ production: true, relaxed: true });
+
+    expect(dockerDevCsp).toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval'");
+    expect(dockerDevCsp).toContain("connect-src 'self' http://localhost:* http://127.0.0.1:*");
+    expect(dockerDevCsp).not.toContain("upgrade-insecure-requests");
+  });
 });

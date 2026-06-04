@@ -208,6 +208,12 @@ export function QueuesSection({
       </p>
       <p className="inline-empty">{taskDeadlineSummary}</p>
 
+      <TaskDeadlineReviewBlock
+        compactDate={compactDate}
+        onSelectMatter={onSelectMatter}
+        taskWorkbench={taskWorkbench}
+      />
+
       <SavedQueueViewsBlock
         activeSavedOperationalViewDefinition={activeSavedOperationalViewDefinition}
         activeSavedOperationalViewId={activeSavedOperationalViewId}
@@ -283,6 +289,94 @@ export function QueuesSection({
       />
 
       <QueueRowsBlock displayedQueues={displayedQueues} onSelectMatter={onSelectMatter} />
+    </>
+  );
+}
+
+function formatTaskReviewVisibility(visibility: string): string {
+  if (visibility === "staff_only") {
+    return "Staff only";
+  }
+  if (visibility === "matter_team") {
+    return "Matter team";
+  }
+  return visibility.replaceAll("_", " ");
+}
+
+function taskReviewSchedulingLabel(
+  item: TaskDeadlineWorkbenchResponse["taskReview"]["items"][number],
+): string {
+  if (item.scheduling.needsReviewCount > 0) {
+    return `${item.scheduling.needsReviewCount} scheduling review`;
+  }
+  if (item.scheduling.requestCount > 0) {
+    return `${item.scheduling.reviewedCount} reviewed scheduling cue`;
+  }
+  return "No scheduling cue";
+}
+
+function TaskDeadlineReviewBlock({
+  compactDate,
+  onSelectMatter,
+  taskWorkbench,
+}: Pick<QueuesSectionProps, "compactDate" | "onSelectMatter" | "taskWorkbench">) {
+  const review = taskWorkbench.taskReview;
+  const reviewItems = review.items.slice(0, 6);
+
+  return (
+    <>
+      <div className="section-title">
+        <h3>Task/deadline review</h3>
+        <span>{review.summary.open} open</span>
+      </div>
+      <div className="detail-grid queue-summary-grid">
+        <div>
+          <span className="field-label">High priority</span>
+          <strong>{review.summary.highPriority}</strong>
+          <small>{review.summary.overdue} overdue</small>
+        </div>
+        <div>
+          <span className="field-label">Due today</span>
+          <strong>{review.summary.dueToday}</strong>
+          <small>{review.summary.myOpen} assigned to you</small>
+        </div>
+        <div>
+          <span className="field-label">Unassigned</span>
+          <strong>{review.summary.unassigned}</strong>
+          <small>Matter-team review</small>
+        </div>
+        <div>
+          <span className="field-label">Scheduling reviews</span>
+          <strong>{review.summary.schedulingReviewCount}</strong>
+          <small>Staff review only</small>
+        </div>
+      </div>
+      <div className="party-list queue-section-list">
+        {reviewItems.map((item) => (
+          <button
+            className="party-row queue-item-row"
+            key={item.id}
+            onClick={() => onSelectMatter(item.matterId)}
+            type="button"
+          >
+            <span>
+              <strong>{item.title}</strong>
+              <small>
+                {item.matterNumber} · {item.matterTitle}
+              </small>
+              <small>
+                {compactDate(item.dueAt)} · {item.bucket} · {item.assignment.label} ·{" "}
+                {formatTaskReviewVisibility(item.privacy.visibility)} ·{" "}
+                {taskReviewSchedulingLabel(item)}
+              </small>
+            </span>
+            <em className={item.tone === "risk" ? "risk" : undefined}>{item.priority}</em>
+          </button>
+        ))}
+        {reviewItems.length === 0 ? (
+          <p className="inline-empty">No task/deadline review items.</p>
+        ) : null}
+      </div>
     </>
   );
 }

@@ -199,6 +199,19 @@ describe("ledger routes", () => {
         varianceExplanation: "Synthetic statement is short one manual review item.",
       }),
     });
+    await repository.createLedgerStatementImportBatch({
+      id: "statement-import-batch-route-review",
+      firmId: "firm-west-legal",
+      accountId: "acct-trust-bank",
+      sourceLabel: "Synthetic May trust statement",
+      checksumSha256: "a".repeat(64),
+      importedStatementRowCount: 12,
+      duplicateStatementRowCount: 2,
+      status: "review_ready",
+      matchingProfileId: "statement-match-profile-standard-trust",
+      createdByUserId: "user-admin",
+      createdAt: "2026-05-31T18:15:00.000Z",
+    });
 
     const response = await testServer({ repository }).inject({
       method: "GET",
@@ -229,11 +242,42 @@ describe("ledger routes", () => {
         overdrawnBalanceKeys: [],
       },
       accountingReview: {
+        importBatches: [
+          {
+            id: "statement-import-batch-route-review",
+            accountId: "acct-trust-bank",
+            status: "review_ready",
+            importedStatementRowCount: 12,
+            duplicateStatementRowCount: 2,
+          },
+        ],
         summary: {
           matchRuleProfileCount: 1,
           accountingProfileCount: 2,
           protectedAccountCount: 1,
           bankFeedShellCount: 1,
+          reviewOnly: true,
+        },
+        bankFeedReviewSummary: {
+          bankFeedShellCount: 1,
+          metadataOnlyFeedCount: 1,
+          reviewReadyFeedCount: 0,
+          importBatchCount: 1,
+          previewedImportBatchCount: 0,
+          reviewReadyImportBatchCount: 1,
+          discardedImportBatchCount: 0,
+          importedStatementRowCount: 12,
+          duplicateStatementRowCount: 2,
+          completedReconciliationCount: 0,
+          exceptionReconciliationCount: 1,
+          accountsPendingReconciliationCount: 1,
+          protectedFundsFeedCount: 1,
+          automaticMatching: false,
+          automaticLedgerPosting: false,
+          automaticReconciliation: false,
+          liveBankFeedConnection: false,
+          trustDisbursementAutomation: false,
+          importBatchStoragePosture: "metadata_only_no_statement_rows",
           reviewOnly: true,
         },
       },
@@ -509,6 +553,20 @@ describe("ledger routes", () => {
         unreconciledAccountIds: [],
         exceptionReconciliationIds: [],
         overdrawnBalanceKeys: [],
+      },
+      accountingReview: {
+        importBatches: [],
+        matchRuleProfiles: [],
+        accountingProfiles: [],
+        bankFeedReviewSummary: {
+          importBatchCount: 0,
+          automaticMatching: false,
+          automaticLedgerPosting: false,
+          automaticReconciliation: false,
+          liveBankFeedConnection: false,
+          trustDisbursementAutomation: false,
+          reviewOnly: true,
+        },
       },
     });
   });

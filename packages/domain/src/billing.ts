@@ -110,6 +110,31 @@ export const hostedPaymentProcessorStatuses = ["not_started", "checkout_session_
 
 export type HostedPaymentProcessorStatus = (typeof hostedPaymentProcessorStatuses)[number];
 
+export const paymentSettlementReviewStatuses = ["not_received", "needs_review"] as const;
+
+export type PaymentSettlementReviewStatus = (typeof paymentSettlementReviewStatuses)[number];
+
+export const paymentSettlementEventTypes = [
+  "checkout_session_completed",
+  "payment_intent_succeeded",
+  "payment_intent_payment_failed",
+  "charge_refunded",
+  "charge_dispute_created",
+] as const;
+
+export type PaymentSettlementEventType = (typeof paymentSettlementEventTypes)[number];
+
+export const paymentSettlementPaymentStatuses = [
+  "paid",
+  "unpaid",
+  "failed",
+  "refunded",
+  "disputed",
+  "unknown",
+] as const;
+
+export type PaymentSettlementPaymentStatus = (typeof paymentSettlementPaymentStatuses)[number];
+
 export type TrustTransferRequestStatus =
   | "pending_approval"
   | "approved"
@@ -256,6 +281,34 @@ export interface CreditWriteOffPosture {
   movement: "none";
 }
 
+export interface PaymentSettlementWebhookBoundary {
+  signatureVerified: false;
+  rawWebhookBodyStored: false;
+  automaticInvoiceMutation: false;
+  automaticReconciliation: false;
+  trustPosting: false;
+  refundHandling: "review_only";
+  chargebackHandling: "review_only";
+}
+
+export interface PaymentSettlementReview {
+  status: PaymentSettlementReviewStatus;
+  provider?: PaymentProcessorProviderKey;
+  eventType?: PaymentSettlementEventType;
+  paymentStatus?: PaymentSettlementPaymentStatus;
+  externalEventId?: string;
+  externalSessionId?: string;
+  amountCents?: number;
+  currency?: "CAD";
+  observedAt?: string;
+  receivedAt?: string;
+  reviewAction: "staff_reconciliation_review_required";
+  invoiceBalanceMutation: "none";
+  reconciliationMutation: "none";
+  trustPosting: "none";
+  webhookBoundary: PaymentSettlementWebhookBoundary;
+}
+
 export interface HostedPaymentProcessorState {
   status: HostedPaymentProcessorStatus;
   provider?: PaymentProcessorProviderKey;
@@ -263,6 +316,7 @@ export interface HostedPaymentProcessorState {
   checkoutUrl?: string;
   createdAt?: string;
   expiresAt?: string;
+  settlementReview?: PaymentSettlementReview;
 }
 
 export interface HostedPaymentRequestRecord {
@@ -433,6 +487,43 @@ export function defaultCreditWriteOffPosture(): CreditWriteOffPosture {
 export function defaultHostedPaymentProcessorState(): HostedPaymentProcessorState {
   return {
     status: "not_started",
+  };
+}
+
+export function defaultPaymentSettlementReview(): PaymentSettlementReview {
+  return {
+    status: "not_received",
+    reviewAction: "staff_reconciliation_review_required",
+    invoiceBalanceMutation: "none",
+    reconciliationMutation: "none",
+    trustPosting: "none",
+    webhookBoundary: {
+      signatureVerified: false,
+      rawWebhookBodyStored: false,
+      automaticInvoiceMutation: false,
+      automaticReconciliation: false,
+      trustPosting: false,
+      refundHandling: "review_only",
+      chargebackHandling: "review_only",
+    },
+  };
+}
+
+export function buildPaymentSettlementReview(input: {
+  provider: PaymentProcessorProviderKey;
+  eventType: PaymentSettlementEventType;
+  paymentStatus: PaymentSettlementPaymentStatus;
+  externalEventId: string;
+  externalSessionId?: string;
+  amountCents?: number;
+  currency?: "CAD";
+  observedAt?: string;
+  receivedAt?: string;
+}): PaymentSettlementReview {
+  return {
+    ...defaultPaymentSettlementReview(),
+    ...input,
+    status: "needs_review",
   };
 }
 

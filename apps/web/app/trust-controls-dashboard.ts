@@ -62,6 +62,7 @@ export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
     approvals: [],
     reconciliations: [],
     accountingReview: {
+      importBatches: [],
       matchRuleProfiles: [],
       accountingProfiles: [],
       summary: {
@@ -69,6 +70,28 @@ export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
         accountingProfileCount: 0,
         protectedAccountCount: 0,
         bankFeedShellCount: 0,
+        reviewOnly: true,
+      },
+      bankFeedReviewSummary: {
+        bankFeedShellCount: 0,
+        metadataOnlyFeedCount: 0,
+        reviewReadyFeedCount: 0,
+        importBatchCount: 0,
+        previewedImportBatchCount: 0,
+        reviewReadyImportBatchCount: 0,
+        discardedImportBatchCount: 0,
+        importedStatementRowCount: 0,
+        duplicateStatementRowCount: 0,
+        completedReconciliationCount: 0,
+        exceptionReconciliationCount: 0,
+        accountsPendingReconciliationCount: 0,
+        protectedFundsFeedCount: 0,
+        automaticMatching: false,
+        automaticLedgerPosting: false,
+        automaticReconciliation: false,
+        liveBankFeedConnection: false,
+        trustDisbursementAutomation: false,
+        importBatchStoragePosture: "metadata_only_no_statement_rows",
         reviewOnly: true,
       },
     },
@@ -123,6 +146,25 @@ export function trustControlsForMatter(
 
 export function accountLabel(controls: TrustControlsDashboardResponse, accountId: string): string {
   return controls.ledger.accounts.find((account) => account.id === accountId)?.name ?? accountId;
+}
+
+export function describeBankFeedImportBatch(
+  controls: TrustControlsDashboardResponse,
+  batch: TrustControlsDashboardResponse["accountingReview"]["importBatches"][number],
+): string {
+  return `${accountLabel(controls, batch.accountId)} · ${batch.status.replaceAll(
+    "_",
+    " ",
+  )} · ${batch.importedStatementRowCount} rows · ${batch.duplicateStatementRowCount} duplicates`;
+}
+
+export function describeBankFeedReviewBoundary(controls: TrustControlsDashboardResponse): string {
+  const summary = controls.accountingReview.bankFeedReviewSummary;
+  const pending =
+    summary.accountsPendingReconciliationCount === 1
+      ? "1 account pending reconciliation review"
+      : `${summary.accountsPendingReconciliationCount} accounts pending reconciliation review`;
+  return `${pending} · no automatic matching · no ledger posting`;
 }
 
 export function matterTrustBalanceCents(

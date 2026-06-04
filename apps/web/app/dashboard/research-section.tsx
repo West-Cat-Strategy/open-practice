@@ -46,6 +46,7 @@ export function ResearchSection({
   const readyArtifacts = workspace.artifacts.filter(
     (artifact) => artifact.status === "ready_for_review",
   );
+  const providerJobs = workspace.providerJobs.slice(0, 3);
 
   return (
     <>
@@ -72,12 +73,40 @@ export function ResearchSection({
         <div>
           <span className="field-label">Provider</span>
           <strong>{formatLegalResearchValue(workspace.provider.status)}</strong>
-          <small>Staff-authored review artifacts</small>
+          <small>{workspace.providerJobSummary.total} provider jobs recorded</small>
+        </div>
+        <div>
+          <span className="field-label">Citation review</span>
+          <strong>{workspace.citationReview.staffReviewRequired ? "required" : "none"}</strong>
+          <small>No provider evidence stored</small>
         </div>
       </div>
       <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
         {reviewStatus}
       </p>
+      <div className="party-list">
+        {providerJobs.map((job) => (
+          <div className="party-row" key={job.id}>
+            <span>
+              <strong>{formatLegalResearchValue(job.status)}</strong>
+              <small>
+                {formatLegalResearchValue(job.jobName)} · {compactDate(job.queuedAt)}
+              </small>
+              <small>
+                {formatLegalResearchValue(String(job.metadata.requestType ?? "citation_review"))} ·{" "}
+                {Number(job.metadata.citationReferenceCount ?? 0)} citation refs · staff review
+                required
+              </small>
+            </span>
+            <em>{job.terminal ? "terminal" : "pending"}</em>
+          </div>
+        ))}
+        {providerJobs.length === 0 ? (
+          <p className="inline-empty">
+            Provider job boundary is reserved; citation review remains staff controlled.
+          </p>
+        ) : null}
+      </div>
       <div className="party-list">
         {workspace.artifacts.map((artifact) => {
           const busy = reviewBusyId === artifact.id;

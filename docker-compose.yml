@@ -73,6 +73,7 @@ services:
       - S3_SECRET_KEY=open_practice_secret
       - SMTP_HOST=mailpit
       - AUTH_JWT_SECRET=dev-only-change-me-at-least-16-chars
+      - OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP=true
       - WEBAUTHN_ORIGIN=http://localhost:33000
       - PUBLIC_WEB_BASE_URL=http://localhost:33000
     ports:
@@ -99,12 +100,14 @@ services:
       args:
         APP_NAME: "@open-practice/web"
         APP_PATH: "apps/web"
+        OPEN_PRACTICE_RELAXED_CSP: "true"
     command: ["node", "node_modules/next/dist/bin/next", "start", "--port", "3000"]
     environment:
       - NODE_ENV=development
       - WEB_PORT=3000
       - API_BASE_URL=http://api:4000
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:34000
+      - OPEN_PRACTICE_RELAXED_CSP=true
     ports:
       - "${OPEN_PRACTICE_DOCKER_HOST_BIND:-127.0.0.1}:33000:3000"
     depends_on:

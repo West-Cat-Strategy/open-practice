@@ -773,6 +773,58 @@ describe("worker processors", () => {
     }
   });
 
+  it("skips legal research provider review jobs with citation-review-only metadata", async () => {
+    const result = await processOpenPracticeJob({
+      queueName: "ai_triage",
+      jobName: "legal_research_provider_review",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "legal_research",
+        resourceId: "matter-001",
+        metadata: {
+          matterId: "matter-001",
+          requestType: "citation_review",
+          sourceTypes: "case_law,statute",
+          citationReferenceCount: 2,
+          contextLinkCount: 1,
+          prompt: "Synthetic legal research prompt must not survive",
+          sourceText: "Synthetic legal research source text must not survive",
+          providerEvidence: { private: "Synthetic provider evidence" },
+        },
+      },
+      repository: new InMemoryOpenPracticeRepository(),
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "skipped",
+      reason: expect.stringContaining("reserved"),
+      metadata: {
+        matterId: "matter-001",
+        requestType: "citation_review",
+        sourceTypes: "case_law,statute",
+        citationReferenceCount: 2,
+        contextLinkCount: 1,
+        provider: "reserved_legal_research_provider",
+        providerStatus: "reserved",
+        providerConfigured: false,
+        citationReviewRequired: true,
+        sourceTextIncluded: false,
+        promptIncluded: false,
+        providerEvidenceStored: false,
+        citationVerificationClaims: false,
+        downstreamMutation: false,
+        reviewOnly: true,
+      },
+    });
+    expect(JSON.stringify(result.metadata)).not.toContain("Synthetic legal research prompt");
+    expect(JSON.stringify(result.metadata)).not.toContain("Synthetic legal research source text");
+    expect(JSON.stringify(result.metadata)).not.toContain("Synthetic provider evidence");
+  });
+
   it("creates non-authoritative draft assist records from async ai_triage jobs", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await enableAi(repository);

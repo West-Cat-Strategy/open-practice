@@ -355,4 +355,52 @@ describe("job metadata redaction", () => {
       proposalSummaryLength: 34,
     });
   });
+
+  it("allows legal research provider job boundary metadata while dropping prompts and source bodies", () => {
+    expect(
+      redactJobMetadata({
+        matterId: "matter-001",
+        requestType: "citation_review",
+        sourceTypes: "case_law,statute",
+        sourceTypeCount: 2,
+        citationReferenceCount: 3,
+        contextLinkCount: 1,
+        artifactCount: 2,
+        requestedByUserId: "user-licensee",
+        provider: "reserved_legal_research_provider",
+        providerStatus: "reserved",
+        providerConfigured: false,
+        citationReviewRequired: true,
+        sourceTextIncluded: false,
+        promptIncluded: false,
+        providerEvidenceStored: false,
+        citationVerificationClaims: false,
+        downstreamMutation: false,
+        reviewOnly: true,
+        prompt: "Synthetic research prompt must not be exposed",
+        sourceText: "Synthetic source text must not be exposed",
+        providerEvidence: { private: "Synthetic provider evidence" },
+        sourceUrl: "https://private.example.test/source",
+      }),
+    ).toEqual({
+      matterId: "matter-001",
+      requestType: "citation_review",
+      sourceTypes: "case_law,statute",
+      sourceTypeCount: 2,
+      citationReferenceCount: 3,
+      contextLinkCount: 1,
+      artifactCount: 2,
+      requestedByUserId: "user-licensee",
+      provider: "reserved_legal_research_provider",
+      providerStatus: "reserved",
+      providerConfigured: false,
+      citationReviewRequired: true,
+      sourceTextIncluded: false,
+      promptIncluded: false,
+      providerEvidenceStored: false,
+      citationVerificationClaims: false,
+      downstreamMutation: false,
+      reviewOnly: true,
+    });
+  });
 });

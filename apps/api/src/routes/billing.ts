@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   assertBillingStatusTransition,
+  buildPaymentSettlementReview,
   billingDateFallsInsideLock,
   billingRuleScope,
   billingTimerDraftPolicy,
@@ -24,6 +25,9 @@ import {
   hostedPaymentRequestPath,
   hostedPaymentRequestStatuses,
   isBillableUnbilled,
+  paymentProcessorProviders,
+  paymentSettlementEventTypes,
+  paymentSettlementPaymentStatuses,
   paymentPlanPlaceholderCadences,
   paymentPlanPlaceholderStatuses,
   resolveBillingRateRule,
@@ -249,6 +253,20 @@ const hostedPaymentRequestPatchBodySchema = z
     creditWriteOffPosture: creditWriteOffPostureSchema.optional(),
     expiresAt: z.string().datetime().optional(),
     evidence: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+const paymentSettlementReviewBodySchema = z
+  .object({
+    provider: z.enum(paymentProcessorProviders),
+    eventType: z.enum(paymentSettlementEventTypes),
+    paymentStatus: z.enum(paymentSettlementPaymentStatuses),
+    externalEventId: z.string().min(1).max(160),
+    externalSessionId: z.string().min(1).max(160).optional(),
+    amountCents: z.number().int().positive().optional(),
+    currency: z.literal("CAD").default("CAD"),
+    observedAt: z.string().datetime().optional(),
+    evidenceSummary: z.string().min(1).max(240).optional(),
   })
   .strict();
 
@@ -1802,6 +1820,95 @@ export function registerBillingRoutes(
         reused: false,
       },
     };
+  });
+
+  server.post("/api/billing/payment-requests/:id/settlement-events", async (request) => {
+    const params = parseRequestPart(idParamsSchema, request.params, "params");
+    const body = parseRequestPart(paymentSettlementReviewBodySchema, request.body, "body");
+    const existing = await repository.getHostedPaymentRequest(request.auth.firmId, params.id);
+    if (!existing) {
+      throw Object.assign(new Error("Hosted payment request was not found"), { statusCode: 404 });
+    }
+    assertMatterAccess(request.auth, {
+      resource: "expense_entry",
+      action: "update",
+      matterId: existing.matterId,
+    });
+    if (
+      body.externalSessionId &&
+      existing.processor.externalSessionId &&
+      body.externalSessionId !== existing.processor.externalSessionId
+    ) {
+      throw new ApiHttpError(
+        409,
+        "PAYMENT_SETTLEMENT_SESSION_MISMATCH",
+        "Payment settlement event does not match the hosted payment request session",
+      );
+    }
+
+    const now = new Date().toISOString();
+    const settlementReview = buildPaymentSettlementReview({
+      provider: body.provider,
+      eventType: body.eventType,
+      paymentStatus: body.paymentStatus,
+      externalEventId: body.externalEventId,
+      externalSessionId: body.externalSessionId,
+      amountCents: body.amountCents,
+      currency: body.currency,
+      observedAt: body.observedAt,
+      receivedAt: now,
+    });
+    const updated = await repository.updateHostedPaymentRequest(request.auth.firmId, existing.id, {
+      processor: {
+        ...existing.processor,
+        provider: existing.processor.provider ?? body.provider,
+        settlementReview,
+      },
+      evidence: {
+        ...(existing.evidence ?? {}),
+        paymentSettlementReview: {
+          provider: body.provider,
+          eventType: body.eventType,
+          paymentStatus: body.paymentStatus,
+          externalEventId: body.externalEventId,
+          externalSessionIdPresent: Boolean(body.externalSessionId),
+          amountCents: body.amountCents,
+          currency: body.currency,
+          observedAt: body.observedAt,
+          receivedAt: now,
+          evidenceSummaryPresent: Boolean(body.evidenceSummary),
+          signatureVerified: false,
+          rawWebhookBodyStored: false,
+          automaticInvoiceMutation: false,
+          automaticReconciliation: false,
+          trustPosting: false,
+        },
+      },
+      updatedAt: now,
+    });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "hosted_payment_request.settlement_event_reviewed",
+      resourceType: "hosted_payment_request",
+      resourceId: updated.id,
+      metadata: compactMetadata({
+        matterId: updated.matterId,
+        paymentRequestId: updated.id,
+        invoiceId: updated.invoiceId,
+        provider: body.provider,
+        eventType: body.eventType,
+        paymentStatus: body.paymentStatus,
+        externalEventId: body.externalEventId,
+        externalSessionIdPresent: Boolean(body.externalSessionId),
+        amountCents: body.amountCents,
+        currency: body.currency,
+        evidenceSummaryPresent: Boolean(body.evidenceSummary),
+        invoiceBalanceMutation: settlementReview.invoiceBalanceMutation,
+        reconciliationMutation: settlementReview.reconciliationMutation,
+        trustPosting: settlementReview.trustPosting,
+        rawWebhookBodyStored: settlementReview.webhookBoundary.rawWebhookBodyStored,
+      }),
+    });
+    return { request: updated, settlementReview };
   });
 
   server.get("/api/billing/trust-transfer-requests", async (request) => {

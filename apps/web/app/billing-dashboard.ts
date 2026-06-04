@@ -3,6 +3,7 @@ import type {
   BillingDashboardResponse,
   BillingExpenseItem,
   BillingInvoiceSummary,
+  BillingPaymentRequestSummary,
   BillingTimeItem,
   MatterSummary,
 } from "./types";
@@ -66,6 +67,55 @@ export type CreatedExpenseReviewDraftResponse = Omit<
   reimbursable: boolean;
   billingStatus: BillingExpenseItem["status"];
 };
+
+export interface PaymentSettlementReviewSummary {
+  paymentRequestCount: number;
+  receivedEventCount: number;
+  pendingEventCount: number;
+  amountMismatchCount: number;
+  refundOrChargebackReviewCount: number;
+  automaticInvoiceBalanceMutation: false;
+  automaticReconciliation: false;
+  trustPosting: false;
+  rawWebhookBodyStorage: false;
+}
+
+export function summarizePaymentSettlementReview(
+  requests: BillingPaymentRequestSummary[],
+): PaymentSettlementReviewSummary {
+  const reviews = requests
+    .map((request) => ({ request, review: request.processor.settlementReview }))
+    .filter(({ review }) => review?.status === "needs_review");
+  return {
+    paymentRequestCount: requests.length,
+    receivedEventCount: reviews.length,
+    pendingEventCount: Math.max(0, requests.length - reviews.length),
+    amountMismatchCount: reviews.filter(
+      ({ request, review }) =>
+        review?.amountCents !== undefined && review.amountCents !== request.amountCents,
+    ).length,
+    refundOrChargebackReviewCount: reviews.filter(
+      ({ review }) =>
+        review?.eventType === "charge_refunded" || review?.eventType === "charge_dispute_created",
+    ).length,
+    automaticInvoiceBalanceMutation: false,
+    automaticReconciliation: false,
+    trustPosting: false,
+    rawWebhookBodyStorage: false,
+  };
+}
+
+export function describePaymentSettlementReview(request: BillingPaymentRequestSummary): string {
+  const review = request.processor.settlementReview;
+  if (!review || review.status === "not_received") return "No settlement event received";
+  const eventLabel = review.eventType?.replaceAll("_", " ") ?? "settlement event";
+  const paymentStatus = review.paymentStatus?.replaceAll("_", " ") ?? "unknown";
+  const amountCue =
+    review.amountCents !== undefined && review.amountCents !== request.amountCents
+      ? " · amount mismatch"
+      : "";
+  return `${eventLabel} · ${paymentStatus} · manual reconciliation required${amountCue}`;
+}
 
 export function inferBillingClientContactId(
   matter: Pick<MatterSummary, "parties">,

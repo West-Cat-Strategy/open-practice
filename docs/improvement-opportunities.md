@@ -17,13 +17,25 @@ statement match-rule/accounting-profile depth is shipped as OP-T136. Future trus
 candidates should compare against OP-T104 preview, OP-T107 exception-resolution, OP-T118 batch
 metadata, and OP-T136 accounting-review proof before proposing another slice.
 
-### Clio-Informed Functional-Parity Candidates - 2026-05-27
+### Core-Suite Clio Parity Candidates - 2026-06-04
 
-The 2026-05-27 Clio-informed candidate list is empty for now. OP-T127 through OP-T142 are Done in
-`docs/planning-and-progress.md`. Future Clio-informed candidates should come from a fresh clean-room
-gap audit and must not duplicate these shipped slices. Clio remains proprietary public-product
-research: use this section for independent planning only, with no copied Clio prose, assets,
-screenshots, templates, schemas, API examples, or UI structure.
+The 2026-06-04 [core-suite parity gap audit](validation/OP_CLIO_CORE_PARITY_GAP_AUDIT_2026-06-04.md)
+refreshes the active parity goal after OP-T127 through OP-T143. Clio remains proprietary
+public-product research: use this section for independent planning only, with no copied Clio prose,
+assets, screenshots, templates, schemas, API examples, UI structure, or private tenant observations.
+OP-T144, OP-T145, OP-T146, OP-T147, OP-T148, OP-T149, OP-T150, OP-T151, and OP-T152 are now shipped
+as the first client portal action-workspace, client-visible billing workspace, staff-only
+task/deadline review surface, review-first intake follow-up/source-attribution,
+scheduled-reporting/report-builder posture, payment settlement/reconciliation review, bank-feed
+reconciliation review, legal-research provider job boundary, and scoped developer API/webhook
+replay boundary slices and should not be re-proposed here as future work.
+
+The live workboard has no active core-suite Clio parity candidate after OP-T144 through OP-T152.
+
+Any future candidate must compare against shipped proof before implementation so it deepens the
+relevant workflow without duplicating the completed shell, review-only, or projection slices.
+Enterprise-only Operate/Docket, native mobile apps, e-filing, and practice-specific add-ons remain
+watch items outside this core-suite pass.
 
 ### Reference Review Candidates - 2026-05-22
 

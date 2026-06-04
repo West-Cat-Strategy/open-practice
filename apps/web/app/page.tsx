@@ -501,6 +501,22 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
         upcomingTaskIds: [],
         unassignedTaskIds: [],
       },
+      taskReview: {
+        summary: {
+          total: 0,
+          open: 0,
+          completed: 0,
+          highPriority: 0,
+          mediumPriority: 0,
+          lowPriority: 0,
+          overdue: 0,
+          dueToday: 0,
+          unassigned: 0,
+          myOpen: 0,
+          schedulingReviewCount: 0,
+        },
+        items: [],
+      },
     },
     headers,
   );

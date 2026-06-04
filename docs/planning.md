@@ -58,20 +58,66 @@ Completed Phase 3 slices:
 
 Next operational scale priorities:
 
-1.  **Clio-Informed Product Suite Completion**: The 2026-05-26
+1.  **Core-Suite Clio Parity Goal**: The 2026-05-26
     [Clio product specification review](reference-review-clio-2026-05-26.md) has been reconciled
-    through OP-T142. OP-T127 through OP-T142 are Done, and future Clio-informed candidates require a
-    fresh clean-room gap audit instead of replaying shipped parity rows.
+    through OP-T142, OP-T143 closed the follow-up provider/object-encryption lane, and the
+    2026-06-04 [core-suite parity gap audit](validation/OP_CLIO_CORE_PARITY_GAP_AUDIT_2026-06-04.md)
+    refreshed the next practical parity backlog. OP-T144 has shipped the first client portal
+    action-workspace slice, OP-T145 has shipped the first client-visible billing workspace slice,
+    OP-T146 has shipped the first staff-only task/deadline review surface, OP-T147 has shipped the
+    first review-first intake follow-up/source-attribution slice, OP-T148 has shipped the first
+    scheduled-reporting/report-builder posture slice, OP-T149 has shipped the first payment
+    settlement/reconciliation review slice, OP-T150 has shipped the first bank-feed reconciliation
+    review slice, OP-T151 has shipped the first legal-research provider job boundary slice, and
+    OP-T152 has shipped the scoped developer API enforcement/webhook replay boundary. No active
+    candidate remains in this core-suite parity pass.
 
-### Phase 4: Clio-Informed Functional Parity (Complete)
+### Phase 4: Clio-Informed Functional Parity (Active Candidate Refresh)
 
 This product phase translates the Clio-only product-spec review into independently authored Open
 Practice planning. Clio remains proprietary reference research: no Clio assets, prose, screenshots,
 schemas, templates, API examples, or UI structure should be copied into Open Practice. Candidate
 rows live in `docs/planning-and-progress.md`; this section holds the durable product direction.
 
-1.  **Completed Parity Slices**: OP-T127 through OP-T142 are shipped in the live workboard. Their
-    future work belongs in new candidate rows rather than stale reimplementation language here.
+1.  **Completed Parity Slices**: OP-T127 through OP-T152 are shipped in the live workboard. OP-T144
+    adds the first grouped logged-in client action workspace over existing portal grants, document
+    exchange records, redacted conversation cues, calendar guest-session cues, and contact-bound
+    payment-request summaries. OP-T145 adds a read-only client billing projection over
+    contact-matched visible invoices and hosted payment-request shell records without checkout,
+    settlement, processor, trust-posting, or invoice-balance mutation behavior. OP-T146 adds a
+    staff-only task/deadline review projection and Queues dashboard surface with priority,
+    assignment, matter labels, privacy visibility, and scheduling-review cues while leaving
+    automation and client-visible deadline views out of scope. OP-T147 adds a review-first intake
+    follow-up/source-attribution projection over the existing staff intake pipeline with safe source
+    label provenance, canned follow-up review cues, source-quality counters, and explicit false
+    automation-boundary flags while leaving matter creation, campaigns, SMS, bulk delivery,
+    ad-spend ingestion, automatic client contact, and private source material out of scope. OP-T148
+    adds schedule-readiness, report-builder, and export-job posture metadata over the existing
+    staff reporting workspace and manual export flow while leaving scheduler tables, scheduled
+    execution, scheduled email delivery, custom SQL, BI embeds, mutable report-builder execution,
+    raw report-body storage, and broad report execution out of scope. OP-T149 adds authenticated
+    staff-side normalized settlement-event review posture on hosted payment-request shells with
+    Billing dashboard review copy while leaving raw webhook bodies, signing material, public
+    provider webhooks, replay recovery, manual-payment creation, invoice-balance mutation,
+    reconciliation creation, refund/chargeback handling, card vaulting, trust posting, and
+    production Stripe claims out of scope. OP-T150 adds derived bank-feed reconciliation review
+    posture and import-batch metadata to the trust controls workspace while leaving live bank feeds,
+    provider credentials/payloads, statement rows/evidence storage, automatic matching, automatic
+    ledger posting, automatic reconciliation, trust disbursement automation, operating account
+    taxonomy changes, and certified accounting claims out of scope. OP-T151 adds a reserved
+    matter-scoped legal-research provider job boundary and citation-review controls over the
+    existing research workspace while leaving prompts, source text, provider evidence, scraped
+    authority storage, citation-verification claims, legal-advice automation, client/public research
+    access, and downstream source-record mutation out of scope. OP-T152 adds explicit developer app
+    enforcement posture, requires the registered `webhook.deliver` scope for webhook subscription
+    posture, and adds app-scoped confirmed replay over failed/dead-letter connector outbox rows
+    while leaving public developer auth, marketplace behavior, broad external API coverage, live
+    payment-link API exposure, custom-action execution, raw webhook replay, inbound webhook
+    recovery, and provider-specific recovery tools out of scope. Future work belongs in new
+    candidate rows rather than
+    stale reimplementation language here. The 2026-06-04 audit keeps the active goal focused on
+    practical core-suite parity, not cloning every Clio feature or making production-equivalence
+    claims.
 2.  **Billing, Payments, Trust, And Accounting**: OP-T135 delivered the hosted payment-request shell
     boundary, and OP-T136 delivered operating-vs-trust account posture, match-rule profiles,
     protected-funds cues, metadata-only bank-feed shell posture, and review-only accounting
@@ -85,6 +131,10 @@ rows live in `docs/planning-and-progress.md`; this section holds the durable pro
     authorized review artifacts; source text, prompts, generated proposal bodies, research notes,
     scraped authority text, and provider evidence must remain redacted from jobs/audit metadata, and
     AI output or research status must require human approval before any future source-record change.
+4.  **Current Candidate Backlog**: No active candidate remains in the 2026-06-04 core-suite parity
+    pass after OP-T144 through OP-T152 shipped their first slices with row-local proof.
+    Enterprise-only Operate/Docket, native mobile apps, e-filing, and practice-specific add-ons are
+    watch items, not part of this core-suite pass.
 
 Phase 4 validation should continue to start with
 `pnpm verify:select -- --files <changed paths...>`, then run the selected package checks plus

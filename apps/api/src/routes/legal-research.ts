@@ -2,16 +2,30 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   buildLegalResearchArtifactAuditMetadata,
+  buildLegalResearchProviderJobMetadata,
   buildLegalResearchWorkspace,
   legalResearchArtifactKinds,
   legalResearchArtifactStatuses,
+  legalResearchProviderJobName,
+  legalResearchProviderJobRequestTypes,
   legalResearchSourceTypes,
   reviewLegalResearchArtifactRecord,
+  serializeLegalResearchProviderJob,
+  type JobLifecycleRecord,
   type LegalResearchArtifactRecord,
+  type LegalResearchProviderJobRecord,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
+import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
+import {
+  buildIdempotencyKey,
+  idempotencyMetadata,
+  rethrowIdempotencyConflict,
+} from "./idempotency.js";
+import { serializeJobRun } from "./job-status.js";
+import { enqueueFailureError, markJobEnqueueFailed } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const researchQuerySchema = z.object({
@@ -105,6 +119,19 @@ const reviewBodySchema = z.object({
   decision: z.enum(["reviewed", "rejected"]),
 });
 
+const providerJobBodySchema = z
+  .object({
+    matterId: z.string().trim().min(1),
+    requestType: z.enum(legalResearchProviderJobRequestTypes).default("citation_review"),
+    artifactIds: z.array(z.string().trim().min(1).max(160)).max(20).default([]),
+    sourceTypes: z.array(z.enum(legalResearchSourceTypes)).max(20).default([]),
+    jurisdiction: z.string().trim().min(1).max(80).optional(),
+    citationReferenceCount: z.number().int().min(0).max(200).default(0),
+    contextLinkCount: z.number().int().min(0).max(200).default(0),
+    clientRequestId: z.string().trim().min(1).max(128).optional(),
+  })
+  .strict();
+
 function assertLegalResearchAccess(input: {
   auth: Parameters<typeof requireAccess>[0];
   action: "create" | "read" | "update" | "approve";
@@ -145,18 +172,229 @@ function makeArtifact(input: {
   };
 }
 
+function isLegalResearchProviderJob(
+  job: JobLifecycleRecord,
+  matterId: string,
+): job is JobLifecycleRecord & {
+  queueName: "ai_triage";
+  jobName: typeof legalResearchProviderJobName;
+} {
+  return (
+    job.queueName === "ai_triage" &&
+    job.jobName === legalResearchProviderJobName &&
+    job.metadata.matterId === matterId
+  );
+}
+
+function serializeProviderJob(job: JobLifecycleRecord): LegalResearchProviderJobRecord {
+  return serializeLegalResearchProviderJob(job, serializeJobRun(job).metadata);
+}
+
+async function listMatterProviderJobs(input: {
+  repository: ApiRouteDependencies["repository"];
+  firmId: string;
+  matterId: string;
+}): Promise<LegalResearchProviderJobRecord[]> {
+  return (await input.repository.listJobLifecycleRecords(input.firmId, { queueName: "ai_triage" }))
+    .filter((job) => isLegalResearchProviderJob(job, input.matterId))
+    .map(serializeProviderJob);
+}
+
+async function assertProviderJobArtifacts(input: {
+  repository: ApiRouteDependencies["repository"];
+  firmId: string;
+  matterId: string;
+  artifactIds: string[];
+}): Promise<void> {
+  for (const artifactId of input.artifactIds) {
+    const artifact = await input.repository.getLegalResearchArtifact(input.firmId, artifactId);
+    if (!artifact || artifact.matterId !== input.matterId) {
+      throw Object.assign(new Error("Legal research artifact was not found"), { statusCode: 404 });
+    }
+  }
+}
+
+async function createLegalResearchProviderJob(input: {
+  auth: ApiAuthContext;
+  body: z.infer<typeof providerJobBodySchema>;
+  repository: ApiRouteDependencies["repository"];
+  aiAssistJobQueue: ApiRouteDependencies["aiAssistJobQueue"];
+}): Promise<LegalResearchProviderJobRecord> {
+  const now = new Date().toISOString();
+  const jobId = crypto.randomUUID();
+  const queueConfigured = Boolean(input.aiAssistJobQueue);
+  const enqueueStatus = queueConfigured
+    ? "queued_for_reserved_legal_research_worker"
+    : "reserved_worker_not_configured";
+  const idempotencyKey = input.body.clientRequestId
+    ? buildIdempotencyKey({
+        scope: "job",
+        firmId: input.auth.firmId,
+        matterId: input.body.matterId,
+        resourceType: "legal_research",
+        resourceId: input.body.matterId,
+        action: "legal_research.provider_review.queue",
+        providerOrTemplate: `${legalResearchProviderJobName}:${input.body.requestType}`,
+        clientKey: input.body.clientRequestId,
+      })
+    : undefined;
+  const metadata = {
+    ...(idempotencyKey
+      ? idempotencyMetadata({
+          matterId: input.body.matterId,
+          requestType: input.body.requestType,
+          sourceTypes: input.body.sourceTypes,
+          citationReferenceCount: input.body.citationReferenceCount,
+          contextLinkCount: input.body.contextLinkCount,
+          artifactCount: input.body.artifactIds.length,
+          jurisdiction: input.body.jurisdiction,
+        })
+      : {}),
+    ...buildLegalResearchProviderJobMetadata({
+      matterId: input.body.matterId,
+      requestType: input.body.requestType,
+      sourceTypes: input.body.sourceTypes,
+      citationReferenceCount: input.body.citationReferenceCount,
+      contextLinkCount: input.body.contextLinkCount,
+      artifactCount: input.body.artifactIds.length,
+      requestedByUserId: input.auth.user.id,
+      jurisdiction: input.body.jurisdiction,
+      enqueueStatus,
+    }),
+    idempotencyKeyPresent: Boolean(idempotencyKey),
+  };
+
+  let job: JobLifecycleRecord;
+  try {
+    job = await input.repository.createJobLifecycleRecord({
+      id: jobId,
+      firmId: input.auth.firmId,
+      queueName: "ai_triage",
+      jobName: legalResearchProviderJobName,
+      status: queueConfigured ? "queued" : "skipped",
+      targetResourceType: "legal_research",
+      targetResourceId: input.body.matterId,
+      idempotencyKey,
+      attemptsMade: 0,
+      maxAttempts: 1,
+      queuedAt: now,
+      finishedAt: queueConfigured ? undefined : now,
+      metadata,
+    });
+  } catch (error) {
+    rethrowIdempotencyConflict(error);
+  }
+
+  if (queueConfigured && job.id === jobId) {
+    let bullJobId: string | undefined;
+    try {
+      const sourceTypes = [...new Set(input.body.sourceTypes)].join(",");
+      const bullJob = await input.aiAssistJobQueue!.add(
+        legalResearchProviderJobName,
+        {
+          firmId: input.auth.firmId,
+          resourceType: "legal_research",
+          resourceId: input.body.matterId,
+          metadata: {
+            jobId,
+            matterId: input.body.matterId,
+            requestType: input.body.requestType,
+            sourceTypes,
+            sourceTypeCount: sourceTypes ? sourceTypes.split(",").length : 0,
+            citationReferenceCount: input.body.citationReferenceCount,
+            contextLinkCount: input.body.contextLinkCount,
+            artifactCount: input.body.artifactIds.length,
+            requestedByUserId: input.auth.user.id,
+            provider: "reserved_legal_research_provider",
+            providerStatus: "reserved",
+            providerConfigured: false,
+            citationReviewRequired: true,
+            sourceTextIncluded: false,
+            promptIncluded: false,
+            providerEvidenceStored: false,
+            citationVerificationClaims: false,
+            downstreamMutation: false,
+            reviewOnly: true,
+            idempotencyKeyPresent: Boolean(idempotencyKey),
+          },
+        },
+        { jobId },
+      );
+      bullJobId = bullJob.id === undefined ? undefined : String(bullJob.id);
+    } catch {
+      await markJobEnqueueFailed(input.repository, input.auth.firmId, job, now);
+      throw enqueueFailureError();
+    }
+    job = await input.repository.updateJobLifecycleRecord(input.auth.firmId, job.id, {
+      bullJobId,
+    });
+  }
+
+  await appendRouteAuditEvent(input.repository, input.auth, {
+    action:
+      queueConfigured && job.status === "queued"
+        ? "legal_research.provider_job.queued"
+        : "legal_research.provider_job.recorded",
+    resourceType: "legal_research",
+    resourceId: job.id,
+    occurredAt: now,
+    metadata: {
+      ...metadata,
+      jobId: job.id,
+      bullJobId: job.bullJobId,
+    },
+  });
+
+  return serializeProviderJob(job);
+}
+
 export function registerLegalResearchRoutes(
   server: FastifyInstance,
-  { repository }: ApiRouteDependencies,
+  { repository, aiAssistJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/legal-research/workspace", async (request) => {
     const query = parseRequestPart(researchQuerySchema, request.query, "query");
     assertLegalResearchAccess({ auth: request.auth, action: "read", matterId: query.matterId });
-    const artifacts = await repository.listLegalResearchArtifacts(request.auth.firmId, query);
+    const [artifacts, providerJobs] = await Promise.all([
+      repository.listLegalResearchArtifacts(request.auth.firmId, query),
+      listMatterProviderJobs({
+        repository,
+        firmId: request.auth.firmId,
+        matterId: query.matterId,
+      }),
+    ]);
     return {
       status: "available" as const,
-      ...buildLegalResearchWorkspace({ matterId: query.matterId, artifacts }),
+      ...buildLegalResearchWorkspace({ matterId: query.matterId, artifacts, providerJobs }),
     };
+  });
+
+  server.post("/api/legal-research/provider-jobs", async (request, reply) => {
+    const body = parseRequestPart(providerJobBodySchema, request.body, "body");
+    assertLegalResearchAccess({ auth: request.auth, action: "create", matterId: body.matterId });
+    await assertProviderJobArtifacts({
+      repository,
+      firmId: request.auth.firmId,
+      matterId: body.matterId,
+      artifactIds: body.artifactIds,
+    });
+    const providerJob = await createLegalResearchProviderJob({
+      auth: request.auth,
+      body,
+      repository,
+      aiAssistJobQueue,
+    });
+    const boundary = buildLegalResearchWorkspace({
+      matterId: body.matterId,
+      artifacts: [],
+      providerJobs: [providerJob],
+    });
+    return reply.code(202).send({
+      status: providerJob.status === "queued" ? ("queued" as const) : ("reserved" as const),
+      job: providerJob,
+      citationReview: boundary.citationReview,
+      providerJobBoundary: boundary.providerJobBoundary,
+    });
   });
 
   server.post("/api/legal-research/artifacts", async (request, reply) => {
