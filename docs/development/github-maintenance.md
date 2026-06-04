@@ -37,8 +37,8 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
 
 ### Docker Dependency Snapshot
 
-2026-05-28 dependency refresh evidence, building on the 2026-05-12 and 2026-05-16
-infra-image follow-ups:
+2026-06-04 Docker image CVE follow-up evidence, building on the 2026-05-28 dependency refresh and
+the 2026-05-12 / 2026-05-16 infra-image follow-ups:
 
 - `node:26.2.0-alpine3.23` is pinned by digest as the app base. The Dockerfile updates bundled npm
   and pnpm explicitly to `npm@11.16.0` and `pnpm@11.4.0`, deploys runtime images with production
@@ -49,17 +49,23 @@ infra-image follow-ups:
   `su-exec` while preserving the standard Postgres 18 entrypoint and health-check contract. The
   local Dockerfile also upgrades Alpine `libcurl` to at least `8.19.0-r0`, which clears the fixed
   curl finding while leaving two residual no-fixed-version high findings in the current Scout scan;
-  Scout reports no base-image recommendation.
+  Scout reports no base-image recommendation. The 2026-06-04 recheck found no newer Alpine
+  `curl`/`libcurl` package than `8.19.0-r0`; upstream `postgres:18-alpine` still scans worse than
+  the custom local image because it retains the Go-based `gosu` surface.
 - `redis:8-alpine` is pinned by digest in the local Docker stack because the Scout result dropped
   from critical/high Go runtime findings to no critical/high findings in the current scan.
 - `minio/minio:RELEASE.2025-09-07T16-13-09Z` is pinned by digest. Current Docker Hub, Quay, hotfix,
   and common S3-compatible substitute scans still carried critical/high findings or changed the
   service shape, so MinIO stays product-compatible with residual upstream MinIO/Go CVEs documented
-  until a cleaner compatible deterministic release is available.
+  until a cleaner compatible deterministic release is available. The 2026-06-04 recheck found Docker
+  Hub and Quay `latest` resolving to the same pinned manifest digest, a final `12C`/`33H` Scout
+  posture for the pinned image, and no Scout tag recommendation.
 - The local Mailpit service now builds `open-practice-mailpit:v1.30.1-go1.26.3` from the checked
   v1.30.1 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
   `8025`. The current local Scout scan leaves one residual high finding in
-  `github.com/gomarkdown/markdown`; the Alpine runtime base is up to date.
+  `github.com/gomarkdown/markdown`; the Alpine runtime base is up to date. The 2026-06-04 recheck
+  found no newer upstream Mailpit tag and the upstream `axllent/mailpit:latest` image still reported
+  the same `0C`/`1H` gomarkdown finding.
 
 ## GitHub Settings Cutover
 
