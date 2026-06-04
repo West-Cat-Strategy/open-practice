@@ -124,7 +124,10 @@ function fakeS3(): TestS3Config {
   };
 }
 
-function writableFakeS3(): { s3: TestS3Config; puts: PutObjectCommand[] } {
+function writableFakeS3(input: { serverSideEncryption?: "AES256" } = {}): {
+  s3: TestS3Config;
+  puts: PutObjectCommand[];
+} {
   const puts: PutObjectCommand[] = [];
   return {
     s3: {
@@ -135,7 +138,7 @@ function writableFakeS3(): { s3: TestS3Config; puts: PutObjectCommand[] } {
         },
       } as unknown as S3Client,
       bucket: "open-practice-test-documents",
-      serverSideEncryption: "AES256",
+      ...(input.serverSideEncryption ? { serverSideEncryption: input.serverSideEncryption } : {}),
     },
     puts,
   };
@@ -207,7 +210,7 @@ describe("inbound email routes", () => {
   it("accepts signed Mailgun raw MIME webhooks, stores the raw body, and queues parsing", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await enableMailgunProvider(repository);
-    const { s3, puts } = writableFakeS3();
+    const { s3, puts } = writableFakeS3({ serverSideEncryption: "AES256" });
     const inboundQueue = fakeInboundEmailQueue();
     const rawMime =
       "From: client@example.test\nTo: matter-001@mail.example.test\nSubject: Evidence\n\nSynthetic body.";

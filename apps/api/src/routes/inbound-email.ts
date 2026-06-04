@@ -538,7 +538,7 @@ export function registerInboundEmailRoutes(
           Key: rawStorageKey,
           Body: rawContent,
           ContentType: "message/rfc822",
-          ServerSideEncryption: s3.serverSideEncryption,
+          ...(s3.serverSideEncryption ? { ServerSideEncryption: s3.serverSideEncryption } : {}),
         }),
       );
 

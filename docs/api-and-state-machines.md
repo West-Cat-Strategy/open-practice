@@ -1059,13 +1059,12 @@ exposing raw tokens or storage keys, or adding chat, payments, or native mobile 
 Inbound email parsing is implemented for raw messages already stored in object storage, with
 matter-scoped message detail and attachment-record reads. When configured, the worker re-writes raw
 message objects from the job firm's `inbound-email/<firmId>/raw/` namespace in place, writes parsed
-body/attachment objects with SSE-S3 `AES256`, and reports only redacted job metadata; provider
-message objects from the job firm's `inbound-email/<firmId>/raw/` namespace in place, writes parsed
 body/attachment objects with SSE-S3 `AES256`, and reports only redacted job metadata. The first
-Mailgun raw-MIME webhook adapter stores signed provider posts for the existing parser; other provider
-webhooks, durable replay recovery, and automatic document promotion remain deferred. Concrete Postal,
-Tesseract, Whisper/FFmpeg, and live Ollama/LM Studio adapters still require explicit setup, provider
-adapters, review states, and deployment profiles.
+Mailgun raw-MIME webhook adapter stores signed provider posts for the existing parser and requests
+configured SSE-S3 `AES256` on the initial raw object write; other provider webhooks, durable replay
+recovery, and automatic document promotion remain deferred. Concrete Postal, Tesseract,
+Whisper/FFmpeg, and live Ollama/LM Studio adapters still require explicit setup, provider adapters,
+review states, and deployment profiles.
 SimpleWebAuthn passkey routes and TipTap-backed drafting/template routes are embedded app surfaces;
 production still must configure RP ID/origin, session secrets, setup keys, authorization, and
 retention controls before exposing them. `DOCUSEAL_*`, `DOCASSEMBLE_*`, and `OIDC_*` variables are
