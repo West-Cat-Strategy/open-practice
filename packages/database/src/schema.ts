@@ -647,6 +647,7 @@ export const authSessions = pgTable(
     tokenHash: text("token_hash").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    freshAuthenticatedAt: timestamp("fresh_authenticated_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   },
@@ -2739,9 +2740,7 @@ export const calendarGuestLinks = pgTable(
     createdByUserId: text("created_by_user_id")
       .notNull()
       .references(() => users.id),
-    updatedByUserId: text("updated_by_user_id")
-      .notNull()
-      .references(() => users.id),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id),
     metadata: jsonb("metadata").$type<CalendarGuestLinkRecord["metadata"]>().notNull().default({}),
   },
   (table) => ({

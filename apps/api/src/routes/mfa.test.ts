@@ -37,7 +37,7 @@ function testServer(repository: OpenPracticeRepository): FastifyInstance {
         if (session) {
           const user = await repository.getUser(session.firmId, session.userId);
           if (user) {
-            request.auth = { user, firmId: session.firmId };
+            request.auth = { user, firmId: session.firmId, session };
             return;
           }
         }

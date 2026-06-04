@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
+import { requireFreshAuth } from "../http/fresh-auth.js";
 import { sessionCookie } from "../http/auth-helpers.js";
 import { createEmbeddedAuthService, recoveryCodeHash } from "../services/auth-service.js";
 import { randomBytes } from "node:crypto";
@@ -26,6 +27,7 @@ export function registerRecoveryRoutes(
     },
     // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(RECOVERY_RATE_LIMIT) above.
     async (request) => {
+      requireFreshAuth(request.auth);
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Session authentication is not configured"), {
           statusCode: 503,

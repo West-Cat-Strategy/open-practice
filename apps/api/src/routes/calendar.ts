@@ -21,6 +21,7 @@ import type {
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { createSessionToken, hashPassword, hashToken } from "../http/auth-helpers.js";
+import { requireFreshAuth } from "../http/fresh-auth.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
@@ -1819,6 +1820,7 @@ export function registerCalendarRoutes(
   });
 
   server.post("/api/calendar/credentials", async (request, reply) => {
+    requireFreshAuth(request.auth);
     const body = parseRequestPart(calendarCredentialBodySchema, request.body ?? {}, "body");
     const now = new Date().toISOString();
     const credentialId = `calendar-credential-${createSessionToken().slice(0, 16)}`;
@@ -1864,6 +1866,7 @@ export function registerCalendarRoutes(
   }));
 
   server.post("/api/calendar/credentials/:id/revoke", async (request, reply) => {
+    requireFreshAuth(request.auth);
     const params = parseRequestPart(calendarCredentialParamsSchema, request.params, "params");
     const credential = await repository.revokeCalendarCredential({
       firmId: request.auth.firmId,
@@ -1945,7 +1948,6 @@ export function registerCalendarRoutes(
           linkId: resolved.link.id,
           status: "waiting",
           occurredAt: now,
-          actorUserId: resolved.link.createdByUserId,
         });
         if (waiting) {
           resolved = {
@@ -1972,6 +1974,8 @@ export function registerCalendarRoutes(
             }),
             status: resolved.link.status,
             lobbyStatus: resolved.session.status,
+            publicTokenTransition: true,
+            updatedByUserId: resolved.link.updatedByUserId ?? null,
           },
         }),
       );

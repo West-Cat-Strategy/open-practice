@@ -124,17 +124,12 @@ function constantTimeEqual(left: string, right: string): boolean {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function isLocalOrPrivateAddress(address: string): boolean {
+function isLoopbackAddress(address: string): boolean {
   const normalized = address.replace(/^::ffff:/, "");
   if (normalized === "::1" || normalized === "127.0.0.1" || normalized === "localhost") {
     return true;
   }
-  if (normalized.startsWith("127.") || normalized.startsWith("10.")) return true;
-  if (normalized.startsWith("192.168.")) return true;
-  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized)) return true;
-  return (
-    normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80")
-  );
+  return normalized.startsWith("127.");
 }
 
 function assertSetupGate(request: FastifyRequest, options: SetupRouteDependencies): void {
@@ -152,8 +147,8 @@ function assertSetupGate(request: FastifyRequest, options: SetupRouteDependencie
     });
   }
 
-  if (!isLocalOrPrivateAddress(request.ip)) {
-    throw Object.assign(new Error("First-run setup is limited to local/private network access"), {
+  if (!isLoopbackAddress(request.ip)) {
+    throw Object.assign(new Error("First-run setup is limited to loopback access"), {
       statusCode: 403,
     });
   }
@@ -478,6 +473,7 @@ export function registerSetupRoutes(
         tokenHash: options.hashToken(token, options.jwtSecret),
         createdAt: nowIso,
         expiresAt,
+        freshAuthenticatedAt: nowIso,
       });
       reply.header(
         "set-cookie",

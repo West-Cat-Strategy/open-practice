@@ -7,6 +7,7 @@ import type {
   SignatureRequestSignerRecord,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
+import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
@@ -15,6 +16,7 @@ import {
   requireEmailDeliveryConfirmation,
 } from "./delivery-confirmation.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
+import { trustedEvidence } from "./trusted-evidence.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const signatureQuerySchema = z.object({
@@ -40,19 +42,6 @@ const signatureRequestBodySchema = z.object({
 
 const signatureProviderEventBodySchema = z.object({
   signatureRequestId: z.string().min(1),
-  provider: z.enum(["embedded", "manual", "docuseal"]),
-  externalId: z.string().min(1),
-  status: z.enum([
-    "draft",
-    "pending_provider_submission",
-    "sent",
-    "viewed",
-    "completed",
-    "declined",
-    "provider_error",
-  ]),
-  occurredAt: z.string().datetime().optional(),
-  evidence: z.record(z.string(), z.unknown()).default({}),
 });
 
 const embeddedSignatureEventBodySchema = z.object({
@@ -241,20 +230,46 @@ export function registerSignatureRoutes(
       action: "update",
       matterId: signature.matterId,
     });
-    if (signature.provider !== body.provider || signature.externalId !== body.externalId) {
-      throw Object.assign(new Error("Provider event does not match signature request"), {
+    if (!signatureProvider?.getSubmission) {
+      throw new ApiHttpError(
+        503,
+        "SIGNATURE_PROVIDER_SYNC_NOT_CONFIGURED",
+        "Signature provider status sync is not configured",
+      );
+    }
+    const submission = await signatureProvider.getSubmission(signature.externalId);
+    if (
+      signature.provider !== submission.provider ||
+      signature.externalId !== submission.externalId
+    ) {
+      throw Object.assign(new Error("Provider sync does not match signature request"), {
         statusCode: 409,
       });
     }
+    if (!submission.status) {
+      throw new ApiHttpError(
+        502,
+        "SIGNATURE_PROVIDER_STATUS_MISSING",
+        "Signature provider did not return a status",
+      );
+    }
+    const occurredAt = new Date().toISOString();
     const event: SignatureProviderEventRecord = {
       id: crypto.randomUUID(),
       firmId: request.auth.firmId,
       signatureRequestId: body.signatureRequestId,
-      provider: body.provider,
-      externalId: body.externalId,
-      status: body.status,
-      occurredAt: body.occurredAt ?? new Date().toISOString(),
-      evidence: body.evidence,
+      provider: submission.provider,
+      externalId: submission.externalId,
+      status: submission.status,
+      occurredAt,
+      evidence: {
+        mode: "provider_status_sync",
+        syncedByUserId: request.auth.user.id,
+        syncedAt: occurredAt,
+        provider: submission.provider,
+        externalId: submission.externalId,
+        providerEvidence: submission.evidence ?? {},
+      },
     };
     const recorded = await repository.recordSignatureProviderEvent(event);
     await appendRouteAuditEvent(repository, request.auth, {
@@ -301,15 +316,17 @@ export function registerSignatureRoutes(
       externalId: signature.externalId,
       status: body.status,
       occurredAt,
-      evidence: {
-        mode: "embedded",
-        actorUserId: request.auth.user.id,
-        signerId: body.signerId,
-        consentText: body.consentText,
-        ip: request.ip,
-        userAgent: request.headers["user-agent"],
-        ...body.evidence,
-      },
+      evidence: trustedEvidence(
+        {
+          mode: "embedded",
+          actorUserId: request.auth.user.id,
+          signerId: body.signerId,
+          consentText: body.consentText,
+          ip: request.ip,
+          userAgent: request.headers["user-agent"],
+        },
+        body.evidence,
+      ),
     };
     const recorded = await repository.recordSignatureProviderEvent(event);
     await appendRouteAuditEvent(repository, request.auth, {

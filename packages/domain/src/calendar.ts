@@ -97,7 +97,7 @@ export interface CalendarMeetingSessionTransitionInput {
 export interface CalendarGuestLinkTransitionInput {
   status: CalendarGuestLinkStatus;
   occurredAt: string;
-  actorUserId: string;
+  actorUserId?: string;
 }
 
 const SCHEDULING_REVIEW_BOUNDARY = {
@@ -198,11 +198,10 @@ export function transitionCalendarGuestLinkStatus(
     throw new InvalidCalendarMeetingTransitionError("Calendar guest link has expired");
   }
 
-  return {
+  const updated: CalendarGuestLinkRecord = {
     ...link,
     status: input.status,
     updatedAt: input.occurredAt,
-    updatedByUserId: input.actorUserId,
     checkedInAt:
       input.status === "waiting" ? (link.checkedInAt ?? input.occurredAt) : link.checkedInAt,
     revokedAt: input.status === "revoked" ? (link.revokedAt ?? input.occurredAt) : link.revokedAt,
@@ -210,6 +209,8 @@ export function transitionCalendarGuestLinkStatus(
       input.status === "admitted" ? (link.admittedAt ?? input.occurredAt) : link.admittedAt,
     deniedAt: input.status === "denied" ? (link.deniedAt ?? input.occurredAt) : link.deniedAt,
   };
+  updated.updatedByUserId = input.actorUserId;
+  return updated;
 }
 
 function compareCalendarSchedulingRequests(

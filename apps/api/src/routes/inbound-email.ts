@@ -246,9 +246,8 @@ function buildMailgunRawStorageKey(input: {
   return [
     "inbound-email",
     input.firmId,
-    "provider-webhooks",
+    "raw",
     MAILGUN_PROVIDER_KEY,
-    "raw-mime",
     `${input.tokenHash}-${input.rawContentSha256}.eml`,
   ].join("/");
 }
@@ -538,6 +537,7 @@ export function registerInboundEmailRoutes(
           Key: rawStorageKey,
           Body: rawContent,
           ContentType: "message/rfc822",
+          ServerSideEncryption: s3.serverSideEncryption,
         }),
       );
 

@@ -196,7 +196,7 @@ describe("signature routes", () => {
           signerId,
           evidence: {
             present: true,
-            keys: expect.arrayContaining(["mode", "publicEventId", "signerId"]),
+            keys: expect.arrayContaining(["mode", "signerId"]),
           },
         }),
       ]),
@@ -354,7 +354,23 @@ describe("signature routes", () => {
   });
 
   it("rejects mismatched provider events for signature requests", async () => {
-    const server = testServer();
+    const provider: SignatureProvider = {
+      async createSubmission(input) {
+        return {
+          provider: "embedded",
+          externalId: `embedded:${input.matterId}:${input.documentId}`,
+          status: "sent",
+        };
+      },
+      async getSubmission() {
+        return {
+          provider: "docuseal",
+          externalId: "docuseal-submission-001",
+          status: "completed",
+        };
+      },
+    };
+    const server = testServer({ signatureProvider: provider });
     const created = await server.inject({
       method: "POST",
       url: "/api/signature-requests",
@@ -366,22 +382,36 @@ describe("signature routes", () => {
       url: "/api/signature-requests/provider-events",
       payload: {
         signatureRequestId: requestId,
-        provider: "docuseal",
-        externalId: "docuseal-submission-001",
-        status: "completed",
       },
     });
 
     expect(event.statusCode).toBe(409);
     expect(event.json()).toMatchObject({
       error: "Error",
-      message: "Provider event does not match signature request",
+      message: "Provider sync does not match signature request",
     });
   });
 
   it("records successful provider events in the route audit log", async () => {
     const repository = new InMemoryOpenPracticeRepository();
-    const server = testServer({ repository });
+    const provider: SignatureProvider = {
+      async createSubmission(input) {
+        return {
+          provider: "embedded",
+          externalId: `embedded:${input.matterId}:${input.documentId}`,
+          status: "sent",
+        };
+      },
+      async getSubmission(externalId) {
+        return {
+          provider: "embedded",
+          externalId,
+          status: "completed",
+          evidence: { rawProviderBlob: "not for route audit" },
+        };
+      },
+    };
+    const server = testServer({ repository, signatureProvider: provider });
     const created = await server.inject({
       method: "POST",
       url: "/api/signature-requests",
@@ -395,10 +425,6 @@ describe("signature routes", () => {
       url: "/api/signature-requests/provider-events",
       payload: {
         signatureRequestId: signatureRequest.id,
-        provider: signatureRequest.provider,
-        externalId: signatureRequest.externalId,
-        status: "completed",
-        evidence: { rawProviderBlob: "not for route audit" },
       },
     });
 

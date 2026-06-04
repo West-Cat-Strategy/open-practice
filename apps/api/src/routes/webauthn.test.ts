@@ -6,8 +6,7 @@ import {
   type OpenPracticeRepository,
 } from "@open-practice/database";
 import { registerWebAuthnRoutes } from "./webauthn.js";
-import { hashToken } from "../http/auth-helpers.js";
-import { isPublicRoute } from "../http/auth-helpers.js";
+import { hashPassword, hashToken, isPublicRoute } from "../http/auth-helpers.js";
 
 vi.mock("@simplewebauthn/server", () => ({
   generateRegistrationOptions: vi.fn(async () => ({
@@ -69,6 +68,7 @@ async function seedUser(repository: OpenPracticeRepository, mfaEnabled = false) 
     userId: "user-1",
     tokenHash: hashToken("session-token", jwtSecret),
     createdAt: new Date().toISOString(),
+    freshAuthenticatedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
   });
   return session;
@@ -90,7 +90,7 @@ function testServer(repository: OpenPracticeRepository): FastifyInstance {
         if (session) {
           const user = await repository.getUser(session.firmId, session.userId);
           if (user) {
-            request.auth = { user, firmId: session.firmId };
+            request.auth = { user, firmId: session.firmId, session };
             return;
           }
         }
@@ -118,6 +118,92 @@ afterEach(async () => {
 });
 
 describe("WebAuthn routes", () => {
+  it("refreshes the current session through password step-up", async () => {
+    const repository = testRepository();
+    await seedUser(repository);
+    await repository.setAuthPassword({
+      firmId: "firm-1",
+      userId: "user-1",
+      passwordHash: hashPassword("correct password"),
+      passwordUpdatedAt: new Date().toISOString(),
+    });
+    const server = testServer(repository);
+
+    const invalid = await server.inject({
+      method: "POST",
+      url: "/api/auth/step-up/password",
+      headers: { "x-open-practice-session": "session-token" },
+      payload: { password: "wrong password" },
+    });
+    const valid = await server.inject({
+      method: "POST",
+      url: "/api/auth/step-up/password",
+      headers: { "x-open-practice-session": "session-token" },
+      payload: { password: "correct password" },
+    });
+
+    expect(invalid.statusCode).toBe(401);
+    expect(valid.statusCode).toBe(200);
+    expect(valid.json()).toMatchObject({
+      ok: true,
+      freshAuthenticatedAt: expect.any(String),
+      expiresInSeconds: 900,
+    });
+    await expect(
+      repository.getAuthSessionByTokenHash(hashToken("session-token", jwtSecret)),
+    ).resolves.toMatchObject({
+      freshAuthenticatedAt: valid.json<{ freshAuthenticatedAt: string }>().freshAuthenticatedAt,
+    });
+  });
+
+  it("refreshes the current session through passkey step-up", async () => {
+    const repository = testRepository();
+    await seedUser(repository);
+    await repository.registerWebAuthnCredential({
+      id: "cred-step-up",
+      firmId: "firm-1",
+      userId: "user-1",
+      credentialId: "credential-id",
+      publicKey: Buffer.from([1, 2, 3]).toString("base64url"),
+      counter: 0,
+      transports: [],
+      deviceType: "singleDevice",
+      backedUp: false,
+      createdAt: new Date().toISOString(),
+    });
+    const server = testServer(repository);
+
+    const options = await server.inject({
+      method: "POST",
+      url: "/api/auth/step-up/passkey/options",
+      headers: { "x-open-practice-session": "session-token" },
+    });
+    const verified = await server.inject({
+      method: "POST",
+      url: "/api/auth/step-up/passkey/verify",
+      headers: { "x-open-practice-session": "session-token" },
+      payload: {
+        challengeHash: options.json<{ challenge: string }>().challenge,
+        response: { id: "credential-id" },
+      },
+    });
+
+    expect(options.statusCode).toBe(200);
+    expect(verified.statusCode).toBe(200);
+    expect(verified.json()).toMatchObject({
+      ok: true,
+      freshAuthenticatedAt: expect.any(String),
+    });
+    await expect(
+      repository.getWebAuthnChallenge("authentication-challenge"),
+    ).resolves.toMatchObject({
+      consumedAt: expect.any(String),
+    });
+    await expect(repository.listWebAuthnCredentials("firm-1", "user-1")).resolves.toEqual([
+      expect.objectContaining({ id: "cred-step-up", counter: 1 }),
+    ]);
+  });
+
   it("verifies registration with the stored challenge hash and consumes it", async () => {
     const repository = testRepository();
     await seedUser(repository);

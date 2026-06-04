@@ -18,6 +18,17 @@ export class EmbeddedSignatureProvider implements SignatureProvider {
       },
     };
   }
+
+  async getSubmission(externalId: string): Promise<SignatureProviderSubmission> {
+    return {
+      provider: "embedded",
+      externalId,
+      status: "sent",
+      evidence: {
+        mode: "embedded_provider_sync",
+      },
+    };
+  }
 }
 
 export class ManualSignatureProvider extends EmbeddedSignatureProvider {}

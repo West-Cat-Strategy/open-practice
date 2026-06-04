@@ -2269,6 +2269,8 @@ export function registerBillingRoutes(
           })),
       };
     });
+    const visibleInvoices = matterSummaries.flatMap((matter) => matter.invoices);
+    const visiblePaymentRequests = matterSummaries.flatMap((matter) => matter.paymentRequests);
     return {
       canView: true,
       summary: {
@@ -2284,13 +2286,13 @@ export function registerBillingRoutes(
             matter.unbilledExpenses.reduce((matterSum, entry) => matterSum + entry.amountCents, 0),
           0,
         ),
-        draftInvoiceCents: invoices
+        draftInvoiceCents: visibleInvoices
           .filter((invoice) => invoice.status === "draft")
           .reduce((sum, invoice) => sum + invoice.totalCents, 0),
-        issuedBalanceDueCents: invoices
+        issuedBalanceDueCents: visibleInvoices
           .filter((invoice) => ["issued", "partially_paid"].includes(invoice.status))
           .reduce((sum, invoice) => sum + invoice.balanceDueCents, 0),
-        hostedPaymentRequestCents: paymentRequests
+        hostedPaymentRequestCents: visiblePaymentRequests
           .filter((paymentRequest) =>
             ["ready_to_send", "sent", "viewed"].includes(paymentRequest.status),
           )

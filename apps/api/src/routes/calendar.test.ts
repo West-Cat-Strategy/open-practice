@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { InMemoryOpenPracticeRepository } from "@open-practice/database";
+import { InMemoryOpenPracticeRepository, type AuthSessionRecord } from "@open-practice/database";
 import type { AuditEvent, NewAuditEvent, ProfessionalRole, User } from "@open-practice/domain";
 import { registerCalendarRoutes } from "./calendar.js";
 
@@ -40,6 +40,19 @@ function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001
   };
 }
 
+function freshSession(authUser: User): AuthSessionRecord {
+  const now = new Date().toISOString();
+  return {
+    id: `session-${authUser.id}`,
+    firmId: authUser.firmId,
+    userId: authUser.id,
+    tokenHash: "synthetic-fresh-session-hash",
+    createdAt: now,
+    freshAuthenticatedAt: now,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  };
+}
+
 function testServer(
   authUser: User = user("owner_admin", ["matter-001", "matter-002"]),
   repository = new AuditRecordingRepository(),
@@ -56,7 +69,7 @@ function testServer(
 ) {
   const server = Fastify({ logger: false });
   server.addHook("preHandler", async (request) => {
-    request.auth = { firmId: authUser.firmId, user: authUser };
+    request.auth = { firmId: authUser.firmId, user: authUser, session: freshSession(authUser) };
   });
   registerCalendarRoutes(server, {
     repository,

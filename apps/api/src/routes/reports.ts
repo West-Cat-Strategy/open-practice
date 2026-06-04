@@ -136,29 +136,28 @@ async function loadStaffReportProjectionInput(input: {
   auth: ApiAuthContext;
 }) {
   const overview = await input.repository.getOverview(input.auth.firmId);
-  const firmWideMatterReader =
-    overview.users.find((user) => user.role === "owner_admin") ??
-    overview.users.find((user) => user.role === "auditor") ??
-    input.auth.user;
   const [matters, invoices, ledger, reconciliations, timeEntries, taskDeadlines] =
     await Promise.all([
-      input.repository.listMattersForUser(firmWideMatterReader),
+      input.repository.listMattersForUser(input.auth.user),
       input.repository.listInvoices(input.auth.firmId),
       input.repository.getLedger(input.auth.firmId),
       input.repository.listLedgerReconciliations(input.auth.firmId),
       input.repository.listTimeEntries(input.auth.firmId),
       input.repository.listTaskDeadlines(input.auth.firmId, { includeCompleted: true }),
     ]);
+  const visibleMatterIds = new Set(matters.map((matter) => matter.id));
+  const canViewFirmWideLedgerReports =
+    input.auth.user.role === "owner_admin" || input.auth.user.role === "auditor";
 
   return {
     firmId: input.auth.firmId,
     matters,
     users: overview.users,
-    invoices,
-    ledgerAccounts: ledger.accounts,
-    reconciliations,
-    timeEntries,
-    taskDeadlines,
+    invoices: invoices.filter((invoice) => visibleMatterIds.has(invoice.matterId)),
+    ledgerAccounts: canViewFirmWideLedgerReports ? ledger.accounts : [],
+    reconciliations: canViewFirmWideLedgerReports ? reconciliations : [],
+    timeEntries: timeEntries.filter((entry) => visibleMatterIds.has(entry.matterId)),
+    taskDeadlines: taskDeadlines.filter((task) => visibleMatterIds.has(task.matterId)),
   };
 }
 

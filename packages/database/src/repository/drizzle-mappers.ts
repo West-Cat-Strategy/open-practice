@@ -126,6 +126,7 @@ export function mapAuthSessionRow(row: typeof schema.authSessions.$inferSelect):
     tokenHash: row.tokenHash,
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt.toISOString(),
+    freshAuthenticatedAt: dateToIso(row.freshAuthenticatedAt),
     revokedAt: dateToIso(row.revokedAt),
     lastSeenAt: dateToIso(row.lastSeenAt),
   };
@@ -381,7 +382,7 @@ export function mapCalendarGuestLinkRow(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     createdByUserId: row.createdByUserId,
-    updatedByUserId: row.updatedByUserId,
+    updatedByUserId: row.updatedByUserId ?? undefined,
     metadata: row.metadata,
   };
 }
@@ -399,6 +400,7 @@ export function calendarGuestLinkInsert(
     deniedAt: link.deniedAt ? new Date(link.deniedAt) : null,
     createdAt: new Date(link.createdAt),
     updatedAt: new Date(link.updatedAt),
+    updatedByUserId: link.updatedByUserId ?? null,
   };
 }
 

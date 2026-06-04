@@ -13,6 +13,7 @@ import {
   isProviderConfigEncryptionKey,
   type ProviderConfigCipher,
   seedSampleData,
+  type AuthSessionRecord,
   type OpenPracticeRepository,
 } from "@open-practice/database";
 import type {
@@ -210,6 +211,7 @@ const E2E_SMTP_SETTINGS_KIND = "smtp";
 export interface ApiAuthContext {
   user: User;
   firmId: string;
+  session?: AuthSessionRecord;
 }
 
 interface ApiOptions {
@@ -361,6 +363,11 @@ async function authenticate(
     firmId = session.firmId;
     userId = session.userId;
     await repository.touchAuthSession(session.tokenHash, new Date().toISOString());
+    const user = await repository.getUser(firmId, userId);
+    if (!user) {
+      throw Object.assign(new Error("Authenticated user was not found"), { statusCode: 401 });
+    }
+    return { user, firmId, session };
   } else if (authorization?.startsWith("Bearer ")) {
     if (isProduction) {
       throw Object.assign(new Error("Bearer JWT authentication is development-only"), {

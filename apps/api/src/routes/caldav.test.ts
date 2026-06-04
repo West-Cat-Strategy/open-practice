@@ -2,10 +2,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { AuditEvent, NewAuditEvent, ProfessionalRole, User } from "@open-practice/domain";
 import type { InjectOptions, LightMyRequestResponse } from "fastify";
-import { isPublicRoute } from "../http/auth-helpers.js";
+import { hashToken, isPublicRoute } from "../http/auth-helpers.js";
 import { createApiServer } from "../server.js";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
+const jwtSecret = "caldav-test-secret-at-least-32-characters";
+const repositoriesByServer = new WeakMap<
+  ReturnType<typeof createApiServer>,
+  AuditRecordingRepository
+>();
 
 class AuditRecordingRepository extends InMemoryOpenPracticeRepository {
   readonly recordedAuditEvents: AuditEvent[] = [];
@@ -40,6 +45,7 @@ function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001
 function testServer(repository = new AuditRecordingRepository()) {
   const server = createApiServer({
     repository,
+    jwtSecret,
     devFirmId: "firm-west-legal",
     devUserId: "user-admin",
     webAuthn: {
@@ -48,6 +54,7 @@ function testServer(repository = new AuditRecordingRepository()) {
       origin: "http://localhost:3000",
     },
   });
+  repositoriesByServer.set(server, repository);
   servers.push(server);
   return { server, repository };
 }
@@ -66,6 +73,23 @@ async function injectCalDav(
   }) as unknown as Promise<LightMyRequestResponse>;
 }
 
+async function freshSessionHeaders(server: ReturnType<typeof createApiServer>, userId: string) {
+  const repository = repositoriesByServer.get(server);
+  if (!repository) throw new Error("Missing repository for CalDAV test server");
+  const sessionToken = `fresh-caldav-session-${userId}-${Date.now()}`;
+  const now = new Date().toISOString();
+  await repository.createAuthSession({
+    id: `session-${userId}-${Date.now()}`,
+    firmId: "firm-west-legal",
+    userId,
+    tokenHash: hashToken(sessionToken, jwtSecret),
+    createdAt: now,
+    freshAuthenticatedAt: now,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  });
+  return { "x-open-practice-session": sessionToken };
+}
+
 async function createCalendarCredential(
   server: ReturnType<typeof createApiServer>,
   userId = "user-licensee",
@@ -74,8 +98,7 @@ async function createCalendarCredential(
     method: "POST",
     url: "/api/calendar/credentials",
     headers: {
-      "x-open-practice-user-id": userId,
-      "x-open-practice-firm-id": "firm-west-legal",
+      ...(await freshSessionHeaders(server, userId)),
       host: "practice.example.test",
     },
     payload: { label: "iOS Calendar" },
@@ -346,10 +369,7 @@ describe("CalDAV routes", () => {
     const revoked = await server.inject({
       method: "POST",
       url: `/api/calendar/credentials/${credential.credential.id}/revoke`,
-      headers: {
-        "x-open-practice-user-id": "user-licensee",
-        "x-open-practice-firm-id": "firm-west-legal",
-      },
+      headers: await freshSessionHeaders(server, "user-licensee"),
     });
     expect(revoked.statusCode).toBe(200);
 

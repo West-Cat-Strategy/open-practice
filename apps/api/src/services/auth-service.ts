@@ -79,6 +79,7 @@ export class EmbeddedAuthService {
       tokenHash: hashToken(token, secret),
       createdAt: now.toISOString(),
       expiresAt,
+      freshAuthenticatedAt: now.toISOString(),
     });
     return { user, session: { id: session.id, expiresAt: session.expiresAt }, token };
   }

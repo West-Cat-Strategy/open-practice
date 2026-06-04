@@ -513,7 +513,7 @@ export interface CalendarGuestLinkRecord {
   createdAt: string;
   updatedAt: string;
   createdByUserId: string;
-  updatedByUserId: string;
+  updatedByUserId?: string;
   metadata: Record<string, unknown>;
 }
 

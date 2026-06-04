@@ -1,18 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
-  canShareDocumentThroughPortal,
-  type CalendarGuestLinkRecord,
   type Contact,
-  type DocumentRecord,
   type EmailOutboxRecord,
   type EmailReceiptTokenRecord,
-  type ExternalUploadLinkRecord,
   type IntakeFormItemActionRecord,
   type IntakeFormLinkRecord,
   type Matter,
   type PortalGrant,
-  type ShareLinkRecord,
   type User,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
@@ -39,14 +34,7 @@ const defaultPortalPermissions: PortalGrant["permissions"] = [
   "sign",
 ];
 
-type ClientPortalActionFamily =
-  | "secure_share"
-  | "external_upload"
-  | "intake"
-  | "guest_session"
-  | "receipt"
-  | "client_update"
-  | "client_action";
+type ClientPortalActionFamily = "intake" | "receipt" | "client_update" | "client_action";
 
 type ClientPortalActionTone = "neutral" | "ready" | "risk";
 
@@ -86,20 +74,6 @@ function uniquePermissions(grants: PortalGrant[]): PortalGrant["permissions"] {
   ).sort() as PortalGrant["permissions"];
 }
 
-function shareStatus(link: ShareLinkRecord, now: string): string {
-  if (link.revokedAt) return "revoked";
-  if (link.expiresAt && Date.parse(link.expiresAt) <= Date.parse(now)) return "expired";
-  if (link.requireEmailVerification) return "verification_required";
-  return "available";
-}
-
-function externalUploadStatus(link: ExternalUploadLinkRecord, now: string): string {
-  if (link.revokedAt) return "revoked";
-  if (Date.parse(link.expiresAt) <= Date.parse(now)) return "expired";
-  if (link.usedUploads >= link.maxUploads) return "exhausted";
-  return "active";
-}
-
 function intakeLinkStatus(link: IntakeFormLinkRecord, now: string): string {
   if (link.revokedAt) return "revoked";
   if (link.submittedAt) return "submitted";
@@ -111,99 +85,6 @@ function receiptStatus(token: EmailReceiptTokenRecord, now: string): string {
   if (token.recordedAt) return "recorded";
   if (Date.parse(token.expiresAt) <= Date.parse(now)) return "expired";
   return "open";
-}
-
-function eligibleShareDocumentCount(
-  link: ShareLinkRecord,
-  documents: DocumentRecord[],
-  now: string,
-): number {
-  if (!link.permissions.includes("view_documents")) return 0;
-  const grant: PortalGrant = {
-    id: link.id,
-    firmId: link.firmId,
-    matterId: link.matterId,
-    contactId: `share-link:${link.id}`,
-    grantedByUserId: link.grantedByUserId,
-    permissions: link.permissions,
-    expiresAt: link.expiresAt,
-    revokedAt: link.revokedAt,
-  };
-  return documents.filter((document) => canShareDocumentThroughPortal({ document, grant, now }))
-    .length;
-}
-
-function shareActions(input: {
-  links: ShareLinkRecord[];
-  documents: DocumentRecord[];
-  now: string;
-}): ClientPortalActionSummary[] {
-  return input.links.map((link) => {
-    const status = shareStatus(link, input.now);
-    const documentCount = eligibleShareDocumentCount(link, input.documents, input.now);
-    const needsVerification = status === "verification_required";
-    return {
-      id: `secure-share:${link.id}`,
-      family: "secure_share",
-      matterId: link.matterId,
-      title: needsVerification ? "Verify shared document access" : "Review shared documents",
-      detail: needsVerification
-        ? "Email verification is required on the staff-provided share link."
-        : `${documentCount} shared document${documentCount === 1 ? "" : "s"} available on this share.`,
-      status,
-      tone: status === "available" ? "ready" : needsVerification ? "risk" : "neutral",
-      updatedAt: link.revokedAt ?? link.createdAt,
-    };
-  });
-}
-
-function externalUploadActions(input: {
-  links: ExternalUploadLinkRecord[];
-  documents: DocumentRecord[];
-  now: string;
-}): ClientPortalActionSummary[] {
-  const actions: ClientPortalActionSummary[] = [];
-  for (const link of input.links) {
-    const status = externalUploadStatus(link, input.now);
-    const remaining = Math.max(link.maxUploads - link.usedUploads, 0);
-    actions.push({
-      id: `external-upload:${link.id}`,
-      family: "external_upload",
-      matterId: link.matterId,
-      title: status === "active" ? "Upload requested documents" : "Upload request status",
-      detail:
-        status === "active"
-          ? `${remaining} upload${remaining === 1 ? "" : "s"} remain on this request.`
-          : `This upload request is ${status}.`,
-      status,
-      tone: status === "active" ? "risk" : "neutral",
-      updatedAt: link.revokedAt ?? link.createdAt,
-    });
-  }
-
-  for (const document of input.documents.filter((document) => document.externalUploadLinkId)) {
-    const needsClientAction = ["needs_metadata", "retry_requested"].includes(document.reviewStatus);
-    if (!needsClientAction && document.reviewStatus !== "accepted") continue;
-    actions.push({
-      id: `client-action:external-upload:${document.id}`,
-      family: "client_action",
-      matterId: document.matterId,
-      title:
-        document.reviewStatus === "accepted"
-          ? "Upload accepted"
-          : document.reviewStatus === "retry_requested"
-            ? "Replacement upload requested"
-            : "Upload follow-up requested",
-      detail:
-        document.reviewStatus === "accepted"
-          ? `${document.title} was accepted by staff.`
-          : `${document.title} needs client follow-up from staff.`,
-      status: document.reviewStatus,
-      tone: needsClientAction ? "risk" : "ready",
-      updatedAt: document.reviewedAt ?? document.uploadedAt,
-    });
-  }
-  return actions;
 }
 
 function intakeActions(input: {
@@ -251,35 +132,6 @@ function intakeActions(input: {
       }
       return summaries;
     });
-}
-
-function guestSessionActions(input: {
-  links: CalendarGuestLinkRecord[];
-  now: string;
-}): ClientPortalActionSummary[] {
-  return input.links.map((link) => {
-    const expired = Date.parse(link.expiresAt) <= Date.parse(input.now);
-    const status = expired && link.status !== "revoked" ? "expired" : link.status;
-    return {
-      id: `guest-session:${link.id}`,
-      family: "guest_session",
-      matterId: link.matterId,
-      title:
-        status === "issued" || status === "waiting"
-          ? "Meeting check-in pending"
-          : "Meeting access status",
-      detail: "Meeting access is controlled by staff from the hosted session lobby.",
-      status,
-      tone:
-        status === "issued" || status === "waiting"
-          ? "risk"
-          : status === "admitted"
-            ? "ready"
-            : "neutral",
-      updatedAt:
-        link.revokedAt ?? link.admittedAt ?? link.deniedAt ?? link.checkedInAt ?? link.updatedAt,
-    };
-  });
 }
 
 function receiptActions(input: {
@@ -408,32 +260,16 @@ async function buildWorkspace(
   for (const matter of matterSummaries) {
     const matterGrants = grants.filter((grant) => grant.matterId === matter.id);
     const contactIds = new Set(matterGrants.map((grant) => grant.contactId));
-    const [
-      shareLinks,
-      externalUploadLinks,
-      documents,
-      intakeLinks,
-      itemActions,
-      guestLinks,
-      receiptTokens,
-      emails,
-    ] = await Promise.all([
-      repository.listShareLinks(user.firmId, { matterId: matter.id }),
-      repository.listExternalUploadLinks(user.firmId, { matterId: matter.id }),
-      repository.listMatterDocuments(user.firmId, matter.id),
+    const [intakeLinks, itemActions, receiptTokens, emails] = await Promise.all([
       repository.listIntakeFormLinks(user.firmId, { matterId: matter.id }),
       repository.listIntakeFormItemActions(user.firmId, {}),
-      repository.listCalendarGuestLinks(user.firmId, { matterId: matter.id }),
       repository.listEmailReceiptTokens(user.firmId, { matterId: matter.id }),
       repository.listEmailOutbox(user.firmId, { matterId: matter.id, limit: 100 }),
     ]);
     const matterActions = sortActions([
-      ...shareActions({ links: shareLinks, documents, now }),
-      ...externalUploadActions({ links: externalUploadLinks, documents, now }),
       ...Array.from(contactIds).flatMap((contactId) =>
         intakeActions({ links: intakeLinks, itemActions, contactId, now }),
       ),
-      ...guestSessionActions({ links: guestLinks, now }),
       ...clientUpdateActions({ emails, userEmail: user.email }),
       ...receiptActions({ tokens: receiptTokens, emails, userEmail: user.email, now }),
     ]);

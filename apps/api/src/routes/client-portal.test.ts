@@ -328,22 +328,13 @@ describe("client portal routes", () => {
     expect(body.matters).toEqual([
       expect.objectContaining({ number: "2026-0001", actionCount: expect.any(Number) }),
     ]);
-    expect(body.actions.map((action) => action.family)).toEqual(
-      expect.arrayContaining([
-        "secure_share",
-        "external_upload",
-        "intake",
-        "guest_session",
-        "receipt",
-        "client_update",
-        "client_action",
-      ]),
+    const families = body.actions.map((action) => action.family);
+    expect(families).toEqual(expect.arrayContaining(["intake", "receipt", "client_update"]));
+    expect(families).not.toEqual(
+      expect.arrayContaining(["secure_share", "external_upload", "guest_session"]),
     );
     expect(body.actions).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ family: "secure_share", status: "verification_required" }),
-        expect.objectContaining({ family: "external_upload", status: "active" }),
-        expect.objectContaining({ family: "client_action", status: "retry_requested" }),
         expect.objectContaining({ family: "client_update", status: "sent" }),
         expect.objectContaining({ family: "receipt", status: "open" }),
       ]),

@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
+import { requireFreshAuth } from "../http/fresh-auth.js";
 import {
   hashToken,
   createSessionToken,
@@ -85,6 +86,7 @@ export function registerAuthRoutes(
     "/api/auth/password-setup-tokens",
     { config: { rateLimit: { ...AUTH_MUTATION_RATE_LIMIT } } },
     async (request) => {
+      requireFreshAuth(request.auth);
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
       if (request.auth.user.role !== "owner_admin") {

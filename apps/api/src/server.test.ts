@@ -12,6 +12,7 @@ import {
   envSchema,
   validateProductionReadiness,
 } from "./server.js";
+import { hashPassword, hashToken } from "./http/auth-helpers.js";
 
 vi.mock("@simplewebauthn/server", () => ({
   generateRegistrationOptions: vi.fn(async () => ({
@@ -83,26 +84,14 @@ function productionEnv(overrides: Record<string, unknown> = {}) {
 
 async function setAdminPassword(input: {
   repository: InMemoryOpenPracticeRepository;
-  jwtSecret: string;
   password: string;
 }) {
-  const setupServer = testServer({ repository: input.repository, jwtSecret: input.jwtSecret });
-  const setupToken = await setupServer.inject({
-    method: "POST",
-    url: "/api/auth/password-setup-tokens",
-    payload: { userId: "user-admin" },
+  await input.repository.setAuthPassword({
+    firmId: "firm-west-legal",
+    userId: "user-admin",
+    passwordHash: hashPassword(input.password),
+    passwordUpdatedAt: new Date().toISOString(),
   });
-  const setup = await setupServer.inject({
-    method: "POST",
-    url: "/api/auth/password-setup",
-    payload: {
-      userId: "user-admin",
-      token: setupToken.json<{ token: string }>().token,
-      password: input.password,
-    },
-  });
-  expect(setupToken.statusCode).toBe(200);
-  expect(setup.statusCode).toBe(200);
 }
 
 function setupPayload(overrides: Record<string, unknown> = {}) {
@@ -239,9 +228,23 @@ describe("API auth and persistence boundaries", () => {
   });
 
   it("restricts password setup token creation to owner admins", async () => {
-    const response = await testServer({ devUserId: "user-licensee" }).inject({
+    const repository = new InMemoryOpenPracticeRepository();
+    const jwtSecret = "password-setup-token-test-secret-at-least-32";
+    const sessionToken = "licensee-fresh-session";
+    const now = new Date().toISOString();
+    await repository.createAuthSession({
+      id: "session-licensee-fresh",
+      firmId: "firm-west-legal",
+      userId: "user-licensee",
+      tokenHash: hashToken(sessionToken, jwtSecret),
+      createdAt: now,
+      freshAuthenticatedAt: now,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+    const response = await testServer({ repository, jwtSecret }).inject({
       method: "POST",
       url: "/api/auth/password-setup-tokens",
+      headers: { "x-open-practice-session": sessionToken },
       payload: { userId: "user-licensee" },
     });
 
@@ -633,7 +636,6 @@ describe("API auth and persistence boundaries", () => {
     const jwtSecret = "production-test-secret-at-least-32-characters";
     await setAdminPassword({
       repository,
-      jwtSecret,
       password: "correct horse battery staple",
     });
     await repository.updateUserMfaStatus("firm-west-legal", "user-admin", false);
@@ -756,7 +758,7 @@ describe("API auth and persistence boundaries", () => {
   it("revokes embedded sessions on logout", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const jwtSecret = "production-test-secret-at-least-32-characters";
-    await setAdminPassword({ repository, jwtSecret, password: "logout password" });
+    await setAdminPassword({ repository, password: "logout password" });
     await repository.updateUserMfaStatus("firm-west-legal", "user-admin", false);
     const server = testServer({ repository, nodeEnv: "production", jwtSecret });
     const login = await server.inject({
@@ -786,7 +788,7 @@ describe("API auth and persistence boundaries", () => {
   it("rejects expired embedded sessions", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const jwtSecret = "production-test-secret-at-least-32-characters";
-    await setAdminPassword({ repository, jwtSecret, password: "expired password" });
+    await setAdminPassword({ repository, password: "expired password" });
     await repository.updateUserMfaStatus("firm-west-legal", "user-admin", false);
     const server = testServer({
       repository,

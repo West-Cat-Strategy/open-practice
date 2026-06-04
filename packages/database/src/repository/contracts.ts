@@ -255,6 +255,7 @@ export interface AuthSessionRecord {
   tokenHash: string;
   createdAt: string;
   expiresAt: string;
+  freshAuthenticatedAt?: string;
   revokedAt?: string;
   lastSeenAt?: string;
 }
@@ -721,6 +722,7 @@ export interface OpenPracticeRepository {
   createAuthSession(session: AuthSessionRecord): Promise<AuthSessionRecord>;
   getAuthSessionByTokenHash(tokenHash: string): Promise<AuthSessionRecord | undefined>;
   touchAuthSession(tokenHash: string, seenAt: string): Promise<void>;
+  markAuthSessionFresh(tokenHash: string, freshAuthenticatedAt: string): Promise<void>;
   revokeAuthSession(tokenHash: string, revokedAt: string): Promise<void>;
   createPasswordSetupToken(
     token: AuthPasswordSetupTokenRecord,
@@ -988,7 +990,7 @@ export interface OpenPracticeRepository {
     linkId: string;
     status: CalendarGuestLinkStatus;
     occurredAt: string;
-    actorUserId: string;
+    actorUserId?: string;
   }): Promise<CalendarGuestLinkRecord | undefined>;
   revokeCalendarGuestLink(input: {
     firmId: string;

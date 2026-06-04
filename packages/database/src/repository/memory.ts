@@ -1482,6 +1482,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     );
   }
 
+  async markAuthSessionFresh(tokenHash: string, freshAuthenticatedAt: string): Promise<void> {
+    this.authSessions = this.authSessions.map((session) =>
+      session.tokenHash === tokenHash ? { ...session, freshAuthenticatedAt } : session,
+    );
+  }
+
   async revokeAuthSession(tokenHash: string, revokedAt: string): Promise<void> {
     this.authSessions = this.authSessions.map((session) =>
       session.tokenHash === tokenHash ? { ...session, revokedAt } : session,
@@ -2961,7 +2967,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     linkId: string;
     status: CalendarGuestLinkRecord["status"];
     occurredAt: string;
-    actorUserId: string;
+    actorUserId?: string;
   }): Promise<CalendarGuestLinkRecord | undefined> {
     const index = this.calendarGuestLinks.findIndex(
       (link) =>

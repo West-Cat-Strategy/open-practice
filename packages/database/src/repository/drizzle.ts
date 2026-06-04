@@ -1784,6 +1784,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       ...session,
       createdAt: new Date(session.createdAt),
       expiresAt: new Date(session.expiresAt),
+      freshAuthenticatedAt: session.freshAuthenticatedAt
+        ? new Date(session.freshAuthenticatedAt)
+        : null,
       revokedAt: session.revokedAt ? new Date(session.revokedAt) : null,
       lastSeenAt: session.lastSeenAt ? new Date(session.lastSeenAt) : null,
     });
@@ -1802,6 +1805,13 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     await this.db
       .update(schema.authSessions)
       .set({ lastSeenAt: new Date(seenAt) })
+      .where(eq(schema.authSessions.tokenHash, tokenHash));
+  }
+
+  async markAuthSessionFresh(tokenHash: string, freshAuthenticatedAt: string): Promise<void> {
+    await this.db
+      .update(schema.authSessions)
+      .set({ freshAuthenticatedAt: new Date(freshAuthenticatedAt) })
       .where(eq(schema.authSessions.tokenHash, tokenHash));
   }
 
@@ -3907,7 +3917,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     linkId: string;
     status: CalendarGuestLinkRecord["status"];
     occurredAt: string;
-    actorUserId: string;
+    actorUserId?: string;
   }): Promise<CalendarGuestLinkRecord | undefined> {
     const existing = await this.getCalendarGuestLink(
       input.firmId,
@@ -3927,7 +3937,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .set({
         status: updated.status,
         updatedAt: new Date(updated.updatedAt),
-        updatedByUserId: updated.updatedByUserId,
+        updatedByUserId: updated.updatedByUserId ?? null,
         checkedInAt: updated.checkedInAt ? new Date(updated.checkedInAt) : null,
         revokedAt: updated.revokedAt ? new Date(updated.revokedAt) : null,
         admittedAt: updated.admittedAt ? new Date(updated.admittedAt) : null,
