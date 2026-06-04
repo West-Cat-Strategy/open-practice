@@ -17,6 +17,7 @@ import type { ApiJobQueue } from "./types.js";
 const firmId = "firm-west-legal";
 const now = "2026-04-29T12:00:00.000Z";
 const servers: FastifyInstance[] = [];
+type TestS3 = { client: S3Client; bucket: string; serverSideEncryption?: "AES256" };
 
 function user(role: ProfessionalRole, assignedMatterIds: string[] = ["matter-001"]): User {
   const idByRole: Partial<Record<ProfessionalRole, string>> = {
@@ -40,7 +41,7 @@ function testServer(
   repository: InMemoryOpenPracticeRepository,
   authUser: User = user("owner_admin", ["matter-001", "matter-002"]),
   ocrJobQueue?: ApiJobQueue,
-  s3: { client: S3Client; bucket: string } | null = fakeS3(),
+  s3: TestS3 | null = fakeS3(),
   inboundEmailJobQueue?: ApiJobQueue,
 ): FastifyInstance {
   const server = Fastify({ logger: false });
@@ -116,14 +117,17 @@ function fakeInboundEmailQueue(input: { reject?: boolean } = {}) {
   return { queue, jobs };
 }
 
-function fakeS3(): { client: S3Client; bucket: string } {
+function fakeS3(): TestS3 {
   return {
     client: {} as S3Client,
     bucket: "open-practice-test-documents",
   };
 }
 
-function writableFakeS3(): { s3: { client: S3Client; bucket: string }; puts: PutObjectCommand[] } {
+function writableFakeS3(input: { serverSideEncryption?: "AES256" } = {}): {
+  s3: TestS3;
+  puts: PutObjectCommand[];
+} {
   const puts: PutObjectCommand[] = [];
   return {
     s3: {
@@ -134,6 +138,7 @@ function writableFakeS3(): { s3: { client: S3Client; bucket: string }; puts: Put
         },
       } as unknown as S3Client,
       bucket: "open-practice-test-documents",
+      ...(input.serverSideEncryption ? { serverSideEncryption: input.serverSideEncryption } : {}),
     },
     puts,
   };
@@ -205,7 +210,7 @@ describe("inbound email routes", () => {
   it("accepts signed Mailgun raw MIME webhooks, stores the raw body, and queues parsing", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await enableMailgunProvider(repository);
-    const { s3, puts } = writableFakeS3();
+    const { s3, puts } = writableFakeS3({ serverSideEncryption: "AES256" });
     const inboundQueue = fakeInboundEmailQueue();
     const rawMime =
       "From: client@example.test\nTo: matter-001@mail.example.test\nSubject: Evidence\n\nSynthetic body.";
@@ -244,6 +249,7 @@ describe("inbound email routes", () => {
     expect(putInput).toMatchObject({
       Bucket: "open-practice-test-documents",
       ContentType: "message/rfc822",
+      ServerSideEncryption: "AES256",
     });
     expect(putInput.Key).toMatch(
       /^inbound-email\/firm-west-legal\/provider-webhooks\/mailgun\/raw-mime\//,
