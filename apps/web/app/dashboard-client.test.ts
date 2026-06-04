@@ -1507,10 +1507,11 @@ describe("dashboard client behavior", () => {
       senderAddress: "",
       recipientEmails: [],
       allowedOrigins: [],
+      submissionTokenConfigured: false,
     });
     expect(dashboard.settings).toEqual(defaultPublicConsultationSettings);
     expect(publicConsultationSettingsSummary(dashboard.settings)).toBe(
-      "disabled · sender not configured · recipients not configured · 0 origins",
+      "disabled · sender not configured · recipients not configured · 0 origins · token missing",
     );
     expect(publicConsultationSettingsControlDisabled("access_denied")).toBe(true);
     expect(publicConsultationSettingsControlDisabled("available")).toBe(false);
@@ -1538,6 +1539,7 @@ describe("dashboard client behavior", () => {
       recipientEmailsText: "review@example.test, review@example.test\nbackup@example.test",
       allowedOriginsText: "https://consult.example.test\nhttp://localhost:4321",
       reviewOwnerUserId: " user-admin ",
+      submissionTokenConfigured: true,
     });
 
     expect(disabled).toEqual({
@@ -1559,6 +1561,7 @@ describe("dashboard client behavior", () => {
         recipientEmails: ["review@example.test", "backup@example.test"],
         allowedOrigins: ["https://consult.example.test", "http://localhost:4321"],
         reviewOwnerUserId: "user-admin",
+        rotateSubmissionToken: undefined,
       },
     });
     expect(splitPublicConsultationList(" a@example.test, a@example.test\nb@example.test ")).toEqual(

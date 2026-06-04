@@ -38,6 +38,7 @@ import {
   requireEmailDeliveryConfirmation,
 } from "./delivery-confirmation.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
+import { trustedEvidence } from "./trusted-evidence.js";
 import { publicTokenPolicyOptions } from "./public-token-rate-limits.js";
 import type { ApiRouteDependencies } from "./types.js";
 import {
@@ -361,6 +362,31 @@ function contentTypeAllowed(contentType: string, acceptedFileTypes?: string[]): 
 
 function firstContactEmail(contact: Contact): string | undefined {
   return contact.identifiers.find((identifier) => identifier.type === "email")?.value;
+}
+
+async function assertNoActivePublicUploadIntent(input: {
+  repository: ApiRouteDependencies["repository"];
+  firmId: string;
+  formLinkId: string;
+  itemId: string;
+}): Promise<void> {
+  const actions = await input.repository.listIntakeFormItemActions(input.firmId, {
+    formLinkId: input.formLinkId,
+    itemId: input.itemId,
+  });
+  for (const action of actions) {
+    if (action.kind !== "upload" || action.status !== "intent_created" || !action.documentId) {
+      continue;
+    }
+    const document = await input.repository.getDocument(input.firmId, action.documentId);
+    if (document?.uploadStatus === "intent_created") {
+      throw new ApiHttpError(
+        409,
+        "PUBLIC_INTAKE_UPLOAD_INTENT_ACTIVE",
+        "An upload intent is already active for this intake item",
+      );
+    }
+  }
 }
 
 async function recordAccessLog(
@@ -1303,6 +1329,12 @@ export function registerIntakeFormRoutes(
       if (!contentTypeAllowed(body.contentType, item.acceptedFileTypes)) {
         throw unsupportedUploadContentType(body.contentType, item.acceptedFileTypes ?? []);
       }
+      await assertNoActivePublicUploadIntent({
+        repository,
+        firmId: link.firmId,
+        formLinkId: link.id,
+        itemId: params.itemId,
+      });
       const documentId = crypto.randomUUID();
       const storageKey = `intake-forms/${sanitizeFilename(params.itemId)}/${documentId}-${sanitizeFilename(body.filename)}`;
       const checksumSha256Base64 = sha256HexToBase64(body.checksumSha256);
@@ -1546,16 +1578,18 @@ export function registerIntakeFormRoutes(
           externalId: signatureRequest.externalId,
           status: body.status,
           occurredAt: now,
-          evidence: {
-            mode: "embedded_intake_signature_request",
-            formLinkId: link.id,
-            itemId: params.itemId,
-            signerId: signerRecord.id,
-            consentText: body.consentText ?? item.consentText,
-            ip: request.ip,
-            userAgent: requestUserAgent(request),
-            ...body.evidence,
-          },
+          evidence: trustedEvidence(
+            {
+              mode: "embedded_intake_signature_request",
+              formLinkId: link.id,
+              itemId: params.itemId,
+              signerId: signerRecord.id,
+              consentText: body.consentText ?? item.consentText,
+              ip: request.ip,
+              userAgent: requestUserAgent(request),
+            },
+            body.evidence,
+          ),
         });
         const action = await repository.upsertIntakeFormItemAction({
           id: `${link.id}:${params.itemId}:signature`,
@@ -1625,13 +1659,15 @@ export function registerIntakeFormRoutes(
         itemId: params.itemId,
         kind: "signature",
         status: body.status,
-        evidence: {
-          mode: "embedded_intake_attestation",
-          consentText: body.consentText ?? item.consentText,
-          ip: request.ip,
-          userAgent: requestUserAgent(request),
-          ...body.evidence,
-        },
+        evidence: trustedEvidence(
+          {
+            mode: "embedded_intake_attestation",
+            consentText: body.consentText ?? item.consentText,
+            ip: request.ip,
+            userAgent: requestUserAgent(request),
+          },
+          body.evidence,
+        ),
         createdAt: now,
         completedAt: now,
       };

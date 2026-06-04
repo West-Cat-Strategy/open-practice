@@ -275,7 +275,13 @@ export interface IntakePipelineDashboardResponse extends IntakePipelineResponse 
 }
 
 export type PublicConsultationIntake = PublicConsultationIntakeRecord;
-export type PublicConsultationIntakeSettings = PublicConsultationIntakeNotificationSettings;
+export type PublicConsultationIntakeSettings = Omit<
+  PublicConsultationIntakeNotificationSettings,
+  "submissionTokenHash"
+> & {
+  submissionTokenConfigured: boolean;
+  submissionToken?: string;
+};
 
 export interface PublicConsultationIntakesResponse {
   intakes: PublicConsultationIntake[];

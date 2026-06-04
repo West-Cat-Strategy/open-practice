@@ -3485,6 +3485,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       reviewMetadata: {},
       externalUploadLinkId: input.externalUploadLinkId,
       supersedesDocumentId: input.supersedesDocumentId,
+      createdAt: now,
     };
     this.documents.push(document);
     return clone(document);

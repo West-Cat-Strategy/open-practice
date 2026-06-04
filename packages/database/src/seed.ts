@@ -120,6 +120,7 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
         uploadedAt: document.uploadedAt ? new Date(document.uploadedAt) : null,
         verifiedAt: document.verifiedAt ? new Date(document.verifiedAt) : null,
         reviewedAt: document.reviewedAt ? new Date(document.reviewedAt) : null,
+        createdAt: document.createdAt ? new Date(document.createdAt) : undefined,
       })),
     )
     .onConflictDoNothing();

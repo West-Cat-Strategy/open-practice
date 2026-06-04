@@ -122,6 +122,7 @@ export const defaultPublicConsultationSettings: PublicConsultationIntakeSettings
   senderAddress: "",
   recipientEmails: [],
   allowedOrigins: [],
+  submissionTokenConfigured: false,
 };
 
 export function emptyPublicConsultationDashboard(
@@ -166,7 +167,16 @@ export function buildPublicConsultationSettingsPayload(input: {
   recipientEmailsText: string;
   allowedOriginsText: string;
   reviewOwnerUserId: string;
-}): { payload: PublicConsultationIntakeSettings } | { error: string } {
+  submissionTokenConfigured?: boolean;
+  rotateSubmissionToken?: boolean;
+}):
+  | {
+      payload: Omit<
+        PublicConsultationIntakeSettings,
+        "submissionToken" | "submissionTokenConfigured"
+      > & { rotateSubmissionToken?: boolean };
+    }
+  | { error: string } {
   const senderAddress = input.senderAddress.trim();
   const recipientEmails = splitPublicConsultationList(input.recipientEmailsText);
   const allowedOrigins = splitPublicConsultationList(input.allowedOriginsText);
@@ -178,6 +188,11 @@ export function buildPublicConsultationSettingsPayload(input: {
       error: "Settings save failed: sender, recipients, and origins are required when enabled.",
     };
   }
+  if (input.enabled && !input.submissionTokenConfigured && !input.rotateSubmissionToken) {
+    return {
+      error: "Settings save failed: rotate a submission token before enabling public intake.",
+    };
+  }
   return {
     payload: {
       enabled: input.enabled,
@@ -185,6 +200,7 @@ export function buildPublicConsultationSettingsPayload(input: {
       recipientEmails,
       allowedOrigins,
       reviewOwnerUserId: input.reviewOwnerUserId.trim() || undefined,
+      rotateSubmissionToken: input.rotateSubmissionToken || undefined,
     },
   };
 }
@@ -203,5 +219,6 @@ export function publicConsultationSettingsSummary(
       : "recipients not configured";
   const originCount =
     settings.allowedOrigins.length === 1 ? "1 origin" : `${settings.allowedOrigins.length} origins`;
-  return `${settings.enabled ? "enabled" : "disabled"} · ${sender} · ${recipients} · ${originCount}`;
+  const token = settings.submissionTokenConfigured ? "token configured" : "token missing";
+  return `${settings.enabled ? "enabled" : "disabled"} · ${sender} · ${recipients} · ${originCount} · ${token}`;
 }

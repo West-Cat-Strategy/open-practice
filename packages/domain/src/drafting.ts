@@ -262,6 +262,18 @@ export function resolveDraftMergeFields(text: string, context: DraftMergeContext
   );
 }
 
+export function safeDraftExportHref(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:") {
+      return url.toString();
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 function textMarks(node: TipTapNode): { marks: DraftExportTextMark[]; href?: string } {
   const marks: DraftExportTextMark[] = [];
   let href: string | undefined;
@@ -271,8 +283,12 @@ function textMarks(node: TipTapNode): { marks: DraftExportTextMark[]; href?: str
     if (mark.type === "italic") marks.push("italic");
     if (mark.type === "underline") marks.push("underline");
     if (mark.type === "link") {
-      marks.push("link");
-      if (typeof mark.attrs?.href === "string") href = mark.attrs.href;
+      const safeHref =
+        typeof mark.attrs?.href === "string" ? safeDraftExportHref(mark.attrs.href) : undefined;
+      if (safeHref) {
+        marks.push("link");
+        href = safeHref;
+      }
     }
   }
 

@@ -325,6 +325,45 @@ function unavailableLinkReason(
   return undefined;
 }
 
+function activePendingExternalUploadCount(input: {
+  documents: DocumentRecord[];
+  linkId: string;
+  now: Date;
+}): number {
+  const staleBefore = input.now.getTime() - SIGNED_URL_EXPIRES_IN_SECONDS * 1000;
+  return input.documents.filter(
+    (document) =>
+      externalUploadLinkIdForDocument(document) === input.linkId &&
+      document.uploadStatus === "intent_created" &&
+      Date.parse(document.createdAt ?? "") > staleBefore,
+  ).length;
+}
+
+async function assertExternalUploadIntentCapacity(input: {
+  repository: ApiRouteDependencies["repository"];
+  link: ExternalUploadLinkRecord;
+  request: FastifyRequest;
+}): Promise<void> {
+  const documents = await input.repository.listMatterDocuments(
+    input.link.firmId,
+    input.link.matterId,
+  );
+  const pendingUploadCount = activePendingExternalUploadCount({
+    documents,
+    linkId: input.link.id,
+    now: new Date(),
+  });
+  if (input.link.usedUploads + pendingUploadCount < input.link.maxUploads) return;
+  await recordAccessLog(requireExternalUploadRepository(input.repository), {
+    link: input.link,
+    request: input.request,
+    resourceType: "external_upload_link",
+    resourceId: input.link.id,
+    metadata: { outcome: "denied", reason: "upload_limit", pendingUploadCount },
+  });
+  throw externalUploadDenied();
+}
+
 function externalUploadDenied(): ApiHttpError {
   return new ApiHttpError(
     403,
@@ -758,8 +797,9 @@ export function registerExternalUploadRoutes(
         token: params.token,
         jwtSecret: signingSecret,
         request,
-        enforceUploadLimit: true,
+        enforceUploadLimit: false,
       });
+      await assertExternalUploadIntentCapacity({ repository, link, request });
       const documentId = crypto.randomUUID();
       const storageKey = `external-uploads/${link.id}/${documentId}-${sanitizeFilename(body.filename)}`;
       const checksumSha256Base64 = sha256HexToBase64(body.checksumSha256);
@@ -788,21 +828,6 @@ export function registerExternalUploadRoutes(
         expiresIn: SIGNED_URL_EXPIRES_IN_SECONDS,
         unhoistableHeaders: new Set(Object.keys(requiredHeaders)),
       });
-      const claimed = await claimExternalUploadUse(externalUploadRepository, {
-        firmId: link.firmId,
-        id: link.id,
-        usedAt: new Date().toISOString(),
-      });
-      if (!claimed) {
-        await recordAccessLog(externalUploadRepository, {
-          link,
-          request,
-          resourceType: "external_upload_link",
-          resourceId: link.id,
-          metadata: { outcome: "denied", reason: "upload_limit" },
-        });
-        throw externalUploadDenied();
-      }
       const document = await repository.createDocumentUploadIntent({
         id: documentId,
         firmId: link.firmId,
@@ -864,6 +889,16 @@ export function registerExternalUploadRoutes(
         });
         throw externalUploadDenied();
       }
+      if (document.uploadStatus !== "intent_created") {
+        await recordAccessLog(externalUploadRepository, {
+          link,
+          request,
+          resourceType: "document",
+          resourceId: params.documentId,
+          metadata: { outcome: "denied", reason: "upload_already_completed" },
+        });
+        throw externalUploadDenied();
+      }
       if (!s3) {
         throw new ApiHttpError(
           503,
@@ -876,6 +911,41 @@ export function registerExternalUploadRoutes(
         checksumSha256: body.checksumSha256,
         expectedSizeBytes: document.sizeBytes ?? 0,
       });
+
+      if (body.checksumSha256 !== document.checksumSha256) {
+        const rejected = await repository.completeDocumentUpload({
+          firmId: link.firmId,
+          documentId: params.documentId,
+          checksumSha256: body.checksumSha256,
+          scanStatus: "failed",
+        });
+        await recordAccessLog(externalUploadRepository, {
+          link,
+          request,
+          resourceType: "document",
+          resourceId: rejected.id,
+          metadata: { outcome: rejected.uploadStatus, reason: "checksum_mismatch" },
+        });
+        return {
+          document: serializePublicCompletionDocument(rejected),
+        };
+      }
+
+      const claimed = await claimExternalUploadUse(externalUploadRepository, {
+        firmId: link.firmId,
+        id: link.id,
+        usedAt: new Date().toISOString(),
+      });
+      if (!claimed) {
+        await recordAccessLog(externalUploadRepository, {
+          link,
+          request,
+          resourceType: "external_upload_link",
+          resourceId: link.id,
+          metadata: { outcome: "denied", reason: "upload_limit" },
+        });
+        throw externalUploadDenied();
+      }
 
       const completed = await repository.completeDocumentUpload({
         firmId: link.firmId,

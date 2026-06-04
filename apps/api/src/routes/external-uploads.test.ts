@@ -908,6 +908,7 @@ describe("external upload routes", () => {
     const intent = await server.inject({
       method: "POST",
       url: `/api/portal/external-uploads/${token}/intents`,
+      headers: { "user-agent": "external-upload-public-exhausted-test" },
       payload: { filename: "extra.pdf", checksumSha256: checksum, fileSizeBytes },
     });
     expect(intent.statusCode).toBe(403);
@@ -922,20 +923,21 @@ describe("external upload routes", () => {
           resourceId: "external-upload-public-exhausted",
           action: "upload",
           userAgent: "external-upload-public-exhausted-test",
-          metadata: { outcome: "unavailable", status: "exhausted" },
+          metadata: expect.objectContaining({ outcome: "unavailable", status: "exhausted" }),
         }),
         expect.objectContaining({
           externalUploadLinkId: "external-upload-public-exhausted",
           resourceType: "external_upload_link",
           resourceId: "external-upload-public-exhausted",
           action: "upload",
-          metadata: { outcome: "denied", reason: "upload_limit" },
+          userAgent: "external-upload-public-exhausted-test",
+          metadata: expect.objectContaining({ outcome: "denied", reason: "upload_limit" }),
         }),
       ]),
     );
   });
 
-  it("does not create a pending document when upload capacity is lost during claim", async () => {
+  it("keeps upload quota unspent until successful completion when capacity is lost during claim", async () => {
     class ClaimFailingRepository extends InMemoryOpenPracticeRepository {
       override async claimExternalUploadUse() {
         return undefined;
@@ -957,13 +959,29 @@ describe("external upload routes", () => {
       payload: { filename: "race.pdf", checksumSha256: checksum, fileSizeBytes },
     });
 
-    expect(intent.statusCode).toBe(403);
-    expect(intent.json()).toMatchObject({
+    expect(intent.statusCode).toBe(200);
+    const documentId = intent.json<{ document: { id: string } }>().document.id;
+    const completed = await server.inject({
+      method: "POST",
+      url: `/api/portal/external-uploads/${token}/documents/${documentId}/complete`,
+      payload: { checksumSha256: checksum, scanStatus: "passed" },
+    });
+
+    expect(completed.statusCode).toBe(403);
+    expect(completed.json()).toMatchObject({
       message: "External upload link is not available",
     });
     await expect(repository.listMatterDocuments("firm-west-legal", "matter-001")).resolves.toEqual(
-      expect.not.arrayContaining([
-        expect.objectContaining({ externalUploadLinkId: "external-upload-claim-race" }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalUploadLinkId: "external-upload-claim-race",
+          uploadStatus: "intent_created",
+        }),
+      ]),
+    );
+    await expect(repository.listExternalUploadLinks("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "external-upload-claim-race", usedUploads: 0 }),
       ]),
     );
     await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
@@ -971,7 +989,7 @@ describe("external upload routes", () => {
         expect.objectContaining({
           externalUploadLinkId: "external-upload-claim-race",
           resourceType: "external_upload_link",
-          metadata: { outcome: "denied", reason: "upload_limit" },
+          metadata: expect.objectContaining({ outcome: "denied", reason: "upload_limit" }),
         }),
       ]),
     );
@@ -1203,7 +1221,7 @@ describe("external upload routes", () => {
           resourceId: "external-upload-expired",
           action: "upload",
           userAgent: "external-upload-denial-test",
-          metadata: { outcome: "denied", reason: "expired" },
+          metadata: expect.objectContaining({ outcome: "denied", reason: "expired" }),
         }),
         expect.objectContaining({
           externalUploadLinkId: "external-upload-revoked",
@@ -1211,7 +1229,7 @@ describe("external upload routes", () => {
           resourceId: "external-upload-revoked",
           action: "upload",
           userAgent: "external-upload-denial-test",
-          metadata: { outcome: "denied", reason: "revoked" },
+          metadata: expect.objectContaining({ outcome: "denied", reason: "revoked" }),
         }),
         expect.objectContaining({
           externalUploadLinkId: "external-upload-exhausted",
@@ -1219,7 +1237,7 @@ describe("external upload routes", () => {
           resourceId: "external-upload-exhausted",
           action: "upload",
           userAgent: "external-upload-denial-test",
-          metadata: { outcome: "denied", reason: "upload_limit" },
+          metadata: expect.objectContaining({ outcome: "denied", reason: "upload_limit" }),
         }),
       ]),
     );

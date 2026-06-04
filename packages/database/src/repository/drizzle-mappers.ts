@@ -974,6 +974,7 @@ export function mapDocumentRow(row: typeof schema.documents.$inferSelect): Docum
     supersededAt: dateToIso(row.supersededAt),
     uploadedAt: dateToIso(row.uploadedAt),
     verifiedAt: dateToIso(row.verifiedAt),
+    createdAt: row.createdAt.toISOString(),
   };
 }
 

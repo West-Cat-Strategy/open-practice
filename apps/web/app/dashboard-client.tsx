@@ -3693,13 +3693,15 @@ export default function DashboardClient({
     }
   }
 
-  async function savePublicConsultationSettings(): Promise<void> {
+  async function savePublicConsultationSettings(rotateSubmissionToken = false): Promise<void> {
     const settingsPayload = buildPublicConsultationSettingsPayload({
       enabled: publicConsultationEnabled,
       senderAddress: publicConsultationSender,
       recipientEmailsText: publicConsultationRecipients,
       allowedOriginsText: publicConsultationOrigins,
       reviewOwnerUserId: publicConsultationReviewOwner,
+      submissionTokenConfigured: publicConsultationSettings.submissionTokenConfigured,
+      rotateSubmissionToken,
     });
     if ("error" in settingsPayload) {
       setPublicConsultationStatus(settingsPayload.error);
@@ -3723,7 +3725,11 @@ export default function DashboardClient({
       setPublicConsultationRecipients(saved.recipientEmails.join(", "));
       setPublicConsultationOrigins(saved.allowedOrigins.join("\n"));
       setPublicConsultationReviewOwner(saved.reviewOwnerUserId ?? "");
-      setPublicConsultationStatus(`Saved: ${publicConsultationSettingsSummary(saved)}.`);
+      setPublicConsultationStatus(
+        saved.submissionToken
+          ? `Saved: ${publicConsultationSettingsSummary(saved)}. New submission token: ${saved.submissionToken}`
+          : `Saved: ${publicConsultationSettingsSummary(saved)}.`,
+      );
     } catch (error) {
       setPublicConsultationStatus(`Settings save failed: ${dashboardApiStatus(error)}`);
     } finally {
@@ -7886,6 +7892,16 @@ export default function DashboardClient({
                     type="button"
                   >
                     {refreshingPublicConsultationIntakes ? "Refreshing..." : "Refresh requests"}
+                  </button>
+                  <button
+                    className="secondary-button compact-button"
+                    disabled={
+                      savingPublicConsultationSettings || publicConsultationSettingsDisabled
+                    }
+                    onClick={() => void savePublicConsultationSettings(true)}
+                    type="button"
+                  >
+                    Rotate token
                   </button>
                   <button
                     className="primary-button"

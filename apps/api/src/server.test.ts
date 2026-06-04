@@ -933,6 +933,7 @@ describe("API auth and persistence boundaries", () => {
       PUBLIC_CONSULTATION_INTAKE_SENDER_ADDRESS: "consultations@example.test",
       PUBLIC_CONSULTATION_INTAKE_RECIPIENT_EMAILS: "review@example.test",
       PUBLIC_CONSULTATION_INTAKE_ACTOR_USER_ID: "user-admin",
+      PUBLIC_CONSULTATION_INTAKE_SUBMISSION_TOKEN_HASH: "a".repeat(64),
     });
     const repository = new InMemoryOpenPracticeRepository();
 
@@ -943,6 +944,7 @@ describe("API auth and persistence boundaries", () => {
       recipientEmails: ["review@example.test"],
       allowedOrigins: ["https://consult.example.test", "https://www.consult.example.test"],
       reviewOwnerUserId: "user-admin",
+      submissionTokenHash: "a".repeat(64),
     });
     expect(() =>
       buildPublicConsultationIntakeSettingsFromEnv(
@@ -961,6 +963,7 @@ describe("API auth and persistence boundaries", () => {
     expect(JSON.parse(provider?.encryptedConfig ?? "{}")).toMatchObject({
       senderAddress: "consultations@example.test",
       recipientEmails: ["review@example.test"],
+      submissionTokenHash: "a".repeat(64),
     });
   });
 

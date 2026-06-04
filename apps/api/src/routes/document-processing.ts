@@ -8,9 +8,11 @@ import type {
   ProviderSettingRecord,
 } from "@open-practice/domain";
 import {
+  allowedOcrLanguages,
   buildDocumentMetadataSearchPosture,
   buildDocumentMetadataTags,
   buildDocumentReviewSuggestions,
+  normalizeOcrLanguage,
   redactJobMetadata,
 } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
@@ -73,7 +75,7 @@ const workbenchQuerySchema = z.object({
 });
 const queueDocumentProcessingBodySchema = z.object({
   task: z.enum(["ocr"]).default("ocr"),
-  language: z.string().trim().min(2).max(24).default("eng"),
+  language: z.enum(allowedOcrLanguages).default("eng"),
 });
 const ocrProviderBodySchema = z.object({ enabled: z.boolean() });
 
@@ -342,7 +344,7 @@ export async function queueDocumentOcr(
   await assertOcrProviderConfigured({ repository, firmId: auth.firmId });
   assertDocumentProcessable(document);
 
-  const language = input.language?.trim() || "eng";
+  const language = normalizeOcrLanguage(input.language);
   const now = new Date().toISOString();
   const jobId = crypto.randomUUID();
   const metadata = {

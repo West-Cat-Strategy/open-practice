@@ -283,6 +283,7 @@ export const FORBIDDEN_SERVER_ROUTE_GROUPS = [
     owner: "document endpoints in apps/api/src/routes/documents.ts",
     routeLiterals: [
       "/api/documents/presign-upload",
+      "/api/documents/upload-intents",
       "/api/documents/:id/upload-complete",
       "/api/documents/:id/scan-status",
     ],

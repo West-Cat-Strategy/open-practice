@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { OpenPracticeRepository } from "@open-practice/database";
@@ -9,6 +9,7 @@ import type {
   User,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
+import { createSessionToken, hashToken } from "../http/auth-helpers.js";
 import { ApiHttpError } from "../http/response.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
@@ -26,6 +27,17 @@ const DEFAULT_NOTIFICATION_SETTINGS: PublicConsultationIntakeNotificationSetting
   allowedOrigins: [],
 };
 
+type StoredPublicConsultationSettings = PublicConsultationIntakeNotificationSettings & {
+  submissionTokenHash?: string;
+  submissionTokenRotatedAt?: string;
+};
+
+type PublicConsultationSettingsResponse = PublicConsultationIntakeNotificationSettings & {
+  submissionTokenConfigured: boolean;
+  submissionTokenRotatedAt?: string;
+  submissionToken?: string;
+};
+
 const emailAddressSchema = z.string().trim().email().max(254);
 const optionalEmailAddressSchema = z.preprocess(
   (value) => (typeof value === "string" ? value.trim() : value),
@@ -38,6 +50,8 @@ const settingsConfigSchema = z.object({
   senderAddress: optionalEmailAddressSchema.default(""),
   recipientEmails: z.array(emailAddressSchema).max(10).default([]),
   allowedOrigins: z.array(originUrlSchema).max(20).default([]),
+  submissionTokenHash: z.string().trim().min(32).optional(),
+  submissionTokenRotatedAt: z.string().datetime().optional(),
   reviewOwnerUserId: z
     .preprocess(
       (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
@@ -46,31 +60,37 @@ const settingsConfigSchema = z.object({
     .optional(),
 });
 
-const settingsBodySchema = settingsConfigSchema.superRefine((settings, context) => {
-  if (!settings.enabled) return;
-  if (!settings.senderAddress) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Sender address is required when public consultation intake is enabled",
-      path: ["senderAddress"],
-    });
-  }
-  if (settings.recipientEmails.length === 0) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message:
-        "At least one recipient email is required when public consultation intake is enabled",
-      path: ["recipientEmails"],
-    });
-  }
-  if (settings.allowedOrigins.length === 0) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "At least one allowed origin is required when public consultation intake is enabled",
-      path: ["allowedOrigins"],
-    });
-  }
-});
+const settingsBodySchema = settingsConfigSchema
+  .omit({ submissionTokenHash: true, submissionTokenRotatedAt: true })
+  .extend({
+    rotateSubmissionToken: z.boolean().default(false),
+  })
+  .superRefine((settings, context) => {
+    if (!settings.enabled) return;
+    if (!settings.senderAddress) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Sender address is required when public consultation intake is enabled",
+        path: ["senderAddress"],
+      });
+    }
+    if (settings.recipientEmails.length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "At least one recipient email is required when public consultation intake is enabled",
+        path: ["recipientEmails"],
+      });
+    }
+    if (settings.allowedOrigins.length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "At least one allowed origin is required when public consultation intake is enabled",
+        path: ["allowedOrigins"],
+      });
+    }
+  });
 
 const optionalTelephoneSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
@@ -119,20 +139,38 @@ const listQuerySchema = z.object({
 });
 
 function compactSettings(
-  settings: PublicConsultationIntakeNotificationSettings,
-): PublicConsultationIntakeNotificationSettings {
+  settings: StoredPublicConsultationSettings,
+): StoredPublicConsultationSettings {
+  return {
+    enabled: settings.enabled,
+    senderAddress: settings.senderAddress,
+    recipientEmails: settings.recipientEmails,
+    allowedOrigins: settings.allowedOrigins,
+    submissionTokenHash: settings.submissionTokenHash,
+    submissionTokenRotatedAt: settings.submissionTokenRotatedAt,
+    reviewOwnerUserId: settings.reviewOwnerUserId,
+  };
+}
+
+function publicSettingsResponse(
+  settings: StoredPublicConsultationSettings,
+  submissionToken?: string,
+): PublicConsultationSettingsResponse {
   return {
     enabled: settings.enabled,
     senderAddress: settings.senderAddress,
     recipientEmails: settings.recipientEmails,
     allowedOrigins: settings.allowedOrigins,
     reviewOwnerUserId: settings.reviewOwnerUserId,
+    submissionTokenConfigured: Boolean(settings.submissionTokenHash),
+    submissionTokenRotatedAt: settings.submissionTokenRotatedAt,
+    ...(submissionToken ? { submissionToken } : {}),
   };
 }
 
 function parseSettingsConfig(
   provider: ProviderSettingRecord | undefined,
-): PublicConsultationIntakeNotificationSettings {
+): StoredPublicConsultationSettings {
   if (!provider) {
     return { ...DEFAULT_NOTIFICATION_SETTINGS };
   }
@@ -153,7 +191,7 @@ function parseSettingsConfig(
 async function loadNotificationSettings(
   repository: OpenPracticeRepository,
   firmId: string,
-): Promise<PublicConsultationIntakeNotificationSettings> {
+): Promise<StoredPublicConsultationSettings> {
   const providers = await repository.listProviderSettings(firmId, { kind: SETTINGS_KIND });
   return parseSettingsConfig(providers.find((provider) => provider.key === SETTINGS_KEY));
 }
@@ -161,9 +199,22 @@ async function loadNotificationSettings(
 async function upsertPublicConsultationIntakeNotificationSettings(
   repository: OpenPracticeRepository,
   firmId: string,
-  settings: PublicConsultationIntakeNotificationSettings,
-): Promise<PublicConsultationIntakeNotificationSettings> {
-  const validSettings = settingsBodySchema.parse(settings);
+  settings: Omit<
+    StoredPublicConsultationSettings,
+    "submissionTokenHash" | "submissionTokenRotatedAt"
+  > & {
+    submissionTokenHash?: string;
+    submissionTokenRotatedAt?: string;
+  },
+): Promise<StoredPublicConsultationSettings> {
+  const validSettings = settingsConfigSchema.parse(settings);
+  if (validSettings.enabled && !validSettings.submissionTokenHash) {
+    throw new ApiHttpError(
+      400,
+      "PUBLIC_CONSULTATION_SUBMISSION_TOKEN_REQUIRED",
+      "Public consultation intake requires a submission bearer token before it can be enabled",
+    );
+  }
   const now = new Date().toISOString();
   await repository.upsertProviderSetting({
     id: `provider-public-intake-${firmId}`,
@@ -176,6 +227,56 @@ async function upsertPublicConsultationIntakeNotificationSettings(
     updatedAt: now,
   });
   return validSettings;
+}
+
+function bearerToken(request: FastifyRequest): string | undefined {
+  const authorization = request.headers.authorization;
+  if (!authorization?.startsWith("Bearer ")) return undefined;
+  const token = authorization.slice("Bearer ".length).trim();
+  return token.length > 0 ? token : undefined;
+}
+
+function constantTimeEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function assertSubmissionToken(input: {
+  settings: StoredPublicConsultationSettings;
+  request: FastifyRequest;
+  jwtSecret?: string;
+}): void {
+  if (!input.settings.submissionTokenHash) {
+    throw new ApiHttpError(
+      503,
+      "PUBLIC_CONSULTATION_SUBMISSION_TOKEN_NOT_CONFIGURED",
+      "Public consultation intake submission token is not configured",
+    );
+  }
+  if (!input.jwtSecret) {
+    throw new ApiHttpError(
+      503,
+      "PUBLIC_CONSULTATION_SUBMISSION_TOKEN_UNAVAILABLE",
+      "Public consultation intake token verification is not configured",
+    );
+  }
+  const token = bearerToken(input.request);
+  if (!token) {
+    throw new ApiHttpError(
+      403,
+      "PUBLIC_CONSULTATION_SUBMISSION_TOKEN_REQUIRED",
+      "A bearer token is required to submit consultation intakes",
+    );
+  }
+  const suppliedHash = hashToken(token, input.jwtSecret);
+  if (!constantTimeEqual(suppliedHash, input.settings.submissionTokenHash)) {
+    throw new ApiHttpError(
+      403,
+      "PUBLIC_CONSULTATION_SUBMISSION_TOKEN_INVALID",
+      "The consultation intake submission token was not accepted",
+    );
+  }
 }
 
 function requestOrigin(request: FastifyRequest): string | undefined {
@@ -244,22 +345,45 @@ export function registerPublicConsultationIntakeRoutes(
     emailJobQueue?: ApiJobQueue;
     publicFirmId: string;
     publicActorUserId: string;
+    jwtSecret?: string;
   },
 ): void {
   server.get("/api/public-consultation-intakes/settings", async (request) => {
     const access = requireAccess(request.auth, { resource: "provider_setting", action: "read" });
     if (!access.ok) throw access.error;
-    return loadNotificationSettings(options.repository, request.auth.firmId);
+    return publicSettingsResponse(
+      await loadNotificationSettings(options.repository, request.auth.firmId),
+    );
   });
 
   server.put("/api/public-consultation-intakes/settings", async (request) => {
     const access = requireAccess(request.auth, { resource: "provider_setting", action: "update" });
     if (!access.ok) throw access.error;
     const body = settingsBodySchema.parse(request.body);
+    const existing = await loadNotificationSettings(options.repository, request.auth.firmId);
+    let submissionToken: string | undefined;
+    let submissionTokenHash = existing.submissionTokenHash;
+    let submissionTokenRotatedAt = existing.submissionTokenRotatedAt;
+    if (body.rotateSubmissionToken) {
+      if (!options.jwtSecret) {
+        throw new ApiHttpError(
+          503,
+          "PUBLIC_CONSULTATION_SUBMISSION_TOKEN_UNAVAILABLE",
+          "Public consultation intake token generation is not configured",
+        );
+      }
+      submissionToken = createSessionToken();
+      submissionTokenHash = hashToken(submissionToken, options.jwtSecret);
+      submissionTokenRotatedAt = new Date().toISOString();
+    }
     const saved = await upsertPublicConsultationIntakeNotificationSettings(
       options.repository,
       request.auth.firmId,
-      body,
+      {
+        ...body,
+        submissionTokenHash,
+        submissionTokenRotatedAt,
+      },
     );
     await appendRouteAuditEvent(options.repository, request.auth, {
       action: "public_consultation_intake.settings_updated",
@@ -271,9 +395,11 @@ export function registerPublicConsultationIntakeRoutes(
         recipientCount: saved.recipientEmails.length,
         allowedOriginCount: saved.allowedOrigins.length,
         reviewOwnerUserId: saved.reviewOwnerUserId,
+        submissionTokenConfigured: Boolean(saved.submissionTokenHash),
+        submissionTokenRotated: body.rotateSubmissionToken,
       },
     });
-    return saved;
+    return publicSettingsResponse(saved, submissionToken);
   });
 
   server.get("/api/public-consultation-intakes", async (request) => {
@@ -309,6 +435,7 @@ export function registerPublicConsultationIntakeRoutes(
           "Public consultation intake is not enabled",
         );
       }
+      assertSubmissionToken({ settings, request, jwtSecret: options.jwtSecret });
 
       const body = publicIntakeBodySchema.parse(request.body);
       if (body.website?.trim()) {

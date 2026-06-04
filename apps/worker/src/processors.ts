@@ -23,6 +23,7 @@ import {
   buildDraftAssistAuditMetadata,
   extractTipTapPlainText,
   getStaffSavedReportDefinition,
+  isAllowedOcrLanguage,
   isStaffReportDefinitionKey,
   isStaffReportExportProfileId,
   isStaffReportGroupingKey,
@@ -1433,7 +1434,8 @@ async function processOcrJob(input: {
   }
 
   // Extract text
-  const language = (data.metadata?.language as string) || "eng";
+  const rawLanguage = typeof data.metadata?.language === "string" ? data.metadata.language : "";
+  const language = isAllowedOcrLanguage(rawLanguage.trim()) ? rawLanguage.trim() : "eng";
   const result = await ocrProvider.extractText({
     firmId,
     documentId,

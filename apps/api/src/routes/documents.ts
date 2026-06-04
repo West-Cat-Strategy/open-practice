@@ -17,7 +17,7 @@ import {
   verifyUploadedObject,
 } from "./upload-verification.js";
 
-const presignQuerySchema = z.object({
+const uploadIntentBodySchema = z.object({
   matterId: z.string().min(1),
   filename: z.string().min(1),
   checksumSha256: z.string().transform(normalizeChecksumSha256),
@@ -65,12 +65,19 @@ export function registerDocumentRoutes(
   server: FastifyInstance,
   { repository, s3 }: ApiRouteDependencies,
 ): void {
-  server.get("/api/documents/presign-upload", async (request) => {
-    const query = parseRequestPart(presignQuerySchema, request.query, "query");
+  server.get("/api/documents/presign-upload", async (_request, reply) =>
+    reply.code(405).send({
+      error: "MethodNotAllowed",
+      message: "Use POST /api/documents/upload-intents",
+    }),
+  );
+
+  server.post("/api/documents/upload-intents", async (request) => {
+    const body = parseRequestPart(uploadIntentBodySchema, request.body ?? {}, "body");
     assertMatterAccess(request.auth, {
       resource: "document",
       action: "create",
-      matterId: query.matterId,
+      matterId: body.matterId,
     });
     if (!s3) {
       throw new ApiHttpError(
@@ -81,11 +88,11 @@ export function registerDocumentRoutes(
     }
 
     const documentId = crypto.randomUUID();
-    const storageKey = `matters/${query.matterId}/${documentId}-${sanitizeFilename(query.filename)}`;
-    const checksumSha256Base64 = sha256HexToBase64(query.checksumSha256);
+    const storageKey = `matters/${body.matterId}/${documentId}-${sanitizeFilename(body.filename)}`;
+    const checksumSha256Base64 = sha256HexToBase64(body.checksumSha256);
     const requiredHeaders = {
       "x-amz-checksum-sha256": checksumSha256Base64,
-      "x-amz-meta-open-practice-size-bytes": String(query.fileSizeBytes),
+      "x-amz-meta-open-practice-size-bytes": String(body.fileSizeBytes),
       "x-open-practice-malware-scan": "required-before-share",
       ...(s3.serverSideEncryption
         ? { "x-amz-server-side-encryption": s3.serverSideEncryption }
@@ -95,12 +102,12 @@ export function registerDocumentRoutes(
       Bucket: s3.bucket,
       Key: storageKey,
       ChecksumSHA256: checksumSha256Base64,
-      ContentLength: query.fileSizeBytes,
+      ContentLength: body.fileSizeBytes,
       ...(s3.serverSideEncryption ? { ServerSideEncryption: s3.serverSideEncryption } : {}),
       Metadata: {
-        "open-practice-matter-id": query.matterId,
+        "open-practice-matter-id": body.matterId,
         "open-practice-scan": "required-before-share",
-        "open-practice-size-bytes": String(query.fileSizeBytes),
+        "open-practice-size-bytes": String(body.fileSizeBytes),
       },
     });
     const uploadUrl = await getSignedUrl(s3.client, command, {
@@ -110,14 +117,14 @@ export function registerDocumentRoutes(
     const document = await repository.createDocumentUploadIntent({
       id: documentId,
       firmId: request.auth.firmId,
-      matterId: query.matterId,
-      title: query.filename,
+      matterId: body.matterId,
+      title: body.filename,
       storageKey,
-      checksumSha256: query.checksumSha256,
-      sizeBytes: query.fileSizeBytes,
-      classification: query.classification,
-      legalHold: query.legalHold,
-      supersedesDocumentId: query.supersedesDocumentId,
+      checksumSha256: body.checksumSha256,
+      sizeBytes: body.fileSizeBytes,
+      classification: body.classification,
+      legalHold: body.legalHold,
+      supersedesDocumentId: body.supersedesDocumentId,
     });
     await appendRouteAuditEvent(repository, request.auth, {
       action: "document.upload_intent.created",

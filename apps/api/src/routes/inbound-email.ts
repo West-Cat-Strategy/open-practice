@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
+  allowedOcrLanguages,
   canAccess,
   type AccessRequest,
   type JobLifecycleRecord,
@@ -111,7 +112,7 @@ const promoteAttachmentBodySchema = z.object({
     .default("general"),
   legalHold: z.boolean().default(false),
   queueOcr: z.boolean().default(true),
-  language: z.string().trim().min(2).max(24).default("eng"),
+  language: z.enum(allowedOcrLanguages).default("eng"),
 });
 
 function assertInboundEmailAccess(

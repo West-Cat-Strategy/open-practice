@@ -19,6 +19,7 @@ export * from "./models.js";
 export * from "./operational-views.js";
 export * from "./operational-actions.js";
 export * from "./operations.js";
+export * from "./ocr.js";
 export * from "./outbound-webhooks.js";
 export * from "./permissions.js";
 export * from "./participant-roles.js";

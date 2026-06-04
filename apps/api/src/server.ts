@@ -137,6 +137,8 @@ const publicConsultationBootstrapSettingsSchema = z.object({
   senderAddress: z.union([z.literal(""), z.string().trim().email().max(254)]),
   recipientEmails: z.array(z.string().trim().email().max(254)).max(10),
   allowedOrigins: z.array(z.string().trim().url().max(2048)).max(20),
+  submissionTokenHash: z.string().trim().min(32).optional(),
+  submissionTokenRotatedAt: z.string().datetime().optional(),
   reviewOwnerUserId: z.string().trim().min(1).optional(),
 });
 
@@ -190,6 +192,7 @@ export const envSchema = z.object({
   PUBLIC_CONSULTATION_INTAKE_SENDER_ADDRESS: optionalString,
   PUBLIC_CONSULTATION_INTAKE_RECIPIENT_EMAILS: optionalString,
   PUBLIC_CONSULTATION_INTAKE_REVIEW_OWNER_USER_ID: optionalString,
+  PUBLIC_CONSULTATION_INTAKE_SUBMISSION_TOKEN_HASH: optionalString,
   INBOUND_EMAIL_WEBHOOK_SECRET: optionalString,
   INBOUND_EMAIL_DOMAIN: optionalString,
 });
@@ -602,6 +605,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     emailJobQueue: options.emailJobQueue,
     publicFirmId: options.publicConsultationIntake?.firmId ?? options.devFirmId,
     publicActorUserId: options.publicConsultationIntake?.actorUserId ?? options.devUserId,
+    jwtSecret: options.jwtSecret,
   });
   registerEmailRoutes(server, {
     repository: options.repository,
@@ -794,6 +798,7 @@ export function buildPublicConsultationIntakeSettingsFromEnv(
   const senderAddress = env.PUBLIC_CONSULTATION_INTAKE_SENDER_ADDRESS?.trim() ?? "";
   const recipientEmails = splitCsvEnv(env.PUBLIC_CONSULTATION_INTAKE_RECIPIENT_EMAILS);
   const allowedOrigins = splitCsvEnv(env.PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS);
+  const submissionTokenHash = env.PUBLIC_CONSULTATION_INTAKE_SUBMISSION_TOKEN_HASH?.trim();
   const reviewOwnerUserId =
     env.PUBLIC_CONSULTATION_INTAKE_REVIEW_OWNER_USER_ID?.trim() ||
     env.PUBLIC_CONSULTATION_INTAKE_ACTOR_USER_ID?.trim() ||
@@ -802,6 +807,7 @@ export function buildPublicConsultationIntakeSettingsFromEnv(
     env.PUBLIC_CONSULTATION_INTAKE_ENABLED !== undefined ||
     senderAddress.length > 0 ||
     recipientEmails.length > 0 ||
+    Boolean(submissionTokenHash) ||
     Boolean(env.PUBLIC_CONSULTATION_INTAKE_REVIEW_OWNER_USER_ID);
 
   if (!shouldBootstrap) return undefined;
@@ -812,12 +818,18 @@ export function buildPublicConsultationIntakeSettingsFromEnv(
       "PUBLIC_CONSULTATION_INTAKE_ENABLED requires PUBLIC_CONSULTATION_INTAKE_SENDER_ADDRESS, PUBLIC_CONSULTATION_INTAKE_RECIPIENT_EMAILS, and PUBLIC_CONSULTATION_INTAKE_ALLOWED_ORIGINS",
     );
   }
+  if (enabled && !submissionTokenHash) {
+    throw new Error(
+      "PUBLIC_CONSULTATION_INTAKE_ENABLED requires PUBLIC_CONSULTATION_INTAKE_SUBMISSION_TOKEN_HASH",
+    );
+  }
 
   return {
     enabled,
     senderAddress,
     recipientEmails,
     allowedOrigins,
+    ...(submissionTokenHash ? { submissionTokenHash } : {}),
     reviewOwnerUserId,
   };
 }

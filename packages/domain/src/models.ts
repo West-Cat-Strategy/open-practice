@@ -175,6 +175,7 @@ export interface DocumentRecord {
   supersededAt?: string;
   uploadedAt?: string;
   verifiedAt?: string;
+  createdAt?: string;
 }
 
 export interface PortalGrant {

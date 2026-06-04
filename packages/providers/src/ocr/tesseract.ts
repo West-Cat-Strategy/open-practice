@@ -1,5 +1,9 @@
 import { createWorker } from "tesseract.js";
-import type { DocumentTextExtractionRecord, OcrProvider } from "@open-practice/domain";
+import {
+  normalizeOcrLanguage,
+  type DocumentTextExtractionRecord,
+  type OcrProvider,
+} from "@open-practice/domain";
 
 export class TesseractOcrProvider implements OcrProvider {
   async extractText(input: {
@@ -8,7 +12,8 @@ export class TesseractOcrProvider implements OcrProvider {
     content: Uint8Array;
     language: string;
   }): Promise<Pick<DocumentTextExtractionRecord, "confidence" | "extractedText" | "metadata">> {
-    const worker = await createWorker(input.language);
+    const language = normalizeOcrLanguage(input.language);
+    const worker = await createWorker(language);
 
     try {
       // tesseract.js recognize can take a Buffer or Uint8Array

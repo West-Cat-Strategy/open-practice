@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { createApiServer } from "../server.js";
+import { hashToken } from "../http/auth-helpers.js";
 import type { ApiJobQueue } from "./types.js";
 
 const jwtSecret = "test-public-consultation-secret-at-least-32-chars";
+const submissionToken = "synthetic-public-intake-submission-token";
 const servers: Array<{ close: () => Promise<void> }> = [];
 
 function jobQueue(): ApiJobQueue & { added: unknown[] } {
@@ -52,6 +54,7 @@ async function configurePublicIntake(
     recipientEmails?: string[];
     allowedOrigins?: string[];
     reviewOwnerUserId?: string;
+    submissionToken?: string;
   } = {},
 ): Promise<void> {
   const now = new Date().toISOString();
@@ -61,6 +64,8 @@ async function configurePublicIntake(
     recipientEmails: input.recipientEmails ?? ["review@example.test"],
     allowedOrigins: input.allowedOrigins ?? ["https://consult.example.test"],
     reviewOwnerUserId: input.reviewOwnerUserId ?? "user-admin",
+    submissionTokenHash: hashToken(input.submissionToken ?? submissionToken, jwtSecret),
+    submissionTokenRotatedAt: now,
   };
   await repository.upsertProviderSetting({
     id: "provider-public-intake-test",
@@ -117,6 +122,7 @@ describe("public consultation intake routes", () => {
       senderAddress: "",
       recipientEmails: [],
       allowedOrigins: [],
+      submissionTokenConfigured: false,
     });
   });
 
@@ -140,6 +146,7 @@ describe("public consultation intake routes", () => {
       senderAddress: "",
       recipientEmails: [],
       allowedOrigins: [],
+      submissionTokenConfigured: false,
     });
   });
 
@@ -163,6 +170,37 @@ describe("public consultation intake routes", () => {
     expect(response.body).toContain("At least one allowed origin is required");
   });
 
+  it("requires a bearer token before accepting public submissions", async () => {
+    const { repository, server } = testServer();
+    await configurePublicIntake(repository);
+
+    const missing = await server.inject({
+      method: "POST",
+      url: "/api/public/consultation-intakes",
+      headers: { origin: "https://consult.example.test" },
+      payload: publicPayload,
+    });
+    const invalid = await server.inject({
+      method: "POST",
+      url: "/api/public/consultation-intakes",
+      headers: {
+        origin: "https://consult.example.test",
+        authorization: "Bearer wrong-token",
+      },
+      payload: publicPayload,
+    });
+
+    expect(missing.statusCode).toBe(403);
+    expect(missing.json()).toMatchObject({
+      code: "PUBLIC_CONSULTATION_SUBMISSION_TOKEN_REQUIRED",
+    });
+    expect(invalid.statusCode).toBe(403);
+    expect(invalid.json()).toMatchObject({
+      code: "PUBLIC_CONSULTATION_SUBMISSION_TOKEN_INVALID",
+    });
+    await expect(repository.listPublicConsultationIntakes("firm-west-legal")).resolves.toEqual([]);
+  });
+
   it("accepts a public submission, persists pending review, and queues a redacted notification job", async () => {
     const queue = jobQueue();
     const { repository, server } = testServer({ emailJobQueue: queue });
@@ -172,7 +210,10 @@ describe("public consultation intake routes", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/public/consultation-intakes",
-      headers: { origin: "https://consult.example.test" },
+      headers: {
+        origin: "https://consult.example.test",
+        authorization: `Bearer ${submissionToken}`,
+      },
       payload: publicPayload,
     });
 
@@ -233,7 +274,10 @@ describe("public consultation intake routes", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/public/consultation-intakes",
-      headers: { origin: "https://crockettparalegal.ca" },
+      headers: {
+        origin: "https://crockettparalegal.ca",
+        authorization: `Bearer ${submissionToken}`,
+      },
       payload: {
         clientName: "Synthetic Crockett Client",
         email: "client@example.test",
@@ -284,7 +328,10 @@ describe("public consultation intake routes", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/public/consultation-intakes",
-      headers: { origin: "https://consult.example.test" },
+      headers: {
+        origin: "https://consult.example.test",
+        authorization: `Bearer ${submissionToken}`,
+      },
       payload: { ...publicPayload, email: "" },
     });
 
@@ -299,7 +346,10 @@ describe("public consultation intake routes", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/public/consultation-intakes",
-      headers: { origin: "https://not-configured.example" },
+      headers: {
+        origin: "https://not-configured.example",
+        authorization: `Bearer ${submissionToken}`,
+      },
       payload: publicPayload,
     });
 
@@ -314,6 +364,7 @@ describe("public consultation intake routes", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/public/consultation-intakes",
+      headers: { authorization: `Bearer ${submissionToken}` },
       payload: publicPayload,
     });
 
@@ -330,7 +381,10 @@ describe("public consultation intake routes", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/public/consultation-intakes",
-      headers: { origin: "https://consult.example.test" },
+      headers: {
+        origin: "https://consult.example.test",
+        authorization: `Bearer ${submissionToken}`,
+      },
       payload: publicPayload,
     });
 
@@ -348,7 +402,10 @@ describe("public consultation intake routes", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/public/consultation-intakes",
-      headers: { origin: "https://consult.example.test" },
+      headers: {
+        origin: "https://consult.example.test",
+        authorization: `Bearer ${submissionToken}`,
+      },
       payload: { ...publicPayload, website: "bot-value" },
     });
 
@@ -369,9 +426,15 @@ describe("public consultation intake routes", () => {
         recipientEmails: ["review@example.test", "office@example.test"],
         allowedOrigins: ["https://consult.example.test", "http://localhost:4321"],
         reviewOwnerUserId: "user-admin",
+        rotateSubmissionToken: true,
       },
     });
     expect(settingsResponse.statusCode).toBe(200);
+    expect(settingsResponse.json()).toMatchObject({
+      submissionTokenConfigured: true,
+      submissionToken: expect.any(String),
+    });
+    expect(JSON.stringify(settingsResponse.json())).not.toContain("submissionTokenHash");
 
     const getSettingsResponse = await server.inject({
       method: "GET",
@@ -380,7 +443,9 @@ describe("public consultation intake routes", () => {
     expect(getSettingsResponse.json()).toMatchObject({
       recipientEmails: ["review@example.test", "office@example.test"],
       reviewOwnerUserId: "user-admin",
+      submissionTokenConfigured: true,
     });
+    expect(JSON.stringify(getSettingsResponse.json())).not.toContain("submissionTokenHash");
 
     const dismissedIntake = await repository.createPublicConsultationIntake({
       id: "public-intake-dismiss",

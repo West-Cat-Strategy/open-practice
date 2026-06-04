@@ -263,6 +263,8 @@ export interface PublicConsultationIntakeNotificationSettings {
   senderAddress: string;
   recipientEmails: string[];
   allowedOrigins: string[];
+  submissionTokenHash?: string;
+  submissionTokenRotatedAt?: string;
   reviewOwnerUserId?: string;
 }
 
