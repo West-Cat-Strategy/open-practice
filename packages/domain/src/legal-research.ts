@@ -1,3 +1,5 @@
+import type { JobLifecycleRecord, OpenPracticeJobStatus } from "./operations.js";
+
 export const legalResearchArtifactKinds = [
   "cited_source_note",
   "matter_context_attachment",
@@ -19,6 +21,12 @@ export type LegalResearchArtifactStatus = (typeof legalResearchArtifactStatuses)
 
 export const legalResearchReviewDecisions = ["reviewed", "rejected"] as const;
 export type LegalResearchReviewDecision = (typeof legalResearchReviewDecisions)[number];
+
+export const legalResearchProviderJobName = "legal_research_provider_review" as const;
+
+export const legalResearchProviderJobRequestTypes = ["citation_review"] as const;
+export type LegalResearchProviderJobRequestType =
+  (typeof legalResearchProviderJobRequestTypes)[number];
 
 export const legalResearchSourceTypes = [
   "case_law",
@@ -126,22 +134,75 @@ export interface LegalResearchWorkspacePolicy {
   downstreamMutation: false;
 }
 
+export interface LegalResearchCitationReviewControls {
+  staffReviewRequired: true;
+  citationVerificationClaims: false;
+  providerEvidenceStored: false;
+  sourceTextSubmittedToProvider: false;
+  promptSubmittedToProvider: false;
+  downstreamMutation: false;
+  reviewOnly: true;
+}
+
+export interface LegalResearchProviderJobBoundary {
+  queueName: "ai_triage";
+  jobName: typeof legalResearchProviderJobName;
+  status: "reserved";
+  reason: "deferred_worker";
+  providerConfigured: false;
+  liveResearchProvider: false;
+  reviewOnly: true;
+}
+
+export interface LegalResearchProviderJobRecord {
+  id: string;
+  queueName: "ai_triage";
+  jobName: typeof legalResearchProviderJobName;
+  status: OpenPracticeJobStatus;
+  bullJobId?: string;
+  targetResourceType?: string;
+  targetResourceId?: string;
+  queuedAt: string;
+  finishedAt?: string;
+  failedAt?: string;
+  terminal: boolean;
+  idempotencyKeyPresent: boolean;
+  metadata: Record<string, unknown>;
+}
+
+export interface LegalResearchProviderJobSummary {
+  total: number;
+  queued: number;
+  active: number;
+  completed: number;
+  skipped: number;
+  failed: number;
+  deadLetter: number;
+  latestQueuedAt?: string;
+  reviewOnly: true;
+}
+
 export interface LegalResearchWorkspace {
   matterId: string;
   artifacts: LegalResearchArtifactRecord[];
   summary: LegalResearchWorkspaceSummary;
   policy: LegalResearchWorkspacePolicy;
+  citationReview: LegalResearchCitationReviewControls;
   provider: {
     status: "disabled";
     reason: "not_configured";
     liveResearchProvider: false;
   };
+  providerJobBoundary: LegalResearchProviderJobBoundary;
+  providerJobs: LegalResearchProviderJobRecord[];
+  providerJobSummary: LegalResearchProviderJobSummary;
 }
 
 const artifactKindSet = new Set<string>(legalResearchArtifactKinds);
 const artifactStatusSet = new Set<string>(legalResearchArtifactStatuses);
 const reviewDecisionSet = new Set<string>(legalResearchReviewDecisions);
 const sourceTypeSet = new Set<string>(legalResearchSourceTypes);
+const providerJobRequestTypeSet = new Set<string>(legalResearchProviderJobRequestTypes);
 const maxNoteLength = 4000;
 
 export function assertLegalResearchArtifactKind(
@@ -157,6 +218,14 @@ export function assertLegalResearchArtifactStatus(
 ): asserts value is LegalResearchArtifactStatus {
   if (!artifactStatusSet.has(value)) {
     throw new Error(`Unsupported legal research artifact status: ${value}`);
+  }
+}
+
+export function assertLegalResearchProviderJobRequestType(
+  value: string,
+): asserts value is LegalResearchProviderJobRequestType {
+  if (!providerJobRequestTypeSet.has(value)) {
+    throw new Error(`Unsupported legal research provider job request type: ${value}`);
   }
 }
 
@@ -302,10 +371,86 @@ export function summarizeLegalResearchArtifacts(
   };
 }
 
+export function buildLegalResearchProviderJobMetadata(input: {
+  matterId: string;
+  requestType: LegalResearchProviderJobRequestType;
+  sourceTypes?: LegalResearchSourceType[];
+  citationReferenceCount?: number;
+  contextLinkCount?: number;
+  artifactCount?: number;
+  requestedByUserId: string;
+  jurisdiction?: string;
+  enqueueStatus?: string;
+}): Record<string, unknown> {
+  const sourceTypes = [...new Set(input.sourceTypes ?? [])].join(",");
+  return {
+    matterId: input.matterId,
+    requestType: input.requestType,
+    sourceTypes,
+    sourceTypeCount: sourceTypes ? sourceTypes.split(",").length : 0,
+    citationReferenceCount: input.citationReferenceCount ?? 0,
+    contextLinkCount: input.contextLinkCount ?? 0,
+    artifactCount: input.artifactCount ?? 0,
+    requestedByUserId: input.requestedByUserId,
+    jurisdiction: input.jurisdiction,
+    provider: "reserved_legal_research_provider",
+    providerStatus: "reserved",
+    providerConfigured: false,
+    citationReviewRequired: true,
+    sourceTextIncluded: false,
+    promptIncluded: false,
+    providerEvidenceStored: false,
+    citationVerificationClaims: false,
+    downstreamMutation: false,
+    reviewOnly: true,
+    enqueueStatus: input.enqueueStatus,
+  };
+}
+
+export function summarizeLegalResearchProviderJobs(
+  jobs: LegalResearchProviderJobRecord[],
+): LegalResearchProviderJobSummary {
+  return {
+    total: jobs.length,
+    queued: jobs.filter((job) => job.status === "queued").length,
+    active: jobs.filter((job) => job.status === "active").length,
+    completed: jobs.filter((job) => job.status === "completed").length,
+    skipped: jobs.filter((job) => job.status === "skipped").length,
+    failed: jobs.filter((job) => job.status === "failed").length,
+    deadLetter: jobs.filter((job) => job.status === "dead_letter").length,
+    latestQueuedAt: jobs[0]?.queuedAt,
+    reviewOnly: true,
+  };
+}
+
+export function serializeLegalResearchProviderJob(
+  job: JobLifecycleRecord,
+  metadata: Record<string, unknown>,
+): LegalResearchProviderJobRecord {
+  return {
+    id: job.id,
+    queueName: "ai_triage",
+    jobName: legalResearchProviderJobName,
+    status: job.status,
+    bullJobId: job.bullJobId,
+    targetResourceType: job.targetResourceType,
+    targetResourceId: job.targetResourceId,
+    queuedAt: job.queuedAt,
+    finishedAt: job.finishedAt,
+    failedAt: job.failedAt,
+    terminal:
+      job.status === "completed" || job.status === "dead_letter" || job.status === "skipped",
+    idempotencyKeyPresent: Boolean(job.idempotencyKey),
+    metadata,
+  };
+}
+
 export function buildLegalResearchWorkspace(input: {
   matterId: string;
   artifacts: LegalResearchArtifactRecord[];
+  providerJobs?: LegalResearchProviderJobRecord[];
 }): LegalResearchWorkspace {
+  const providerJobs = input.providerJobs ?? [];
   return {
     matterId: input.matterId,
     artifacts: input.artifacts,
@@ -317,10 +462,30 @@ export function buildLegalResearchWorkspace(input: {
       citationVerificationClaims: false,
       downstreamMutation: false,
     },
+    citationReview: {
+      staffReviewRequired: true,
+      citationVerificationClaims: false,
+      providerEvidenceStored: false,
+      sourceTextSubmittedToProvider: false,
+      promptSubmittedToProvider: false,
+      downstreamMutation: false,
+      reviewOnly: true,
+    },
     provider: {
       status: "disabled",
       reason: "not_configured",
       liveResearchProvider: false,
     },
+    providerJobBoundary: {
+      queueName: "ai_triage",
+      jobName: legalResearchProviderJobName,
+      status: "reserved",
+      reason: "deferred_worker",
+      providerConfigured: false,
+      liveResearchProvider: false,
+      reviewOnly: true,
+    },
+    providerJobs,
+    providerJobSummary: summarizeLegalResearchProviderJobs(providerJobs),
   };
 }

@@ -44,6 +44,10 @@
   only behind explicit non-production provider configuration in the current runtime; production
   `STRIPE_SECRET_KEY` configuration is rejected until webhook verification, replay protection,
   settlement reconciliation, refund/chargeback handling, and a manual fallback are implemented.
+- Treat normalized payment settlement events as staff reconciliation-review evidence only. The
+  OP-T149 route does not make production Stripe webhook enablement safe by itself because it does
+  not persist raw payloads, verify provider signatures, replay webhook deliveries, apply payments,
+  handle refunds or chargebacks, reconcile deposits, or move funds.
 - Do not let invoice payment application or trust-transfer approval automatically post trust ledger entries. Trust ledger posting must remain an explicit balanced transaction with its own evidence, idempotency key, approval controls, and reconciliation path.
 - Run local dependency, secret, and license checks before deployment: `pnpm deps:audit`,
   `pnpm security:scan`, and `pnpm policy:check`. Container/image scanning remains a
@@ -81,6 +85,9 @@ Environment variables must be treated as deployment inputs, not application defa
   origins for authenticated dashboard routes.
 - Local Docker Compose host ports bind to `127.0.0.1` by default. Set
   `OPEN_PRACTICE_DOCKER_HOST_BIND` only for intentional LAN testing on a trusted network.
+- `OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP` is a local Docker Compose-only bootstrap switch for
+  first-run setup requests that arrive from the Docker bridge gateway. It must stay disabled in
+  production and should not be paired with LAN-exposed setup ports.
 - `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY` must reference a
   private bucket or compatible object store. Endpoint, access key, and secret key must be provided
   together when S3 is enabled. Production S3 deployments must set `S3_SERVER_SIDE_ENCRYPTION=AES256`

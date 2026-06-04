@@ -52,10 +52,61 @@ const workspace: LegalResearchWorkspaceResponse = {
     citationVerificationClaims: false,
     downstreamMutation: false,
   },
+  citationReview: {
+    staffReviewRequired: true,
+    citationVerificationClaims: false,
+    providerEvidenceStored: false,
+    sourceTextSubmittedToProvider: false,
+    promptSubmittedToProvider: false,
+    downstreamMutation: false,
+    reviewOnly: true,
+  },
   provider: {
     status: "disabled",
     reason: "not_configured",
     liveResearchProvider: false,
+  },
+  providerJobBoundary: {
+    queueName: "ai_triage",
+    jobName: "legal_research_provider_review",
+    status: "reserved",
+    reason: "deferred_worker",
+    providerConfigured: false,
+    liveResearchProvider: false,
+    reviewOnly: true,
+  },
+  providerJobs: [
+    {
+      id: "job-legal-research-001",
+      queueName: "ai_triage",
+      jobName: "legal_research_provider_review",
+      status: "skipped",
+      targetResourceType: "legal_research",
+      targetResourceId: "matter-001",
+      queuedAt: "2026-06-04T18:00:00.000Z",
+      finishedAt: "2026-06-04T18:01:00.000Z",
+      terminal: true,
+      idempotencyKeyPresent: true,
+      metadata: {
+        requestType: "citation_review",
+        citationReferenceCount: 2,
+        providerStatus: "reserved",
+        sourceTextIncluded: false,
+        promptIncluded: false,
+        providerEvidenceStored: false,
+      },
+    },
+  ],
+  providerJobSummary: {
+    total: 1,
+    queued: 0,
+    active: 0,
+    completed: 0,
+    skipped: 1,
+    failed: 0,
+    deadLetter: 0,
+    latestQueuedAt: "2026-06-04T18:00:00.000Z",
+    reviewOnly: true,
   },
 };
 
@@ -81,7 +132,9 @@ describe("ResearchSection", () => {
     );
 
     expect(writableHtml).toContain("Research workspace");
-    expect(writableHtml).toContain("Staff-authored review artifacts");
+    expect(writableHtml).toContain("1 provider jobs recorded");
+    expect(writableHtml).toContain("Citation review");
+    expect(writableHtml).toContain("citation review");
     expect(writableHtml).toContain("Review</button>");
     expect(writableHtml).toContain("Reject</button>");
     expect(readOnlyHtml).not.toContain("Review</button>");

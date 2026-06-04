@@ -238,12 +238,31 @@
   }
 
   .client-portal-action,
+  .client-portal-bill,
   .client-portal-matter {
+    grid-template-columns: 1fr;
+  }
+
+  .client-portal-billing-summary,
+  .client-portal-bill dl {
     grid-template-columns: 1fr;
   }
 
   .client-portal-action em {
     text-align: left;
+  }
+
+  .client-portal-payment-requests {
+    justify-content: flex-start;
+  }
+
+  .client-portal-payment-requests span {
+    text-align: left;
+  }
+
+  .client-portal-action-group-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .calendar-event-summary,

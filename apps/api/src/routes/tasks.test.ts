@@ -59,6 +59,27 @@ describe("task routes", () => {
     }).inject({ method: "GET", url: "/api/tasks/workbench" });
     const payload = response.json<{
       tasks: Array<{ id: string; matterId: string; bucket: string; completionStatus: string }>;
+      taskReview: {
+        summary: {
+          total: number;
+          highPriority: number;
+          mediumPriority: number;
+          lowPriority: number;
+          schedulingReviewCount: number;
+        };
+        items: Array<{
+          id: string;
+          matterId: string;
+          matterNumber: string;
+          matterTitle: string;
+          priority: string;
+          tone: string;
+          assignment: { scope: string; label: string; userId?: string };
+          privacy: { matterScoped: boolean; clientVisible: boolean; visibility: string };
+          scheduling: { requestCount: number; needsReviewCount: number };
+          reviewBoundary: Record<string, boolean>;
+        }>;
+      };
       counters: {
         my: { overdue: number; today: number; upcoming: number };
         team: { overdue: number; today: number; upcoming: number };
@@ -98,6 +119,45 @@ describe("task routes", () => {
       myOverdueTaskIds: ["task-deadline-001"],
       teamTodayTaskIds: ["task-deadline-002"],
     });
+    expect(payload.taskReview.summary).toMatchObject({
+      total: 3,
+      highPriority: 1,
+      mediumPriority: 1,
+      lowPriority: 1,
+      schedulingReviewCount: 2,
+    });
+    expect(payload.taskReview.items.map((item) => item.matterId)).toEqual([
+      "matter-001",
+      "matter-001",
+      "matter-001",
+    ]);
+    expect(payload.taskReview.items[0]).toMatchObject({
+      id: "task-deadline-001",
+      matterNumber: "2026-0001",
+      matterTitle: "Morgan tenancy dispute",
+      priority: "high",
+      tone: "risk",
+      assignment: { scope: "current_user", label: "My task", userId: "user-licensee" },
+      privacy: { matterScoped: true, clientVisible: false, visibility: "staff_only" },
+      scheduling: { requestCount: 1, needsReviewCount: 1 },
+      reviewBoundary: {
+        courtRuleAutomation: false,
+        providerSync: false,
+        automaticDeadlineMutation: false,
+        automaticReminderChanges: false,
+        queueDelivery: false,
+        automaticTimeEntryCreation: false,
+      },
+    });
+    expect(payload.taskReview.items[1]).toMatchObject({
+      id: "task-deadline-002",
+      priority: "medium",
+      assignment: { scope: "assigned_team", label: "Assigned team member" },
+      scheduling: { requestCount: 1, needsReviewCount: 1 },
+    });
+    expect(JSON.stringify(payload.taskReview)).not.toContain("matter-002");
+    expect(JSON.stringify(payload.taskReview)).not.toContain("contact-ada");
+    expect(JSON.stringify(payload.taskReview)).not.toContain("trustBalanceCents");
   });
 
   it("honors includeCompleted=false query parsing", async () => {

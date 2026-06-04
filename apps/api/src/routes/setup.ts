@@ -89,6 +89,7 @@ export interface SetupRouteDependencies {
   jwtSecret?: string;
   nodeEnv?: string;
   setupKey?: string;
+  allowDockerBridgeSetup?: boolean;
   sessionTtlHours?: number;
   hashPassword: (password: string) => string;
   hashToken: (token: string, secret: string) => string;
@@ -132,6 +133,11 @@ function isLoopbackAddress(address: string): boolean {
   return normalized.startsWith("127.");
 }
 
+function isDockerBridgeGateway(address: string): boolean {
+  const normalized = address.replace(/^::ffff:/, "");
+  return /^172\.(1[6-9]|2\d|3[01])\.0\.1$/.test(normalized);
+}
+
 function assertSetupGate(request: FastifyRequest, options: SetupRouteDependencies): void {
   const suppliedKey = headerValue(request, "x-open-practice-setup-key");
   if (options.setupKey) {
@@ -147,7 +153,10 @@ function assertSetupGate(request: FastifyRequest, options: SetupRouteDependencie
     });
   }
 
-  if (!isLoopbackAddress(request.ip)) {
+  if (
+    !isLoopbackAddress(request.ip) &&
+    !(options.allowDockerBridgeSetup && isDockerBridgeGateway(request.ip))
+  ) {
     throw Object.assign(new Error("First-run setup is limited to loopback access"), {
       statusCode: 403,
     });

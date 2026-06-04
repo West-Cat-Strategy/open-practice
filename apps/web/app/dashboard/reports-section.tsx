@@ -1,4 +1,4 @@
-import { BarChart3, Download, History, SlidersHorizontal } from "lucide-react";
+import { BarChart3, CalendarClock, Download, History, SlidersHorizontal } from "lucide-react";
 import type {
   StaffReportDefinitionKey,
   StaffReportExportProfileId,
@@ -128,6 +128,32 @@ export function ReportsSection({
         {reportingWorkspace.definitions.length === 0 ? (
           <p className="inline-empty">Reporting workspace is unavailable for this session.</p>
         ) : null}
+      </div>
+
+      <div className="section-title">
+        <h3>Scheduling and builder posture</h3>
+        <span>readiness metadata · no automatic delivery</span>
+      </div>
+      <div className="activity-grid two-column">
+        <div className="activity-card">
+          <CalendarClock size={18} />
+          <strong>Schedule readiness</strong>
+          <span>
+            {reportingWorkspace.scheduleReadinessSummary.manualExportReadyDefinitions} manual export
+            ready · {reportingWorkspace.scheduleReadinessSummary.scheduledDefinitionCount} scheduled
+          </span>
+          <span>Manual exports only · No scheduled email delivery</span>
+        </div>
+        <div className="activity-card">
+          <SlidersHorizontal size={18} />
+          <strong>Report builder posture</strong>
+          <span>
+            {reportingWorkspace.reportBuilderPosture.filterCount} filters ·{" "}
+            {reportingWorkspace.reportBuilderPosture.groupingCount} groupings ·{" "}
+            {reportingWorkspace.reportBuilderPosture.exportProfileCount} profiles
+          </span>
+          <span>No custom SQL · No BI embeds · No raw report bodies</span>
+        </div>
       </div>
 
       <div className="section-title">

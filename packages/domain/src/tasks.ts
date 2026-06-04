@@ -1,4 +1,10 @@
 import type {
+  CalendarSchedulingRequestRecord,
+  CalendarSchedulingRequestReminderPosture,
+  CalendarSchedulingRequestSourceType,
+  CalendarSchedulingRequestTimeCapturePosture,
+  CalendarSchedulingRequestPrivacy,
+  Matter,
   MatterParty,
   TaskDeadlineBucket,
   TaskDeadlineProjection,
@@ -38,7 +44,83 @@ export interface TaskDeadlineWorkbench {
     upcomingTaskIds: string[];
     unassignedTaskIds: string[];
   };
+  taskReview: TaskDeadlineReviewWorkspace;
 }
+
+export type TaskDeadlineReviewPriority = "high" | "medium" | "low";
+export type TaskDeadlineReviewTone = "risk" | "neutral" | "ready";
+export type TaskDeadlineReviewAssignmentScope = "current_user" | "assigned_team" | "unassigned";
+
+export interface TaskDeadlineReviewAssignment {
+  status: TaskDeadlineProjection["assignmentStatus"];
+  userId?: string;
+  scope: TaskDeadlineReviewAssignmentScope;
+  label: string;
+}
+
+export interface TaskDeadlineReviewSchedulingContext {
+  requestCount: number;
+  needsReviewCount: number;
+  reviewedCount: number;
+  nextReviewAt?: string;
+  sourceTypes: CalendarSchedulingRequestSourceType[];
+  reminderPostures: CalendarSchedulingRequestReminderPosture[];
+  timeCapturePostures: CalendarSchedulingRequestTimeCapturePosture[];
+}
+
+export interface TaskDeadlineReviewItem {
+  id: string;
+  matterId: string;
+  matterNumber: string;
+  matterTitle: string;
+  title: string;
+  dueAt?: string;
+  completedAt?: string;
+  bucket: TaskDeadlineBucket;
+  completionStatus: TaskDeadlineProjection["completionStatus"];
+  priority: TaskDeadlineReviewPriority;
+  tone: TaskDeadlineReviewTone;
+  assignment: TaskDeadlineReviewAssignment;
+  privacy: {
+    matterScoped: true;
+    clientVisible: false;
+    visibility: CalendarSchedulingRequestPrivacy;
+  };
+  source: {
+    type: "task_deadline";
+    label: string;
+  };
+  scheduling: TaskDeadlineReviewSchedulingContext;
+  reviewBoundary: {
+    courtRuleAutomation: false;
+    providerSync: false;
+    automaticDeadlineMutation: false;
+    automaticReminderChanges: false;
+    queueDelivery: false;
+    automaticTimeEntryCreation: false;
+  };
+}
+
+export interface TaskDeadlineReviewSummary {
+  total: number;
+  open: number;
+  completed: number;
+  highPriority: number;
+  mediumPriority: number;
+  lowPriority: number;
+  overdue: number;
+  dueToday: number;
+  unassigned: number;
+  myOpen: number;
+  schedulingReviewCount: number;
+}
+
+export interface TaskDeadlineReviewWorkspace {
+  summary: TaskDeadlineReviewSummary;
+  items: TaskDeadlineReviewItem[];
+}
+
+type TaskReviewMatterLink = Pick<Matter, "id" | "number" | "title">;
 
 const CLIENT_LIKE_ROLES = new Set<MatterParty["role"]>([
   "client",
@@ -90,9 +172,199 @@ function incrementBucket(counters: TaskDeadlineCounterSet, bucket: TaskDeadlineB
   }
 }
 
+const TASK_REVIEW_BOUNDARY = {
+  courtRuleAutomation: false,
+  providerSync: false,
+  automaticDeadlineMutation: false,
+  automaticReminderChanges: false,
+  queueDelivery: false,
+  automaticTimeEntryCreation: false,
+} as const;
+
+function schedulingRequestTime(request: CalendarSchedulingRequestRecord): string {
+  return request.requestedDueAt ?? request.requestedStartsAt ?? request.createdAt;
+}
+
+function schedulingRequestsForTask(
+  task: TaskDeadlineProjection,
+  schedulingRequests: CalendarSchedulingRequestRecord[],
+): CalendarSchedulingRequestRecord[] {
+  return schedulingRequests
+    .filter(
+      (request) =>
+        request.matterId === task.matterId &&
+        (request.taskId === task.id ||
+          (request.sourceType === "task_deadline" && request.sourceId === task.id)),
+    )
+    .sort((left, right) => {
+      const leftTime = Date.parse(schedulingRequestTime(left));
+      const rightTime = Date.parse(schedulingRequestTime(right));
+      return leftTime === rightTime ? left.id.localeCompare(right.id) : leftTime - rightTime;
+    });
+}
+
+function uniqueSorted<T extends string>(values: T[]): T[] {
+  return Array.from(new Set(values)).sort();
+}
+
+function taskReviewAssignment(
+  task: TaskDeadlineProjection,
+  userId: string,
+): TaskDeadlineReviewAssignment {
+  if (!task.assignedToUserId) {
+    return {
+      status: "unassigned",
+      scope: "unassigned",
+      label: "Unassigned",
+    };
+  }
+  if (task.assignedToUserId === userId) {
+    return {
+      status: "assigned",
+      userId: task.assignedToUserId,
+      scope: "current_user",
+      label: "My task",
+    };
+  }
+  return {
+    status: "assigned",
+    userId: task.assignedToUserId,
+    scope: "assigned_team",
+    label: "Assigned team member",
+  };
+}
+
+function taskReviewPriority(input: {
+  task: TaskDeadlineProjection;
+  needsReviewCount: number;
+}): TaskDeadlineReviewPriority {
+  if (input.task.completionStatus === "completed") return "low";
+  if (input.task.bucket === "overdue") return "high";
+  if (
+    input.task.bucket === "today" ||
+    input.task.assignmentStatus === "unassigned" ||
+    input.needsReviewCount > 0
+  ) {
+    return "medium";
+  }
+  return "low";
+}
+
+function taskReviewTone(
+  task: TaskDeadlineProjection,
+  priority: TaskDeadlineReviewPriority,
+): TaskDeadlineReviewTone {
+  if (task.completionStatus === "completed") return "ready";
+  if (priority === "high") return "risk";
+  if (priority === "medium") return "neutral";
+  return "ready";
+}
+
+function taskReviewPrivacy(
+  requests: CalendarSchedulingRequestRecord[],
+): TaskDeadlineReviewItem["privacy"] {
+  return {
+    matterScoped: true,
+    clientVisible: false,
+    visibility: requests.some((request) => request.privacy === "staff_only")
+      ? "staff_only"
+      : "matter_team",
+  };
+}
+
+function taskReviewSchedulingContext(
+  requests: CalendarSchedulingRequestRecord[],
+): TaskDeadlineReviewSchedulingContext {
+  const needsReview = requests.filter((request) => request.status === "needs_review");
+  const reviewed = requests.filter(
+    (request) => request.reviewedAt || request.status === "reviewed",
+  );
+  return {
+    requestCount: requests.length,
+    needsReviewCount: needsReview.length,
+    reviewedCount: reviewed.length,
+    nextReviewAt: needsReview[0] ? schedulingRequestTime(needsReview[0]) : undefined,
+    sourceTypes: uniqueSorted(requests.map((request) => request.sourceType)),
+    reminderPostures: uniqueSorted(requests.map((request) => request.reminderPosture)),
+    timeCapturePostures: uniqueSorted(requests.map((request) => request.timeCaptureCue.posture)),
+  };
+}
+
+function buildTaskReview(input: {
+  tasks: TaskDeadlineProjection[];
+  matters?: TaskReviewMatterLink[];
+  schedulingRequests?: CalendarSchedulingRequestRecord[];
+  userId: string;
+}): TaskDeadlineReviewWorkspace {
+  const mattersById = new Map((input.matters ?? []).map((matter) => [matter.id, matter]));
+  const items = input.tasks
+    .map((task): TaskDeadlineReviewItem => {
+      const matter = mattersById.get(task.matterId);
+      const requests = schedulingRequestsForTask(task, input.schedulingRequests ?? []);
+      const scheduling = taskReviewSchedulingContext(requests);
+      const priority = taskReviewPriority({ task, needsReviewCount: scheduling.needsReviewCount });
+      return {
+        id: task.id,
+        matterId: task.matterId,
+        matterNumber: matter?.number ?? task.matterId,
+        matterTitle: matter?.title ?? "Matter access",
+        title: task.title,
+        dueAt: task.dueAt,
+        completedAt: task.completedAt,
+        bucket: task.bucket,
+        completionStatus: task.completionStatus,
+        priority,
+        tone: taskReviewTone(task, priority),
+        assignment: taskReviewAssignment(task, input.userId),
+        privacy: taskReviewPrivacy(requests),
+        source: {
+          type: "task_deadline",
+          label: requests[0]?.sourceLabel ?? task.title,
+        },
+        scheduling,
+        reviewBoundary: TASK_REVIEW_BOUNDARY,
+      };
+    })
+    .sort((left, right) => {
+      const priorityOrder: Record<TaskDeadlineReviewPriority, number> = {
+        high: 0,
+        medium: 1,
+        low: 2,
+      };
+      if (priorityOrder[left.priority] !== priorityOrder[right.priority]) {
+        return priorityOrder[left.priority] - priorityOrder[right.priority];
+      }
+      const leftDue = left.dueAt ? Date.parse(left.dueAt) : Number.POSITIVE_INFINITY;
+      const rightDue = right.dueAt ? Date.parse(right.dueAt) : Number.POSITIVE_INFINITY;
+      if (leftDue !== rightDue) return leftDue - rightDue;
+      return left.id.localeCompare(right.id);
+    });
+
+  return {
+    summary: {
+      total: items.length,
+      open: items.filter((item) => item.completionStatus === "open").length,
+      completed: items.filter((item) => item.completionStatus === "completed").length,
+      highPriority: items.filter((item) => item.priority === "high").length,
+      mediumPriority: items.filter((item) => item.priority === "medium").length,
+      lowPriority: items.filter((item) => item.priority === "low").length,
+      overdue: items.filter((item) => item.bucket === "overdue").length,
+      dueToday: items.filter((item) => item.bucket === "today").length,
+      unassigned: items.filter((item) => item.assignment.scope === "unassigned").length,
+      myOpen: items.filter(
+        (item) => item.assignment.scope === "current_user" && item.completionStatus === "open",
+      ).length,
+      schedulingReviewCount: items.reduce((sum, item) => sum + item.scheduling.needsReviewCount, 0),
+    },
+    items,
+  };
+}
+
 export function buildTaskDeadlineWorkbench(input: {
   tasks: TaskDeadlineRecord[];
   matterParties: MatterParty[];
+  matters?: TaskReviewMatterLink[];
+  schedulingRequests?: CalendarSchedulingRequestRecord[];
   userId: string;
   now?: Date;
 }): TaskDeadlineWorkbench {
@@ -200,5 +472,11 @@ export function buildTaskDeadlineWorkbench(input: {
         )
         .map((task) => task.id),
     },
+    taskReview: buildTaskReview({
+      tasks: projections,
+      matters: input.matters,
+      schedulingRequests: input.schedulingRequests,
+      userId: input.userId,
+    }),
   };
 }

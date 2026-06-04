@@ -332,6 +332,29 @@ export interface LedgerAccountingReviewSummary {
   reviewOnly: true;
 }
 
+export interface LedgerBankFeedReconciliationReviewSummary {
+  bankFeedShellCount: number;
+  metadataOnlyFeedCount: number;
+  reviewReadyFeedCount: number;
+  importBatchCount: number;
+  previewedImportBatchCount: number;
+  reviewReadyImportBatchCount: number;
+  discardedImportBatchCount: number;
+  importedStatementRowCount: number;
+  duplicateStatementRowCount: number;
+  completedReconciliationCount: number;
+  exceptionReconciliationCount: number;
+  accountsPendingReconciliationCount: number;
+  protectedFundsFeedCount: number;
+  automaticMatching: false;
+  automaticLedgerPosting: false;
+  automaticReconciliation: false;
+  liveBankFeedConnection: false;
+  trustDisbursementAutomation: false;
+  importBatchStoragePosture: "metadata_only_no_statement_rows";
+  reviewOnly: true;
+}
+
 export interface JurisdictionalTrustReportSummary {
   jurisdiction: Province;
   matterCount: number;
@@ -682,6 +705,85 @@ export function ledgerAccountingReviewSummary(input: {
     bankFeedShellCount: input.accountingProfiles.filter(
       (profile) => profile.bankFeedImport.status !== "not_configured",
     ).length,
+    reviewOnly: true,
+  };
+}
+
+export function ledgerBankFeedReconciliationReviewSummary(input: {
+  accountingProfiles: LedgerAccountingReviewProfileRecord[];
+  importBatches: LedgerStatementImportBatchRecord[];
+  reconciliations: LedgerReconciliationRecord[];
+  diagnostics?: Pick<
+    LedgerControlsDiagnostics,
+    "unreconciledAccountIds" | "exceptionReconciliationIds"
+  >;
+}): LedgerBankFeedReconciliationReviewSummary {
+  const bankFeedProfiles = input.accountingProfiles.filter(
+    (profile) => profile.bankFeedImport.status !== "not_configured",
+  );
+  const reviewAccountIds = new Set<string>([
+    ...bankFeedProfiles.map((profile) => profile.accountId),
+    ...input.importBatches.map((batch) => batch.accountId),
+  ]);
+  const relevantReconciliations =
+    reviewAccountIds.size > 0
+      ? input.reconciliations.filter((reconciliation) =>
+          reviewAccountIds.has(reconciliation.accountId),
+        )
+      : [];
+  const exceptionReconciliationIds = new Set(input.diagnostics?.exceptionReconciliationIds ?? []);
+  for (const reconciliation of relevantReconciliations) {
+    if (reconciliation.status === "exception") exceptionReconciliationIds.add(reconciliation.id);
+  }
+  const pendingAccountIds = new Set<string>(input.diagnostics?.unreconciledAccountIds ?? []);
+  for (const batch of input.importBatches) {
+    if (batch.status === "review_ready") pendingAccountIds.add(batch.accountId);
+  }
+  for (const profile of bankFeedProfiles) {
+    if (profile.bankFeedImport.status === "review_ready") pendingAccountIds.add(profile.accountId);
+  }
+
+  return {
+    bankFeedShellCount: bankFeedProfiles.length,
+    metadataOnlyFeedCount: bankFeedProfiles.filter(
+      (profile) => profile.bankFeedImport.status === "metadata_only",
+    ).length,
+    reviewReadyFeedCount: bankFeedProfiles.filter(
+      (profile) => profile.bankFeedImport.status === "review_ready",
+    ).length,
+    importBatchCount: input.importBatches.length,
+    previewedImportBatchCount: input.importBatches.filter((batch) => batch.status === "previewed")
+      .length,
+    reviewReadyImportBatchCount: input.importBatches.filter(
+      (batch) => batch.status === "review_ready",
+    ).length,
+    discardedImportBatchCount: input.importBatches.filter((batch) => batch.status === "discarded")
+      .length,
+    importedStatementRowCount: input.importBatches.reduce(
+      (total, batch) => total + batch.importedStatementRowCount,
+      0,
+    ),
+    duplicateStatementRowCount: input.importBatches.reduce(
+      (total, batch) => total + batch.duplicateStatementRowCount,
+      0,
+    ),
+    completedReconciliationCount: relevantReconciliations.filter((reconciliation) =>
+      ["matched", "reviewed"].includes(reconciliation.status),
+    ).length,
+    exceptionReconciliationCount: relevantReconciliations.filter((reconciliation) =>
+      exceptionReconciliationIds.has(reconciliation.id),
+    ).length,
+    accountsPendingReconciliationCount: [...pendingAccountIds].filter((accountId) =>
+      reviewAccountIds.has(accountId),
+    ).length,
+    protectedFundsFeedCount: bankFeedProfiles.filter((profile) => profile.protectedFunds.protected)
+      .length,
+    automaticMatching: false,
+    automaticLedgerPosting: false,
+    automaticReconciliation: false,
+    liveBankFeedConnection: false,
+    trustDisbursementAutomation: false,
+    importBatchStoragePosture: "metadata_only_no_statement_rows",
     reviewOnly: true,
   };
 }

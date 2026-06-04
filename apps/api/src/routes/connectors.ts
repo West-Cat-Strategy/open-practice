@@ -154,6 +154,22 @@ const connectorOutboxRetryBodySchema = z
   })
   .strict();
 
+const integrationWebhookReplayConfirmationSchema = z
+  .object({
+    confirmed: z.literal(true),
+    action: z.literal("replay"),
+    outboxId: z.string().min(1),
+    expectedStatus: z.enum(["failed", "dead_letter"]),
+  })
+  .strict();
+
+const integrationWebhookReplayBodySchema = z
+  .object({
+    idempotencyKey: z.string().min(8).max(180).optional(),
+    confirmation: integrationWebhookReplayConfirmationSchema,
+  })
+  .strict();
+
 const connectorOutboxDeadLetterBodySchema = z
   .object({
     confirmation: connectorDeadLetterConfirmationSchema,
@@ -172,6 +188,7 @@ const integrationDeveloperScopeSchema = z.enum([
   "email_outbox.read",
   "webhook.deliver",
 ]);
+const integrationWebhookDeliverScope = "webhook.deliver";
 
 const integrationDeveloperEndpointSchema = z
   .object({
@@ -534,6 +551,19 @@ function assertCredentialScopesWithinApp(
   );
 }
 
+function assertIntegrationAppHasScope(app: IntegrationDeveloperAppRecord, scope: string): void {
+  if (app.allowedScopes.includes(scope)) return;
+  throw new ApiHttpError(
+    403,
+    "INTEGRATION_APP_SCOPE_REQUIRED",
+    `Integration developer app must register the ${scope} scope for this action`,
+    {
+      appId: app.id,
+      requiredScope: scope,
+    },
+  );
+}
+
 function assertIntegrationAppUsable(app: IntegrationDeveloperAppRecord): void {
   if (app.status !== "revoked") return;
   throw new ApiHttpError(
@@ -541,6 +571,56 @@ function assertIntegrationAppUsable(app: IntegrationDeveloperAppRecord): void {
     "INTEGRATION_APP_REVOKED",
     "Revoked integration app registrations cannot be changed",
   );
+}
+
+function assertIntegrationAppWebhookReplayReady(app: IntegrationDeveloperAppRecord): void {
+  assertIntegrationAppUsable(app);
+  assertIntegrationAppHasScope(app, integrationWebhookDeliverScope);
+  if (app.status === "active") return;
+  throw new ApiHttpError(
+    409,
+    "INTEGRATION_APP_NOT_ACTIVE",
+    "Integration developer app must be active before webhook replay",
+    {
+      appId: app.id,
+      status: app.status,
+      requiredScope: integrationWebhookDeliverScope,
+    },
+  );
+}
+
+function integrationWebhookReplayDisabledReason(app: IntegrationDeveloperAppRecord) {
+  if (!app.allowedScopes.includes(integrationWebhookDeliverScope)) return "scope_not_registered";
+  if (app.status !== "active") return "app_not_active";
+  return undefined;
+}
+
+function serializeIntegrationDeveloperApiEnforcement(app: IntegrationDeveloperAppRecord) {
+  const webhookReplayDisabledReason = integrationWebhookReplayDisabledReason(app);
+  return {
+    scopeMode: "registered_scopes_only",
+    credentialScopeMode: "subset_of_registered_scopes",
+    registeredScopeCount: app.allowedScopes.length,
+    webhookDelivery: {
+      requiredScope: integrationWebhookDeliverScope,
+      scopeRegistered: app.allowedScopes.includes(integrationWebhookDeliverScope),
+      subscriptionRequiredForReplay: true,
+      replayRequiresActiveApp: true,
+      replayEligible: webhookReplayDisabledReason === undefined,
+      disabledReason: webhookReplayDisabledReason,
+    },
+    rateLimit: {
+      mode: app.rateLimit.mode,
+      windowSeconds: app.rateLimit.windowSeconds,
+      maxRequests: app.rateLimit.maxRequests,
+      burstLimit: app.rateLimit.burstLimit,
+      enforcement: app.rateLimit.enforcement,
+    },
+    customActions: {
+      status: "reserved",
+      count: app.customActionPlaceholders.length,
+    },
+  };
 }
 
 function serializeIntegrationCredential(credential: IntegrationApiCredentialRecord) {
@@ -600,6 +680,7 @@ function serializeIntegrationApp(input: {
     allowedScopes: input.app.allowedScopes,
     regionalEndpoint: input.app.regionalEndpoint,
     rateLimit: input.app.rateLimit,
+    apiEnforcement: serializeIntegrationDeveloperApiEnforcement(input.app),
     customActionPlaceholders: input.app.customActionPlaceholders,
     credentialCount: input.credentials?.length ?? 0,
     webhookSubscriptionCount: input.webhookSubscriptions?.length ?? 0,
@@ -683,6 +764,40 @@ function connectorOutboxAuditMetadata(input: {
     idempotencyKeyPresent: Boolean(input.outbox.idempotencyKey),
     deliveryJobQueued: Boolean(input.deliveryJob),
     queueName: input.deliveryJob?.queueName,
+  };
+}
+
+function integrationWebhookReplayAuditMetadata(input: {
+  app: IntegrationDeveloperAppRecord;
+  connector: ConnectorRecord;
+  outbox: ConnectorOutboxRecord;
+  beforeStatus: ConnectorOutboxRecord["status"];
+  expectedStatus: ConnectorOutboxRecord["status"];
+  afterStatus: ConnectorOutboxRecord["status"];
+  subscription: IntegrationWebhookSubscriptionRecord;
+  deliveryJob?: JobLifecycleRecord;
+  idempotencyKeyPresent: boolean;
+}) {
+  return {
+    ...connectorOutboxAuditMetadata({
+      connector: input.connector,
+      outbox: input.outbox,
+      beforeStatus: input.beforeStatus,
+      expectedStatus: input.expectedStatus,
+      afterStatus: input.afterStatus,
+      deliveryJob: input.deliveryJob,
+    }),
+    appId: input.app.id,
+    appStatus: input.app.status,
+    requiredScope: integrationWebhookDeliverScope,
+    webhookDeliverScopeRegistered: input.app.allowedScopes.includes(integrationWebhookDeliverScope),
+    rateLimitMode: input.app.rateLimit.mode,
+    rateLimitEnforcement: input.app.rateLimit.enforcement,
+    webhookSubscriptionMatched: true,
+    webhookSubscriptionId: input.subscription.id,
+    webhookSubscriptionStatus: input.subscription.status,
+    appScopedReplay: true,
+    idempotencyKeyPresent: input.idempotencyKeyPresent,
   };
 }
 
@@ -1094,6 +1209,7 @@ export function registerConnectorRoutes(
         );
       }
       assertIntegrationAppUsable(app);
+      assertIntegrationAppHasScope(app, integrationWebhookDeliverScope);
       const destination = validateOutboundWebhookDestination(body.destinationUrl);
       if (!destination.ok) {
         throw new ApiHttpError(
@@ -1179,6 +1295,158 @@ export function registerConnectorRoutes(
           .filter((attempt) => attempt.outboxId === record.id && outboxIds.has(attempt.outboxId))
           .map(serializeConnectorDeliveryAttempt),
       })),
+    };
+  });
+
+  server.post("/api/connectors/developer/apps/:appId/webhook-replays", async (request, reply) => {
+    const params = parseRequestPart(integrationDeveloperAppParamsSchema, request.params, "params");
+    const body = parseRequestPart(integrationWebhookReplayBodySchema, request.body, "body");
+    assertConnectorAccess(request.auth, { resource: "connector", action: "update" });
+    const app = await repository.getIntegrationDeveloperApp(request.auth.firmId, params.appId);
+    if (!app) {
+      throw new ApiHttpError(
+        404,
+        "INTEGRATION_APP_NOT_FOUND",
+        "Integration developer app was not found",
+      );
+    }
+    assertIntegrationAppWebhookReplayReady(app);
+    const existing = await repository.getConnectorOutbox(
+      request.auth.firmId,
+      body.confirmation.outboxId,
+    );
+    if (!existing) {
+      throw new ApiHttpError(
+        404,
+        "CONNECTOR_OUTBOX_NOT_FOUND",
+        "Connector outbox row was not found",
+      );
+    }
+    if (existing.connectorId !== app.connectorId) {
+      throw new ApiHttpError(
+        403,
+        "INTEGRATION_WEBHOOK_REPLAY_SCOPE_MISMATCH",
+        "Connector outbox row is outside this integration app boundary",
+      );
+    }
+    assertRecoveryConfirmationMatches(body.confirmation, existing);
+    if (existing.status !== "failed" && existing.status !== "dead_letter") {
+      throw new ApiHttpError(
+        409,
+        "CONNECTOR_OUTBOX_RETRY_NOT_ALLOWED",
+        "Only failed or dead-letter connector outbox rows can be replayed",
+      );
+    }
+    const connector = await repository.getConnector(request.auth.firmId, existing.connectorId);
+    if (!connector) {
+      throw new ApiHttpError(404, "CONNECTOR_NOT_FOUND", "Connector was not found");
+    }
+    if (connector.status !== "enabled") {
+      throw new ApiHttpError(
+        409,
+        "CONNECTOR_NOT_ENABLED",
+        "Connector must be enabled before webhook replay",
+      );
+    }
+    const subscriptions = await repository.listIntegrationWebhookSubscriptions(
+      request.auth.firmId,
+      {
+        appId: app.id,
+        connectorId: connector.id,
+        status: "active",
+      },
+    );
+    const subscription = subscriptions.find((candidate) =>
+      candidate.eventTypes.includes(existing.eventType),
+    );
+    if (!subscription) {
+      throw new ApiHttpError(
+        409,
+        "INTEGRATION_WEBHOOK_SUBSCRIPTION_REQUIRED",
+        "An active matching webhook subscription is required before replay",
+        {
+          appId: app.id,
+          connectorId: connector.id,
+          eventType: existing.eventType,
+          requiredScope: integrationWebhookDeliverScope,
+        },
+      );
+    }
+    if (!dependencies.connectorJobQueue) {
+      throw new ApiHttpError(
+        503,
+        "CONNECTOR_QUEUE_NOT_CONFIGURED",
+        "Connector queue is not configured",
+      );
+    }
+
+    const now = new Date().toISOString();
+    const retried = await repository.retryConnectorOutbox({
+      firmId: request.auth.firmId,
+      outboxId: existing.id,
+      expectedStatus: body.confirmation.expectedStatus,
+      occurredAt: now,
+    });
+    if (!retried) {
+      throw new ApiHttpError(
+        409,
+        "CONNECTOR_RECOVERY_CONFIRMATION_MISMATCH",
+        "Connector outbox recovery confirmation does not match the current row state",
+      );
+    }
+    let deliveryJob: Awaited<ReturnType<typeof scheduleConnectorDeliveryJob>>;
+    try {
+      deliveryJob = await scheduleConnectorDeliveryJob(dependencies, request.auth, retried, now, {
+        action: `connectors.developer_webhook_replay.${app.id}.${retried.attemptCount}`,
+        clientKey: body.idempotencyKey,
+        metadata: {
+          source: "api.connectors.developer.webhook_replay",
+          previousStatus: existing.status,
+          manualRecoveryAction: "webhook_replay",
+          integrationAppId: app.id,
+          webhookSubscriptionId: subscription.id,
+          webhookDeliverScopeRegistered: true,
+          rateLimitEnforcement: app.rateLimit.enforcement,
+          attemptCount: retried.attemptCount,
+        },
+      });
+    } catch (error) {
+      rethrowIdempotencyConflict(error);
+    }
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "integration_developer_app.webhook_replay_requested",
+      resourceType: "connector_outbox",
+      resourceId: retried.id,
+      occurredAt: now,
+      metadata: integrationWebhookReplayAuditMetadata({
+        app,
+        connector,
+        outbox: retried,
+        beforeStatus: existing.status,
+        expectedStatus: body.confirmation.expectedStatus,
+        afterStatus: retried.status,
+        subscription,
+        deliveryJob,
+        idempotencyKeyPresent: Boolean(body.idempotencyKey),
+      }),
+    });
+
+    reply.code(202);
+    return {
+      app: serializeIntegrationApp({
+        app,
+        connector,
+        webhookSubscriptions: subscriptions,
+      }),
+      replay: {
+        requiredScope: integrationWebhookDeliverScope,
+        scopeRegistered: true,
+        rateLimitEnforcement: app.rateLimit.enforcement,
+        webhookSubscriptionMatched: true,
+        webhookSubscriptionId: subscription.id,
+      },
+      outbox: serializeOutbox(retried),
+      deliveryJob: summarizeConnectorDeliveryJob(deliveryJob),
     };
   });
 

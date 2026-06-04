@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildLegalResearchProviderJobPath,
   buildLegalResearchReviewPath,
   buildLegalResearchWorkspacePath,
   canReviewLegalResearch,
@@ -18,11 +19,27 @@ describe("legal research dashboard helpers", () => {
     expect(buildLegalResearchReviewPath("artifact 001")).toBe(
       "/api/legal-research/artifacts/artifact%20001/review",
     );
+    expect(buildLegalResearchProviderJobPath()).toBe("/api/legal-research/provider-jobs");
     expect(workspace.provider).toMatchObject({
       status: "disabled",
       reason: "not_configured",
       liveResearchProvider: false,
     });
+    expect(workspace.citationReview).toMatchObject({
+      staffReviewRequired: true,
+      providerEvidenceStored: false,
+      citationVerificationClaims: false,
+      sourceTextSubmittedToProvider: false,
+      promptSubmittedToProvider: false,
+    });
+    expect(workspace.providerJobBoundary).toMatchObject({
+      queueName: "ai_triage",
+      jobName: "legal_research_provider_review",
+      status: "reserved",
+      providerConfigured: false,
+      liveResearchProvider: false,
+    });
+    expect(workspace.providerJobSummary.total).toBe(0);
     expect(summarizeLegalResearchWorkspaceStatus(workspace)).toBe(
       "Research workspace is not available.",
     );

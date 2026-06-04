@@ -92,6 +92,55 @@ describe("staff reporting workspace", () => {
       scheduledEmailDelivery: false,
       rawReportBodiesInJobMetadata: false,
     });
+    expect(workspace.scheduleReadinessSummary).toMatchObject({
+      totalDefinitions: 4,
+      manualExportReadyDefinitions: 4,
+      manualOnlyDefinitionKeys: [
+        "invoice_aging",
+        "reconciliation_freshness",
+        "productivity",
+        "operational_follow_up",
+      ],
+      recentExportRequestCount: 0,
+      scheduledDefinitionCount: 0,
+      automaticExecution: false,
+      scheduledEmailDeliveryEnabled: false,
+      rawReportBodyStorage: false,
+    });
+    expect(workspace.reportBuilderPosture).toMatchObject({
+      status: "metadata_only",
+      savedDefinitionsOnly: true,
+      filterCount: 8,
+      groupingCount: 8,
+      exportProfileCount: 2,
+      customSql: false,
+      biEmbeds: false,
+      broadReportExecution: false,
+      mutableDefinitionBuilder: false,
+      rawReportBodyStorage: false,
+    });
+    expect(workspace.exportJobPosture).toMatchObject({
+      queueName: "reports",
+      jobName: "staff_report_export",
+      historyCount: 0,
+      boundedMetadataOnly: true,
+      storesReportBodiesInJobMetadata: false,
+      downloadsRegenerateProjection: true,
+      scheduledDeliveryJobs: false,
+    });
+    expect(workspace.definitions[0]).toMatchObject({
+      scheduleReadiness: expect.objectContaining({
+        cadence: "not_scheduled",
+        scheduledRunReady: false,
+        scheduledEmailDelivery: false,
+      }),
+      builderPosture: expect.objectContaining({
+        status: "saved_definition_metadata",
+        customSql: false,
+        broadReportExecution: false,
+        storesRawReportBodies: false,
+      }),
+    });
   });
 
   it("builds first report projections from existing billing, ledger, time, and task data", () => {

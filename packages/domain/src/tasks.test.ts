@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MatterParty, TaskDeadlineRecord } from "./models.js";
+import type { CalendarSchedulingRequestRecord, MatterParty, TaskDeadlineRecord } from "./models.js";
 import { buildTaskDeadlineWorkbench, classifyTaskDeadline } from "./tasks.js";
 
 const now = new Date("2026-05-02T16:00:00.000Z");
@@ -132,5 +132,182 @@ describe("task deadline workbench", () => {
       upcomingTaskIds: ["task-upcoming-other-matter"],
       unassignedTaskIds: [],
     });
+  });
+
+  it("builds review-list items with derived priority, assignment, privacy, and scheduling context", () => {
+    const tasks = [
+      task({
+        id: "task-overdue-mine",
+        assignedToUserId: "user-licensee",
+        title: "Review tenant evidence package",
+        dueAt: "2026-05-01T19:00:00.000Z",
+      }),
+      task({
+        id: "task-today-unassigned",
+        title: "Confirm filing checklist",
+        dueAt: "2026-05-02T21:00:00.000Z",
+      }),
+      task({
+        id: "task-upcoming-team",
+        matterId: "matter-002",
+        assignedToUserId: "user-staff",
+        title: "Prepare corporate records request",
+        dueAt: "2026-05-05T17:00:00.000Z",
+      }),
+    ];
+    const schedulingRequests: CalendarSchedulingRequestRecord[] = [
+      {
+        id: "calendar-scheduling-request-review",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        kind: "deadline_review",
+        status: "needs_review",
+        title: "Review filing deadline posture",
+        taskId: "task-overdue-mine",
+        ownerUserId: "user-licensee",
+        sourceType: "task_deadline",
+        sourceId: "task-overdue-mine",
+        sourceLabel: "Review tenant evidence package",
+        requestedDueAt: "2026-05-01T19:00:00.000Z",
+        reminderPosture: "dashboard_pending",
+        privacy: "staff_only",
+        timeCaptureCue: {
+          posture: "draft_available",
+          suggestedMinutes: 30,
+          existingTimeEntryCount: 1,
+          billable: true,
+        },
+        createdAt: "2026-04-30T12:00:00.000Z",
+        updatedAt: "2026-04-30T12:00:00.000Z",
+        createdByUserId: "user-licensee",
+        updatedByUserId: "user-licensee",
+      },
+      {
+        id: "calendar-scheduling-request-reviewed",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        kind: "event_scheduling",
+        status: "reviewed",
+        title: "Reviewed filing checklist time",
+        taskId: "task-today-unassigned",
+        ownerUserId: "user-staff",
+        sourceType: "task_deadline",
+        sourceId: "task-today-unassigned",
+        sourceLabel: "Confirm filing checklist",
+        requestedDueAt: "2026-05-02T21:00:00.000Z",
+        reminderPosture: "none",
+        privacy: "matter_team",
+        timeCaptureCue: {
+          posture: "none",
+          existingTimeEntryCount: 0,
+          billable: false,
+        },
+        createdAt: "2026-04-30T12:05:00.000Z",
+        updatedAt: "2026-04-30T12:05:00.000Z",
+        createdByUserId: "user-licensee",
+        updatedByUserId: "user-licensee",
+        reviewedAt: "2026-04-30T13:00:00.000Z",
+        reviewedByUserId: "user-staff",
+      },
+      {
+        id: "calendar-scheduling-request-cross-matter",
+        firmId: "firm-west-legal",
+        matterId: "matter-002",
+        kind: "deadline_review",
+        status: "needs_review",
+        title: "Cross matter request must not attach",
+        taskId: "task-overdue-mine",
+        sourceType: "task_deadline",
+        sourceId: "task-overdue-mine",
+        sourceLabel: "Cross matter private source",
+        requestedDueAt: "2026-05-01T19:00:00.000Z",
+        reminderPosture: "dashboard_pending",
+        privacy: "staff_only",
+        timeCaptureCue: {
+          posture: "draft_available",
+          existingTimeEntryCount: 2,
+          billable: true,
+        },
+        createdAt: "2026-04-30T12:10:00.000Z",
+        updatedAt: "2026-04-30T12:10:00.000Z",
+        createdByUserId: "user-licensee",
+        updatedByUserId: "user-licensee",
+      },
+    ];
+
+    const workbench = buildTaskDeadlineWorkbench({
+      tasks,
+      matterParties: [],
+      matters: [
+        { id: "matter-001", number: "2026-0001", title: "Residential tenancy review" },
+        { id: "matter-002", number: "2026-0002", title: "Corporate records request" },
+      ],
+      schedulingRequests,
+      userId: "user-licensee",
+      now,
+    });
+
+    expect(workbench.taskReview.summary).toMatchObject({
+      total: 3,
+      open: 3,
+      highPriority: 1,
+      mediumPriority: 1,
+      lowPriority: 1,
+      overdue: 1,
+      dueToday: 1,
+      unassigned: 1,
+      myOpen: 1,
+      schedulingReviewCount: 1,
+    });
+    expect(workbench.taskReview.items[0]).toMatchObject({
+      id: "task-overdue-mine",
+      matterNumber: "2026-0001",
+      matterTitle: "Residential tenancy review",
+      priority: "high",
+      tone: "risk",
+      assignment: {
+        status: "assigned",
+        userId: "user-licensee",
+        scope: "current_user",
+        label: "My task",
+      },
+      privacy: {
+        matterScoped: true,
+        clientVisible: false,
+        visibility: "staff_only",
+      },
+      scheduling: {
+        requestCount: 1,
+        needsReviewCount: 1,
+        reviewedCount: 0,
+        nextReviewAt: "2026-05-01T19:00:00.000Z",
+        sourceTypes: ["task_deadline"],
+        reminderPostures: ["dashboard_pending"],
+        timeCapturePostures: ["draft_available"],
+      },
+      reviewBoundary: {
+        courtRuleAutomation: false,
+        providerSync: false,
+        automaticDeadlineMutation: false,
+        automaticReminderChanges: false,
+        queueDelivery: false,
+        automaticTimeEntryCreation: false,
+      },
+    });
+    expect(workbench.taskReview.items[1]).toMatchObject({
+      id: "task-today-unassigned",
+      priority: "medium",
+      assignment: {
+        status: "unassigned",
+        scope: "unassigned",
+        label: "Unassigned",
+      },
+      scheduling: {
+        requestCount: 1,
+        needsReviewCount: 0,
+        reviewedCount: 1,
+      },
+    });
+    expect(JSON.stringify(workbench.taskReview)).not.toContain("Cross matter private source");
   });
 });

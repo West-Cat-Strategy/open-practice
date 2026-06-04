@@ -206,6 +206,8 @@ import {
   accountLabel,
   activeJurisdictionTrustReportSummary,
   buildTrustControlsPath,
+  describeBankFeedImportBatch,
+  describeBankFeedReviewBoundary,
   emptyTrustControlsDashboard,
   matterTrustBalanceCents,
   recentTrustPostings,
@@ -216,10 +218,12 @@ import {
   buildExpenseReviewDraftPayload,
   buildDraftInvoicePayload,
   buildTimerDraftTimeEntryPayload,
+  describePaymentSettlementReview,
   describeDraftInvoiceCreated,
   formatExpenseDraftApiFailure,
   formatDraftInvoiceApiFailure,
   formatTimerDraftApiFailure,
+  summarizePaymentSettlementReview,
   updateBillingDashboardWithExpenseDraft,
   updateBillingDashboardWithCreatedInvoice,
   updateBillingDashboardWithTimerDraft,
@@ -285,7 +289,9 @@ import {
   upsertPublicConsultationIntake,
 } from "./public-consultation-intakes-dashboard";
 import {
+  intakePipelineFollowUpActionLabel,
   intakePipelineSourceLabel,
+  intakePipelineSourceQualityLabel,
   intakePipelineStatusLabel,
   intakePipelineSummaryLine,
 } from "./intake-pipeline-dashboard";
@@ -1521,6 +1527,8 @@ export default function DashboardClient({
   const trustReviewSummary = summarizeTrustControls(activeTrustControls);
   const accountingReview = activeTrustControls.accountingReview;
   const accountingSummary = accountingReview.summary;
+  const bankFeedReviewSummary = accountingReview.bankFeedReviewSummary;
+  const bankFeedImportBatches = accountingReview.importBatches;
   const protectedAccountingProfiles = accountingReview.accountingProfiles.filter(
     (profile) => profile.protectedFunds.protected,
   );
@@ -1554,6 +1562,7 @@ export default function DashboardClient({
   const activeInvoices = activeBilling?.invoices ?? [];
   const activeManualPayments = activeBilling?.payments ?? [];
   const activePaymentRequests = activeBilling?.paymentRequests ?? [];
+  const activeSettlementReviewSummary = summarizePaymentSettlementReview(activePaymentRequests);
   const selectedExpenseProfile = billingDashboard.expenseCategoryProfiles.find(
     (profile) => profile.key === expenseDraftProfileKey,
   );
@@ -5162,6 +5171,77 @@ export default function DashboardClient({
                 </div>
 
                 <div className="section-title">
+                  <h3>Bank-feed reconciliation review</h3>
+                  <span>metadata only · manual review required</span>
+                </div>
+                <div className="activity-grid two-column">
+                  <div className="activity-card">
+                    <Banknote size={18} />
+                    <strong>{bankFeedReviewSummary.bankFeedShellCount} feed shells</strong>
+                    <span>
+                      {bankFeedReviewSummary.metadataOnlyFeedCount} metadata ·{" "}
+                      {bankFeedReviewSummary.reviewReadyFeedCount} review ready
+                    </span>
+                  </div>
+                  <div className="activity-card">
+                    <FileText size={18} />
+                    <strong>{bankFeedReviewSummary.importBatchCount} import batches</strong>
+                    <span>
+                      {bankFeedReviewSummary.importedStatementRowCount} rows ·{" "}
+                      {bankFeedReviewSummary.duplicateStatementRowCount} duplicates
+                    </span>
+                  </div>
+                  <div className="activity-card">
+                    <AlertTriangle size={18} />
+                    <strong>
+                      {bankFeedReviewSummary.accountsPendingReconciliationCount} pending accounts
+                    </strong>
+                    <span>
+                      {bankFeedReviewSummary.exceptionReconciliationCount} exceptions ·{" "}
+                      {bankFeedReviewSummary.completedReconciliationCount} completed
+                    </span>
+                  </div>
+                  <div className="activity-card">
+                    <ShieldCheck size={18} />
+                    <strong>{bankFeedReviewSummary.protectedFundsFeedCount} protected feeds</strong>
+                    <span>No auto-match · no ledger posting · no live feed</span>
+                  </div>
+                </div>
+                <div className="party-list">
+                  {bankFeedImportBatches.slice(0, 4).map((batch) => (
+                    <div className="party-row" key={batch.id}>
+                      <span>
+                        <strong>{batch.sourceLabel}</strong>
+                        <small>{describeBankFeedImportBatch(activeTrustControls, batch)}</small>
+                        <small>
+                          checksum tracked ·{" "}
+                          {batch.matchingProfileId
+                            ? "match profile selected"
+                            : "match profile pending"}
+                        </small>
+                      </span>
+                      <em>{batch.status.replaceAll("_", " ")}</em>
+                    </div>
+                  ))}
+                  {bankFeedImportBatches.length === 0 ? (
+                    <p className="inline-empty">
+                      No bank-feed import batch metadata is recorded for the current controls
+                      payload.
+                    </p>
+                  ) : null}
+                  <div className="party-row">
+                    <span>
+                      <strong>Review boundary</strong>
+                      <small>{describeBankFeedReviewBoundary(activeTrustControls)}</small>
+                      <small>
+                        {bankFeedReviewSummary.importBatchStoragePosture.replaceAll("_", " ")}
+                      </small>
+                    </span>
+                    <em>review only</em>
+                  </div>
+                </div>
+
+                <div className="section-title">
                   <h3>Jurisdiction trust report</h3>
                   <span>operator review only · not jurisdiction-certified</span>
                 </div>
@@ -5779,6 +5859,58 @@ export default function DashboardClient({
                     {activePaymentRequests.length === 0 ? (
                       <p className="inline-empty">
                         No hosted payment request shells have been recorded for this matter.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="section-title">
+                    <h3>Settlement webhook review</h3>
+                    <span>Manual reconciliation required</span>
+                  </div>
+                  <div className="detail-grid billing-summary-grid">
+                    <div>
+                      <span className="field-label">Received</span>
+                      <strong>{activeSettlementReviewSummary.receivedEventCount}</strong>
+                    </div>
+                    <div>
+                      <span className="field-label">Pending</span>
+                      <strong>{activeSettlementReviewSummary.pendingEventCount}</strong>
+                    </div>
+                    <div>
+                      <span className="field-label">Mismatch</span>
+                      <strong>{activeSettlementReviewSummary.amountMismatchCount}</strong>
+                    </div>
+                    <div>
+                      <span className="field-label">Refunds</span>
+                      <strong>{activeSettlementReviewSummary.refundOrChargebackReviewCount}</strong>
+                    </div>
+                  </div>
+                  <div className="party-list">
+                    {activePaymentRequests
+                      .filter((paymentRequest) => paymentRequest.processor.settlementReview)
+                      .map((paymentRequest) => (
+                        <div className="party-row" key={`${paymentRequest.id}:settlement`}>
+                          <span>
+                            <strong>
+                              {paymentRequest.processor.settlementReview?.status.replaceAll(
+                                "_",
+                                " ",
+                              )}
+                            </strong>
+                            <small>{describePaymentSettlementReview(paymentRequest)}</small>
+                            <small>
+                              No invoice balance mutation · No trust posting · No refunds or
+                              chargebacks
+                            </small>
+                          </span>
+                          <em>No automatic reconciliation</em>
+                        </div>
+                      ))}
+                    {activePaymentRequests.every(
+                      (paymentRequest) => !paymentRequest.processor.settlementReview,
+                    ) ? (
+                      <p className="inline-empty">
+                        No processor settlement evidence has been received for this matter.
                       </p>
                     ) : null}
                   </div>
@@ -7803,6 +7935,18 @@ export default function DashboardClient({
                         intakePipeline.summary.conflictReview.reviewing}
                     </strong>
                   </div>
+                  <div>
+                    <span className="field-label">Follow-up reviews</span>
+                    <strong>{intakePipeline.summary.followUpReview.totalItems}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">High priority</span>
+                    <strong>{intakePipeline.summary.followUpReview.highPriorityCount}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Defaulted sources</span>
+                    <strong>{intakePipeline.summary.followUpReview.defaultedSourceCount}</strong>
+                  </div>
                 </div>
 
                 <div className="section-title">
@@ -7823,6 +7967,12 @@ export default function DashboardClient({
                           conflict {intakePipelineStatusLabel(lead.conflictReview.posture)} ·{" "}
                           {lead.requestLinks.length} request links · {lead.appointmentLinks.length}{" "}
                           appointment links
+                        </small>
+                        <small>
+                          {intakePipelineFollowUpActionLabel(lead.followUpReview.action)} ·{" "}
+                          {intakePipelineStatusLabel(lead.followUpReview.posture)} ·{" "}
+                          {intakePipelineSourceQualityLabel(lead.followUpReview.sourceQuality)} ·{" "}
+                          {lead.followUpReview.priority} priority
                         </small>
                       </span>
                       <em>{lead.conversionCount} conversions</em>

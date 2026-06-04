@@ -9,6 +9,8 @@ WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile
 ARG APP_NAME
+ARG OPEN_PRACTICE_RELAXED_CSP=false
+ENV OPEN_PRACTICE_RELAXED_CSP=${OPEN_PRACTICE_RELAXED_CSP}
 RUN pnpm turbo build --filter=${APP_NAME}...
 RUN pnpm --filter=${APP_NAME} deploy --legacy --prod /prod
 

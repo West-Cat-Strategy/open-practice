@@ -3,6 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      "env": ["OPEN_PRACTICE_RELAXED_CSP"],
       "outputs": [".next/**", "dist/**"]
     },
     "dev": {

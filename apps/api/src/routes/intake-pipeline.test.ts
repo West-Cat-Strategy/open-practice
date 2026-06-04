@@ -82,6 +82,20 @@ describe("intake pipeline routes", () => {
       createdAt: "2026-05-28T09:00:00.000Z",
       updatedAt: "2026-05-28T09:10:00.000Z",
     });
+    await repository.createIntakeSession({
+      id: "intake-session-pipeline-submitted",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      templateId: "intake-template-001",
+      provider: "embedded",
+      externalId: "embedded:intake-session-pipeline-submitted",
+      status: "created",
+      clientContactId: "contact-ada",
+      interviewUrl: "https://intake.example.test/submitted-interview",
+      evidence: { source: "referral_partner" },
+      createdAt: "2026-05-28T08:00:00.000Z",
+      updatedAt: "2026-05-28T08:10:00.000Z",
+    });
     await repository.createIntakeFormLink({
       id: "intake-form-link-pipeline",
       firmId: "firm-west-legal",
@@ -94,6 +108,19 @@ describe("intake pipeline routes", () => {
       expiresAt: "2026-06-28T09:00:00.000Z",
       submittedAt: "2026-05-28T09:30:00.000Z",
       createdAt: "2026-05-28T09:20:00.000Z",
+    });
+    await repository.createIntakeFormLink({
+      id: "intake-form-link-pipeline-submitted",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      intakeSessionId: "intake-session-pipeline-submitted",
+      tokenHash: "pipeline-submitted-raw-token-hash",
+      requestedByUserId: "user-admin",
+      clientContactId: "contact-ada",
+      answerSnapshotId: "answer-snapshot-pipeline-submitted",
+      expiresAt: "2026-06-28T08:00:00.000Z",
+      submittedAt: "2026-05-28T08:30:00.000Z",
+      createdAt: "2026-05-28T08:20:00.000Z",
     });
     await repository.createIntakeFormReview({
       id: "intake-form-review-pipeline",
@@ -128,7 +155,8 @@ describe("intake pipeline routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
+    const body = response.json();
+    expect(body).toMatchObject({
       summary: {
         totalLeads: expect.any(Number),
         conversionCount: expect.any(Number),
@@ -144,24 +172,54 @@ describe("intake pipeline routes", () => {
           needs_review: expect.any(Number),
           reviewed: expect.any(Number),
         }),
+        followUpReview: expect.objectContaining({
+          totalItems: expect.any(Number),
+          highPriorityCount: expect.any(Number),
+          sourceUrlPresentCount: expect.any(Number),
+          defaultedSourceCount: expect.any(Number),
+          automationBoundary: {
+            automaticMatterCreation: false,
+            campaignAutomation: false,
+            smsDelivery: false,
+            bulkDelivery: false,
+            adSpendIngestion: false,
+            automaticClientContact: false,
+          },
+        }),
       },
     });
-    expect(response.json().leads).toEqual(
+    expect(body.summary.followUpReview.byAction.review_conflict).toBeGreaterThanOrEqual(1);
+    expect(body.summary.followUpReview.byAction.review_submitted_intake).toBeGreaterThanOrEqual(1);
+    expect(body.summary.followUpReview.byAction.confirm_conversion).toBeGreaterThanOrEqual(1);
+    expect(body.leads).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "public-consultation:public-intake-pipeline",
           leadStatus: "conflict_review",
           sourceAttribution: expect.objectContaining({
             label: "public_consultation_form",
+            labelOrigin: "metadata",
             sourceUrlPresent: true,
           }),
           conflictReview: { posture: "needs_review", opposingPartyCount: 1 },
+          followUpReview: expect.objectContaining({
+            action: "review_conflict",
+            posture: "staff_review",
+            priority: "high",
+            sourceQuality: "tracked",
+            auditSafe: true,
+          }),
           conversionCount: 0,
         }),
         expect.objectContaining({
           id: "public-consultation:public-intake-pipeline-converted",
           leadStatus: "converted",
           convertedMatterId: "matter-001",
+          followUpReview: expect.objectContaining({
+            action: "confirm_conversion",
+            posture: "converted",
+            priority: "low",
+          }),
           conversionCount: 1,
         }),
         expect.objectContaining({
@@ -180,14 +238,41 @@ describe("intake pipeline routes", () => {
             }),
           ]),
         }),
+        expect.objectContaining({
+          id: "intake-session:intake-session-pipeline-submitted",
+          leadStatus: "qualified",
+          sourceAttribution: expect.objectContaining({
+            label: "referral_partner",
+            labelOrigin: "metadata",
+            sourceUrlPresent: true,
+          }),
+          followUpReview: expect.objectContaining({
+            action: "review_submitted_intake",
+            posture: "staff_review",
+            priority: "high",
+            reason: "Submitted intake ready for staff review",
+            sourceQuality: "tracked",
+          }),
+          requestLinks: expect.arrayContaining([
+            expect.objectContaining({
+              kind: "intake_form",
+              id: "intake-form-link-pipeline-submitted",
+            }),
+          ]),
+        }),
       ]),
     );
     expect(response.body).not.toContain("pipeline-client@example.test");
     expect(response.body).not.toContain("Synthetic confidential website request body");
     expect(response.body).not.toContain("https://consult.example.test/#public-intake");
     expect(response.body).not.toContain("https://intake.example.test/interview");
+    expect(response.body).not.toContain("https://intake.example.test/submitted-interview");
     expect(response.body).not.toContain("pipeline-raw-token-hash");
+    expect(response.body).not.toContain("pipeline-submitted-raw-token-hash");
     expect(response.body).not.toContain("Synthetic private appointment title");
+    expect(response.body).not.toContain('automaticMatterCreation":true');
+    expect(response.body).not.toContain('campaignAutomation":true');
+    expect(response.body).not.toContain('smsDelivery":true');
   });
 
   it("rejects client-external reads", async () => {

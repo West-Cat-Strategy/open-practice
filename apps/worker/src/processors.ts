@@ -27,6 +27,7 @@ import {
   isStaffReportDefinitionKey,
   isStaffReportExportProfileId,
   isStaffReportGroupingKey,
+  legalResearchProviderJobName,
   isDeniedOutboundWebhookAddress,
   outboundWebhookEventAllowlist,
   validateOutboundWebhookDestination,
@@ -181,6 +182,9 @@ async function processOpenPracticeJobBody(input: {
   if (queueName === "ai_triage" && input.jobName === "operational_action_proposals") {
     return processOperationalProposalJob(input);
   }
+  if (queueName === "ai_triage" && input.jobName === legalResearchProviderJobName) {
+    return processLegalResearchProviderReviewJob(input);
+  }
 
   return {
     status: "skipped",
@@ -192,6 +196,31 @@ async function processOpenPracticeJobBody(input: {
       queueStatus: reservedQueueNames.has(queueName) ? "reserved" : "disabled",
       reason: reservedQueueNames.has(queueName) ? "deferred_worker" : "not_configured",
       providerConfigured: false,
+    },
+  };
+}
+
+function processLegalResearchProviderReviewJob(input: {
+  data: WorkerJobEnvelope;
+}): WorkerJobResult {
+  const metadata = input.data.metadata ?? {};
+  return {
+    status: "skipped",
+    reason:
+      "Legal research provider jobs are reserved until a citation-review provider is configured.",
+    metadata: {
+      ...sanitizeJobMetadata(metadata),
+      provider: "reserved_legal_research_provider",
+      providerStatus: "reserved",
+      providerConfigured: false,
+      citationReviewRequired: true,
+      sourceTextIncluded: false,
+      promptIncluded: false,
+      providerEvidenceStored: false,
+      citationVerificationClaims: false,
+      downstreamMutation: false,
+      reviewOnly: true,
+      enqueueStatus: "reserved_worker_skipped",
     },
   };
 }

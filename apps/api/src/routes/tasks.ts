@@ -64,10 +64,26 @@ export function registerTaskRoutes(
       matterIds,
       includeCompleted: query.includeCompleted,
     });
+    const schedulingRequests =
+      matterIds.length > 0
+        ? (
+            await Promise.all(
+              matterIds.map((matterId) =>
+                repository.listCalendarSchedulingRequests(request.auth.firmId, { matterId }),
+              ),
+            )
+          ).flat()
+        : [];
 
     return buildTaskDeadlineWorkbench({
       tasks,
       matterParties: matters.flatMap((matter) => matter.parties),
+      matters: matters.map((matter) => ({
+        id: matter.id,
+        number: matter.number,
+        title: matter.title,
+      })),
+      schedulingRequests,
       userId: request.auth.user.id,
     });
   });

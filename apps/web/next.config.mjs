@@ -4,14 +4,19 @@ import { URL, fileURLToPath } from "node:url";
 
 const projectRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const isProduction = env.NODE_ENV === "production";
+const relaxedCsp = env.OPEN_PRACTICE_RELAXED_CSP === "true";
 
-export function buildContentSecurityPolicy({ production = isProduction } = {}) {
-  const scriptSrc = production
-    ? "script-src 'self'"
-    : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
-  const connectSrc = production
-    ? "connect-src 'self'"
-    : "connect-src 'self' http://localhost:* http://127.0.0.1:*";
+export function buildContentSecurityPolicy({
+  production = isProduction,
+  relaxed = relaxedCsp,
+} = {}) {
+  const allowDevelopmentSources = !production || relaxed;
+  const scriptSrc = allowDevelopmentSources
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : "script-src 'self'";
+  const connectSrc = allowDevelopmentSources
+    ? "connect-src 'self' http://localhost:* http://127.0.0.1:*"
+    : "connect-src 'self'";
   const directives = [
     "default-src 'self'",
     scriptSrc,
@@ -24,7 +29,7 @@ export function buildContentSecurityPolicy({ production = isProduction } = {}) {
     "base-uri 'self'",
     "object-src 'none'",
   ];
-  if (production) {
+  if (production && !relaxed) {
     directives.push("upgrade-insecure-requests");
   }
   return directives.join("; ");

@@ -94,6 +94,10 @@ function retryConfirmation(outboxId: string, expectedStatus: "failed" | "dead_le
   return { confirmed: true, action: "retry", outboxId, expectedStatus };
 }
 
+function replayConfirmation(outboxId: string, expectedStatus: "failed" | "dead_letter") {
+  return { confirmed: true, action: "replay", outboxId, expectedStatus };
+}
+
 function deadLetterConfirmation(outboxId: string, expectedStatus: "pending" | "failed" | "leased") {
   return { confirmed: true, action: "dead_letter", outboxId, expectedStatus };
 }
@@ -362,6 +366,26 @@ describe("connector routes", () => {
           maxRequests: 120,
           enforcement: "reserved",
         },
+        apiEnforcement: {
+          scopeMode: "registered_scopes_only",
+          credentialScopeMode: "subset_of_registered_scopes",
+          registeredScopeCount: 2,
+          webhookDelivery: {
+            requiredScope: "webhook.deliver",
+            scopeRegistered: true,
+            subscriptionRequiredForReplay: true,
+            replayRequiresActiveApp: true,
+            replayEligible: false,
+            disabledReason: "app_not_active",
+          },
+          rateLimit: {
+            mode: "documented",
+            windowSeconds: 60,
+            maxRequests: 120,
+            enforcement: "reserved",
+          },
+          customActions: { status: "reserved", count: 1 },
+        },
         customActionPlaceholders: [
           { key: "document.review", label: "Document Review", status: "reserved" },
         ],
@@ -589,6 +613,190 @@ describe("connector routes", () => {
     expect(response.body).not.toContain("should-not-leak");
   });
 
+  it("replays developer webhooks only inside app scope with active subscription proof", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const connectorQueue = fakeConnectorQueue();
+    const server = testServer({ repository, connectorJobQueue: connectorQueue.queue });
+    const connector = await createRecoveryConnector(repository);
+    const app = await repository.createIntegrationDeveloperApp({
+      id: "integration-app-replay",
+      firmId,
+      connectorId: connector.id,
+      clientId: "op_client_replay",
+      displayName: "Synthetic Replay App",
+      status: "active",
+      redirectUris: [],
+      allowedOrigins: [],
+      allowedScopes: ["document.read", "webhook.deliver"],
+      regionalEndpoint: { region: "ca", posture: "cue_only" },
+      rateLimit: {
+        mode: "documented",
+        windowSeconds: 60,
+        maxRequests: 75,
+        enforcement: "reserved",
+      },
+      customActionPlaceholders: [],
+      createdByUserId: "user-owner_admin",
+      createdAt: "2026-06-04T12:00:00.000Z",
+      updatedAt: "2026-06-04T12:00:00.000Z",
+    });
+    await repository.createConnectorOutbox({
+      id: "connector-outbox-developer-replay",
+      firmId,
+      connectorId: connector.id,
+      eventType: "document.verified",
+      resourceType: "document",
+      resourceId: "doc-developer-replay",
+      idempotencyKey: "doc-developer-replay:verified:v1",
+      status: "dead_letter",
+      payloadSummary: { documentId: "doc-developer-replay" },
+      attemptCount: 3,
+      maxAttempts: 3,
+      deadLetteredAt: "2026-06-04T12:04:00.000Z",
+      lastErrorSummary: "Connector delivery failed for [redacted]",
+      createdAt: "2026-06-04T12:00:00.000Z",
+      updatedAt: "2026-06-04T12:04:00.000Z",
+    });
+
+    const missingSubscription = await server.inject({
+      method: "POST",
+      url: `/api/connectors/developer/apps/${app.id}/webhook-replays`,
+      payload: {
+        idempotencyKey: "developer-replay-key",
+        confirmation: replayConfirmation("connector-outbox-developer-replay", "dead_letter"),
+      },
+    });
+
+    expect(missingSubscription.statusCode).toBe(409);
+    expect(missingSubscription.json()).toMatchObject({
+      code: "INTEGRATION_WEBHOOK_SUBSCRIPTION_REQUIRED",
+    });
+    await expect(
+      repository.getConnectorOutbox(firmId, "connector-outbox-developer-replay"),
+    ).resolves.toMatchObject({ status: "dead_letter" });
+    expect(connectorQueue.jobs).toEqual([]);
+
+    const subscription = await repository.createIntegrationWebhookSubscription({
+      id: "integration-webhook-subscription-replay",
+      firmId,
+      appId: app.id,
+      connectorId: connector.id,
+      status: "active",
+      eventTypes: ["document.verified"],
+      destinationUrl: "https://webhooks.example.test/open-practice",
+      destinationHost: "webhooks.example.test",
+      signingSecretReference: { id: "secret-ref/webhook-replay" },
+      createdByUserId: "user-owner_admin",
+      createdAt: "2026-06-04T12:00:00.000Z",
+      updatedAt: "2026-06-04T12:00:00.000Z",
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/connectors/developer/apps/${app.id}/webhook-replays`,
+      payload: {
+        idempotencyKey: "developer-replay-key",
+        confirmation: replayConfirmation("connector-outbox-developer-replay", "dead_letter"),
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      app: {
+        id: app.id,
+        connectorId: connector.id,
+        apiEnforcement: {
+          scopeMode: "registered_scopes_only",
+          webhookDelivery: {
+            requiredScope: "webhook.deliver",
+            scopeRegistered: true,
+            subscriptionRequiredForReplay: true,
+            replayRequiresActiveApp: true,
+            replayEligible: true,
+          },
+          rateLimit: {
+            mode: "documented",
+            windowSeconds: 60,
+            maxRequests: 75,
+            enforcement: "reserved",
+          },
+        },
+      },
+      replay: {
+        requiredScope: "webhook.deliver",
+        scopeRegistered: true,
+        rateLimitEnforcement: "reserved",
+        webhookSubscriptionMatched: true,
+        webhookSubscriptionId: subscription.id,
+      },
+      outbox: {
+        id: "connector-outbox-developer-replay",
+        status: "pending",
+        attemptCount: 3,
+        maxAttempts: 4,
+        idempotencyKeyPresent: true,
+        leasePresent: false,
+      },
+      deliveryJob: {
+        queueName: "connectors",
+        jobName: "deliver_connectors",
+        status: "queued",
+        targetResourceType: "connector_outbox",
+        targetResourceId: "connector-outbox-developer-replay",
+        idempotencyKeyPresent: true,
+      },
+    });
+    expect(connectorQueue.jobs).toEqual([
+      expect.objectContaining({
+        name: "deliver_connectors",
+        data: expect.objectContaining({
+          resourceType: "connector_outbox",
+          resourceId: "connector-outbox-developer-replay",
+          metadata: expect.objectContaining({
+            source: "api.connectors.developer.webhook_replay",
+            previousStatus: "dead_letter",
+            manualRecoveryAction: "webhook_replay",
+            integrationAppId: app.id,
+            webhookSubscriptionId: subscription.id,
+            webhookDeliverScopeRegistered: true,
+            rateLimitEnforcement: "reserved",
+            idempotencyKeyPresent: true,
+          }),
+        }),
+      }),
+    ]);
+
+    const audit = await repository.listAuditEvents(firmId);
+    const event = audit.events.find(
+      (candidate) => candidate.action === "integration_developer_app.webhook_replay_requested",
+    );
+    expect(event).toMatchObject({
+      resourceType: "connector_outbox",
+      resourceId: "connector-outbox-developer-replay",
+      metadata: expect.objectContaining({
+        appId: app.id,
+        connectorId: connector.id,
+        outboxId: "connector-outbox-developer-replay",
+        beforeStatus: "dead_letter",
+        expectedStatus: "dead_letter",
+        afterStatus: "pending",
+        requiredScope: "webhook.deliver",
+        webhookDeliverScopeRegistered: true,
+        rateLimitEnforcement: "reserved",
+        webhookSubscriptionMatched: true,
+        webhookSubscriptionId: subscription.id,
+        appScopedReplay: true,
+        idempotencyKeyPresent: true,
+      }),
+    });
+    expect(JSON.stringify(event?.metadata)).not.toContain("developer-replay-key");
+    expect(JSON.stringify(event?.metadata)).not.toContain("doc-developer-replay:verified:v1");
+    expect(JSON.stringify(event?.metadata)).not.toContain("secret-ref/webhook-replay");
+    expect(response.body).not.toContain("doc-developer-replay:verified:v1");
+    expect(response.body).not.toContain("secret-ref/webhook-replay");
+    expect(response.body).not.toContain("https://webhooks.example.test/open-practice");
+  });
+
   it("keeps payment-link scopes and unsafe webhook destinations out of the developer boundary", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository });
@@ -605,6 +813,31 @@ describe("connector routes", () => {
     });
 
     expect(paymentScope.statusCode).toBe(400);
+
+    const readOnlyApp = await server.inject({
+      method: "POST",
+      url: "/api/connectors/developer/apps",
+      payload: {
+        connectorId: connector.id,
+        displayName: "Synthetic Read Only App",
+        allowedScopes: ["document.read"],
+      },
+    });
+    expect(readOnlyApp.statusCode).toBe(201);
+
+    const missingWebhookScope = await server.inject({
+      method: "POST",
+      url: `/api/connectors/developer/apps/${readOnlyApp.json().app.id}/webhook-subscriptions`,
+      payload: {
+        eventTypes: ["document.verified"],
+        destinationUrl: "https://webhooks.example.test/hooks",
+      },
+    });
+
+    expect(missingWebhookScope.statusCode).toBe(403);
+    expect(missingWebhookScope.json()).toMatchObject({
+      code: "INTEGRATION_APP_SCOPE_REQUIRED",
+    });
 
     const registered = await server.inject({
       method: "POST",

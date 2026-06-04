@@ -1111,6 +1111,123 @@ describe("billing routes", () => {
     expect(checkoutAudit?.metadata).not.toHaveProperty("checkoutUrl");
   });
 
+  it("records settlement event review evidence without applying payment settlement", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const checkoutCalls: PaymentProcessorCheckoutSessionInput[] = [];
+    const server = testServer({
+      repository,
+      paymentProcessorProvider: fakePaymentProcessor(checkoutCalls),
+    });
+    const ledgerBefore = await server.inject({ method: "GET", url: "/api/ledger" });
+    const beforeEntryCount = ledgerBefore.json<{ entries: unknown[] }>().entries.length;
+    const invoiceBefore = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+    await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-requests",
+      payload: {
+        id: "payment-request-settlement-route-test",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        amountCents: 5000,
+      },
+    });
+    await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-requests/payment-request-settlement-route-test/checkout-session",
+    });
+
+    const settlementEvent = await server.inject({
+      method: "POST",
+      url: "/api/billing/payment-requests/payment-request-settlement-route-test/settlement-events",
+      payload: {
+        provider: "stripe",
+        eventType: "checkout_session_completed",
+        paymentStatus: "paid",
+        externalEventId: "evt_synthetic_settlement_route",
+        externalSessionId: "cs_test_payment_request_route",
+        amountCents: 5000,
+        currency: "CAD",
+        observedAt: "2026-06-04T18:00:00.000Z",
+        evidenceSummary: "Synthetic private settlement summary must not be stored",
+      },
+    });
+
+    expect(settlementEvent.statusCode).toBe(200);
+    expect(settlementEvent.json()).toMatchObject({
+      request: {
+        id: "payment-request-settlement-route-test",
+        processor: {
+          status: "checkout_session_created",
+          provider: "stripe",
+          externalSessionId: "cs_test_payment_request_route",
+          settlementReview: {
+            status: "needs_review",
+            provider: "stripe",
+            eventType: "checkout_session_completed",
+            paymentStatus: "paid",
+            externalEventId: "evt_synthetic_settlement_route",
+            externalSessionId: "cs_test_payment_request_route",
+            amountCents: 5000,
+            currency: "CAD",
+            reviewAction: "staff_reconciliation_review_required",
+            invoiceBalanceMutation: "none",
+            reconciliationMutation: "none",
+            trustPosting: "none",
+            webhookBoundary: expect.objectContaining({
+              signatureVerified: false,
+              rawWebhookBodyStored: false,
+              automaticInvoiceMutation: false,
+              automaticReconciliation: false,
+              trustPosting: false,
+            }),
+          },
+        },
+      },
+      settlementReview: expect.objectContaining({
+        status: "needs_review",
+        invoiceBalanceMutation: "none",
+        reconciliationMutation: "none",
+        trustPosting: "none",
+      }),
+    });
+
+    const invoiceAfter = await server.inject({ method: "GET", url: "/api/invoices/invoice-001" });
+    expect(invoiceAfter.json()).toMatchObject({
+      status: invoiceBefore.json<{ status: string }>().status,
+      paidCents: invoiceBefore.json<{ paidCents: number }>().paidCents,
+      balanceDueCents: invoiceBefore.json<{ balanceDueCents: number }>().balanceDueCents,
+    });
+    const ledgerAfter = await server.inject({ method: "GET", url: "/api/ledger" });
+    expect(ledgerAfter.json<{ entries: unknown[] }>().entries).toHaveLength(beforeEntryCount);
+
+    const audit = (await auditEvents(repository)).find(
+      (event) => event.action === "hosted_payment_request.settlement_event_reviewed",
+    );
+    expect(audit).toMatchObject({
+      resourceType: "hosted_payment_request",
+      resourceId: "payment-request-settlement-route-test",
+      metadata: expect.objectContaining({
+        provider: "stripe",
+        eventType: "checkout_session_completed",
+        paymentStatus: "paid",
+        evidenceSummaryPresent: true,
+        invoiceBalanceMutation: "none",
+        reconciliationMutation: "none",
+        trustPosting: "none",
+        rawWebhookBodyStored: false,
+      }),
+    });
+    expect(
+      JSON.stringify({
+        audit: await auditEvents(repository),
+        request: await repository.getHostedPaymentRequest(
+          "firm-west-legal",
+          "payment-request-settlement-route-test",
+        ),
+      }),
+    ).not.toContain("Synthetic private settlement summary");
+  });
+
   it("keeps Stripe checkout creation disabled when no processor is configured", async () => {
     const server = testServer();
 

@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   assertLegalResearchArtifactKind,
+  assertLegalResearchProviderJobRequestType,
+  buildLegalResearchProviderJobMetadata,
   buildLegalResearchArtifactAuditMetadata,
   buildLegalResearchWorkspace,
+  legalResearchProviderJobName,
   legalResearchArtifactKinds,
   reviewLegalResearchArtifactRecord,
+  serializeLegalResearchProviderJob,
   summarizeLegalResearchArtifacts,
   validateLegalResearchArtifactRecord,
   type LegalResearchArtifactRecord,
@@ -144,6 +148,90 @@ describe("legal research artifacts", () => {
       automatedLegalAdvice: false,
       citationVerificationClaims: false,
       downstreamMutation: false,
+    });
+  });
+
+  it("summarizes the reserved provider job boundary with citation review controls", () => {
+    expect(() => assertLegalResearchProviderJobRequestType("citation_review")).not.toThrow();
+    expect(() => assertLegalResearchProviderJobRequestType("prompt_completion")).toThrow(
+      "Unsupported legal research provider job request type",
+    );
+
+    const metadata = buildLegalResearchProviderJobMetadata({
+      matterId: "matter-001",
+      requestType: "citation_review",
+      sourceTypes: ["case_law", "statute", "case_law"],
+      citationReferenceCount: 3,
+      contextLinkCount: 2,
+      artifactCount: 1,
+      requestedByUserId: "user-licensee",
+      jurisdiction: "BC",
+      enqueueStatus: "reserved_worker_not_configured",
+    });
+    const providerJob = serializeLegalResearchProviderJob(
+      {
+        id: "job-legal-research-001",
+        firmId: "firm-west-legal",
+        queueName: "ai_triage",
+        jobName: legalResearchProviderJobName,
+        status: "skipped",
+        targetResourceType: "legal_research",
+        targetResourceId: "matter-001",
+        attemptsMade: 0,
+        maxAttempts: 1,
+        queuedAt: "2026-06-04T18:00:00.000Z",
+        finishedAt: "2026-06-04T18:00:00.000Z",
+        metadata,
+      },
+      metadata,
+    );
+    const workspace = buildLegalResearchWorkspace({
+      matterId: "matter-001",
+      artifacts: [baseArtifact],
+      providerJobs: [providerJob],
+    });
+
+    expect(metadata).toMatchObject({
+      matterId: "matter-001",
+      requestType: "citation_review",
+      sourceTypes: "case_law,statute",
+      sourceTypeCount: 2,
+      citationReferenceCount: 3,
+      contextLinkCount: 2,
+      artifactCount: 1,
+      provider: "reserved_legal_research_provider",
+      providerStatus: "reserved",
+      providerConfigured: false,
+      citationReviewRequired: true,
+      sourceTextIncluded: false,
+      promptIncluded: false,
+      providerEvidenceStored: false,
+      citationVerificationClaims: false,
+      downstreamMutation: false,
+      reviewOnly: true,
+    });
+    expect(workspace.providerJobBoundary).toMatchObject({
+      queueName: "ai_triage",
+      jobName: legalResearchProviderJobName,
+      status: "reserved",
+      providerConfigured: false,
+      liveResearchProvider: false,
+      reviewOnly: true,
+    });
+    expect(workspace.citationReview).toMatchObject({
+      staffReviewRequired: true,
+      citationVerificationClaims: false,
+      providerEvidenceStored: false,
+      sourceTextSubmittedToProvider: false,
+      promptSubmittedToProvider: false,
+      downstreamMutation: false,
+      reviewOnly: true,
+    });
+    expect(workspace.providerJobSummary).toMatchObject({
+      total: 1,
+      skipped: 1,
+      latestQueuedAt: "2026-06-04T18:00:00.000Z",
+      reviewOnly: true,
     });
   });
 });

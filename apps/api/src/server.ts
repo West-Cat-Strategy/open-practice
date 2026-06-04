@@ -153,6 +153,7 @@ export const envSchema = z.object({
   DATABASE_URL: optionalString,
   OPEN_PRACTICE_USE_MEMORY_REPO: booleanFromEnv,
   OPEN_PRACTICE_DEV_SEED: booleanFromEnv,
+  OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP: booleanFromEnv,
   OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: optionalConfigEncryptionKey,
   E2E_MODE: z.enum(["host", "docker"]).optional(),
   AUTH_JWT_SECRET: optionalString,
@@ -248,6 +249,7 @@ interface ApiOptions {
     guestAccessTokenSigningConfigured?: boolean;
   };
   setupKey?: string;
+  allowDockerBridgeSetup?: boolean;
   s3?: ApiRouteDependencies["s3"];
   e2eSupport?: boolean;
   webAuthn: {
@@ -306,6 +308,9 @@ export function validateProductionReadiness(env: ApiEnv): void {
   }
   if (env.OPEN_PRACTICE_DEV_SEED) {
     throw new Error("OPEN_PRACTICE_DEV_SEED cannot be true in production");
+  }
+  if (env.OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP) {
+    throw new Error("OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP cannot be true in production");
   }
   if (env.E2E_MODE) {
     throw new Error("E2E_MODE cannot be configured in production");
@@ -481,6 +486,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     jwtSecret: options.jwtSecret,
     nodeEnv: options.nodeEnv,
     setupKey: options.setupKey,
+    allowDockerBridgeSetup: options.allowDockerBridgeSetup,
     sessionTtlHours: options.sessionTtlHours,
     hashPassword,
     hashToken,
@@ -1070,6 +1076,7 @@ if (process.env.NODE_ENV !== "test") {
     },
     meetingLinks: createMeetingLinksFromEnv(env),
     setupKey: env.OPEN_PRACTICE_SETUP_KEY,
+    allowDockerBridgeSetup: env.OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP,
     s3: createS3FromEnv(env),
     e2eSupport: Boolean(env.E2E_MODE),
     webAuthn: {

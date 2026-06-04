@@ -13,6 +13,10 @@ export function buildLegalResearchReviewPath(artifactId: string): string {
   return `/api/legal-research/artifacts/${encodeURIComponent(artifactId)}/review`;
 }
 
+export function buildLegalResearchProviderJobPath(): string {
+  return "/api/legal-research/provider-jobs";
+}
+
 export function emptyLegalResearchWorkspace(
   matterId: string,
   status: LegalResearchWorkspaceResponse["status"] = "unavailable",
@@ -48,10 +52,39 @@ export function emptyLegalResearchWorkspace(
       citationVerificationClaims: false,
       downstreamMutation: false,
     },
+    citationReview: {
+      staffReviewRequired: true,
+      citationVerificationClaims: false,
+      providerEvidenceStored: false,
+      sourceTextSubmittedToProvider: false,
+      promptSubmittedToProvider: false,
+      downstreamMutation: false,
+      reviewOnly: true,
+    },
     provider: {
       status: "disabled",
       reason: "not_configured",
       liveResearchProvider: false,
+    },
+    providerJobBoundary: {
+      queueName: "ai_triage",
+      jobName: "legal_research_provider_review",
+      status: "reserved",
+      reason: "deferred_worker",
+      providerConfigured: false,
+      liveResearchProvider: false,
+      reviewOnly: true,
+    },
+    providerJobs: [],
+    providerJobSummary: {
+      total: 0,
+      queued: 0,
+      active: 0,
+      completed: 0,
+      skipped: 0,
+      failed: 0,
+      deadLetter: 0,
+      reviewOnly: true,
     },
   };
 }
@@ -107,7 +140,7 @@ export function summarizeLegalResearchWorkspaceStatus(
 ): string {
   if (workspace.status === "access_denied") return "Research workspace is not available.";
   if (workspace.status === "unavailable") return "Research workspace is unavailable.";
-  return `${workspace.summary.total} artifacts · ${workspace.summary.readyForReview} ready · ${workspace.summary.openCheckpointCount} checkpoints`;
+  return `${workspace.summary.total} artifacts · ${workspace.summary.readyForReview} ready · ${workspace.providerJobSummary.total} provider jobs`;
 }
 
 export function formatLegalResearchValue(value?: string): string {

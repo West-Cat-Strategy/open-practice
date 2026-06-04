@@ -28,6 +28,12 @@ trust accounting software, accounting software, or tax-advice tooling.
   operating-vs-trust/expense boundary posture, protected-funds cues, metadata-only bank-feed shell
   state, and vendor/expense/client-matter dimensions. They do not connect live feeds, run automatic
   matching, authorize disbursements, post trust entries, or certify accounting conclusions.
+- Bank-feed reconciliation review summaries are derived from existing accounting profiles, import
+  batch metadata, reconciliation records, and diagnostics. They count metadata-only/review-ready
+  feeds, row/duplicate totals, pending accounts, protected-funds feeds, completed reconciliations,
+  and exceptions only; they do not store statement rows, connect providers, auto-match
+  transactions, post ledgers, reconcile accounts automatically, authorize disbursements, or certify
+  accounting conclusions.
 - Reconciliation exception resolution records can store staff notes and variance decisions for
   unmatched statement-preview rows. They are review notes only: they do not mutate posted ledger
   entries, create reconciliation records, move funds, or certify accounting conclusions.
@@ -42,6 +48,9 @@ trust accounting software, accounting software, or tax-advice tooling.
   operational controls around review, evidence, authorization, and reconciliation.
 - No live payment processor is currently part of the product contract.
 - Manual payment records are reviewed evidence, not proof of live settlement.
+- Normalized payment settlement event records are reconciliation-review evidence only. They do not
+  prove live settlement, apply invoice balances, reconcile deposits, handle refunds or chargebacks,
+  authorize trust withdrawals, or move funds.
 - AI draft-invoice cues are review artifacts only. Approving a proposal records reviewer status but
   does not create an invoice, change balances, schedule payment collection, reconcile payment
   evidence, or post trust/operating ledger entries.

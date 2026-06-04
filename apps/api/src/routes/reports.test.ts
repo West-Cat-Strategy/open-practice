@@ -72,7 +72,8 @@ describe("staff reporting routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
+    const payload = response.json();
+    expect(payload).toMatchObject({
       definitions: expect.arrayContaining([
         expect.objectContaining({
           key: "invoice_aging",
@@ -110,7 +111,32 @@ describe("staff reporting routes", () => {
         scheduledEmailDelivery: false,
         rawReportBodiesInJobMetadata: false,
       },
+      scheduleReadinessSummary: expect.objectContaining({
+        totalDefinitions: 4,
+        manualExportReadyDefinitions: 4,
+        recentExportRequestCount: 1,
+        scheduledDefinitionCount: 0,
+        automaticExecution: false,
+        scheduledEmailDeliveryEnabled: false,
+        rawReportBodyStorage: false,
+      }),
+      reportBuilderPosture: expect.objectContaining({
+        status: "metadata_only",
+        savedDefinitionsOnly: true,
+        customSql: false,
+        biEmbeds: false,
+        broadReportExecution: false,
+        rawReportBodyStorage: false,
+      }),
+      exportJobPosture: expect.objectContaining({
+        historyCount: 1,
+        boundedMetadataOnly: true,
+        storesReportBodiesInJobMetadata: false,
+        downloadsRegenerateProjection: true,
+        scheduledDeliveryJobs: false,
+      }),
     });
+    expect(JSON.stringify(payload)).not.toContain("Synthetic private productivity");
   });
 
   it("queues report exports, gates downloads, and keeps job metadata bounded", async () => {

@@ -245,6 +245,80 @@
   gap: 10px;
 }
 
+.client-portal-action-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.client-portal-billing-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.client-portal-billing-summary div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 10px;
+}
+
+.client-portal-billing-summary span,
+.client-portal-bill span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.client-portal-billing-summary strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.client-portal-action-group {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(13, 13, 12, 0.32);
+  padding: 12px;
+}
+
+.client-portal-action-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.client-portal-action-group-header div {
+  min-width: 0;
+}
+
+.client-portal-action-group-header strong,
+.client-portal-action-group-header span {
+  display: block;
+}
+
+.client-portal-action-group-header span {
+  margin-top: 3px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.client-portal-action-group-header em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.client-portal-bill-groups,
+.client-portal-bills {
+  display: grid;
+  gap: 10px;
+}
+
 .client-portal-matter {
   min-height: 112px;
   display: grid;
@@ -286,6 +360,67 @@
   padding: 12px;
 }
 
+.client-portal-bill {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, auto) minmax(180px, auto);
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(21, 24, 22, 0.62);
+  padding: 12px;
+}
+
+.client-portal-bill p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.client-portal-bill dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, auto));
+  gap: 8px;
+  margin: 0;
+}
+
+.client-portal-bill dt,
+.client-portal-bill dd {
+  margin: 0;
+  font-size: 12px;
+}
+
+.client-portal-bill dt {
+  color: var(--muted);
+}
+
+.client-portal-bill dd {
+  margin-top: 3px;
+  font-weight: 700;
+}
+
+.client-portal-bill dd.ready {
+  color: var(--accent-strong);
+}
+
+.client-portal-bill dd.risk {
+  color: var(--warning);
+}
+
+.client-portal-payment-requests {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.client-portal-payment-requests span {
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  padding: 4px 6px;
+  text-align: right;
+}
+
 .client-portal-action-icon {
   width: 34px;
   height: 34px;
@@ -321,6 +456,40 @@
   color: var(--muted);
   font-style: normal;
   text-align: right;
+}
+
+.client-portal-action-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+}
+
+.client-portal-action-details div {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 4px 6px;
+}
+
+.client-portal-action-details dt,
+.client-portal-action-details dd {
+  margin: 0;
+  font-size: 12px;
+}
+
+.client-portal-action-details dt {
+  color: var(--muted);
+}
+
+.client-portal-action-details dd.ready {
+  color: var(--accent-strong);
+}
+
+.client-portal-action-details dd.risk {
+  color: var(--warning);
 }
 
 .draft-editor {

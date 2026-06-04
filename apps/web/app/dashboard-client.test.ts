@@ -148,6 +148,8 @@ import {
   activeJurisdictionTrustReportSummary,
   buildJurisdictionalTrustReportPath,
   buildTrustControlsPath,
+  describeBankFeedImportBatch,
+  describeBankFeedReviewBoundary,
   emptyJurisdictionalTrustReport,
   loadTrustControlsDashboardData,
   matterTrustBalanceCents,
@@ -159,7 +161,9 @@ import {
   buildExpenseReviewDraftPayload,
   buildDraftInvoicePayload,
   buildTimerDraftTimeEntryPayload,
+  describePaymentSettlementReview,
   describeDraftInvoiceCreated,
+  summarizePaymentSettlementReview,
   updateBillingDashboardWithExpenseDraft,
   updateBillingDashboardWithCreatedInvoice,
   updateBillingDashboardWithTimerDraft,
@@ -265,7 +269,9 @@ import {
 import {
   buildIntakePipelinePath,
   emptyIntakePipelineDashboard,
+  intakePipelineFollowUpActionLabel,
   intakePipelineSourceLabel,
+  intakePipelineSourceQualityLabel,
   intakePipelineStatusLabel,
   intakePipelineSummaryLine,
 } from "./intake-pipeline-dashboard";
@@ -370,6 +376,25 @@ function matter(overrides: Partial<MatterSummary>): MatterSummary {
     trustBalanceCents: 0,
     ...overrides,
   } as MatterSummary;
+}
+
+function emptyTaskReview(): TaskDeadlineWorkbenchResponse["taskReview"] {
+  return {
+    summary: {
+      total: 0,
+      open: 0,
+      completed: 0,
+      highPriority: 0,
+      mediumPriority: 0,
+      lowPriority: 0,
+      overdue: 0,
+      dueToday: 0,
+      unassigned: 0,
+      myOpen: 0,
+      schedulingReviewCount: 0,
+    },
+    items: [],
+  };
 }
 
 function contactDossierCrmTaxonomy(
@@ -984,6 +1009,21 @@ function trustControls(
       overdrawnBalanceKeys: [],
     },
     accountingReview: {
+      importBatches: [
+        {
+          id: "statement-import-batch-001",
+          firmId: "firm-west-legal",
+          accountId: "acct-trust-bank",
+          sourceLabel: "Synthetic trust statement export",
+          checksumSha256: "a".repeat(64),
+          importedStatementRowCount: 12,
+          duplicateStatementRowCount: 2,
+          status: "review_ready",
+          matchingProfileId: "statement-match-profile-standard-trust",
+          createdByUserId: "user-admin",
+          createdAt: "2026-04-02T18:30:00.000Z",
+        },
+      ],
       matchRuleProfiles: [
         {
           id: "statement-match-profile-standard-trust",
@@ -1036,6 +1076,28 @@ function trustControls(
         accountingProfileCount: 1,
         protectedAccountCount: 1,
         bankFeedShellCount: 1,
+        reviewOnly: true,
+      },
+      bankFeedReviewSummary: {
+        bankFeedShellCount: 1,
+        metadataOnlyFeedCount: 1,
+        reviewReadyFeedCount: 0,
+        importBatchCount: 1,
+        previewedImportBatchCount: 0,
+        reviewReadyImportBatchCount: 1,
+        discardedImportBatchCount: 0,
+        importedStatementRowCount: 12,
+        duplicateStatementRowCount: 2,
+        completedReconciliationCount: 0,
+        exceptionReconciliationCount: 1,
+        accountsPendingReconciliationCount: 1,
+        protectedFundsFeedCount: 1,
+        automaticMatching: false,
+        automaticLedgerPosting: false,
+        automaticReconciliation: false,
+        liveBankFeedConnection: false,
+        trustDisbursementAutomation: false,
+        importBatchStoragePosture: "metadata_only_no_statement_rows",
         reviewOnly: true,
       },
     },
@@ -2598,6 +2660,87 @@ describe("dashboard client behavior", () => {
     ).toBe("Created draft INV-001 from 2 source records.");
   });
 
+  it("summarizes payment settlement review posture without private processor material", () => {
+    const paymentRequests: BillingDashboardResponse["matters"][number]["paymentRequests"] = [
+      {
+        id: "payment-request-settlement-ui",
+        matterId: "matter-001",
+        invoiceId: "invoice-001",
+        status: "sent",
+        amountCents: 5000,
+        hostedPath: "/payments/requests/payment-request-settlement-ui",
+        delivery: { status: "sent", channel: "email", recipientCount: 1 },
+        reminder: { status: "not_scheduled", reminderCount: 0 },
+        paymentPlan: { status: "not_offered", enforcement: "none" },
+        creditWriteOffPosture: { status: "none", movement: "none" },
+        processor: {
+          status: "checkout_session_created",
+          provider: "stripe",
+          externalSessionId: "cs_synthetic_ui",
+          settlementReview: {
+            status: "needs_review",
+            provider: "stripe",
+            eventType: "checkout_session_completed",
+            paymentStatus: "paid",
+            externalEventId: "evt_synthetic_ui",
+            externalSessionId: "cs_synthetic_ui",
+            amountCents: 5000,
+            currency: "CAD",
+            receivedAt: "2026-06-04T18:00:00.000Z",
+            reviewAction: "staff_reconciliation_review_required",
+            invoiceBalanceMutation: "none",
+            reconciliationMutation: "none",
+            trustPosting: "none",
+            webhookBoundary: {
+              signatureVerified: false,
+              rawWebhookBodyStored: false,
+              automaticInvoiceMutation: false,
+              automaticReconciliation: false,
+              trustPosting: false,
+              refundHandling: "review_only",
+              chargebackHandling: "review_only",
+            },
+          },
+        },
+        evidencePresent: true,
+        createdAt: "2026-06-04T17:00:00.000Z",
+        updatedAt: "2026-06-04T18:00:00.000Z",
+      },
+    ];
+
+    const summary = summarizePaymentSettlementReview(paymentRequests);
+    const description = describePaymentSettlementReview(paymentRequests[0]!);
+    const renderedCopy = [
+      "Settlement webhook review",
+      "Manual reconciliation required",
+      "No invoice balance mutation",
+      "No trust posting",
+      "No refunds or chargebacks",
+      description,
+    ].join(" ");
+
+    expect(summary).toMatchObject({
+      paymentRequestCount: 1,
+      receivedEventCount: 1,
+      pendingEventCount: 0,
+      amountMismatchCount: 0,
+      refundOrChargebackReviewCount: 0,
+      automaticInvoiceBalanceMutation: false,
+      automaticReconciliation: false,
+      trustPosting: false,
+      rawWebhookBodyStorage: false,
+    });
+    expect(renderedCopy).toContain("Settlement webhook review");
+    expect(renderedCopy).toContain("Manual reconciliation required");
+    expect(renderedCopy).toContain("No invoice balance mutation");
+    expect(renderedCopy).toContain("No trust posting");
+    expect(renderedCopy).toContain("No refunds or chargebacks");
+    expect(renderedCopy).not.toContain("checkout.stripe.com");
+    expect(renderedCopy).not.toContain("stripe-signature");
+    expect(renderedCopy).not.toContain("whsec_");
+    expect(renderedCopy).not.toContain("rawWebhookBody");
+  });
+
   it("builds review-only timer and expense draft payloads and appends them locally", () => {
     const periodLocks = [
       {
@@ -2782,6 +2925,28 @@ describe("dashboard client behavior", () => {
       unreconciledAccountCount: 1,
       overdrawnBalanceCount: 1,
     });
+    expect(describeBankFeedImportBatch(controls, controls.accountingReview.importBatches[0]!)).toBe(
+      "Pooled trust bank · review ready · 12 rows · 2 duplicates",
+    );
+    expect(describeBankFeedReviewBoundary(controls)).toBe(
+      "1 account pending reconciliation review · no automatic matching · no ledger posting",
+    );
+    expect(controls.accountingReview.bankFeedReviewSummary).toMatchObject({
+      importBatchCount: 1,
+      importedStatementRowCount: 12,
+      duplicateStatementRowCount: 2,
+      accountsPendingReconciliationCount: 1,
+      automaticMatching: false,
+      automaticLedgerPosting: false,
+      automaticReconciliation: false,
+      liveBankFeedConnection: false,
+      trustDisbursementAutomation: false,
+      importBatchStoragePosture: "metadata_only_no_statement_rows",
+      reviewOnly: true,
+    });
+    expect(JSON.stringify(controls.accountingReview.bankFeedReviewSummary)).not.toContain(
+      "aaaaaaaa",
+    );
     expect(trustControlsForMatter({}, "matter-001", controls)).toEqual({
       "matter-001": controls,
     });
@@ -2955,6 +3120,109 @@ describe("dashboard client behavior", () => {
         upcomingTaskIds: [],
         unassignedTaskIds: [],
       },
+      taskReview: {
+        summary: {
+          total: 2,
+          open: 2,
+          completed: 0,
+          highPriority: 1,
+          mediumPriority: 1,
+          lowPriority: 0,
+          overdue: 1,
+          dueToday: 1,
+          unassigned: 1,
+          myOpen: 1,
+          schedulingReviewCount: 1,
+        },
+        items: [
+          {
+            id: "task-deadline-001",
+            matterId: "matter-001",
+            matterNumber: "2026-0001",
+            matterTitle: "Morgan tenancy dispute",
+            title: "Review tenant evidence package",
+            dueAt: "2026-05-01T19:00:00.000Z",
+            bucket: "overdue",
+            completionStatus: "open",
+            priority: "high",
+            tone: "risk",
+            assignment: {
+              status: "assigned",
+              userId: "user-licensee",
+              scope: "current_user",
+              label: "My task",
+            },
+            privacy: {
+              matterScoped: true,
+              clientVisible: false,
+              visibility: "staff_only",
+            },
+            source: {
+              type: "task_deadline",
+              label: "Task/deadline record",
+            },
+            scheduling: {
+              requestCount: 1,
+              needsReviewCount: 1,
+              reviewedCount: 0,
+              nextReviewAt: "2026-05-01T19:00:00.000Z",
+              sourceTypes: ["task_deadline"],
+              reminderPostures: ["dashboard_pending"],
+              timeCapturePostures: ["draft_available"],
+            },
+            reviewBoundary: {
+              courtRuleAutomation: false,
+              providerSync: false,
+              automaticDeadlineMutation: false,
+              automaticReminderChanges: false,
+              queueDelivery: false,
+              automaticTimeEntryCreation: false,
+            },
+          },
+          {
+            id: "task-deadline-002",
+            matterId: "matter-001",
+            matterNumber: "2026-0001",
+            matterTitle: "Morgan tenancy dispute",
+            title: "Assign inspection follow-up",
+            dueAt: "2026-05-02T19:00:00.000Z",
+            bucket: "today",
+            completionStatus: "open",
+            priority: "medium",
+            tone: "neutral",
+            assignment: {
+              status: "unassigned",
+              scope: "unassigned",
+              label: "Unassigned",
+            },
+            privacy: {
+              matterScoped: true,
+              clientVisible: false,
+              visibility: "matter_team",
+            },
+            source: {
+              type: "task_deadline",
+              label: "Task/deadline record",
+            },
+            scheduling: {
+              requestCount: 0,
+              needsReviewCount: 0,
+              reviewedCount: 0,
+              sourceTypes: [],
+              reminderPostures: [],
+              timeCapturePostures: [],
+            },
+            reviewBoundary: {
+              courtRuleAutomation: false,
+              providerSync: false,
+              automaticDeadlineMutation: false,
+              automaticReminderChanges: false,
+              queueDelivery: false,
+              automaticTimeEntryCreation: false,
+            },
+          },
+        ],
+      },
     };
     const commonProps = {
       activeWorkerRuns: { jobs: [] },
@@ -3044,10 +3312,19 @@ describe("dashboard client behavior", () => {
     );
 
     expect(writableHtml).toContain("AI operational proposals");
+    expect(writableHtml).toContain("Task/deadline review");
+    expect(writableHtml).toContain("Review tenant evidence package");
+    expect(writableHtml).toContain("2026-0001");
+    expect(writableHtml).toContain("My task");
+    expect(writableHtml).toContain("Staff only");
+    expect(writableHtml).toContain("1 scheduling review");
     expect(writableHtml).toContain("Review client update");
     expect(writableHtml).toContain("client update draft");
     expect(writableHtml).toContain("Review before sending any message.");
     expect(writableHtml).toContain("Approve");
+    expect(writableHtml).not.toContain("court-rule automation");
+    expect(writableHtml).not.toContain("provider sync");
+    expect(writableHtml).not.toContain("automatic deadline mutation");
     expect(readOnlyHtml).toContain("Review client update");
     expect(readOnlyHtml).not.toContain("Approve");
     expect(readOnlyHtml).not.toContain("Reject");
@@ -4217,6 +4494,7 @@ describe("dashboard client behavior", () => {
         upcomingTaskIds: [],
         unassignedTaskIds: [],
       },
+      taskReview: emptyTaskReview(),
     };
     const queues: QueuesResponse = {
       sections: [
@@ -4375,6 +4653,7 @@ describe("dashboard client behavior", () => {
           upcomingTaskIds: [],
           unassignedTaskIds: [],
         },
+        taskReview: emptyTaskReview(),
       },
       queues: { sections: [] },
       operationalViews: {
@@ -4509,6 +4788,7 @@ describe("dashboard client behavior", () => {
           upcomingTaskIds: [],
           unassignedTaskIds: [],
         },
+        taskReview: emptyTaskReview(),
       },
       queues: { sections: [] },
       operationalViews: { views: [] },
@@ -4536,6 +4816,7 @@ describe("dashboard client behavior", () => {
           upcomingTaskIds: [],
           unassignedTaskIds: [],
         },
+        taskReview: emptyTaskReview(),
       },
       queues: { sections: [] },
       operationalViews: { views: [] },
@@ -4599,6 +4880,7 @@ describe("dashboard client behavior", () => {
           upcomingTaskIds: [],
           unassignedTaskIds: [],
         },
+        taskReview: emptyTaskReview(),
       },
       queues: { sections: [] },
       operationalViews: { views: [] },
@@ -5372,11 +5654,46 @@ describe("dashboard client behavior", () => {
           public_consultation: 0,
           intake_session: 0,
         },
+        followUpReview: {
+          totalItems: 0,
+          highPriorityCount: 0,
+          sourceUrlPresentCount: 0,
+          defaultedSourceCount: 0,
+          byAction: {
+            review_conflict: 0,
+            review_public_request: 0,
+            review_submitted_intake: 0,
+            send_follow_up_form: 0,
+            schedule_consultation: 0,
+            confirm_conversion: 0,
+            none: 0,
+          },
+          byPosture: {
+            staff_review: 0,
+            waiting_on_client: 0,
+            consultation_scheduled: 0,
+            converted: 0,
+            closed: 0,
+          },
+          automationBoundary: {
+            automaticMatterCreation: false,
+            campaignAutomation: false,
+            smsDelivery: false,
+            bulkDelivery: false,
+            adSpendIngestion: false,
+            automaticClientContact: false,
+          },
+        },
       },
     });
     expect(intakePipelineSourceLabel("public_consultation")).toBe("Public consultation");
     expect(intakePipelineSourceLabel("intake_session")).toBe("Intake session");
     expect(intakePipelineStatusLabel("conflict_review")).toBe("conflict review");
+    expect(intakePipelineFollowUpActionLabel("review_submitted_intake")).toBe(
+      "Review submitted intake",
+    );
+    expect(intakePipelineSourceQualityLabel("tracked")).toBe("Source tracked");
+    expect(intakePipelineSourceQualityLabel("defaulted")).toBe("Source defaulted");
     expect(
       intakePipelineSummaryLine({
         totalLeads: 3,
@@ -5399,8 +5716,38 @@ describe("dashboard client behavior", () => {
           reviewing: 1,
           reviewed: 1,
         },
+        followUpReview: {
+          totalItems: 3,
+          highPriorityCount: 2,
+          sourceUrlPresentCount: 2,
+          defaultedSourceCount: 1,
+          byAction: {
+            review_conflict: 1,
+            review_public_request: 0,
+            review_submitted_intake: 1,
+            send_follow_up_form: 0,
+            schedule_consultation: 0,
+            confirm_conversion: 1,
+            none: 0,
+          },
+          byPosture: {
+            staff_review: 2,
+            waiting_on_client: 0,
+            consultation_scheduled: 0,
+            converted: 1,
+            closed: 0,
+          },
+          automationBoundary: {
+            automaticMatterCreation: false,
+            campaignAutomation: false,
+            smsDelivery: false,
+            bulkDelivery: false,
+            adSpendIngestion: false,
+            automaticClientContact: false,
+          },
+        },
       }),
-    ).toBe("3 leads · 1 conversions · 2 conflict reviews");
+    ).toBe("3 leads · 1 conversions · 2 conflict reviews · 2 high-priority follow-ups");
     expect(buildIntakeFormLinkListPath("matter 001")).toBe(
       "/api/intake-form-links?matterId=matter%20001",
     );

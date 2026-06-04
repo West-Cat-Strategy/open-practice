@@ -3,6 +3,7 @@ import {
   buildLedgerReconciliationExceptionResolutionStatementRow,
   buildJurisdictionalTrustReport,
   ledgerAccountingReviewSummary,
+  ledgerBankFeedReconciliationReviewSummary,
   ledgerControlsDiagnostics,
   ledgerReconciliationReviewSummary,
   previewLedgerStatementImport,
@@ -17,6 +18,7 @@ import type {
   LedgerAccount,
   LedgerEntry,
   LedgerReconciliationRecord,
+  LedgerStatementImportBatchRecord,
   LedgerStatementMatchRuleProfileRecord,
   LedgerTransactionApprovalRecord,
 } from "./ledger.js";
@@ -583,5 +585,120 @@ describe("ledger controls diagnostics", () => {
         boundaryPosture: "operating_only",
       }),
     ).toThrow(/boundary posture/);
+  });
+
+  it("summarizes bank-feed reconciliation review posture without enabling automation", () => {
+    const trustProfile: LedgerAccountingReviewProfileRecord = {
+      id: "accounting-review-profile-trust-bank",
+      firmId: "firm-west-legal",
+      accountId: "acct-trust-bank",
+      accountType: "trust_asset",
+      boundaryPosture: "trust_only",
+      protectedFunds: {
+        protected: true,
+        reason: "Synthetic trust account needs reviewer confirmation.",
+        reviewCadence: "monthly",
+      },
+      bankFeedImport: {
+        status: "review_ready",
+        sourceLabel: "Synthetic trust statement export",
+        lastImportedAt: "2026-05-31T18:05:00.000Z",
+        automaticMatching: false,
+      },
+      dimensions: {
+        vendorTracking: "not_applicable",
+        expenseCategoryTracking: "optional",
+        clientMatterTracking: "required",
+      },
+      reviewOnly: true,
+      createdByUserId: "user-admin",
+      createdAt: "2026-05-31T18:05:00.000Z",
+      updatedAt: "2026-05-31T18:05:00.000Z",
+    };
+    const operatingProfile: LedgerAccountingReviewProfileRecord = {
+      id: "accounting-review-profile-operating",
+      firmId: "firm-west-legal",
+      accountId: "acct-operating",
+      accountType: "operating_revenue",
+      boundaryPosture: "operating_only",
+      protectedFunds: {
+        protected: false,
+        reviewCadence: "manual_review",
+      },
+      bankFeedImport: {
+        status: "metadata_only",
+        sourceLabel: "Synthetic operating statement export",
+        automaticMatching: false,
+      },
+      dimensions: {
+        vendorTracking: "optional",
+        expenseCategoryTracking: "required",
+        clientMatterTracking: "required",
+      },
+      reviewOnly: true,
+      createdByUserId: "user-admin",
+      createdAt: "2026-05-31T18:10:00.000Z",
+      updatedAt: "2026-05-31T18:10:00.000Z",
+    };
+    const importBatches: LedgerStatementImportBatchRecord[] = [
+      {
+        id: "statement-import-batch-review",
+        firmId: "firm-west-legal",
+        accountId: "acct-trust-bank",
+        sourceLabel: "Synthetic May trust statement",
+        checksumSha256: "a".repeat(64),
+        importedStatementRowCount: 12,
+        duplicateStatementRowCount: 2,
+        status: "review_ready",
+        matchingProfileId: "statement-match-profile-standard-trust",
+        createdByUserId: "user-admin",
+        createdAt: "2026-05-31T18:15:00.000Z",
+      },
+      {
+        id: "statement-import-batch-previewed",
+        firmId: "firm-west-legal",
+        accountId: "acct-operating",
+        sourceLabel: "Synthetic operating statement",
+        checksumSha256: "b".repeat(64),
+        importedStatementRowCount: 3,
+        duplicateStatementRowCount: 0,
+        status: "previewed",
+        createdByUserId: "user-admin",
+        createdAt: "2026-05-31T18:20:00.000Z",
+      },
+    ];
+
+    expect(
+      ledgerBankFeedReconciliationReviewSummary({
+        accountingProfiles: [trustProfile, operatingProfile],
+        importBatches,
+        reconciliations,
+        diagnostics: {
+          unreconciledAccountIds: ["acct-trust-bank"],
+          exceptionReconciliationIds: ["reconciliation-001"],
+        },
+      }),
+    ).toEqual({
+      bankFeedShellCount: 2,
+      metadataOnlyFeedCount: 1,
+      reviewReadyFeedCount: 1,
+      importBatchCount: 2,
+      previewedImportBatchCount: 1,
+      reviewReadyImportBatchCount: 1,
+      discardedImportBatchCount: 0,
+      importedStatementRowCount: 15,
+      duplicateStatementRowCount: 2,
+      completedReconciliationCount: 0,
+      exceptionReconciliationCount: 1,
+      accountsPendingReconciliationCount: 1,
+      protectedFundsFeedCount: 1,
+      automaticMatching: false,
+      automaticLedgerPosting: false,
+      automaticReconciliation: false,
+      liveBankFeedConnection: false,
+      trustDisbursementAutomation: false,
+      importBatchStoragePosture: "metadata_only_no_statement_rows",
+      reviewOnly: true,
+    });
   });
 });

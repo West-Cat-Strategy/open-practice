@@ -51,6 +51,30 @@ export interface StaffReportExportProfile {
   includesRawReportBody: false;
 }
 
+export type StaffReportScheduleReadinessStatus = "manual_export_ready";
+
+export interface StaffReportScheduleReadiness {
+  status: StaffReportScheduleReadinessStatus;
+  cadence: "not_scheduled";
+  manualExportReady: true;
+  scheduledRunReady: false;
+  scheduledEmailDelivery: false;
+  readinessReasons: string[];
+  nextRunAt?: string;
+}
+
+export interface StaffReportBuilderPosture {
+  status: "saved_definition_metadata";
+  supportedFilterCount: number;
+  supportedGroupingCount: number;
+  exportProfileCount: number;
+  customSql: false;
+  biEmbed: false;
+  broadReportExecution: false;
+  mutableDefinitionBuilder: false;
+  storesRawReportBodies: false;
+}
+
 export interface StaffSavedReportDefinition {
   key: StaffReportDefinitionKey;
   name: string;
@@ -64,6 +88,8 @@ export interface StaffSavedReportDefinition {
   source: "open_practice_builtin";
   savedAt: string;
   updatedAt: string;
+  scheduleReadiness: StaffReportScheduleReadiness;
+  builderPosture: StaffReportBuilderPosture;
 }
 
 export interface StaffReportProjectionGroup {
@@ -130,12 +156,50 @@ export interface StaffReportHistoryItem {
   downloadUrl: string;
 }
 
+export interface StaffReportScheduleReadinessSummary {
+  totalDefinitions: number;
+  manualExportReadyDefinitions: number;
+  manualOnlyDefinitionKeys: StaffReportDefinitionKey[];
+  recentExportRequestCount: number;
+  scheduledDefinitionCount: number;
+  automaticExecution: false;
+  scheduledEmailDeliveryEnabled: false;
+  rawReportBodyStorage: false;
+  nextScheduledRunAt?: string;
+}
+
+export interface StaffReportBuilderWorkspacePosture {
+  status: "metadata_only";
+  savedDefinitionsOnly: true;
+  filterCount: number;
+  groupingCount: number;
+  exportProfileCount: number;
+  customSql: false;
+  biEmbeds: false;
+  broadReportExecution: false;
+  mutableDefinitionBuilder: false;
+  rawReportBodyStorage: false;
+}
+
+export interface StaffReportExportJobPosture {
+  queueName: "reports";
+  jobName: "staff_report_export";
+  historyCount: number;
+  boundedMetadataOnly: true;
+  storesReportBodiesInJobMetadata: false;
+  downloadsRegenerateProjection: true;
+  scheduledDeliveryJobs: false;
+}
+
 export interface StaffReportingWorkspace {
   generatedAt: string;
   definitions: StaffSavedReportDefinition[];
   exportProfiles: StaffReportExportProfile[];
   reports: StaffReportProjection[];
   history: StaffReportHistoryItem[];
+  scheduleReadinessSummary: StaffReportScheduleReadinessSummary;
+  reportBuilderPosture: StaffReportBuilderWorkspacePosture;
+  exportJobPosture: StaffReportExportJobPosture;
   workspacePolicy: {
     customSql: false;
     biEmbeds: false;
@@ -176,6 +240,11 @@ export interface BuildStaffReportingWorkspaceInput extends Omit<
 const savedDefinitionTimestamp = "2026-05-28T00:00:00.000Z";
 const dayMs = 86_400_000;
 
+type StaffSavedReportDefinitionInput = Omit<
+  StaffSavedReportDefinition,
+  "builderPosture" | "scheduleReadiness"
+>;
+
 export const STAFF_REPORT_EXPORT_PROFILES: StaffReportExportProfile[] = [
   {
     id: "summary_json",
@@ -197,7 +266,48 @@ export const STAFF_REPORT_EXPORT_PROFILES: StaffReportExportProfile[] = [
   },
 ];
 
-export const STAFF_SAVED_REPORT_DEFINITIONS: StaffSavedReportDefinition[] = [
+function staffReportScheduleReadiness(): StaffReportScheduleReadiness {
+  return {
+    status: "manual_export_ready",
+    cadence: "not_scheduled",
+    manualExportReady: true,
+    scheduledRunReady: false,
+    scheduledEmailDelivery: false,
+    readinessReasons: [
+      "saved_definition_available",
+      "manual_export_profile_available",
+      "scheduled_delivery_not_enabled",
+    ],
+  };
+}
+
+function staffReportBuilderPosture(
+  definition: StaffSavedReportDefinitionInput,
+): StaffReportBuilderPosture {
+  return {
+    status: "saved_definition_metadata",
+    supportedFilterCount: definition.filters.length,
+    supportedGroupingCount: definition.groupings.length,
+    exportProfileCount: definition.exportProfileIds.length,
+    customSql: false,
+    biEmbed: false,
+    broadReportExecution: false,
+    mutableDefinitionBuilder: false,
+    storesRawReportBodies: false,
+  };
+}
+
+function withStaffReportPosture(
+  definition: StaffSavedReportDefinitionInput,
+): StaffSavedReportDefinition {
+  return {
+    ...definition,
+    scheduleReadiness: staffReportScheduleReadiness(),
+    builderPosture: staffReportBuilderPosture(definition),
+  };
+}
+
+const STAFF_SAVED_REPORT_DEFINITION_INPUTS: StaffSavedReportDefinitionInput[] = [
   {
     key: "invoice_aging",
     name: "Invoice aging",
@@ -298,6 +408,9 @@ export const STAFF_SAVED_REPORT_DEFINITIONS: StaffSavedReportDefinition[] = [
     updatedAt: savedDefinitionTimestamp,
   },
 ];
+
+export const STAFF_SAVED_REPORT_DEFINITIONS: StaffSavedReportDefinition[] =
+  STAFF_SAVED_REPORT_DEFINITION_INPUTS.map(withStaffReportPosture);
 
 export function getStaffSavedReportDefinition(
   key: StaffReportDefinitionKey,
@@ -739,15 +852,74 @@ export function buildStaffReportProjection(
   return buildOperationalFollowUpProjection(input, generatedAt, generatedAtMs, groupingKey);
 }
 
+function scheduleReadinessSummary(
+  definitions: StaffSavedReportDefinition[],
+  history: StaffReportHistoryItem[],
+): StaffReportScheduleReadinessSummary {
+  return {
+    totalDefinitions: definitions.length,
+    manualExportReadyDefinitions: definitions.filter(
+      (definition) => definition.scheduleReadiness.manualExportReady,
+    ).length,
+    manualOnlyDefinitionKeys: definitions
+      .filter((definition) => !definition.scheduleReadiness.scheduledRunReady)
+      .map((definition) => definition.key),
+    recentExportRequestCount: history.length,
+    scheduledDefinitionCount: definitions.filter(
+      (definition) => definition.scheduleReadiness.scheduledRunReady,
+    ).length,
+    automaticExecution: false,
+    scheduledEmailDeliveryEnabled: false,
+    rawReportBodyStorage: false,
+  };
+}
+
+function reportBuilderWorkspacePosture(
+  definitions: StaffSavedReportDefinition[],
+): StaffReportBuilderWorkspacePosture {
+  return {
+    status: "metadata_only",
+    savedDefinitionsOnly: true,
+    filterCount: definitions.reduce(
+      (sum, definition) => sum + definition.builderPosture.supportedFilterCount,
+      0,
+    ),
+    groupingCount: definitions.reduce(
+      (sum, definition) => sum + definition.builderPosture.supportedGroupingCount,
+      0,
+    ),
+    exportProfileCount: STAFF_REPORT_EXPORT_PROFILES.length,
+    customSql: false,
+    biEmbeds: false,
+    broadReportExecution: false,
+    mutableDefinitionBuilder: false,
+    rawReportBodyStorage: false,
+  };
+}
+
+function exportJobPosture(history: StaffReportHistoryItem[]): StaffReportExportJobPosture {
+  return {
+    queueName: "reports",
+    jobName: "staff_report_export",
+    historyCount: history.length,
+    boundedMetadataOnly: true,
+    storesReportBodiesInJobMetadata: false,
+    downloadsRegenerateProjection: true,
+    scheduledDeliveryJobs: false,
+  };
+}
+
 export function buildStaffReportingWorkspace(
   input: BuildStaffReportingWorkspaceInput,
 ): StaffReportingWorkspace {
   const generatedAt = input.generatedAt ?? new Date().toISOString();
+  const definitions = STAFF_SAVED_REPORT_DEFINITIONS;
+  const history = input.history ?? [];
   return {
     generatedAt,
-    definitions: STAFF_SAVED_REPORT_DEFINITIONS,
+    definitions,
     exportProfiles: STAFF_REPORT_EXPORT_PROFILES,
-    reports: STAFF_SAVED_REPORT_DEFINITIONS.map((definition) =>
+    reports: definitions.map((definition) =>
       buildStaffReportProjection({
         ...input,
         generatedAt,
@@ -755,7 +927,10 @@ export function buildStaffReportingWorkspace(
         groupingKey: definition.defaultGrouping,
       }),
     ),
-    history: input.history ?? [],
+    history,
+    scheduleReadinessSummary: scheduleReadinessSummary(definitions, history),
+    reportBuilderPosture: reportBuilderWorkspacePosture(definitions),
+    exportJobPosture: exportJobPosture(history),
     workspacePolicy: {
       customSql: false,
       biEmbeds: false,
