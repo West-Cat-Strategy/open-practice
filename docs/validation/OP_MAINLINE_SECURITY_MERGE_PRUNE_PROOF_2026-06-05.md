@@ -149,22 +149,46 @@ Scout recommendations did not identify a safer same-contract image replacement f
 Postgres, Mailpit, or MinIO findings. The app images remain on Node 26 because the Node 24
 alternative would add medium findings in the current recommendation output.
 
-## Push And Prune Plan
+## Push And Prune Result
 
-After this proof commit is fast-forwarded to `main` and pushed:
+Initial mainline push:
 
-- Verify `HEAD`, local `main`, `origin/main`, and `git ls-remote --heads origin main` agree.
-- Verify the four security branch tips are ancestors of pushed `main`.
-- Remove the clean merged sibling worktrees:
-  `/Users/bryan/projects/open-practice-audit-event-sequence` and
-  `/Users/bryan/projects/open-practice-ocr-scan-gating`.
-- Delete the merged local branches:
-  `security/full-scan-remediation-2026-06-05`,
-  `security/audit-event-sequence-2026-06-05`, `security/ocr-scan-gating-2026-06-05`,
-  `security/staff-aggregate-cors-2026-06-05`, and
-  `chore/security-mainline-consolidation-2026-06-05`.
-- Run `git worktree prune` and `git remote prune origin`.
-- Preserve all stash entries; `42` historical stashes existed before prune.
+- `git switch main` and `git merge --ff-only chore/security-mainline-consolidation-2026-06-05`
+  advanced local `main` from `696df7c3181afe77c3f5e048143a7d146ca6d357` to
+  `59083088d9c467b7ccf58ceadf3ab87ce695f772`.
+- `git push origin main` advanced remote `main` from
+  `696df7c3181afe77c3f5e048143a7d146ca6d357` to
+  `59083088d9c467b7ccf58ceadf3ab87ce695f772`.
+- Push parity passed: `HEAD`, local `main`, `origin/main`, and
+  `git ls-remote --heads origin main` all reported
+  `59083088d9c467b7ccf58ceadf3ab87ce695f772`.
+- `git merge-base --is-ancestor` passed for all four security branch tips and the temporary
+  consolidation branch against pushed `main`.
+- `git diff --check HEAD` passed after the push.
 
-Exact pushed hash and actual prune output are recorded in the final handoff for this merge/prune
-operation.
+Pruned worktrees:
+
+- `/Users/bryan/projects/open-practice-audit-event-sequence`
+- `/Users/bryan/projects/open-practice-ocr-scan-gating`
+
+Deleted merged local branches:
+
+- `security/full-scan-remediation-2026-06-05` at `2b99888`
+- `security/audit-event-sequence-2026-06-05` at `d6129e4`
+- `security/ocr-scan-gating-2026-06-05` at `c0519ed`
+- `security/staff-aggregate-cors-2026-06-05` at `67952f2`
+- `chore/security-mainline-consolidation-2026-06-05` at `5908308`
+
+Cleanup commands completed:
+
+- `git worktree prune`
+- `git remote prune origin`
+
+Final post-prune inventory before this docs-only closeout commit:
+
+- Only local branch: `main`.
+- No local branches reported by `git branch --no-merged main`.
+- Only worktree: `/Users/bryan/projects/open-practice` on `main`.
+- Only remote head reported by `git ls-remote --heads origin`: `main` at
+  `59083088d9c467b7ccf58ceadf3ab87ce695f772`.
+- Stashes preserved: `42`.
