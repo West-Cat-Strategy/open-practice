@@ -55,18 +55,21 @@ rotation workflow, and proactive migration of existing plaintext rows.
 `apps/web/app/dashboard-client.tsx` changed only to remove a stale unused type import that blocked
 the required `pnpm ci:local` lint gate; it is not part of the encryption behavior.
 
-## Main Replay Reconciliation
+## Source Branch Isolation And Main Replay Reconciliation
 
-- Current local `main` at `877dd1b` already contains the landed OP-T143 implementation commit
-  `8a497fb`, with OP-T143 marked `Done` in `docs/planning-and-progress.md` and indexed in
-  `docs/validation/README.md`.
-- Comparing the amended source branch `codex/op-t143-provider-config-encryption` (`54f84b0`) with
-  the landed OP-T143 commit (`8a497fb`) leaves only this proof note as the surviving delta.
-- The proof-only surviving replay changed
-  `docs/validation/OP-T143_PROVIDER_CONFIG_ENCRYPTION_PROOF_2026-06-02.md` without replaying stale
-  validation-index drift from the original source branch.
-- The later main-replay branch kept this provider-config proof focused while separate follow-up
-  proofs recorded object-storage encryption and inbound-email role posture.
+- The review-ready slice was the branch range `00472d8..HEAD` on
+  `codex/op-t143-provider-config-encryption`; both `git diff --name-status --no-renames HEAD^ HEAD`
+  and `git diff --name-status --no-renames main...HEAD` match the changed path set above.
+- A later main-replay pass compared the amended source branch
+  `codex/op-t143-provider-config-encryption` (`54f84b0`) with already-landed OP-T143 work and kept
+  the provider-config proof focused while separate follow-up proofs recorded object-storage
+  encryption and inbound-email role posture.
+- Older security and parity closeout commits stayed outside the branch: `8e1aa1c`, `8b5d666`,
+  `5902004`, `8c0ed87`, `2e7225b`, and `59403df` were all checked as non-ancestors of `HEAD`.
+- Screening the OP-T143 diff paths for later closeout markers such as `OP_SECURITY`, `OP_CLIO`,
+  `OP-T135`, `OP-T136`, `0048_`, `security-review`, `clio-parity`, `ai-operational`,
+  `legal-research`, `external-uploads`, `upload-verification`, and `security-headers` returned no
+  matches.
 
 ## Validation
 
@@ -78,6 +81,11 @@ the required `pnpm ci:local` lint gate; it is not part of the encryption behavio
 - Current-main replay selected checks passed: `pnpm format:check`, `pnpm docs:check`, and
   `pnpm policy:check`.
 - Current-main replay whitespace check passed: `git diff --check`.
+- Review-ready rerun on 2026-06-02: `pnpm verify:select -- --files <changed paths>` passed on the
+  exact 19-path OP-T143 diff and selected the same command set.
+- Review-ready rerun on 2026-06-02: `pnpm ci:local` passed after the isolation/proof update,
+  covering format, lint, typecheck, tests, database check, policy checks, build, and
+  `git diff --check`.
 - `pnpm --filter @open-practice/database test -- config-encryption.test.ts repository.providers-jobs-email.test.ts`
   passed: 17 files, 99 tests.
 - `pnpm --filter @open-practice/database build` passed.
