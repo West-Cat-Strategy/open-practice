@@ -88,6 +88,17 @@ afterEach(async () => {
 });
 
 describe("operational view routes", () => {
+  it("rejects external client users from staff operational views", async () => {
+    const response = await testServer({
+      authUser: user("client_external", ["matter-001"]),
+    }).inject({ method: "GET", url: "/api/operational-views" });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      error: { code: "STAFF_ACCESS_REQUIRED", message: "Staff access required" },
+    });
+  });
+
   it("returns built-in saved operational view results from visible matter data", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createShareLink({

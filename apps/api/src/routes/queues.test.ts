@@ -219,6 +219,17 @@ afterEach(async () => {
 });
 
 describe("queue routes", () => {
+  it("rejects external client users from staff queue aggregates", async () => {
+    const response = await testServer({
+      user: user("client_external", ["matter-001"]),
+    }).inject({ method: "GET", url: "/api/queues" });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      message: "Staff access required",
+    });
+  });
+
   it("returns owner/admin queue sections with the existing response shape", async () => {
     const response = await testServer().inject({ method: "GET", url: "/api/queues" });
     const payload = response.json<QueueResponse>();

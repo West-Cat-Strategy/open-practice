@@ -8,6 +8,7 @@ import {
   type SavedOperationalViewDefinition,
   type SavedOperationalViewPermissionScope,
 } from "@open-practice/domain";
+import { requireStaffAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
@@ -234,6 +235,8 @@ export function registerOperationalViewRoutes(
   });
 
   server.get("/api/operational-views", async (request) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
     const query = parseRequestPart(operationalViewsQuerySchema, request.query, "query");
     const matters = await repository.listMattersForUser(request.auth.user);
     const matterIds = new Set(matters.map((matter) => matter.id));

@@ -12,9 +12,9 @@ options, embedded-auth login, password setup, recovery-code verification, public
 options/verification, and token-scoped public portal routes such as `GET /api/portal/shares/:token`,
 external-upload collection links, intake-form links, guest-session status links, and the
 origin-restricted public consultation intake submission route. Configured public consultation
-origins are scoped to that unauthenticated submission route only; authenticated APIs continue to
-use localhost/development origins unless a separate app-origin policy is configured. Production
-accepts embedded session cookies or
+origins are scoped to that unauthenticated submission route only; authenticated API CORS allows the
+configured web origin from `PUBLIC_WEB_BASE_URL`/`WEBAUTHN_ORIGIN`, and arbitrary localhost browser
+origins are limited to development or e2e support. Production accepts embedded session cookies or
 `x-open-practice-session` tokens backed by PostgreSQL session records. Development may use
 `x-open-practice-user-id`, `x-open-practice-firm-id`, and bearer JWT helpers. Production rejects
 unauthenticated requests, development headers, and bearer JWTs.

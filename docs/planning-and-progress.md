@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-04
+**Last Updated:** 2026-06-05
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                             |
 | --------------------- | --------------------------------------------------------------------------------- |
-| Current focus         | OP-T152 scoped developer API enforcement and webhook replay boundary shipped.     |
+| Current focus         | Staff aggregate authorization and authenticated CORS carve-out ready for handoff. |
 | Next recommended pick | No active core-suite Clio parity candidate remains after OP-T144 through OP-T152. |
 | Ready rows            | 0                                                                                 |
 | Candidate rows        | 0                                                                                 |

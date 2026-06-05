@@ -427,16 +427,48 @@ function isPublicConsultationCorsRequest(request: FastifyRequest): boolean {
   );
 }
 
+function normalizeOrigin(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function authenticatedWebOrigins(options: ApiOptions): string[] {
+  const origins = Array.from(
+    new Set(
+      [normalizeOrigin(options.publicWebBaseUrl), normalizeOrigin(options.webAuthn.origin)].filter(
+        (origin): origin is string => Boolean(origin),
+      ),
+    ),
+  );
+  if (options.nodeEnv === "production") {
+    return origins.filter((origin) => !isLocalBrowserOrigin(origin));
+  }
+  return origins;
+}
+
 function corsOriginForRequest(
   request: FastifyRequest,
-  publicConsultationOrigins: string[],
+  options: {
+    allowLocalBrowserOrigins: boolean;
+    authenticatedOrigins: string[];
+    publicConsultationOrigins: string[];
+  },
 ): string | false {
   const origin = request.headers.origin;
   if (!origin) return false;
-  if (isLocalBrowserOrigin(origin)) return origin;
-  if (publicConsultationOrigins.includes(origin) && isPublicConsultationCorsRequest(request)) {
+  if (
+    options.publicConsultationOrigins.includes(origin) &&
+    isPublicConsultationCorsRequest(request)
+  ) {
     return origin;
   }
+  if (options.authenticatedOrigins.includes(origin)) return origin;
+  if (options.allowLocalBrowserOrigins && isLocalBrowserOrigin(origin)) return origin;
   return false;
 }
 
@@ -464,10 +496,15 @@ export function createApiServer(options: ApiOptions): FastifyInstance {
 
 function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
   const publicConsultationOrigins = options.publicConsultationIntake?.allowedOrigins ?? [];
+  const corsOptions = {
+    allowLocalBrowserOrigins: options.nodeEnv !== "production" || Boolean(options.e2eSupport),
+    authenticatedOrigins: authenticatedWebOrigins(options),
+    publicConsultationOrigins,
+  };
   server.register(cors, {
     delegator: (request, callback) => {
       callback(null, {
-        origin: corsOriginForRequest(request, publicConsultationOrigins),
+        origin: corsOriginForRequest(request, corsOptions),
         credentials: true,
         methods: CORS_METHODS,
       });

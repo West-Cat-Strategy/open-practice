@@ -193,6 +193,40 @@ describe("billing routes", () => {
     });
   });
 
+  it("rejects external client users from broad billing aggregates", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createUser({
+      id: "user-client-external",
+      firmId: "firm-west-legal",
+      displayName: "External Client",
+      email: "client@example.test",
+      role: "client_external",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    });
+    const server = testServer({ repository });
+    const headers = {
+      "x-open-practice-user-id": "user-client-external",
+      "x-open-practice-firm-id": "firm-west-legal",
+    };
+
+    for (const url of [
+      "/api/time-entries",
+      "/api/expense-entries",
+      "/api/invoices",
+      "/api/payments",
+      "/api/billing/payment-requests",
+      "/api/billing/trust-transfer-requests",
+    ]) {
+      const response = await server.inject({ method: "GET", url, headers });
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({
+        message: "Staff access required",
+      });
+    }
+  });
+
   it("denies non-billing roles from the billing dashboard", async () => {
     const response = await testServer().inject({
       method: "GET",

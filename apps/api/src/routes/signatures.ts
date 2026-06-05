@@ -6,7 +6,7 @@ import type {
   SignatureRequestRecord,
   SignatureRequestSignerRecord,
 } from "@open-practice/domain";
-import { requireAccess } from "../http/auth-guards.js";
+import { requireAccess, requireStaffAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
@@ -104,6 +104,8 @@ export function registerSignatureRoutes(
       });
       return repository.listSignatureRequests(request.auth.firmId, query);
     }
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
     if (request.auth.user.role === "owner_admin" || request.auth.user.role === "auditor") {
       assertSignatureAccess(request.auth, { resource: "signature_request", action: "read" });
       return repository.listSignatureRequests(request.auth.firmId);

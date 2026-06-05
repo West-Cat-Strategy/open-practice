@@ -50,7 +50,7 @@ import type {
   TimeEntry,
   TrustTransferRequestRecord,
 } from "@open-practice/domain";
-import { hasFirmWideLedgerAccess, requireAccess } from "../http/auth-guards.js";
+import { hasFirmWideLedgerAccess, requireAccess, requireStaffAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
@@ -725,6 +725,9 @@ export function registerBillingRoutes(
       return { entries: await repository.listTimeEntries(request.auth.firmId, query) };
     }
 
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
+
     if (hasFirmWideLedgerAccess(request.auth.user)) {
       return { entries: await repository.listTimeEntries(request.auth.firmId, query) };
     }
@@ -961,6 +964,9 @@ export function registerBillingRoutes(
       return { entries: await repository.listExpenseEntries(request.auth.firmId, query) };
     }
 
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
+
     if (hasFirmWideLedgerAccess(request.auth.user)) {
       return { entries: await repository.listExpenseEntries(request.auth.firmId, query) };
     }
@@ -1164,6 +1170,9 @@ export function registerBillingRoutes(
       });
       return { invoices: await repository.listInvoices(request.auth.firmId, query) };
     }
+
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
 
     if (hasFirmWideLedgerAccess(request.auth.user)) {
       return { invoices: await repository.listInvoices(request.auth.firmId, query) };
@@ -1495,6 +1504,9 @@ export function registerBillingRoutes(
       return { payments: await repository.listPayments(request.auth.firmId, query) };
     }
 
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
+
     if (hasFirmWideLedgerAccess(request.auth.user)) {
       return { payments: await repository.listPayments(request.auth.firmId, query) };
     }
@@ -1577,6 +1589,9 @@ export function registerBillingRoutes(
         requests: await repository.listHostedPaymentRequests(request.auth.firmId, query),
       };
     }
+
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
 
     if (hasFirmWideLedgerAccess(request.auth.user)) {
       return {
@@ -1923,6 +1938,9 @@ export function registerBillingRoutes(
         requests: await repository.listTrustTransferRequests(request.auth.firmId, query),
       };
     }
+
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
 
     if (hasFirmWideLedgerAccess(request.auth.user)) {
       return {
