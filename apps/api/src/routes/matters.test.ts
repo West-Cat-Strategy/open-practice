@@ -89,8 +89,7 @@ describe("matter routes", () => {
   });
 
   it("rejects external client users from staff matter aggregates", async () => {
-    const authUser = user("client_external", ["matter-001"]);
-    const server = testServer(authUser);
+    const server = testServer(user("client_external", ["matter-001"]));
 
     const matters = await server.inject({ method: "GET", url: "/api/matters" });
     const overview = await server.inject({ method: "GET", url: "/api/overview" });

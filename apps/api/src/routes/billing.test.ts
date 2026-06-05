@@ -204,20 +204,27 @@ describe("billing routes", () => {
       assignedMatterIds: ["matter-001"],
       mfaEnabled: true,
     });
+    const server = testServer({ repository });
+    const headers = {
+      "x-open-practice-user-id": "user-client-external",
+      "x-open-practice-firm-id": "firm-west-legal",
+    };
 
-    const response = await testServer({ repository }).inject({
-      method: "GET",
-      url: "/api/time-entries",
-      headers: {
-        "x-open-practice-user-id": "user-client-external",
-        "x-open-practice-firm-id": "firm-west-legal",
-      },
-    });
+    for (const url of [
+      "/api/time-entries",
+      "/api/expense-entries",
+      "/api/invoices",
+      "/api/payments",
+      "/api/billing/payment-requests",
+      "/api/billing/trust-transfer-requests",
+    ]) {
+      const response = await server.inject({ method: "GET", url, headers });
 
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({
-      message: "Staff access required",
-    });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({
+        message: "Staff access required",
+      });
+    }
   });
 
   it("denies non-billing roles from the billing dashboard", async () => {
