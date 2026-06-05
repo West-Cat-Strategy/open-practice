@@ -4,6 +4,7 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import {
   answerSnapshots,
   authAccounts,
+  auditEvents,
   authPasswordSetupTokens,
   authSessions,
   accessLogs,
@@ -83,6 +84,18 @@ import {
 } from "../src/schema.js";
 
 describe("database schema hardening", () => {
+  it("orders audit events with a required per-firm sequence", () => {
+    const config = getTableConfig(auditEvents);
+
+    expect(config.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["firm_id", "sequence", "previous_hash", "hash"]),
+    );
+    expect(config.columns.find((column) => column.name === "sequence")?.notNull).toBe(true);
+    expect(config.indexes.map((index) => index.config.name)).toContain(
+      "audit_events_firm_sequence_idx",
+    );
+  });
+
   it("requires idempotency request fingerprints on trust transactions", () => {
     const columns = getTableConfig(trustTransactions).columns;
     const fingerprint = columns.find((column) => column.name === "request_fingerprint");
@@ -579,6 +592,46 @@ describe("database schema hardening", () => {
     expect(cleanupIndex).toBeLessThan(matterRequiredIndex);
     expect(userBackfillIndex).toBeGreaterThan(matterRequiredIndex);
     expect(userBackfillIndex).toBeLessThan(createdByRequiredIndex);
+  });
+
+  it("backfills audit sequence by walking hash chains", () => {
+    const migration = readFileSync(
+      new URL("../migrations/0051_audit_event_sequence.sql", import.meta.url),
+      "utf8",
+    );
+
+    expect(migration).toContain('WITH RECURSIVE "audit_chain" AS');
+    expect(migration).toContain("\"previous_hash\" = repeat('0', 64)");
+    expect(migration).toContain('AND "child"."previous_hash" = "audit_chain"."hash"');
+    expect(migration).toContain("could not walk every per-firm hash chain");
+    expect(migration).not.toContain('ORDER BY "occurred_at", "id"');
+  });
+
+  it("guards duplicate document checks with the same advisory transaction lock", () => {
+    const repository = readFileSync(
+      new URL("../src/repository/drizzle.ts", import.meta.url),
+      "utf8",
+    );
+    const completeUpload = repository.slice(
+      repository.indexOf("async completeDocumentUpload"),
+      repository.indexOf("async reviewUploadedDocument"),
+    );
+    const promoteAttachment = repository.slice(
+      repository.indexOf("async promoteInboundEmailAttachmentToDocument"),
+    );
+
+    expect(repository).toContain("function documentChecksumLockKey");
+    expect(repository).toContain(
+      "return `${input.firmId}|${input.matterId}|${input.checksumSha256}`;",
+    );
+    for (const method of [completeUpload, promoteAttachment]) {
+      expect(method).toContain("return this.db.transaction(async (tx) =>");
+      expect(method).toContain("pg_advisory_xact_lock");
+      expect(method).toContain("documentChecksumLockKey({");
+      expect(method.indexOf("pg_advisory_xact_lock")).toBeLessThan(
+        method.indexOf("eq(schema.documents.checksumSha256"),
+      );
+    }
   });
 
   it("persists signature lifecycle tables", () => {

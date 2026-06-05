@@ -1707,4 +1707,93 @@ describe("worker processors", () => {
       ]),
     );
   });
+
+  it("skips OCR jobs before reading storage when document scanning has not passed", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createDocumentUploadIntent({
+      id: "doc-ocr-scan-gated",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      title: "Scan gated OCR.pdf",
+      storageKey: "matters/matter-001/scan-gated-ocr.pdf",
+      checksumSha256: "f".repeat(64),
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.completeDocumentUpload({
+      firmId: "firm-west-legal",
+      documentId: "doc-ocr-scan-gated",
+      checksumSha256: "f".repeat(64),
+      scanStatus: "queued",
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-ocr-scan-gated",
+      firmId: "firm-west-legal",
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "queued",
+      targetResourceType: "document",
+      targetResourceId: "doc-ocr-scan-gated",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      queuedAt: "2026-05-01T00:00:00.000Z",
+      metadata: { documentId: "doc-ocr-scan-gated", language: "eng" },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "document",
+        resourceId: "doc-ocr-scan-gated",
+        metadata: { documentId: "doc-ocr-scan-gated", language: "eng" },
+      },
+      jobLifecycleId: "job-ocr-scan-gated",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      repository,
+      s3: {
+        bucket: "open-practice-documents",
+        client: {
+          async send() {
+            throw new Error("storage should not be read before scan passes");
+          },
+        } as unknown as S3Client,
+      },
+      ocrProvider: {
+        async extractText() {
+          throw new Error("OCR should not run before scan passes");
+        },
+      },
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "skipped",
+      reason: "Document scan has not passed",
+      metadata: {
+        documentId: "doc-ocr-scan-gated",
+        scanStatus: "queued",
+      },
+    });
+    await expect(
+      repository.getDocumentTextExtractions("firm-west-legal", "doc-ocr-scan-gated"),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "ocr" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "job-ocr-scan-gated",
+          status: "skipped",
+          metadata: expect.objectContaining({
+            documentId: "doc-ocr-scan-gated",
+            scanStatus: "queued",
+          }),
+        }),
+      ]),
+    );
+  });
 });

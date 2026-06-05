@@ -101,7 +101,7 @@ type QueueEligibility =
         | "review_required"
         | "upload_not_verified"
         | "checksum_not_verified"
-        | "scan_failed";
+        | "scan_required";
     };
 
 export interface QueueDocumentOcrInput {
@@ -141,6 +141,10 @@ function assertDocumentProcessingAccess(
   if (!access.ok) throw access.error;
 }
 
+function documentScanSafeForOcr(document: DocumentRecord): boolean {
+  return document.scanStatus === "passed" || document.scanStatus === "not_required";
+}
+
 function assertDocumentProcessable(document: DocumentRecord): void {
   if (document.uploadStatus !== "verified") {
     throw Object.assign(new Error("Document is not verified for processing"), { statusCode: 409 });
@@ -150,8 +154,8 @@ function assertDocumentProcessable(document: DocumentRecord): void {
       statusCode: 409,
     });
   }
-  if (document.scanStatus === "failed") {
-    throw Object.assign(new Error("Document scan failed and cannot be processed"), {
+  if (!documentScanSafeForOcr(document)) {
+    throw Object.assign(new Error("Document scan must pass before OCR processing"), {
       statusCode: 409,
     });
   }
@@ -258,7 +262,7 @@ function queueEligibility(input: {
   ) {
     return { eligible: false, reason: "checksum_not_verified" };
   }
-  if (input.document.scanStatus === "failed") return { eligible: false, reason: "scan_failed" };
+  if (!documentScanSafeForOcr(input.document)) return { eligible: false, reason: "scan_required" };
   return { eligible: true };
 }
 

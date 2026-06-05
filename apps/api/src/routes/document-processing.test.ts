@@ -1101,6 +1101,7 @@ describe("document processing routes", () => {
       firmId,
       documentId: "doc-duplicate",
       checksumSha256: "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c",
+      scanStatus: "passed",
     });
     expect(duplicate.checksumStatus).toBe("duplicate");
 
@@ -1120,6 +1121,32 @@ describe("document processing routes", () => {
         metadata: expect.objectContaining({ checksumStatus: "duplicate" }),
       }),
     );
+  });
+
+  it("keeps duplicate-checksum document completion scoped to the same matter", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createDocumentUploadIntent({
+      id: "doc-cross-matter-checksum",
+      firmId,
+      matterId: "matter-002",
+      title: "Cross matter retainer.pdf",
+      storageKey: "matters/matter-002/cross-matter-retainer.pdf",
+      checksumSha256: "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c",
+      classification: "general",
+      legalHold: false,
+    });
+
+    const completed = await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-cross-matter-checksum",
+      checksumSha256: "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c",
+    });
+
+    expect(completed).toMatchObject({
+      checksumStatus: "verified",
+      uploadStatus: "verified",
+    });
+    expect(completed.duplicateOfDocumentId).toBeUndefined();
   });
 
   it("replays OCR queue requests for the same document without adding duplicate jobs", async () => {
@@ -1152,7 +1179,7 @@ describe("document processing routes", () => {
   it("rejects cross-matter and unverified document processing", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await enableOcrProvider(repository);
-    const { queue } = fakeOcrQueue();
+    const { queue, jobs } = fakeOcrQueue();
     const wrongMatter = await testServer({
       repository,
       ocrJobQueue: queue,
@@ -1202,5 +1229,58 @@ describe("document processing routes", () => {
       url: "/api/document-processing/documents/doc-rejected/queue",
     });
     expect(rejectedQueue.statusCode).toBe(409);
+
+    await repository.createDocumentUploadIntent({
+      id: "doc-scan-queued",
+      firmId,
+      matterId: "matter-001",
+      title: "Scan queued upload.pdf",
+      storageKey: "matters/matter-001/doc-scan-queued.pdf",
+      checksumSha256: "e".repeat(64),
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.completeDocumentUpload({
+      firmId,
+      documentId: "doc-scan-queued",
+      checksumSha256: "e".repeat(64),
+      scanStatus: "queued",
+    });
+    const queuedScan = await testServer({ repository, ocrJobQueue: queue }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-scan-queued/queue",
+    });
+    expect(queuedScan.statusCode).toBe(409);
+    expect(queuedScan.json()).toMatchObject({
+      message: "Document scan must pass before OCR processing",
+    });
+
+    await repository.updateDocumentScanStatus({
+      firmId,
+      documentId: "doc-scan-queued",
+      scanStatus: "pending",
+    });
+    const pendingScan = await testServer({ repository, ocrJobQueue: queue }).inject({
+      method: "POST",
+      url: "/api/document-processing/documents/doc-scan-queued/queue",
+    });
+    expect(pendingScan.statusCode).toBe(409);
+    expect(pendingScan.json()).toMatchObject({
+      message: "Document scan must pass before OCR processing",
+    });
+
+    const workbench = await testServer({ repository, ocrJobQueue: queue }).inject({
+      method: "GET",
+      url: "/api/document-processing/workbench?matterId=matter-001",
+    });
+    expect(workbench.json().documents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          document: expect.objectContaining({ id: "doc-scan-queued" }),
+          queueEligibility: { eligible: false, reason: "scan_required" },
+        }),
+      ]),
+    );
+    expect(jobs).toEqual([]);
   });
 });

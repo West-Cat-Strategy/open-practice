@@ -473,9 +473,10 @@ export function registerExternalUploadRoutes(
   server: FastifyInstance,
   { repository, s3, jwtSecret, emailJobQueue }: ApiRouteDependencies & { jwtSecret?: string },
 ): void {
-  server.get("/api/external-uploads/status", async () =>
-    buildExternalUploadsStatus({ s3, jwtSecret }),
-  );
+  server.get("/api/external-uploads/status", async (request) => {
+    assertExternalUploadAccess(request.auth, { resource: "provider_setting", action: "read" });
+    return buildExternalUploadsStatus({ s3, jwtSecret });
+  });
 
   server.get("/api/external-uploads", async (request) => {
     const query = parseRequestPart(externalUploadsQuerySchema, request.query, "query");

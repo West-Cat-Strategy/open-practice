@@ -154,7 +154,7 @@ describe("repository inbound email", () => {
     });
   });
 
-  it("marks promoted inbound attachments as duplicates when their checksum already exists", async () => {
+  it("does not mark promoted inbound attachments as duplicates across matters", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const { message, attachment } = await createInboundMessageWithAttachment(repository, {
       messageId: "inbound-message-duplicate",
@@ -168,6 +168,36 @@ describe("repository inbound email", () => {
         messageId: message.id,
         attachmentId: attachment.id,
         matterId: "matter-002",
+        title: "Duplicate retainer.pdf",
+        classification: "general",
+        legalHold: false,
+        now,
+      }),
+    ).resolves.toMatchObject({
+      created: true,
+      document: {
+        checksumStatus: "verified",
+        uploadStatus: "verified",
+        scanStatus: "queued",
+      },
+    });
+  });
+
+  it("marks promoted inbound attachments as duplicates within the same matter", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { message, attachment } = await createInboundMessageWithAttachment(repository, {
+      messageId: "inbound-message-same-matter-duplicate",
+      attachmentId: "inbound-attachment-same-matter-duplicate",
+      matterId: "matter-001",
+      checksumSha256: "c8a1d42f0a2d4a4ef5ac21ad1f3b1d85e422bbf721e783f611bce97c7a0f4f4c",
+    });
+
+    await expect(
+      repository.promoteInboundEmailAttachmentToDocument({
+        firmId: "firm-west-legal",
+        messageId: message.id,
+        attachmentId: attachment.id,
+        matterId: "matter-001",
         title: "Duplicate retainer.pdf",
         classification: "general",
         legalHold: false,

@@ -1086,7 +1086,9 @@ describe("inbound email routes", () => {
 
   it("returns one parsed message with only that message's inbound attachments", async () => {
     const repository = new InMemoryOpenPracticeRepository();
-    await repository.createInboundEmailMessage(message());
+    await repository.createInboundEmailMessage(
+      message({ parsedHtmlStorageKey: "inbound/message-001/body.html" }),
+    );
     await repository.createInboundEmailMessage(message({ id: "inbound-message-002" }));
     await repository.createInboundEmailAttachment(attachment());
     await repository.createInboundEmailAttachment(
@@ -1098,9 +1100,14 @@ describe("inbound email routes", () => {
       }),
     );
 
-    const response = await testServer(repository, user("licensee", ["matter-001"])).inject({
+    const server = testServer(repository, user("licensee", ["matter-001"]));
+    const response = await server.inject({
       method: "GET",
       url: "/api/inbound-email/messages/inbound-message-001",
+    });
+    const list = await server.inject({
+      method: "GET",
+      url: "/api/inbound-email/messages?matterId=matter-001",
     });
 
     expect(response.statusCode).toBe(200);
@@ -1122,6 +1129,13 @@ describe("inbound email routes", () => {
     });
     expect(response.json().attachments).toHaveLength(1);
     expect(response.json().attachments[0]).not.toHaveProperty("documentId");
+    for (const body of [response.body, list.body]) {
+      expect(body).not.toContain("rawStorageKey");
+      expect(body).not.toContain("parsedHtmlStorageKey");
+      expect(body).not.toContain("storageKey");
+      expect(body).not.toContain("inbound/message-001/body.html");
+      expect(body).not.toContain("inbound/message-001/filing.pdf");
+    }
   });
 
   it("applies matter-scoped access to inbound email message lists", async () => {
@@ -1320,6 +1334,45 @@ describe("inbound email routes", () => {
       },
     });
     expect(JSON.stringify(secondResponse.json())).not.toContain("Second internal-only context");
+    const listResponse = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages?matterId=matter-001",
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      messages: [
+        expect.objectContaining({
+          id: "inbound-message-unscoped",
+          metadata: {
+            staffTriage: expect.objectContaining({
+              privateNoteCount: 2,
+              latestPrivateNoteAt: expect.any(String),
+            }),
+          },
+        }),
+      ],
+    });
+    expect(JSON.stringify(listResponse.json())).not.toContain("Internal call-back context");
+    expect(JSON.stringify(listResponse.json())).not.toContain("Second internal-only context");
+
+    const detailResponse = await testServer(repository, user("licensee", ["matter-001"])).inject({
+      method: "GET",
+      url: "/api/inbound-email/messages/inbound-message-unscoped",
+    });
+    expect(detailResponse.statusCode).toBe(200);
+    expect(detailResponse.json()).toMatchObject({
+      message: {
+        id: "inbound-message-unscoped",
+        metadata: {
+          staffTriage: expect.objectContaining({
+            privateNoteCount: 2,
+            latestPrivateNoteAt: expect.any(String),
+          }),
+        },
+      },
+    });
+    expect(JSON.stringify(detailResponse.json())).not.toContain("Internal call-back context");
+    expect(JSON.stringify(detailResponse.json())).not.toContain("Second internal-only context");
     const secondUpdated = await repository.getInboundEmailMessage(
       firmId,
       "inbound-message-unscoped",
@@ -1503,12 +1556,10 @@ describe("inbound email routes", () => {
 
   it("promotes a matter-scoped attachment to a document", async () => {
     const repository = new InMemoryOpenPracticeRepository();
-    await enableOcrProvider(repository);
     await repository.createInboundEmailMessage(message());
     await repository.createInboundEmailAttachment(attachment());
-    const { queue, jobs } = fakeOcrQueue();
 
-    const response = await testServer(repository, user("licensee", ["matter-001"]), queue).inject({
+    const response = await testServer(repository, user("licensee", ["matter-001"])).inject({
       method: "POST",
       url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-001/promote-document",
       payload: {
@@ -1532,7 +1583,6 @@ describe("inbound email routes", () => {
       document: {
         title: "Filed materials.pdf",
         matterId: "matter-001",
-        storageKey: "inbound/message-001/filing.pdf",
         checksumSha256: "a".repeat(64),
         classification: "work_product",
         legalHold: true,
@@ -1540,48 +1590,19 @@ describe("inbound email routes", () => {
         checksumStatus: "verified",
         scanStatus: "queued",
       },
-      queuedOcr: {
-        status: "queued",
-        task: "ocr",
-        language: "eng",
-        documentId: expect.any(String),
-        job: {
-          queueName: "ocr",
-          jobName: "extract_document_text",
-          status: "queued",
-          targetResourceType: "document",
-          targetResourceId: expect.any(String),
-        },
-      },
     });
     expect(payload.document.id).toBe(payload.attachment.documentId);
-    expect(payload.queuedOcr.documentId).toBe(payload.document.id);
-    expect(payload.queuedOcr.job.targetResourceId).toBe(payload.document.id);
-    expect(jobs).toEqual([
-      expect.objectContaining({
-        name: "extract_document_text",
-        jobId: payload.queuedOcr.job.id,
-        data: expect.objectContaining({
-          firmId,
-          resourceType: "document",
-          resourceId: payload.document.id,
-          metadata: expect.objectContaining({
-            matterId: "matter-001",
-            documentId: payload.document.id,
-            task: "ocr",
-            language: "eng",
-            checksumStatus: "verified",
-            scanStatus: "queued",
-          }),
-        }),
-      }),
-    ]);
+    expect(payload).not.toHaveProperty("queuedOcr");
+    expect(payload.document).not.toHaveProperty("storageKey");
+    expect(payload.attachment).not.toHaveProperty("storageKey");
+    expect(JSON.stringify(payload)).not.toContain("inbound/message-001/filing.pdf");
 
     const detail = await testServer(repository, user("licensee", ["matter-001"])).inject({
       method: "GET",
       url: "/api/inbound-email/messages/inbound-message-001",
     });
     expect(detail.json().attachments[0]).toMatchObject({ documentId: payload.document.id });
+    expect(detail.body).not.toContain("storageKey");
 
     const audit = await repository.listAuditEvents(firmId);
     const promotionAudit = audit.events.find(
@@ -1631,7 +1652,7 @@ describe("inbound email routes", () => {
     });
   });
 
-  it("keeps default OCR queueing atomic when no OCR queue is configured", async () => {
+  it("rejects explicit OCR queueing before inbound attachments pass scanning", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createInboundEmailMessage(message());
     await repository.createInboundEmailAttachment(attachment());
@@ -1639,10 +1660,13 @@ describe("inbound email routes", () => {
     const response = await testServer(repository).inject({
       method: "POST",
       url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-001/promote-document",
+      payload: { queueOcr: true },
     });
 
-    expect(response.statusCode).toBe(503);
-    expect(response.json()).toMatchObject({ message: "OCR queue is not configured" });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Inbound email attachments must pass document scanning before OCR can be queued",
+    });
     const detail = await testServer(repository).inject({
       method: "GET",
       url: "/api/inbound-email/messages/inbound-message-001",
@@ -1650,7 +1674,7 @@ describe("inbound email routes", () => {
     expect(detail.json().attachments[0]).not.toHaveProperty("documentId");
   });
 
-  it("keeps default OCR queueing atomic when no OCR provider is enabled", async () => {
+  it("promotes without OCR when no OCR provider is enabled", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createInboundEmailMessage(message());
     await repository.createInboundEmailAttachment(attachment());
@@ -1661,20 +1685,22 @@ describe("inbound email routes", () => {
       url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-001/promote-document",
     });
 
-    expect(response.statusCode).toBe(503);
-    expect(response.json()).toMatchObject({ message: "OCR provider is not configured" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).not.toHaveProperty("queuedOcr");
     expect(jobs).toEqual([]);
     const detail = await testServer(repository).inject({
       method: "GET",
       url: "/api/inbound-email/messages/inbound-message-001",
     });
-    expect(detail.json().attachments[0]).not.toHaveProperty("documentId");
+    expect(detail.json().attachments[0]).toMatchObject({
+      documentId: response.json().document.id,
+    });
     await expect(repository.listJobLifecycleRecords(firmId, { queueName: "ocr" })).resolves.toEqual(
       [],
     );
   });
 
-  it("keeps default OCR queueing atomic when document storage is unavailable", async () => {
+  it("promotes without OCR when document storage is unavailable", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createInboundEmailMessage(message());
     await repository.createInboundEmailAttachment(attachment());
@@ -1691,14 +1717,16 @@ describe("inbound email routes", () => {
       url: "/api/inbound-email/messages/inbound-message-001/attachments/inbound-attachment-001/promote-document",
     });
 
-    expect(response.statusCode).toBe(503);
-    expect(response.json()).toMatchObject({ message: "OCR document storage is not configured" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).not.toHaveProperty("queuedOcr");
     expect(jobs).toEqual([]);
     const detail = await testServer(repository).inject({
       method: "GET",
       url: "/api/inbound-email/messages/inbound-message-001",
     });
-    expect(detail.json().attachments[0]).not.toHaveProperty("documentId");
+    expect(detail.json().attachments[0]).toMatchObject({
+      documentId: response.json().document.id,
+    });
     await expect(repository.listJobLifecycleRecords(firmId, { queueName: "ocr" })).resolves.toEqual(
       [],
     );

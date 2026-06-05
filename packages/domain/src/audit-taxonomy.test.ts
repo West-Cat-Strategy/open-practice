@@ -13,6 +13,7 @@ function auditEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
     resourceId: "email-001",
     occurredAt: "2026-05-02T12:00:00.000Z",
     metadata: { matterId: "matter-001", recipientCount: 1, jobId: "job-001" },
+    sequence: 1,
     previousHash: "0".repeat(64),
     hash: "1".repeat(64),
     ...overrides,
@@ -996,7 +997,10 @@ describe("audit event taxonomy", () => {
       category: "unknown",
       known: false,
     });
+    expect(first.sequence).toBe(1);
+    expect(second.sequence).toBe(2);
     expect(verifyAuditChain([first, second])).toBe(true);
+    expect(verifyAuditChain([first, { ...second, sequence: 3 }])).toBe(false);
   });
 
   it("classifies the synthetic seed audit events", () => {

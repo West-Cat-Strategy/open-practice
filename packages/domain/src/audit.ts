@@ -9,13 +9,14 @@ export interface AuditEvent {
   action: string;
   resourceType: string;
   resourceId: string;
+  sequence: number;
   occurredAt: string;
   metadata: Record<string, unknown>;
   previousHash: string;
   hash: string;
 }
 
-export type NewAuditEvent = Omit<AuditEvent, "previousHash" | "hash">;
+export type NewAuditEvent = Omit<AuditEvent, "sequence" | "previousHash" | "hash">;
 
 function canonicalize(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -28,7 +29,9 @@ function canonicalize(value: unknown): string {
     .join(",")}}`;
 }
 
-export function hashAuditPayload(payload: Omit<AuditEvent, "hash">): string {
+type AuditHashPayload = Omit<AuditEvent, "sequence" | "hash">;
+
+export function hashAuditPayload(payload: AuditHashPayload): string {
   return createHash("sha256").update(canonicalize(payload)).digest("hex");
 }
 
@@ -37,16 +40,20 @@ export function appendAuditEvent(
   next: NewAuditEvent,
 ): AuditEvent {
   const previousHash = previous?.hash ?? GENESIS_AUDIT_HASH;
+  const sequence = (previous?.sequence ?? 0) + 1;
   const eventWithoutHash = { ...next, previousHash };
   return {
     ...eventWithoutHash,
+    sequence,
     hash: hashAuditPayload(eventWithoutHash),
   };
 }
 
 export function verifyAuditChain(events: AuditEvent[]): boolean {
   let previousHash = GENESIS_AUDIT_HASH;
+  let previousSequence = 0;
   for (const event of events) {
+    if (event.sequence !== previousSequence + 1) return false;
     if (event.previousHash !== previousHash) return false;
     const withoutHash = {
       id: event.id,
@@ -60,6 +67,7 @@ export function verifyAuditChain(events: AuditEvent[]): boolean {
       previousHash: event.previousHash,
     };
     if (event.hash !== hashAuditPayload(withoutHash)) return false;
+    previousSequence = event.sequence;
     previousHash = event.hash;
   }
   return true;

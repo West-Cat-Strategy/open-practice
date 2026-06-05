@@ -12,7 +12,7 @@ import type {
   ProfessionalRole,
   User,
 } from "@open-practice/domain";
-import { requireAccess } from "../http/auth-guards.js";
+import { requireAccess, requireStaffAccess } from "../http/auth-guards.js";
 
 const provinceSchema = z.enum(["BC", "ON", "CANADA", "OTHER"]);
 
@@ -112,6 +112,8 @@ export function registerMatterRoutes(
   options: { repository: OpenPracticeRepository },
 ): void {
   server.get("/api/overview", async (request) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
     const firmWideAccess = requireAccess(request.auth, { resource: "firm", action: "read" });
     const overview = await options.repository.getOverview(request.auth.firmId);
     if (firmWideAccess.ok) return overview;
@@ -120,9 +122,11 @@ export function registerMatterRoutes(
     return scopedOverview({ overview, matters, user: request.auth.user });
   });
 
-  server.get("/api/matters", async (request) =>
-    options.repository.listMattersForUser(request.auth.user),
-  );
+  server.get("/api/matters", async (request) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
+    return options.repository.listMattersForUser(request.auth.user);
+  });
 
   server.post("/api/matters", async (request, reply) => {
     const access = requireAccess(request.auth, { resource: "matter", action: "create" });

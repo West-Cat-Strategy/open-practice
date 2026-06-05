@@ -88,6 +88,19 @@ describe("matter routes", () => {
     });
   });
 
+  it("rejects external client users from staff matter aggregates", async () => {
+    const authUser = user("client_external", ["matter-001"]);
+    const server = testServer(authUser);
+
+    const matters = await server.inject({ method: "GET", url: "/api/matters" });
+    const overview = await server.inject({ method: "GET", url: "/api/overview" });
+
+    expect(matters.statusCode).toBe(403);
+    expect(overview.statusCode).toBe(403);
+    expect(matters.json()).toMatchObject({ message: "Staff access required" });
+    expect(overview.json()).toMatchObject({ message: "Staff access required" });
+  });
+
   it("lists firm matters for firm-wide readers without assignments", async () => {
     const response = await testServer(user("owner_admin", [])).inject({
       method: "GET",

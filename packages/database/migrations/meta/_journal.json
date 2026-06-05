@@ -358,6 +358,13 @@
       "when": 1780272005000,
       "tag": "0050_security_remediation_auth_and_guest_links",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1780272006000,
+      "tag": "0051_audit_event_sequence",
+      "breakpoints": true
     }
   ]
 }

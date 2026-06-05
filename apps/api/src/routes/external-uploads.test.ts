@@ -177,6 +177,31 @@ describe("external upload routes", () => {
     });
   });
 
+  it("denies external upload provider status to client-external users", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createUser({
+      id: "user-client-external",
+      firmId: "firm-west-legal",
+      displayName: "External Client",
+      email: "client@example.test",
+      role: "client_external",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    });
+    const { server } = testServer({ repository });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/external-uploads/status",
+      headers: {
+        "x-open-practice-user-id": "user-client-external",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
   it("creates, lists, and revokes sanitized matter-scoped upload links", async () => {
     const { repository, server } = testServer({ s3: s3Config() });
 

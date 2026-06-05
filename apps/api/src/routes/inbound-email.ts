@@ -6,6 +6,8 @@ import {
   allowedOcrLanguages,
   canAccess,
   type AccessRequest,
+  type DocumentRecord,
+  type InboundEmailAttachmentRecord,
   type JobLifecycleRecord,
   type InboundEmailMessageRecord,
   type ProviderSettingRecord,
@@ -15,7 +17,6 @@ import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
-import { assertOcrProviderConfigured, queueDocumentOcr } from "./document-processing.js";
 import {
   buildIdempotencyKey,
   idempotencyMetadata,
@@ -142,7 +143,7 @@ const promoteAttachmentBodySchema = z.object({
     .enum(["general", "privileged", "work_product", "financial", "identity"])
     .default("general"),
   legalHold: z.boolean().default(false),
-  queueOcr: z.boolean().default(true),
+  queueOcr: z.boolean().default(false),
   language: z.enum(allowedOcrLanguages).default("eng"),
 });
 
@@ -152,6 +153,39 @@ function assertInboundEmailAccess(
 ): void {
   const access = requireAccess(context, request);
   if (!access.ok) throw access.error;
+}
+
+function serializeInboundEmailMessage(message: InboundEmailMessageRecord) {
+  const safe = { ...message } as Omit<
+    InboundEmailMessageRecord,
+    "rawStorageKey" | "parsedHtmlStorageKey"
+  > &
+    Partial<Pick<InboundEmailMessageRecord, "rawStorageKey" | "parsedHtmlStorageKey">>;
+  delete safe.rawStorageKey;
+  delete safe.parsedHtmlStorageKey;
+  const { metadata } = safe;
+  const staffTriage = serializeStaffTriageDetail(metadata.staffTriage);
+  return {
+    ...safe,
+    metadata: {
+      ...metadata,
+      ...(staffTriage ? { staffTriage } : { staffTriage: undefined }),
+    },
+  };
+}
+
+function serializeInboundEmailAttachment(attachment: InboundEmailAttachmentRecord) {
+  const safe = { ...attachment } as Omit<InboundEmailAttachmentRecord, "storageKey"> &
+    Partial<Pick<InboundEmailAttachmentRecord, "storageKey">>;
+  delete safe.storageKey;
+  return safe;
+}
+
+function serializePromotedInboundEmailDocument(document: DocumentRecord) {
+  const safe = { ...document } as Omit<DocumentRecord, "storageKey"> &
+    Partial<Pick<DocumentRecord, "storageKey">>;
+  delete safe.storageKey;
+  return safe;
 }
 
 function assertInboundEmailStatusAccess(context: ApiAuthContext): void {
@@ -679,7 +713,7 @@ export async function buildInboundEmailStatus(input: {
 
 export function registerInboundEmailRoutes(
   server: FastifyInstance,
-  { repository, ocrJobQueue, inboundEmailJobQueue, s3 }: ApiRouteDependencies,
+  { repository, inboundEmailJobQueue, s3 }: ApiRouteDependencies,
 ): void {
   registerMailgunUrlEncodedParser(server);
 
@@ -939,7 +973,7 @@ export function registerInboundEmailRoutes(
 
     return {
       status: "available",
-      messages,
+      messages: messages.map(serializeInboundEmailMessage),
     };
   });
 
@@ -967,8 +1001,8 @@ export function registerInboundEmailRoutes(
 
     return {
       status: "available",
-      message,
-      attachments,
+      message: serializeInboundEmailMessage(message),
+      attachments: attachments.map(serializeInboundEmailAttachment),
     };
   });
 
@@ -1151,16 +1185,12 @@ export function registerInboundEmailRoutes(
           { statusCode: 409 },
         );
       }
-      if (body.queueOcr && !ocrJobQueue) {
-        throw Object.assign(new Error("OCR queue is not configured"), { statusCode: 503 });
-      }
-      if (body.queueOcr && !s3) {
-        throw Object.assign(new Error("OCR document storage is not configured"), {
-          statusCode: 503,
-        });
-      }
       if (body.queueOcr) {
-        await assertOcrProviderConfigured({ repository, firmId: request.auth.firmId });
+        throw new ApiHttpError(
+          409,
+          "DOCUMENT_SCAN_REQUIRED",
+          "Inbound email attachments must pass document scanning before OCR can be queued",
+        );
       }
 
       const promoted = await repository.promoteInboundEmailAttachmentToDocument({
@@ -1190,24 +1220,12 @@ export function registerInboundEmailRoutes(
         },
       });
 
-      const queuedOcr = body.queueOcr
-        ? await queueDocumentOcr({
-            repository,
-            ocrJobQueue,
-            s3,
-            auth: request.auth,
-            document: promoted.document,
-            language: body.language,
-          })
-        : undefined;
-
       return {
         status: "promoted",
         created: promoted.created,
         inboundMessageId: message.id,
-        attachment: promoted.attachment,
-        document: promoted.document,
-        queuedOcr,
+        attachment: serializeInboundEmailAttachment(promoted.attachment),
+        document: serializePromotedInboundEmailDocument(promoted.document),
       };
     },
   );

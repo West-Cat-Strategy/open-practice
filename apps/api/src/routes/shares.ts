@@ -252,12 +252,15 @@ export function registerShareRoutes(
   server: FastifyInstance,
   { repository, jwtSecret, emailJobQueue }: RegisterShareRouteOptions,
 ): void {
-  server.get("/api/shares/status", async () => ({
-    status: "available",
-    provider: "share_links",
-    createStatus: jwtSecret ? "enabled" : "disabled",
-    reason: jwtSecret ? undefined : "token_signing_not_configured",
-  }));
+  server.get("/api/shares/status", async (request) => {
+    assertShareAccess(request.auth, { resource: "provider_setting", action: "read" });
+    return {
+      status: "available",
+      provider: "share_links",
+      createStatus: jwtSecret ? "enabled" : "disabled",
+      reason: jwtSecret ? undefined : "token_signing_not_configured",
+    };
+  });
 
   server.get("/api/shares", async (request) => {
     const query = parseRequestPart(sharesQuerySchema, request.query, "query");

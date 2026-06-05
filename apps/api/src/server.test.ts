@@ -1069,6 +1069,40 @@ describe("API auth and persistence boundaries", () => {
     expect(authenticatedPreflight.headers["access-control-allow-origin"]).toBeUndefined();
   });
 
+  it("rejects localhost credentialed CORS in production while allowing the configured web origin", async () => {
+    const origin = "https://app.example.test";
+    const server = testServer({
+      nodeEnv: "production",
+      jwtSecret: "production-test-secret-at-least-32-characters",
+      publicWebBaseUrl: `${origin}/dashboard`,
+      webAuthn: {
+        rpName: "Test RP",
+        rpID: "app.example.test",
+        origin,
+      },
+    });
+    const localhostPreflight = await server.inject({
+      method: "OPTIONS",
+      url: "/api/overview",
+      headers: {
+        origin: "http://localhost:4321",
+        "access-control-request-method": "GET",
+      },
+    });
+    const appPreflight = await server.inject({
+      method: "OPTIONS",
+      url: "/api/overview",
+      headers: {
+        origin,
+        "access-control-request-method": "GET",
+      },
+    });
+
+    expect(localhostPreflight.headers["access-control-allow-origin"]).toBeUndefined();
+    expect(appPreflight.statusCode).toBe(204);
+    expect(appPreflight.headers["access-control-allow-origin"]).toBe(origin);
+  });
+
   it("redacts unexpected server error messages", async () => {
     class ThrowingMatterRepository extends InMemoryOpenPracticeRepository {
       override async listMattersForUser(): Promise<MatterSummary[]> {

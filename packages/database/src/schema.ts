@@ -1876,20 +1876,27 @@ export const trustReconciliationExceptionResolutions = pgTable(
   }),
 );
 
-export const auditEvents = pgTable("audit_events", {
-  id: text("id").primaryKey(),
-  firmId: text("firm_id")
-    .notNull()
-    .references(() => firms.id),
-  actorId: text("actor_id").notNull(),
-  action: text("action").notNull(),
-  resourceType: text("resource_type").notNull(),
-  resourceId: text("resource_id").notNull(),
-  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
-  metadata: jsonb("metadata").notNull(),
-  previousHash: text("previous_hash").notNull(),
-  hash: text("hash").notNull(),
-});
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    actorId: text("actor_id").notNull(),
+    action: text("action").notNull(),
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id").notNull(),
+    sequence: integer("sequence").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    metadata: jsonb("metadata").notNull(),
+    previousHash: text("previous_hash").notNull(),
+    hash: text("hash").notNull(),
+  },
+  (table) => ({
+    firmSequence: uniqueIndex("audit_events_firm_sequence_idx").on(table.firmId, table.sequence),
+  }),
+);
 
 export const jobLifecycleRecords = pgTable(
   "job_lifecycle_records",

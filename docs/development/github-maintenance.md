@@ -37,8 +37,8 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
 
 ### Docker Dependency Snapshot
 
-2026-06-04 Docker image CVE follow-up evidence, building on the 2026-05-28 dependency refresh and
-the 2026-05-12 / 2026-05-16 infra-image follow-ups:
+2026-06-05 Docker image CVE follow-up evidence, building on the 2026-05-28 dependency refresh and
+the 2026-05-12 / 2026-05-16 / 2026-06-04 infra-image follow-ups:
 
 - `node:26.2.0-alpine3.23` is pinned by digest as the app base. The Dockerfile updates bundled npm
   and pnpm explicitly to `npm@11.16.0` and `pnpm@11.4.0`, deploys runtime images with production
@@ -54,19 +54,19 @@ the 2026-05-12 / 2026-05-16 infra-image follow-ups:
   the custom local image because it retains the Go-based `gosu` surface.
 - `redis:8-alpine` is pinned by digest in the local Docker stack because the Scout result dropped
   from critical/high Go runtime findings to no critical/high findings in the current scan.
-- The local MinIO service now builds `open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3`
+- The local MinIO service now builds `open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4`
   from the upstream `RELEASE.2025-10-15T17-29-55Z` source tag after verifying commit
   `9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a`. Docker Hub and Quay `latest` still resolve to the old
   pinned `RELEASE.2025-09-07T16-13-09Z` manifest, and neither registry publishes the newer tag, so
-  the local wrapped-service image preserves the same Compose S3 contract while reducing the current
-  arm64 Scout posture from `21C`/`39H` to `11C`/`17H`. Residual MinIO/Go findings remain documented
-  until upstream dependency fixes or a cleaner official image become available.
-- The local Mailpit service now builds `open-practice-mailpit:v1.30.1-go1.26.3` from the checked
+  the local wrapped-service image preserves the same Compose S3 contract while moving to the
+  digest-pinned Go `1.26.4` builder. The 2026-06-05 local Scout scan reports `11C`/`16H`, with the
+  Alpine base current and the remaining findings in MinIO/application Go modules; no same-contract
+  base-image recommendation clears those residuals.
+- The local Mailpit service now builds `open-practice-mailpit:v1.30.1-go1.26.4` from the checked
   v1.30.1 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
-  `8025`. The current local Scout scan leaves one residual high finding in
-  `github.com/gomarkdown/markdown`; the Alpine runtime base is up to date. The 2026-06-04 recheck
-  found no newer upstream Mailpit tag and the upstream `axllent/mailpit:latest` image still reported
-  the same `0C`/`1H` gomarkdown finding.
+  `8025`. The builder is now pinned to `golang:1.26.4-alpine3.23` by digest. The 2026-06-05 local
+  Scout scan reports `0C`/`1H`, with the single residual high in `github.com/gomarkdown/markdown`
+  marked not fixed and the Alpine base current.
 
 ## GitHub Settings Cutover
 

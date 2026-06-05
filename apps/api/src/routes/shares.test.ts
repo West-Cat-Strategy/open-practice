@@ -105,6 +105,18 @@ afterEach(async () => {
 });
 
 describe("share routes", () => {
+  it("denies share provider status to client-external users", async () => {
+    const response = await testServer({
+      repository: new InMemoryOpenPracticeRepository(),
+      authUser: user("client_external", ["matter-001"]),
+    }).inject({
+      method: "GET",
+      url: "/api/shares/status",
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
   it("creates a one-time raw token while storing only the token hash", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await addShareableDocument(repository);

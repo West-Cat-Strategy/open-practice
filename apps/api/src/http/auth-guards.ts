@@ -39,3 +39,17 @@ export function requireAccess(
 export function hasFirmWideLedgerAccess(user: User): boolean {
   return ["owner_admin", "auditor", "billing_bookkeeper"].includes(user.role);
 }
+
+export function requireStaffAccess(
+  context: ApiAuthContext,
+): GuardResult<{ context: ApiAuthContext }> {
+  if (context.user.role !== "client_external") return { ok: true, data: { context } };
+
+  return {
+    ok: false,
+    error: new ApiHttpError(403, "STAFF_ACCESS_REQUIRED", "Staff access required", {
+      resource: "staff_dashboard",
+      action: "read",
+    }),
+  };
+}

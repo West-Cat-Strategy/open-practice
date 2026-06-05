@@ -387,6 +387,27 @@ function buildBillingFallback(
   };
 }
 
+function emptyBillingAccessDeniedResponse(): BillingDashboardResponse {
+  return {
+    canView: false,
+    summary: {
+      unbilledTimeCents: 0,
+      unbilledExpenseCents: 0,
+      draftInvoiceCents: 0,
+      issuedBalanceDueCents: 0,
+      hostedPaymentRequestCents: 0,
+      lockedPeriodCount: 0,
+      activeLockedPeriodCount: 0,
+      activeRateRuleCount: 0,
+    },
+    periodLocks: [],
+    rateRules: [],
+    timerDraftPolicy: billingTimerDraftPolicy,
+    expenseCategoryProfiles: expenseCategoryProfileCues,
+    matters: [],
+  };
+}
+
 export default async function Home({ searchParams }: { searchParams?: HomeSearchParams }) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const requestedSection = firstSearchParam(resolvedSearchParams.section);
@@ -582,10 +603,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     "/api/billing/dashboard",
     billingFallback,
     headers,
-    {
-      ...billingFallback,
-      canView: false,
-    },
+    emptyBillingAccessDeniedResponse(),
   );
   const trustControls = await loadTrustControlsDashboardData({
     matter: matters[0],

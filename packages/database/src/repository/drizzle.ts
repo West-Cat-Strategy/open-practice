@@ -129,7 +129,7 @@ import {
   type WebAuthnChallengeRecord,
   type WebAuthnCredentialRecord,
 } from "@open-practice/domain";
-import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../runtime.js";
 import * as schema from "../schema.js";
 import { isEncryptedProviderConfig, type ProviderConfigCipher } from "../config-encryption.js";
@@ -318,6 +318,14 @@ function nextMatterNumber(
       return Number.isFinite(value) ? Math.max(max, value) : max;
     }, 0);
   return `${prefix}${String(maxExisting + 1).padStart(4, "0")}`;
+}
+
+function documentChecksumLockKey(input: {
+  firmId: string;
+  matterId: string;
+  checksumSha256: string;
+}): string {
+  return `${input.firmId}|${input.matterId}|${input.checksumSha256}`;
 }
 
 export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
@@ -2243,11 +2251,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         confidential: true,
       });
 
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.firmId}, 0))`);
       const [previousRow] = await tx
         .select()
         .from(schema.auditEvents)
         .where(eq(schema.auditEvents.firmId, input.firmId))
-        .orderBy(desc(schema.auditEvents.occurredAt))
+        .orderBy(desc(schema.auditEvents.sequence))
         .limit(1);
       const previous = previousRow
         ? {
@@ -2457,11 +2466,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         })),
       ]);
 
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.firmId}, 0))`);
       const [previousRow] = await tx
         .select()
         .from(schema.auditEvents)
         .where(eq(schema.auditEvents.firmId, input.firmId))
-        .orderBy(desc(schema.auditEvents.occurredAt))
+        .orderBy(desc(schema.auditEvents.sequence))
         .limit(1);
       const previous = previousRow
         ? {
@@ -3994,17 +4004,6 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     const results = runConflictCheck({ ...input, contacts, matters, matterParties });
     const checkId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
-    const previous = (await this.listAuditEvents(input.firmId)).events.at(-1);
-    const event = appendAuditEvent(previous, {
-      id: crypto.randomUUID(),
-      firmId: input.firmId,
-      actorId: input.actorId,
-      action: "conflict_check.completed",
-      resourceType: "conflict_check",
-      resourceId: checkId,
-      occurredAt: createdAt,
-      metadata: { prospectiveName: input.prospectiveName, matchCount: results.length },
-    });
     await this.db.insert(schema.conflictChecks).values({
       id: checkId,
       firmId: input.firmId,
@@ -4021,9 +4020,15 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       disposition: "pending_review",
       createdAt: new Date(createdAt),
     });
-    await this.db.insert(schema.auditEvents).values({
-      ...event,
-      occurredAt: new Date(event.occurredAt),
+    await this.appendAuditEvent({
+      id: crypto.randomUUID(),
+      firmId: input.firmId,
+      actorId: input.actorId,
+      action: "conflict_check.completed",
+      resourceType: "conflict_check",
+      resourceId: checkId,
+      occurredAt: createdAt,
+      metadata: { prospectiveName: input.prospectiveName, matchCount: results.length },
     });
     return { results, auditChainValid: (await this.listAuditEvents(input.firmId)).valid };
   }
@@ -4284,7 +4289,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .select()
       .from(schema.auditEvents)
       .where(eq(schema.auditEvents.firmId, firmId))
-      .orderBy(asc(schema.auditEvents.occurredAt));
+      .orderBy(asc(schema.auditEvents.sequence));
     const events = rows.map((row) => ({
       ...row,
       occurredAt: row.occurredAt.toISOString(),
@@ -4294,32 +4299,41 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   }
 
   async appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent> {
-    const [previousRow] = await this.db
-      .select()
-      .from(schema.auditEvents)
-      .where(eq(schema.auditEvents.firmId, event.firmId))
-      .orderBy(desc(schema.auditEvents.occurredAt))
-      .limit(1);
-    const previous = previousRow
-      ? {
-          ...previousRow,
-          occurredAt: previousRow.occurredAt.toISOString(),
-          metadata: previousRow.metadata as Record<string, unknown>,
-        }
-      : undefined;
-    const appended = appendAuditEvent(previous, event);
-    await this.db.insert(schema.auditEvents).values({
-      ...appended,
-      occurredAt: new Date(appended.occurredAt),
-      metadata: appended.metadata,
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${event.firmId}, 0))`);
+      const [previousRow] = await tx
+        .select()
+        .from(schema.auditEvents)
+        .where(eq(schema.auditEvents.firmId, event.firmId))
+        .orderBy(desc(schema.auditEvents.sequence))
+        .limit(1);
+      const previous = previousRow
+        ? {
+            ...previousRow,
+            occurredAt: previousRow.occurredAt.toISOString(),
+            metadata: previousRow.metadata as Record<string, unknown>,
+          }
+        : undefined;
+      const appended = appendAuditEvent(previous, event);
+      await tx.insert(schema.auditEvents).values({
+        ...appended,
+        occurredAt: new Date(appended.occurredAt),
+        metadata: appended.metadata,
+      });
+      return appended;
     });
-    return appended;
   }
 
   async recordAuditEvent(event: AuditEvent): Promise<void> {
-    await this.db.insert(schema.auditEvents).values({
-      ...event,
-      occurredAt: new Date(event.occurredAt),
+    await this.appendAuditEvent({
+      id: event.id,
+      firmId: event.firmId,
+      actorId: event.actorId,
+      action: event.action,
+      resourceType: event.resourceType,
+      resourceId: event.resourceId,
+      occurredAt: event.occurredAt,
+      metadata: event.metadata,
     });
   }
 
@@ -4750,46 +4764,69 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     checksumSha256: string;
     scanStatus?: DocumentRecord["scanStatus"];
   }): Promise<DocumentRecord> {
-    const document = await this.getDocument(input.firmId, input.documentId);
-    if (!document) throw new Error(`Unknown document ${input.documentId}`);
-    const documents = await this.listDocuments(input.firmId);
-    const duplicate = documents.find(
-      (candidate) =>
-        candidate.id !== input.documentId &&
-        candidate.checksumSha256 === input.checksumSha256 &&
-        candidate.checksumStatus === "verified",
-    );
-    const now = new Date();
-    const checksumMatches = document.checksumSha256 === input.checksumSha256;
-    const [row] = await this.db
-      .update(schema.documents)
-      .set({
-        uploadStatus: checksumMatches ? "verified" : "rejected",
-        checksumStatus: checksumMatches ? (duplicate ? "duplicate" : "verified") : "mismatch",
-        scanStatus: checksumMatches ? (input.scanStatus ?? "queued") : "failed",
-        reviewStatus: document.externalUploadLinkId
-          ? checksumMatches
-            ? "pending_review"
-            : "retry_requested"
-          : "not_required",
-        reviewReason: checksumMatches ? (duplicate ? "duplicate" : null) : "checksum_mismatch",
-        reviewMetadata: checksumMatches
-          ? duplicate
-            ? { automatedOutcome: "duplicate_detected", duplicateOfDocumentId: duplicate.id }
-            : {}
-          : document.externalUploadLinkId
-            ? { automatedOutcome: "checksum_mismatch" }
-            : {},
-        duplicateOfDocumentId: duplicate?.id,
-        uploadedAt: now,
-        verifiedAt: now,
-      })
-      .where(
-        and(eq(schema.documents.firmId, input.firmId), eq(schema.documents.id, input.documentId)),
-      )
-      .returning();
-    if (!row) throw new Error(`Unknown document ${input.documentId}`);
-    return mapDocumentRow(row);
+    return this.db.transaction(async (tx) => {
+      const [documentRow] = await tx
+        .select()
+        .from(schema.documents)
+        .where(
+          and(eq(schema.documents.firmId, input.firmId), eq(schema.documents.id, input.documentId)),
+        )
+        .for("update");
+      if (!documentRow) throw new Error(`Unknown document ${input.documentId}`);
+      const document = mapDocumentRow(documentRow);
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${documentChecksumLockKey({
+          firmId: input.firmId,
+          matterId: document.matterId,
+          checksumSha256: input.checksumSha256,
+        })}, 0))`,
+      );
+      const [duplicateRow] = await tx
+        .select()
+        .from(schema.documents)
+        .where(
+          and(
+            eq(schema.documents.firmId, input.firmId),
+            ne(schema.documents.id, input.documentId),
+            eq(schema.documents.matterId, document.matterId),
+            eq(schema.documents.checksumSha256, input.checksumSha256),
+            eq(schema.documents.checksumStatus, "verified"),
+          ),
+        )
+        .limit(1);
+      const duplicate = duplicateRow ? mapDocumentRow(duplicateRow) : undefined;
+      const now = new Date();
+      const checksumMatches = document.checksumSha256 === input.checksumSha256;
+      const [row] = await tx
+        .update(schema.documents)
+        .set({
+          uploadStatus: checksumMatches ? "verified" : "rejected",
+          checksumStatus: checksumMatches ? (duplicate ? "duplicate" : "verified") : "mismatch",
+          scanStatus: checksumMatches ? (input.scanStatus ?? "queued") : "failed",
+          reviewStatus: document.externalUploadLinkId
+            ? checksumMatches
+              ? "pending_review"
+              : "retry_requested"
+            : "not_required",
+          reviewReason: checksumMatches ? (duplicate ? "duplicate" : null) : "checksum_mismatch",
+          reviewMetadata: checksumMatches
+            ? duplicate
+              ? { automatedOutcome: "duplicate_detected", duplicateOfDocumentId: duplicate.id }
+              : {}
+            : document.externalUploadLinkId
+              ? { automatedOutcome: "checksum_mismatch" }
+              : {},
+          duplicateOfDocumentId: duplicate?.id,
+          uploadedAt: now,
+          verifiedAt: now,
+        })
+        .where(
+          and(eq(schema.documents.firmId, input.firmId), eq(schema.documents.id, input.documentId)),
+        )
+        .returning();
+      if (!row) throw new Error(`Unknown document ${input.documentId}`);
+      return mapDocumentRow(row);
+    });
   }
 
   async reviewUploadedDocument(input: {
@@ -6702,6 +6739,13 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       if (!attachment.checksumSha256) {
         throw new Error("Inbound email attachment checksum is required for document promotion");
       }
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${documentChecksumLockKey({
+          firmId: input.firmId,
+          matterId: input.matterId,
+          checksumSha256: attachment.checksumSha256,
+        })}, 0))`,
+      );
       if (attachment.documentId) {
         const [documentRow] = await tx
           .select()
@@ -6726,6 +6770,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         .where(
           and(
             eq(schema.documents.firmId, input.firmId),
+            eq(schema.documents.matterId, input.matterId),
             eq(schema.documents.checksumSha256, attachment.checksumSha256),
             eq(schema.documents.checksumStatus, "verified"),
           ),

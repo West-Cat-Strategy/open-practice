@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { buildTaskDeadlineWorkbench } from "@open-practice/domain";
-import { requireAccess } from "../http/auth-guards.js";
+import { requireAccess, requireStaffAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { createSessionToken } from "../http/auth-helpers.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -46,6 +46,8 @@ export function registerTaskRoutes(
   { repository }: ApiRouteDependencies,
 ): void {
   server.get("/api/tasks/workbench", async (request) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
     const query = parseRequestPart(taskWorkbenchQuerySchema, request.query, "query");
     const matters = await repository.listMattersForUser(request.auth.user);
     const visibleMatterIds = matters.map((matter) => matter.id);

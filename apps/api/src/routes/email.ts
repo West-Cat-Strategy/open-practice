@@ -406,6 +406,7 @@ export function registerEmailRoutes(
   { repository, emailJobQueue, jwtSecret, publicWebBaseUrl }: RegisterEmailRouteOptions,
 ): void {
   server.get("/api/email/status", async (request) => {
+    assertEmailAccess(request.auth, { resource: "provider_setting", action: "read" });
     return buildEmailStatus({ repository, firmId: request.auth.firmId });
   });
 
