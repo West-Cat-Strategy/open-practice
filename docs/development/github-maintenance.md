@@ -54,12 +54,13 @@ the 2026-05-12 / 2026-05-16 infra-image follow-ups:
   the custom local image because it retains the Go-based `gosu` surface.
 - `redis:8-alpine` is pinned by digest in the local Docker stack because the Scout result dropped
   from critical/high Go runtime findings to no critical/high findings in the current scan.
-- `minio/minio:RELEASE.2025-09-07T16-13-09Z` is pinned by digest. Current Docker Hub, Quay, hotfix,
-  and common S3-compatible substitute scans still carried critical/high findings or changed the
-  service shape, so MinIO stays product-compatible with residual upstream MinIO/Go CVEs documented
-  until a cleaner compatible deterministic release is available. The 2026-06-04 recheck found Docker
-  Hub and Quay `latest` resolving to the same pinned manifest digest, a final `12C`/`33H` Scout
-  posture for the pinned image, and no Scout tag recommendation.
+- The local MinIO service now builds `open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3`
+  from the upstream `RELEASE.2025-10-15T17-29-55Z` source tag after verifying commit
+  `9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a`. Docker Hub and Quay `latest` still resolve to the old
+  pinned `RELEASE.2025-09-07T16-13-09Z` manifest, and neither registry publishes the newer tag, so
+  the local wrapped-service image preserves the same Compose S3 contract while reducing the current
+  arm64 Scout posture from `21C`/`39H` to `11C`/`17H`. Residual MinIO/Go findings remain documented
+  until upstream dependency fixes or a cleaner official image become available.
 - The local Mailpit service now builds `open-practice-mailpit:v1.30.1-go1.26.3` from the checked
   v1.30.1 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
   `8025`. The current local Scout scan leaves one residual high finding in
