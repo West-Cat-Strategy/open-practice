@@ -3044,19 +3044,16 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
         createdAt,
       },
     ];
-    this.auditEvents = [
-      ...this.auditEvents,
-      appendAuditEvent(this.auditEvents.at(-1), {
-        id: `audit-${String(this.auditEvents.length + 1).padStart(3, "0")}`,
-        firmId: input.firmId,
-        actorId: input.actorId,
-        action: "conflict_check.completed",
-        resourceType: "conflict_check",
-        resourceId: checkId,
-        occurredAt: createdAt,
-        metadata: { prospectiveName: input.prospectiveName, matchCount: results.length },
-      }),
-    ];
+    await this.appendAuditEvent({
+      id: `audit-${String(this.auditEvents.length + 1).padStart(3, "0")}`,
+      firmId: input.firmId,
+      actorId: input.actorId,
+      action: "conflict_check.completed",
+      resourceType: "conflict_check",
+      resourceId: checkId,
+      occurredAt: createdAt,
+      metadata: { prospectiveName: input.prospectiveName, matchCount: results.length },
+    });
     return { results, auditChainValid: this.auditEvents.length > 0 };
   }
 
@@ -3137,19 +3134,32 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   }
 
   async listAuditEvents(firmId: string): Promise<{ events: AuditEvent[]; valid: boolean }> {
-    const events = this.auditEvents.filter((event) => event.firmId === firmId);
+    const events = this.auditEvents
+      .filter((event) => event.firmId === firmId)
+      .sort((left, right) => left.sequence - right.sequence);
     return { events: clone(events), valid: verifyAuditChain(events) };
   }
 
   async appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent> {
-    const firmEvents = this.auditEvents.filter((candidate) => candidate.firmId === event.firmId);
+    const firmEvents = this.auditEvents
+      .filter((candidate) => candidate.firmId === event.firmId)
+      .sort((left, right) => left.sequence - right.sequence);
     const appended = appendAuditEvent(firmEvents.at(-1), event);
     this.auditEvents = [...this.auditEvents, appended];
     return clone(appended);
   }
 
   async recordAuditEvent(event: AuditEvent): Promise<void> {
-    this.auditEvents = [...this.auditEvents, clone(event)];
+    await this.appendAuditEvent({
+      id: event.id,
+      firmId: event.firmId,
+      actorId: event.actorId,
+      action: event.action,
+      resourceType: event.resourceType,
+      resourceId: event.resourceId,
+      occurredAt: event.occurredAt,
+      metadata: event.metadata,
+    });
   }
 
   async listPortalGrants(firmId: string): Promise<PortalGrant[]> {

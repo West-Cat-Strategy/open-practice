@@ -2243,11 +2243,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         confidential: true,
       });
 
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.firmId}, 0))`);
       const [previousRow] = await tx
         .select()
         .from(schema.auditEvents)
         .where(eq(schema.auditEvents.firmId, input.firmId))
-        .orderBy(desc(schema.auditEvents.occurredAt))
+        .orderBy(desc(schema.auditEvents.sequence))
         .limit(1);
       const previous = previousRow
         ? {
@@ -2457,11 +2458,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         })),
       ]);
 
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.firmId}, 0))`);
       const [previousRow] = await tx
         .select()
         .from(schema.auditEvents)
         .where(eq(schema.auditEvents.firmId, input.firmId))
-        .orderBy(desc(schema.auditEvents.occurredAt))
+        .orderBy(desc(schema.auditEvents.sequence))
         .limit(1);
       const previous = previousRow
         ? {
@@ -3994,17 +3996,6 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     const results = runConflictCheck({ ...input, contacts, matters, matterParties });
     const checkId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
-    const previous = (await this.listAuditEvents(input.firmId)).events.at(-1);
-    const event = appendAuditEvent(previous, {
-      id: crypto.randomUUID(),
-      firmId: input.firmId,
-      actorId: input.actorId,
-      action: "conflict_check.completed",
-      resourceType: "conflict_check",
-      resourceId: checkId,
-      occurredAt: createdAt,
-      metadata: { prospectiveName: input.prospectiveName, matchCount: results.length },
-    });
     await this.db.insert(schema.conflictChecks).values({
       id: checkId,
       firmId: input.firmId,
@@ -4021,9 +4012,15 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       disposition: "pending_review",
       createdAt: new Date(createdAt),
     });
-    await this.db.insert(schema.auditEvents).values({
-      ...event,
-      occurredAt: new Date(event.occurredAt),
+    await this.appendAuditEvent({
+      id: crypto.randomUUID(),
+      firmId: input.firmId,
+      actorId: input.actorId,
+      action: "conflict_check.completed",
+      resourceType: "conflict_check",
+      resourceId: checkId,
+      occurredAt: createdAt,
+      metadata: { prospectiveName: input.prospectiveName, matchCount: results.length },
     });
     return { results, auditChainValid: (await this.listAuditEvents(input.firmId)).valid };
   }
@@ -4284,7 +4281,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       .select()
       .from(schema.auditEvents)
       .where(eq(schema.auditEvents.firmId, firmId))
-      .orderBy(asc(schema.auditEvents.occurredAt));
+      .orderBy(asc(schema.auditEvents.sequence));
     const events = rows.map((row) => ({
       ...row,
       occurredAt: row.occurredAt.toISOString(),
@@ -4294,32 +4291,41 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   }
 
   async appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent> {
-    const [previousRow] = await this.db
-      .select()
-      .from(schema.auditEvents)
-      .where(eq(schema.auditEvents.firmId, event.firmId))
-      .orderBy(desc(schema.auditEvents.occurredAt))
-      .limit(1);
-    const previous = previousRow
-      ? {
-          ...previousRow,
-          occurredAt: previousRow.occurredAt.toISOString(),
-          metadata: previousRow.metadata as Record<string, unknown>,
-        }
-      : undefined;
-    const appended = appendAuditEvent(previous, event);
-    await this.db.insert(schema.auditEvents).values({
-      ...appended,
-      occurredAt: new Date(appended.occurredAt),
-      metadata: appended.metadata,
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${event.firmId}, 0))`);
+      const [previousRow] = await tx
+        .select()
+        .from(schema.auditEvents)
+        .where(eq(schema.auditEvents.firmId, event.firmId))
+        .orderBy(desc(schema.auditEvents.sequence))
+        .limit(1);
+      const previous = previousRow
+        ? {
+            ...previousRow,
+            occurredAt: previousRow.occurredAt.toISOString(),
+            metadata: previousRow.metadata as Record<string, unknown>,
+          }
+        : undefined;
+      const appended = appendAuditEvent(previous, event);
+      await tx.insert(schema.auditEvents).values({
+        ...appended,
+        occurredAt: new Date(appended.occurredAt),
+        metadata: appended.metadata,
+      });
+      return appended;
     });
-    return appended;
   }
 
   async recordAuditEvent(event: AuditEvent): Promise<void> {
-    await this.db.insert(schema.auditEvents).values({
-      ...event,
-      occurredAt: new Date(event.occurredAt),
+    await this.appendAuditEvent({
+      id: event.id,
+      firmId: event.firmId,
+      actorId: event.actorId,
+      action: event.action,
+      resourceType: event.resourceType,
+      resourceId: event.resourceId,
+      occurredAt: event.occurredAt,
+      metadata: event.metadata,
     });
   }
 
