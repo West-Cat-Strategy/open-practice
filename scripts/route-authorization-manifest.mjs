@@ -1818,6 +1818,24 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "POST",
     "/api/inbound-email/provider-webhooks/mailgun/raw-mime",
   ),
+  authRoute(
+    "registerInboundEmailRoutes",
+    "apps/api/src/routes/inbound-email.test.ts",
+    "POST",
+    "/api/inbound-email/parser-jobs/:jobId/retry",
+    "job",
+    "update",
+    "none",
+  ),
+  authRoute(
+    "registerInboundEmailRoutes",
+    "apps/api/src/routes/inbound-email.test.ts",
+    "POST",
+    "/api/inbound-email/parser-jobs/:jobId/dead-letter",
+    "job",
+    "update",
+    "none",
+  ),
 
   authRoute(
     "registerShareRoutes",

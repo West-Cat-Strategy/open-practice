@@ -4,7 +4,7 @@
 
 - Added `POST /api/inbound-email/provider-webhooks/mailgun/raw-mime` as the first signed inbound-email provider webhook adapter.
 - Kept the slice to Mailgun raw-MIME receiving, provider-setting bootstrap, raw object storage, durable `inbound_email` parser lifecycle records, parser queue enqueue, route public-manifest coverage, docs, and proof.
-- Left other provider adapters, durable replay recovery, automatic document promotion, parser changes, UI, schema changes, migrations, dependencies, and production claims out of scope.
+- Left other provider adapters, durable replay recovery, automatic document promotion, parser changes, UI, schema changes, migrations, dependencies, and production claims out of scope. The follow-up owner-only parser-job recovery controls are recorded in [OP-INMAIL replay recovery proof](OP_INBOUND_EMAIL_REPLAY_RECOVERY_PROOF_2026-06-03.md).
 
 ## Changed Paths
 
@@ -46,4 +46,4 @@
 - The webhook uses the enabled `provider_settings` row with `kind: "inbound_email"` and `key: "mailgun"`; JSON config reads `webhookSigningKey` and optional `domain`, while legacy plaintext config remains accepted as a signing key.
 - The route resolves the single configured firm server-side and ignores provider payload firm IDs.
 - Response bodies never include `rawStorageKey`, raw MIME, provider secrets, or object-storage keys. Private job metadata keeps `rawStorageKey` for the existing parser worker, and existing job serialization redacts it from operator responses.
-- Replay protection is timestamp freshness plus durable job idempotency by Mailgun token hash. Durable replay-cache and recovery tooling remain future work.
+- Replay protection is timestamp freshness plus durable job idempotency by Mailgun token hash. Durable replay-cache remains future work; owner-only parser-job retry/dead-letter recovery controls are recorded in [OP-INMAIL replay recovery proof](OP_INBOUND_EMAIL_REPLAY_RECOVERY_PROOF_2026-06-03.md).

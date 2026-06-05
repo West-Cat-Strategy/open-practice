@@ -7,6 +7,7 @@ import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type {
   InboundEmailAttachmentRecord,
   InboundEmailMessageRecord,
+  JobLifecycleRecord,
   ProfessionalRole,
   User,
 } from "@open-practice/domain";
@@ -90,6 +91,36 @@ function attachment(
     sizeBytes: 128,
     storageKey: "inbound/message-001/filing.pdf",
     checksumSha256: "a".repeat(64),
+    ...overrides,
+  };
+}
+
+function parserJob(overrides: Partial<JobLifecycleRecord> = {}): JobLifecycleRecord {
+  const id = overrides.id ?? "job-inbound-parser-failed";
+  return {
+    id,
+    firmId,
+    queueName: "inbound_email",
+    jobName: "parse_inbound_email",
+    status: "failed",
+    targetResourceType: "inbound_email_raw",
+    targetResourceId: "synthetic-token-hash",
+    attemptsMade: 1,
+    maxAttempts: 4,
+    queuedAt: "2026-04-29T10:00:00.000Z",
+    failedAt: "2026-04-29T10:01:00.000Z",
+    errorMessage: "Synthetic parser failed with raw MIME body details",
+    idempotencyKey: `inbound-parser-original-key-${id}`,
+    metadata: {
+      provider: "mailgun",
+      source: "mailgun.raw_mime_webhook",
+      resourceType: "inbound_email_raw",
+      resourceId: "synthetic-token-hash",
+      rawStorageKey:
+        "inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/message.eml",
+      rawBody: "From: client@example.test\n\nSynthetic body must stay private",
+      webhookSigningKey: "synthetic-mailgun-signing-key",
+    },
     ...overrides,
   };
 }
@@ -251,7 +282,9 @@ describe("inbound email routes", () => {
       ContentType: "message/rfc822",
       ServerSideEncryption: "AES256",
     });
-    expect(putInput.Key).toMatch(/^inbound-email\/firm-west-legal\/raw\/mailgun\//);
+    expect(putInput.Key).toMatch(
+      /^inbound-email\/firm-west-legal\/raw\/provider-webhooks\/mailgun\/raw-mime\//,
+    );
     expect(Buffer.from(putInput.Body as Uint8Array).toString("utf8")).toBe(rawMime);
 
     expect(inboundQueue.jobs).toHaveLength(1);
@@ -482,6 +515,414 @@ describe("inbound email routes", () => {
       status: "failed",
       attemptsMade: 1,
       metadata: expect.objectContaining({ enqueueStatus: "failed" }),
+    });
+  });
+
+  it("manually retries failed inbound parser jobs without exposing raw MIME pointers", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord(parserJob());
+    const inboundQueue = fakeInboundEmailQueue();
+    const server = testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      undefined,
+      inboundQueue.queue,
+    );
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-failed/retry",
+      payload: {
+        idempotencyKey: "operator-retry-001",
+        confirmation: {
+          confirmed: true,
+          action: "retry",
+          jobId: "job-inbound-parser-failed",
+          expectedStatus: "failed",
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      status: "queued",
+      job: {
+        queueName: "inbound_email",
+        jobName: "parse_inbound_email",
+        status: "queued",
+        targetResourceType: "inbound_email_raw",
+        targetResourceId: "synthetic-token-hash",
+        idempotencyKeyPresent: true,
+      },
+      sourceJob: {
+        id: "job-inbound-parser-failed",
+        status: "failed",
+        errorSummary:
+          "Job failed. Error details are redacted; review server logs for privileged diagnostics.",
+      },
+    });
+    expect(response.body).not.toContain("rawStorageKey");
+    expect(response.body).not.toContain("message.eml");
+    expect(response.body).not.toContain("Synthetic body");
+    expect(response.body).not.toContain("synthetic-mailgun-signing-key");
+    expect(inboundQueue.jobs).toHaveLength(1);
+    expect(inboundQueue.jobs[0]).toMatchObject({
+      name: "parse_inbound_email",
+      jobId: response.json().job.id,
+      data: {
+        firmId,
+        resourceType: "inbound_email_raw",
+        resourceId: "synthetic-token-hash",
+      },
+    });
+    expect(
+      (inboundQueue.jobs[0]!.data as { metadata: Record<string, unknown> }).metadata.rawStorageKey,
+    ).toBe("inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/message.eml");
+
+    const jobs = await repository.listJobLifecycleRecords(firmId, { queueName: "inbound_email" });
+    expect(jobs).toHaveLength(2);
+    expect(jobs.find((job) => job.id === "job-inbound-parser-failed")).toMatchObject({
+      status: "failed",
+    });
+    expect(jobs.find((job) => job.id === response.json().job.id)).toMatchObject({
+      status: "queued",
+      metadata: expect.objectContaining({
+        retryOfJobId: "job-inbound-parser-failed",
+        rawStorageKey:
+          "inbound-email/firm-west-legal/raw/provider-webhooks/mailgun/raw-mime/message.eml",
+      }),
+    });
+
+    const audit = await repository.listAuditEvents(firmId);
+    expect(audit.events.at(-1)).toMatchObject({
+      action: "inbound_email.parser_job.manual_retry",
+      resourceType: "inbound_email",
+      resourceId: "job-inbound-parser-failed",
+      metadata: {
+        jobId: "job-inbound-parser-failed",
+        retryJobId: response.json().job.id,
+        queueName: "inbound_email",
+        jobName: "parse_inbound_email",
+        beforeStatus: "failed",
+        expectedStatus: "failed",
+        afterStatus: "queued",
+        provider: "mailgun",
+        source: "mailgun.raw_mime_webhook",
+        idempotencyKeyPresent: true,
+        retryJobQueued: true,
+      },
+    });
+    expect(JSON.stringify(audit.events.at(-1))).not.toContain("rawStorageKey");
+    expect(JSON.stringify(audit.events.at(-1))).not.toContain("message.eml");
+  });
+
+  it("keeps manual inbound parser retries idempotent by operator key", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord(parserJob({ status: "dead_letter" }));
+    const inboundQueue = fakeInboundEmailQueue();
+    const server = testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      undefined,
+      inboundQueue.queue,
+    );
+    const payload = {
+      idempotencyKey: "operator-retry-duplicate",
+      confirmation: {
+        confirmed: true,
+        action: "retry",
+        jobId: "job-inbound-parser-failed",
+        expectedStatus: "dead_letter",
+      },
+    };
+
+    const first = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-failed/retry",
+      payload,
+    });
+    const second = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-failed/retry",
+      payload,
+    });
+
+    expect(first.statusCode).toBe(202);
+    expect(second.statusCode).toBe(202);
+    expect(second.json()).toMatchObject({ status: "duplicate" });
+    expect(second.json().job.id).toBe(first.json().job.id);
+    expect(inboundQueue.jobs).toHaveLength(1);
+    await expect(
+      repository.listJobLifecycleRecords(firmId, { queueName: "inbound_email" }),
+    ).resolves.toHaveLength(2);
+  });
+
+  it("rejects inbound parser recovery confirmation mismatches and non-parser raw keys", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord(parserJob());
+    await repository.createJobLifecycleRecord(
+      parserJob({
+        id: "job-inbound-parser-old-key",
+        metadata: {
+          provider: "mailgun",
+          rawStorageKey:
+            "inbound-email/firm-west-legal/provider-webhooks/mailgun/raw-mime/old-message.eml",
+        },
+      }),
+    );
+    const inboundQueue = fakeInboundEmailQueue();
+    const server = testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      undefined,
+      inboundQueue.queue,
+    );
+
+    const mismatch = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-failed/retry",
+      payload: {
+        confirmation: {
+          confirmed: true,
+          action: "retry",
+          jobId: "job-inbound-parser-failed",
+          expectedStatus: "dead_letter",
+        },
+      },
+    });
+    const invalidRawKey = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-old-key/retry",
+      payload: {
+        confirmation: {
+          confirmed: true,
+          action: "retry",
+          jobId: "job-inbound-parser-old-key",
+          expectedStatus: "failed",
+        },
+      },
+    });
+
+    expect(mismatch.statusCode).toBe(409);
+    expect(mismatch.json()).toMatchObject({
+      code: "INBOUND_EMAIL_PARSER_JOB_CONFIRMATION_MISMATCH",
+    });
+    expect(invalidRawKey.statusCode).toBe(409);
+    expect(invalidRawKey.json()).toMatchObject({
+      code: "INBOUND_EMAIL_RAW_STORAGE_KEY_INVALID",
+    });
+    expect(inboundQueue.jobs).toHaveLength(0);
+  });
+
+  it("rejects terminal inbound parser retries and missing parser queue configuration", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord(parserJob({ status: "completed" }));
+    await repository.createJobLifecycleRecord(
+      parserJob({
+        id: "job-inbound-parser-failed-without-queue",
+        targetResourceId: "synthetic-token-hash-queue",
+      }),
+    );
+
+    const terminal = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      undefined,
+      fakeInboundEmailQueue().queue,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-failed/retry",
+      payload: {
+        confirmation: {
+          confirmed: true,
+          action: "retry",
+          jobId: "job-inbound-parser-failed",
+          expectedStatus: "failed",
+        },
+      },
+    });
+    const missingQueue = await testServer(repository).inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-failed-without-queue/retry",
+      payload: {
+        confirmation: {
+          confirmed: true,
+          action: "retry",
+          jobId: "job-inbound-parser-failed-without-queue",
+          expectedStatus: "failed",
+        },
+      },
+    });
+
+    expect(terminal.statusCode).toBe(409);
+    expect(terminal.json()).toMatchObject({
+      code: "INBOUND_EMAIL_PARSER_JOB_CONFIRMATION_MISMATCH",
+    });
+    expect(missingQueue.statusCode).toBe(503);
+    expect(missingQueue.json()).toMatchObject({
+      code: "INBOUND_EMAIL_QUEUE_NOT_CONFIGURED",
+    });
+  });
+
+  it("requires owner-only job update access for inbound parser recovery", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord(parserJob());
+    const payload = {
+      confirmation: {
+        confirmed: true,
+        action: "retry",
+        jobId: "job-inbound-parser-failed",
+        expectedStatus: "failed",
+      },
+    };
+
+    const staff = await testServer(
+      repository,
+      user("licensee", ["matter-001", "matter-002"]),
+      undefined,
+      undefined,
+      fakeInboundEmailQueue().queue,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-failed/retry",
+      payload,
+    });
+    const client = await testServer(
+      repository,
+      user("client_external", ["matter-001"]),
+      undefined,
+      undefined,
+      fakeInboundEmailQueue().queue,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-failed/retry",
+      payload,
+    });
+
+    expect(staff.statusCode).toBe(403);
+    expect(client.statusCode).toBe(403);
+  });
+
+  it("manually dead-letters failed or stalled inbound parser jobs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord(parserJob());
+    await repository.createJobLifecycleRecord(
+      parserJob({
+        id: "job-inbound-parser-stalled-queued",
+        status: "queued",
+        queuedAt: "2026-04-29T08:00:00.000Z",
+        failedAt: undefined,
+      }),
+    );
+    await repository.createJobLifecycleRecord(
+      parserJob({
+        id: "job-inbound-parser-stalled-active",
+        status: "active",
+        queuedAt: "2026-04-29T08:00:00.000Z",
+        startedAt: "2026-04-29T08:01:00.000Z",
+        failedAt: undefined,
+      }),
+    );
+    const server = testServer(repository);
+
+    const failed = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-failed/dead-letter",
+      payload: {
+        confirmation: {
+          confirmed: true,
+          action: "dead_letter",
+          jobId: "job-inbound-parser-failed",
+          expectedStatus: "failed",
+        },
+      },
+    });
+    const stalled = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-stalled-queued/dead-letter",
+      payload: {
+        confirmation: {
+          confirmed: true,
+          action: "dead_letter",
+          jobId: "job-inbound-parser-stalled-queued",
+          expectedStatus: "queued",
+        },
+      },
+    });
+    const active = await server.inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-stalled-active/dead-letter",
+      payload: {
+        confirmation: {
+          confirmed: true,
+          action: "dead_letter",
+          jobId: "job-inbound-parser-stalled-active",
+          expectedStatus: "active",
+        },
+      },
+    });
+
+    expect(failed.statusCode).toBe(200);
+    expect(failed.json()).toMatchObject({
+      status: "dead_lettered",
+      job: {
+        id: "job-inbound-parser-failed",
+        status: "dead_letter",
+        terminal: true,
+        failed: true,
+      },
+    });
+    expect(stalled.statusCode).toBe(200);
+    expect(stalled.json()).toMatchObject({
+      status: "dead_lettered",
+      job: { id: "job-inbound-parser-stalled-queued", status: "dead_letter" },
+    });
+    expect(active.statusCode).toBe(200);
+    expect(active.json()).toMatchObject({
+      status: "dead_lettered",
+      job: { id: "job-inbound-parser-stalled-active", status: "dead_letter" },
+    });
+    expect(failed.body).not.toContain("rawStorageKey");
+    expect(stalled.body).not.toContain("message.eml");
+    expect(active.body).not.toContain("message.eml");
+    const audit = await repository.listAuditEvents(firmId);
+    expect(audit.events.map((event) => event.action)).toEqual(
+      expect.arrayContaining(["inbound_email.parser_job.manual_dead_letter"]),
+    );
+    expect(JSON.stringify(audit.events)).not.toContain("rawStorageKey");
+  });
+
+  it("blocks manual dead-letter for fresh queued inbound parser jobs", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord(
+      parserJob({
+        id: "job-inbound-parser-fresh-queued",
+        status: "queued",
+        queuedAt: new Date().toISOString(),
+        failedAt: undefined,
+      }),
+    );
+
+    const response = await testServer(repository).inject({
+      method: "POST",
+      url: "/api/inbound-email/parser-jobs/job-inbound-parser-fresh-queued/dead-letter",
+      payload: {
+        confirmation: {
+          confirmed: true,
+          action: "dead_letter",
+          jobId: "job-inbound-parser-fresh-queued",
+          expectedStatus: "queued",
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: "INBOUND_EMAIL_PARSER_JOB_NOT_STALLED",
     });
   });
 
