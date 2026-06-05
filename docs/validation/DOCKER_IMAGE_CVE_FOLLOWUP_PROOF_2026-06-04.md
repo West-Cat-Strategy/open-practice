@@ -2,161 +2,183 @@
 
 ## Scope
 
-- Branch: `codex/security-image-cve-followup-2026-06-04`
-- Base: local `main` at `e61df5b26ad0a3f1a56ca0e179095e789665c660`
-- Worktree: `/Users/bryan/projects/open-practice-security-remediation-2026-06-03`
-- Original checkout preserved untouched at `/Users/bryan/projects/open-practice`.
+- Branch: `codex/minio-docker-hardening-2026-06-04`
+- Base: local `main` and `origin/main` at `16a9452a74dea18dd2a8250cf183480d1299d20a`
+- Worktree: `/Users/bryan/projects/open-practice-minio-hardening-2026-06-04`
+- Original dirty checkout preserved untouched at `/Users/bryan/projects/open-practice`.
 
-This pass rechecked the Docker image CVE posture after the security remediation merge handoff. It
-uses synthetic local validation evidence only and makes no API, schema, route, auth, database, app,
-or runtime behavior changes.
+This pass takes the open MinIO residual from the earlier Docker image CVE follow-up and attempts the
+smallest same-contract reduction. It uses synthetic local validation evidence only and makes no API,
+schema, route, auth, database, application, credential, S3 endpoint, bucket, port, or volume-contract
+change.
 
 ## Decision
 
-No Docker image pins or Dockerfiles changed in this lane. Current registry and Scout evidence did
-not show a same-contract image update that lowers critical/high findings for Postgres, Mailpit, or
-MinIO.
+Landed a same-contract MinIO image hardening slice. The local Docker stack now builds
+`open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3` from the upstream MinIO source tag
+`RELEASE.2025-10-15T17-29-55Z`, verifies commit
+`9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a` during the Docker build, and keeps the service as a
+separate wrapped AGPL container with upstream `LICENSE` and `CREDITS` copied inside the image.
 
-- App images and Redis remained clean at `0C/0H`.
-- The custom Postgres image remained better than upstream `postgres:18-alpine`: local
-  `open-practice-postgres:18-alpine-su-exec` reports `0C/2H`, while upstream
-  `postgres:18-alpine` reports `1C/18H`.
-- Mailpit has no newer upstream tag than `v1.30.1`, and upstream `axllent/mailpit:latest` still
-  reports the same `0C/1H` `github.com/gomarkdown/markdown` finding.
-- Docker Hub and Quay MinIO `latest` resolve to the same manifest digest already pinned by Compose.
-  The final SARIF-based Scout pass reports `12C/33H` for the pinned image, with no same-product tag
-  recommendation.
+The app-facing Compose contract is unchanged:
+
+- Compose service name remains `minio`.
+- Command remains `server /data --console-address ":9001"`.
+- Published ports remain `39000:9000` and `39001:9001`.
+- `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY`
+  wiring remains unchanged.
+- The `/data` volume remains `minio-data`.
+
+Current Docker Scout evidence has drifted since the earlier proof. The prior note recorded
+`12C/33H` for the pinned upstream MinIO image; the current Scout database reports `21C/39H` on both
+arm64 and amd64 for the same pinned manifest. The accepted local wrapped image reports `11C/17H` on
+arm64 and passes Docker-backed object-storage/browser validation.
+
+Postgres and Mailpit were not changed in this slice. Their previous residual posture remains
+documented here as background.
 
 ## Image Review
 
-### Postgres
+### MinIO Baseline
 
-- `docker buildx imagetools inspect postgres:18-alpine` resolved the tag to index digest
-  `sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88`; the arm64 manifest is
-  `sha256:563d9a314daa3a9f8e3249e217514210a747970c36d50d83ae5e9dc6749fe354`.
-- `apk list -a libcurl curl` inside `postgres:18-alpine` showed `curl-8.19.0-r0` and
-  `libcurl-8.19.0-r0`; no newer fixed Alpine package was available.
-- The local image contains `/sbin/su-exec`, no `gosu` binary, and no `gosu` references in the
-  Postgres entrypoint scripts. `libcurl-8.19.0-r0` is required by the generated
-  `.postgresql-rundeps-20260514.190037` package, so removal is not a safe same-contract fix.
-- `docker scout recommendations` reported no recommendation for the local custom image or upstream
-  `postgres:18-alpine`.
-
-### Mailpit
-
-- Upstream tag discovery with `git ls-remote --tags --refs https://github.com/axllent/mailpit.git`
-  showed `v1.30.1` as the newest release tag.
-- The local image reports `/mailpit v1.30.1 compiled with go1.26.3 on linux/arm64`.
-- `docker scout cves --only-severity critical,high registry://axllent/mailpit:latest` reported the
-  same `0C/1H` gomarkdown finding as the local build.
-- `docker scout recommendations local://open-practice-mailpit:v1.30.1-go1.26.3` reported the base
-  image as current; its suggested Alpine tag alternative did not reduce the Go dependency finding.
-
-### MinIO
-
+- `docker compose config --images` initially resolved MinIO to
+  `minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e`.
 - `docker buildx imagetools inspect minio/minio:latest` and
-  `docker buildx imagetools inspect quay.io/minio/minio:latest` both resolved to manifest-list
-  digest `sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e`; the arm64
-  manifest is `sha256:9966a92a734f9411e32f4f41d7d9d826fcdc0f68c4e20b70295bd4e7c11f8a2f`.
-- `docker scout cves --only-severity critical,high registry://quay.io/minio/minio:latest` matched
-  the pinned Docker Hub image digest and did not identify a cleaner same-product image.
-- `docker scout recommendations` reported no MinIO tag recommendation.
-- Per lane scope, no custom MinIO build or S3-compatible service swap was attempted.
+  `docker buildx imagetools inspect quay.io/minio/minio:latest` both resolved to the same manifest
+  list digest, `sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e`.
+- The arm64 manifest remained
+  `sha256:9966a92a734f9411e32f4f41d7d9d826fcdc0f68c4e20b70295bd4e7c11f8a2f`; the amd64 manifest
+  remained `sha256:a1a8bd4ac40ad7881a245bab97323e18f971e4d4cba2c2007ec1bedd21cbaba2`.
+- `docker buildx imagetools inspect minio/minio:RELEASE.2025-10-15T17-29-55Z` and the Quay
+  equivalent both returned `not found`, so no official same-product image pin was available.
+- `docker scout recommendations` for the pinned image reported no tag recommendations.
+
+### MinIO Candidate
+
+- `docker/minio/Dockerfile` clones the upstream MinIO tag during build, verifies commit
+  `9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a`, compiles a static MinIO binary with the existing
+  `golang:1.26.3-alpine3.23` builder pattern, and uses an Alpine runtime so
+  `docker compose exec -T minio sh -c 'mkdir -p /data/...` remains available to the existing
+  Docker E2E harness.
+- `docker run --rm --entrypoint /usr/local/bin/minio open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3 --version`
+  reported `minio version RELEASE.2025-10-15T17-29-55Z`, commit
+  `9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a`, runtime `go1.26.3 linux/arm64`, and license
+  `GNU AGPLv3`.
+- `docker image inspect open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3` reported image
+  id `sha256:41bf3912027030e33d5d9e203d6a9a39540d179313608526a1b3766401c081a0`,
+  architecture `arm64`, and OS `linux`.
+- `docker scout recommendations local://open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3`
+  suggested an Alpine base-tag alternative with the same critical/high posture, so no further
+  same-contract base-image reduction was accepted.
+
+### Postgres And Mailpit Residuals
+
+- Postgres remains `open-practice-postgres:18-alpine-su-exec`; the earlier proof showed it still
+  has two high `curl/libcurl 8.19.0-r0` findings with no fixed Alpine package and no Scout
+  recommendation.
+- Mailpit remains `open-practice-mailpit:v1.30.1-go1.26.3`; the earlier proof showed it still has
+  one high `github.com/gomarkdown/markdown` finding and no newer upstream Mailpit release tag.
 
 ## Validation
 
-Preflight:
+Preflight and inventory:
 
 ```bash
 git status --short --branch
 git rev-parse HEAD
+git rev-parse main
+git rev-parse origin/main
 git status --short --branch # in /Users/bryan/projects/open-practice
 docker version --format '{{.Client.Version}} {{.Server.Version}}'
 docker scout version
+docker compose config --images
 ```
 
-Baseline and candidate evidence:
+Baseline MinIO evidence:
 
 ```bash
-docker compose config --images
-docker compose build
-docker scout cves --only-severity critical,high local://open-practice-dev-api:latest
-docker scout cves --only-severity critical,high local://open-practice-dev-web:latest
-docker scout cves --only-severity critical,high local://open-practice-dev-worker:latest
-docker scout cves --only-severity critical,high local://open-practice-postgres:18-alpine-su-exec
-docker scout cves --only-severity critical,high local://open-practice-mailpit:v1.30.1-go1.26.3
-docker scout cves --only-severity critical,high registry://redis:8-alpine@sha256:ad0a6eff0a40304ab1ab4f50f0dc192d82b071e1094eac961bcb6106092f8a4e
-docker scout cves --only-severity critical,high registry://minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-docker scout recommendations local://open-practice-postgres:18-alpine-su-exec
-docker scout recommendations local://open-practice-mailpit:v1.30.1-go1.26.3
+docker buildx imagetools inspect minio/minio:latest
+docker buildx imagetools inspect quay.io/minio/minio:latest
+docker buildx imagetools inspect minio/minio:RELEASE.2025-10-15T17-29-55Z
+docker buildx imagetools inspect quay.io/minio/minio:RELEASE.2025-10-15T17-29-55Z
 docker scout recommendations registry://minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-docker scout cves --only-severity critical,high registry://axllent/mailpit:latest
-docker scout cves --only-severity critical,high registry://quay.io/minio/minio:latest
+docker scout cves --only-severity critical,high --format packages registry://minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+docker scout cves --platform linux/amd64 --only-severity critical,high --format packages registry://minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
 ```
 
-Final handoff gates:
+Candidate and Docker behavior proof:
 
 ```bash
-pnpm verify:select -- --files docs/development/github-maintenance.md docs/validation/README.md docs/validation/DOCKER_IMAGE_CVE_FOLLOWUP_PROOF_2026-06-04.md
-pnpm deps:audit
-pnpm deps:licenses
-pnpm policy:check
-pnpm ci:local
-pnpm migrations:check
-docker compose config --images
-docker compose build
+docker compose build minio
+docker run --rm --entrypoint /usr/local/bin/minio open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3 --version
+docker image inspect open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3 --format '{{.Id}} {{.Architecture}} {{.Os}}'
+docker scout recommendations local://open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3
+docker scout cves --only-severity critical,high --format packages local://open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3
 docker compose up -d postgres redis minio mailpit
 docker compose ps
-pnpm migrations:replay
+curl -fsS http://localhost:39000/minio/health/ready
+docker compose exec -T minio sh -c 'mkdir -p /data/open-practice-documents && test -d /data/open-practice-documents'
+docker compose down --remove-orphans
+docker compose -p open-practice-e2e down -v --remove-orphans
 pnpm e2e:docker
+```
+
+Selector-guided final gates:
+
+```bash
+pnpm verify:select -- --files docker-compose.yml docker/minio/Dockerfile docs/development/github-maintenance.md docs/validation/README.md docs/validation/DOCKER_IMAGE_CVE_FOLLOWUP_PROOF_2026-06-04.md
+pnpm format:check
+pnpm docs:check
+pnpm policy:check
+pnpm build
 git diff --check
 ```
 
 Results:
 
-- `pnpm verify:select -- --files ...` recommended `pnpm format:check`, `pnpm docs:check`, and
-  `pnpm policy:check`.
-- Final closeout reruns of `pnpm format:check` and `pnpm docs:check` passed.
-- `pnpm deps:audit` passed with no known vulnerabilities in pnpm-managed dependencies.
-- `pnpm deps:licenses` passed with the existing review-required license groups unchanged.
-- `pnpm policy:check`, `pnpm migrations:check`, `docker compose config --images`, and
-  `git diff --check` passed.
-- `pnpm ci:local` initially failed because the new proof/docs needed Prettier formatting; after
-  `pnpm exec prettier --write docs/development/github-maintenance.md docs/validation/README.md docs/validation/DOCKER_IMAGE_CVE_FOLLOWUP_PROOF_2026-06-04.md`, `pnpm ci:local` passed. The final
-  closeout rerun of `pnpm ci:local` also passed.
-- `docker compose build` passed and rebuilt the app, Postgres, and Mailpit images.
-- `docker compose up -d postgres redis minio mailpit` passed. Health checks passed with Postgres
-  accepting connections, Redis returning `PONG`, MinIO live health returning success, and Mailpit
-  `readyz` returning success.
-- `pnpm migrations:replay` passed with 51 migrations applied to a disposable database and cleaned up.
-- `pnpm e2e:docker` passed with 5 Playwright Docker checks and cleaned up the disposable E2E stack.
-  During final closeout rerun, the first attempt hit a local port conflict because the dev Compose
-  stack from `docker compose up -d postgres redis minio mailpit` still held Mailpit port
-  `127.0.0.1:31025`; after `docker compose down --remove-orphans` and
-  `docker compose -p open-practice-e2e down -v --remove-orphans`, the rerun passed.
+- `docker version --format '{{.Client.Version}} {{.Server.Version}}'` reported `29.5.2 29.5.2`.
+- `docker scout version` reported `v1.21.0`.
+- Baseline official pinned MinIO Scout result: `21C/39H` on arm64 and `21C/39H` on amd64.
+- Accepted local wrapped MinIO Scout result: `11C/17H` on arm64, reducing the current arm64
+  critical/high posture by `10C/22H`.
+- `docker compose build minio` passed after verifying the upstream tag commit.
+- Final `docker compose config --images` resolved MinIO to
+  `open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3`.
+- Final `docker scout cves --only-severity critical,high
+local://open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3` analyzed local digest
+  `41bf39120270` on `linux/arm64` and reported `11C/17H`.
+- `docker compose up -d postgres redis minio mailpit` recreated `open-practice-dev-minio-1` with
+  `open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3`.
+- `curl -fsS http://localhost:39000/minio/health/ready` passed.
+- `docker compose exec -T minio sh -c 'mkdir -p /data/open-practice-documents && test -d /data/open-practice-documents'`
+  passed, preserving the existing Docker E2E bucket setup behavior.
+- Before `pnpm e2e:docker`, the local `open-practice-dev` stack was stopped to free the fixed
+  infrastructure ports. `docker compose -p open-practice-e2e down -v --remove-orphans` found no
+  stale E2E resources.
+- `pnpm e2e:docker` passed with 5 Playwright Docker checks, including the Docker-backed external
+  upload receipt flow, and cleaned up the disposable E2E stack.
+- After E2E cleanup, both `docker compose ps -a` and `docker compose -p open-practice-e2e ps -a`
+  showed no running containers for those projects.
+- `pnpm verify:select -- --files ...` recommended `pnpm format:check`, `pnpm docs:check`,
+  `pnpm policy:check`, and `pnpm build`.
+- `pnpm format:check` initially reported Markdown wrapping issues in this proof and
+  `docs/validation/README.md`; after formatting the touched Markdown files, the rerun passed.
+- `pnpm docs:check`, `pnpm policy:check`, `pnpm build`, and `git diff --check` passed.
 
-Final Docker Scout proof was rerun after `docker compose build` because local app image manifest
-digests can change when the build reruns. SARIF and recommendation artifacts are stored under
-`/tmp/codex-security-scans/open-practice/image-cve-followup-2026-06-04/scout/`.
+Final MinIO critical/high counts:
 
-Final critical/high counts:
-
-| Image                                                                                                                         | Final Scout critical/high result | Recommendation outcome                                                                     |
-| ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------: | ------------------------------------------------------------------------------------------ |
-| `local://open-practice-dev-api:latest`                                                                                        |                          `0C/0H` | Medium-only Node base suggestions; no critical/high reduction needed.                      |
-| `local://open-practice-dev-web:latest`                                                                                        |                          `0C/0H` | Medium-only Node base suggestions; no critical/high reduction needed.                      |
-| `local://open-practice-dev-worker:latest`                                                                                     |                          `0C/0H` | Medium-only Node base suggestions; no critical/high reduction needed.                      |
-| `local://open-practice-postgres:18-alpine-su-exec`                                                                            |                          `0C/2H` | No recommendations.                                                                        |
-| `local://open-practice-mailpit:v1.30.1-go1.26.3`                                                                              |                          `0C/1H` | Alpine-base suggestion keeps the same critical/high count; upstream tag remains `v1.30.1`. |
-| `registry://redis:8-alpine@sha256:ad0a6eff0a40304ab1ab4f50f0dc192d82b071e1094eac961bcb6106092f8a4e`                           |                          `0C/0H` | No recommendations.                                                                        |
-| `registry://minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e` |                        `12C/33H` | No tag recommendations.                                                                    |
+| Image                                                                                                                         | Platform      | Scout critical/high result | Outcome                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------- | ------------- | -------------------------: | --------------------------------------------------------- |
+| `registry://minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e` | `linux/arm64` |                  `21C/39H` | Baseline pinned image; no Scout tag recommendation.       |
+| `registry://minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e` | `linux/amd64` |                  `21C/39H` | Baseline pinned image; no official newer image tag found. |
+| `local://open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3`                                                           | `linux/arm64` |                  `11C/17H` | Accepted local wrapped-service image; Docker E2E passed.  |
 
 ## Residuals
 
-- Postgres: `curl/libcurl 8.19.0-r0` has two high findings (`CVE-2026-6276` and `CVE-2026-5773`)
-  with no fixed Alpine package and no Scout recommendation.
-- Mailpit: `github.com/gomarkdown/markdown` has one high finding (`CVE-2023-42821`) with no fixed
-  version surfaced by Scout.
-- MinIO: the current pinned MinIO image reports `12C/33H` in the final SARIF pass. The largest
-  residual groups are Go stdlib, `golang.org/x/crypto`, and MinIO's own upstream module. Docker Hub
-  and Quay latest resolve to the same digest and Scout reports no tag recommendation.
+- MinIO still has `11C/17H` in the accepted arm64 Scout scan. The largest remaining groups are
+  `golang.org/x/crypto`, MinIO's own upstream module advisories marked not fixed, and Go dependency
+  findings that require future upstream dependency movement or a newer Go/base rebuild.
+- Docker Hub and Quay `latest` still resolve to the old pinned manifest digest, and the newer
+  upstream source tag is not published as an official Docker Hub or Quay image.
+- The accepted image is a wrapped AGPL service container. Do not copy MinIO source into Open
+  Practice core code, and keep future production use subject to the repository reuse/license policy.
