@@ -139,6 +139,55 @@ packages/domain/src/audit-taxonomy.test.ts
 packages/domain/src/audit.ts
 ```
 
+## Docker Follow-Up Closeout
+
+The remaining follow-up after the full-scan report was local-service Docker supply-chain evidence,
+not an application-code finding. It is closed by updating the same-contract pins that had a current
+fix and by recording fresh Scout proof for residuals that remain upstream-only.
+
+Local follow-up artifact:
+
+```text
+/tmp/codex-security-scans/open-practice/0484630_20260605T221819Z_docker_followup/summary.md
+```
+
+Follow-up changed paths:
+
+```text
+Dockerfile
+docker-compose.yml
+docs/development/github-maintenance.md
+docs/planning-and-progress.md
+docs/validation/OP_SECURITY_FULL_SCAN_REMEDIATION_PROOF_2026-06-05.md
+docs/validation/README.md
+```
+
+Resolved same-contract updates:
+
+- App images now build from
+  `node:26.3.0-alpine3.23@sha256:144769ec3f32e8ee36b3cfde91e82bee25d9367b20f31a151f3f7eea3a2a8541`.
+- Redis now uses
+  `redis:8.8.0-alpine@sha256:09160599abd229764c0fb44cb6be640294e1d360a54b19985ab4843dcf2d90f1`.
+
+All-image Scout closure:
+
+| Image                                                       |        Quickview | Critical/high result | Closure                                                                                                   |
+| ----------------------------------------------------------- | ---------------: | -------------------: | --------------------------------------------------------------------------------------------------------- |
+| `open-practice-dev-api:latest`                              |    `0C/0H/1M/0L` |              `0C/0H` | Closed by Node 26.3.0 rebuild.                                                                            |
+| `open-practice-dev-web:latest`                              |    `0C/0H/1M/0L` |              `0C/0H` | Closed by Node 26.3.0 rebuild.                                                                            |
+| `open-practice-dev-worker:latest`                           |    `0C/0H/1M/0L` |              `0C/0H` | Closed by Node 26.3.0 rebuild.                                                                            |
+| `redis:8.8.0-alpine`                                        |    `0C/0H/1M/0L` |              `0C/0H` | Closed by refreshed deterministic Redis pin.                                                              |
+| `open-practice-postgres:18-alpine-su-exec`                  |    `0C/2H/8M/0L` |              `0C/2H` | Upstream-only `curl 8.19.0-r0` residual; wrapper is safer than upstream `postgres:18-alpine` at `1C/19H`. |
+| `open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4` | `11C/16H/19M/2L` |            `11C/16H` | Upstream MinIO and bundled Go module residuals; latest upstream source tag remains in use.                |
+| `open-practice-mailpit:v1.30.1-go1.26.4`                    |    `0C/1H/1M/0L` |              `0C/1H` | Upstream `github.com/gomarkdown/markdown` residual; latest Mailpit source tag remains in use.             |
+
+Base image checks showed no critical/high CVEs for `node:26.3.0-alpine3.23`,
+`redis:8.8.0-alpine`, `golang:1.26.4-alpine3.23`, or `alpine:3.23.4`. Scout reported no
+recommendations for the pinned Node, Redis, Golang, Postgres, or Postgres-wrapper images. The
+official `postgres:18-alpine` base still scans worse than the local wrapper because of Go stdlib
+and older curl findings. Scout suggested a Node 24 base for app images, but that would lower the
+major Node line and increase medium findings, so it was rejected.
+
 ## Validation
 
 Selector and prerequisite builds:
@@ -192,13 +241,42 @@ Docker evidence:
 
 ```bash
 docker compose config
-docker compose build --pull mailpit minio
+docker compose config --images
+docker compose build --pull postgres minio mailpit api web worker
+docker compose pull redis
+docker scout quickview open-practice-dev-api:latest
+docker scout cves --only-severity critical,high open-practice-dev-api:latest
+docker scout recommendations open-practice-dev-api:latest
+docker scout quickview open-practice-dev-web:latest
+docker scout cves --only-severity critical,high open-practice-dev-web:latest
+docker scout recommendations open-practice-dev-web:latest
+docker scout quickview open-practice-dev-worker:latest
+docker scout cves --only-severity critical,high open-practice-dev-worker:latest
+docker scout recommendations open-practice-dev-worker:latest
+docker scout quickview open-practice-postgres:18-alpine-su-exec
+docker scout cves --only-severity critical,high open-practice-postgres:18-alpine-su-exec
+docker scout recommendations open-practice-postgres:18-alpine-su-exec
+docker scout quickview redis:8.8.0-alpine
+docker scout cves --only-severity critical,high redis:8.8.0-alpine
+docker scout recommendations redis:8.8.0-alpine
 docker scout quickview open-practice-mailpit:v1.30.1-go1.26.4
 docker scout cves --only-severity critical,high open-practice-mailpit:v1.30.1-go1.26.4
 docker scout recommendations open-practice-mailpit:v1.30.1-go1.26.4
 docker scout quickview open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4
 docker scout cves --only-severity critical,high open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4
 docker scout recommendations open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4
+docker scout quickview node:26.3.0-alpine3.23
+docker scout cves --only-severity critical,high node:26.3.0-alpine3.23
+docker scout recommendations node:26.3.0-alpine3.23
+docker scout quickview postgres:18-alpine
+docker scout cves --only-severity critical,high postgres:18-alpine
+docker scout recommendations postgres:18-alpine
+docker scout quickview golang:1.26.4-alpine3.23
+docker scout cves --only-severity critical,high golang:1.26.4-alpine3.23
+docker scout recommendations golang:1.26.4-alpine3.23
+docker scout quickview alpine:3.23.4
+docker scout cves --only-severity critical,high alpine:3.23.4
+docker scout recommendations alpine:3.23.4
 pnpm e2e:docker
 ```
 
@@ -219,7 +297,8 @@ Results:
 - `pnpm --filter @open-practice/database db:check` passed with `Everything's fine`.
 - `pnpm migrations:check` passed with 52 SQL files matching 52 journal entries.
 - `pnpm security:scan` passed with no high-confidence tracked secrets.
-- `pnpm audit --prod` and `pnpm audit --dev` passed with no known vulnerabilities.
+- `pnpm deps:audit`, `pnpm audit --prod`, and `pnpm audit --dev` passed with no known
+  vulnerabilities.
 - `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm build`, and
   `git diff --check` passed.
 - `pnpm e2e:docker` passed with 5 Docker Chromium Playwright checks and cleaned up the disposable

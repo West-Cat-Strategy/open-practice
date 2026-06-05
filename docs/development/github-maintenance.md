@@ -40,10 +40,12 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
 2026-06-05 Docker image CVE follow-up evidence, building on the 2026-05-28 dependency refresh and
 the 2026-05-12 / 2026-05-16 / 2026-06-04 infra-image follow-ups:
 
-- `node:26.2.0-alpine3.23` is pinned by digest as the app base. The Dockerfile updates bundled npm
+- `node:26.3.0-alpine3.23` is pinned by digest as the app base. The Dockerfile updates bundled npm
   and pnpm explicitly to `npm@11.16.0` and `pnpm@11.4.0`, deploys runtime images with production
   dependencies, and uses Node's built-in `fetch` for API health checks instead of installing `curl`.
-  Final local app images, not only the upstream base, are the validation target.
+  Final local app images, not only the upstream base, are the validation target. The 2026-06-05
+  Docker follow-up rebuilt API, Web, and Worker on this base; all three local app images report
+  `0C`/`0H` in critical/high Scout scans and `0C`/`0H`/`1M`/`0L` in quickview.
 - The local Postgres service now builds `open-practice-postgres:18-alpine-su-exec` from the pinned
   `postgres:18-alpine` 18.4 digest and replaces the vulnerable bundled `gosu` helper with Alpine
   `su-exec` while preserving the standard Postgres 18 entrypoint and health-check contract. The
@@ -52,8 +54,9 @@ the 2026-05-12 / 2026-05-16 / 2026-06-04 infra-image follow-ups:
   Scout reports no base-image recommendation. The 2026-06-04 recheck found no newer Alpine
   `curl`/`libcurl` package than `8.19.0-r0`; upstream `postgres:18-alpine` still scans worse than
   the custom local image because it retains the Go-based `gosu` surface.
-- `redis:8-alpine` is pinned by digest in the local Docker stack because the Scout result dropped
-  from critical/high Go runtime findings to no critical/high findings in the current scan.
+- `redis:8.8.0-alpine` is pinned by digest in the local Docker stack because the Scout result
+  remains at no critical/high findings in the current scan while keeping a deterministic
+  multi-architecture tag and digest.
 - The local MinIO service now builds `open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4`
   from the upstream `RELEASE.2025-10-15T17-29-55Z` source tag after verifying commit
   `9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a`. Docker Hub and Quay `latest` still resolve to the old
@@ -67,6 +70,10 @@ the 2026-05-12 / 2026-05-16 / 2026-06-04 infra-image follow-ups:
   `8025`. The builder is now pinned to `golang:1.26.4-alpine3.23` by digest. The 2026-06-05 local
   Scout scan reports `0C`/`1H`, with the single residual high in `github.com/gomarkdown/markdown`
   marked not fixed and the Alpine base current.
+- The 2026-06-05 all-image follow-up artifact is local-only at
+  `/tmp/codex-security-scans/open-practice/0484630_20260605T221819Z_docker_followup/summary.md`.
+  It records the Compose image inventory, the all-image Scout matrix, and the rationale for closing
+  same-contract residuals as fixed where possible and upstream-only where not currently fixable.
 
 ## GitHub Settings Cutover
 
