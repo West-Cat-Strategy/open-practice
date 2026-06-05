@@ -53,6 +53,15 @@ afterEach(async () => {
 });
 
 describe("task routes", () => {
+  it("rejects external client users from the staff task workbench", async () => {
+    const response = await testServer({
+      user: user("client_external", ["matter-001"]),
+    }).inject({ method: "GET", url: "/api/tasks/workbench" });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ message: "Staff access required" });
+  });
+
   it("returns matter-scoped workbench counters for visible task deadlines", async () => {
     const response = await testServer({
       user: user("licensee", ["matter-001"]),

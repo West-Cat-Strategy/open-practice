@@ -11,7 +11,7 @@ import {
   validateEmbeddedIntakeTemplateDefinition,
 } from "@open-practice/domain";
 import { EmbeddedAutomationProvider } from "@open-practice/providers";
-import { requireAccess } from "../http/auth-guards.js";
+import { requireAccess, requireStaffAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
@@ -176,6 +176,8 @@ export function registerIntakeRoutes(
         sessions: await repository.listIntakeSessions(request.auth.firmId, query),
       };
     }
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
     if (request.auth.user.role === "owner_admin" || request.auth.user.role === "auditor") {
       assertIntakeAccess(request.auth, { resource: "intake_session", action: "read" });
       return {

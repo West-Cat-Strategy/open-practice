@@ -92,6 +92,31 @@ afterEach(async () => {
 });
 
 describe("intake routes", () => {
+  it("rejects external client users from broad staff intake sessions", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createUser({
+      id: "user-client-external",
+      firmId: "firm-west-legal",
+      displayName: "External Client",
+      email: "client@example.test",
+      role: "client_external",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    });
+
+    const response = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/intake-sessions",
+      headers: {
+        "x-open-practice-user-id": "user-client-external",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ message: "Staff access required" });
+  });
+
   it("lists and creates intake sessions through the extracted registrar", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository });

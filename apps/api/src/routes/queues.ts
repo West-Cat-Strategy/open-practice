@@ -4,7 +4,7 @@ import {
   canAccess,
   canShareDocumentThroughPortal,
 } from "@open-practice/domain";
-import { hasFirmWideLedgerAccess } from "../http/auth-guards.js";
+import { hasFirmWideLedgerAccess, requireStaffAccess } from "../http/auth-guards.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 export function registerQueuesRoutes(
@@ -12,6 +12,8 @@ export function registerQueuesRoutes(
   { repository }: ApiRouteDependencies,
 ): void {
   server.get("/api/queues", async (request) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
     const matters = await repository.listMattersForUser(request.auth.user);
     const grants = await repository.listPortalGrants(request.auth.firmId);
     const signatures = await repository.listSignatureRequests(request.auth.firmId);

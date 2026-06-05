@@ -626,6 +626,10 @@ async function resolvePublicGuestSession(input: {
   repository: ApiRouteDependencies["repository"];
   jwtSecret?: string;
   token: string;
+  expiredLinkAccessLog?: {
+    action: AccessLogRecord["action"];
+    request: FastifyRequest;
+  };
 }): Promise<{
   event: CalendarEventRecord;
   session: CalendarMeetingSessionRecord;
@@ -638,6 +642,23 @@ async function resolvePublicGuestSession(input: {
   );
   if (!link) {
     throw new ApiHttpError(404, "GUEST_SESSION_NOT_FOUND", "Guest session was not found");
+  }
+  if (link.status === "revoked" || Date.parse(link.expiresAt) <= Date.now()) {
+    if (input.expiredLinkAccessLog) {
+      await input.repository.createAccessLog(
+        publicGuestSessionAccessLog({
+          link,
+          action: input.expiredLinkAccessLog.action,
+          request: input.expiredLinkAccessLog.request,
+          metadata: {
+            outcome: link.status === "revoked" ? "revoked" : "expired",
+            status: link.status,
+            publicTokenExpiredOrRevoked: true,
+          },
+        }),
+      );
+    }
+    throw new ApiHttpError(410, "GUEST_SESSION_EXPIRED", "Guest session is no longer available");
   }
   const [event, session] = await Promise.all([
     input.repository.getCalendarEvent(link.firmId, link.matterId, link.eventId),
@@ -1900,6 +1921,7 @@ export function registerCalendarRoutes(
         repository,
         jwtSecret,
         token: params.token,
+        expiredLinkAccessLog: { action: "view", request },
       });
       const now = new Date().toISOString();
       await repository.createAccessLog(
@@ -1932,6 +1954,7 @@ export function registerCalendarRoutes(
         repository,
         jwtSecret,
         token: params.token,
+        expiredLinkAccessLog: { action: "submit", request },
       });
       const now = new Date().toISOString();
       const expired = Date.parse(resolved.link.expiresAt) <= Date.parse(now);

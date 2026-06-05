@@ -1,6 +1,67 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
 
+describe("repository audit event ordering", () => {
+  it("appends audit events with monotonic per-firm sequences", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    const appended = await Promise.all(
+      ["audit-sequence-001", "audit-sequence-002", "audit-sequence-003"].map((id) =>
+        repository.appendAuditEvent({
+          id,
+          firmId: "firm-west-legal",
+          actorId: "user-admin",
+          action: "matter.timeline_sensitive",
+          resourceType: "matter",
+          resourceId: "matter-001",
+          occurredAt: "2026-04-08T17:00:00.000Z",
+          metadata: { matterId: "matter-001" },
+        }),
+      ),
+    );
+
+    expect(appended.map((event) => event.sequence)).toEqual([3, 4, 5]);
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      valid: true,
+      events: expect.arrayContaining([
+        expect.objectContaining({ id: "audit-sequence-001", sequence: 3 }),
+        expect.objectContaining({ id: "audit-sequence-002", sequence: 4 }),
+        expect.objectContaining({ id: "audit-sequence-003", sequence: 5 }),
+      ]),
+    });
+  });
+
+  it("recomputes chain fields for legacy recordAuditEvent calls", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await repository.recordAuditEvent({
+      id: "audit-record-legacy",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      action: "matter.timeline_sensitive",
+      resourceType: "matter",
+      resourceId: "matter-001",
+      sequence: 999,
+      occurredAt: "2026-04-08T17:00:00.000Z",
+      metadata: { matterId: "matter-001" },
+      previousHash: "forged-previous-hash",
+      hash: "forged-hash",
+    });
+
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      valid: true,
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          id: "audit-record-legacy",
+          sequence: 3,
+          previousHash: expect.not.stringMatching(/^forged/),
+          hash: expect.not.stringMatching(/^forged/),
+        }),
+      ]),
+    });
+  });
+});
+
 describe("repository operations activity redaction", () => {
   it("builds audit-safe matter activity across existing matter records", async () => {
     const repository = new InMemoryOpenPracticeRepository();

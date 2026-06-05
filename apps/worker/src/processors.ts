@@ -81,6 +81,10 @@ type WorkerS3Storage = {
   serverSideEncryption?: "AES256";
 };
 
+function documentScanSafeForOcr(scanStatus: string): boolean {
+  return scanStatus === "passed" || scanStatus === "not_required";
+}
+
 const CONNECTOR_DELIVERY_JOB_NAME = "deliver_connectors";
 const CONNECTOR_JOB_MAX_ATTEMPTS = 3;
 
@@ -1446,6 +1450,13 @@ async function processOcrJob(input: {
       status: "skipped",
       reason: "Document not found",
       metadata: { firmId, documentId },
+    };
+  }
+  if (!documentScanSafeForOcr(document.scanStatus)) {
+    return {
+      status: "skipped",
+      reason: "Document scan has not passed",
+      metadata: { firmId, documentId, scanStatus: document.scanStatus },
     };
   }
 

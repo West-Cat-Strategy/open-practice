@@ -23,7 +23,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:8-alpine@sha256:ad0a6eff0a40304ab1ab4f50f0dc192d82b071e1094eac961bcb6106092f8a4e
+    image: redis:8.8.0-alpine@sha256:09160599abd229764c0fb44cb6be640294e1d360a54b19985ab4843dcf2d90f1
     ports:
       - "${OPEN_PRACTICE_DOCKER_HOST_BIND:-127.0.0.1}:36379:6379"
     volumes:
@@ -35,7 +35,7 @@ services:
       retries: 5
 
   minio:
-    image: open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.3
+    image: open-practice-minio:RELEASE.2025-10-15T17-29-55Z-go1.26.4
     build:
       context: ./docker/minio
     command: server /data --console-address ":9001"
@@ -49,7 +49,7 @@ services:
       - minio-data:/data
 
   mailpit:
-    image: open-practice-mailpit:v1.30.1-go1.26.3
+    image: open-practice-mailpit:v1.30.1-go1.26.4
     build:
       context: ./docker/mailpit
     ports:

@@ -76,6 +76,18 @@ describe("email routes", () => {
     });
   });
 
+  it("denies email provider status to client-external users", async () => {
+    const response = await testServer({
+      repository: new InMemoryOpenPracticeRepository(),
+      authUser: user("client_external", ["matter-001"]),
+    }).inject({
+      method: "GET",
+      url: "/api/email/status",
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
   it("renders email previews without SMTP, outbox, job, or audit side effects", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const auditBefore = await repository.listAuditEvents("firm-west-legal");

@@ -2,9 +2,11 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository, type AuthSessionRecord } from "@open-practice/database";
 import type { AuditEvent, NewAuditEvent, ProfessionalRole, User } from "@open-practice/domain";
+import { createSessionToken, hashToken } from "../http/auth-helpers.js";
 import { registerCalendarRoutes } from "./calendar.js";
 
 const servers: FastifyInstance[] = [];
+const guestAccessJwtSecret = "calendar-guest-session-test-secret-at-least-32-characters";
 
 type TestEmailJobQueue = {
   add: (
@@ -64,7 +66,7 @@ function testServer(
         guestAccessTokenSigningConfigured?: boolean;
       }
     | undefined = undefined,
-  jwtSecret = "calendar-guest-session-test-secret-at-least-32-characters",
+  jwtSecret = guestAccessJwtSecret,
   publicWebBaseUrl = "https://practice.example.test",
 ) {
   const server = Fastify({ logger: false });
@@ -993,12 +995,13 @@ describe("calendar routes", () => {
       method: "GET",
       url: `/api/portal/guest-sessions/${token}`,
     });
-    expect(publicEnded.statusCode).toBe(200);
+    expect(publicEnded.statusCode).toBe(410);
     expect(publicEnded.json()).toMatchObject({
-      session: { status: "ended" },
-      meetingAccess: { status: "unavailable", meetingUrlAvailable: false },
-      guest: { status: "revoked" },
+      message: "Guest session is no longer available",
     });
+    expect(JSON.stringify(publicEnded.json())).not.toContain("calendar-event-002");
+    expect(JSON.stringify(publicEnded.json())).not.toContain("waitingCount");
+    expect(JSON.stringify(publicEnded.json())).not.toContain("revokedCount");
 
     const auditJson = JSON.stringify(repository.recordedAuditEvents);
     expect(repository.recordedAuditEvents.map((event) => event.action)).toEqual(
@@ -1022,9 +1025,95 @@ describe("calendar routes", () => {
       expect.arrayContaining([
         expect.objectContaining({ action: "view" }),
         expect.objectContaining({ action: "submit" }),
+        expect.objectContaining({
+          action: "view",
+          metadata: expect.objectContaining({
+            outcome: "revoked",
+            status: "revoked",
+            publicTokenExpiredOrRevoked: true,
+          }),
+        }),
       ]),
     );
     expect(publicGuestAccessLogs.every((log) => log.actorId === undefined)).toBe(true);
+    expect(JSON.stringify(publicGuestAccessLogs)).not.toContain("waitingCount");
+    expect(JSON.stringify(publicGuestAccessLogs)).not.toContain("revokedCount");
+  });
+
+  it("logs expired hosted guest-session token probes before returning generic 410", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(
+      user("owner_admin", ["matter-001"]),
+      repository,
+      undefined,
+      {
+        providerKey: "open-practice-webrtc",
+        hostedMeetingBaseUrl: "https://meet.example.test/rooms",
+        guestAccessTokenSigningConfigured: true,
+      },
+      guestAccessJwtSecret,
+    );
+    const now = "2026-01-01T12:00:00.000Z";
+    const token = createSessionToken();
+    const session = await repository.createCalendarMeetingSession({
+      id: "calendar-meeting-session-expired",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-002",
+      status: "lobby_open",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-owner_admin",
+      updatedByUserId: "user-owner_admin",
+      metadata: {},
+    });
+    const expiredLink = await repository.createCalendarGuestLink({
+      id: "calendar-guest-link-expired",
+      firmId: session.firmId,
+      matterId: session.matterId,
+      eventId: session.eventId,
+      sessionId: session.id,
+      tokenHash: hashToken(token, guestAccessJwtSecret),
+      status: "issued",
+      expiresAt: "2026-01-01T13:00:00.000Z",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: "user-owner_admin",
+      metadata: {},
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: `/api/portal/guest-sessions/${token}`,
+    });
+
+    expect(response.statusCode).toBe(410);
+    expect(response.json()).toMatchObject({
+      message: "Guest session is no longer available",
+    });
+    expect(JSON.stringify(response.json())).not.toContain("calendar-event-002");
+    expect(JSON.stringify(response.json())).not.toContain("waitingCount");
+    expect(JSON.stringify(response.json())).not.toContain("revokedCount");
+
+    const publicGuestAccessLogs = await repository.listAccessLogs("firm-west-legal", {
+      resourceType: "calendar_guest_link",
+      resourceId: expiredLink.id,
+    });
+    expect(publicGuestAccessLogs).toEqual([
+      expect.objectContaining({
+        action: "view",
+        metadata: expect.objectContaining({
+          outcome: "expired",
+          status: "issued",
+          publicTokenExpiredOrRevoked: true,
+        }),
+      }),
+    ]);
+    expect(publicGuestAccessLogs[0]).not.toHaveProperty("actorId");
+    expect(JSON.stringify(publicGuestAccessLogs)).not.toContain("calendar-event-002");
+    expect(JSON.stringify(publicGuestAccessLogs)).not.toContain("meet.example.test");
+    expect(JSON.stringify(publicGuestAccessLogs)).not.toContain("waitingCount");
+    expect(JSON.stringify(publicGuestAccessLogs)).not.toContain("revokedCount");
   });
 
   it("blocks hosted guest-session controls outside the matter or without hosted guest access", async () => {
