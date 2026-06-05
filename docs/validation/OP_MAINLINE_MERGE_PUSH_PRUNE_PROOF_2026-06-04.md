@@ -111,4 +111,24 @@ Results:
 
 ## Push And Prune
 
-Pending push and prune proof.
+Initial push:
+
+- `git push origin main` advanced remote `main` from `84e4f56` to `af88879`.
+- Push parity passed with `git rev-parse HEAD origin/main`, `git ls-remote --heads origin main`,
+  ancestry checks in both directions, and `git diff --check HEAD`.
+
+Prune:
+
+- `git branch --merged main` listed `codex/minio-docker-hardening-2026-06-04`,
+  `codex/op-t143-provider-config-encryption`, `main`, and `op-inmail-replay-recovery`.
+- The MinIO and inbound replay sibling worktrees were clean before removal.
+- Removed worktrees:
+  `/Users/bryan/projects/open-practice-minio-hardening-2026-06-04` and
+  `/Users/bryan/projects/open-practice-op-inmail-replay-recovery`.
+- Deleted merged local branches:
+  `codex/minio-docker-hardening-2026-06-04`, `codex/op-t143-provider-config-encryption`, and
+  `op-inmail-replay-recovery`.
+- Ran `git worktree prune` and `git remote prune origin`.
+- Final local inventory after prune: only branch `main`, only worktree
+  `/Users/bryan/projects/open-practice`, no unmerged local branches, and 42 historical stash entries
+  preserved.
