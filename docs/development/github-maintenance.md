@@ -18,6 +18,24 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
 - Prefer synthetic examples in issues and pull requests. Do not publish client, matter, credential,
   payment, privileged document, trust/funds, audit-log, or private deployment details.
 
+## Hot-Path Security Rescans
+
+Use the local hot-path rescan helper after future edits to inbound email serialization or promotion,
+public guest-session token logging, Drizzle audit append code, or document checksum duplicate
+locking:
+
+```bash
+node scripts/security-hot-path-rescan.mjs
+```
+
+The helper is scoped to the narrow follow-up named by the 2026-06-05 Codex Security report:
+`apps/api/src/routes/inbound-email.ts`, `apps/api/src/routes/calendar.ts`, and
+`packages/database/src/repository/drizzle.ts`. It records ignored local evidence under
+`.tmp/security-hot-path-rescan/<timestamp>/`, including command logs, `rescan-proof.json`, and a
+Codex Security scoped-rescan prompt that can be reused for a formal scoped-path scan. Use
+`--dry-run` to preview the exact command lane and `--artifact-root <path>` when a different ignored
+evidence directory is needed.
+
 ## Local Dependency Maintenance
 
 - Use `pnpm deps:audit` for production and development dependency audits.
@@ -74,6 +92,26 @@ the 2026-05-12 / 2026-05-16 / 2026-06-04 infra-image follow-ups:
   `/tmp/codex-security-scans/open-practice/0484630_20260605T221819Z_docker_followup/summary.md`.
   It records the Compose image inventory, the all-image Scout matrix, and the rationale for closing
   same-contract residuals as fixed where possible and upstream-only where not currently fixable.
+
+### Docker Residual Watch
+
+Use the local residual watch when refreshing the 2026-06-05 Mailpit, MinIO, and Postgres service
+image posture without changing Compose contracts:
+
+```bash
+pnpm docker:residual-watch
+```
+
+The helper reads `docker-compose.yml` plus `docker/postgres/Dockerfile`,
+`docker/minio/Dockerfile`, and `docker/mailpit/Dockerfile`, then writes ignored local evidence under
+`/tmp/codex-security-scans/open-practice/docker-residual-watch/<timestamp>/`. It reruns the current
+Docker Scout quickview, critical/high CVE, and recommendation checks for the three wrapped service
+images, probes same-product registry manifests, and checks upstream MinIO/Mailpit source tags.
+Exit `0` means the documented residuals still have no same-contract review candidate, exit `2`
+means a newer upstream tag, registry manifest, or Scout recommendation needs a separate hardening
+review, and exit `1` records Docker, Scout, registry, or network blockers in the artifact. Keep any
+actual image pin, base, source-tag, provenance, license, or Docker E2E change in a separate
+follow-up proof.
 
 ## GitHub Settings Cutover
 
