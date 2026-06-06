@@ -4,6 +4,9 @@
 
 Branch: `codex/code-review-remediation-2026-06-06`
 
+Topic commit: `5898110`
+Mainline merge commit before proof closeout: `91d0d11`
+
 Implemented the code-review remediation plan with synthetic-only fixtures and no new dependencies. The change keeps legacy public-token path routes for compatibility while adding header-token transport, safe URL scrubbing, stricter validation, persistence correctness, policy gates, and validation proof.
 
 ## Changed Paths
@@ -125,10 +128,10 @@ pnpm --filter @open-practice/web typecheck
 pnpm build
 ```
 
-Final selector command after proof/index/workboard updates:
+Final selector command after merging the branch into `main`:
 
 ```text
-pnpm verify:select -- --files $(git ls-files --modified --others --exclude-standard)
+pnpm verify:select -- --base origin/main
 ```
 
 Final recommended validation:
@@ -168,20 +171,19 @@ pnpm build
 - `pnpm migrations:check` - passed: 52 SQL files match 52 journal entries.
 - `node --test scripts/*.test.mjs` - passed: 55 tests.
 - `pnpm test` - passed: Turbo package tests plus 55 script tests.
-- `pnpm docker:residual-watch` - passed and wrote `/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-06T06-29-51Z`.
+- `pnpm docker:residual-watch` - passed and wrote `/tmp/codex-security-scans/open-practice/docker-residual-watch/2026-06-06T06-56-16Z`.
 - `pnpm deps:audit` - passed: no known vulnerabilities found for prod or dev audit.
 - `pnpm deps:licenses` - passed with existing review-required license groups reported.
-- `pnpm e2e:docker` - first run passed 4 of 5 scenarios and exposed the Docker dashboard screenshot sweep's 60s timeout. After adding a Docker-only 120s timeout for that sweep, rerun passed: 5 passed in 30.7s. Log captured in `.tmp/validation/e2e-docker.log`.
+- `pnpm e2e:docker` - passed: 5 passed in 18.4s.
 - `pnpm format:check` - passed.
 - `pnpm docs:check` - passed.
 - `pnpm policy:check` - passed after scoping proof-index validation to local proof-note links.
-- `pnpm e2e:host` - passed: 33 passed, 3 skipped. Log captured in `.tmp/validation/e2e-host.log`.
+- `pnpm e2e:host` - passed: 33 passed, 3 skipped.
 - `pnpm build` - passed: all 6 package builds, including new hash-token public pages in Next route output.
-- `pnpm ci:local` - passed after proof/index/workboard updates; this covered `pnpm verify` plus `git diff --check`.
+- `pnpm ci:local` - passed after proof/index/workboard updates; this covered `pnpm verify` plus `git diff --check` for the final mainline tree.
 
 ## Skips and Residuals
 
 - No Docker skip: Docker E2E and Docker residual watch both ran successfully.
 - No dependency additions.
-- The first Docker E2E failure was validation-infra timeout, not a product assertion failure. The rerun passed after the Docker-only screenshot sweep timeout was raised.
 - No validation residual remains for this branch.
