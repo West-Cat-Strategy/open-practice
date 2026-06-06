@@ -11,6 +11,7 @@
     "deps:licenses": "node scripts/report-dependency-licenses.mjs",
     "docs:check": "node scripts/validate-doc-links.mjs",
     "dev": "turbo dev --parallel",
+    "docker:residual-watch": "node scripts/watch-docker-residuals.mjs",
     "e2e": "node scripts/run-e2e.mjs host",
     "e2e:docker": "node scripts/run-e2e.mjs docker",
     "e2e:host": "node scripts/run-e2e.mjs host",
