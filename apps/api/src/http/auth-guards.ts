@@ -30,7 +30,6 @@ export function requireAccess(
       {
         resource: request.resource,
         action: request.action,
-        matterId: request.matterId,
       },
     ),
   };

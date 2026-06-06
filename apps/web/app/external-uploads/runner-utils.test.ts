@@ -51,15 +51,15 @@ function document(
 }
 
 describe("public external upload runner helpers", () => {
-  it("builds token-scoped paths without exposing token material elsewhere", () => {
+  it("builds header-token paths without exposing token material", () => {
     expect(buildPublicExternalUploadPath("token with / slash")).toBe(
-      "/api/portal/external-uploads/token%20with%20%2F%20slash",
+      "/api/portal/external-uploads",
     );
     expect(buildPublicExternalUploadIntentPath("token")).toBe(
-      "/api/portal/external-uploads/token/intents",
+      "/api/portal/external-uploads/intents",
     );
     expect(buildPublicExternalUploadCompletePath("token", "document 001")).toBe(
-      "/api/portal/external-uploads/token/documents/document%20001/complete",
+      "/api/portal/external-uploads/documents/document%20001/complete",
     );
   });
 

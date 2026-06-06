@@ -1,6 +1,7 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
+  canAccess,
   canShareDocumentThroughPortal,
   type AccessLogRecord,
   type AccessRequest,
@@ -9,7 +10,12 @@ import {
   type ShareLinkRecord,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
-import { createSessionToken, hashToken } from "../http/auth-helpers.js";
+import {
+  createSessionToken,
+  hashToken,
+  publicTokenPathFromHeader,
+  readPublicTokenHeader,
+} from "../http/auth-helpers.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
@@ -74,6 +80,16 @@ function assertShareAccess(
 ): void {
   const access = requireAccess(context, request);
   if (!access.ok) throw access.error;
+}
+
+function canShareLinkAction(context: ApiAuthContext, action: AccessRequest["action"]): boolean {
+  return canAccess({
+    user: context.user,
+    firmId: context.firmId,
+    resource: "share_link",
+    action,
+    matterId: context.user.assignedMatterIds[0],
+  });
 }
 
 function sanitizeShare(link: ShareLinkRecord): Omit<ShareLinkRecord, "tokenHash"> {
@@ -185,6 +201,15 @@ function requireShareSecret(jwtSecret: string | undefined): string {
   );
 }
 
+function readSharePublicToken(request: FastifyRequest): string {
+  const params = request.params as { token?: string } | undefined;
+  return parseRequestPart(
+    tokenParamsSchema,
+    params?.token ? params : publicTokenPathFromHeader(readPublicTokenHeader(request.headers)),
+    "params",
+  ).token;
+}
+
 async function assertEmailVerificationDeliveryConfigured(
   repository: RegisterShareRouteOptions["repository"],
   emailJobQueue: RegisterShareRouteOptions["emailJobQueue"],
@@ -258,6 +283,9 @@ export function registerShareRoutes(
       status: "available",
       provider: "share_links",
       createStatus: jwtSecret ? "enabled" : "disabled",
+      canCreate: Boolean(jwtSecret) && canShareLinkAction(request.auth, "create"),
+      canManage:
+        canShareLinkAction(request.auth, "update") || canShareLinkAction(request.auth, "delete"),
       reason: jwtSecret ? undefined : "token_signing_not_configured",
     };
   });
@@ -421,64 +449,16 @@ export function registerShareRoutes(
     return { share: sanitizeShare(revoked) };
   });
 
-  server.get(
-    "/api/portal/shares/:token",
-    publicTokenPolicyOptions("share", "view"),
-    async (request) => {
-      const secret = requireShareSecret(jwtSecret);
-      const params = parseRequestPart(tokenParamsSchema, request.params, "params");
-      const link = await repository.getShareLinkByTokenHash(hashToken(params.token, secret));
-      if (!link) {
-        throw new ApiHttpError(404, "SHARE_LINK_NOT_FOUND", "Share link was not found");
-      }
+  const viewPublicShare = async (request: FastifyRequest) => {
+    const secret = requireShareSecret(jwtSecret);
+    const token = readSharePublicToken(request);
+    const link = await repository.getShareLinkByTokenHash(hashToken(token, secret));
+    if (!link) {
+      throw new ApiHttpError(404, "SHARE_LINK_NOT_FOUND", "Share link was not found");
+    }
 
-      const now = new Date().toISOString();
-      if (link.revokedAt) {
-        await repository.createAccessLog(
-          accessLogForShare({
-            link,
-            action: "view",
-            resourceType: "share_link",
-            resourceId: link.id,
-            request,
-            metadata: { outcome: "revoked" },
-          }),
-        );
-        throw new ApiHttpError(404, "SHARE_LINK_NOT_FOUND", "Share link was not found");
-      }
-      if (link.expiresAt && Date.parse(link.expiresAt) <= Date.parse(now)) {
-        await repository.createAccessLog(
-          accessLogForShare({
-            link,
-            action: "view",
-            resourceType: "share_link",
-            resourceId: link.id,
-            request,
-            metadata: { outcome: "expired" },
-          }),
-        );
-        throw new ApiHttpError(404, "SHARE_LINK_NOT_FOUND", "Share link was not found");
-      }
-      if (link.requireEmailVerification) {
-        await repository.createAccessLog(
-          accessLogForShare({
-            link,
-            action: "view",
-            resourceType: "share_link",
-            resourceId: link.id,
-            request,
-            metadata: { outcome: "email_verification_required" },
-          }),
-        );
-        throw new ApiHttpError(
-          403,
-          "EMAIL_VERIFICATION_REQUIRED",
-          "Email verification is required for this share link",
-          { verificationRequired: true },
-        );
-      }
-
-      const response = await publicShareDocumentResponse(repository, link, now);
+    const now = new Date().toISOString();
+    if (link.revokedAt) {
       await repository.createAccessLog(
         accessLogForShare({
           link,
@@ -486,70 +466,71 @@ export function registerShareRoutes(
           resourceType: "share_link",
           resourceId: link.id,
           request,
-          metadata: { outcome: "granted", documentCount: response.documents.length },
+          metadata: { outcome: "revoked" },
         }),
       );
+      throw new ApiHttpError(404, "SHARE_LINK_NOT_FOUND", "Share link was not found");
+    }
+    if (link.expiresAt && Date.parse(link.expiresAt) <= Date.parse(now)) {
+      await repository.createAccessLog(
+        accessLogForShare({
+          link,
+          action: "view",
+          resourceType: "share_link",
+          resourceId: link.id,
+          request,
+          metadata: { outcome: "expired" },
+        }),
+      );
+      throw new ApiHttpError(404, "SHARE_LINK_NOT_FOUND", "Share link was not found");
+    }
+    if (link.requireEmailVerification) {
+      await repository.createAccessLog(
+        accessLogForShare({
+          link,
+          action: "view",
+          resourceType: "share_link",
+          resourceId: link.id,
+          request,
+          metadata: { outcome: "email_verification_required" },
+        }),
+      );
+      throw new ApiHttpError(
+        403,
+        "EMAIL_VERIFICATION_REQUIRED",
+        "Email verification is required for this share link",
+        { verificationRequired: true },
+      );
+    }
 
-      return response;
-    },
-  );
+    const response = await publicShareDocumentResponse(repository, link, now);
+    await repository.createAccessLog(
+      accessLogForShare({
+        link,
+        action: "view",
+        resourceType: "share_link",
+        resourceId: link.id,
+        request,
+        metadata: { outcome: "granted", documentCount: response.documents.length },
+      }),
+    );
 
-  server.post(
-    "/api/portal/shares/:token/email-verification",
-    publicTokenPolicyOptions("share", "mutation"),
-    async (request) => {
-      const secret = requireShareSecret(jwtSecret);
-      const params = parseRequestPart(tokenParamsSchema, request.params, "params");
-      const body = parseRequestPart(shareEmailVerificationBodySchema, request.body, "body");
-      const link = await repository.getShareLinkByTokenHash(hashToken(params.token, secret));
-      if (!link) {
-        throw new ApiHttpError(404, "SHARE_LINK_NOT_FOUND", "Share link was not found");
-      }
+    return response;
+  };
 
-      const now = new Date().toISOString();
-      try {
-        assertPublicShareAvailable(link, now);
-      } catch (error) {
-        await repository.createAccessLog(
-          accessLogForShare({
-            link,
-            action: "view",
-            resourceType: "share_link",
-            resourceId: link.id,
-            request,
-            metadata: {
-              outcome:
-                link.revokedAt || (link.expiresAt && Date.parse(link.expiresAt) <= Date.parse(now))
-                  ? link.revokedAt
-                    ? "revoked"
-                    : "expired"
-                  : "unavailable",
-              emailVerification: "completion_attempted",
-            },
-          }),
-        );
-        throw error;
-      }
-      try {
-        assertShareEmailVerification(link, body.verificationCode, secret, now);
-      } catch (error) {
-        await repository.createAccessLog(
-          accessLogForShare({
-            link,
-            action: "view",
-            resourceType: "share_link",
-            resourceId: link.id,
-            request,
-            metadata: {
-              outcome: "email_verification_failed",
-              emailVerification: "failed",
-            },
-          }),
-        );
-        throw error;
-      }
+  const verifyPublicShareEmail = async (request: FastifyRequest) => {
+    const secret = requireShareSecret(jwtSecret);
+    const token = readSharePublicToken(request);
+    const body = parseRequestPart(shareEmailVerificationBodySchema, request.body, "body");
+    const link = await repository.getShareLinkByTokenHash(hashToken(token, secret));
+    if (!link) {
+      throw new ApiHttpError(404, "SHARE_LINK_NOT_FOUND", "Share link was not found");
+    }
 
-      const response = await publicShareDocumentResponse(repository, link, now);
+    const now = new Date().toISOString();
+    try {
+      assertPublicShareAvailable(link, now);
+    } catch (error) {
       await repository.createAccessLog(
         accessLogForShare({
           link,
@@ -558,14 +539,70 @@ export function registerShareRoutes(
           resourceId: link.id,
           request,
           metadata: {
-            outcome: "granted",
-            emailVerification: link.requireEmailVerification ? "completed" : "not_required",
-            documentCount: response.documents.length,
+            outcome:
+              link.revokedAt || (link.expiresAt && Date.parse(link.expiresAt) <= Date.parse(now))
+                ? link.revokedAt
+                  ? "revoked"
+                  : "expired"
+                : "unavailable",
+            emailVerification: "completion_attempted",
           },
         }),
       );
+      throw error;
+    }
+    try {
+      assertShareEmailVerification(link, body.verificationCode, secret, now);
+    } catch (error) {
+      await repository.createAccessLog(
+        accessLogForShare({
+          link,
+          action: "view",
+          resourceType: "share_link",
+          resourceId: link.id,
+          request,
+          metadata: {
+            outcome: "email_verification_failed",
+            emailVerification: "failed",
+          },
+        }),
+      );
+      throw error;
+    }
 
-      return response;
-    },
+    const response = await publicShareDocumentResponse(repository, link, now);
+    await repository.createAccessLog(
+      accessLogForShare({
+        link,
+        action: "view",
+        resourceType: "share_link",
+        resourceId: link.id,
+        request,
+        metadata: {
+          outcome: "granted",
+          emailVerification: link.requireEmailVerification ? "completed" : "not_required",
+          documentCount: response.documents.length,
+        },
+      }),
+    );
+
+    return response;
+  };
+
+  server.get("/api/portal/shares", publicTokenPolicyOptions("share", "view"), viewPublicShare);
+  server.get(
+    "/api/portal/shares/:token",
+    publicTokenPolicyOptions("share", "view"),
+    viewPublicShare,
+  );
+  server.post(
+    "/api/portal/shares/email-verification",
+    publicTokenPolicyOptions("share", "mutation"),
+    verifyPublicShareEmail,
+  );
+  server.post(
+    "/api/portal/shares/:token/email-verification",
+    publicTokenPolicyOptions("share", "mutation"),
+    verifyPublicShareEmail,
   );
 }

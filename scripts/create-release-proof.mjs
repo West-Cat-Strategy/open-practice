@@ -65,7 +65,14 @@ export function releaseProofCommands({ sbomPath, licenseJsonPath, artifactDir } 
     {
       id: "artifact-secret-scan",
       command: "pnpm",
-      args: ["security:scan", "--", "--path", artifactDir ?? DEFAULT_ARTIFACT_ROOT],
+      args: [
+        "security:scan",
+        "--",
+        "--path",
+        artifactDir ?? DEFAULT_ARTIFACT_ROOT,
+        "--fail-on-skipped",
+        "--scan-large-files",
+      ],
       required: true,
     },
   ];

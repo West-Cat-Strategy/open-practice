@@ -1,5 +1,5 @@
 import {
-  buildPublicTokenPath,
+  buildPublicTokenHeaderPath,
   publicTokenErrorMessage,
   type PublicTokenErrorBody,
 } from "../publicTokenClient";
@@ -51,17 +51,19 @@ export interface PublicExternalUploadIntentResponse {
 }
 
 export function buildPublicExternalUploadPath(token: string): string {
-  return buildPublicTokenPath("/api/portal/external-uploads", token);
+  void token;
+  return buildPublicTokenHeaderPath("/api/portal/external-uploads");
 }
 
 export function buildPublicExternalUploadIntentPath(token: string): string {
-  return buildPublicTokenPath("/api/portal/external-uploads", token, "intents");
+  void token;
+  return buildPublicTokenHeaderPath("/api/portal/external-uploads", "intents");
 }
 
 export function buildPublicExternalUploadCompletePath(token: string, documentId: string): string {
-  return buildPublicTokenPath(
+  void token;
+  return buildPublicTokenHeaderPath(
     "/api/portal/external-uploads",
-    token,
     "documents",
     documentId,
     "complete",

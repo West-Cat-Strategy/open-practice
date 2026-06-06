@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  PUBLIC_TOKEN_HEADER,
+  buildPublicTokenHeaderPath,
   buildPublicTokenPath,
+  publicTokenHeaders,
   publicTokenErrorMessage,
   publicTokenNetworkErrorMessage,
   readPublicTokenError,
@@ -14,6 +17,18 @@ describe("public token helpers", () => {
     expect(
       buildPublicTokenPath("api/portal/intake-forms", "token", "items", "supporting docs"),
     ).toBe("/api/portal/intake-forms/token/items/supporting%20docs");
+  });
+
+  it("builds header-token paths and headers without token path material", () => {
+    expect(buildPublicTokenHeaderPath("api/portal/intake-forms", "items", "supporting docs")).toBe(
+      "/api/portal/intake-forms/items/supporting%20docs",
+    );
+
+    const headers = publicTokenHeaders("token with / slash", {
+      "Content-Type": "application/json",
+    });
+    expect(headers.get(PUBLIC_TOKEN_HEADER)).toBe("token with / slash");
+    expect(headers.get("Content-Type")).toBe("application/json");
   });
 
   it("keeps public error messages status-safe", async () => {

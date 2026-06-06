@@ -1,11 +1,49 @@
 import { Buffer } from "node:buffer";
 import { HeadObjectCommand } from "@aws-sdk/client-s3";
 import type { HeadObjectCommandOutput } from "@aws-sdk/client-s3";
+import { z } from "zod";
 import { ApiHttpError } from "../http/response.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 export const checksumSha256HexSchema = /^[a-fA-F0-9]{64}$/;
 export const MAX_UPLOAD_FILE_SIZE_BYTES = 25 * 1024 * 1024;
+export const MAX_UPLOAD_FILENAME_LENGTH = 255;
+export const MAX_UPLOAD_CONTENT_TYPE_LENGTH = 120;
+
+const visibleAsciiPattern = /^[\x20-\x7E]+$/;
+const contentTypePattern =
+  /^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*(?:\s*;\s*[A-Za-z0-9!#$&^_.+-]+=[A-Za-z0-9!#$&^_.+-]+)*$/;
+
+export const uploadFilenameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_UPLOAD_FILENAME_LENGTH)
+  .refine((value) => visibleAsciiPattern.test(value), {
+    message: "filename must not contain control characters",
+  })
+  .refine((value) => sanitizeUploadFilenameSegment(value).replaceAll("_", "").length > 0, {
+    message: "filename must contain at least one storage-safe character",
+  });
+
+export const uploadContentTypeSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_UPLOAD_CONTENT_TYPE_LENGTH)
+  .refine((value) => visibleAsciiPattern.test(value), {
+    message: "contentType must not contain control characters",
+  })
+  .refine((value) => contentTypePattern.test(value), {
+    message: "contentType must be a valid MIME content type",
+  });
+
+export function sanitizeUploadFilenameSegment(filename: string): string {
+  return filename
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .slice(0, MAX_UPLOAD_FILENAME_LENGTH);
+}
 
 export function normalizeChecksumSha256(value: string): string {
   if (!checksumSha256HexSchema.test(value)) {

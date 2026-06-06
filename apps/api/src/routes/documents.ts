@@ -13,20 +13,22 @@ import {
   MAX_UPLOAD_FILE_SIZE_BYTES,
   normalizeChecksumSha256,
   normalizeUploadSizeBytes,
+  sanitizeUploadFilenameSegment,
   sha256HexToBase64,
+  uploadFilenameSchema,
   verifyUploadedObject,
 } from "./upload-verification.js";
 
 const uploadIntentBodySchema = z.object({
   matterId: z.string().min(1),
-  filename: z.string().min(1),
+  filename: uploadFilenameSchema,
   checksumSha256: z.string().transform(normalizeChecksumSha256),
   fileSizeBytes: z.coerce.number().transform(normalizeUploadSizeBytes),
   supersedesDocumentId: z.string().min(1).optional(),
   classification: z
     .enum(["general", "privileged", "work_product", "financial", "identity"])
     .default("general"),
-  legalHold: z.coerce.boolean().default(false),
+  legalHold: z.boolean().default(false),
 });
 
 const uploadCompleteBodySchema = z.object({
@@ -38,10 +40,6 @@ const documentScanStatusBodySchema = z.object({
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
-
-function sanitizeFilename(filename: string): string {
-  return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
 
 function assertMatterAccess(
   context: ApiAuthContext,
@@ -88,7 +86,9 @@ export function registerDocumentRoutes(
     }
 
     const documentId = crypto.randomUUID();
-    const storageKey = `matters/${body.matterId}/${documentId}-${sanitizeFilename(body.filename)}`;
+    const storageKey = `matters/${body.matterId}/${documentId}-${sanitizeUploadFilenameSegment(
+      body.filename,
+    )}`;
     const checksumSha256Base64 = sha256HexToBase64(body.checksumSha256);
     const requiredHeaders = {
       "x-amz-checksum-sha256": checksumSha256Base64,

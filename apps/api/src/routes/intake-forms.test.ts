@@ -235,7 +235,7 @@ describe("intake form builder routes", () => {
     expect(created.statusCode).toBe(200);
     expect(created.json()).toMatchObject({
       token: expect.any(String),
-      portalUrl: expect.stringMatching(/^http:\/\/localhost:3001\/intake-forms\//),
+      portalUrl: expect.stringMatching(/^http:\/\/localhost:3001\/intake-forms#/),
       link: expect.objectContaining({
         matterId: "matter-001",
         intakeSessionId: "intake-session-001",
@@ -838,7 +838,7 @@ describe("intake form builder routes", () => {
           status: "active",
         }),
         token: expect.any(String),
-        portalUrl: expect.stringMatching(/^http:\/\/localhost:3001\/intake-forms\//),
+        portalUrl: expect.stringMatching(/^http:\/\/localhost:3001\/intake-forms#/),
       },
     });
     const body = response.json<{

@@ -20,7 +20,13 @@ import type {
   NewAuditEvent,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
-import { createSessionToken, hashPassword, hashToken } from "../http/auth-helpers.js";
+import {
+  createSessionToken,
+  hashPassword,
+  hashToken,
+  publicTokenPathFromHeader,
+  readPublicTokenHeader,
+} from "../http/auth-helpers.js";
 import { requireFreshAuth } from "../http/fresh-auth.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -367,6 +373,15 @@ function requireGuestAccessSecret(jwtSecret: string | undefined): string {
   );
 }
 
+function readGuestSessionPublicToken(request: FastifyRequest): string {
+  const params = request.params as { token?: string } | undefined;
+  return parseRequestPart(
+    publicGuestSessionParamsSchema,
+    params?.token ? params : publicTokenPathFromHeader(readPublicTokenHeader(request.headers)),
+    "params",
+  ).token;
+}
+
 function assertHostedGuestSessionAllowed(input: {
   event: CalendarEventRecord;
   meetingInvitationBoundary: CalendarMeetingInvitationBoundary;
@@ -517,7 +532,7 @@ function defaultRetentionBoundary(event: CalendarEventRecord): string {
 }
 
 function buildGuestSessionPortalUrl(publicWebBaseUrl: string | undefined, token: string): string {
-  return `${(publicWebBaseUrl ?? "http://localhost:3000").replace(/\/+$/, "")}/guest-sessions/${encodeURIComponent(
+  return `${(publicWebBaseUrl ?? "http://localhost:3000").replace(/\/+$/, "")}/guest-sessions#${encodeURIComponent(
     token,
   )}`;
 }
@@ -1912,98 +1927,106 @@ export function registerCalendarRoutes(
     return { credential: credentialResponse(credential) };
   });
 
+  const viewPublicGuestSession = async (request: FastifyRequest) => {
+    const resolved = await resolvePublicGuestSession({
+      repository,
+      jwtSecret,
+      token: readGuestSessionPublicToken(request),
+      expiredLinkAccessLog: { action: "view", request },
+    });
+    const now = new Date().toISOString();
+    await repository.createAccessLog(
+      publicGuestSessionAccessLog({
+        link: resolved.link,
+        action: "view",
+        request,
+        metadata: {
+          outcome: publicGuestSessionOutcome({
+            session: resolved.session,
+            link: resolved.link,
+            now,
+          }),
+          status: resolved.link.status,
+          lobbyStatus: resolved.session.status,
+        },
+      }),
+    );
+    return publicGuestSessionResponse({ ...resolved, now });
+  };
+
+  const checkInPublicGuestSession = async (request: FastifyRequest) => {
+    parseRequestPart(publicGuestCheckInBodySchema, request.body ?? {}, "body");
+    let resolved = await resolvePublicGuestSession({
+      repository,
+      jwtSecret,
+      token: readGuestSessionPublicToken(request),
+      expiredLinkAccessLog: { action: "submit", request },
+    });
+    const now = new Date().toISOString();
+    const expired = Date.parse(resolved.link.expiresAt) <= Date.parse(now);
+    if (!expired && resolved.session.status === "lobby_open" && resolved.link.status === "issued") {
+      const waiting = await repository.updateCalendarGuestLinkStatus({
+        firmId: resolved.link.firmId,
+        matterId: resolved.link.matterId,
+        eventId: resolved.link.eventId,
+        sessionId: resolved.link.sessionId,
+        linkId: resolved.link.id,
+        status: "waiting",
+        occurredAt: now,
+      });
+      if (waiting) {
+        resolved = {
+          ...resolved,
+          link: waiting,
+          links: await repository.listCalendarGuestLinks(waiting.firmId, {
+            matterId: waiting.matterId,
+            eventId: waiting.eventId,
+            sessionId: waiting.sessionId,
+          }),
+        };
+      }
+    }
+    await repository.createAccessLog(
+      publicGuestSessionAccessLog({
+        link: resolved.link,
+        action: "submit",
+        request,
+        metadata: {
+          outcome: publicGuestSessionOutcome({
+            session: resolved.session,
+            link: resolved.link,
+            now,
+          }),
+          status: resolved.link.status,
+          lobbyStatus: resolved.session.status,
+          publicTokenTransition: true,
+          updatedByUserId: resolved.link.updatedByUserId ?? null,
+        },
+      }),
+    );
+    return publicGuestSessionResponse({ ...resolved, now });
+  };
+
+  server.get(
+    "/api/portal/guest-sessions",
+    publicTokenPolicyOptions("guest-session", "view"),
+    viewPublicGuestSession,
+  );
   server.get(
     "/api/portal/guest-sessions/:token",
     publicTokenPolicyOptions("guest-session", "view"),
-    async (request) => {
-      const params = parseRequestPart(publicGuestSessionParamsSchema, request.params, "params");
-      const resolved = await resolvePublicGuestSession({
-        repository,
-        jwtSecret,
-        token: params.token,
-        expiredLinkAccessLog: { action: "view", request },
-      });
-      const now = new Date().toISOString();
-      await repository.createAccessLog(
-        publicGuestSessionAccessLog({
-          link: resolved.link,
-          action: "view",
-          request,
-          metadata: {
-            outcome: publicGuestSessionOutcome({
-              session: resolved.session,
-              link: resolved.link,
-              now,
-            }),
-            status: resolved.link.status,
-            lobbyStatus: resolved.session.status,
-          },
-        }),
-      );
-      return publicGuestSessionResponse({ ...resolved, now });
-    },
+    viewPublicGuestSession,
   );
 
   server.post(
+    "/api/portal/guest-sessions/check-in",
+    publicTokenPolicyOptions("guest-session", "mutation"),
+    checkInPublicGuestSession,
+  );
+  server.post(
     "/api/portal/guest-sessions/:token/check-in",
     publicTokenPolicyOptions("guest-session", "mutation"),
-    async (request) => {
-      const params = parseRequestPart(publicGuestSessionParamsSchema, request.params, "params");
-      parseRequestPart(publicGuestCheckInBodySchema, request.body ?? {}, "body");
-      let resolved = await resolvePublicGuestSession({
-        repository,
-        jwtSecret,
-        token: params.token,
-        expiredLinkAccessLog: { action: "submit", request },
-      });
-      const now = new Date().toISOString();
-      const expired = Date.parse(resolved.link.expiresAt) <= Date.parse(now);
-      if (
-        !expired &&
-        resolved.session.status === "lobby_open" &&
-        resolved.link.status === "issued"
-      ) {
-        const waiting = await repository.updateCalendarGuestLinkStatus({
-          firmId: resolved.link.firmId,
-          matterId: resolved.link.matterId,
-          eventId: resolved.link.eventId,
-          sessionId: resolved.link.sessionId,
-          linkId: resolved.link.id,
-          status: "waiting",
-          occurredAt: now,
-        });
-        if (waiting) {
-          resolved = {
-            ...resolved,
-            link: waiting,
-            links: await repository.listCalendarGuestLinks(waiting.firmId, {
-              matterId: waiting.matterId,
-              eventId: waiting.eventId,
-              sessionId: waiting.sessionId,
-            }),
-          };
-        }
-      }
-      await repository.createAccessLog(
-        publicGuestSessionAccessLog({
-          link: resolved.link,
-          action: "submit",
-          request,
-          metadata: {
-            outcome: publicGuestSessionOutcome({
-              session: resolved.session,
-              link: resolved.link,
-              now,
-            }),
-            status: resolved.link.status,
-            lobbyStatus: resolved.session.status,
-            publicTokenTransition: true,
-            updatedByUserId: resolved.link.updatedByUserId ?? null,
-          },
-        }),
-      );
-      return publicGuestSessionResponse({ ...resolved, now });
-    },
+    checkInPublicGuestSession,
   );
 
   server.get("/api/calendar/matters/:matterId.ics", async (request, reply) => {

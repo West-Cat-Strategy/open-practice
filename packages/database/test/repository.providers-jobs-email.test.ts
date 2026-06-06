@@ -396,12 +396,16 @@ describe("repository providers, jobs, and email delivery", () => {
       source: "worker",
       terminal: true,
       errorMessage: " SMTP refused synthetic message ".repeat(20),
-      metadata: { provider: "mailpit", terminal: true },
+      metadata: {
+        provider: "mailpit",
+        terminal: true,
+        rawBody: "private-client@example.test body",
+        storageKey: "matters/matter-001/private.eml",
+      },
     });
 
-    await expect(
-      repository.listEmailOutbox("firm-west-legal", { matterId: "matter-001" }),
-    ).resolves.toMatchObject([
+    const outbox = await repository.listEmailOutbox("firm-west-legal", { matterId: "matter-001" });
+    expect(outbox).toMatchObject([
       {
         id: "email-history-001",
         matterId: "matter-001",
@@ -412,6 +416,12 @@ describe("repository providers, jobs, and email delivery", () => {
         terminalFailureReason: expect.stringContaining("SMTP refused synthetic message"),
       },
     ]);
+    expect(outbox[0]?.metadata.deliveryState).toMatchObject({
+      provider: "mailpit",
+      terminal: true,
+      rawBody: "[redacted]",
+      storageKey: "[redacted]",
+    });
     await expect(
       repository.listEmailOutbox("other-firm", { matterId: "matter-001" }),
     ).resolves.toEqual([]);
@@ -424,6 +434,12 @@ describe("repository providers, jobs, and email delivery", () => {
       jobId: "job-email-history-001",
       source: "worker",
       errorMessage: expect.stringContaining("SMTP refused synthetic message"),
+    });
+    expect(events.at(-1)?.metadata).toMatchObject({
+      provider: "mailpit",
+      terminal: true,
+      rawBody: "[redacted]",
+      storageKey: "[redacted]",
     });
     expect(events.at(-1)?.errorMessage?.length).toBeLessThanOrEqual(240);
   });
@@ -499,8 +515,11 @@ describe("repository providers, jobs, and email delivery", () => {
       recordedAt: "2026-04-25T12:30:00.000Z",
     });
     expect(recorded).toMatchObject({
-      id: "receipt-token-001",
-      recordedAt: "2026-04-25T12:30:00.000Z",
+      recordedNow: true,
+      token: {
+        id: "receipt-token-001",
+        recordedAt: "2026-04-25T12:30:00.000Z",
+      },
     });
     await expect(
       repository.getEmailOutboxByReceiptTokenHash("hashed-receipt-token"),
@@ -524,8 +543,15 @@ describe("repository providers, jobs, and email delivery", () => {
       recordedAt: "2026-04-25T12:45:00.000Z",
     });
     expect(replay).toMatchObject({
-      recordedAt: "2026-04-25T12:30:00.000Z",
+      recordedNow: false,
+      token: {
+        recordedAt: "2026-04-25T12:30:00.000Z",
+      },
     });
+    const receiptEvents = (
+      await repository.listEmailEvents("firm-west-legal", { emailId: "email-receipt-001" })
+    ).filter((event) => event.eventType === "receipt_recorded");
+    expect(receiptEvents).toHaveLength(1);
     await expect(repository.getEmailReceiptTokenByHash("raw-receipt-token")).resolves.toBe(
       undefined,
     );

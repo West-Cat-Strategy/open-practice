@@ -56,7 +56,7 @@ export function buildExternalUploadReviewPath(documentId: string): string {
 }
 
 export function canCreateExternalUpload(status: ExternalUploadsStatusResponse): boolean {
-  return status.status === "available";
+  return status.status === "available" && status.canCreate !== false;
 }
 
 export function externalUploadCreateControlDisabled(input: {

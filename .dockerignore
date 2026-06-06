@@ -32,7 +32,10 @@ yarn-error.log*
 .data
 uploads
 tmp
+.tmp
 temp
+artifacts
+artifacts/release-local
 # Central reference repos are symlinked here for local review only.
 .references/oss
 

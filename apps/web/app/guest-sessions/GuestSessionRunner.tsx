@@ -3,7 +3,12 @@
 import { LogIn, ShieldCheck, Video } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PublicTokenNeedsAttention } from "../publicTokenActions";
-import { buildPublicTokenPath, readPublicTokenError } from "../publicTokenClient";
+import {
+  publicTokenHeaders,
+  publicTokenNetworkErrorMessage,
+  readPublicTokenError,
+  scrubLegacyPublicTokenPath,
+} from "../publicTokenClient";
 import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
 import type { PublicGuestSessionResponse } from "../types";
 import {
@@ -27,20 +32,30 @@ export default function GuestSessionRunner({ apiBaseUrl, token }: GuestSessionRu
   const attentionItems = guestSessionAttentionItems(payload);
 
   useEffect(() => {
+    scrubLegacyPublicTokenPath("/guest-sessions", token);
+  }, [token]);
+
+  useEffect(() => {
     let cancelled = false;
     async function loadGuestSession(): Promise<void> {
-      const response = await fetch(`${apiBaseUrl}${buildGuestSessionPath(token)}`);
-      if (cancelled) return;
-      if (!response.ok) {
-        const body = (await readPublicTokenError(response)) as PublicGuestSessionErrorBody;
-        setStatus(
-          publicGuestSessionErrorMessage(body, `Guest session unavailable: ${response.status}`),
-        );
-        return;
+      try {
+        const response = await fetch(`${apiBaseUrl}${buildGuestSessionPath(token)}`, {
+          headers: publicTokenHeaders(token),
+        });
+        if (cancelled) return;
+        if (!response.ok) {
+          const body = (await readPublicTokenError(response)) as PublicGuestSessionErrorBody;
+          setStatus(
+            publicGuestSessionErrorMessage(body, `Guest session unavailable: ${response.status}`),
+          );
+          return;
+        }
+        const nextPayload = (await response.json()) as PublicGuestSessionResponse;
+        setPayload(nextPayload);
+        setStatus(describePublicGuestSessionStatus(nextPayload));
+      } catch (error) {
+        if (!cancelled) setStatus(publicTokenNetworkErrorMessage("Load", error));
       }
-      const nextPayload = (await response.json()) as PublicGuestSessionResponse;
-      setPayload(nextPayload);
-      setStatus(describePublicGuestSessionStatus(nextPayload));
     }
     void loadGuestSession();
     return () => {
@@ -51,24 +66,25 @@ export default function GuestSessionRunner({ apiBaseUrl, token }: GuestSessionRu
   async function checkIn(): Promise<void> {
     setCheckingIn(true);
     setStatus("Checking in...");
-    const response = await fetch(
-      `${apiBaseUrl}${buildPublicTokenPath("/api/portal/guest-sessions", token, "check-in")}`,
-      {
+    try {
+      const response = await fetch(`${apiBaseUrl}${buildGuestSessionPath(token, "check-in")}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),
         body: JSON.stringify({ attendanceConfirmation: { source: "guest_status_page" } }),
-      },
-    );
-    if (!response.ok) {
-      const body = (await readPublicTokenError(response)) as PublicGuestSessionErrorBody;
-      setStatus(publicGuestSessionErrorMessage(body, `Check-in failed: ${response.status}`));
+      });
+      if (!response.ok) {
+        const body = (await readPublicTokenError(response)) as PublicGuestSessionErrorBody;
+        setStatus(publicGuestSessionErrorMessage(body, `Check-in failed: ${response.status}`));
+        return;
+      }
+      const nextPayload = (await response.json()) as PublicGuestSessionResponse;
+      setPayload(nextPayload);
+      setStatus(describePublicGuestSessionStatus(nextPayload));
+    } catch (error) {
+      setStatus(publicTokenNetworkErrorMessage("Check-in", error));
+    } finally {
       setCheckingIn(false);
-      return;
     }
-    const nextPayload = (await response.json()) as PublicGuestSessionResponse;
-    setPayload(nextPayload);
-    setStatus(describePublicGuestSessionStatus(nextPayload));
-    setCheckingIn(false);
   }
 
   return (

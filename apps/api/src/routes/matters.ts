@@ -13,6 +13,7 @@ import type {
   User,
 } from "@open-practice/domain";
 import { requireAccess, requireStaffAccess } from "../http/auth-guards.js";
+import { parseRequestPart } from "../http/validation.js";
 
 const provinceSchema = z.enum(["BC", "ON", "CANADA", "OTHER"]);
 
@@ -134,7 +135,7 @@ export function registerMatterRoutes(
     const contactAccess = requireAccess(request.auth, { resource: "contact", action: "create" });
     if (!contactAccess.ok) throw contactAccess.error;
 
-    const body = createMatterBodySchema.parse(request.body);
+    const body = parseRequestPart(createMatterBodySchema, request.body, "body");
     const occurredAt = new Date();
     const openedOn = occurredAt.toISOString().slice(0, 10);
     const matter = await options.repository.createMatterWithClient({
@@ -163,7 +164,7 @@ export function registerMatterRoutes(
   server.post("/api/conflicts/check", async (request) => {
     const access = requireAccess(request.auth, { resource: "contact", action: "read" });
     if (!access.ok) throw access.error;
-    const body = conflictBodySchema.parse(request.body);
+    const body = parseRequestPart(conflictBodySchema, request.body, "body");
     const conflictCheck = await options.repository.runConflictCheck({
       firmId: request.auth.firmId,
       actorId: request.auth.user.id,

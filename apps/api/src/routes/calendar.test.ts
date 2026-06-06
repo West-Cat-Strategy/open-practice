@@ -916,7 +916,7 @@ describe("calendar routes", () => {
     expect(issued.statusCode).toBe(201);
     expect(issued.json()).toMatchObject({
       token: expect.any(String),
-      portalUrl: expect.stringMatching(/^https:\/\/practice\.example\.test\/guest-sessions\//),
+      portalUrl: expect.stringMatching(/^https:\/\/practice\.example\.test\/guest-sessions#/),
       guest: { status: "issued" },
       session: { issuedCount: 1 },
     });

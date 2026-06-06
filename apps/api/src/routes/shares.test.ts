@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { ProfessionalRole, User } from "@open-practice/domain";
-import { hashToken } from "../http/auth-helpers.js";
+import { PUBLIC_TOKEN_HEADER, hashToken } from "../http/auth-helpers.js";
 import {
   PUBLIC_TOKEN_MUTATION_RATE_LIMIT,
   PUBLIC_TOKEN_VIEW_RATE_LIMIT,
@@ -115,6 +115,37 @@ describe("share routes", () => {
     });
 
     expect(response.statusCode).toBe(403);
+  });
+
+  it("reports permission-aware share-link creation status", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const ownerResponse = await testServer({
+      repository,
+      authUser: user("owner_admin", ["matter-001"]),
+    }).inject({
+      method: "GET",
+      url: "/api/shares/status",
+    });
+    expect(ownerResponse.statusCode).toBe(200);
+    expect(ownerResponse.json()).toMatchObject({
+      createStatus: "enabled",
+      canCreate: true,
+      canManage: true,
+    });
+
+    const auditorResponse = await testServer({
+      repository,
+      authUser: user("auditor", ["matter-001"]),
+    }).inject({
+      method: "GET",
+      url: "/api/shares/status",
+    });
+    expect(auditorResponse.statusCode).toBe(200);
+    expect(auditorResponse.json()).toMatchObject({
+      createStatus: "enabled",
+      canCreate: false,
+      canManage: false,
+    });
   });
 
   it("creates a one-time raw token while storing only the token hash", async () => {
@@ -383,14 +414,29 @@ describe("share routes", () => {
     expect(response.json().share).not.toHaveProperty("grantedByUserId");
     expect(response.json().documents[0]).not.toHaveProperty("storageKey");
 
-    await expect(repository.listAccessLogs("firm-west-legal")).resolves.toMatchObject([
-      {
-        shareLinkId: created.json().share.id,
-        resourceType: "share_link",
-        action: "view",
-        metadata: { outcome: "granted", documentCount: 1 },
-      },
-    ]);
+    const headerResponse = await publicServer.inject({
+      method: "GET",
+      url: "/api/portal/shares",
+      headers: { "user-agent": "share-header-test", [PUBLIC_TOKEN_HEADER]: token },
+    });
+    expect(headerResponse.statusCode).toBe(200);
+    expect(headerResponse.json()).toMatchObject({
+      share: { id: created.json().share.id, permissions: ["view_documents"] },
+      documents: [{ id: "doc-shareable-001" }],
+    });
+
+    const accessLogs = await repository.listAccessLogs("firm-west-legal");
+    expect(accessLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          shareLinkId: created.json().share.id,
+          resourceType: "share_link",
+          action: "view",
+          metadata: { outcome: "granted", documentCount: 1 },
+        }),
+      ]),
+    );
+    expect(accessLogs.filter((log) => log.shareLinkId === created.json().share.id)).toHaveLength(2);
   });
 
   it("rate-limits public share views without leaking token material", async () => {

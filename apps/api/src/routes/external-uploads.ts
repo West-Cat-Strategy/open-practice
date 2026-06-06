@@ -2,13 +2,19 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import type {
-  AccessLogRecord,
-  AccessRequest,
-  DocumentRecord,
-  ExternalUploadLinkRecord,
+import {
+  canAccess,
+  type AccessLogRecord,
+  type AccessRequest,
+  type DocumentRecord,
+  type ExternalUploadLinkRecord,
 } from "@open-practice/domain";
-import { createSessionToken, hashToken } from "../http/auth-helpers.js";
+import {
+  createSessionToken,
+  hashToken,
+  publicTokenPathFromHeader,
+  readPublicTokenHeader,
+} from "../http/auth-helpers.js";
 import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -30,7 +36,9 @@ import {
   MAX_UPLOAD_FILE_SIZE_BYTES,
   normalizeChecksumSha256,
   normalizeUploadSizeBytes,
+  sanitizeUploadFilenameSegment,
   sha256HexToBase64,
+  uploadFilenameSchema,
   verifyUploadedObject,
 } from "./upload-verification.js";
 
@@ -76,16 +84,15 @@ const externalUploadDocumentParamsSchema = z.object({ documentId: z.string().min
 const publicTokenParamsSchema = z.object({ token: z.string().min(1) });
 
 const publicCompleteParamsSchema = z.object({
-  token: z.string().min(1),
   documentId: z.string().min(1),
 });
 
 const publicIntentBodySchema = z.object({
-  filename: z.string().min(1),
+  filename: uploadFilenameSchema,
   checksumSha256: z.string().transform(normalizeChecksumSha256),
   fileSizeBytes: z.coerce.number().transform(normalizeUploadSizeBytes),
   classification: z.enum(publicExternalUploadClassifications).default("general"),
-  legalHold: z.coerce.boolean().default(false),
+  legalHold: z.boolean().default(false),
 });
 
 const publicCompleteBodySchema = z.object({
@@ -117,6 +124,19 @@ function assertExternalUploadAccess(
 ): void {
   const access = requireAccess(context, request);
   if (!access.ok) throw access.error;
+}
+
+function canExternalUploadAction(
+  context: ApiAuthContext,
+  action: AccessRequest["action"],
+): boolean {
+  return canAccess({
+    user: context.user,
+    firmId: context.firmId,
+    resource: "external_upload",
+    action,
+    matterId: context.user.assignedMatterIds[0],
+  });
 }
 
 function isExternalUploadRepository(
@@ -156,8 +176,13 @@ function requireJwtSecret(jwtSecret?: string): string {
   return jwtSecret;
 }
 
-function sanitizeFilename(filename: string): string {
-  return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+function readExternalUploadPublicToken(request: FastifyRequest): string {
+  const params = request.params as { token?: string } | undefined;
+  return parseRequestPart(
+    publicTokenParamsSchema,
+    params?.token ? params : publicTokenPathFromHeader(readPublicTokenHeader(request.headers)),
+    "params",
+  ).token;
 }
 
 function linkStatus(link: ExternalUploadLinkRecord, now = new Date()): string {
@@ -459,13 +484,19 @@ async function resolvePublicLink(
 export function buildExternalUploadsStatus({
   s3,
   jwtSecret,
-}: Pick<ApiRouteDependencies, "s3"> & { jwtSecret?: string }) {
+  auth,
+}: Pick<ApiRouteDependencies, "s3"> & { jwtSecret?: string; auth?: ApiAuthContext }) {
+  const configured = Boolean(s3 && jwtSecret);
   return {
-    status: s3 && jwtSecret ? "available" : "not_configured",
+    status: configured ? "available" : "not_configured",
     reason: !s3 ? "s3_not_configured" : jwtSecret ? undefined : "token_signing_not_configured",
     provider: s3 ? "s3" : undefined,
     tokenSigning: jwtSecret ? "configured" : "not_configured",
     s3: s3 ? "configured" : "not_configured",
+    canCreate: configured && (auth ? canExternalUploadAction(auth, "create") : true),
+    canManage: auth
+      ? canExternalUploadAction(auth, "update") || canExternalUploadAction(auth, "delete")
+      : configured,
   };
 }
 
@@ -475,7 +506,7 @@ export function registerExternalUploadRoutes(
 ): void {
   server.get("/api/external-uploads/status", async (request) => {
     assertExternalUploadAccess(request.auth, { resource: "provider_setting", action: "read" });
-    return buildExternalUploadsStatus({ s3, jwtSecret });
+    return buildExternalUploadsStatus({ s3, jwtSecret, auth: request.auth });
   });
 
   server.get("/api/external-uploads", async (request) => {
@@ -745,226 +776,245 @@ export function registerExternalUploadRoutes(
     return { reviewItem: await serializeReviewItem(externalUploadRepository, reviewed) };
   });
 
-  server.get(
-    "/api/portal/external-uploads/:token",
-    publicTokenPolicyOptions("external-upload", "view"),
-    async (request) => {
-      const params = parseRequestPart(publicTokenParamsSchema, request.params, "params");
-      const externalUploadRepository = requireExternalUploadRepository(repository);
-      const signingSecret = requireJwtSecret(jwtSecret);
-      const link = await resolvePublicLink(externalUploadRepository, {
-        token: params.token,
-        jwtSecret: signingSecret,
+  const viewPublicExternalUpload = async (request: FastifyRequest) => {
+    const externalUploadRepository = requireExternalUploadRepository(repository);
+    const signingSecret = requireJwtSecret(jwtSecret);
+    const link = await resolvePublicLink(externalUploadRepository, {
+      token: readExternalUploadPublicToken(request),
+      jwtSecret: signingSecret,
+      request,
+      enforceUploadLimit: false,
+    });
+    const status = linkStatus(link);
+    await recordAccessLog(externalUploadRepository, {
+      link,
+      request,
+      resourceType: "external_upload_link",
+      resourceId: link.id,
+      metadata: { outcome: status === "active" ? "granted" : "unavailable", status },
+    });
+    const documents = (await repository.listMatterDocuments(link.firmId, link.matterId))
+      .filter((document) => externalUploadLinkIdForDocument(document) === link.id)
+      .map(serializePublicStatusDocument);
+
+    return {
+      upload: serializePublicLink(link),
+      acceptedClassifications: publicExternalUploadClassifications,
+      documents,
+    };
+  };
+
+  const createPublicExternalUploadIntent = async (request: FastifyRequest) => {
+    const body = parseRequestPart(publicIntentBodySchema, request.body, "body");
+    const externalUploadRepository = requireExternalUploadRepository(repository);
+    const signingSecret = requireJwtSecret(jwtSecret);
+    if (!s3) {
+      throw new ApiHttpError(
+        503,
+        "S3_UPLOAD_SIGNING_NOT_CONFIGURED",
+        "S3 upload signing is not configured",
+      );
+    }
+
+    const link = await resolvePublicLink(externalUploadRepository, {
+      token: readExternalUploadPublicToken(request),
+      jwtSecret: signingSecret,
+      request,
+      enforceUploadLimit: false,
+    });
+    await assertExternalUploadIntentCapacity({ repository, link, request });
+    const documentId = crypto.randomUUID();
+    const storageKey = `external-uploads/${link.id}/${documentId}-${sanitizeUploadFilenameSegment(
+      body.filename,
+    )}`;
+    const checksumSha256Base64 = sha256HexToBase64(body.checksumSha256);
+    const requiredHeaders = {
+      "x-amz-meta-open-practice-upload-scope": "external-upload",
+      "x-amz-meta-open-practice-scan": "required-before-share",
+      "x-amz-meta-open-practice-size-bytes": String(body.fileSizeBytes),
+      "x-amz-checksum-sha256": checksumSha256Base64,
+      ...(s3.serverSideEncryption
+        ? { "x-amz-server-side-encryption": s3.serverSideEncryption }
+        : {}),
+    };
+    const command = new PutObjectCommand({
+      Bucket: s3.bucket,
+      Key: storageKey,
+      ChecksumSHA256: checksumSha256Base64,
+      ContentLength: body.fileSizeBytes,
+      ...(s3.serverSideEncryption ? { ServerSideEncryption: s3.serverSideEncryption } : {}),
+      Metadata: {
+        "open-practice-upload-scope": "external-upload",
+        "open-practice-scan": "required-before-share",
+        "open-practice-size-bytes": String(body.fileSizeBytes),
+      },
+    });
+    const uploadUrl = await getSignedUrl(s3.client, command, {
+      expiresIn: SIGNED_URL_EXPIRES_IN_SECONDS,
+      unhoistableHeaders: new Set(Object.keys(requiredHeaders)),
+    });
+    const document = await repository.createDocumentUploadIntent({
+      id: documentId,
+      firmId: link.firmId,
+      matterId: link.matterId,
+      title: body.filename,
+      storageKey,
+      checksumSha256: body.checksumSha256,
+      sizeBytes: body.fileSizeBytes,
+      classification: body.classification,
+      legalHold: body.legalHold,
+      reviewStatus: "pending_review",
+      externalUploadLinkId: link.id,
+    });
+    await recordAccessLog(externalUploadRepository, {
+      link,
+      request,
+      resourceType: "document",
+      resourceId: document.id,
+      metadata: { outcome: "intent_created" },
+    });
+
+    return {
+      method: "PUT",
+      uploadUrl,
+      expiresInSeconds: SIGNED_URL_EXPIRES_IN_SECONDS,
+      document: serializePublicDocument(document),
+      requiredHeaders,
+      maxFileSizeBytes: MAX_UPLOAD_FILE_SIZE_BYTES,
+    };
+  };
+
+  const completePublicExternalUpload = async (request: FastifyRequest) => {
+    const params = parseRequestPart(publicCompleteParamsSchema, request.params, "params");
+    const body = parseRequestPart(publicCompleteBodySchema, request.body, "body");
+    const externalUploadRepository = requireExternalUploadRepository(repository);
+    const signingSecret = requireJwtSecret(jwtSecret);
+    const link = await resolvePublicLink(externalUploadRepository, {
+      token: readExternalUploadPublicToken(request),
+      jwtSecret: signingSecret,
+      request,
+      enforceUploadLimit: false,
+    });
+    const document = await repository.getDocument(link.firmId, params.documentId);
+    if (
+      !document ||
+      document.matterId !== link.matterId ||
+      !document.storageKey.startsWith(`external-uploads/${link.id}/`)
+    ) {
+      await recordAccessLog(externalUploadRepository, {
+        link,
         request,
-        enforceUploadLimit: false,
+        resourceType: "document",
+        resourceId: params.documentId,
+        metadata: { outcome: "denied", reason: "document_scope" },
       });
-      const status = linkStatus(link);
+      throw externalUploadDenied();
+    }
+    if (document.uploadStatus !== "intent_created") {
+      await recordAccessLog(externalUploadRepository, {
+        link,
+        request,
+        resourceType: "document",
+        resourceId: params.documentId,
+        metadata: { outcome: "denied", reason: "upload_already_completed" },
+      });
+      throw externalUploadDenied();
+    }
+    if (!s3) {
+      throw new ApiHttpError(
+        503,
+        "S3_UPLOAD_SIGNING_NOT_CONFIGURED",
+        "S3 upload signing is not configured",
+      );
+    }
+    await verifyUploadedObject(s3, {
+      storageKey: document.storageKey,
+      checksumSha256: body.checksumSha256,
+      expectedSizeBytes: document.sizeBytes ?? 0,
+    });
+
+    if (body.checksumSha256 !== document.checksumSha256) {
+      const rejected = await repository.completeDocumentUpload({
+        firmId: link.firmId,
+        documentId: params.documentId,
+        checksumSha256: body.checksumSha256,
+        scanStatus: "failed",
+      });
+      await recordAccessLog(externalUploadRepository, {
+        link,
+        request,
+        resourceType: "document",
+        resourceId: rejected.id,
+        metadata: { outcome: rejected.uploadStatus, reason: "checksum_mismatch" },
+      });
+      return {
+        document: serializePublicCompletionDocument(rejected),
+      };
+    }
+
+    const claimed = await claimExternalUploadUse(externalUploadRepository, {
+      firmId: link.firmId,
+      id: link.id,
+      usedAt: new Date().toISOString(),
+    });
+    if (!claimed) {
       await recordAccessLog(externalUploadRepository, {
         link,
         request,
         resourceType: "external_upload_link",
         resourceId: link.id,
-        metadata: { outcome: status === "active" ? "granted" : "unavailable", status },
+        metadata: { outcome: "denied", reason: "upload_limit" },
       });
-      const documents = (await repository.listMatterDocuments(link.firmId, link.matterId))
-        .filter((document) => externalUploadLinkIdForDocument(document) === link.id)
-        .map(serializePublicStatusDocument);
+      throw externalUploadDenied();
+    }
 
-      return {
-        upload: serializePublicLink(link),
-        acceptedClassifications: publicExternalUploadClassifications,
-        documents,
-      };
-    },
+    const completed = await repository.completeDocumentUpload({
+      firmId: link.firmId,
+      documentId: params.documentId,
+      checksumSha256: body.checksumSha256,
+      scanStatus: "queued",
+    });
+    await recordAccessLog(externalUploadRepository, {
+      link,
+      request,
+      resourceType: "document",
+      resourceId: completed.id,
+      metadata: { outcome: completed.uploadStatus },
+    });
+
+    return {
+      document: serializePublicCompletionDocument(completed),
+    };
+  };
+
+  server.get(
+    "/api/portal/external-uploads",
+    publicTokenPolicyOptions("external-upload", "view"),
+    viewPublicExternalUpload,
   );
-
+  server.get(
+    "/api/portal/external-uploads/:token",
+    publicTokenPolicyOptions("external-upload", "view"),
+    viewPublicExternalUpload,
+  );
+  server.post(
+    "/api/portal/external-uploads/intents",
+    publicTokenPolicyOptions("external-upload", "upload-intent"),
+    createPublicExternalUploadIntent,
+  );
   server.post(
     "/api/portal/external-uploads/:token/intents",
     publicTokenPolicyOptions("external-upload", "upload-intent"),
-    async (request) => {
-      const params = parseRequestPart(publicTokenParamsSchema, request.params, "params");
-      const body = parseRequestPart(publicIntentBodySchema, request.body, "body");
-      const externalUploadRepository = requireExternalUploadRepository(repository);
-      const signingSecret = requireJwtSecret(jwtSecret);
-      if (!s3) {
-        throw new ApiHttpError(
-          503,
-          "S3_UPLOAD_SIGNING_NOT_CONFIGURED",
-          "S3 upload signing is not configured",
-        );
-      }
-
-      const link = await resolvePublicLink(externalUploadRepository, {
-        token: params.token,
-        jwtSecret: signingSecret,
-        request,
-        enforceUploadLimit: false,
-      });
-      await assertExternalUploadIntentCapacity({ repository, link, request });
-      const documentId = crypto.randomUUID();
-      const storageKey = `external-uploads/${link.id}/${documentId}-${sanitizeFilename(body.filename)}`;
-      const checksumSha256Base64 = sha256HexToBase64(body.checksumSha256);
-      const requiredHeaders = {
-        "x-amz-meta-open-practice-upload-scope": "external-upload",
-        "x-amz-meta-open-practice-scan": "required-before-share",
-        "x-amz-meta-open-practice-size-bytes": String(body.fileSizeBytes),
-        "x-amz-checksum-sha256": checksumSha256Base64,
-        ...(s3.serverSideEncryption
-          ? { "x-amz-server-side-encryption": s3.serverSideEncryption }
-          : {}),
-      };
-      const command = new PutObjectCommand({
-        Bucket: s3.bucket,
-        Key: storageKey,
-        ChecksumSHA256: checksumSha256Base64,
-        ContentLength: body.fileSizeBytes,
-        ...(s3.serverSideEncryption ? { ServerSideEncryption: s3.serverSideEncryption } : {}),
-        Metadata: {
-          "open-practice-upload-scope": "external-upload",
-          "open-practice-scan": "required-before-share",
-          "open-practice-size-bytes": String(body.fileSizeBytes),
-        },
-      });
-      const uploadUrl = await getSignedUrl(s3.client, command, {
-        expiresIn: SIGNED_URL_EXPIRES_IN_SECONDS,
-        unhoistableHeaders: new Set(Object.keys(requiredHeaders)),
-      });
-      const document = await repository.createDocumentUploadIntent({
-        id: documentId,
-        firmId: link.firmId,
-        matterId: link.matterId,
-        title: body.filename,
-        storageKey,
-        checksumSha256: body.checksumSha256,
-        sizeBytes: body.fileSizeBytes,
-        classification: body.classification,
-        legalHold: body.legalHold,
-        reviewStatus: "pending_review",
-        externalUploadLinkId: link.id,
-      });
-      await recordAccessLog(externalUploadRepository, {
-        link,
-        request,
-        resourceType: "document",
-        resourceId: document.id,
-        metadata: { outcome: "intent_created" },
-      });
-
-      return {
-        method: "PUT",
-        uploadUrl,
-        expiresInSeconds: SIGNED_URL_EXPIRES_IN_SECONDS,
-        document: serializePublicDocument(document),
-        requiredHeaders,
-        maxFileSizeBytes: MAX_UPLOAD_FILE_SIZE_BYTES,
-      };
-    },
+    createPublicExternalUploadIntent,
   );
-
+  server.post(
+    "/api/portal/external-uploads/documents/:documentId/complete",
+    publicTokenPolicyOptions("external-upload", "mutation"),
+    completePublicExternalUpload,
+  );
   server.post(
     "/api/portal/external-uploads/:token/documents/:documentId/complete",
     publicTokenPolicyOptions("external-upload", "mutation"),
-    async (request) => {
-      const params = parseRequestPart(publicCompleteParamsSchema, request.params, "params");
-      const body = parseRequestPart(publicCompleteBodySchema, request.body, "body");
-      const externalUploadRepository = requireExternalUploadRepository(repository);
-      const signingSecret = requireJwtSecret(jwtSecret);
-      const link = await resolvePublicLink(externalUploadRepository, {
-        token: params.token,
-        jwtSecret: signingSecret,
-        request,
-        enforceUploadLimit: false,
-      });
-      const document = await repository.getDocument(link.firmId, params.documentId);
-      if (
-        !document ||
-        document.matterId !== link.matterId ||
-        !document.storageKey.startsWith(`external-uploads/${link.id}/`)
-      ) {
-        await recordAccessLog(externalUploadRepository, {
-          link,
-          request,
-          resourceType: "document",
-          resourceId: params.documentId,
-          metadata: { outcome: "denied", reason: "document_scope" },
-        });
-        throw externalUploadDenied();
-      }
-      if (document.uploadStatus !== "intent_created") {
-        await recordAccessLog(externalUploadRepository, {
-          link,
-          request,
-          resourceType: "document",
-          resourceId: params.documentId,
-          metadata: { outcome: "denied", reason: "upload_already_completed" },
-        });
-        throw externalUploadDenied();
-      }
-      if (!s3) {
-        throw new ApiHttpError(
-          503,
-          "S3_UPLOAD_SIGNING_NOT_CONFIGURED",
-          "S3 upload signing is not configured",
-        );
-      }
-      await verifyUploadedObject(s3, {
-        storageKey: document.storageKey,
-        checksumSha256: body.checksumSha256,
-        expectedSizeBytes: document.sizeBytes ?? 0,
-      });
-
-      if (body.checksumSha256 !== document.checksumSha256) {
-        const rejected = await repository.completeDocumentUpload({
-          firmId: link.firmId,
-          documentId: params.documentId,
-          checksumSha256: body.checksumSha256,
-          scanStatus: "failed",
-        });
-        await recordAccessLog(externalUploadRepository, {
-          link,
-          request,
-          resourceType: "document",
-          resourceId: rejected.id,
-          metadata: { outcome: rejected.uploadStatus, reason: "checksum_mismatch" },
-        });
-        return {
-          document: serializePublicCompletionDocument(rejected),
-        };
-      }
-
-      const claimed = await claimExternalUploadUse(externalUploadRepository, {
-        firmId: link.firmId,
-        id: link.id,
-        usedAt: new Date().toISOString(),
-      });
-      if (!claimed) {
-        await recordAccessLog(externalUploadRepository, {
-          link,
-          request,
-          resourceType: "external_upload_link",
-          resourceId: link.id,
-          metadata: { outcome: "denied", reason: "upload_limit" },
-        });
-        throw externalUploadDenied();
-      }
-
-      const completed = await repository.completeDocumentUpload({
-        firmId: link.firmId,
-        documentId: params.documentId,
-        checksumSha256: body.checksumSha256,
-        scanStatus: "queued",
-      });
-      await recordAccessLog(externalUploadRepository, {
-        link,
-        request,
-        resourceType: "document",
-        resourceId: completed.id,
-        metadata: { outcome: completed.uploadStatus },
-      });
-
-      return {
-        document: serializePublicCompletionDocument(completed),
-      };
-    },
+    completePublicExternalUpload,
   );
 }

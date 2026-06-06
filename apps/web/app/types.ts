@@ -383,6 +383,8 @@ export interface ExternalUploadsStatusResponse {
   status: string;
   provider?: string;
   reason?: string;
+  canCreate?: boolean;
+  canManage?: boolean;
 }
 
 export interface ExternalUploadsListResponse {
@@ -1542,6 +1544,8 @@ export interface ShareLinksStatusResponse {
   status?: string;
   provider?: string;
   reason?: string;
+  canCreate?: boolean;
+  canManage?: boolean;
 }
 
 export type ClientPortalPermission = "view_documents" | "upload_documents" | "message" | "sign";

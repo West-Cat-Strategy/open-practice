@@ -8,7 +8,12 @@ import {
   type EmailReceiptTokenRecord,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
-import { createSessionToken, hashToken } from "../http/auth-helpers.js";
+import {
+  createSessionToken,
+  hashToken,
+  publicTokenPathFromHeader,
+  readPublicTokenHeader,
+} from "../http/auth-helpers.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
@@ -581,7 +586,14 @@ export function registerEmailRoutes(
     receiptToken: EmailReceiptTokenRecord;
   }> => {
     const secret = requireReceiptSecret(jwtSecret);
-    const params = parseRequestPart(publicReceiptParamsSchema, request.params, "params");
+    const routeParams = request.params as { token?: string } | undefined;
+    const params = parseRequestPart(
+      publicReceiptParamsSchema,
+      routeParams?.token
+        ? routeParams
+        : publicTokenPathFromHeader(readPublicTokenHeader(request.headers)),
+      "params",
+    );
     const tokenHash = hashToken(params.token, secret);
     const receiptToken = await repository.getEmailReceiptTokenByHash(tokenHash);
     if (!receiptToken) {
@@ -606,23 +618,34 @@ export function registerEmailRoutes(
   };
 
   const recordReceipt = async (request: FastifyRequest) => {
-    const { tokenHash, receiptToken } = await readReceiptToken(request);
-    const token = await repository.recordEmailReceiptToken({
+    const { tokenHash } = await readReceiptToken(request);
+    const result = await repository.recordEmailReceiptToken({
       tokenHash,
       recordedAt: new Date().toISOString(),
     });
+    const token = result?.token;
     const email = token ? await repository.getEmailOutbox(token.firmId, token.emailId) : undefined;
     if (!token || !email) {
       throw new ApiHttpError(404, "EMAIL_RECEIPT_NOT_FOUND", "Email receipt was not found");
     }
     return {
       receipt: emailReceiptTokenStatus(token),
-      recorded: !receiptToken.recordedAt,
+      recorded: result.recordedNow,
     };
   };
 
   server.get(
+    "/api/portal/email-receipts",
+    publicTokenPolicyOptions("email-receipt", "view"),
+    renderReceiptConfirmation,
+  );
+  server.get(
     "/api/portal/email-receipts/:token",
+    publicTokenPolicyOptions("email-receipt", "view"),
+    renderReceiptConfirmation,
+  );
+  server.get(
+    "/api/portal/mail/receipts",
     publicTokenPolicyOptions("email-receipt", "view"),
     renderReceiptConfirmation,
   );
@@ -632,7 +655,17 @@ export function registerEmailRoutes(
     renderReceiptConfirmation,
   );
   server.post(
+    "/api/portal/email-receipts",
+    publicTokenPolicyOptions("email-receipt", "mutation"),
+    recordReceipt,
+  );
+  server.post(
     "/api/portal/email-receipts/:token",
+    publicTokenPolicyOptions("email-receipt", "mutation"),
+    recordReceipt,
+  );
+  server.post(
+    "/api/portal/mail/receipts",
     publicTokenPolicyOptions("email-receipt", "mutation"),
     recordReceipt,
   );

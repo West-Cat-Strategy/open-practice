@@ -1,6 +1,7 @@
 import { createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
 
 const SESSION_COOKIE_NAME = "open_practice_session";
+export const PUBLIC_TOKEN_HEADER = "x-open-practice-public-token";
 const PASSWORD_HASH_ITERATIONS = 210_000;
 const PASSWORD_HASH_KEY_LENGTH = 32;
 const PASSWORD_HASH_DIGEST = "sha256";
@@ -65,6 +66,47 @@ export function readSessionToken(requestHeaders: {
   return undefined;
 }
 
+export function readPublicTokenHeader(
+  requestHeaders: Record<string, string | string[] | undefined>,
+): string | undefined {
+  const value = requestHeaders[PUBLIC_TOKEN_HEADER];
+  if (typeof value === "string") return value.trim() || undefined;
+  if (Array.isArray(value) && value.length === 1) return value[0]?.trim() || undefined;
+  return undefined;
+}
+
+export function publicTokenPathFromHeader(token: string | undefined): { token: string } {
+  return { token: token ?? "" };
+}
+
+const PUBLIC_TOKEN_PATH_REDACTIONS: Array<[RegExp, string]> = [
+  [/^(\/api\/portal\/shares)\/[^/?]+(\/email-verification)?(\?.*)?$/, "$1/:token$2$3"],
+  [/^(\/api\/portal\/email-receipts)\/[^/?]+(\?.*)?$/, "$1/:token$2"],
+  [/^(\/api\/portal\/mail\/receipts)\/[^/?]+(\?.*)?$/, "$1/:token$2"],
+  [/^(\/api\/portal\/external-uploads)\/[^/?]+(\/intents)(\?.*)?$/, "$1/:token$2$3"],
+  [
+    /^(\/api\/portal\/external-uploads)\/[^/?]+(\/documents\/[^/?]+\/complete)(\?.*)?$/,
+    "$1/:token$2$3",
+  ],
+  [/^(\/api\/portal\/external-uploads)\/[^/?]+(\?.*)?$/, "$1/:token$2"],
+  [/^(\/api\/portal\/guest-sessions)\/[^/?]+(\/check-in)?(\?.*)?$/, "$1/:token$2$3"],
+  [/^(\/api\/portal\/intake-forms)\/[^/?]+(\/draft|\/submit)?(\?.*)?$/, "$1/:token$2$3"],
+  [/^(\/api\/portal\/intake-forms)\/[^/?]+(\/items\/[^/?]+\/uploads)(\?.*)?$/, "$1/:token$2$3"],
+  [
+    /^(\/api\/portal\/intake-forms)\/[^/?]+(\/items\/[^/?]+\/documents\/[^/?]+\/complete)(\?.*)?$/,
+    "$1/:token$2$3",
+  ],
+  [/^(\/api\/portal\/intake-forms)\/[^/?]+(\/items\/[^/?]+\/signature)(\?.*)?$/, "$1/:token$2$3"],
+];
+
+export function redactPublicTokenUrl(url: string | undefined): string | undefined {
+  if (!url) return url;
+  for (const [pattern, replacement] of PUBLIC_TOKEN_PATH_REDACTIONS) {
+    if (pattern.test(url)) return url.replace(pattern, replacement);
+  }
+  return url;
+}
+
 const CALDAV_PUBLIC_ROUTE_PATTERNS = [
   /^\/caldav\/?$/,
   /^\/caldav\/principals\/[^/]+\/$/,
@@ -93,17 +135,30 @@ export const PUBLIC_ROUTE_SAMPLES = [
   { method: "POST", path: "/api/public/consultation-intakes" },
   { method: "POST", path: "/api/inbound-email/provider-webhooks/mailgun/raw-mime" },
   { method: "GET", path: "/api/portal/shares/sample" },
+  { method: "GET", path: "/api/portal/shares" },
   { method: "POST", path: "/api/portal/shares/sample/email-verification" },
+  { method: "POST", path: "/api/portal/shares/email-verification" },
   { method: "GET", path: "/api/portal/email-receipts/sample" },
+  { method: "GET", path: "/api/portal/email-receipts" },
   { method: "POST", path: "/api/portal/email-receipts/sample" },
+  { method: "POST", path: "/api/portal/email-receipts" },
   { method: "GET", path: "/api/portal/mail/receipts/sample" },
+  { method: "GET", path: "/api/portal/mail/receipts" },
   { method: "POST", path: "/api/portal/mail/receipts/sample" },
+  { method: "POST", path: "/api/portal/mail/receipts" },
   { method: "GET", path: "/api/portal/intake-forms/sample" },
+  { method: "GET", path: "/api/portal/intake-forms" },
   { method: "POST", path: "/api/portal/intake-forms/sample/draft" },
+  { method: "POST", path: "/api/portal/intake-forms/draft" },
   { method: "POST", path: "/api/portal/intake-forms/sample/submit" },
+  { method: "POST", path: "/api/portal/intake-forms/submit" },
   {
     method: "POST",
     path: "/api/portal/intake-forms/sample/items/sample/uploads",
+  },
+  {
+    method: "POST",
+    path: "/api/portal/intake-forms/items/sample/uploads",
   },
   {
     method: "POST",
@@ -111,16 +166,32 @@ export const PUBLIC_ROUTE_SAMPLES = [
   },
   {
     method: "POST",
+    path: "/api/portal/intake-forms/items/sample/documents/sample/complete",
+  },
+  {
+    method: "POST",
     path: "/api/portal/intake-forms/sample/items/sample/signature",
   },
+  {
+    method: "POST",
+    path: "/api/portal/intake-forms/items/sample/signature",
+  },
   { method: "GET", path: "/api/portal/external-uploads/sample" },
+  { method: "GET", path: "/api/portal/external-uploads" },
   { method: "POST", path: "/api/portal/external-uploads/sample/intents" },
+  { method: "POST", path: "/api/portal/external-uploads/intents" },
   {
     method: "POST",
     path: "/api/portal/external-uploads/sample/documents/sample/complete",
   },
+  {
+    method: "POST",
+    path: "/api/portal/external-uploads/documents/sample/complete",
+  },
   { method: "GET", path: "/api/portal/guest-sessions/sample" },
+  { method: "GET", path: "/api/portal/guest-sessions" },
   { method: "POST", path: "/api/portal/guest-sessions/sample/check-in" },
+  { method: "POST", path: "/api/portal/guest-sessions/check-in" },
 ] as const;
 
 export function isPublicRoute(method: string, url: string): boolean {
@@ -138,27 +209,48 @@ export function isPublicRoute(method: string, url: string): boolean {
     (method === "POST" && path === "/api/auth/recovery-codes/verify") ||
     (method === "POST" && path === "/api/public/consultation-intakes") ||
     (method === "POST" && path === "/api/inbound-email/provider-webhooks/mailgun/raw-mime") ||
+    (method === "GET" && path === "/api/portal/shares") ||
     (method === "GET" && path?.startsWith("/api/portal/shares/")) ||
+    (method === "POST" && path === "/api/portal/shares/email-verification") ||
     (method === "POST" && /^\/api\/portal\/shares\/[^/]+\/email-verification$/.test(path ?? "")) ||
+    (method === "GET" && path === "/api/portal/email-receipts") ||
     (method === "GET" && /^\/api\/portal\/email-receipts\/[^/]+$/.test(path ?? "")) ||
+    (method === "POST" && path === "/api/portal/email-receipts") ||
     (method === "POST" && /^\/api\/portal\/email-receipts\/[^/]+$/.test(path ?? "")) ||
+    (method === "GET" && path === "/api/portal/mail/receipts") ||
     (method === "GET" && /^\/api\/portal\/mail\/receipts\/[^/]+$/.test(path ?? "")) ||
+    (method === "POST" && path === "/api/portal/mail/receipts") ||
     (method === "POST" && /^\/api\/portal\/mail\/receipts\/[^/]+$/.test(path ?? "")) ||
+    (method === "GET" && path === "/api/portal/intake-forms") ||
     (method === "GET" && /^\/api\/portal\/intake-forms\/[^/]+$/.test(path ?? "")) ||
+    (method === "POST" && path === "/api/portal/intake-forms/draft") ||
     (method === "POST" && /^\/api\/portal\/intake-forms\/[^/]+\/draft$/.test(path ?? "")) ||
+    (method === "GET" && path === "/api/portal/external-uploads") ||
     (method === "GET" && /^\/api\/portal\/external-uploads\/[^/]+$/.test(path ?? "")) ||
+    (method === "GET" && path === "/api/portal/guest-sessions") ||
     (method === "GET" && /^\/api\/portal\/guest-sessions\/[^/]+$/.test(path ?? "")) ||
+    (method === "POST" && path === "/api/portal/intake-forms/submit") ||
     (method === "POST" && /^\/api\/portal\/intake-forms\/[^/]+\/submit$/.test(path ?? "")) ||
+    (method === "POST" && path === "/api/portal/guest-sessions/check-in") ||
     (method === "POST" && /^\/api\/portal\/guest-sessions\/[^/]+\/check-in$/.test(path ?? "")) ||
     (method === "POST" &&
+      /^\/api\/portal\/intake-forms\/items\/[^/]+\/uploads$/.test(path ?? "")) ||
+    (method === "POST" &&
       /^\/api\/portal\/intake-forms\/[^/]+\/items\/[^/]+\/uploads$/.test(path ?? "")) ||
+    (method === "POST" &&
+      /^\/api\/portal\/intake-forms\/items\/[^/]+\/documents\/[^/]+\/complete$/.test(path ?? "")) ||
     (method === "POST" &&
       /^\/api\/portal\/intake-forms\/[^/]+\/items\/[^/]+\/documents\/[^/]+\/complete$/.test(
         path ?? "",
       )) ||
     (method === "POST" &&
+      /^\/api\/portal\/intake-forms\/items\/[^/]+\/signature$/.test(path ?? "")) ||
+    (method === "POST" &&
       /^\/api\/portal\/intake-forms\/[^/]+\/items\/[^/]+\/signature$/.test(path ?? "")) ||
+    (method === "POST" && path === "/api/portal/external-uploads/intents") ||
     (method === "POST" && /^\/api\/portal\/external-uploads\/[^/]+\/intents$/.test(path ?? "")) ||
+    (method === "POST" &&
+      /^\/api\/portal\/external-uploads\/documents\/[^/]+\/complete$/.test(path ?? "")) ||
     (method === "POST" &&
       /^\/api\/portal\/external-uploads\/[^/]+\/documents\/[^/]+\/complete$/.test(path ?? ""))
   );

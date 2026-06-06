@@ -36,7 +36,7 @@ describe("secret scanner", () => {
       `stripe=${stripeLiveRestrictedKeyFixture}\n`,
     );
 
-    assert.deepEqual(scanSecretPaths([artifactDir]), [
+    assert.deepEqual(scanSecretPaths([artifactDir]).findings, [
       {
         file: path.join(artifactDir, "unsafe.log"),
         line: 1,
@@ -44,5 +44,18 @@ describe("secret scanner", () => {
         type: "Stripe live secret key",
       },
     ]);
+  });
+
+  it("reports large skipped files unless large-file scanning is requested", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "open-practice-secret-scan-"));
+    const artifactDir = path.join(dir, "release");
+    const largeFile = path.join(artifactDir, "large.log");
+    mkdirSync(artifactDir);
+    writeFileSync(largeFile, `${"x".repeat(5 * 1024 * 1024 + 1)}\n`);
+
+    assert.deepEqual(scanSecretPaths([artifactDir]).skipped, [
+      { file: largeFile, reason: "large_file", sizeBytes: 5 * 1024 * 1024 + 2 },
+    ]);
+    assert.deepEqual(scanSecretPaths([artifactDir], { scanLargeFiles: true }).skipped, []);
   });
 });

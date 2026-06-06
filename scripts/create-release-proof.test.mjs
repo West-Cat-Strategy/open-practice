@@ -67,7 +67,14 @@ describe("create-release-proof contract", () => {
       {
         id: "artifact-secret-scan",
         command: "pnpm",
-        args: ["security:scan", "--", "--path", "/repo/artifacts/release-local/run"],
+        args: [
+          "security:scan",
+          "--",
+          "--path",
+          "/repo/artifacts/release-local/run",
+          "--fail-on-skipped",
+          "--scan-large-files",
+        ],
         required: true,
       },
     );

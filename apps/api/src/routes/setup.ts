@@ -3,8 +3,13 @@ import { timingSafeEqual, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { appendAuditEvent, isPracticePresetId } from "@open-practice/domain";
 import { FirstRunSetupConflictError, type OpenPracticeRepository } from "@open-practice/database";
+import { parseRequestPart } from "../http/validation.js";
 
 const provinceSchema = z.enum(["BC", "ON", "CANADA", "OTHER"]);
+
+const setupWebAuthnOptionsBodySchema = z.object({
+  email: z.string().email(),
+});
 
 const setupBodySchema = z.object({
   selectedPresetIds: z
@@ -235,7 +240,7 @@ export function registerSetupRoutes(
       }
       assertSetupGate(request, options);
 
-      const body = z.object({ email: z.string().email() }).parse(request.body);
+      const body = parseRequestPart(setupWebAuthnOptionsBodySchema, request.body, "body");
       const userId = id("user"); // Temp ID for registration
 
       const { generateRegistrationOptions } = await import("@simplewebauthn/server");
@@ -289,7 +294,7 @@ export function registerSetupRoutes(
       }
 
       assertSetupGate(request, options);
-      const body = setupBodySchema.parse(request.body);
+      const body = parseRequestPart(setupBodySchema, request.body, "body");
       const now = new Date();
       const nowIso = now.toISOString();
       const newFirmId = firmId(body.firm.name);

@@ -593,7 +593,16 @@ describe("API auth and persistence boundaries", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({
-      message: expect.stringContaining("Unknown practice preset id"),
+      code: "VALIDATION_ERROR",
+      message: "Invalid request body",
+      details: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            message: "Unknown practice preset id",
+            path: "selectedPresetIds.0",
+          }),
+        ]),
+      },
     });
   });
 

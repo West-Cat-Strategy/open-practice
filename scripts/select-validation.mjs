@@ -14,6 +14,7 @@ export const COMMANDS = {
   databaseTypecheck: "pnpm --filter @open-practice/database typecheck",
   depsAudit: "pnpm deps:audit",
   depsLicenses: "pnpm deps:licenses",
+  dockerResidualWatch: "pnpm docker:residual-watch",
   docsCheck: "pnpm docs:check",
   domainTest: "pnpm --filter @open-practice/domain test",
   domainTypecheck: "pnpm --filter @open-practice/domain typecheck",
@@ -37,6 +38,7 @@ export const COMMAND_ORDER = [
   COMMANDS.ciLocal,
   COMMANDS.depsAudit,
   COMMANDS.depsLicenses,
+  COMMANDS.dockerResidualWatch,
   COMMANDS.e2eHost,
   COMMANDS.e2eDocker,
   COMMANDS.formatCheck,
@@ -202,6 +204,7 @@ function isDependencyManifest(path) {
 
 function isRuntimeConfig(path) {
   return (
+    path === ".dockerignore" ||
     path === "Dockerfile" ||
     path.startsWith("Dockerfile.") ||
     path === "docker-compose.yml" ||
@@ -301,11 +304,14 @@ export function classifyPath(path) {
   }
 
   if (isDependencyManifest(path)) {
+    commands.add(COMMANDS.ciLocal);
     commands.add(COMMANDS.depsAudit);
     commands.add(COMMANDS.depsLicenses);
   }
 
   if (isRuntimeConfig(path)) {
+    commands.add(COMMANDS.dockerResidualWatch);
+    commands.add(COMMANDS.e2eDocker);
     commands.add(COMMANDS.formatCheck);
     commands.add(COMMANDS.docsCheck);
     commands.add(COMMANDS.policyCheck);

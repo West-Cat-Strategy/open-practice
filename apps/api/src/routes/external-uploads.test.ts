@@ -2,7 +2,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 import { Buffer } from "node:buffer";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
-import { hashToken } from "../http/auth-helpers.js";
+import { PUBLIC_TOKEN_HEADER, hashToken } from "../http/auth-helpers.js";
 import { createApiServer } from "../server.js";
 import { PUBLIC_TOKEN_UPLOAD_INTENT_RATE_LIMIT } from "./public-token-rate-limits.js";
 
@@ -174,6 +174,23 @@ describe("external upload routes", () => {
     expect(response.json()).toMatchObject({
       status: "not_configured",
       reason: "s3_not_configured",
+      canCreate: false,
+    });
+  });
+
+  it("reports permission-aware external upload creation status", async () => {
+    const { server } = testServer({ s3: s3Config() });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/external-uploads/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "available",
+      canCreate: true,
+      canManage: true,
     });
   });
 
@@ -839,6 +856,21 @@ describe("external upload routes", () => {
     expect(response.body).not.toContain("tokenHash");
     expect(response.body).not.toContain("matter-001");
     expect(response.body).not.toContain("user-admin");
+
+    const headerResponse = await server.inject({
+      method: "GET",
+      url: "/api/portal/external-uploads",
+      headers: {
+        "user-agent": "external-upload-public-header-view-test",
+        [PUBLIC_TOKEN_HEADER]: token,
+      },
+    });
+    expect(headerResponse.statusCode).toBe(200);
+    expect(headerResponse.json()).toMatchObject({
+      upload: { id: "external-upload-public-active", status: "active" },
+      documents: expect.arrayContaining([expect.objectContaining({ id: "doc-public-pending" })]),
+    });
+
     await expect(repository.listAccessLogs("firm-west-legal")).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({

@@ -11,6 +11,7 @@ import type {
 import { requireAccess } from "../http/auth-guards.js";
 import { createSessionToken, hashToken } from "../http/auth-helpers.js";
 import { ApiHttpError } from "../http/response.js";
+import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
@@ -359,7 +360,7 @@ export function registerPublicConsultationIntakeRoutes(
   server.put("/api/public-consultation-intakes/settings", async (request) => {
     const access = requireAccess(request.auth, { resource: "provider_setting", action: "update" });
     if (!access.ok) throw access.error;
-    const body = settingsBodySchema.parse(request.body);
+    const body = parseRequestPart(settingsBodySchema, request.body, "body");
     const existing = await loadNotificationSettings(options.repository, request.auth.firmId);
     let submissionToken: string | undefined;
     let submissionTokenHash = existing.submissionTokenHash;
@@ -408,7 +409,7 @@ export function registerPublicConsultationIntakeRoutes(
       action: "read",
     });
     if (!access.ok) throw access.error;
-    const query = listQuerySchema.parse(request.query);
+    const query = parseRequestPart(listQuerySchema, request.query, "query");
     return {
       intakes: await options.repository.listPublicConsultationIntakes(request.auth.firmId, query),
     };
@@ -437,7 +438,7 @@ export function registerPublicConsultationIntakeRoutes(
       }
       assertSubmissionToken({ settings, request, jwtSecret: options.jwtSecret });
 
-      const body = publicIntakeBodySchema.parse(request.body);
+      const body = parseRequestPart(publicIntakeBodySchema, request.body, "body");
       if (body.website?.trim()) {
         reply.code(202);
         return { status: "received" };
@@ -533,8 +534,8 @@ export function registerPublicConsultationIntakeRoutes(
       action: "update",
     });
     if (!access.ok) throw access.error;
-    const params = z.object({ id: z.string().min(1) }).parse(request.params);
-    const body = dismissBodySchema.parse(request.body);
+    const params = parseRequestPart(z.object({ id: z.string().min(1) }), request.params, "params");
+    const body = parseRequestPart(dismissBodySchema, request.body, "body");
     const existing = await options.repository.getPublicConsultationIntake(
       request.auth.firmId,
       params.id,
@@ -588,8 +589,8 @@ export function registerPublicConsultationIntakeRoutes(
     const contactAccess = requireAccess(request.auth, { resource: "contact", action: "create" });
     if (!contactAccess.ok) throw contactAccess.error;
 
-    const params = z.object({ id: z.string().min(1) }).parse(request.params);
-    const body = convertBodySchema.parse(request.body ?? {});
+    const params = parseRequestPart(z.object({ id: z.string().min(1) }), request.params, "params");
+    const body = parseRequestPart(convertBodySchema, request.body ?? {}, "body");
     const existing = await options.repository.getPublicConsultationIntake(
       request.auth.firmId,
       params.id,

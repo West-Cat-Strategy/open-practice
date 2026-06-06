@@ -55,7 +55,16 @@ const createTemplateBodySchema = z.object({
 
 const templateListQuerySchema = z.object({
   category: z.string().min(1).optional(),
-  activeOnly: z.coerce.boolean().default(true),
+  activeOnly: z
+    .preprocess((value) => {
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === "true") return true;
+        if (normalized === "false") return false;
+      }
+      return value;
+    }, z.boolean())
+    .default(true),
 });
 
 const exportDraftBodySchema = z.object({

@@ -1,6 +1,6 @@
 import type { PublicTokenActionItem } from "../publicTokenActions";
 import {
-  buildPublicTokenPath,
+  buildPublicTokenHeaderPath,
   publicTokenErrorMessage,
   type PublicTokenErrorBody,
 } from "../publicTokenClient";
@@ -9,7 +9,8 @@ import type { PublicGuestSessionResponse } from "../types";
 export type PublicGuestSessionErrorBody = PublicTokenErrorBody;
 
 export function buildGuestSessionPath(token: string, ...segments: string[]): string {
-  return buildPublicTokenPath("/api/portal/guest-sessions", token, ...segments);
+  void token;
+  return buildPublicTokenHeaderPath("/api/portal/guest-sessions", ...segments);
 }
 
 export function describePublicGuestSessionStatus(

@@ -4,10 +4,12 @@ import { FileText } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EmbeddedIntakeFormItem, EmbeddedIntakeQuestion } from "@open-practice/domain";
 import {
-  buildPublicTokenPath,
+  buildPublicTokenHeaderPath,
+  publicTokenHeaders,
   publicTokenErrorMessage,
   publicTokenNetworkErrorMessage,
   readPublicTokenError,
+  scrubLegacyPublicTokenPath,
 } from "../publicTokenClient";
 import { PublicTokenNeedsAttention } from "../publicTokenActions";
 import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
@@ -50,11 +52,16 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
   const loadedDraftRef = useRef(false);
 
   useEffect(() => {
+    scrubLegacyPublicTokenPath("/intake-forms", token);
+  }, [token]);
+
+  useEffect(() => {
     let cancelled = false;
     async function loadForm(): Promise<void> {
       try {
         const response = await fetch(
-          `${apiBaseUrl}${buildPublicTokenPath("/api/portal/intake-forms", token)}`,
+          `${apiBaseUrl}${buildPublicTokenHeaderPath("/api/portal/intake-forms")}`,
+          { headers: publicTokenHeaders(token) },
         );
         if (cancelled) return;
         if (!response.ok) {
@@ -107,10 +114,10 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
     setDraftStatus("Saving draft...");
     try {
       const response = await fetch(
-        `${apiBaseUrl}${buildPublicTokenPath("/api/portal/intake-forms", token, "draft")}`,
+        `${apiBaseUrl}${buildPublicTokenHeaderPath("/api/portal/intake-forms", "draft")}`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),
           body: JSON.stringify({ answers }),
         },
       );
@@ -153,16 +160,15 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
       const checksumSha256 = await sha256Hex(file);
       const contentType = file.type || "application/octet-stream";
       const intent = await fetch(
-        `${apiBaseUrl}${buildPublicTokenPath(
+        `${apiBaseUrl}${buildPublicTokenHeaderPath(
           "/api/portal/intake-forms",
-          token,
           "items",
           item.id,
           "uploads",
         )}`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),
           body: JSON.stringify({
             filename: file.name,
             checksumSha256,
@@ -195,9 +201,8 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
         return;
       }
       const completed = await fetch(
-        `${apiBaseUrl}${buildPublicTokenPath(
+        `${apiBaseUrl}${buildPublicTokenHeaderPath(
           "/api/portal/intake-forms",
-          token,
           "items",
           item.id,
           "documents",
@@ -206,7 +211,7 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
         )}`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),
           body: JSON.stringify({ checksumSha256 }),
         },
       );
@@ -244,16 +249,15 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
     setStatus("Recording signature...");
     try {
       const response = await fetch(
-        `${apiBaseUrl}${buildPublicTokenPath(
+        `${apiBaseUrl}${buildPublicTokenHeaderPath(
           "/api/portal/intake-forms",
-          token,
           "items",
           item.id,
           "signature",
         )}`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),
           body: JSON.stringify({
             status: "completed",
             consentText: item.consentText,
@@ -299,10 +303,10 @@ export default function IntakeFormRunner({ apiBaseUrl, token }: IntakeFormRunner
     setStatus("Submitting form...");
     try {
       const response = await fetch(
-        `${apiBaseUrl}${buildPublicTokenPath("/api/portal/intake-forms", token, "submit")}`,
+        `${apiBaseUrl}${buildPublicTokenHeaderPath("/api/portal/intake-forms", "submit")}`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),
           body: JSON.stringify({ answers, clientSubmissionId }),
         },
       );
