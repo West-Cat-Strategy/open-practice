@@ -4,6 +4,7 @@ import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
 import { requireFreshAuth } from "../http/fresh-auth.js";
 import { sessionCookie } from "../http/auth-helpers.js";
+import { parseRequestPart } from "../http/validation.js";
 import { createEmbeddedAuthService, recoveryCodeHash } from "../services/auth-service.js";
 import { randomBytes } from "node:crypto";
 
@@ -68,12 +69,14 @@ export function registerRecoveryRoutes(
           statusCode: 503,
         });
       }
-      const body = z
-        .object({
+      const body = parseRequestPart(
+        z.object({
           email: z.string().email(),
           code: z.string().min(1),
-        })
-        .parse(request.body);
+        }),
+        request.body,
+        "body",
+      );
 
       const result = await authService.verifyRecoveryCode(body);
       reply.header(

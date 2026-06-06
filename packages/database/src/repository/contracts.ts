@@ -164,6 +164,44 @@ export function sanitizeConnectorDeliveryMetadata(
   return redacted;
 }
 
+const emailDeliveryMetadataSensitiveKeyPattern =
+  /(address|api[_-]?key|authorization|bcc|body|cc|credential|from|html|message[_-]?id|mime|password|private[_-]?key|provider[_-]?message[_-]?id|raw|recipient|secret|sender|signature|storage|subject|text|to|token)/i;
+
+export function sanitizeEmailDeliveryMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!metadata) return {};
+  const redacted: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (emailDeliveryMetadataSensitiveKeyPattern.test(key)) {
+      redacted[key] = "[redacted]";
+      continue;
+    }
+    if (typeof value === "string") {
+      redacted[key] = sanitizeConnectorDeliverySummary(value) ?? "";
+      continue;
+    }
+    if (typeof value === "number" || typeof value === "boolean" || value === null) {
+      redacted[key] = value;
+      continue;
+    }
+    if (Array.isArray(value)) {
+      redacted[key] = value.map((item) =>
+        typeof item === "string"
+          ? (sanitizeConnectorDeliverySummary(item) ?? "")
+          : item && typeof item === "object"
+            ? sanitizeEmailDeliveryMetadata(item as Record<string, unknown>)
+            : item,
+      );
+      continue;
+    }
+    if (value && typeof value === "object") {
+      redacted[key] = sanitizeEmailDeliveryMetadata(value as Record<string, unknown>);
+    }
+  }
+  return redacted;
+}
+
 export interface MatterSummary extends Matter {
   parties: Array<MatterParty & { contact: Contact }>;
   documents: DocumentRecord[];
@@ -678,7 +716,7 @@ export interface OpenPracticeRepository {
   recordEmailReceiptToken(input: {
     tokenHash: string;
     recordedAt: string;
-  }): Promise<EmailReceiptTokenRecord | undefined>;
+  }): Promise<{ token: EmailReceiptTokenRecord; recordedNow: boolean } | undefined>;
   listEmailReceiptTokens(
     firmId: string,
     options?: { emailId?: string; matterId?: string },

@@ -44,19 +44,26 @@ describe("select-validation contract", () => {
   });
 
   it("routes runtime configuration changes through docs, policy, and build checks", () => {
-    assert.deepEqual(selectCommands(["docker-compose.yml", "docker/prod/Caddyfile"]), [
-      COMMANDS.formatCheck,
-      COMMANDS.docsCheck,
-      COMMANDS.policyCheck,
-      COMMANDS.build,
-    ]);
+    assert.deepEqual(
+      selectCommands([".dockerignore", "docker-compose.yml", "docker/prod/Caddyfile"]),
+      [
+        COMMANDS.dockerResidualWatch,
+        COMMANDS.e2eDocker,
+        COMMANDS.formatCheck,
+        COMMANDS.docsCheck,
+        COMMANDS.policyCheck,
+        COMMANDS.build,
+      ],
+    );
   });
 
   it("routes dependency manifests through audit and license evidence", () => {
-    assert.deepEqual(selectCommands(["package.json", "pnpm-lock.yaml"]), [
+    assert.deepEqual(selectCommands(["packages/domain/package.json", "pnpm-lock.yaml"]), [
       COMMANDS.ciLocal,
       COMMANDS.depsAudit,
       COMMANDS.depsLicenses,
+      COMMANDS.domainTest,
+      COMMANDS.domainTypecheck,
     ]);
   });
 

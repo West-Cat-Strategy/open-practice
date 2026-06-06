@@ -145,6 +145,7 @@ test.describe("UI/UX screenshot QA", () => {
     app,
     page,
   }, testInfo) => {
+    testInfo.setTimeout(120_000);
     await sweepDashboardSections({ app, disabledSections: new Set(), page, testInfo });
   });
 

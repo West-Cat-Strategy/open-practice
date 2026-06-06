@@ -1,3 +1,5 @@
+import { buildPublicTokenHeaderPath } from "./publicTokenClient";
+
 export interface PublicShareDocument {
   id: string;
   matterId: string;
@@ -69,12 +71,14 @@ export function shareLinkAttentionItems(input: {
   return [];
 }
 
-export function buildPublicSharePath(token: string): string {
-  return `/api/portal/shares/${encodeURIComponent(token)}`;
+export function buildPublicSharePath(token?: string): string {
+  void token;
+  return buildPublicTokenHeaderPath("/api/portal/shares");
 }
 
-export function buildShareEmailVerificationPath(token: string): string {
-  return `${buildPublicSharePath(token)}/email-verification`;
+export function buildShareEmailVerificationPath(token?: string): string {
+  void token;
+  return buildPublicTokenHeaderPath("/api/portal/shares", "email-verification");
 }
 
 export function publicShareErrorCode(body: PublicShareErrorBody): string | undefined {

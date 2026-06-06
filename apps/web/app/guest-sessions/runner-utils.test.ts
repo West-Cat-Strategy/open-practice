@@ -41,9 +41,9 @@ function guestSessionPayload(
 }
 
 describe("guest session runner utilities", () => {
-  it("builds public token paths without exposing unsafe query construction", () => {
+  it("builds header-token paths without exposing unsafe query construction", () => {
     expect(buildGuestSessionPath("token/with spaces", "check-in")).toBe(
-      "/api/portal/guest-sessions/token%2Fwith%20spaces/check-in",
+      "/api/portal/guest-sessions/check-in",
     );
   });
 

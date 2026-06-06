@@ -4958,11 +4958,9 @@ describe("dashboard client behavior", () => {
   });
 
   it("builds public share-link verification paths and status copy", () => {
-    expect(buildPublicSharePath("share token/with slash")).toBe(
-      "/api/portal/shares/share%20token%2Fwith%20slash",
-    );
+    expect(buildPublicSharePath("share token/with slash")).toBe("/api/portal/shares");
     expect(buildShareEmailVerificationPath("share-token")).toBe(
-      "/api/portal/shares/share-token/email-verification",
+      "/api/portal/shares/email-verification",
     );
     expect(
       isShareEmailVerificationRequired({
@@ -5163,6 +5161,9 @@ describe("dashboard client behavior", () => {
       }),
     ).toEqual({ matterId: "matter-001", maxUploads: 1 });
     expect(canCreateExternalUpload({ status: "available", provider: "s3" })).toBe(true);
+    expect(canCreateExternalUpload({ status: "available", provider: "s3", canCreate: false })).toBe(
+      false,
+    );
     expect(canCreateExternalUpload({ status: "not_configured", provider: "s3" })).toBe(false);
     expect(
       externalUploadCreateControlDisabled({
@@ -5751,7 +5752,7 @@ describe("dashboard client behavior", () => {
     expect(buildIntakeFormLinkListPath("matter 001")).toBe(
       "/api/intake-form-links?matterId=matter%20001",
     );
-    expect(buildIntakePortalPath("client token")).toBe("/intake-forms/client%20token");
+    expect(buildIntakePortalPath("client token")).toBe("/intake-forms#client%20token");
     expect(buildIntakeVariableProposalListPath("matter 001")).toBe(
       "/api/intake-variable-proposals?matterId=matter%20001",
     );
@@ -5782,7 +5783,7 @@ describe("dashboard client behavior", () => {
             parentFormLinkId: "intake-form-link-001",
           }),
           token: "one-time-token",
-          portalUrl: "http://localhost:3001/intake-forms/one-time-token",
+          portalUrl: "http://localhost:3001/intake-forms#one-time-token",
         },
       }),
     ).toBe("Follow-up intake link created. One-time token remains available below.");

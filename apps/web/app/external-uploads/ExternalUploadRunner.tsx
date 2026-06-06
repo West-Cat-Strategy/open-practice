@@ -2,7 +2,12 @@
 
 import { CheckCircle2, FileUp, ShieldCheck, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
-import { readPublicTokenError } from "../publicTokenClient";
+import {
+  publicTokenHeaders,
+  publicTokenNetworkErrorMessage,
+  readPublicTokenError,
+  scrubLegacyPublicTokenPath,
+} from "../publicTokenClient";
 import { PublicTokenNeedsAttention } from "../publicTokenActions";
 import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
 import {
@@ -49,25 +54,35 @@ export default function ExternalUploadRunner({ apiBaseUrl, token }: ExternalUplo
   );
 
   useEffect(() => {
+    scrubLegacyPublicTokenPath("/external-uploads", token);
+  }, [token]);
+
+  useEffect(() => {
     let cancelled = false;
     async function loadUploadLink(): Promise<void> {
-      const response = await fetch(`${apiBaseUrl}${buildPublicExternalUploadPath(token)}`);
-      if (cancelled) return;
-      if (!response.ok) {
-        const body = await readPublicTokenError(response);
-        setStatus(
-          publicExternalUploadErrorMessage(body, `Upload link unavailable: ${response.status}`),
+      try {
+        const response = await fetch(`${apiBaseUrl}${buildPublicExternalUploadPath(token)}`, {
+          headers: publicTokenHeaders(token),
+        });
+        if (cancelled) return;
+        if (!response.ok) {
+          const body = await readPublicTokenError(response);
+          setStatus(
+            publicExternalUploadErrorMessage(body, `Upload link unavailable: ${response.status}`),
+          );
+          return;
+        }
+        const nextPayload = (await response.json()) as PublicExternalUploadPayload;
+        setPayload(nextPayload);
+        setStatus(externalUploadLifecycleMessage(nextPayload));
+        setClassification((current) =>
+          nextPayload.acceptedClassifications.includes(current)
+            ? current
+            : (nextPayload.acceptedClassifications[0] ?? "general"),
         );
-        return;
+      } catch (error) {
+        if (!cancelled) setStatus(publicTokenNetworkErrorMessage("Load", error));
       }
-      const nextPayload = (await response.json()) as PublicExternalUploadPayload;
-      setPayload(nextPayload);
-      setStatus(externalUploadLifecycleMessage(nextPayload));
-      setClassification((current) =>
-        nextPayload.acceptedClassifications.includes(current)
-          ? current
-          : (nextPayload.acceptedClassifications[0] ?? "general"),
-      );
     }
     void loadUploadLink();
     return () => {
@@ -80,79 +95,83 @@ export default function ExternalUploadRunner({ apiBaseUrl, token }: ExternalUplo
     setUploading(true);
     setCompletedDocument(null);
     setStatus(`Preparing ${file.name}...`);
-    const checksumSha256 = await sha256Hex(file);
-    const intent = await fetch(`${apiBaseUrl}${buildPublicExternalUploadIntentPath(token)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        buildExternalUploadIntentPayload({
-          file,
-          checksumSha256,
-          classification,
-          legalHold,
-        }),
-      ),
-    });
-    if (!intent.ok) {
-      const body = await readPublicTokenError(intent);
-      setStatus(publicExternalUploadErrorMessage(body, `Upload intent failed: ${intent.status}`));
-      setUploading(false);
-      return;
-    }
-    const intentPayload = (await intent.json()) as PublicExternalUploadIntentResponse;
-    setStatus(`Uploading ${file.name}...`);
-    const put = await fetch(intentPayload.uploadUrl, {
-      method: intentPayload.method,
-      headers: buildExternalUploadPutHeaders({
-        file,
-        requiredHeaders: intentPayload.requiredHeaders,
-      }),
-      body: file,
-    });
-    if (!put.ok) {
-      setStatus(describeExternalUploadPutFailure(put.status));
-      setUploading(false);
-      return;
-    }
-    const completed = await fetch(
-      `${apiBaseUrl}${buildPublicExternalUploadCompletePath(token, intentPayload.document.id)}`,
-      {
+    try {
+      const checksumSha256 = await sha256Hex(file);
+      const intent = await fetch(`${apiBaseUrl}${buildPublicExternalUploadIntentPath(token)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ checksumSha256 }),
-      },
-    );
-    if (!completed.ok) {
-      const body = await readPublicTokenError(completed);
-      setStatus(
-        publicExternalUploadErrorMessage(body, `Upload completion failed: ${completed.status}`),
+        headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),
+        body: JSON.stringify(
+          buildExternalUploadIntentPayload({
+            file,
+            checksumSha256,
+            classification,
+            legalHold,
+          }),
+        ),
+      });
+      if (!intent.ok) {
+        const body = await readPublicTokenError(intent);
+        setStatus(publicExternalUploadErrorMessage(body, `Upload intent failed: ${intent.status}`));
+        return;
+      }
+      const intentPayload = (await intent.json()) as PublicExternalUploadIntentResponse;
+      setStatus(`Uploading ${file.name}...`);
+      const put = await fetch(intentPayload.uploadUrl, {
+        method: intentPayload.method,
+        headers: buildExternalUploadPutHeaders({
+          file,
+          requiredHeaders: intentPayload.requiredHeaders,
+        }),
+        body: file,
+      });
+      if (!put.ok) {
+        setStatus(describeExternalUploadPutFailure(put.status));
+        return;
+      }
+      const completed = await fetch(
+        `${apiBaseUrl}${buildPublicExternalUploadCompletePath(token, intentPayload.document.id)}`,
+        {
+          method: "POST",
+          headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),
+          body: JSON.stringify({ checksumSha256 }),
+        },
       );
+      if (!completed.ok) {
+        const body = await readPublicTokenError(completed);
+        setStatus(
+          publicExternalUploadErrorMessage(body, `Upload completion failed: ${completed.status}`),
+        );
+        return;
+      }
+      const completedPayload = (await completed.json()) as {
+        document: PublicExternalUploadDocument;
+      };
+      setCompletedDocument(completedPayload.document);
+      setPayload((current) =>
+        current
+          ? {
+              ...current,
+              documents: upsertPublicExternalUploadDocument(
+                current.documents,
+                completedPayload.document,
+              ),
+              upload: {
+                ...current.upload,
+                usedUploads: Math.min(current.upload.maxUploads, current.upload.usedUploads + 1),
+                status:
+                  current.upload.usedUploads + 1 >= current.upload.maxUploads
+                    ? "exhausted"
+                    : current.upload.status,
+              },
+            }
+          : current,
+      );
+      setStatus(describeExternalUploadCompletion(completedPayload.document));
+    } catch (error) {
+      setStatus(publicTokenNetworkErrorMessage("Upload", error));
+    } finally {
       setUploading(false);
-      return;
     }
-    const completedPayload = (await completed.json()) as { document: PublicExternalUploadDocument };
-    setCompletedDocument(completedPayload.document);
-    setPayload((current) =>
-      current
-        ? {
-            ...current,
-            documents: upsertPublicExternalUploadDocument(
-              current.documents,
-              completedPayload.document,
-            ),
-            upload: {
-              ...current.upload,
-              usedUploads: Math.min(current.upload.maxUploads, current.upload.usedUploads + 1),
-              status:
-                current.upload.usedUploads + 1 >= current.upload.maxUploads
-                  ? "exhausted"
-                  : current.upload.status,
-            },
-          }
-        : current,
-    );
-    setStatus(describeExternalUploadCompletion(completedPayload.document));
-    setUploading(false);
   }
 
   const canUpload = canUploadExternalDocument(payload);

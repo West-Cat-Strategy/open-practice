@@ -859,7 +859,8 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     buildSidebarNavigationSections({
       billingCanView: billing.canView,
       capabilitySections: capabilities.sections,
-      shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
+      shareLinksEnabled:
+        shareLinksStatus.createStatus === "enabled" && shareLinksStatus.canCreate !== false,
       externalUploadsEnabled: canCreateExternalUpload(externalUploads.status),
       adminReadinessEnabled: ["owner_admin", "auditor"].includes(session.user.role),
     }),

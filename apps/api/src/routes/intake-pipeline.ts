@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { buildIntakePipelineSnapshot, type IntakeSessionRecord } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
+import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import type { ApiRouteDependencies } from "./types.js";
 
@@ -51,7 +52,7 @@ export function registerIntakePipelineRoutes(
 ): void {
   server.get("/api/intake-pipeline", async (request) => {
     assertPipelineReadAccess(request.auth);
-    const query = listQuerySchema.parse(request.query);
+    const query = parseRequestPart(listQuerySchema, request.query, "query");
     const publicConsultationIntakes = await repository.listPublicConsultationIntakes(
       request.auth.firmId,
       { limit: query.limit },

@@ -10,6 +10,7 @@ import {
   clearSessionCookie,
   readSessionToken,
 } from "../http/auth-helpers.js";
+import { parseRequestPart } from "../http/validation.js";
 import { createEmbeddedAuthService } from "../services/auth-service.js";
 
 const loginBodySchema = z.object({
@@ -52,7 +53,7 @@ export function registerAuthRoutes(
           statusCode: 503,
         });
       }
-      const body = loginBodySchema.parse(request.body);
+      const body = parseRequestPart(loginBodySchema, request.body, "body");
       const result = await authService.loginWithPassword(body);
       if ("status" in result) return result;
       reply.header(
@@ -102,7 +103,7 @@ export function registerAuthRoutes(
           statusCode: 503,
         });
       }
-      const body = passwordSetupTokenBodySchema.parse(request.body);
+      const body = parseRequestPart(passwordSetupTokenBodySchema, request.body, "body");
       const user = await options.repository.getUser(request.auth.firmId, body.userId);
       if (!user) {
         throw Object.assign(new Error("User was not found"), { statusCode: 404 });
@@ -132,7 +133,7 @@ export function registerAuthRoutes(
       if (!options.jwtSecret) {
         throw Object.assign(new Error("Password setup is not configured"), { statusCode: 503 });
       }
-      const body = passwordSetupBodySchema.parse(request.body);
+      const body = parseRequestPart(passwordSetupBodySchema, request.body, "body");
       return authService.completePasswordSetup(body);
     },
   );

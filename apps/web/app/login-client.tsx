@@ -18,20 +18,25 @@ export default function LoginClient({ apiBaseUrl }: LoginClientProps) {
   async function login() {
     setSubmitting(true);
     setStatus("Signing in...");
-    const response = await fetch(`${apiBaseUrl}/api/auth/login`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildLoginPayload({ email, password })),
-    });
-    if (!response.ok) {
-      const error = (await response.json().catch(() => null)) as { message?: string } | null;
-      setStatus(error?.message ?? `Sign in failed: ${response.status}`);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/auth/login`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildLoginPayload({ email, password })),
+      });
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as { message?: string } | null;
+        setStatus(error?.message ?? `Sign in failed: ${response.status}`);
+        return;
+      }
+      setStatus("Signed in.");
+      window.location.reload();
+    } catch {
+      setStatus("Sign in failed: unable to reach the secure session service.");
+    } finally {
       setSubmitting(false);
-      return;
     }
-    setStatus("Signed in.");
-    window.location.reload();
   }
 
   return (

@@ -80,6 +80,7 @@ import {
   sessionCookie,
   readSessionToken,
   isPublicRoute,
+  redactPublicTokenUrl,
 } from "./http/auth-helpers.js";
 import { ApiHttpError, apiRouteErrorBody, UNEXPECTED_API_ERROR_MESSAGE } from "./http/response.js";
 
@@ -473,7 +474,30 @@ function corsOriginForRequest(
 }
 
 export function createApiServer(options: ApiOptions): FastifyInstance {
-  const server = Fastify({ logger: true });
+  const server = Fastify({
+    logger: {
+      serializers: {
+        req(request) {
+          const serialized = request as {
+            method?: string;
+            url?: string;
+            hostname?: string;
+            host?: string;
+            ip?: string;
+            remoteAddress?: string;
+            remotePort?: number;
+          };
+          return {
+            method: serialized.method,
+            url: redactPublicTokenUrl(serialized.url),
+            host: serialized.hostname ?? serialized.host,
+            remoteAddress: serialized.ip ?? serialized.remoteAddress,
+            remotePort: serialized.remotePort,
+          };
+        },
+      },
+    },
+  });
   const defaultRateLimit = options.e2eSupport ? E2E_RATE_LIMIT : DEFAULT_RATE_LIMIT;
 
   server.register(async (app) => {
@@ -713,8 +737,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     reportJobQueue: options.reportJobQueue,
   });
 
-  server.setErrorHandler((error, _request, reply) => {
-    server.log.error(error);
+  server.setErrorHandler((error, request, reply) => {
     const normalizedError = error as Error & { code?: string; error?: string; statusCode?: number };
     const statusCode =
       typeof normalizedError.statusCode === "number"
@@ -722,6 +745,24 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
         : reply.statusCode >= 400
           ? reply.statusCode
           : 500;
+    if (statusCode >= 400 && statusCode < 500) {
+      server.log.warn(
+        {
+          error: {
+            name: normalizedError.name,
+            code: normalizedError.code ?? normalizedError.error,
+            statusCode,
+          },
+          request: {
+            method: request.method,
+            url: redactPublicTokenUrl(request.url),
+          },
+        },
+        "Client request failed",
+      );
+    } else {
+      server.log.error(error);
+    }
     const apiHttpError =
       error instanceof ApiHttpError ||
       (normalizedError.name === "ApiHttpError" && typeof normalizedError.code === "string");

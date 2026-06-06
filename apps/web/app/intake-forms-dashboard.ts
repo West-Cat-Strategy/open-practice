@@ -122,7 +122,7 @@ export function buildIntakeFormLinkListPath(matterId: string): string {
 }
 
 export function buildIntakePortalPath(token: string): string {
-  return `/intake-forms/${encodeURIComponent(token)}`;
+  return `/intake-forms#${encodeURIComponent(token)}`;
 }
 
 export function buildIntakeVariableProposalListPath(matterId: string): string {

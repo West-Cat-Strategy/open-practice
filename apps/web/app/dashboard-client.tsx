@@ -1498,6 +1498,8 @@ export default function DashboardClient({
     ? intakePipeline.leads.filter((lead) => lead.matterId === activeMatter.id)
     : [];
   const recentIntakePipelineLeads = intakePipeline.leads.slice(0, 5);
+  const shareLinksCreateAvailable =
+    shareLinksStatus.createStatus === "enabled" && shareLinksStatus.canCreate !== false;
   const externalUploadCreateAvailable = canCreateExternalUpload(externalUploads.status);
   const externalUploadCreateDisabled = externalUploadCreateControlDisabled({
     creating: creatingExternalUpload,
@@ -1592,7 +1594,7 @@ export default function DashboardClient({
       buildSidebarNavigationSections({
         billingCanView: billingDashboard.canView,
         capabilitySections: navigationCapabilitySections,
-        shareLinksEnabled: shareLinksStatus.createStatus === "enabled",
+        shareLinksEnabled: shareLinksCreateAvailable,
         externalUploadsEnabled: externalUploadCreateAvailable,
         adminReadinessEnabled: ["owner_admin", "auditor"].includes(session.user.role),
       }),
@@ -1606,7 +1608,7 @@ export default function DashboardClient({
     hasAccessibleMatter,
     navigationCapabilitySections,
     session.user.role,
-    shareLinksStatus.createStatus,
+    shareLinksCreateAvailable,
   ]);
   const activeSectionLabel =
     activeSection === "matters"
@@ -2659,30 +2661,35 @@ export default function DashboardClient({
 
     setRunningDraftAssist(true);
     setDraftAssistMessage("Requesting draft assist...");
-    const response = await fetch(`${apiBaseUrl}/api/drafts/${selectedDraft.id}/assist`, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        ...devHeaders,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        task: draftAssistTask,
-        instruction: draftAssistInstruction.trim() || undefined,
-      }),
-    });
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/drafts/${selectedDraft.id}/assist`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          task: draftAssistTask,
+          instruction: draftAssistInstruction.trim() || undefined,
+        }),
+      });
 
-    setRunningDraftAssist(false);
-    if (!response.ok) {
-      setDraftAssistMessage(`Draft assist failed: ${response.status}`);
-      return;
+      if (!response.ok) {
+        setDraftAssistMessage(`Draft assist failed: ${response.status}`);
+        return;
+      }
+      const record = (await response.json()) as DashboardDraftAssistRecord;
+      setDraftAssistRecordsByDraftId((current) => ({
+        ...current,
+        [selectedDraft.id]: [record, ...(current[selectedDraft.id] ?? [])],
+      }));
+      setDraftAssistMessage("Suggestion ready for review.");
+    } catch (error) {
+      setDraftAssistMessage(`Draft assist failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setRunningDraftAssist(false);
     }
-    const record = (await response.json()) as DashboardDraftAssistRecord;
-    setDraftAssistRecordsByDraftId((current) => ({
-      ...current,
-      [selectedDraft.id]: [record, ...(current[selectedDraft.id] ?? [])],
-    }));
-    setDraftAssistMessage("Suggestion ready for review.");
   }
 
   async function queueDraftOperationalProposals(): Promise<void> {
@@ -2690,31 +2697,38 @@ export default function DashboardClient({
 
     setQueueingAiOperationalProposals(true);
     setAiOperationalProposalStatus("Queueing operational proposals...");
-    const response = await fetch(
-      `${apiBaseUrl}${buildDraftOperationalProposalJobPath(selectedDraft.id)}`,
-      {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          ...devHeaders,
-          "Content-Type": "application/json",
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}${buildDraftOperationalProposalJobPath(selectedDraft.id)}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            ...devHeaders,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(buildAllDraftOperationalProposalKindsPayload()),
         },
-        body: JSON.stringify(buildAllDraftOperationalProposalKindsPayload()),
-      },
-    );
+      );
 
-    setQueueingAiOperationalProposals(false);
-    if (!response.ok) {
-      setAiOperationalProposalStatus(`Operational proposal queue failed: ${response.status}`);
-      return;
+      if (!response.ok) {
+        setAiOperationalProposalStatus(`Operational proposal queue failed: ${response.status}`);
+        return;
+      }
+      const payload = (await response.json()) as {
+        proposalKinds: AiOperationalProposalRecord["kind"][];
+        job: { id: string; status: string };
+      };
+      setAiOperationalProposalStatus(
+        `${payload.proposalKinds.length} operational proposal families queued for review.`,
+      );
+    } catch (error) {
+      setAiOperationalProposalStatus(
+        `Operational proposal queue failed: ${dashboardApiStatus(error)}`,
+      );
+    } finally {
+      setQueueingAiOperationalProposals(false);
     }
-    const payload = (await response.json()) as {
-      proposalKinds: AiOperationalProposalRecord["kind"][];
-      job: { id: string; status: string };
-    };
-    setAiOperationalProposalStatus(
-      `${payload.proposalKinds.length} operational proposal families queued for review.`,
-    );
   }
 
   async function reviewAiOperationalProposal(
@@ -2723,27 +2737,34 @@ export default function DashboardClient({
   ): Promise<void> {
     setReviewingAiOperationalProposalId(record.id);
     setAiOperationalProposalStatus(`Recording ${decision} proposal review...`);
-    const response = await fetch(
-      `${apiBaseUrl}${buildAiOperationalProposalReviewPath(record.id)}`,
-      {
-        method: "PATCH",
-        credentials: "include",
-        headers: {
-          ...devHeaders,
-          "Content-Type": "application/json",
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}${buildAiOperationalProposalReviewPath(record.id)}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: {
+            ...devHeaders,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ decision }),
         },
-        body: JSON.stringify({ decision }),
-      },
-    );
+      );
 
-    setReviewingAiOperationalProposalId("");
-    if (!response.ok) {
-      setAiOperationalProposalStatus(`Operational proposal review failed: ${response.status}`);
-      return;
+      if (!response.ok) {
+        setAiOperationalProposalStatus(`Operational proposal review failed: ${response.status}`);
+        return;
+      }
+      const updated = (await response.json()) as AiOperationalProposalRecord;
+      setAiOperationalProposals((current) => replaceAiOperationalProposal(current, updated));
+      setAiOperationalProposalStatus(`Proposal ${decision}; no downstream record was created.`);
+    } catch (error) {
+      setAiOperationalProposalStatus(
+        `Operational proposal review failed: ${dashboardApiStatus(error)}`,
+      );
+    } finally {
+      setReviewingAiOperationalProposalId("");
     }
-    const updated = (await response.json()) as AiOperationalProposalRecord;
-    setAiOperationalProposals((current) => replaceAiOperationalProposal(current, updated));
-    setAiOperationalProposalStatus(`Proposal ${decision}; no downstream record was created.`);
   }
 
   async function reviewLegalResearchArtifact(
@@ -2752,57 +2773,67 @@ export default function DashboardClient({
   ): Promise<void> {
     setLegalResearchReviewBusyId(record.id);
     setLegalResearchStatus(`Recording ${decision} research review...`);
-    const response = await fetch(`${apiBaseUrl}${buildLegalResearchReviewPath(record.id)}`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: {
-        ...devHeaders,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ decision }),
-    });
+    try {
+      const response = await fetch(`${apiBaseUrl}${buildLegalResearchReviewPath(record.id)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ decision }),
+      });
 
-    setLegalResearchReviewBusyId("");
-    if (!response.ok) {
-      setLegalResearchStatus(`Research review failed: ${response.status}`);
-      return;
+      if (!response.ok) {
+        setLegalResearchStatus(`Research review failed: ${response.status}`);
+        return;
+      }
+      const updated = (await response.json()) as LegalResearchArtifactRecord;
+      setLegalResearchByMatterId((current) => {
+        const workspace =
+          current[updated.matterId] ?? emptyLegalResearchWorkspace(updated.matterId);
+        return {
+          ...current,
+          [updated.matterId]: replaceLegalResearchArtifact(workspace, updated),
+        };
+      });
+      setLegalResearchStatus(`Research artifact ${decision}; no downstream record was created.`);
+    } catch (error) {
+      setLegalResearchStatus(`Research review failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setLegalResearchReviewBusyId("");
     }
-    const updated = (await response.json()) as LegalResearchArtifactRecord;
-    setLegalResearchByMatterId((current) => {
-      const workspace = current[updated.matterId] ?? emptyLegalResearchWorkspace(updated.matterId);
-      return {
-        ...current,
-        [updated.matterId]: replaceLegalResearchArtifact(workspace, updated),
-      };
-    });
-    setLegalResearchStatus(`Research artifact ${decision}; no downstream record was created.`);
   }
 
   async function reviewDraftAssistRecord(
     record: DashboardDraftAssistRecord,
     decision: "reviewed" | "rejected",
   ): Promise<void> {
-    const response = await fetch(`${apiBaseUrl}/api/draft-assist/records/${record.id}/review`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: {
-        ...devHeaders,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ decision }),
-    });
-    if (!response.ok) {
-      setDraftAssistMessage(`Review update failed: ${response.status}`);
-      return;
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/draft-assist/records/${record.id}/review`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          ...devHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ decision }),
+      });
+      if (!response.ok) {
+        setDraftAssistMessage(`Review update failed: ${response.status}`);
+        return;
+      }
+      const updated = (await response.json()) as DashboardDraftAssistRecord;
+      setDraftAssistRecordsByDraftId((current) => ({
+        ...current,
+        [updated.draftId ?? ""]: (current[updated.draftId ?? ""] ?? []).map((candidate) =>
+          candidate.id === updated.id ? updated : candidate,
+        ),
+      }));
+      setDraftAssistMessage(`Suggestion ${decision}.`);
+    } catch (error) {
+      setDraftAssistMessage(`Review update failed: ${dashboardApiStatus(error)}`);
     }
-    const updated = (await response.json()) as DashboardDraftAssistRecord;
-    setDraftAssistRecordsByDraftId((current) => ({
-      ...current,
-      [updated.draftId ?? ""]: (current[updated.draftId ?? ""] ?? []).map((candidate) =>
-        candidate.id === updated.id ? updated : candidate,
-      ),
-    }));
-    setDraftAssistMessage(`Suggestion ${decision}.`);
   }
 
   function insertDraftAssistRecord(record: DashboardDraftAssistRecord): void {
@@ -4287,7 +4318,7 @@ export default function DashboardClient({
   }
 
   async function createShareLink(): Promise<void> {
-    if (!activeMatter || shareLinksStatus.createStatus !== "enabled") return;
+    if (!activeMatter || !shareLinksCreateAvailable) return;
     if (requireEmailVerification && !shareNotificationEmail.trim()) {
       setShareStatus(
         "Share link creation failed: notification email is required for verification.",
@@ -6357,7 +6388,7 @@ export default function DashboardClient({
                       <label className="check-row share-check-row" key={permission}>
                         <input
                           checked={sharePermissions.includes(permission)}
-                          disabled={shareLinksStatus.createStatus !== "enabled"}
+                          disabled={!shareLinksCreateAvailable}
                           onChange={() => toggleSharePermission(permission)}
                           type="checkbox"
                         />
@@ -6367,7 +6398,7 @@ export default function DashboardClient({
                     <label className="check-row share-check-row">
                       <input
                         checked={requireEmailVerification}
-                        disabled={shareLinksStatus.createStatus !== "enabled"}
+                        disabled={!shareLinksCreateAvailable}
                         onChange={(event) => setRequireEmailVerification(event.target.checked)}
                         type="checkbox"
                       />
@@ -6378,7 +6409,7 @@ export default function DashboardClient({
                     <label className="search-field">
                       <span>Expiry date</span>
                       <input
-                        disabled={shareLinksStatus.createStatus !== "enabled"}
+                        disabled={!shareLinksCreateAvailable}
                         onChange={(event) => setShareExpiresAt(event.target.value)}
                         type="date"
                         value={shareExpiresAt}
@@ -6387,7 +6418,7 @@ export default function DashboardClient({
                     <label className="search-field">
                       <span>Notification email</span>
                       <input
-                        disabled={shareLinksStatus.createStatus !== "enabled"}
+                        disabled={!shareLinksCreateAvailable}
                         onChange={(event) => setShareNotificationEmail(event.target.value)}
                         placeholder="client@example.test"
                         type="email"
@@ -6396,7 +6427,7 @@ export default function DashboardClient({
                     </label>
                     <button
                       className="secondary-button compact-button"
-                      disabled={shareLinksStatus.createStatus !== "enabled" || creatingShare}
+                      disabled={!shareLinksCreateAvailable || creatingShare}
                       onClick={() => void createShareLink()}
                       type="button"
                     >

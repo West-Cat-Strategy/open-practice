@@ -11,6 +11,7 @@ import type { OpenPracticeRepository } from "@open-practice/database";
 import { requireAccess } from "../http/auth-guards.js";
 import { sessionCookie, verifyPassword } from "../http/auth-helpers.js";
 import { requireFreshAuth } from "../http/fresh-auth.js";
+import { parseRequestPart } from "../http/validation.js";
 import { createEmbeddedAuthService } from "../services/auth-service.js";
 
 const registrationVerifySchema = z.object({
@@ -86,7 +87,7 @@ export function registerWebAuthnRoutes(
     // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request) => {
       const tokenHash = requireSessionTokenHash(request);
-      const body = passwordStepUpBodySchema.parse(request.body);
+      const body = parseRequestPart(passwordStepUpBodySchema, request.body, "body");
       const account = await options.repository.getAuthAccount(
         request.auth.firmId,
         request.auth.user.id,
@@ -153,7 +154,7 @@ export function registerWebAuthnRoutes(
     // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request) => {
       const tokenHash = requireSessionTokenHash(request);
-      const body = passkeyStepUpVerifySchema.parse(request.body);
+      const body = parseRequestPart(passkeyStepUpVerifySchema, request.body, "body");
       const now = new Date();
       const challenge = await options.repository.getWebAuthnChallenge(body.challengeHash);
       if (
@@ -264,7 +265,7 @@ export function registerWebAuthnRoutes(
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "create" });
       if (!access.ok) throw access.error;
 
-      const body = registrationVerifySchema.parse(request.body);
+      const body = parseRequestPart(registrationVerifySchema, request.body, "body");
       const now = new Date();
       const challenge = await options.repository.getWebAuthnChallenge(body.challengeHash);
 
@@ -324,7 +325,7 @@ export function registerWebAuthnRoutes(
     },
     // codeql[js/missing-rate-limiting] The route is protected by server.rateLimit(WEBAUTHN_RATE_LIMIT) above.
     async (request) => {
-      loginOptionsSchema.parse(request.body);
+      parseRequestPart(loginOptionsSchema, request.body, "body");
       const firm = await authService.resolveConfiguredFirm();
 
       const authOptions = await generateAuthenticationOptions({
@@ -363,7 +364,7 @@ export function registerWebAuthnRoutes(
           statusCode: 503,
         });
       }
-      const body = loginVerifySchema.parse(request.body);
+      const body = parseRequestPart(loginVerifySchema, request.body, "body");
       const now = new Date();
       const firm = await authService.resolveConfiguredFirm();
       const challenge = await options.repository.getWebAuthnChallenge(body.challengeHash);
@@ -459,7 +460,11 @@ export function registerWebAuthnRoutes(
       const access = requireAccess(request.auth, { resource: "auth_credential", action: "delete" });
       if (!access.ok) throw access.error;
 
-      const params = z.object({ id: z.string().min(1) }).parse(request.params);
+      const params = parseRequestPart(
+        z.object({ id: z.string().min(1) }),
+        request.params,
+        "params",
+      );
       await options.repository.deleteWebAuthnCredential(
         request.auth.firmId,
         request.auth.user.id,

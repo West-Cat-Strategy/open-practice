@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { ApiAuthContext } from "../server.js";
 import { requireAccess } from "./auth-guards.js";
-import { isPublicRoute } from "./auth-helpers.js";
+import { isPublicRoute, redactPublicTokenUrl } from "./auth-helpers.js";
 import {
   ApiHttpError,
   UNEXPECTED_API_ERROR_CODE,
@@ -126,17 +126,47 @@ describe("API HTTP helpers", () => {
   });
 
   it("keeps public token routes outside the session-auth hook", () => {
+    expect(isPublicRoute("GET", "/api/portal/shares")).toBe(true);
     expect(isPublicRoute("POST", "/api/portal/shares/token-001/email-verification")).toBe(true);
+    expect(isPublicRoute("POST", "/api/portal/shares/email-verification")).toBe(true);
+    expect(isPublicRoute("GET", "/api/portal/intake-forms")).toBe(true);
     expect(isPublicRoute("POST", "/api/portal/intake-forms/token-001/draft")).toBe(true);
+    expect(isPublicRoute("POST", "/api/portal/intake-forms/draft")).toBe(true);
     expect(isPublicRoute("GET", "/api/portal/guest-sessions/token-001")).toBe(true);
+    expect(isPublicRoute("GET", "/api/portal/guest-sessions")).toBe(true);
     expect(isPublicRoute("POST", "/api/portal/guest-sessions/token-001/check-in")).toBe(true);
+    expect(isPublicRoute("POST", "/api/portal/guest-sessions/check-in")).toBe(true);
     expect(isPublicRoute("GET", "/api/portal/email-receipts/token-001")).toBe(true);
+    expect(isPublicRoute("GET", "/api/portal/email-receipts")).toBe(true);
     expect(isPublicRoute("POST", "/api/portal/email-receipts/token-001")).toBe(true);
+    expect(isPublicRoute("POST", "/api/portal/email-receipts")).toBe(true);
     expect(isPublicRoute("GET", "/api/portal/mail/receipts/token-001")).toBe(true);
+    expect(isPublicRoute("GET", "/api/portal/mail/receipts")).toBe(true);
     expect(isPublicRoute("POST", "/api/portal/mail/receipts/token-001")).toBe(true);
+    expect(isPublicRoute("POST", "/api/portal/mail/receipts")).toBe(true);
     expect(isPublicRoute("POST", "/api/inbound-email/provider-webhooks/mailgun/raw-mime")).toBe(
       true,
     );
     expect(isPublicRoute("POST", "/api/portal/mail/receipts/token-001/acknowledge")).toBe(false);
+  });
+
+  it("redacts public token path material before request logging", () => {
+    expect(redactPublicTokenUrl("/api/portal/shares/raw-token/email-verification")).toBe(
+      "/api/portal/shares/:token/email-verification",
+    );
+    expect(redactPublicTokenUrl("/api/portal/external-uploads/raw-token/intents")).toBe(
+      "/api/portal/external-uploads/:token/intents",
+    );
+    expect(
+      redactPublicTokenUrl(
+        "/api/portal/intake-forms/raw-token/items/evidence/documents/document-001/complete",
+      ),
+    ).toBe("/api/portal/intake-forms/:token/items/evidence/documents/document-001/complete");
+    expect(redactPublicTokenUrl("/api/portal/guest-sessions/raw-token/check-in")).toBe(
+      "/api/portal/guest-sessions/:token/check-in",
+    );
+    expect(redactPublicTokenUrl("/api/portal/email-receipts/raw-token")).toBe(
+      "/api/portal/email-receipts/:token",
+    );
   });
 });

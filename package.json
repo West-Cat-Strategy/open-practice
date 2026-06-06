@@ -20,7 +20,7 @@
     "lint": "turbo lint",
     "migrations:check": "node scripts/check-migration-integrity.mjs",
     "migrations:replay": "node scripts/check-migration-integrity.mjs --mode replay",
-    "policy:check": "pnpm security:scan && node scripts/validate-package-manifests.mjs && pnpm migrations:check && node scripts/validate-oss-reuse.mjs && node scripts/validate-doc-links.mjs && node scripts/validate-open-practice-boundaries.mjs",
+    "policy:check": "pnpm security:scan && node scripts/validate-package-manifests.mjs && pnpm migrations:check && node scripts/validate-oss-reuse.mjs && node scripts/validate-doc-links.mjs && node scripts/validate-validation-proof-index.mjs && node scripts/validate-local-evidence-dockerignore.mjs && node scripts/validate-open-practice-boundaries.mjs",
     "playwright": "node scripts/run-e2e.mjs host",
     "release:evidence": "node scripts/write-release-evidence.mjs",
     "release:local": "node scripts/create-release-proof.mjs",

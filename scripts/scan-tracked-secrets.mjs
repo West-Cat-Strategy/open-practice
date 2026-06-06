@@ -74,11 +74,17 @@ export function scanTextForSecrets(file, text, patterns = secretPatterns) {
   return findings;
 }
 
-function scanFile(file) {
-  if (!existsSync(file)) return [];
+function scanFile(file, options = {}) {
+  if (!existsSync(file)) return { findings: [], skipped: [] };
   const buffer = readFileSync(file);
-  if (buffer.length > MAX_TEXT_FILE_BYTES || isBinary(buffer)) return [];
-  return scanTextForSecrets(file, buffer.toString("utf8"));
+  if (isBinary(buffer)) return { findings: [], skipped: [] };
+  if (buffer.length > MAX_TEXT_FILE_BYTES && !options.scanLargeFiles) {
+    return {
+      findings: [],
+      skipped: [{ file, reason: "large_file", sizeBytes: buffer.length }],
+    };
+  }
+  return { findings: scanTextForSecrets(file, buffer.toString("utf8")), skipped: [] };
 }
 
 function collectFilesFromPath(inputPath) {
@@ -95,15 +101,24 @@ function collectFilesFromPath(inputPath) {
   return files;
 }
 
-export function scanSecretPaths(paths) {
-  return paths.flatMap((inputPath) =>
-    collectFilesFromPath(inputPath).flatMap((file) => scanFile(file)),
-  );
+export function scanSecretPaths(paths, options = {}) {
+  const findings = [];
+  const skipped = [];
+  for (const inputPath of paths) {
+    for (const file of collectFilesFromPath(inputPath)) {
+      const result = scanFile(file, options);
+      findings.push(...result.findings);
+      skipped.push(...result.skipped);
+    }
+  }
+  return { findings, skipped };
 }
 
 function parseArgs(rawArgs = process.argv.slice(2)) {
   const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
   const explicitPaths = [];
+  let failOnSkipped = false;
+  let scanLargeFiles = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -116,17 +131,36 @@ function parseArgs(rawArgs = process.argv.slice(2)) {
       explicitPaths.push(explicitPath);
       continue;
     }
+    if (arg === "--fail-on-skipped") {
+      failOnSkipped = true;
+      continue;
+    }
+    if (arg === "--scan-large-files") {
+      scanLargeFiles = true;
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  return { explicitPaths };
+  return { explicitPaths, failOnSkipped, scanLargeFiles };
 }
 
 export function runSecretScan(rawArgs = process.argv.slice(2)) {
-  const { explicitPaths } = parseArgs(rawArgs);
+  const { explicitPaths, failOnSkipped, scanLargeFiles } = parseArgs(rawArgs);
   const files = explicitPaths.length > 0 ? explicitPaths : trackedFiles();
-  const findings =
-    explicitPaths.length > 0 ? scanSecretPaths(files) : files.flatMap((file) => scanFile(file));
+  const result =
+    explicitPaths.length > 0
+      ? scanSecretPaths(files, { scanLargeFiles })
+      : files.reduce(
+          (accumulator, file) => {
+            const fileResult = scanFile(file, { scanLargeFiles });
+            accumulator.findings.push(...fileResult.findings);
+            accumulator.skipped.push(...fileResult.skipped);
+            return accumulator;
+          },
+          { findings: [], skipped: [] },
+        );
+  const { findings, skipped } = result;
 
   if (findings.length > 0) {
     console.error("Potential tracked secrets found:");
@@ -135,7 +169,19 @@ export function runSecretScan(rawArgs = process.argv.slice(2)) {
     }
     console.error("Remove the secret from tracked content and rotate it before publishing.");
     process.exitCode = 1;
-    return findings;
+    return result;
+  }
+
+  if (skipped.length > 0) {
+    console.error("Secret scan skipped files:");
+    for (const skip of skipped) {
+      console.error(`- ${skip.file}: ${skip.reason} (${skip.sizeBytes} bytes)`);
+    }
+    if (failOnSkipped) {
+      console.error("Rerun with --scan-large-files or remove skipped files from the scan scope.");
+      process.exitCode = 1;
+      return result;
+    }
   }
 
   console.log(
@@ -143,7 +189,7 @@ export function runSecretScan(rawArgs = process.argv.slice(2)) {
       ? "No high-confidence secrets found in requested paths."
       : "No high-confidence tracked secrets found.",
   );
-  return findings;
+  return result;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

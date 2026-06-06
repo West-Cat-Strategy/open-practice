@@ -177,6 +177,7 @@ import {
   isPostgresUniqueViolation,
   sanitizeConnectorDeliveryMetadata,
   sanitizeConnectorDeliverySummary,
+  sanitizeEmailDeliveryMetadata,
   type ConversationThreadLifecycleAction,
 } from "./contracts.js";
 
@@ -1340,22 +1341,28 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     receiptTokenHash: string;
     recordedAt: string;
   }): Promise<{ email: EmailOutboxRecord; recorded: boolean }> {
-    const token = await this.recordEmailReceiptToken({
+    const result = await this.recordEmailReceiptToken({
       tokenHash: input.receiptTokenHash,
       recordedAt: input.recordedAt,
     });
-    if (token) {
+    if (result) {
+      const token = result.token;
       if (token.firmId !== input.firmId || token.emailId !== input.emailId) {
         throw new Error(`Email outbox receipt ${input.emailId} was not found`);
       }
       const email = await this.getEmailOutbox(token.firmId, token.emailId);
       if (!email) throw new Error(`Email outbox record ${token.emailId} was not found`);
-      return { email, recorded: token.recordedAt === input.recordedAt };
+      return { email, recorded: result.recordedNow };
     }
     throw new Error(`Email outbox receipt ${input.emailId} was not found`);
   }
 
   async createEmailReceiptToken(token: EmailReceiptTokenRecord): Promise<EmailReceiptTokenRecord> {
+    const email = await this.getEmailOutbox(token.firmId, token.emailId);
+    if (!email) throw new Error("Email receipt token email was not found");
+    if (email.matterId !== token.matterId) {
+      throw new Error("Email receipt token matter must match the email outbox matter");
+    }
     await this.db.insert(schema.emailReceiptTokens).values(emailReceiptTokenInsert(token));
     return clone(token);
   }
@@ -1373,7 +1380,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   async recordEmailReceiptToken(input: {
     tokenHash: string;
     recordedAt: string;
-  }): Promise<EmailReceiptTokenRecord | undefined> {
+  }): Promise<{ token: EmailReceiptTokenRecord; recordedNow: boolean } | undefined> {
     return this.db.transaction(async (tx) => {
       const [existingRow] = await tx
         .select()
@@ -1381,29 +1388,44 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         .where(eq(schema.emailReceiptTokens.tokenHash, input.tokenHash));
       if (!existingRow) return undefined;
       const existing = mapEmailReceiptTokenRow(existingRow);
-      if (existing.recordedAt) return existing;
+      if (existing.recordedAt) return { token: existing, recordedNow: false };
 
       const [tokenRow] = await tx
         .update(schema.emailReceiptTokens)
         .set({ recordedAt: new Date(input.recordedAt) })
-        .where(eq(schema.emailReceiptTokens.tokenHash, input.tokenHash))
+        .where(
+          and(
+            eq(schema.emailReceiptTokens.tokenHash, input.tokenHash),
+            isNull(schema.emailReceiptTokens.recordedAt),
+          ),
+        )
         .returning();
+      if (!tokenRow) {
+        const [latestRow] = await tx
+          .select()
+          .from(schema.emailReceiptTokens)
+          .where(eq(schema.emailReceiptTokens.tokenHash, input.tokenHash));
+        return latestRow
+          ? { token: mapEmailReceiptTokenRow(latestRow), recordedNow: false }
+          : undefined;
+      }
+      const token = mapEmailReceiptTokenRow(tokenRow);
       await tx.insert(schema.emailEvents).values(
         emailEventInsert({
           id: crypto.randomUUID(),
-          firmId: existing.firmId,
-          emailId: existing.emailId,
+          firmId: token.firmId,
+          emailId: token.emailId,
           eventType: "receipt_recorded",
           occurredAt: input.recordedAt,
           source: "api",
           metadata: {
-            receiptTokenId: existing.id,
-            matterId: existing.matterId,
-            purpose: existing.purpose,
+            receiptTokenId: token.id,
+            matterId: token.matterId,
+            purpose: token.purpose,
           },
         }),
       );
-      return mapEmailReceiptTokenRow(tokenRow);
+      return { token, recordedNow: true };
     });
   }
 
@@ -1451,7 +1473,8 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       const terminal = input.terminal ?? input.status === "failed";
       const failureSummary = sanitizeEmailFailureSummary(input.errorMessage);
       const attemptCount = nextEmailAttemptCount(existing, input.attemptNumber);
-      const metadata = { ...existing.metadata, deliveryState: input.metadata ?? {} };
+      const deliveryMetadata = sanitizeEmailDeliveryMetadata(input.metadata);
+      const metadata = { ...existing.metadata, deliveryState: deliveryMetadata };
       const [emailRow] = await tx
         .update(schema.emailOutbox)
         .set({
@@ -1488,7 +1511,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         jobId: input.jobId,
         source: input.source ?? "worker",
         errorMessage: input.status === "failed" ? failureSummary : undefined,
-        metadata: input.metadata ?? {},
+        metadata: deliveryMetadata,
       };
       const [eventRow] = await tx
         .insert(schema.emailEvents)
@@ -1506,6 +1529,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     job: JobLifecycleRecord;
     metadata?: Record<string, unknown>;
   }): Promise<{ email: EmailOutboxRecord; event: EmailEventRecord; job: JobLifecycleRecord }> {
+    const deliveryMetadata = sanitizeEmailDeliveryMetadata(input.metadata);
     return this.db.transaction(async (tx) => {
       if (input.job.idempotencyKey) {
         const [existingJobRow] = await tx
@@ -1554,7 +1578,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
                   occurredAt: existingJob.queuedAt,
                   jobId: existingJob.id,
                   source: "api",
-                  metadata: input.metadata ?? {},
+                  metadata: deliveryMetadata,
                 },
             job: existingJob,
           };
@@ -1573,7 +1597,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       const metadata = {
         ...existingRow.metadata,
         deliveryState: {
-          ...(input.metadata ?? {}),
+          ...deliveryMetadata,
           manualRetryRequestedAt: input.occurredAt,
           manualRetryRequestedByUserId: input.requestedByUserId,
           nextRetryAt: input.occurredAt,
@@ -1605,7 +1629,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
         jobId: input.job.id,
         source: "api",
         metadata: {
-          ...(input.metadata ?? {}),
+          ...deliveryMetadata,
           manualRetry: true,
           requestedByUserId: input.requestedByUserId,
           jobId: input.job.id,

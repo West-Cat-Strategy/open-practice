@@ -4,6 +4,7 @@ import { CheckCircle2, FileText, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   buildShareEmailVerificationPath,
+  buildPublicSharePath,
   describePublicShareStatus,
   isShareEmailVerificationRequired,
   publicShareErrorMessage,
@@ -11,7 +12,12 @@ import {
   type PublicShareErrorBody,
   type PublicShareLinkResponse,
 } from "../share-link-portal";
-import { buildPublicTokenPath, readPublicTokenError } from "../publicTokenClient";
+import {
+  publicTokenHeaders,
+  publicTokenNetworkErrorMessage,
+  readPublicTokenError,
+  scrubLegacyPublicTokenPath,
+} from "../publicTokenClient";
 import { PublicStatusMessage, PublicTokenShell } from "../publicTokenUi";
 import { PublicTokenNeedsAttention } from "../publicTokenActions";
 
@@ -29,31 +35,39 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
   const attentionItems = shareLinkAttentionItems({ payload, verificationRequired });
 
   useEffect(() => {
+    scrubLegacyPublicTokenPath("/share-links", token);
+  }, [token]);
+
+  useEffect(() => {
     let cancelled = false;
     async function loadShare(): Promise<void> {
-      const response = await fetch(
-        `${apiBaseUrl}${buildPublicTokenPath("/api/portal/shares", token)}`,
-      );
-      if (cancelled) return;
-      if (!response.ok) {
-        const body = (await readPublicTokenError(response)) as PublicShareErrorBody;
-        if (response.status === 403 && isShareEmailVerificationRequired(body)) {
-          setVerificationRequired(true);
-          setStatus(
-            "Email verification is required before shared document records can be reviewed.",
-          );
+      try {
+        const response = await fetch(`${apiBaseUrl}${buildPublicSharePath(token)}`, {
+          headers: publicTokenHeaders(token),
+        });
+        if (cancelled) return;
+        if (!response.ok) {
+          const body = (await readPublicTokenError(response)) as PublicShareErrorBody;
+          if (response.status === 403 && isShareEmailVerificationRequired(body)) {
+            setVerificationRequired(true);
+            setStatus(
+              "Email verification is required before shared document records can be reviewed.",
+            );
+            return;
+          }
+          setStatus(publicShareErrorMessage(body, `Share link unavailable: ${response.status}`));
           return;
         }
-        setStatus(publicShareErrorMessage(body, `Share link unavailable: ${response.status}`));
-        return;
+        const nextPayload = (await response.json()) as PublicShareLinkResponse;
+        setPayload(nextPayload);
+        setStatus(
+          nextPayload.documents.length === 1
+            ? "1 shared document metadata record is available."
+            : `${nextPayload.documents.length} shared document metadata records are available.`,
+        );
+      } catch (error) {
+        if (!cancelled) setStatus(publicTokenNetworkErrorMessage("Load", error));
       }
-      const nextPayload = (await response.json()) as PublicShareLinkResponse;
-      setPayload(nextPayload);
-      setStatus(
-        nextPayload.documents.length === 1
-          ? "1 shared document metadata record is available."
-          : `${nextPayload.documents.length} shared document metadata records are available.`,
-      );
     }
     void loadShare();
     return () => {
@@ -69,23 +83,27 @@ export default function ShareLinkRunner({ apiBaseUrl, token }: ShareLinkRunnerPr
     }
     setVerifying(true);
     setStatus("Completing email verification...");
-    const response = await fetch(`${apiBaseUrl}${buildShareEmailVerificationPath(token)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ verificationCode: code }),
-    });
-    if (!response.ok) {
-      const body = (await readPublicTokenError(response)) as PublicShareErrorBody;
-      setStatus(publicShareErrorMessage(body, `Email verification failed: ${response.status}`));
+    try {
+      const response = await fetch(`${apiBaseUrl}${buildShareEmailVerificationPath(token)}`, {
+        method: "POST",
+        headers: publicTokenHeaders(token, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ verificationCode: code }),
+      });
+      if (!response.ok) {
+        const body = (await readPublicTokenError(response)) as PublicShareErrorBody;
+        setStatus(publicShareErrorMessage(body, `Email verification failed: ${response.status}`));
+        return;
+      }
+      const nextPayload = (await response.json()) as PublicShareLinkResponse;
+      setPayload(nextPayload);
+      setVerificationRequired(false);
+      setVerificationCode("");
+      setStatus(describePublicShareStatus(nextPayload));
+    } catch (error) {
+      setStatus(publicTokenNetworkErrorMessage("Email verification", error));
+    } finally {
       setVerifying(false);
-      return;
     }
-    const nextPayload = (await response.json()) as PublicShareLinkResponse;
-    setPayload(nextPayload);
-    setVerificationRequired(false);
-    setVerificationCode("");
-    setStatus(describePublicShareStatus(nextPayload));
-    setVerifying(false);
   }
 
   return (
