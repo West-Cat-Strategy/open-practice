@@ -3,7 +3,6 @@ import type { AiOperationalProposalRecord } from "@open-practice/domain";
 import type { DashboardLaneFreshnessCue } from "../dashboard-utils";
 import type {
   AiOperationalProposalsResponse,
-  ConnectorOperationsResponse,
   ProvidersStatusResponse,
   QueuesResponse,
   SavedOperationalViewDefinition,
@@ -12,6 +11,7 @@ import type {
   WorkerRunQueueFilter,
   WorkerRunSummaryItem,
 } from "../types";
+import type { ConnectorOperationsResponse } from "../_features/connectors/models";
 import {
   describeAiOperationalProposalGeneration,
   formatAiOperationalProposalKind,

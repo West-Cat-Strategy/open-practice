@@ -1,10 +1,10 @@
 import type { ActivityTimelineEntry } from "@open-practice/domain";
+import type { ExternalUploadReviewItem } from "./_features/external-uploads/models";
+import type { ShareLinkRecord } from "./_features/share-links/models";
 import type {
   CommunicationsInboxMatterResponse,
   DocumentProcessingWorkbenchItem,
-  ExternalUploadReviewItem,
   MatterSummary,
-  ShareLinkRecord,
 } from "./types";
 
 export type MatterActivityKindFilter = "all" | ActivityTimelineEntry["kind"];

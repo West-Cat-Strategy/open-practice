@@ -1,5 +1,3 @@
-import { cookies } from "next/headers";
-import { billingTimerDraftPolicy, expenseCategoryProfileCues } from "@open-practice/domain";
 import {
   buildSidebarNavigationSections,
   resolveDashboardRouteSelection,
@@ -7,53 +5,51 @@ import {
 import DashboardClient from "./dashboard-client";
 import ClientPortalWorkspace from "./client-portal-workspace";
 import { applyMatterAvailabilityToNavigation } from "./dashboard-utils";
-import { loadCalendarDashboardData } from "./calendar-dashboard";
 import { loadDraftingDashboardData } from "./drafting-dashboard";
-import {
-  buildEmailDeliveryHistoryPath,
-  loadEmailDeliveryDashboardData,
-} from "./email-delivery-dashboard";
-import {
-  buildCommunicationsInboxPath,
-  loadCommunicationsInboxDashboardData,
-} from "./communications-inbox-dashboard";
 import {
   buildDocumentProcessingWorkbenchPath,
   emptyDocumentProcessingWorkbench,
   loadDocumentProcessingDashboardData,
 } from "./document-processing-dashboard";
-import {
-  buildDocumentAssemblyWorkbenchPath,
-  emptyDocumentAssemblyWorkbench,
-  loadDocumentAssemblyDashboardData,
-} from "./document-assembly-dashboard";
-import {
-  buildExternalUploadListPath,
-  canCreateExternalUpload,
-  externalUploadsStatusFallback,
-  loadExternalUploadsDashboardData,
-} from "./external-uploads-dashboard";
-import {
-  buildIntakeFormLinkListPath,
-  buildIntakeVariableProposalListPath,
-  loadIntakeFormsDashboardData,
-} from "./intake-forms-dashboard";
-import { buildIntakePipelinePath, emptyIntakePipelineDashboard } from "./intake-pipeline-dashboard";
-import {
-  buildPublicConsultationIntakeSettingsPath,
-  buildPublicConsultationIntakesPath,
-  emptyPublicConsultationDashboard,
-} from "./public-consultation-intakes-dashboard";
-import {
-  buildLegalClinicMatterProfilePath,
-  coerceLegalClinicProfilesResponse,
-  legalClinicProgramsPath,
-  loadLegalClinicDashboardData,
-} from "./legal-clinic-dashboard";
+import { loadDocumentAssemblyDashboardResources } from "./_features/document-assembly/server-resources";
+import { canCreateExternalUpload } from "./external-uploads-dashboard";
 import LoginClient from "./login-client";
 import SetupWizard from "./setup-wizard";
 import { selectStartupView } from "./setup-wizard-utils";
-import { browserApiBaseUrl, serverApiBaseUrl } from "./api-base-urls";
+import { browserApiBaseUrl } from "./api-base-urls";
+import {
+  ApiRequestError,
+  apiGet,
+  apiGetOptional,
+  buildApiHeaders,
+  devHeaders,
+} from "./_shared/server-api";
+import { loadAuditProjection } from "./_features/audit/server-resources";
+import { loadCalendarDashboardResources } from "./_features/calendar/server-resources";
+import type { CalendarDashboardResponse } from "./_features/calendar/models";
+import { loadCommunicationsInboxResources } from "./_features/communications/server-resources";
+import type { ContactDossiersResponse } from "./_features/contacts/models";
+import { loadContactDashboardResources } from "./_features/contacts/server-resources";
+import type {
+  JurisdictionalTrustReportResponse,
+  TrustControlsDashboardResponse,
+} from "./_features/billing/models";
+import type { DocumentAssemblyDashboardResponse } from "./_features/document-assembly/models";
+import type { EmailDeliveryDashboardResponse } from "./_features/email-delivery/models";
+import { loadEmailDeliveryDashboardResources } from "./_features/email-delivery/server-resources";
+import type { ExternalUploadsDashboardResponse } from "./_features/external-uploads/models";
+import { loadExternalUploadsDashboardResources } from "./_features/external-uploads/server-resources";
+import { loadShareLinksStatus } from "./_features/share-links/server-resources";
+import { loadBillingDashboardData } from "./_features/billing/server-resources";
+import { loadConnectorOperations } from "./_features/connectors/server-resources";
+import {
+  loadIntakeFormsDashboardResources,
+  loadIntakePipelineResources,
+  loadPublicConsultationDashboardResources,
+} from "./_features/intake/server-resources";
+import { loadLegalClinicDashboardResources } from "./_features/legal-clinic/server-resources";
+import { loadLegalResearchDashboardResources } from "./_features/legal-research/server-resources";
+import { loadOperationsDashboardResources } from "./_features/operations/server-resources";
 import {
   buildJurisdictionalTrustReportPath,
   buildTrustControlsPath,
@@ -61,351 +57,28 @@ import {
   emptyTrustControlsDashboard,
   loadTrustControlsDashboardData,
 } from "./trust-controls-dashboard";
-import {
-  buildWorkerHealthPath,
-  buildWorkerRunsPath,
-  emptyWorkerHealthResponse,
-  emptyWorkerRunsResponse,
-} from "./worker-runs-dashboard";
-import {
-  buildProvidersStatusPath,
-  emptyProvidersStatusResponse,
-} from "./provider-status-dashboard";
-import { emptyConnectorOperationsResponse } from "./connector-outbox-dashboard";
-import {
-  buildAiOperationalProposalsPath,
-  emptyAiOperationalProposalsResponse,
-} from "./ai-operational-proposals-dashboard";
-import {
-  buildLegalResearchWorkspacePath,
-  emptyLegalResearchWorkspace,
-  loadLegalResearchDashboardData,
-} from "./legal-research-dashboard";
-import {
-  emptyAuditProjectionDashboard,
-  type AuditProjectionDashboardResponse,
-} from "./audit-dashboard";
-import { emptyStaffReportingWorkspace } from "./reporting-dashboard";
 import type {
-  AuditResponse,
-  AiOperationalProposalsResponse,
-  BillingDashboardResponse,
-  CalendarCredentialsResponse,
-  CalendarDashboardResponse,
-  CalendarEventsResponse,
   CapabilitiesResponse,
   ClientPortalWorkspaceResponse,
-  CommunicationsInboxDashboardResponse,
-  CommunicationsInboxMatterResponse,
-  ConnectorOperationsResponse,
-  ConnectorOutboxResponse,
-  ConnectorsResponse,
-  ContactDataQualityResolutionsResponse,
-  ContactDossiersResponse,
-  ContactReviewQueueResponse,
-  DocumentAssemblyDashboardResponse,
-  DocumentAssemblyWorkbenchResponse,
   DocumentProcessingDashboardResponse,
   DocumentProcessingWorkbenchResponse,
   DraftingDashboardResponse,
-  EmailDeliveryDashboardResponse,
-  EmailDeliveryHistoryResponse,
-  ExternalUploadsDashboardResponse,
-  ExternalUploadsListResponse,
-  ExternalUploadsStatusResponse,
   IntakeSessionsResponse,
-  IntakeFormsDashboardResponse,
-  IntakeFormLinksResponse,
-  IntakePipelineDashboardResponse,
-  IntakePipelineResponse,
-  IntakeVariableProposalsResponse,
-  JurisdictionalTrustReportResponse,
-  LegalClinicDashboardResponse,
-  LegalResearchDashboardResponse,
-  LegalResearchWorkspaceResponse,
-  LegalClinicProfileResponse,
-  LegalClinicProfilesResponse,
-  LegalClinicProgramsResponse,
-  OperationalViewDefinitionsResponse,
   MatterSummary,
-  OperationalViewsResponse,
   PracticeOverview,
-  PublicConsultationDashboardResponse,
-  PublicConsultationIntakeSettings,
-  PublicConsultationIntakesResponse,
-  ProvidersStatusResponse,
   QueuesResponse,
   SessionResponse,
-  ShareLinksStatusResponse,
   SetupStatusResponse,
   SignatureRequestsResponse,
-  StaffReportingWorkspaceResponse,
-  TaskDeadlineWorkbenchResponse,
-  TrustControlsDashboardResponse,
-  WorkerRunsDashboardResponse,
-  WorkerHealthResponse,
-  WorkerRunsResponse,
 } from "./types";
 
 export const dynamic = "force-dynamic";
 
 type HomeSearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-const devHeaders = {
-  "x-open-practice-user-id": process.env.DEV_AUTH_USER_ID ?? "user-admin",
-  "x-open-practice-firm-id": process.env.DEV_AUTH_FIRM_ID ?? "firm-west-legal",
-};
-
-class ApiRequestError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-  }
-}
-
-async function buildApiHeaders(): Promise<Record<string, string>> {
-  const cookieHeader = (await cookies()).toString();
-  return {
-    ...(process.env.NODE_ENV === "production" ? {} : devHeaders),
-    ...(cookieHeader ? { cookie: cookieHeader } : {}),
-  };
-}
-
-async function apiGet<T>(path: string, headers: Record<string, string>): Promise<T> {
-  const response = await fetch(`${serverApiBaseUrl}${path}`, {
-    cache: "no-store",
-    headers,
-  });
-  if (!response.ok) {
-    throw new ApiRequestError(
-      `Open Practice API request failed: ${response.status} ${path}`,
-      response.status,
-    );
-  }
-  return response.json() as Promise<T>;
-}
-
-async function apiGetOptional<T>(
-  path: string,
-  fallback: T,
-  headers: Record<string, string>,
-  forbiddenFallback = fallback,
-): Promise<T> {
-  const response = await fetch(`${serverApiBaseUrl}${path}`, {
-    cache: "no-store",
-    headers,
-  });
-  if (response.status === 404) return fallback;
-  if (response.status === 403) return forbiddenFallback;
-  if (!response.ok) {
-    throw new ApiRequestError(
-      `Open Practice API request failed: ${response.status} ${path}`,
-      response.status,
-    );
-  }
-  return response.json() as Promise<T>;
-}
-
-async function apiGetOptionalWithStatus<T>(
-  path: string,
-  fallback: T,
-  headers: Record<string, string>,
-): Promise<{ data: T; status: ConnectorOperationsResponse["status"] }> {
-  try {
-    return { data: await apiGet<T>(path, headers), status: "available" };
-  } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 403) {
-      return { data: fallback, status: "access_denied" };
-    }
-    if (error instanceof ApiRequestError && error.status === 404) {
-      return { data: fallback, status: "unavailable" };
-    }
-    throw error;
-  }
-}
-
-async function loadConnectorOperations(
-  headers: Record<string, string>,
-): Promise<ConnectorOperationsResponse> {
-  const [connectorsResult, outboxResult] = await Promise.all([
-    apiGetOptionalWithStatus<ConnectorsResponse>("/api/connectors", { connectors: [] }, headers),
-    apiGetOptionalWithStatus<ConnectorOutboxResponse>(
-      "/api/connectors/outbox",
-      { outbox: [] },
-      headers,
-    ),
-  ]);
-  const status =
-    connectorsResult.status === "access_denied" || outboxResult.status === "access_denied"
-      ? "access_denied"
-      : connectorsResult.status === "unavailable" || outboxResult.status === "unavailable"
-        ? "unavailable"
-        : "available";
-
-  return {
-    ...emptyConnectorOperationsResponse(status),
-    connectors: connectorsResult.data.connectors,
-    outbox: outboxResult.data.outbox,
-  };
-}
-
-async function loadAuditProjection(
-  headers: Record<string, string>,
-): Promise<AuditProjectionDashboardResponse> {
-  try {
-    const audit = await apiGet<AuditResponse>("/api/audit", headers);
-    return {
-      status: "available",
-      valid: audit.valid,
-      taxonomySummary: audit.taxonomySummary,
-    };
-  } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 403) {
-      return emptyAuditProjectionDashboard("access_denied");
-    }
-    if (error instanceof ApiRequestError && error.status === 404) {
-      return emptyAuditProjectionDashboard("unavailable");
-    }
-    throw error;
-  }
-}
-
-function canViewBilling(role: string): boolean {
-  return ["owner_admin", "billing_bookkeeper", "auditor"].includes(role);
-}
-
 function firstSearchParam(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
-}
-
-function buildBillingFallback(
-  matters: MatterSummary[],
-  session: SessionResponse,
-): BillingDashboardResponse {
-  const billingMatters = matters.map((matter) => {
-    const captureReviewTime = matter.timeEntries
-      .filter((entry) => ["draft", "submitted"].includes(entry.billingStatus))
-      .map((entry) => ({
-        id: entry.id,
-        matterId: entry.matterId,
-        userId: entry.userId,
-        performedAt: entry.performedAt,
-        minutes: entry.minutes,
-        rateCents: entry.rateCents,
-        rateRuleId: entry.rateRuleId,
-        rateSnapshot: entry.rateSnapshot,
-        amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
-        narrative: entry.narrative,
-        billable: entry.billable,
-        status: entry.billingStatus,
-      }));
-    const captureReviewExpenses = matter.expenses
-      .filter((entry) => ["draft", "submitted"].includes(entry.billingStatus))
-      .map((entry) => {
-        const profile = expenseCategoryProfileCues.find(
-          (candidate) => candidate.category === entry.category,
-        );
-        return {
-          id: entry.id,
-          matterId: entry.matterId,
-          incurredAt: entry.incurredAt,
-          amountCents: entry.amountCents,
-          category: entry.category,
-          categoryProfileKey: profile?.key,
-          description: entry.description,
-          status: entry.billingStatus,
-        };
-      });
-    const unbilledTime = matter.timeEntries
-      .filter((entry) => entry.billable && entry.billingStatus === "approved")
-      .map((entry) => ({
-        id: entry.id,
-        matterId: entry.matterId,
-        userId: entry.userId,
-        performedAt: entry.performedAt,
-        minutes: entry.minutes,
-        rateCents: entry.rateCents,
-        rateRuleId: entry.rateRuleId,
-        rateSnapshot: entry.rateSnapshot,
-        amountCents: Math.round((entry.minutes * entry.rateCents) / 60),
-        narrative: entry.narrative,
-        billable: entry.billable,
-        status: "approved" as const,
-      }));
-    const unbilledExpenses = matter.expenses
-      .filter((entry) => entry.reimbursable && entry.billingStatus === "approved")
-      .map((entry) => ({
-        id: entry.id,
-        matterId: entry.matterId,
-        incurredAt: entry.incurredAt,
-        amountCents: entry.amountCents,
-        category: entry.category,
-        description: entry.description,
-        status: "approved" as const,
-      }));
-    return {
-      matterId: matter.id,
-      captureReviewTime,
-      captureReviewExpenses,
-      unbilledTime,
-      unbilledExpenses,
-      invoices: [],
-      payments: [],
-      paymentRequests: [],
-    };
-  });
-
-  return {
-    canView: canViewBilling(session.user.role),
-    summary: {
-      unbilledTimeCents: billingMatters.reduce(
-        (sum, matter) =>
-          sum + matter.unbilledTime.reduce((matterSum, entry) => matterSum + entry.amountCents, 0),
-        0,
-      ),
-      unbilledExpenseCents: billingMatters.reduce(
-        (sum, matter) =>
-          sum +
-          matter.unbilledExpenses.reduce((matterSum, entry) => matterSum + entry.amountCents, 0),
-        0,
-      ),
-      draftInvoiceCents: 0,
-      issuedBalanceDueCents: 0,
-      hostedPaymentRequestCents: 0,
-      lockedPeriodCount: 0,
-      activeLockedPeriodCount: 0,
-      activeRateRuleCount: 0,
-    },
-    periodLocks: [],
-    rateRules: [],
-    timerDraftPolicy: billingTimerDraftPolicy,
-    expenseCategoryProfiles: expenseCategoryProfileCues,
-    matters: billingMatters,
-  };
-}
-
-function emptyBillingAccessDeniedResponse(): BillingDashboardResponse {
-  return {
-    canView: false,
-    summary: {
-      unbilledTimeCents: 0,
-      unbilledExpenseCents: 0,
-      draftInvoiceCents: 0,
-      issuedBalanceDueCents: 0,
-      hostedPaymentRequestCents: 0,
-      lockedPeriodCount: 0,
-      activeLockedPeriodCount: 0,
-      activeRateRuleCount: 0,
-    },
-    periodLocks: [],
-    rateRules: [],
-    timerDraftPolicy: billingTimerDraftPolicy,
-    expenseCategoryProfiles: expenseCategoryProfileCues,
-    matters: [],
-  };
 }
 
 export default async function Home({ searchParams }: { searchParams?: HomeSearchParams }) {
@@ -475,136 +148,16 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     }
     throw error;
   }
-  const contactReviewQueue = await apiGetOptional<ContactReviewQueueResponse>(
-    "/api/contacts/review-queue",
+  const { contactReviewQueue, contactDataQualityResolutions } = await loadContactDashboardResources(
     {
-      summary: {
-        totalContacts: contactDossiers.length,
-        reviewItemCount: 0,
-        duplicateCandidateCount: 0,
-        sensitivePartyCueCount: 0,
-        revalidationPromptCount: 0,
-      },
-      items: [],
-    },
-    headers,
-    {
-      summary: {
-        totalContacts: contactDossiers.length,
-        reviewItemCount: 0,
-        duplicateCandidateCount: 0,
-        sensitivePartyCueCount: 0,
-        revalidationPromptCount: 0,
-      },
-      items: [],
+      contactCount: contactDossiers.length,
+      headers,
     },
   );
-  const contactDataQualityResolutions = await apiGetOptional<ContactDataQualityResolutionsResponse>(
-    "/api/contacts/data-quality-resolutions",
-    [],
-    headers,
-    [],
-  );
-  const billingFallback = buildBillingFallback(matters, session);
-  const taskWorkbench = await apiGetOptional<TaskDeadlineWorkbenchResponse>(
-    "/api/tasks/workbench",
-    {
-      tasks: [],
-      counters: {
-        my: { overdue: 0, today: 0, upcoming: 0 },
-        team: { overdue: 0, today: 0, upcoming: 0 },
-        matterQueues: [],
-        contactQueues: [],
-      },
-      focusQueues: {
-        myOverdueTaskIds: [],
-        teamTodayTaskIds: [],
-        upcomingTaskIds: [],
-        unassignedTaskIds: [],
-      },
-      taskReview: {
-        summary: {
-          total: 0,
-          open: 0,
-          completed: 0,
-          highPriority: 0,
-          mediumPriority: 0,
-          lowPriority: 0,
-          overdue: 0,
-          dueToday: 0,
-          unassigned: 0,
-          myOpen: 0,
-          schedulingReviewCount: 0,
-        },
-        items: [],
-      },
-    },
-    headers,
-  );
-  const workerRuns: WorkerRunsDashboardResponse = {
-    all: await apiGetOptional<WorkerRunsResponse>(
-      buildWorkerRunsPath("all"),
-      emptyWorkerRunsResponse(),
-      headers,
-      emptyWorkerRunsResponse("access_denied"),
-    ),
-    email: await apiGetOptional<WorkerRunsResponse>(
-      buildWorkerRunsPath("email"),
-      emptyWorkerRunsResponse(),
-      headers,
-      emptyWorkerRunsResponse("access_denied"),
-    ),
-    ocr: await apiGetOptional<WorkerRunsResponse>(
-      buildWorkerRunsPath("ocr"),
-      emptyWorkerRunsResponse(),
-      headers,
-      emptyWorkerRunsResponse("access_denied"),
-    ),
-  };
-  const workerHealth = await apiGetOptional<WorkerHealthResponse>(
-    buildWorkerHealthPath(),
-    emptyWorkerHealthResponse(),
-    headers,
-    emptyWorkerHealthResponse(),
-  );
-  const providerStatus = await apiGetOptional<ProvidersStatusResponse>(
-    buildProvidersStatusPath(),
-    emptyProvidersStatusResponse(),
-    headers,
-    emptyProvidersStatusResponse("access_denied"),
-  );
+  const operationsResources = await loadOperationsDashboardResources(headers);
   const connectorOperations = await loadConnectorOperations(headers);
-  const operationalViews = await apiGetOptional<OperationalViewsResponse>(
-    "/api/operational-views",
-    { views: [] },
-    headers,
-    { views: [] },
-  );
-  const operationalViewDefinitions = await apiGetOptional<OperationalViewDefinitionsResponse>(
-    "/api/operational-views/definitions",
-    { definitions: [] },
-    headers,
-    { definitions: [] },
-  );
-  const aiOperationalProposals = await apiGetOptional<AiOperationalProposalsResponse>(
-    buildAiOperationalProposalsPath(),
-    emptyAiOperationalProposalsResponse(),
-    headers,
-    emptyAiOperationalProposalsResponse(),
-  );
-  const reportingWorkspace = await apiGetOptional<StaffReportingWorkspaceResponse>(
-    "/api/reports/workspace",
-    emptyStaffReportingWorkspace(),
-    headers,
-    emptyStaffReportingWorkspace(),
-  );
   const auditProjection = await loadAuditProjection(headers);
-  const billing = await apiGetOptional<BillingDashboardResponse>(
-    "/api/billing/dashboard",
-    billingFallback,
-    headers,
-    emptyBillingAccessDeniedResponse(),
-  );
+  const billing = await loadBillingDashboardData({ headers, matters, session });
   const trustControls = await loadTrustControlsDashboardData({
     matter: matters[0],
     getControls: (matterId) =>
@@ -648,78 +201,14 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
           ),
       })
     : { templates: [], draftsByMatterId: {} };
-  const calendar: CalendarDashboardResponse = canViewCalendar
-    ? await loadCalendarDashboardData({
-        matters,
-        listEventsForMatter: (matterId) =>
-          apiGet<CalendarEventsResponse>(
-            `/api/calendar/events?matterId=${encodeURIComponent(matterId)}`,
-            headers,
-          ),
-        listCredentials: async () =>
-          (await apiGet<CalendarCredentialsResponse>("/api/calendar/credentials", headers))
-            .credentials,
-      })
-    : {
-        eventsByMatterId: {},
-        guestSessionsByEventId: {},
-        schedulingRequestsByMatterId: {},
-        linksByMatterId: {},
-        credentials: [],
-      };
-  const emailDeliveryHistory: EmailDeliveryDashboardResponse = await loadEmailDeliveryDashboardData(
-    {
-      matters,
-      listDeliveryHistoryForMatter: (matterId) =>
-        apiGetOptional<EmailDeliveryHistoryResponse>(
-          buildEmailDeliveryHistoryPath(matterId),
-          { emails: [] },
-          headers,
-          { emails: [] },
-        ),
-    },
-  );
-  const communicationsInbox: CommunicationsInboxDashboardResponse =
-    await loadCommunicationsInboxDashboardData({
-      matters,
-      getInboxForMatter: (matterId) =>
-        apiGetOptional<CommunicationsInboxMatterResponse>(
-          buildCommunicationsInboxPath(matterId),
-          {
-            status: "unavailable",
-            matterId,
-            channelState: {
-              inboundEmailStatus: "disabled",
-              outboundEmailStatus: "disabled",
-              inboundEmailAddressCount: 0,
-              enabledInboundEmailAddressCount: 0,
-            },
-            inboundEmail: [],
-            outboundDeliveryHistory: [],
-            conversations: [],
-            channelHistory: [],
-            clientUpdateDraftRequests: [],
-            contactCues: [],
-          },
-          headers,
-          {
-            status: "access_denied",
-            matterId,
-            channelState: {
-              inboundEmailStatus: "disabled",
-              outboundEmailStatus: "disabled",
-              inboundEmailAddressCount: 0,
-              enabledInboundEmailAddressCount: 0,
-            },
-            inboundEmail: [],
-            outboundDeliveryHistory: [],
-            conversations: [],
-            channelHistory: [],
-            clientUpdateDraftRequests: [],
-            contactCues: [],
-          },
-        ),
-    });
+  const calendar: CalendarDashboardResponse = await loadCalendarDashboardResources({
+    enabled: canViewCalendar,
+    headers,
+    matters,
+  });
+  const emailDeliveryHistory: EmailDeliveryDashboardResponse =
+    await loadEmailDeliveryDashboardResources({ headers, matters });
+  const communicationsInbox = await loadCommunicationsInboxResources({ headers, matters });
   const documentProcessing: DocumentProcessingDashboardResponse = canViewDocuments
     ? await loadDocumentProcessingDashboardData({
         matters,
@@ -732,125 +221,26 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
           ),
       })
     : { workbenchesByMatterId: {} };
-  const documentAssembly: DocumentAssemblyDashboardResponse = canViewDocuments
-    ? await loadDocumentAssemblyDashboardData({
-        matters,
-        getWorkbench: (matterId) =>
-          apiGetOptional<DocumentAssemblyWorkbenchResponse>(
-            buildDocumentAssemblyWorkbenchPath(matterId),
-            emptyDocumentAssemblyWorkbench(matterId),
-            headers,
-            emptyDocumentAssemblyWorkbench(matterId, "access_denied"),
-          ),
-      })
-    : { workbenchesByMatterId: {} };
-  const legalResearch: LegalResearchDashboardResponse = canViewResearch
-    ? await loadLegalResearchDashboardData({
-        matters,
-        getWorkspace: (matterId) =>
-          apiGetOptional<LegalResearchWorkspaceResponse>(
-            buildLegalResearchWorkspacePath(matterId),
-            emptyLegalResearchWorkspace(matterId),
-            headers,
-            emptyLegalResearchWorkspace(matterId, "access_denied"),
-          ),
-      })
-    : { workbenchesByMatterId: {} };
-  const shareLinksStatus = await apiGetOptional<ShareLinksStatusResponse>(
-    "/api/shares/status",
-    { createStatus: "disabled", reason: "share_routes_unavailable" },
-    headers,
-  );
-  const externalUploads: ExternalUploadsDashboardResponse = await loadExternalUploadsDashboardData({
-    matters,
-    getStatus: () =>
-      apiGetOptional<ExternalUploadsStatusResponse>(
-        "/api/external-uploads/status",
-        externalUploadsStatusFallback,
-        headers,
-      ),
-    listUploadsForMatter: async (matterId) => {
-      const response = await apiGetOptional<ExternalUploadsListResponse>(
-        buildExternalUploadListPath(matterId),
-        { uploads: [], reviewItems: [] },
-        headers,
-        { uploads: [], reviewItems: [] },
-      );
-      return response;
-    },
-  });
-  const intakeForms: IntakeFormsDashboardResponse = await loadIntakeFormsDashboardData({
-    matters,
-    listLinksForMatter: async (matterId) => {
-      const response = await apiGetOptional<IntakeFormLinksResponse>(
-        buildIntakeFormLinkListPath(matterId),
-        { links: [], actionsByLinkId: {} },
-        headers,
-        { links: [], actionsByLinkId: {} },
-      );
-      return response;
-    },
-    listProposalsForMatter: async (matterId) => {
-      const response = await apiGetOptional<IntakeVariableProposalsResponse>(
-        buildIntakeVariableProposalListPath(matterId),
-        { proposals: [] },
-        headers,
-        { proposals: [] },
-      );
-      return response.proposals;
-    },
-  });
-  const intakePipelineResult = await apiGetOptionalWithStatus<IntakePipelineResponse>(
-    buildIntakePipelinePath(),
-    emptyIntakePipelineDashboard("unavailable"),
-    headers,
-  );
-  const intakePipeline: IntakePipelineDashboardResponse = {
-    ...intakePipelineResult.data,
-    status: intakePipelineResult.status,
-  };
-  const publicConsultationSettingsResult =
-    await apiGetOptionalWithStatus<PublicConsultationIntakeSettings>(
-      buildPublicConsultationIntakeSettingsPath(),
-      emptyPublicConsultationDashboard("unavailable").settings,
+  const documentAssembly: DocumentAssemblyDashboardResponse =
+    await loadDocumentAssemblyDashboardResources({
+      enabled: canViewDocuments,
       headers,
-    );
-  const publicConsultationIntakesResult =
-    await apiGetOptionalWithStatus<PublicConsultationIntakesResponse>(
-      buildPublicConsultationIntakesPath("pending"),
-      { intakes: [] },
-      headers,
-    );
-  const publicConsultationStatus =
-    publicConsultationSettingsResult.status === "access_denied" ||
-    publicConsultationIntakesResult.status === "access_denied"
-      ? "access_denied"
-      : publicConsultationSettingsResult.status === "unavailable" ||
-          publicConsultationIntakesResult.status === "unavailable"
-        ? "unavailable"
-        : "available";
-  const publicConsultation: PublicConsultationDashboardResponse = {
-    settings: publicConsultationSettingsResult.data,
-    intakes: publicConsultationIntakesResult.data.intakes,
-    status: publicConsultationStatus,
-  };
-  const legalClinic: LegalClinicDashboardResponse = await loadLegalClinicDashboardData({
+      matters,
+    });
+  const legalResearch = await loadLegalResearchDashboardResources({
+    enabled: canViewResearch,
+    headers,
     matters,
-    listPrograms: async () => {
-      const response = await apiGetOptional<LegalClinicProgramsResponse>(
-        legalClinicProgramsPath,
-        { programs: [] },
-        headers,
-        { programs: [] },
-      );
-      return response.programs;
-    },
-    listProfilesForMatter: async (matterId) => {
-      const response = await apiGetOptional<
-        LegalClinicProfilesResponse | LegalClinicProfileResponse
-      >(buildLegalClinicMatterProfilePath(matterId), { profile: null }, headers, { profile: null });
-      return coerceLegalClinicProfilesResponse(response);
-    },
+  });
+  const shareLinksStatus = await loadShareLinksStatus(headers);
+  const externalUploads: ExternalUploadsDashboardResponse =
+    await loadExternalUploadsDashboardResources({ headers, matters });
+  const intakeForms = await loadIntakeFormsDashboardResources({ headers, matters });
+  const intakePipeline = await loadIntakePipelineResources(headers);
+  const publicConsultation = await loadPublicConsultationDashboardResources(headers);
+  const legalClinic = await loadLegalClinicDashboardResources({
+    headers,
+    matters,
   });
   const canCreateMatter = capabilities.sections.some(
     (section) => section.key === "matters" && section.actions.includes("create"),
@@ -876,7 +266,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     <DashboardClient
       apiBaseUrl={browserApiBaseUrl}
       auditProjection={auditProjection}
-      aiOperationalProposals={aiOperationalProposals}
+      aiOperationalProposals={operationsResources.aiOperationalProposals}
       billing={billing}
       calendar={calendar}
       capabilities={capabilities}
@@ -900,20 +290,20 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       legalResearch={legalResearch}
       matters={matters}
       overview={overview}
-      operationalViewDefinitions={operationalViewDefinitions.definitions}
-      operationalViews={operationalViews}
-      providerStatus={providerStatus}
+      operationalViewDefinitions={operationsResources.operationalViewDefinitions.definitions}
+      operationalViews={operationsResources.operationalViews}
+      providerStatus={operationsResources.providerStatus}
       queues={queues}
-      reportingWorkspace={reportingWorkspace}
+      reportingWorkspace={operationsResources.reportingWorkspace}
       session={session}
       shareLinksStatus={shareLinksStatus}
       signatures={signatures}
       setupStatus={setupStatus}
-      taskWorkbench={taskWorkbench}
+      taskWorkbench={operationsResources.taskWorkbench}
       jurisdictionalTrustReport={jurisdictionalTrustReport}
       trustControls={trustControls}
-      workerHealth={workerHealth}
-      workerRuns={workerRuns}
+      workerHealth={operationsResources.workerHealth}
+      workerRuns={operationsResources.workerRuns}
     />
   );
 }

@@ -22,6 +22,7 @@ import {
   calendarGuestLinks,
   calendarMeetingSessions,
   calendarSchedulingRequests,
+  conflictChecks,
   connectorDeliveryAttempts,
   connectorOutbox,
   connectors,
@@ -61,8 +62,11 @@ import {
   manualPayments,
   mediaDerivatives,
   mediaTranscripts,
+  notificationPreferences,
   paymentAllocations,
+  portalGrants,
   providerSettings,
+  publicConsultationIntakes,
   recoveryCodes,
   savedOperationalViewDefinitions,
   shareLinks,
@@ -108,6 +112,20 @@ describe("database schema hardening", () => {
 
     expect(checks).toContain("trust_ledger_entries_non_negative_amounts");
     expect(checks).toContain("trust_ledger_entries_one_sided_amount");
+  });
+
+  it("persists conflict check review snapshots", () => {
+    expect(getTableConfig(conflictChecks).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "requested_by_user_id",
+        "prospective_name",
+        "query_snapshot",
+        "result_snapshot",
+        "disposition",
+        "reviewed_by_user_id",
+      ]),
+    );
   });
 
   it("persists non-negative client trust balance guards", () => {
@@ -608,24 +626,35 @@ describe("database schema hardening", () => {
   });
 
   it("guards duplicate document checks with the same advisory transaction lock", () => {
-    const repository = readFileSync(
-      new URL("../src/repository/drizzle.ts", import.meta.url),
+    const documentRepository = readFileSync(
+      new URL("../src/repository/documents/drizzle.ts", import.meta.url),
       "utf8",
     );
-    const completeUpload = repository.slice(
-      repository.indexOf("async completeDocumentUpload"),
-      repository.indexOf("async reviewUploadedDocument"),
+    const inboundRepository = readFileSync(
+      new URL("../src/repository/inbound-email/drizzle.ts", import.meta.url),
+      "utf8",
     );
-    const promoteAttachment = repository.slice(
-      repository.indexOf("async promoteInboundEmailAttachmentToDocument"),
+    const completeUpload = documentRepository.slice(
+      documentRepository.indexOf("export async function completeDrizzleDocumentUpload"),
+      documentRepository.indexOf("export async function reviewDrizzleUploadedDocument"),
+    );
+    const promoteAttachment = inboundRepository.slice(
+      inboundRepository.indexOf(
+        "export async function promoteDrizzleInboundEmailAttachmentToDocument",
+      ),
     );
 
-    expect(repository).toContain("function documentChecksumLockKey");
-    expect(repository).toContain(
-      "return `${input.firmId}|${input.matterId}|${input.checksumSha256}`;",
-    );
-    for (const method of [completeUpload, promoteAttachment]) {
-      expect(method).toContain("return this.db.transaction(async (tx) =>");
+    for (const source of [documentRepository, inboundRepository]) {
+      expect(source).toContain("function documentChecksumLockKey");
+      expect(source).toContain(
+        "return `${input.firmId}|${input.matterId}|${input.checksumSha256}`;",
+      );
+    }
+    for (const [method, transactionCall] of [
+      [completeUpload, "return db.transaction(async (tx) =>"],
+      [promoteAttachment, "return db.transaction(async (tx) =>"],
+    ]) {
+      expect(method).toContain(transactionCall);
       expect(method).toContain("pg_advisory_xact_lock");
       expect(method).toContain("documentChecksumLockKey({");
       expect(method.indexOf("pg_advisory_xact_lock")).toBeLessThan(
@@ -789,6 +818,51 @@ describe("database schema hardening", () => {
     );
   });
 
+  it("persists notification preference routing keys", () => {
+    const config = getTableConfig(notificationPreferences);
+
+    expect(config.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "user_id",
+        "channel",
+        "event_key",
+        "enabled",
+        "created_at",
+        "updated_at",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toContain(
+      "notification_preferences_user_event_idx",
+    );
+  });
+
+  it("persists public consultation intake review state", () => {
+    const config = getTableConfig(publicConsultationIntakes);
+
+    expect(config.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "status",
+        "client_name",
+        "telephone",
+        "email",
+        "opposing_party_names",
+        "matter_description",
+        "reviewed_by_user_id",
+        "dismissed_reason",
+        "converted_matter_id",
+        "metadata",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "public_consultation_intakes_firm_status_submitted_idx",
+        "public_consultation_intakes_converted_matter_idx",
+      ]),
+    );
+  });
+
   it("persists provider settings and queue lifecycle records", () => {
     expect(getTableConfig(providerSettings).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["firm_id", "kind", "key", "enabled", "encrypted_config"]),
@@ -909,6 +983,17 @@ describe("database schema hardening", () => {
     );
     expect(getTableConfig(mediaDerivatives).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["document_id", "kind", "storage_key", "content_type"]),
+    );
+    expect(getTableConfig(portalGrants).columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "firm_id",
+        "matter_id",
+        "contact_id",
+        "granted_by_user_id",
+        "permissions",
+        "expires_at",
+        "revoked_at",
+      ]),
     );
     expect(getTableConfig(shareLinks).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining([

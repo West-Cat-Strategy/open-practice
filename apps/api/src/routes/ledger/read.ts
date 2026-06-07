@@ -1,0 +1,105 @@
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import {
+  ledgerAccountingReviewSummary,
+  ledgerBankFeedReconciliationReviewSummary,
+  ledgerControlsDiagnostics,
+} from "@open-practice/domain";
+import { hasFirmWideLedgerAccess } from "../../http/auth-guards.js";
+import { parseRequestPart } from "../../http/validation.js";
+import type { ApiRouteDependencies } from "../types.js";
+import { assertLedgerAccess } from "./shared.js";
+
+const ledgerQuerySchema = z.object({
+  matterId: z.string().min(1).optional(),
+});
+
+type LedgerReadRouteDependencies = Pick<ApiRouteDependencies, "repository">;
+
+export function registerLedgerReadRoutes(
+  server: FastifyInstance,
+  { repository }: LedgerReadRouteDependencies,
+): void {
+  server.get("/api/ledger", async (request) => {
+    const query = parseRequestPart(ledgerQuerySchema, request.query, "query");
+    if (!query.matterId && !hasFirmWideLedgerAccess(request.auth.user)) {
+      throw Object.assign(new Error("matterId is required for matter-scoped ledger access"), {
+        statusCode: 400,
+      });
+    }
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "read",
+      matterId: query.matterId,
+    });
+    return repository.getLedger(request.auth.firmId, query);
+  });
+
+  server.get("/api/ledger/controls", async (request) => {
+    const query = parseRequestPart(ledgerQuerySchema, request.query, "query");
+    const hasFirmWideAccess = hasFirmWideLedgerAccess(request.auth.user);
+    if (!query.matterId && !hasFirmWideAccess) {
+      throw Object.assign(new Error("matterId is required for matter-scoped ledger access"), {
+        statusCode: 400,
+      });
+    }
+    assertLedgerAccess(request.auth, {
+      resource: "trust_ledger",
+      action: "read",
+      matterId: query.matterId,
+    });
+
+    const ledger = await repository.getLedger(request.auth.firmId, query);
+    const visibleTransactionIds = new Set(ledger.entries.map((entry) => entry.transactionId));
+    const approvals = (await repository.listLedgerTransactionApprovals(request.auth.firmId)).filter(
+      (approval) => visibleTransactionIds.has(approval.transactionId),
+    );
+    const [reconciliations, importBatches, matchRuleProfiles, accountingProfiles] =
+      hasFirmWideAccess
+        ? await Promise.all([
+            repository.listLedgerReconciliations(request.auth.firmId),
+            repository.listLedgerStatementImportBatches(request.auth.firmId),
+            repository.listLedgerStatementMatchRuleProfiles(request.auth.firmId),
+            repository.listLedgerAccountingReviewProfiles(request.auth.firmId),
+          ])
+        : [[], [], [], []];
+    const diagnostics = ledgerControlsDiagnostics({
+      ledger,
+      approvals,
+      reconciliations,
+      includeReconciliationDiagnostics: hasFirmWideAccess,
+    });
+
+    return {
+      ledger,
+      approvals,
+      reconciliations,
+      diagnostics,
+      accountingReview: {
+        importBatches,
+        matchRuleProfiles,
+        accountingProfiles,
+        summary: ledgerAccountingReviewSummary({
+          matchRuleProfiles,
+          accountingProfiles,
+        }),
+        bankFeedReviewSummary: ledgerBankFeedReconciliationReviewSummary({
+          accountingProfiles,
+          importBatches,
+          reconciliations,
+          diagnostics,
+        }),
+      },
+      trustControlPolicy: {
+        automaticTrustPosting: false,
+        transferRequestPosting: "requires_explicit_approval_and_manual_post",
+        makerChecker: {
+          ledgerTransactionApproval: "second_review_required",
+          trustTransferRequest: "request_and_posting_are_separate_records",
+          reconciliation: "firm_wide_review_required",
+        },
+        compliancePosture: "operational_controls_only_not_jurisdiction_certified",
+      },
+    };
+  });
+}

@@ -3,8 +3,8 @@ import type {
   CommunicationsInboxDashboardResponse,
   CommunicationsInboxMatterResponse,
   CommunicationsInboxOutboundDelivery,
-  MatterSummary,
-} from "./types";
+} from "./_features/communications/models";
+import type { MatterSummary } from "./types";
 
 export function buildCommunicationsInboxPath(matterId: string): string {
   return `/api/communications/inbox?matterId=${encodeURIComponent(matterId)}`;

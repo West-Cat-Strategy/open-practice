@@ -64,6 +64,7 @@ describe("select-validation contract", () => {
       COMMANDS.depsLicenses,
       COMMANDS.domainTest,
       COMMANDS.domainTypecheck,
+      COMMANDS.domainBuild,
     ]);
   });
 
@@ -85,6 +86,7 @@ describe("select-validation contract", () => {
         COMMANDS.databaseCheck,
         COMMANDS.migrationsCheck,
         COMMANDS.databaseTypecheck,
+        COMMANDS.databaseBuild,
         COMMANDS.apiTest,
       ],
     );

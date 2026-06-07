@@ -1,8 +1,8 @@
 import type {
   JurisdictionalTrustReportResponse,
-  MatterSummary,
   TrustControlsDashboardResponse,
-} from "./types";
+} from "./_features/billing/models";
+import type { MatterSummary } from "./types";
 
 export interface RecentTrustPosting {
   transactionId: string;

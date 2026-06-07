@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ProfessionalRole, User } from "@open-practice/domain";
-import { InMemoryOpenPracticeRepository } from "../../../../packages/database/src/repository/memory.js";
+import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { registerConversationThreadRoutes } from "./conversation-threads.js";
 import type { ApiJobQueue } from "./types.js";
 

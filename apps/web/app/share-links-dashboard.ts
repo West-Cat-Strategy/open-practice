@@ -1,4 +1,8 @@
-import type { CreateShareLinkResponse, ShareLinkPermission, ShareLinkRecord } from "./types";
+import type {
+  CreateShareLinkResponse,
+  ShareLinkPermission,
+  ShareLinkRecord,
+} from "./_features/share-links/models";
 
 export const shareLinkPermissions: readonly ShareLinkPermission[] = ["view_documents"];
 

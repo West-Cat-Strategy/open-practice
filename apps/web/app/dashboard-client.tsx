@@ -2,14 +2,12 @@
 
 import {
   AlertTriangle,
-  ArrowLeft,
   Banknote,
   BarChart3,
   CalendarDays,
   Clock3,
   ContactRound,
   CreditCard,
-  Download,
   FileText,
   FilePenLine,
   FileSignature,
@@ -17,28 +15,23 @@ import {
   Gavel,
   Link2,
   LockKeyhole,
-  Plus,
-  RotateCcw,
-  Save,
   Search,
   ShieldCheck,
-  Sparkles,
   Upload,
-  X,
   type LucideIcon,
 } from "lucide-react";
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AiOperationalProposalRecord,
   ConflictCandidate,
   DraftExportFormat,
   EmbeddedIntakeTemplateDefinitionV2,
   LegalResearchArtifactRecord,
-  CalendarMeetingLinkMode,
   StaffReportDefinitionKey,
   StaffReportExportProfileId,
   StaffReportGroupingKey,
 } from "@open-practice/domain";
+import type { CalendarMeetingLinkMode } from "@open-practice/domain/calendar-models";
 import {
   buildDashboardSectionUrl,
   buildSidebarNavigationSections,
@@ -49,10 +42,7 @@ import {
 import {
   buildCreateShareLinkPayload,
   describeCreateShareLinkResult,
-  describeShareLinkState,
-  formatSharePermission,
   replaceShareLink,
-  shareLinkPermissions,
 } from "./share-links-dashboard";
 import {
   appendDraftToMatterDrafts,
@@ -64,7 +54,6 @@ import {
   buildDraftUpdatePayload,
   describeDraftAssistStatus,
   draftMergeFields,
-  extractDraftPlainText,
   formatDraftExportSize,
   formatDraftApiFailure,
   insertDraftAssistSuggestion,
@@ -76,10 +65,7 @@ import {
   buildExternalUploadCreatePayload,
   buildExternalUploadRevokePath,
   canCreateExternalUpload,
-  describeExternalUploadReviewState,
   externalUploadCreateControlDisabled,
-  externalUploadReviewReasons,
-  getExternalUploadLinkState,
   upsertExternalUploadDocument,
   upsertExternalUploadLink,
   type ExternalUploadReviewDecision,
@@ -90,25 +76,21 @@ import {
   buildIntakeFormReviewDecisionPath,
   buildIntakeFormReviewPath,
   buildIntakeFormLinkCreatePayload,
-  compactSubmittedIntakeReviewActionReason,
   coerceIntakeDefinitionV2,
-  currentProposalValue,
   describeIntakeTemplatePreview,
   describeRequestMoreInfoResult,
-  describeSubmittedIntakeReviewAction,
-  getIntakeFormLinkState,
   pendingSubmittedIntakeReviewLinks,
-  previewStatusClass,
-  submittedIntakeReviewBusyAction,
-  summarizeAnswerValue,
-  summarizeIntakeItemAction,
-  summarizeIntakeReview,
   upsertIntakeFormLink,
   upsertIntakeVariableProposal,
   type IntakeFormReviewLoadResponse,
   type IntakePreviewAnswers,
 } from "./intake-forms-dashboard";
-import DraftEditor from "./drafting/DraftEditor";
+import { BillingSection } from "./dashboard/billing-section";
+import { DocumentsSection } from "./dashboard/documents-section";
+import { DraftingSection } from "./dashboard/drafting-section";
+import { ExternalUploadsSection } from "./dashboard/external-uploads-section";
+import { ShareLinksSection } from "./dashboard/share-links-section";
+import { TrustControlsSection } from "./dashboard/trust-controls-section";
 import {
   applyMatterAvailabilityToNavigation,
   applySavedQueueFocus,
@@ -120,7 +102,6 @@ import {
   describeSavedQueueFocus,
   enableMatterScopedCapabilitiesForLocalMatter,
   filterMatters,
-  firstMatterJurisdictionOptions,
   getSavedMatterPresetDefinition,
   initialFirstMatterFormState,
   savedMatterPresetOptions,
@@ -135,7 +116,6 @@ import {
   summarizeConflictCheckPayload,
   type ConflictProspectiveRole,
 } from "./conflict-check-dashboard";
-import StructuredIntakeBuilder from "./intake-forms/StructuredIntakeBuilder";
 import {
   buildCalendarEventPayload,
   buildCalendarRadarBuckets,
@@ -143,10 +123,6 @@ import {
   buildCalendarMeetingLinkPayload,
   buildCalendarReminderPayload,
   buildCalendarReschedulePayload,
-  describeCalendarGuestSessionStatus,
-  describeMeetingInvitationBoundary,
-  describeMeetingLinkAvailability,
-  describeCalendarEventTiming,
   removeCalendarEventReminder,
   removeCalendarEventAttendee,
   upsertCalendarEvent,
@@ -159,30 +135,15 @@ import {
   buildDocumentProcessingOcrProviderPath,
   buildDocumentProcessingQueuePath,
   buildDocumentProcessingWorkbenchPath,
-  compactDocumentMetadataTag,
-  compactDocumentProcessingReason,
-  describeDocumentReviewSuggestion,
-  describeDocumentQueueAction,
-  describeLatestDocumentJob,
-  describeLatestExtraction,
   documentMetadataSearchFilterCount,
-  documentProcessingGroupLabel,
-  documentProcessingGroupOrder,
-  documentReviewSuggestionGroupLabel,
-  documentReviewSuggestionGroupOrder,
   documentProcessingRowsForMatter,
-  emptyDocumentReviewSuggestions,
   emptyDocumentProcessingWorkbench,
   replaceDocumentProcessingWorkbench,
   summarizeDocumentMetadataSearch,
   summarizeDocumentReviewSuggestions,
   summarizeDocumentProcessingWorkbench,
 } from "./document-processing-dashboard";
-import {
-  compactDocumentAssemblyStatus,
-  emptyDocumentAssemblyWorkbench,
-  summarizeDocumentAssemblyWorkbench,
-} from "./document-assembly-dashboard";
+import { emptyDocumentAssemblyWorkbench } from "./document-assembly-dashboard";
 import {
   buildContactDataQualityResolutionPayload,
   buildContactDossierConflictCheckPrefill,
@@ -191,23 +152,11 @@ import {
   formatContactDataQualityResolutionDecision,
   formatContactReviewSignalKind,
 } from "./contact-dossiers-dashboard";
+import { formatProfessionalRoleLabel } from "./participant-role-labels";
+import { findLegalClinicProgram, fiscalHostWorkflowMetadata } from "./legal-clinic-dashboard";
 import {
-  formatCalendarAttendeeRoleLabel,
-  formatProfessionalRoleLabel,
-} from "./participant-role-labels";
-import {
-  describeFiscalHostProgramMetadata,
-  describeLegalClinicProgram,
-  describeRestrictedFundMetadata,
-  findLegalClinicProgram,
-  fiscalHostWorkflowMetadata,
-} from "./legal-clinic-dashboard";
-import {
-  accountLabel,
   activeJurisdictionTrustReportSummary,
   buildTrustControlsPath,
-  describeBankFeedImportBatch,
-  describeBankFeedReviewBoundary,
   emptyTrustControlsDashboard,
   matterTrustBalanceCents,
   recentTrustPostings,
@@ -218,7 +167,6 @@ import {
   buildExpenseReviewDraftPayload,
   buildDraftInvoicePayload,
   buildTimerDraftTimeEntryPayload,
-  describePaymentSettlementReview,
   describeDraftInvoiceCreated,
   formatExpenseDraftApiFailure,
   formatDraftInvoiceApiFailure,
@@ -268,7 +216,6 @@ import {
   buildConnectorOutboxDeadLetterPayload,
   buildConnectorOutboxRetryPath,
   buildConnectorOutboxRetryPayload,
-  emptyConnectorOperationsResponse,
   summarizeConnectorOperations,
   type ConnectorRecoveryAction,
   type PendingConnectorRecovery,
@@ -281,7 +228,6 @@ import {
   buildPublicConsultationSettingsPayload,
   compactPublicConsultationReviewActionReason,
   describePublicConsultationReviewAction,
-  publicConsultationOpposingParties,
   publicConsultationSettingsControlDisabled,
   publicConsultationReviewBusyAction,
   publicConsultationReviewBusyKey,
@@ -289,20 +235,11 @@ import {
   upsertPublicConsultationIntake,
 } from "./public-consultation-intakes-dashboard";
 import {
-  intakePipelineFollowUpActionLabel,
-  intakePipelineSourceLabel,
-  intakePipelineSourceQualityLabel,
-  intakePipelineStatusLabel,
-  intakePipelineSummaryLine,
-} from "./intake-pipeline-dashboard";
-import {
   buildOperationalFocusSummary,
   operationalFocusEmptyMessage,
 } from "./operational-focus-panel";
 import {
-  auditProjectionStatusLabel,
   emptyAuditProjectionDashboard,
-  summarizeAuditProjectionIssues,
   type AuditProjectionDashboardResponse,
 } from "./audit-dashboard";
 import {
@@ -313,6 +250,16 @@ import {
   type MatterActivityStatusFilter,
 } from "./matter-command-center";
 import { dashboardApiStatus, requestDashboardJson } from "./api-client";
+import { requestConnectorOperationsForDashboard } from "./_features/connectors/client-resources";
+import {
+  cents,
+  compactDate,
+  compactStatus,
+  formatSavedMatterViewDefinition,
+  formatSavedOperationalViewDefinition,
+  minutes,
+} from "./_features/dashboard/formatters";
+import { useReviewRailPreference } from "./_features/dashboard/review-rail-preference";
 import {
   ContextRail,
   DashboardMetrics,
@@ -326,27 +273,52 @@ import {
   type DashboardMetric,
 } from "./dashboard/dashboard-shell";
 import { ContactsSection } from "./dashboard/contacts-section";
+import { CalendarSection } from "./dashboard/calendar-section";
+import { FirstMatterWorkspace } from "./dashboard/first-matter-workspace";
 import { MatterOverviewSection } from "./dashboard/matter-overview-section";
 import { QueuesSection } from "./dashboard/queues-section";
 import { ReportsSection } from "./dashboard/reports-section";
 import { AdminReadinessSection } from "./dashboard/admin-readiness-section";
+import { AuditSection } from "./dashboard/audit-section";
 import { ResearchSection } from "./dashboard/research-section";
-import {
-  DeliveryConfirmationPanel,
-  OneTimeSecretPanel,
-  type PendingDeliveryConfirmation,
-} from "./dashboard/shared-panels";
+import { SignaturesSection } from "./dashboard/signatures-section";
+import { IntakeSection } from "./dashboard/intake-section";
+import { type PendingDeliveryConfirmation } from "./dashboard/shared-panels";
 import {
   buildEmailDeliveryConfirmation,
   buildIntakeSessionCreatePayload,
-  canRecordContactDataQualityResolutions,
   upsertIntakeSession,
 } from "./types";
+import {
+  canRecordContactDataQualityResolutions,
+  type ContactDataQualityResolutionRecord,
+  type ContactDataQualityResolutionsResponse,
+  type ContactDossiersResponse,
+  type ContactReviewQueueResponse,
+} from "./_features/contacts/models";
 import type {
-  AuditResponse,
-  AiOperationalProposalsResponse,
-  CalendarAttendeeMutationResponse,
   BillingDashboardResponse,
+  JurisdictionalTrustReportResponse,
+  TrustControlsDashboardResponse,
+} from "./_features/billing/models";
+import type { DocumentAssemblyDashboardResponse } from "./_features/document-assembly/models";
+import type {
+  ExternalUploadCreateResponse,
+  ExternalUploadReviewItem,
+  ExternalUploadRevokeResponse,
+  ExternalUploadsDashboardResponse,
+} from "./_features/external-uploads/models";
+import type { EmailDeliveryDashboardResponse } from "./_features/email-delivery/models";
+import type {
+  CreateShareLinkResponse,
+  RevokeShareLinkResponse,
+  ShareLinkPermission,
+  ShareLinkRecord,
+  ShareLinksResponse,
+  ShareLinksStatusResponse,
+} from "./_features/share-links/models";
+import type {
+  CalendarAttendeeMutationResponse,
   CalendarCredentialCreateResponse,
   CalendarCredentialRevokeResponse,
   CalendarDashboardResponse,
@@ -358,20 +330,18 @@ import type {
   CalendarInvitationResponse,
   CalendarMeetingLinkMutationResponse,
   CalendarReminderMutationResponse,
+} from "./_features/calendar/models";
+import type {
+  ConnectorOperationsResponse,
+  ConnectorOutboxRecoveryResponse,
+} from "./_features/connectors/models";
+import type {
+  AuditResponse,
+  AiOperationalProposalsResponse,
   CapabilitiesResponse,
   ClientPortalAccountSetupResponse,
   CommunicationsInboxDashboardResponse,
-  ConnectorOutboxRecoveryResponse,
-  ConnectorOutboxResponse,
-  ConnectorOperationsResponse,
-  ConnectorsResponse,
   ConflictResponse,
-  ContactDossiersResponse,
-  ContactDataQualityResolutionRecord,
-  ContactDataQualityResolutionsResponse,
-  ContactReviewQueueResponse,
-  DocumentAssemblyDashboardResponse,
-  DocumentAssemblyWorkbenchResponse,
   DocumentProcessingDashboardResponse,
   DocumentMetadataSearchFilters,
   DocumentProcessingStatusResponse,
@@ -380,11 +350,6 @@ import type {
   DraftExportResponse,
   DraftAssistRecordsResponse,
   DraftAssistStatusResponse,
-  EmailDeliveryDashboardResponse,
-  ExternalUploadReviewItem,
-  ExternalUploadCreateResponse,
-  ExternalUploadRevokeResponse,
-  ExternalUploadsDashboardResponse,
   IntakeSessionsResponse,
   IntakeSessionCreateResponse,
   IntakeFormsDashboardResponse,
@@ -406,21 +371,13 @@ import type {
   PublicConsultationIntakeSettings,
   PublicConsultationIntakesResponse,
   QueuesResponse,
-  CreateShareLinkResponse,
-  RevokeShareLinkResponse,
   SessionResponse,
-  ShareLinkPermission,
-  ShareLinkRecord,
-  ShareLinksResponse,
-  ShareLinksStatusResponse,
   SetupStatusResponse,
   SignatureRequestsResponse,
   StaffReportExportRequestResponse,
   StaffReportingWorkspaceResponse,
   TaskDeadlineWorkbenchResponse,
-  TrustControlsDashboardResponse,
   IntakeVariableProposalsResponse,
-  JurisdictionalTrustReportResponse,
   LegalResearchDashboardResponse,
   WorkerHealthResponse,
   WorkerRunQueueFilter,
@@ -470,125 +427,6 @@ interface DashboardClientProps {
   workerRuns: WorkerRunsDashboardResponse;
 }
 
-export function DocumentAssemblyDashboardBlock({
-  workbench,
-}: {
-  workbench: DocumentAssemblyWorkbenchResponse;
-}) {
-  const summary = summarizeDocumentAssemblyWorkbench(workbench);
-
-  return (
-    <>
-      <div className="section-title">
-        <h3>Document assembly</h3>
-        <span>{summary}</span>
-      </div>
-      <div className="detail-grid compact-detail-grid">
-        <div>
-          <span className="field-label">Document sets</span>
-          <strong>{workbench.summary.activeDefinitionCount}</strong>
-          <small>OP-authored reusable definitions</small>
-        </div>
-        <div>
-          <span className="field-label">Packages</span>
-          <strong>{workbench.summary.packageCount}</strong>
-          <small>{workbench.summary.blockedPackageCount} need review</small>
-        </div>
-        <div>
-          <span className="field-label">Envelopes</span>
-          <strong>{workbench.summary.envelopeCount}</strong>
-          <small>{workbench.summary.validEnvelopeCount} validated</small>
-        </div>
-        <div>
-          <span className="field-label">Payload posture</span>
-          <strong>{compactDocumentAssemblyStatus(workbench.status)}</strong>
-          <small>IDs, roles, counts, and statuses only</small>
-        </div>
-      </div>
-      <div className="party-list">
-        {workbench.packages.map((assemblyPackage) => (
-          <div className="party-row" key={assemblyPackage.package.id}>
-            <span>
-              <strong>{assemblyPackage.package.title}</strong>
-              <small>
-                {assemblyPackage.definition?.name ?? "Definition unavailable"} ·{" "}
-                {assemblyPackage.readiness.documentCount} documents ·{" "}
-                {assemblyPackage.readiness.generatedDocumentCount} generated ·{" "}
-                {assemblyPackage.readiness.signatureRequestCount} signatures
-              </small>
-              <small>
-                {assemblyPackage.readiness.blockedReasons.length > 0
-                  ? assemblyPackage.readiness.blockedReasons.join(" · ")
-                  : "Ready package metadata with no raw matter values returned."}
-              </small>
-            </span>
-            <em
-              className={assemblyPackage.readiness.blockedReasons.length > 0 ? "risk" : undefined}
-            >
-              {compactDocumentAssemblyStatus(assemblyPackage.package.status)}
-            </em>
-          </div>
-        ))}
-        {workbench.packages.length === 0 ? (
-          <p className="inline-empty">No document assembly packages are linked to this matter.</p>
-        ) : null}
-      </div>
-      {workbench.packages.some((item) => item.envelopes.length > 0) ? (
-        <div className="party-list">
-          {workbench.packages.flatMap((assemblyPackage) =>
-            assemblyPackage.envelopes.map((envelope) => (
-              <div className="party-row" key={envelope.envelope.id}>
-                <span>
-                  <strong>{envelope.envelope.title}</strong>
-                  <small>
-                    {envelope.envelope.signerOrder.length} signer roles ·{" "}
-                    {envelope.envelope.fieldSummaries.length} field summaries ·{" "}
-                    {envelope.linkedSignature
-                      ? compactDocumentAssemblyStatus(envelope.linkedSignature.status)
-                      : "not linked to a signature request"}
-                  </small>
-                  <small>
-                    {envelope.validationIssues.length > 0
-                      ? envelope.validationIssues.join(" · ")
-                      : "Signer order and field placement metadata are valid."}
-                  </small>
-                </span>
-                <em className={envelope.validationIssues.length > 0 ? "risk" : undefined}>
-                  {compactDocumentAssemblyStatus(envelope.envelope.validationStatus)}
-                </em>
-              </div>
-            )),
-          )}
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-async function requestConnectorOperationsForDashboard(
-  apiBaseUrl: string,
-  headers: Record<string, string>,
-): Promise<ConnectorOperationsResponse> {
-  try {
-    const [connectors, outbox] = await Promise.all([
-      requestDashboardJson<ConnectorsResponse>(apiBaseUrl, "/api/connectors", { headers }),
-      requestDashboardJson<ConnectorOutboxResponse>(apiBaseUrl, "/api/connectors/outbox", {
-        headers,
-      }),
-    ]);
-    return {
-      status: "available",
-      connectors: connectors.connectors,
-      outbox: outbox.outbox,
-    };
-  } catch (error) {
-    const status = dashboardApiStatus(error);
-    if (status === 403) return emptyConnectorOperationsResponse("access_denied");
-    if (status === 404) return emptyConnectorOperationsResponse("unavailable");
-    throw error;
-  }
-}
-
 type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
 type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][number];
 type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
@@ -596,47 +434,6 @@ type DashboardIntakeVariableProposal = IntakeVariableProposalsResponse["proposal
 type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
 
 const reviewRailCollapsedStorageKey = "open-practice.dashboard.reviewRailCollapsed";
-
-const documentMetadataClassificationOptions = [
-  "general",
-  "privileged",
-  "work_product",
-  "financial",
-  "identity",
-] as const;
-const documentMetadataReviewStatusOptions = [
-  "not_required",
-  "pending_review",
-  "needs_metadata",
-  "accepted",
-  "retry_requested",
-  "discarded",
-] as const;
-const documentMetadataScanStatusOptions = [
-  "pending",
-  "queued",
-  "passed",
-  "failed",
-  "not_required",
-] as const;
-const documentMetadataOcrStatusOptions = [
-  "not_available",
-  "queued",
-  "completed",
-  "failed",
-] as const;
-const documentMetadataCueGroupOptions = [
-  "classification",
-  "duplicate_or_supersession",
-  "matter_contact",
-  "missing_metadata",
-  "retention_review",
-] as const;
-
-const currency = new Intl.NumberFormat("en-CA", {
-  style: "currency",
-  currency: "CAD",
-});
 const dashboardLaneStaleAfterMs = 5 * 60 * 1000;
 
 const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
@@ -657,207 +454,6 @@ const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   admin: LockKeyhole,
   queues: Clock3,
 };
-
-function cents(value: number): string {
-  return currency.format(value / 100);
-}
-
-function minutes(value: number): string {
-  const hours = Math.floor(value / 60);
-  const remaining = value % 60;
-  return hours > 0 ? `${hours}h ${remaining}m` : `${remaining}m`;
-}
-
-function compactStatus(value?: string): string {
-  return value ? value.replaceAll("_", " ") : "none";
-}
-
-function compactDate(value?: string): string {
-  if (!value) return "none";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(
-    date.getUTCDate(),
-  )}, ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
-}
-
-function formatSavedOperationalViewDefinition(definition: SavedOperationalViewDefinition): string {
-  const scope =
-    definition.permissionScope.length > 0 ? definition.permissionScope.join(", ") : "no scope";
-  return `${definition.rowLimit} rows · ${definition.columns.length} columns · ${scope}`;
-}
-
-function formatSavedMatterViewDefinition(definition: SavedOperationalViewDefinition): string {
-  const preset = getSavedMatterPresetDefinition(definition.filters.presetFamily);
-  const presetLabel = preset?.summaryLabel ?? "no preset focus";
-  return `${presetLabel} · ${definition.rowLimit} matters · ${definition.permissionScope.join(", ")}`;
-}
-
-function FirstMatterWorkspace({
-  canCreateMatter,
-  creating,
-  form,
-  onChange,
-  onCreate,
-  status,
-}: {
-  canCreateMatter: boolean;
-  creating: boolean;
-  form: FirstMatterFormState;
-  onChange: <Field extends keyof FirstMatterFormState>(
-    field: Field,
-    value: FirstMatterFormState[Field],
-  ) => void;
-  onCreate: () => void;
-  status: string;
-}) {
-  const canSubmit = canCreateMatter && canSubmitFirstMatter(form) && !creating;
-
-  function handleTextChange<Field extends keyof FirstMatterFormState>(field: Field) {
-    return (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-      onChange(field, event.currentTarget.value as FirstMatterFormState[Field]);
-    };
-  }
-
-  return (
-    <article
-      aria-labelledby="first-matter-title"
-      className="panel first-matter-panel"
-      id="matter-workspace"
-      tabIndex={-1}
-    >
-      <div className="panel-header first-matter-header">
-        <div>
-          <p className="eyebrow">Matter command centre</p>
-          <h2 id="first-matter-title">Create the first matter</h2>
-        </div>
-        <span className="status-chip">Starter intake</span>
-      </div>
-
-      <div className="first-matter-layout">
-        <div className="first-matter-form-grid">
-          <label>
-            <span className="field-label">Matter title</span>
-            <input
-              className="compact-input first-matter-input"
-              onChange={handleTextChange("title")}
-              placeholder="Synthetic starter intake"
-              value={form.title}
-            />
-          </label>
-          <label>
-            <span className="field-label">Practice area</span>
-            <input
-              className="compact-input first-matter-input"
-              onChange={handleTextChange("practiceArea")}
-              placeholder="Residential tenancy"
-              value={form.practiceArea}
-            />
-          </label>
-          <label>
-            <span className="field-label">Jurisdiction</span>
-            <select
-              className="compact-select first-matter-input"
-              onChange={handleTextChange("jurisdiction")}
-              value={form.jurisdiction}
-            >
-              {firstMatterJurisdictionOptions.map((jurisdiction) => (
-                <option key={jurisdiction} value={jurisdiction}>
-                  {jurisdiction}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <fieldset className="first-matter-kind-field">
-            <legend className="field-label">Client kind</legend>
-            <div className="segmented-control" role="group" aria-label="Client kind">
-              {(["person", "organization"] as const).map((kind) => (
-                <button
-                  aria-pressed={form.clientKind === kind}
-                  className={form.clientKind === kind ? "active" : ""}
-                  key={kind}
-                  onClick={() => onChange("clientKind", kind)}
-                  type="button"
-                >
-                  {kind === "person" ? "Person" : "Organization"}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          <label>
-            <span className="field-label">Client display name</span>
-            <input
-              className="compact-input first-matter-input"
-              onChange={handleTextChange("clientDisplayName")}
-              placeholder="Synthetic Client"
-              value={form.clientDisplayName}
-            />
-          </label>
-          <label>
-            <span className="field-label">Client email</span>
-            <input
-              className="compact-input first-matter-input"
-              inputMode="email"
-              onChange={handleTextChange("clientEmail")}
-              placeholder="client@example.test"
-              type="email"
-              value={form.clientEmail}
-            />
-          </label>
-          <label>
-            <span className="field-label">Client phone</span>
-            <input
-              className="compact-input first-matter-input"
-              inputMode="tel"
-              onChange={handleTextChange("clientPhone")}
-              placeholder="+1-555-0100"
-              type="tel"
-              value={form.clientPhone}
-            />
-          </label>
-        </div>
-
-        <aside className="first-matter-controls" aria-label="Created records">
-          <div className="detail-grid compact-detail-grid">
-            <div>
-              <span className="field-label">Matter</span>
-              <strong>Intake</strong>
-            </div>
-            <div>
-              <span className="field-label">Party</span>
-              <strong>Prospective</strong>
-            </div>
-            <div>
-              <span className="field-label">Assignment</span>
-              <strong>Current user</strong>
-            </div>
-            <div>
-              <span className="field-label">Audit</span>
-              <strong>Safe metadata</strong>
-            </div>
-          </div>
-          <button
-            className="primary-button first-matter-submit"
-            disabled={!canSubmit}
-            onClick={onCreate}
-            type="button"
-          >
-            <Plus size={18} aria-hidden="true" />
-            {creating ? "Creating matter" : "Create matter"}
-          </button>
-          <p className="inline-empty" role="status" aria-live="polite">
-            {canCreateMatter
-              ? status
-              : "Your current role can use operational surfaces, but matter creation is not available."}
-          </p>
-        </aside>
-      </div>
-    </article>
-  );
-}
 
 export default function DashboardClient({
   apiBaseUrl,
@@ -907,8 +503,8 @@ export default function DashboardClient({
   const shouldFocusDetailRef = useRef(false);
   const shouldFocusReviewRailToggleRef = useRef(false);
   const hasAppliedUrlSectionRef = useRef(false);
-  const [isContextRailCollapsed, setIsContextRailCollapsed] = useState(false);
-  const [hasLoadedContextRailPreference, setHasLoadedContextRailPreference] = useState(false);
+  const { isCollapsed: isContextRailCollapsed, setIsCollapsed: setIsContextRailCollapsed } =
+    useReviewRailPreference(reviewRailCollapsedStorageKey);
   const [matters, setMatters] = useState(initialMatters);
   const [queues, setQueues] = useState(initialQueues);
   const [aiOperationalProposals, setAiOperationalProposals] = useState(
@@ -1527,16 +1123,6 @@ export default function DashboardClient({
     ? matterTrustBalanceCents(activeTrustControls, activeMatter.id, activeMatter.trustBalanceCents)
     : 0;
   const trustReviewSummary = summarizeTrustControls(activeTrustControls);
-  const accountingReview = activeTrustControls.accountingReview;
-  const accountingSummary = accountingReview.summary;
-  const bankFeedReviewSummary = accountingReview.bankFeedReviewSummary;
-  const bankFeedImportBatches = accountingReview.importBatches;
-  const protectedAccountingProfiles = accountingReview.accountingProfiles.filter(
-    (profile) => profile.protectedFunds.protected,
-  );
-  const bankFeedAccountingProfiles = accountingReview.accountingProfiles.filter(
-    (profile) => profile.bankFeedImport.status !== "not_configured",
-  );
   const activeJurisdictionTrustSummary = activeJurisdictionTrustReportSummary({
     matter: activeMatter,
     report: jurisdictionalTrustReport,
@@ -1544,17 +1130,6 @@ export default function DashboardClient({
   const activeTrustPostings = activeMatter
     ? recentTrustPostings(activeTrustControls, activeMatter.id)
     : [];
-  const exceptionReconciliations = activeTrustControls.reconciliations.filter(
-    (reconciliation) =>
-      reconciliation.status === "exception" ||
-      activeTrustControls.diagnostics.exceptionReconciliationIds.includes(reconciliation.id),
-  );
-  const unreconciledAccounts = activeTrustControls.diagnostics.unreconciledAccountIds.map(
-    (accountId) => ({
-      id: accountId,
-      label: accountLabel(activeTrustControls, accountId),
-    }),
-  );
   const activeUnbilledTime = activeBilling?.unbilledTime ?? [];
   const activeUnbilledExpenses = activeBilling?.unbilledExpenses ?? [];
   const activeCaptureReviewTime = activeBilling?.captureReviewTime ?? [];
@@ -1565,9 +1140,6 @@ export default function DashboardClient({
   const activeManualPayments = activeBilling?.payments ?? [];
   const activePaymentRequests = activeBilling?.paymentRequests ?? [];
   const activeSettlementReviewSummary = summarizePaymentSettlementReview(activePaymentRequests);
-  const selectedExpenseProfile = billingDashboard.expenseCategoryProfiles.find(
-    (profile) => profile.key === expenseDraftProfileKey,
-  );
   const activeBalanceDueCents = activeInvoices.reduce(
     (sum, invoice) => sum + invoice.balanceDueCents,
     0,
@@ -1729,11 +1301,6 @@ export default function DashboardClient({
           : undefined,
     },
   );
-  const auditProjectionIssues = useMemo(
-    () => summarizeAuditProjectionIssues(auditProjection.taxonomySummary),
-    [auditProjection.taxonomySummary],
-  );
-
   useEffect(() => {
     const loadedAt = new Date().toISOString();
     setDashboardLoadedAt(loadedAt);
@@ -1891,30 +1458,6 @@ export default function DashboardClient({
     detailPanelRef.current?.focus();
     shouldFocusDetailRef.current = false;
   }, [activeSection]);
-
-  useEffect(() => {
-    try {
-      const stored = window.sessionStorage.getItem(reviewRailCollapsedStorageKey);
-      if (stored === "true") setIsContextRailCollapsed(true);
-      if (stored === "false") setIsContextRailCollapsed(false);
-    } catch {
-      // Keep the default expanded posture when session storage is unavailable.
-    } finally {
-      setHasLoadedContextRailPreference(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!hasLoadedContextRailPreference) return;
-    try {
-      window.sessionStorage.setItem(
-        reviewRailCollapsedStorageKey,
-        isContextRailCollapsed ? "true" : "false",
-      );
-    } catch {
-      // Session storage persistence is ergonomic only; the dashboard remains usable without it.
-    }
-  }, [hasLoadedContextRailPreference, isContextRailCollapsed]);
 
   useEffect(() => {
     if (!shouldFocusReviewRailToggleRef.current || isContextRailCollapsed) return;
@@ -3364,18 +2907,12 @@ export default function DashboardClient({
     setRemovingCalendarAttendeeId("");
   }
 
-  function calendarMeetingLinkModeValue(event: DashboardCalendarEvent): CalendarMeetingLinkMode {
-    return calendarMeetingLinkModesByEventId[event.id] ?? event.meetingLinkMode ?? "blank";
-  }
-
-  function calendarMeetingLinkUrlValue(event: DashboardCalendarEvent): string {
-    return calendarMeetingLinkUrlsByEventId[event.id] ?? event.meetingLinkUrl ?? "";
-  }
-
-  async function updateCalendarMeetingLink(event: DashboardCalendarEvent): Promise<void> {
+  async function updateCalendarMeetingLink(
+    event: DashboardCalendarEvent,
+    mode: CalendarMeetingLinkMode,
+    externalUrl: string,
+  ): Promise<void> {
     if (!activeMatter) return;
-    const mode = calendarMeetingLinkModeValue(event);
-    const externalUrl = calendarMeetingLinkUrlValue(event);
     setUpdatingCalendarMeetingLinkEventId(event.id);
     setCalendarMeetingStatus("Updating meeting link...");
     const response = await fetch(
@@ -4734,48 +4271,13 @@ export default function DashboardClient({
                     {auditProjection.valid === false ? "Chain invalid" : "Read-only"}
                   </span>
                 </div>
-                <div
-                  className={`lane-refresh-panel ${auditFreshnessCue.tone}`}
-                  data-stale={auditFreshnessCue.stale ? "true" : "false"}
-                >
-                  <span>
-                    <strong>Audit activity</strong>
-                    <small>{auditFreshnessCue.detail}</small>
-                  </span>
-                  <button
-                    aria-label="Refresh audit activity"
-                    className="secondary-button compact-button lane-refresh-button"
-                    disabled={auditRefreshState.refreshing}
-                    onClick={() => void refreshAuditLane()}
-                    type="button"
-                  >
-                    <RotateCcw aria-hidden="true" size={16} />
-                    {auditRefreshState.refreshing ? "Refreshing" : auditFreshnessCue.label}
-                  </button>
-                </div>
-                <div className="audit-projection-summary">
-                  <div className="audit-projection-header">
-                    <span>
-                      <strong>Audit taxonomy projection</strong>
-                      <small>{auditProjectionStatusLabel(auditProjection.status)}</small>
-                    </span>
-                    <em>{auditProjection.valid === false ? "chain invalid" : "read-only"}</em>
-                  </div>
-                  <div className="audit-projection-grid">
-                    <span>
-                      <strong>{auditProjectionIssues.unknownActionCount}</strong>
-                      <small>Unknown actions</small>
-                    </span>
-                    <span>
-                      <strong>{auditProjectionIssues.matterScopeGapCount}</strong>
-                      <small>Matter-scope gaps</small>
-                    </span>
-                    <span>
-                      <strong>{auditProjectionIssues.resourceTypeMismatchCount}</strong>
-                      <small>Resource-type mismatches</small>
-                    </span>
-                  </div>
-                </div>
+                <AuditSection
+                  auditFreshnessCue={auditFreshnessCue}
+                  auditProjection={auditProjection}
+                  auditRefreshState={auditRefreshState}
+                  compactDate={compactDate}
+                  onRefreshAudit={() => void refreshAuditLane()}
+                />
               </article>
             ) : null}
 
@@ -5071,905 +4573,79 @@ export default function DashboardClient({
             ) : null}
 
             {activeSection === "funds" ? (
-              <>
-                <div className="detail-grid billing-summary-grid">
-                  <div>
-                    <span className="field-label">Matter trust balance</span>
-                    <strong>{cents(activeTrustBalanceCents)}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Pending maker-checker</span>
-                    <strong>{trustReviewSummary.pendingApprovalCount}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Rejected decisions</span>
-                    <strong>{trustReviewSummary.rejectedApprovalCount}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Exceptions</span>
-                    <strong>{trustReviewSummary.exceptionReconciliationCount}</strong>
-                  </div>
-                </div>
-
-                <div className="section-title">
-                  <h3>Trust controls workbench</h3>
-                  <span>{trustControlsStatus}</span>
-                </div>
-                <div className="activity-grid two-column">
-                  <div className="activity-card">
-                    <Banknote size={18} />
-                    <strong>{activeTrustControls.ledger.accounts.length} accounts</strong>
-                    <span>{activeTrustControls.ledger.entries.length} matter-scoped entries</span>
-                  </div>
-                  <div className="activity-card">
-                    <ShieldCheck size={18} />
-                    <strong>{trustReviewSummary.totalApprovalCount} decisions</strong>
-                    <span>{trustReviewSummary.approvedApprovalCount} approved review records</span>
-                  </div>
-                  <div className="activity-card">
-                    <AlertTriangle size={18} />
-                    <strong>{trustReviewSummary.unreconciledAccountCount} unreconciled</strong>
-                    <span>{trustReviewSummary.overdrawnBalanceCount} overdrawn diagnostics</span>
-                  </div>
-                  <div className="activity-card">
-                    <FileText size={18} />
-                    <strong>{trustReviewSummary.importedStatementRowCount} statement rows</strong>
-                    <span>
-                      {trustReviewSummary.matchedStatementRowCount} matched ·{" "}
-                      {trustReviewSummary.unmatchedStatementRowCount} unmatched
-                    </span>
-                  </div>
-                  <div className="activity-card">
-                    <Clock3 size={18} />
-                    <strong>{activeTrustPostings.length} recent postings</strong>
-                    <span>{cents(trustReviewSummary.totalVarianceCents)} total variance</span>
-                  </div>
-                  <div className="activity-card">
-                    <FileText size={18} />
-                    <strong>{accountingSummary.matchRuleProfileCount} match profiles</strong>
-                    <span>
-                      {accountingSummary.accountingProfileCount} accounting review records
-                    </span>
-                  </div>
-                  <div className="activity-card">
-                    <ShieldCheck size={18} />
-                    <strong>{accountingSummary.protectedAccountCount} protected cues</strong>
-                    <span>{accountingSummary.bankFeedShellCount} bank-feed shells</span>
-                  </div>
-                </div>
-
-                <div className="section-title">
-                  <h3>Accounting review depth</h3>
-                  <span>review-only profiles · no automatic matching</span>
-                </div>
-                <div className="party-list">
-                  {accountingReview.matchRuleProfiles.slice(0, 4).map((profile) => (
-                    <div className="party-row" key={profile.id}>
-                      <span>
-                        <strong>{profile.name}</strong>
-                        <small>
-                          {accountLabel(activeTrustControls, profile.accountId)} ·{" "}
-                          {profile.referenceStrategy.replaceAll("_", " ")} ·{" "}
-                          {profile.descriptionStrategy.replaceAll("_", " ")}
-                        </small>
-                        <small>
-                          {profile.dateWindowDays} day window ·{" "}
-                          {cents(profile.amountToleranceCents)} tolerance ·{" "}
-                          {profile.varianceCategories.length} variance categories
-                        </small>
-                      </span>
-                      <em>review only</em>
-                    </div>
-                  ))}
-                  {protectedAccountingProfiles.slice(0, 4).map((profile) => (
-                    <div className="party-row" key={profile.id}>
-                      <span>
-                        <strong>{accountLabel(activeTrustControls, profile.accountId)}</strong>
-                        <small>
-                          {profile.boundaryPosture.replaceAll("_", " ")} · protected funds ·{" "}
-                          {profile.protectedFunds.reviewCadence.replaceAll("_", " ")}
-                        </small>
-                        {profile.protectedFunds.reason ? (
-                          <small>{profile.protectedFunds.reason}</small>
-                        ) : null}
-                      </span>
-                      <em>{profile.accountType.replaceAll("_", " ")}</em>
-                    </div>
-                  ))}
-                  {bankFeedAccountingProfiles.slice(0, 4).map((profile) => (
-                    <div className="party-row" key={`${profile.id}-bank-feed`}>
-                      <span>
-                        <strong>{accountLabel(activeTrustControls, profile.accountId)}</strong>
-                        <small>
-                          {profile.bankFeedImport.status.replaceAll("_", " ")} ·{" "}
-                          {profile.bankFeedImport.sourceLabel ?? "source pending"}
-                        </small>
-                        <small>
-                          vendor {profile.dimensions.vendorTracking.replaceAll("_", " ")} · expense{" "}
-                          {profile.dimensions.expenseCategoryTracking.replaceAll("_", " ")} ·
-                          client/matter required
-                        </small>
-                      </span>
-                      <em>no auto-match</em>
-                    </div>
-                  ))}
-                  {accountingReview.matchRuleProfiles.length === 0 &&
-                  accountingReview.accountingProfiles.length === 0 ? (
-                    <p className="inline-empty">
-                      No accounting review profiles are recorded for the current controls payload.
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="section-title">
-                  <h3>Bank-feed reconciliation review</h3>
-                  <span>metadata only · manual review required</span>
-                </div>
-                <div className="activity-grid two-column">
-                  <div className="activity-card">
-                    <Banknote size={18} />
-                    <strong>{bankFeedReviewSummary.bankFeedShellCount} feed shells</strong>
-                    <span>
-                      {bankFeedReviewSummary.metadataOnlyFeedCount} metadata ·{" "}
-                      {bankFeedReviewSummary.reviewReadyFeedCount} review ready
-                    </span>
-                  </div>
-                  <div className="activity-card">
-                    <FileText size={18} />
-                    <strong>{bankFeedReviewSummary.importBatchCount} import batches</strong>
-                    <span>
-                      {bankFeedReviewSummary.importedStatementRowCount} rows ·{" "}
-                      {bankFeedReviewSummary.duplicateStatementRowCount} duplicates
-                    </span>
-                  </div>
-                  <div className="activity-card">
-                    <AlertTriangle size={18} />
-                    <strong>
-                      {bankFeedReviewSummary.accountsPendingReconciliationCount} pending accounts
-                    </strong>
-                    <span>
-                      {bankFeedReviewSummary.exceptionReconciliationCount} exceptions ·{" "}
-                      {bankFeedReviewSummary.completedReconciliationCount} completed
-                    </span>
-                  </div>
-                  <div className="activity-card">
-                    <ShieldCheck size={18} />
-                    <strong>{bankFeedReviewSummary.protectedFundsFeedCount} protected feeds</strong>
-                    <span>No auto-match · no ledger posting · no live feed</span>
-                  </div>
-                </div>
-                <div className="party-list">
-                  {bankFeedImportBatches.slice(0, 4).map((batch) => (
-                    <div className="party-row" key={batch.id}>
-                      <span>
-                        <strong>{batch.sourceLabel}</strong>
-                        <small>{describeBankFeedImportBatch(activeTrustControls, batch)}</small>
-                        <small>
-                          checksum tracked ·{" "}
-                          {batch.matchingProfileId
-                            ? "match profile selected"
-                            : "match profile pending"}
-                        </small>
-                      </span>
-                      <em>{batch.status.replaceAll("_", " ")}</em>
-                    </div>
-                  ))}
-                  {bankFeedImportBatches.length === 0 ? (
-                    <p className="inline-empty">
-                      No bank-feed import batch metadata is recorded for the current controls
-                      payload.
-                    </p>
-                  ) : null}
-                  <div className="party-row">
-                    <span>
-                      <strong>Review boundary</strong>
-                      <small>{describeBankFeedReviewBoundary(activeTrustControls)}</small>
-                      <small>
-                        {bankFeedReviewSummary.importBatchStoragePosture.replaceAll("_", " ")}
-                      </small>
-                    </span>
-                    <em>review only</em>
-                  </div>
-                </div>
-
-                <div className="section-title">
-                  <h3>Jurisdiction trust report</h3>
-                  <span>operator review only · not jurisdiction-certified</span>
-                </div>
-                <div className="activity-grid two-column">
-                  <div className="activity-card">
-                    <ShieldCheck size={18} />
-                    <strong>{activeJurisdictionTrustSummary.jurisdiction}</strong>
-                    <span>{activeJurisdictionTrustSummary.matterCount} matters in report</span>
-                  </div>
-                  <div className="activity-card">
-                    <Banknote size={18} />
-                    <strong>{cents(activeJurisdictionTrustSummary.trustBalanceCents)}</strong>
-                    <span>aggregate recorded trust balance</span>
-                  </div>
-                  <div className="activity-card">
-                    <AlertTriangle size={18} />
-                    <strong>
-                      {activeJurisdictionTrustSummary.exceptionReconciliationCount} exceptions
-                    </strong>
-                    <span>
-                      {activeJurisdictionTrustSummary.unreconciledAccountCount} unreconciled ·{" "}
-                      {activeJurisdictionTrustSummary.overdrawnBalanceCount} overdrawn
-                    </span>
-                  </div>
-                  <div className="activity-card">
-                    <FileText size={18} />
-                    <strong>
-                      {activeJurisdictionTrustSummary.importedStatementRowCount} statement rows
-                    </strong>
-                    <span>
-                      {activeJurisdictionTrustSummary.matchedStatementRowCount} matched ·{" "}
-                      {activeJurisdictionTrustSummary.unmatchedStatementRowCount} unmatched ·{" "}
-                      {cents(activeJurisdictionTrustSummary.totalVarianceCents)} variance
-                    </span>
-                  </div>
-                </div>
-
-                <div className="section-title">
-                  <h3>Recent postings</h3>
-                  <span>{activeTrustPostings.length} shown</span>
-                </div>
-                <div className="party-list">
-                  {activeTrustPostings.map((posting) => (
-                    <div className="party-row" key={posting.transactionId}>
-                      <span>
-                        <strong>{posting.memo}</strong>
-                        <small>
-                          {posting.transactionId} · {posting.entryCount} entries ·{" "}
-                          {compactDate(posting.postedAt)}
-                        </small>
-                      </span>
-                      <em className={posting.matterDeltaCents < 0 ? "risk" : undefined}>
-                        {cents(posting.matterDeltaCents)}
-                      </em>
-                    </div>
-                  ))}
-                  {activeTrustPostings.length === 0 ? (
-                    <p className="inline-empty">
-                      No trust ledger postings are linked to this matter yet.
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="section-title">
-                  <h3>Reconciliation exceptions</h3>
-                  <span>
-                    {exceptionReconciliations.length} exceptions · {unreconciledAccounts.length}{" "}
-                    unreconciled accounts
-                  </span>
-                </div>
-                <div className="party-list">
-                  {exceptionReconciliations.slice(0, 4).map((reconciliation) => (
-                    <div className="party-row" key={reconciliation.id}>
-                      <span>
-                        <strong>
-                          {accountLabel(activeTrustControls, reconciliation.accountId)}
-                        </strong>
-                        <small>
-                          {compactStatus(reconciliation.status)} ·{" "}
-                          {compactDate(reconciliation.statementPeriodEnd)} ·{" "}
-                          {reconciliation.statementRows.length} statement rows
-                        </small>
-                        <small>
-                          opening {cents(reconciliation.beginningBalanceCents)} · closing{" "}
-                          {cents(reconciliation.endingBalanceCents)}
-                        </small>
-                        {reconciliation.varianceExplanation ? (
-                          <small>{reconciliation.varianceExplanation}</small>
-                        ) : null}
-                      </span>
-                      <em className="risk">
-                        {cents(
-                          reconciliation.actualBalanceCents - reconciliation.expectedBalanceCents,
-                        )}
-                      </em>
-                    </div>
-                  ))}
-                  {unreconciledAccounts.slice(0, 4).map((account) => (
-                    <div className="party-row" key={account.id}>
-                      <span>
-                        <strong>{account.label}</strong>
-                        <small>{account.id}</small>
-                      </span>
-                      <em className="risk">unreconciled</em>
-                    </div>
-                  ))}
-                  {exceptionReconciliations.length === 0 && unreconciledAccounts.length === 0 ? (
-                    <p className="inline-empty">
-                      No reconciliation exceptions or unreconciled trust accounts are present in the
-                      current controls payload.
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="section-title">
-                  <h3>Diagnostics</h3>
-                  <span>operator review only</span>
-                </div>
-                <div className="party-list">
-                  <div className="party-row">
-                    <span>
-                      <strong>Pending approval transaction IDs</strong>
-                      <small>
-                        {activeTrustControls.diagnostics.pendingApprovalTransactionIds.join(", ") ||
-                          "none"}
-                      </small>
-                    </span>
-                    <em>{trustReviewSummary.pendingApprovalCount}</em>
-                  </div>
-                  <div className="party-row">
-                    <span>
-                      <strong>Rejected approval transaction IDs</strong>
-                      <small>
-                        {activeTrustControls.diagnostics.rejectedApprovalTransactionIds.join(
-                          ", ",
-                        ) || "none"}
-                      </small>
-                    </span>
-                    <em
-                      className={trustReviewSummary.rejectedApprovalCount > 0 ? "risk" : undefined}
-                    >
-                      {trustReviewSummary.rejectedApprovalCount}
-                    </em>
-                  </div>
-                  <div className="party-row">
-                    <span>
-                      <strong>Overdrawn balance keys</strong>
-                      <small>
-                        {activeTrustControls.diagnostics.overdrawnBalanceKeys.join(", ") || "none"}
-                      </small>
-                    </span>
-                    <em
-                      className={trustReviewSummary.overdrawnBalanceCount > 0 ? "risk" : undefined}
-                    >
-                      {trustReviewSummary.overdrawnBalanceCount}
-                    </em>
-                  </div>
-                </div>
-              </>
+              <TrustControlsSection
+                activeJurisdictionTrustSummary={activeJurisdictionTrustSummary}
+                activeTrustBalanceCents={activeTrustBalanceCents}
+                activeTrustControls={activeTrustControls}
+                activeTrustPostings={activeTrustPostings}
+                compactDate={compactDate}
+                compactStatus={compactStatus}
+                formatCurrency={cents}
+                trustControlsStatus={trustControlsStatus}
+                trustReviewSummary={trustReviewSummary}
+              />
             ) : null}
 
             {activeSection === "billing" ? (
               billingDashboard.canView ? (
-                <>
-                  <div className="detail-grid billing-summary-grid">
-                    <div>
-                      <span className="field-label">Approved time</span>
-                      <strong>{cents(activeUnbilledTimeCents)}</strong>
-                    </div>
-                    <div>
-                      <span className="field-label">Approved expenses</span>
-                      <strong>{cents(activeUnbilledExpenseCents)}</strong>
-                    </div>
-                    <div>
-                      <span className="field-label">Draft / issued invoices</span>
-                      <strong>
-                        {
-                          activeInvoices.filter((invoice) =>
-                            ["draft", "issued"].includes(invoice.status),
-                          ).length
-                        }
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="field-label">Balance due</span>
-                      <strong>{cents(activeBalanceDueCents)}</strong>
-                    </div>
-                    <div>
-                      <span className="field-label">Payment requests</span>
-                      <strong>{cents(billingDashboard.summary.hostedPaymentRequestCents)}</strong>
-                    </div>
-                    <div>
-                      <span className="field-label">Locked periods</span>
-                      <strong>
-                        {billingDashboard.summary.activeLockedPeriodCount}/
-                        {billingDashboard.summary.lockedPeriodCount}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="field-label">Active rate rules</span>
-                      <strong>{billingDashboard.summary.activeRateRuleCount}</strong>
-                    </div>
-                  </div>
-
-                  <div className="section-title">
-                    <h3>Billing controls</h3>
-                    <span>
-                      {billingDashboard.periodLocks.length + billingDashboard.rateRules.length}{" "}
-                      records
-                    </span>
-                  </div>
-                  <div className="party-list">
-                    {billingDashboard.periodLocks.map((lock) => (
-                      <div className="party-row" key={lock.id}>
-                        <span>
-                          <strong>{lock.reason ?? "Locked billing period"}</strong>
-                          <small>
-                            {new Date(lock.periodStart).toLocaleDateString("en-CA")} -{" "}
-                            {new Date(lock.periodEnd).toLocaleDateString("en-CA")}
-                          </small>
-                        </span>
-                        <em>locked</em>
-                      </div>
-                    ))}
-                    {billingDashboard.rateRules.map((rule) => (
-                      <div className="party-row" key={rule.id}>
-                        <span>
-                          <strong>{rule.label}</strong>
-                          <small>
-                            {rule.scope}
-                            {rule.matterId ? ` · ${rule.matterId}` : ""}
-                            {rule.userId ? ` · ${rule.userId}` : ""}
-                          </small>
-                        </span>
-                        <em>{cents(rule.rateCents)}/hr</em>
-                      </div>
-                    ))}
-                    {billingDashboard.periodLocks.length === 0 &&
-                    billingDashboard.rateRules.length === 0 ? (
-                      <p className="inline-empty">No billing locks or rate rules are active.</p>
-                    ) : null}
-                  </div>
-
-                  <div className="section-title">
-                    <h3>Capture review drafts</h3>
-                    <span>{activeCaptureReviewCount} pending</span>
-                  </div>
-                  <div className="billing-capture-grid">
-                    <section className="billing-capture-panel" aria-label="Local timer draft">
-                      <div className="section-title compact">
-                        <h4>Local timer</h4>
-                        <span>{timerDraftBillable ? "billable" : "non-billable"}</span>
-                      </div>
-                      <div className="billing-action-row">
-                        <button
-                          className="compact-button"
-                          disabled={creatingTimerDraft}
-                          onClick={startTimerDraft}
-                          type="button"
-                        >
-                          <Clock3 size={16} />
-                          Start
-                        </button>
-                        <button
-                          className="compact-button"
-                          disabled={creatingTimerDraft}
-                          onClick={stopTimerDraft}
-                          type="button"
-                        >
-                          <Save size={16} />
-                          Stop
-                        </button>
-                        <label className="billing-toggle-field">
-                          <input
-                            checked={timerDraftBillable}
-                            disabled={creatingTimerDraft}
-                            onChange={(event) => setTimerDraftBillable(event.target.checked)}
-                            type="checkbox"
-                          />
-                          <span>Billable</span>
-                        </label>
-                      </div>
-                      <div className="billing-action-row">
-                        <label className="search-field compact">
-                          <span>Rate / hr</span>
-                          <input
-                            disabled={creatingTimerDraft}
-                            inputMode="decimal"
-                            min={0}
-                            onChange={(event) => setTimerDraftRate(event.target.value)}
-                            step={0.01}
-                            type="number"
-                            value={timerDraftRate}
-                          />
-                        </label>
-                        <label className="search-field compact">
-                          <span>Started</span>
-                          <input
-                            disabled={creatingTimerDraft}
-                            onChange={(event) => setTimerDraftStartedAt(event.target.value)}
-                            type="datetime-local"
-                            value={timerDraftStartedAt.slice(0, 16)}
-                          />
-                        </label>
-                        <label className="search-field compact">
-                          <span>Stopped</span>
-                          <input
-                            disabled={creatingTimerDraft}
-                            onChange={(event) => setTimerDraftStoppedAt(event.target.value)}
-                            type="datetime-local"
-                            value={timerDraftStoppedAt.slice(0, 16)}
-                          />
-                        </label>
-                      </div>
-                      <label className="search-field compact">
-                        <span>Narrative</span>
-                        <input
-                          disabled={creatingTimerDraft}
-                          onChange={(event) => setTimerDraftNarrative(event.target.value)}
-                          placeholder="Matter preparation"
-                          value={timerDraftNarrative}
-                        />
-                      </label>
-                      <button
-                        className="primary-button"
-                        disabled={creatingTimerDraft}
-                        onClick={() => void createTimerDraft()}
-                        type="button"
-                      >
-                        <Plus size={16} />
-                        {creatingTimerDraft ? "Creating..." : "Create draft"}
-                      </button>
-                      <p
-                        aria-atomic="true"
-                        aria-live="polite"
-                        className="inline-empty"
-                        role="status"
-                      >
-                        {timerDraftStatus}
-                      </p>
-                    </section>
-
-                    <section className="billing-capture-panel" aria-label="Expense review draft">
-                      <div className="section-title compact">
-                        <h4>Expense profile</h4>
-                        <span>{selectedExpenseProfile?.label ?? "Custom"}</span>
-                      </div>
-                      <div className="billing-action-row">
-                        <label className="search-field compact">
-                          <span>Profile</span>
-                          <select
-                            disabled={creatingExpenseDraft}
-                            onChange={(event) => {
-                              const profile = billingDashboard.expenseCategoryProfiles.find(
-                                (candidate) => candidate.key === event.target.value,
-                              );
-                              setExpenseDraftProfileKey(event.target.value);
-                              if (profile) setExpenseDraftReimbursable(profile.defaultReimbursable);
-                            }}
-                            value={expenseDraftProfileKey}
-                          >
-                            <option value="">Custom</option>
-                            {billingDashboard.expenseCategoryProfiles.map((profile) => (
-                              <option key={profile.key} value={profile.key}>
-                                {profile.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="search-field compact">
-                          <span>Amount</span>
-                          <input
-                            disabled={creatingExpenseDraft}
-                            inputMode="decimal"
-                            min={0}
-                            onChange={(event) => setExpenseDraftAmount(event.target.value)}
-                            step={0.01}
-                            type="number"
-                            value={expenseDraftAmount}
-                          />
-                        </label>
-                        <label className="search-field compact">
-                          <span>Incurred</span>
-                          <input
-                            disabled={creatingExpenseDraft}
-                            onChange={(event) => setExpenseDraftDate(event.target.value)}
-                            type="date"
-                            value={expenseDraftDate}
-                          />
-                        </label>
-                      </div>
-                      <div className="billing-action-row">
-                        <label className="search-field compact">
-                          <span>Category</span>
-                          <input
-                            disabled={creatingExpenseDraft || Boolean(expenseDraftProfileKey)}
-                            onChange={(event) => setExpenseDraftCategory(event.target.value)}
-                            placeholder={selectedExpenseProfile?.category ?? "Custom category"}
-                            value={expenseDraftCategory}
-                          />
-                        </label>
-                        <label className="search-field compact">
-                          <span>Description</span>
-                          <input
-                            disabled={creatingExpenseDraft}
-                            onChange={(event) => setExpenseDraftDescription(event.target.value)}
-                            placeholder="Filing receipt"
-                            value={expenseDraftDescription}
-                          />
-                        </label>
-                        <label className="billing-toggle-field">
-                          <input
-                            checked={expenseDraftReimbursable}
-                            disabled={creatingExpenseDraft}
-                            onChange={(event) => setExpenseDraftReimbursable(event.target.checked)}
-                            type="checkbox"
-                          />
-                          <span>Reimbursable</span>
-                        </label>
-                      </div>
-                      <button
-                        className="primary-button"
-                        disabled={creatingExpenseDraft}
-                        onClick={() => void createExpenseDraft()}
-                        type="button"
-                      >
-                        <Plus size={16} />
-                        {creatingExpenseDraft ? "Creating..." : "Create draft"}
-                      </button>
-                      <p
-                        aria-atomic="true"
-                        aria-live="polite"
-                        className="inline-empty"
-                        role="status"
-                      >
-                        {expenseDraftStatus}{" "}
-                        {selectedExpenseProfile
-                          ? selectedExpenseProfile.reviewCue
-                          : "Custom expense drafts stay in draft review."}
-                      </p>
-                    </section>
-                  </div>
-                  <div className="party-list">
-                    {activeCaptureReviewTime.map((entry) => (
-                      <div className="party-row" key={entry.id}>
-                        <span>
-                          <strong>{entry.narrative}</strong>
-                          <small>
-                            {entry.status} · {minutes(entry.minutes)} · {cents(entry.rateCents)}/hr
-                          </small>
-                        </span>
-                        <em>review</em>
-                      </div>
-                    ))}
-                    {activeCaptureReviewExpenses.map((entry) => (
-                      <div className="party-row" key={entry.id}>
-                        <span>
-                          <strong>{entry.description}</strong>
-                          <small>
-                            {entry.status} · {entry.category}
-                            {entry.categoryProfileKey ? ` · ${entry.categoryProfileKey}` : ""}
-                          </small>
-                        </span>
-                        <em>{cents(entry.amountCents)}</em>
-                      </div>
-                    ))}
-                    {activeCaptureReviewCount === 0 ? (
-                      <p className="inline-empty">No draft time or expense records need review.</p>
-                    ) : null}
-                  </div>
-
-                  <div className="section-title">
-                    <h3>Create draft invoice</h3>
-                    <span>{activeMatter.number}</span>
-                  </div>
-                  <div className="billing-action-row">
-                    <label className="search-field compact">
-                      <span>Due date</span>
-                      <input
-                        disabled={creatingDraftInvoice}
-                        onChange={(event) => setDraftInvoiceDueAt(event.target.value)}
-                        type="date"
-                        value={draftInvoiceDueAt}
-                      />
-                    </label>
-                    <label className="search-field compact">
-                      <span>Tax label</span>
-                      <input
-                        disabled={creatingDraftInvoice}
-                        onChange={(event) => setDraftInvoiceTaxName(event.target.value)}
-                        placeholder="GST"
-                        value={draftInvoiceTaxName}
-                      />
-                    </label>
-                    <label className="search-field compact">
-                      <span>Tax rate %</span>
-                      <input
-                        disabled={creatingDraftInvoice}
-                        inputMode="decimal"
-                        min={0}
-                        onChange={(event) => setDraftInvoiceTaxRate(event.target.value)}
-                        step={0.01}
-                        type="number"
-                        value={draftInvoiceTaxRate}
-                      />
-                    </label>
-                    <button
-                      className="primary-button"
-                      disabled={creatingDraftInvoice || !canCreateDraftInvoice}
-                      onClick={() => void createDraftInvoice()}
-                      type="button"
-                    >
-                      <FileText size={16} />
-                      {creatingDraftInvoice ? "Creating..." : "Create draft"}
-                    </button>
-                  </div>
-                  <p aria-atomic="true" aria-live="polite" className="inline-empty" role="status">
-                    {draftInvoiceStatus}
-                  </p>
-
-                  <div className="section-title">
-                    <h3>Unbilled approved time and expenses</h3>
-                    <span>{cents(activeUnbilledTimeCents + activeUnbilledExpenseCents)}</span>
-                  </div>
-                  <div className="party-list">
-                    {activeUnbilledTime.map((entry) => (
-                      <div className="party-row" key={entry.id}>
-                        <span>
-                          <strong>{entry.narrative}</strong>
-                          <small>
-                            {minutes(entry.minutes)} · {cents(entry.rateCents)}/hr
-                            {entry.rateSnapshot?.source === "rate_rule"
-                              ? ` · ${entry.rateSnapshot.label ?? "rate rule"}`
-                              : " · manual rate"}
-                          </small>
-                        </span>
-                        <em>{cents(entry.amountCents)}</em>
-                      </div>
-                    ))}
-                    {activeUnbilledExpenses.map((entry) => (
-                      <div className="party-row" key={entry.id}>
-                        <span>
-                          <strong>{entry.description}</strong>
-                          <small>{entry.category}</small>
-                        </span>
-                        <em>{cents(entry.amountCents)}</em>
-                      </div>
-                    ))}
-                    {activeUnbilledTime.length === 0 && activeUnbilledExpenses.length === 0 ? (
-                      <p className="inline-empty">
-                        No approved unbilled time or reimbursable expenses are linked to this
-                        matter.
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div className="section-title">
-                    <h3>Invoices and balances</h3>
-                    <span>{activeInvoices.length} records</span>
-                  </div>
-                  <div className="party-list">
-                    {activeInvoices.map((invoice) => (
-                      <div className="party-row" key={invoice.id}>
-                        <span>
-                          <strong>{invoice.number}</strong>
-                          <small>
-                            {invoice.status}
-                            {invoice.dueAt
-                              ? ` · due ${new Date(invoice.dueAt).toLocaleDateString("en-CA")}`
-                              : ""}
-                          </small>
-                        </span>
-                        <em className={invoice.balanceDueCents > 0 ? "risk" : undefined}>
-                          {cents(invoice.balanceDueCents)}
-                        </em>
-                      </div>
-                    ))}
-                    {activeInvoices.length === 0 ? (
-                      <p className="inline-empty">
-                        No draft or issued invoices are linked to this matter.
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div className="section-title">
-                    <h3>Payment request shells</h3>
-                    <span>{activePaymentRequests.length} records</span>
-                  </div>
-                  <div className="party-list">
-                    {activePaymentRequests.map((paymentRequest) => (
-                      <div className="party-row" key={paymentRequest.id}>
-                        <span>
-                          <strong>{paymentRequest.status.replaceAll("_", " ")}</strong>
-                          <small>
-                            {paymentRequest.delivery.status.replaceAll("_", " ")} · reminder{" "}
-                            {paymentRequest.reminder.status.replaceAll("_", " ")}
-                            {paymentRequest.paymentPlan.status !== "not_offered"
-                              ? ` · plan ${paymentRequest.paymentPlan.status.replaceAll("_", " ")}`
-                              : ""}
-                            {paymentRequest.creditWriteOffPosture.status !== "none"
-                              ? ` · ${paymentRequest.creditWriteOffPosture.status.replaceAll(
-                                  "_",
-                                  " ",
-                                )}`
-                              : ""}
-                            {paymentRequest.processor.status === "checkout_session_created"
-                              ? ` · ${paymentRequest.processor.provider ?? "processor"} checkout`
-                              : ""}
-                            {paymentRequest.evidencePresent ? " · evidence" : ""}
-                          </small>
-                        </span>
-                        <em>{cents(paymentRequest.amountCents)}</em>
-                      </div>
-                    ))}
-                    {activePaymentRequests.length === 0 ? (
-                      <p className="inline-empty">
-                        No hosted payment request shells have been recorded for this matter.
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div className="section-title">
-                    <h3>Settlement webhook review</h3>
-                    <span>Manual reconciliation required</span>
-                  </div>
-                  <div className="detail-grid billing-summary-grid">
-                    <div>
-                      <span className="field-label">Received</span>
-                      <strong>{activeSettlementReviewSummary.receivedEventCount}</strong>
-                    </div>
-                    <div>
-                      <span className="field-label">Pending</span>
-                      <strong>{activeSettlementReviewSummary.pendingEventCount}</strong>
-                    </div>
-                    <div>
-                      <span className="field-label">Mismatch</span>
-                      <strong>{activeSettlementReviewSummary.amountMismatchCount}</strong>
-                    </div>
-                    <div>
-                      <span className="field-label">Refunds</span>
-                      <strong>{activeSettlementReviewSummary.refundOrChargebackReviewCount}</strong>
-                    </div>
-                  </div>
-                  <div className="party-list">
-                    {activePaymentRequests
-                      .filter((paymentRequest) => paymentRequest.processor.settlementReview)
-                      .map((paymentRequest) => (
-                        <div className="party-row" key={`${paymentRequest.id}:settlement`}>
-                          <span>
-                            <strong>
-                              {paymentRequest.processor.settlementReview?.status.replaceAll(
-                                "_",
-                                " ",
-                              )}
-                            </strong>
-                            <small>{describePaymentSettlementReview(paymentRequest)}</small>
-                            <small>
-                              No invoice balance mutation · No trust posting · No refunds or
-                              chargebacks
-                            </small>
-                          </span>
-                          <em>No automatic reconciliation</em>
-                        </div>
-                      ))}
-                    {activePaymentRequests.every(
-                      (paymentRequest) => !paymentRequest.processor.settlementReview,
-                    ) ? (
-                      <p className="inline-empty">
-                        No processor settlement evidence has been received for this matter.
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div className="section-title">
-                    <h3>Manual payment history</h3>
-                    <span>{activeManualPayments.length} payments</span>
-                  </div>
-                  <div className="party-list">
-                    {activeManualPayments.map((payment) => (
-                      <div className="party-row" key={payment.id}>
-                        <span>
-                          <strong>{payment.reference ?? "Manual payment"}</strong>
-                          <small>
-                            {new Date(payment.receivedAt).toLocaleDateString("en-CA")}
-                            {payment.evidencePresent ? " · evidence" : ""}
-                          </small>
-                        </span>
-                        <em>{cents(payment.amountCents)}</em>
-                      </div>
-                    ))}
-                    {activeManualPayments.length === 0 ? (
-                      <p className="inline-empty">
-                        No manual payments have been recorded for this matter.
-                      </p>
-                    ) : null}
-                  </div>
-                </>
+                <BillingSection
+                  activeBalanceDueCents={activeBalanceDueCents}
+                  activeCaptureReviewCount={activeCaptureReviewCount}
+                  activeCaptureReviewExpenses={activeCaptureReviewExpenses}
+                  activeCaptureReviewTime={activeCaptureReviewTime}
+                  activeInvoices={activeInvoices}
+                  activeManualPayments={activeManualPayments}
+                  activeMatter={activeMatter}
+                  activePaymentRequests={activePaymentRequests}
+                  activeSettlementReviewSummary={activeSettlementReviewSummary}
+                  activeUnbilledExpenseCents={activeUnbilledExpenseCents}
+                  activeUnbilledExpenses={activeUnbilledExpenses}
+                  activeUnbilledTime={activeUnbilledTime}
+                  activeUnbilledTimeCents={activeUnbilledTimeCents}
+                  billingDashboard={billingDashboard}
+                  canCreateDraftInvoice={canCreateDraftInvoice}
+                  cents={cents}
+                  createDraftInvoice={createDraftInvoice}
+                  createExpenseDraft={createExpenseDraft}
+                  createTimerDraft={createTimerDraft}
+                  creatingDraftInvoice={creatingDraftInvoice}
+                  creatingExpenseDraft={creatingExpenseDraft}
+                  creatingTimerDraft={creatingTimerDraft}
+                  draftInvoiceDueAt={draftInvoiceDueAt}
+                  draftInvoiceStatus={draftInvoiceStatus}
+                  draftInvoiceTaxName={draftInvoiceTaxName}
+                  draftInvoiceTaxRate={draftInvoiceTaxRate}
+                  expenseDraftAmount={expenseDraftAmount}
+                  expenseDraftCategory={expenseDraftCategory}
+                  expenseDraftDate={expenseDraftDate}
+                  expenseDraftDescription={expenseDraftDescription}
+                  expenseDraftProfileKey={expenseDraftProfileKey}
+                  expenseDraftReimbursable={expenseDraftReimbursable}
+                  expenseDraftStatus={expenseDraftStatus}
+                  minutes={minutes}
+                  setDraftInvoiceDueAt={setDraftInvoiceDueAt}
+                  setDraftInvoiceTaxName={setDraftInvoiceTaxName}
+                  setDraftInvoiceTaxRate={setDraftInvoiceTaxRate}
+                  setExpenseDraftAmount={setExpenseDraftAmount}
+                  setExpenseDraftCategory={setExpenseDraftCategory}
+                  setExpenseDraftDate={setExpenseDraftDate}
+                  setExpenseDraftDescription={setExpenseDraftDescription}
+                  setExpenseDraftProfileKey={setExpenseDraftProfileKey}
+                  setExpenseDraftReimbursable={setExpenseDraftReimbursable}
+                  setTimerDraftBillable={setTimerDraftBillable}
+                  setTimerDraftNarrative={setTimerDraftNarrative}
+                  setTimerDraftRate={setTimerDraftRate}
+                  setTimerDraftStartedAt={setTimerDraftStartedAt}
+                  setTimerDraftStoppedAt={setTimerDraftStoppedAt}
+                  startTimerDraft={startTimerDraft}
+                  stopTimerDraft={stopTimerDraft}
+                  timerDraftBillable={timerDraftBillable}
+                  timerDraftNarrative={timerDraftNarrative}
+                  timerDraftRate={timerDraftRate}
+                  timerDraftStartedAt={timerDraftStartedAt}
+                  timerDraftStatus={timerDraftStatus}
+                  timerDraftStoppedAt={timerDraftStoppedAt}
+                />
               ) : (
                 <p className="inline-empty">
                   Billing details are hidden for {formatProfessionalRoleLabel(session.user.role)}{" "}
@@ -5979,367 +4655,37 @@ export default function DashboardClient({
             ) : null}
 
             {activeSection === "documents" ? (
-              <>
-                <div className="detail-grid">
-                  <div>
-                    <span className="field-label">Workbench</span>
-                    <strong>
-                      {compactDocumentProcessingReason(activeDocumentProcessing.status)}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Provider state</span>
-                    <strong>
-                      {
-                        activeDocumentProcessing.providerStatus.filter(
-                          (provider) => provider.status === "configured",
-                        ).length
-                      }
-                      /{activeDocumentProcessing.providerStatus.length}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Worker queues</span>
-                    <strong>
-                      {
-                        activeDocumentProcessing.workerQueues.filter(
-                          (queue) => queue.status === "configured",
-                        ).length
-                      }
-                      /
-                      {
-                        activeDocumentProcessing.workerQueues.filter(
-                          (queue) => queue.status !== "reserved",
-                        ).length
-                      }
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Jobs</span>
-                    <strong>
-                      {activeDocumentProcessing.summary.queued +
-                        activeDocumentProcessing.summary.active}{" "}
-                      active · {activeDocumentProcessing.summary.failed} failed
-                    </strong>
-                  </div>
-                </div>
-                <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-                  {documentProcessingStatus} {documentProcessingSummary}{" "}
-                  {documentReviewSuggestionsSummary}
-                </p>
-                <DocumentAssemblyDashboardBlock workbench={activeDocumentAssembly} />
-                <div className="document-metadata-search-panel">
-                  <label className="search-field compact">
-                    <span>Metadata search</span>
-                    <input
-                      onChange={(event) => setDocumentMetadataQuery(event.target.value)}
-                      placeholder="title, cue, status"
-                      value={documentMetadataQuery}
-                    />
-                  </label>
-                  <label className="search-field compact">
-                    <span>Classification</span>
-                    <select
-                      onChange={(event) =>
-                        setDocumentMetadataClassificationFilter(event.target.value)
-                      }
-                      value={documentMetadataClassificationFilter}
-                    >
-                      <option value="">Any</option>
-                      {documentMetadataClassificationOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {compactDocumentProcessingReason(option)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="search-field compact">
-                    <span>Review</span>
-                    <select
-                      onChange={(event) =>
-                        setDocumentMetadataReviewStatusFilter(event.target.value)
-                      }
-                      value={documentMetadataReviewStatusFilter}
-                    >
-                      <option value="">Any</option>
-                      {documentMetadataReviewStatusOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {compactDocumentProcessingReason(option)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="search-field compact">
-                    <span>Scan</span>
-                    <select
-                      onChange={(event) => setDocumentMetadataScanStatusFilter(event.target.value)}
-                      value={documentMetadataScanStatusFilter}
-                    >
-                      <option value="">Any</option>
-                      {documentMetadataScanStatusOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {compactDocumentProcessingReason(option)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="search-field compact">
-                    <span>OCR</span>
-                    <select
-                      onChange={(event) => setDocumentMetadataOcrStatusFilter(event.target.value)}
-                      value={documentMetadataOcrStatusFilter}
-                    >
-                      <option value="">Any</option>
-                      {documentMetadataOcrStatusOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {compactDocumentProcessingReason(option)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="search-field compact">
-                    <span>Cue</span>
-                    <select
-                      onChange={(event) => setDocumentMetadataCueGroupFilter(event.target.value)}
-                      value={documentMetadataCueGroupFilter}
-                    >
-                      <option value="">Any</option>
-                      {documentMetadataCueGroupOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {compactDocumentProcessingReason(option)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="document-metadata-search-actions">
-                    <span>{activeDocumentMetadataFilterCount} active filters</span>
-                    <button
-                      className="secondary-button compact-button"
-                      onClick={() => void refreshDocumentMetadataSearch()}
-                      type="button"
-                    >
-                      <Search aria-hidden="true" size={16} />
-                      Search
-                    </button>
-                    <button
-                      className="secondary-button compact-button"
-                      disabled={activeDocumentMetadataFilterCount === 0}
-                      onClick={() => void clearDocumentMetadataSearch()}
-                      type="button"
-                    >
-                      <X aria-hidden="true" size={16} />
-                      Clear
-                    </button>
-                  </div>
-                </div>
-                <p className="inline-empty">{documentMetadataSearchSummary}</p>
-                {activeDocumentMetadataTags.length > 0 ? (
-                  <div className="document-metadata-tags" aria-label="Document metadata tags">
-                    {activeDocumentMetadataTags.map((tag) => (
-                      <button
-                        className={`metadata-tag ${tag.tone}`}
-                        key={tag.key}
-                        onClick={() => void selectDocumentMetadataTag(tag.key)}
-                        type="button"
-                      >
-                        {compactDocumentMetadataTag(tag)}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {activeDocumentMetadataFilterCount > 0 ? (
-                  <div className="party-list document-metadata-results">
-                    {(activeDocumentProcessing.metadataSearch?.results ?? []).map((result) => (
-                      <div className="party-row" key={result.documentId}>
-                        <span>
-                          <strong>{result.title}</strong>
-                          <small>
-                            {compactDocumentProcessingReason(result.classification)} · review{" "}
-                            {compactDocumentProcessingReason(result.reviewStatus)} · scan{" "}
-                            {compactDocumentProcessingReason(result.scanStatus)} · OCR{" "}
-                            {compactDocumentProcessingReason(result.ocrStatus)}
-                          </small>
-                          <small>
-                            {result.matchedFields.length > 0
-                              ? `Matched ${result.matchedFields.join(", ")}`
-                              : "Metadata posture match"}{" "}
-                            · {result.tagKeys.length} tag cues · {result.cueCounts.total} reviewer
-                            cues
-                          </small>
-                        </span>
-                        <em>{result.legalHold ? "legal hold" : "review only"}</em>
-                      </div>
-                    ))}
-                    {activeDocumentProcessing.metadataSearch?.results.length === 0 ? (
-                      <p className="inline-empty">No document metadata matches.</p>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {activeDocumentProcessing.providerStatus.length > 0 ? (
-                  <>
-                    <div className="section-title">
-                      <h3>Providers and workers</h3>
-                      <span>{activeMatter.number}</span>
-                    </div>
-                    <div className="party-list">
-                      {activeDocumentProcessing.providerStatus.map((provider) => (
-                        <div className="party-row" key={`provider:${provider.kind}`}>
-                          <span>
-                            <strong>{compactDocumentProcessingReason(provider.kind)}</strong>
-                            <small>
-                              {compactDocumentProcessingReason(provider.reason)} ·{" "}
-                              {provider.providers?.filter((candidate) => candidate.enabled)
-                                .length ?? 0}{" "}
-                              enabled providers
-                            </small>
-                          </span>
-                          <em className={provider.status === "disabled" ? "risk" : undefined}>
-                            {compactDocumentProcessingReason(provider.status)}
-                          </em>
-                        </div>
-                      ))}
-                      {activeDocumentProcessing.workerQueues.map((queue) => (
-                        <div className="party-row" key={`queue:${queue.queueName}`}>
-                          <span>
-                            <strong>{compactDocumentProcessingReason(queue.queueName)}</strong>
-                            <small>
-                              {queue.status === "reserved"
-                                ? `reserved ${compactDocumentProcessingReason(queue.task)}`
-                                : "actionable"}
-                              {queue.reason
-                                ? ` · ${compactDocumentProcessingReason(queue.reason)}`
-                                : ""}
-                            </small>
-                          </span>
-                          <em className={queue.status === "not_configured" ? "risk" : undefined}>
-                            {compactDocumentProcessingReason(queue.status)}
-                          </em>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : null}
-
-                <div className="section-title">
-                  <h3>Document processing workbench</h3>
-                  <span>{activeDocumentProcessingRows.length} documents</span>
-                </div>
-                <div className="party-list queue-section-list">
-                  {documentProcessingGroupOrder.map((group) => {
-                    const groupRows = activeDocumentProcessingRows.filter(
-                      (item) => item.group === group,
-                    );
-                    if (groupRows.length === 0) return null;
-                    return (
-                      <section className="queue-section" key={group}>
-                        <div className="section-title">
-                          <h3>{documentProcessingGroupLabel(group)}</h3>
-                          <span>{groupRows.length}</span>
-                        </div>
-                        {groupRows.map((item) => {
-                          const action = describeDocumentQueueAction(
-                            item,
-                            activeDocumentProcessing,
-                          );
-                          const job = describeLatestDocumentJob(item.latestJob);
-                          const reviewSuggestions =
-                            item.reviewSuggestions ?? emptyDocumentReviewSuggestions();
-                          return (
-                            <div className="party-row upload-review-row" key={item.document.id}>
-                              <span>
-                                <strong>{item.document.title}</strong>
-                                <small>
-                                  v{item.document.version} ·{" "}
-                                  {compactDocumentProcessingReason(item.document.classification)} ·{" "}
-                                  upload{" "}
-                                  {compactDocumentProcessingReason(item.document.uploadStatus)} ·
-                                  checksum{" "}
-                                  {compactDocumentProcessingReason(item.document.checksumStatus)} ·
-                                  scan {compactDocumentProcessingReason(item.document.scanStatus)} ·
-                                  review{" "}
-                                  {compactDocumentProcessingReason(item.document.reviewStatus)}
-                                  {item.document.legalHold ? " · legal hold" : ""}
-                                </small>
-                                <small>
-                                  Job {job.label} ·{" "}
-                                  {describeLatestExtraction(item.latestExtraction)}
-                                  {item.latestJob?.errorSummary
-                                    ? ` · ${item.latestJob.errorSummary}`
-                                    : ""}
-                                </small>
-                                {item.metadataTags?.length ? (
-                                  <small>
-                                    Tags{" "}
-                                    {item.metadataTags
-                                      .slice(0, 5)
-                                      .map((tag) => tag.label)
-                                      .join(" · ")}
-                                  </small>
-                                ) : null}
-                                {action.disabledReason ? (
-                                  <small>Disabled: {action.disabledReason}</small>
-                                ) : null}
-                                {reviewSuggestions.summaryCounts.total > 0 ? (
-                                  <div className="document-suggestions">
-                                    <small>
-                                      Reviewer suggestions · {reviewSuggestions.summaryCounts.total}{" "}
-                                      cues · read only
-                                    </small>
-                                    {documentReviewSuggestionGroupOrder.map((suggestionGroup) => {
-                                      const cues = reviewSuggestions.groups[suggestionGroup] ?? [];
-                                      if (cues.length === 0) return null;
-                                      return (
-                                        <div
-                                          className="document-suggestion-group"
-                                          key={suggestionGroup}
-                                        >
-                                          <small>
-                                            {documentReviewSuggestionGroupLabel(suggestionGroup)}
-                                          </small>
-                                          {cues.map((cue) => (
-                                            <small
-                                              className={cue.tone === "risk" ? "risk" : undefined}
-                                              key={cue.id}
-                                            >
-                                              {cue.label}
-                                              {describeDocumentReviewSuggestion(cue)
-                                                ? ` · ${describeDocumentReviewSuggestion(cue)}`
-                                                : ""}
-                                            </small>
-                                          ))}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : null}
-                              </span>
-                              <div className="row-actions upload-review-actions">
-                                <em className={action.tone === "risk" ? "risk" : undefined}>
-                                  {documentProcessingGroupLabel(item.group)}
-                                </em>
-                                <button
-                                  className="secondary-button compact-button row-button"
-                                  disabled={!action.canQueue || queueingDocumentId.length > 0}
-                                  onClick={() => void queueDocumentOcr(item.document.id)}
-                                  type="button"
-                                >
-                                  {queueingDocumentId === item.document.id
-                                    ? "Queueing..."
-                                    : action.label}
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </section>
-                    );
-                  })}
-                  {activeDocumentProcessingRows.length === 0 ? (
-                    <p className="inline-empty">No documents are linked to this matter.</p>
-                  ) : null}
-                </div>
-              </>
+              <DocumentsSection
+                activeDocumentAssembly={activeDocumentAssembly}
+                activeDocumentMetadataFilterCount={activeDocumentMetadataFilterCount}
+                activeDocumentMetadataTags={activeDocumentMetadataTags}
+                activeDocumentProcessing={activeDocumentProcessing}
+                activeDocumentProcessingRows={activeDocumentProcessingRows}
+                activeMatterNumber={activeMatter.number}
+                documentMetadataClassificationFilter={documentMetadataClassificationFilter}
+                documentMetadataCueGroupFilter={documentMetadataCueGroupFilter}
+                documentMetadataOcrStatusFilter={documentMetadataOcrStatusFilter}
+                documentMetadataQuery={documentMetadataQuery}
+                documentMetadataReviewStatusFilter={documentMetadataReviewStatusFilter}
+                documentMetadataScanStatusFilter={documentMetadataScanStatusFilter}
+                documentMetadataSearchSummary={documentMetadataSearchSummary}
+                documentProcessingStatus={documentProcessingStatus}
+                documentProcessingSummary={documentProcessingSummary}
+                documentReviewSuggestionsSummary={documentReviewSuggestionsSummary}
+                queueingDocumentId={queueingDocumentId}
+                onClearDocumentMetadataSearch={() => void clearDocumentMetadataSearch()}
+                onDocumentMetadataClassificationFilterChange={
+                  setDocumentMetadataClassificationFilter
+                }
+                onDocumentMetadataCueGroupFilterChange={setDocumentMetadataCueGroupFilter}
+                onDocumentMetadataOcrStatusFilterChange={setDocumentMetadataOcrStatusFilter}
+                onDocumentMetadataQueryChange={setDocumentMetadataQuery}
+                onDocumentMetadataReviewStatusFilterChange={setDocumentMetadataReviewStatusFilter}
+                onDocumentMetadataScanStatusFilterChange={setDocumentMetadataScanStatusFilter}
+                onQueueDocumentOcr={(documentId) => void queueDocumentOcr(documentId)}
+                onRefreshDocumentMetadataSearch={() => void refreshDocumentMetadataSearch()}
+                onSelectDocumentMetadataTag={(tag) => void selectDocumentMetadataTag(tag)}
+              />
             ) : null}
 
             {activeSection === "research" ? (
@@ -6356,2500 +4702,319 @@ export default function DashboardClient({
             ) : null}
 
             {activeSection === "shares" ? (
-              <>
-                <div className="detail-grid share-control-grid">
-                  <div>
-                    <span className="field-label">Create status</span>
-                    <strong>{shareLinksStatus.createStatus}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Provider</span>
-                    <strong>
-                      {shareLinksStatus.provider ?? shareLinksStatus.status ?? "shares"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Matter links</span>
-                    <strong>{activeShares.length}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Active links</span>
-                    <strong>{activeShares.filter((share) => !share.revokedAt).length}</strong>
-                  </div>
-                </div>
-
-                <div className="share-controls">
-                  <div className="section-title">
-                    <h3>Create share link</h3>
-                    <span>{shareLinksStatus.reason ?? "matter-scoped"}</span>
-                  </div>
-                  <div className="permission-toggle-grid">
-                    {shareLinkPermissions.map((permission) => (
-                      <label className="check-row share-check-row" key={permission}>
-                        <input
-                          checked={sharePermissions.includes(permission)}
-                          disabled={!shareLinksCreateAvailable}
-                          onChange={() => toggleSharePermission(permission)}
-                          type="checkbox"
-                        />
-                        <span>{formatSharePermission(permission)}</span>
-                      </label>
-                    ))}
-                    <label className="check-row share-check-row">
-                      <input
-                        checked={requireEmailVerification}
-                        disabled={!shareLinksCreateAvailable}
-                        onChange={(event) => setRequireEmailVerification(event.target.checked)}
-                        type="checkbox"
-                      />
-                      <span>Require email verification</span>
-                    </label>
-                  </div>
-                  <div className="share-form-row">
-                    <label className="search-field">
-                      <span>Expiry date</span>
-                      <input
-                        disabled={!shareLinksCreateAvailable}
-                        onChange={(event) => setShareExpiresAt(event.target.value)}
-                        type="date"
-                        value={shareExpiresAt}
-                      />
-                    </label>
-                    <label className="search-field">
-                      <span>Notification email</span>
-                      <input
-                        disabled={!shareLinksCreateAvailable}
-                        onChange={(event) => setShareNotificationEmail(event.target.value)}
-                        placeholder="client@example.test"
-                        type="email"
-                        value={shareNotificationEmail}
-                      />
-                    </label>
-                    <button
-                      className="secondary-button compact-button"
-                      disabled={!shareLinksCreateAvailable || creatingShare}
-                      onClick={() => void createShareLink()}
-                      type="button"
-                    >
-                      <Link2 size={16} />
-                      {creatingShare ? "Creating..." : "Create link"}
-                    </button>
-                  </div>
-                  {shareOneTimeToken ? (
-                    <OneTimeSecretPanel
-                      items={[{ label: "One-time token", value: shareOneTimeToken }]}
-                    />
-                  ) : null}
-                  <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-                    {shareStatus}
-                  </p>
-                </div>
-
-                <div className="share-controls">
-                  <div className="section-title">
-                    <h3>Client account setup</h3>
-                    <span>{activeClientPortalContacts.length} eligible contacts</span>
-                  </div>
-                  <div className="share-form-row">
-                    <label className="search-field">
-                      <span>Client contact</span>
-                      <select
-                        disabled={activeClientPortalContacts.length === 0}
-                        onChange={(event) => setClientPortalContactId(event.target.value)}
-                        value={selectedClientPortalContactId}
-                      >
-                        {activeClientPortalContacts.map((party) => (
-                          <option key={party.contactId} value={party.contactId}>
-                            {party.contact.displayName}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      className="secondary-button compact-button"
-                      disabled={
-                        activeClientPortalContacts.length === 0 || creatingClientPortalAccount
-                      }
-                      onClick={() => void createClientPortalAccount()}
-                      type="button"
-                    >
-                      <ContactRound size={16} />
-                      {creatingClientPortalAccount ? "Creating..." : "Create account"}
-                    </button>
-                  </div>
-                  {clientPortalSetupToken ? (
-                    <OneTimeSecretPanel
-                      items={[{ label: "Password setup token", value: clientPortalSetupToken }]}
-                    />
-                  ) : null}
-                  <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-                    {clientPortalStatus}
-                  </p>
-                </div>
-
-                <div className="section-title">
-                  <h3>Matter share links</h3>
-                  <span>{activeShares.length} records</span>
-                </div>
-                <div className="party-list">
-                  {activeShares.map((share) => {
-                    const state = describeShareLinkState(share);
-                    return (
-                      <div className="party-row" key={share.id}>
-                        <span>
-                          <strong>{share.id}</strong>
-                          <small>
-                            {share.permissions.map(formatSharePermission).join(", ")}
-                            {share.expiresAt
-                              ? ` · expires ${new Date(share.expiresAt).toLocaleDateString(
-                                  "en-CA",
-                                )}`
-                              : " · no expiry"}
-                            {share.requireEmailVerification
-                              ? " · email verification required"
-                              : " · token access"}
-                          </small>
-                        </span>
-                        <span className="share-row-actions">
-                          <em className={state.tone === "risk" ? "risk" : undefined}>
-                            {state.label}
-                          </em>
-                          <button
-                            className="secondary-button compact-button"
-                            disabled={Boolean(share.revokedAt) || revokingShareId.length > 0}
-                            onClick={() => void revokeShareLink(share)}
-                            type="button"
-                          >
-                            {revokingShareId === share.id ? "Revoking..." : "Revoke"}
-                          </button>
-                        </span>
-                      </div>
-                    );
-                  })}
-                  {activeShares.length === 0 ? (
-                    <p className="inline-empty">No share links are linked to this matter.</p>
-                  ) : null}
-                </div>
-              </>
+              <ShareLinksSection
+                activeClientPortalContacts={activeClientPortalContacts}
+                activeShares={activeShares}
+                clientPortalSetupToken={clientPortalSetupToken}
+                clientPortalStatus={clientPortalStatus}
+                creatingClientPortalAccount={creatingClientPortalAccount}
+                creatingShare={creatingShare}
+                requireEmailVerification={requireEmailVerification}
+                revokingShareId={revokingShareId}
+                selectedClientPortalContactId={selectedClientPortalContactId}
+                shareExpiresAt={shareExpiresAt}
+                shareLinksCreateAvailable={shareLinksCreateAvailable}
+                shareLinksStatus={shareLinksStatus}
+                shareNotificationEmail={shareNotificationEmail}
+                shareOneTimeToken={shareOneTimeToken}
+                sharePermissions={sharePermissions}
+                shareStatus={shareStatus}
+                onCreateClientPortalAccount={() => void createClientPortalAccount()}
+                onCreateShareLink={() => void createShareLink()}
+                onRevokeShareLink={(share) => void revokeShareLink(share)}
+                onSetClientPortalContactId={setClientPortalContactId}
+                onSetRequireEmailVerification={setRequireEmailVerification}
+                onSetShareExpiresAt={setShareExpiresAt}
+                onSetShareNotificationEmail={setShareNotificationEmail}
+                onToggleSharePermission={toggleSharePermission}
+              />
             ) : null}
 
             {activeSection === "externalUploads" ? (
-              <>
-                <div className="detail-grid">
-                  <div>
-                    <span className="field-label">Create status</span>
-                    <strong>{compactStatus(externalUploads.status.status)}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Provider</span>
-                    <strong>{compactStatus(externalUploads.status.provider)}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Reason</span>
-                    <strong>{compactStatus(externalUploads.status.reason)}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Active links</span>
-                    <strong>
-                      {
-                        activeExternalUploads.filter(
-                          (upload) => getExternalUploadLinkState(upload) === "active",
-                        ).length
-                      }
-                    </strong>
-                  </div>
-                </div>
-
-                <div className="section-title">
-                  <h3>Create link</h3>
-                  <span>{activeMatter.number}</span>
-                </div>
-                <div className="upload-create-grid">
-                  <label className="search-field compact">
-                    <span>Max uploads</span>
-                    <input
-                      disabled={externalUploadCreateDisabled}
-                      min={1}
-                      onChange={(event) => setExternalUploadMaxUploads(event.target.value)}
-                      type="number"
-                      value={externalUploadMaxUploads}
-                    />
-                  </label>
-                  <label className="search-field compact">
-                    <span>Expiry</span>
-                    <input
-                      disabled={externalUploadCreateDisabled}
-                      onChange={(event) => setExternalUploadExpiresAt(event.target.value)}
-                      type="datetime-local"
-                      value={externalUploadExpiresAt}
-                    />
-                  </label>
-                  <button
-                    className="primary-button"
-                    disabled={externalUploadCreateDisabled}
-                    onClick={() => void createExternalUploadLink()}
-                    type="button"
-                  >
-                    {creatingExternalUpload ? "Creating..." : "Create link"}
-                  </button>
-                </div>
-                {externalUploadToken ? (
-                  <OneTimeSecretPanel
-                    items={[{ label: "One-time token", value: externalUploadToken }]}
-                  />
-                ) : null}
-                <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-                  {externalUploadStatus}
-                </p>
-
-                <div className="section-title">
-                  <h3>External upload links</h3>
-                  <span>{activeExternalUploads.length} records</span>
-                </div>
-                <div className="party-list">
-                  {activeExternalUploads.map((upload) => {
-                    const linkState = getExternalUploadLinkState(upload);
-                    return (
-                      <div className="party-row upload-link-row" key={upload.id}>
-                        <span>
-                          <strong>{upload.id}</strong>
-                          <small>
-                            {upload.usedUploads}/{upload.maxUploads} used · expires{" "}
-                            {compactDate(upload.expiresAt)} · created{" "}
-                            {compactDate(upload.createdAt)}
-                          </small>
-                        </span>
-                        <div className="row-actions">
-                          <em className={linkState === "active" ? undefined : "risk"}>
-                            {linkState}
-                          </em>
-                          {!upload.revokedAt ? (
-                            <button
-                              className="secondary-button compact-button row-button"
-                              disabled={revokingExternalUploadId === upload.id}
-                              onClick={() => void revokeExternalUploadLink(upload.id)}
-                              type="button"
-                            >
-                              {revokingExternalUploadId === upload.id ? "Revoking..." : "Revoke"}
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {activeExternalUploads.length === 0 ? (
-                    <p className="inline-empty">No external upload links for this matter.</p>
-                  ) : null}
-                </div>
-
-                <div className="section-title">
-                  <h3>Uploaded document review</h3>
-                  <span>{activeExternalUploadDocuments.length} records</span>
-                </div>
-                <div className="party-list">
-                  {activeExternalUploadDocuments.map((document) => {
-                    const reviewState = describeExternalUploadReviewState(document);
-                    const reviewKey = `${document.id}:`;
-                    return (
-                      <div className="party-row upload-review-row" key={document.id}>
-                        <span>
-                          <strong>{document.title}</strong>
-                          <small>
-                            {compactStatus(document.uploadStatus)} ·{" "}
-                            {compactStatus(document.checksumStatus)} checksum ·{" "}
-                            {compactStatus(document.scanStatus)} scan
-                            {document.duplicateOfDocumentId
-                              ? ` · duplicate of ${document.duplicateOfDocumentId}`
-                              : ""}
-                          </small>
-                          {document.accessLogProof ? (
-                            <small>
-                              Access proof: {document.accessLogProof.total} log
-                              {document.accessLogProof.total === 1 ? "" : "s"}
-                              {document.accessLogProof.outcomes.length
-                                ? ` · ${document.accessLogProof.outcomes.join(", ")}`
-                                : ""}
-                            </small>
-                          ) : null}
-                        </span>
-                        <div className="row-actions upload-review-actions">
-                          <em className={reviewState.tone === "risk" ? "risk" : undefined}>
-                            {reviewState.label}
-                          </em>
-                          <select
-                            aria-label={`Review reason for ${document.title}`}
-                            className="compact-select"
-                            disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
-                            onChange={(event) =>
-                              setExternalUploadReviewReasonsByDocumentId((current) => ({
-                                ...current,
-                                [document.id]: event.target.value as
-                                  | ExternalUploadReviewReason
-                                  | "",
-                              }))
-                            }
-                            value={externalUploadReviewReasonsByDocumentId[document.id] ?? ""}
-                          >
-                            <option value="">Reason</option>
-                            {externalUploadReviewReasons.map((reason) => (
-                              <option key={reason} value={reason}>
-                                {compactStatus(reason)}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            aria-label={`Private review note for ${document.title}`}
-                            className="compact-input"
-                            disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
-                            maxLength={500}
-                            onChange={(event) =>
-                              setExternalUploadReviewNotesByDocumentId((current) => ({
-                                ...current,
-                                [document.id]: event.target.value,
-                              }))
-                            }
-                            placeholder="Private note"
-                            value={externalUploadReviewNotesByDocumentId[document.id] ?? ""}
-                          />
-                          <button
-                            className="secondary-button compact-button row-button"
-                            disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
-                            onClick={() => void reviewExternalUploadDocument(document, "accept")}
-                            type="button"
-                          >
-                            Accept
-                          </button>
-                          <button
-                            className="secondary-button compact-button row-button"
-                            disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
-                            onClick={() =>
-                              void reviewExternalUploadDocument(document, "request_metadata")
-                            }
-                            type="button"
-                          >
-                            Metadata
-                          </button>
-                          <button
-                            className="secondary-button compact-button row-button"
-                            disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
-                            onClick={() =>
-                              void reviewExternalUploadDocument(document, "request_retry")
-                            }
-                            type="button"
-                          >
-                            Retry
-                          </button>
-                          <button
-                            className="secondary-button compact-button row-button"
-                            disabled={reviewingExternalUploadDocumentId.startsWith(reviewKey)}
-                            onClick={() => void reviewExternalUploadDocument(document, "discard")}
-                            type="button"
-                          >
-                            Discard
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {activeExternalUploadDocuments.length === 0 ? (
-                    <p className="inline-empty">No uploaded external documents need review.</p>
-                  ) : null}
-                </div>
-              </>
+              <ExternalUploadsSection
+                activeExternalUploadDocuments={activeExternalUploadDocuments}
+                activeExternalUploads={activeExternalUploads}
+                activeMatterNumber={activeMatter.number}
+                creatingExternalUpload={creatingExternalUpload}
+                externalUploadCreateDisabled={externalUploadCreateDisabled}
+                externalUploadExpiresAt={externalUploadExpiresAt}
+                externalUploadMaxUploads={externalUploadMaxUploads}
+                externalUploadReviewNotesByDocumentId={externalUploadReviewNotesByDocumentId}
+                externalUploadReviewReasonsByDocumentId={externalUploadReviewReasonsByDocumentId}
+                externalUploadStatus={externalUploadStatus}
+                externalUploadStatusResponse={externalUploads.status}
+                externalUploadToken={externalUploadToken}
+                reviewingExternalUploadDocumentId={reviewingExternalUploadDocumentId}
+                revokingExternalUploadId={revokingExternalUploadId}
+                onCreateExternalUploadLink={() => void createExternalUploadLink()}
+                onReviewExternalUploadDocument={(document, decision) =>
+                  void reviewExternalUploadDocument(document, decision)
+                }
+                onRevokeExternalUploadLink={(uploadId) => void revokeExternalUploadLink(uploadId)}
+                onSetExternalUploadExpiresAt={setExternalUploadExpiresAt}
+                onSetExternalUploadMaxUploads={setExternalUploadMaxUploads}
+                onSetExternalUploadReviewNote={(documentId, value) =>
+                  setExternalUploadReviewNotesByDocumentId((current) => ({
+                    ...current,
+                    [documentId]: value,
+                  }))
+                }
+                onSetExternalUploadReviewReason={(documentId, value) =>
+                  setExternalUploadReviewReasonsByDocumentId((current) => ({
+                    ...current,
+                    [documentId]: value,
+                  }))
+                }
+              />
             ) : null}
 
             {activeSection === "calendar" ? (
-              <>
-                <div className="detail-grid">
-                  <div>
-                    <span className="field-label">Upcoming</span>
-                    <strong>
-                      {activeCalendarBuckets.nextSevenDays.length +
-                        activeCalendarBuckets.nextThirtyDays.length}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Overdue</span>
-                    <strong>{activeCalendarBuckets.overdue.length}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Tentative</span>
-                    <strong>{activeCalendarBuckets.tentative.length}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Scheduling reviews</span>
-                    <strong>{activeCalendarSchedulingRequests.length}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Cancelled</span>
-                    <strong>{activeCalendarBuckets.cancelled.length}</strong>
-                  </div>
-                </div>
-
-                <div className="section-title">
-                  <h3>Deadline radar</h3>
-                  <span>{activeCalendarEvents.length} matter events</span>
-                </div>
-                <div className="activity-grid calendar-radar-grid">
-                  <div className="activity-card calendar-radar-card">
-                    <AlertTriangle size={18} />
-                    <strong>{activeCalendarBuckets.overdue.length} overdue</strong>
-                    <span>operator-entered event dates before now</span>
-                  </div>
-                  <div className="activity-card calendar-radar-card">
-                    <Clock3 size={18} />
-                    <strong>{activeCalendarBuckets.nextSevenDays.length} next 7 days</strong>
-                    <span>active events starting soon</span>
-                  </div>
-                  <div className="activity-card calendar-radar-card">
-                    <CalendarDays size={18} />
-                    <strong>{activeCalendarBuckets.nextThirtyDays.length} next 30 days</strong>
-                    <span>remaining active near-term events</span>
-                  </div>
-                </div>
-
-                <div className="section-title">
-                  <h3>Scheduling requests</h3>
-                  <span>{activeCalendarSchedulingRequests.length} review records</span>
-                </div>
-                <div className="party-list">
-                  {activeCalendarSchedulingRequests.map((request) => (
-                    <div className="party-row" key={request.id}>
-                      <span>
-                        <strong>
-                          {request.title} · {compactStatus(request.status)}
-                        </strong>
-                        <small>
-                          {compactStatus(request.kind)} · source {request.source.label} · due{" "}
-                          {compactDate(request.requestedDueAt)} · event{" "}
-                          {request.linkedEvent
-                            ? `${request.linkedEvent.title} (${compactDate(
-                                request.linkedEvent.startsAt,
-                              )})`
-                            : "needs scheduling"}
-                        </small>
-                        <small>
-                          reminder {compactStatus(request.reminderSummary.posture)} · privacy{" "}
-                          {compactStatus(request.privacy.visibility)} · time{" "}
-                          {request.timeCaptureCue.redacted
-                            ? "restricted"
-                            : `${request.timeCaptureCue.posture.replace(/_/g, " ")}${
-                                request.timeCaptureCue.suggestedMinutes
-                                  ? ` (${request.timeCaptureCue.suggestedMinutes}m)`
-                                  : ""
-                              }`}
-                        </small>
-                      </span>
-                      <em className={request.status === "needs_review" ? "risk" : undefined}>
-                        {request.reviewBoundary.approvalCreatesTask ||
-                        request.reviewBoundary.approvalReschedulesEvent ||
-                        request.reviewBoundary.approvalCancelsReminder ||
-                        request.reviewBoundary.approvalCreatesTimeEntry
-                          ? "Automation enabled"
-                          : "Review only"}
-                      </em>
-                    </div>
-                  ))}
-                  {activeCalendarSchedulingRequests.length === 0 ? (
-                    <p className="inline-empty">No scheduling request records for this matter.</p>
-                  ) : null}
-                </div>
-
-                <div className="share-controls calendar-event-controls">
-                  <div className="section-title">
-                    <h3>Event lifecycle</h3>
-                    <span>Create or reschedule one matter event</span>
-                  </div>
-                  <div className="calendar-attendee-form">
-                    <label className="search-field">
-                      <span>Title</span>
-                      <input
-                        onChange={(event) => setCalendarEventTitle(event.target.value)}
-                        value={calendarEventTitle}
-                      />
-                    </label>
-                    <label className="search-field">
-                      <span>Starts</span>
-                      <input
-                        onChange={(event) => setCalendarEventStartsAt(event.target.value)}
-                        type="datetime-local"
-                        value={calendarEventStartsAt}
-                      />
-                    </label>
-                    <label className="search-field">
-                      <span>Ends</span>
-                      <input
-                        onChange={(event) => setCalendarEventEndsAt(event.target.value)}
-                        type="datetime-local"
-                        value={calendarEventEndsAt}
-                      />
-                    </label>
-                    <label className="search-field">
-                      <span>Status</span>
-                      <select
-                        onChange={(event) =>
-                          setCalendarEventStatusValue(
-                            event.target.value as DashboardCalendarEvent["status"],
-                          )
-                        }
-                        value={calendarEventStatusValue}
-                      >
-                        <option value="confirmed">Confirmed</option>
-                        <option value="tentative">Tentative</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
-                    </label>
-                    <label className="search-field">
-                      <span>Location</span>
-                      <input
-                        onChange={(event) => setCalendarEventLocation(event.target.value)}
-                        value={calendarEventLocation}
-                      />
-                    </label>
-                    <label className="search-field">
-                      <span>Description</span>
-                      <input
-                        onChange={(event) => setCalendarEventDescription(event.target.value)}
-                        value={calendarEventDescription}
-                      />
-                    </label>
-                    <button
-                      className="secondary-button compact-button"
-                      disabled={
-                        creatingCalendarEvent ||
-                        !calendarEventTitle.trim() ||
-                        !calendarEventStartsAt ||
-                        !calendarEventEndsAt
-                      }
-                      onClick={() => void createCalendarEvent()}
-                      type="button"
-                    >
-                      <Plus size={16} />
-                      {creatingCalendarEvent ? "Creating..." : "Create event"}
-                    </button>
-                  </div>
-                  <p className="inline-empty">{calendarEventLifecycleStatus}</p>
-                </div>
-
-                <div className="section-title">
-                  <h3>Matter calendar events</h3>
-                  <span>{activeMatter.number}</span>
-                </div>
-                <div className="party-list">
-                  {activeCalendarEvents.map((event) => {
-                    const timing = describeCalendarEventTiming(event);
-                    const attendees = event.attendees ?? [];
-                    const meetingLinkAvailability = describeMeetingLinkAvailability(event);
-                    const meetingLinkMode = calendarMeetingLinkModeValue(event);
-                    const meetingLinkUrl = calendarMeetingLinkUrlValue(event);
-                    const hostedMeetingConfigured =
-                      event.meetingInvitationBoundary?.meetingLinks.status === "configured";
-                    const canSaveMeetingLink =
-                      meetingLinkMode === "blank" ||
-                      (meetingLinkMode === "external_url" && Boolean(meetingLinkUrl.trim())) ||
-                      (meetingLinkMode === "hosted_webrtc" && hostedMeetingConfigured);
-                    const guestSessions = calendarGuestSessionsByEventId[event.id] ?? [];
-                    const guestAccessConfigured =
-                      event.meetingInvitationBoundary?.guestAccess.status === "configured";
-                    const hostedGuestSessionReady =
-                      event.status !== "cancelled" &&
-                      event.meetingLinkMode === "hosted_webrtc" &&
-                      Boolean(event.meetingRoomId) &&
-                      guestAccessConfigured;
-                    return (
-                      <div className="party-row calendar-event-row" key={event.id}>
-                        <div className="calendar-event-summary">
-                          <span>
-                            <strong>{event.title}</strong>
-                            <small>
-                              {compactDate(event.startsAt)} to {compactDate(event.endsAt)}
-                              {event.location ? ` · ${event.location}` : ""}
-                            </small>
-                            <small>
-                              {describeMeetingInvitationBoundary(event.meetingInvitationBoundary)}
-                            </small>
-                          </span>
-                          <div className="row-actions">
-                            <em
-                              className={
-                                event.status === "cancelled" || timing === "overdue"
-                                  ? "risk"
-                                  : undefined
-                              }
-                            >
-                              {event.status === "cancelled" ? "cancelled" : timing}
-                            </em>
-                            <button
-                              aria-label={meetingLinkAvailability.detail}
-                              className={`secondary-button compact-button row-button calendar-meeting-link-status ${meetingLinkAvailability.status}`}
-                              disabled={
-                                !meetingLinkAvailability.actionable ||
-                                attendees.length === 0 ||
-                                sendingCalendarInvitationsEventId === event.id
-                              }
-                              onClick={() =>
-                                openCalendarInvitationConfirmation(event, {
-                                  includeMeetingLink: true,
-                                })
-                              }
-                              title={meetingLinkAvailability.detail}
-                              type="button"
-                            >
-                              <Link2 size={14} />
-                              {sendingCalendarInvitationsEventId === event.id
-                                ? "Sending..."
-                                : meetingLinkAvailability.label}
-                            </button>
-                            <button
-                              className="secondary-button compact-button row-button"
-                              disabled={
-                                updatingCalendarEventId === event.id ||
-                                !calendarEventStartsAt ||
-                                !calendarEventEndsAt
-                              }
-                              onClick={() => void rescheduleCalendarEvent(event)}
-                              type="button"
-                            >
-                              {updatingCalendarEventId === event.id
-                                ? "Rescheduling..."
-                                : "Reschedule"}
-                            </button>
-                            <button
-                              className="secondary-button compact-button row-button"
-                              disabled={
-                                event.status === "cancelled" ||
-                                cancelingCalendarEventId === event.id
-                              }
-                              onClick={() => void cancelCalendarEvent(event)}
-                              type="button"
-                            >
-                              {cancelingCalendarEventId === event.id ? "Cancelling..." : "Cancel"}
-                            </button>
-                            <button
-                              className="secondary-button compact-button row-button"
-                              disabled={
-                                attendees.length === 0 ||
-                                sendingCalendarInvitationsEventId === event.id
-                              }
-                              onClick={() => openCalendarInvitationConfirmation(event)}
-                              type="button"
-                            >
-                              {sendingCalendarInvitationsEventId === event.id
-                                ? "Sending..."
-                                : "Send invites"}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="calendar-meeting-link-form">
-                          <label>
-                            <span className="field-label">Meeting link</span>
-                            <select
-                              value={meetingLinkMode}
-                              onChange={(changeEvent) =>
-                                setCalendarMeetingLinkModesByEventId((current) => ({
-                                  ...current,
-                                  [event.id]: changeEvent.currentTarget
-                                    .value as CalendarMeetingLinkMode,
-                                }))
-                              }
-                            >
-                              <option value="blank">Blank</option>
-                              <option value="external_url">Other link</option>
-                              <option disabled={!hostedMeetingConfigured} value="hosted_webrtc">
-                                Hosted WebRTC
-                              </option>
-                            </select>
-                          </label>
-                          {meetingLinkMode === "external_url" ? (
-                            <label>
-                              <span className="field-label">URL</span>
-                              <input
-                                type="url"
-                                value={meetingLinkUrl}
-                                onChange={(inputEvent) =>
-                                  setCalendarMeetingLinkUrlsByEventId((current) => ({
-                                    ...current,
-                                    [event.id]: inputEvent.currentTarget.value,
-                                  }))
-                                }
-                                placeholder="https://meet.example.test/room"
-                              />
-                            </label>
-                          ) : null}
-                          {meetingLinkMode === "hosted_webrtc" && !hostedMeetingConfigured ? (
-                            <p className="inline-empty">
-                              Hosted WebRTC meetings are not configured.
-                            </p>
-                          ) : null}
-                          {event.meetingLinkUrl ? (
-                            <code className="calendar-meeting-link-url">
-                              {event.meetingLinkUrl}
-                            </code>
-                          ) : null}
-                          <button
-                            className="secondary-button compact-button row-button"
-                            disabled={
-                              updatingCalendarMeetingLinkEventId === event.id || !canSaveMeetingLink
-                            }
-                            onClick={() => updateCalendarMeetingLink(event)}
-                            type="button"
-                          >
-                            {updatingCalendarMeetingLinkEventId === event.id
-                              ? "Saving..."
-                              : "Save link"}
-                          </button>
-                        </div>
-                        {event.meetingLinkMode === "hosted_webrtc" ? (
-                          <div className="calendar-guest-session-panel">
-                            <div className="section-title compact-section-title">
-                              <h4>Guest lobby</h4>
-                              <span>{guestSessions.length} session records</span>
-                            </div>
-                            {!guestAccessConfigured ? (
-                              <p className="inline-empty">Guest access tokens are disabled.</p>
-                            ) : null}
-                            {guestAccessConfigured && event.status === "cancelled" ? (
-                              <p className="inline-empty">Cancelled events cannot host a lobby.</p>
-                            ) : null}
-                            {guestAccessConfigured && !event.meetingRoomId ? (
-                              <p className="inline-empty">Save a hosted meeting link first.</p>
-                            ) : null}
-                            {guestSessions.map((session) => (
-                              <div className="calendar-guest-session-row" key={session.id}>
-                                <span>
-                                  <strong>{describeCalendarGuestSessionStatus(session)}</strong>
-                                  <small>
-                                    {session.issuedCount} issued · {session.waitingCount} waiting ·{" "}
-                                    {session.admittedCount} admitted
-                                  </small>
-                                </span>
-                                <div className="row-actions">
-                                  <button
-                                    className="secondary-button compact-button row-button"
-                                    disabled={
-                                      !hostedGuestSessionReady ||
-                                      session.status === "open" ||
-                                      session.status === "ended" ||
-                                      updatingCalendarGuestSessionKey === `${session.id}:open`
-                                    }
-                                    onClick={() =>
-                                      void controlCalendarGuestSession(event, session, "open")
-                                    }
-                                    type="button"
-                                  >
-                                    Open
-                                  </button>
-                                  <button
-                                    className="secondary-button compact-button row-button"
-                                    disabled={
-                                      !hostedGuestSessionReady ||
-                                      session.status === "locked" ||
-                                      session.status === "ended" ||
-                                      updatingCalendarGuestSessionKey === `${session.id}:lock`
-                                    }
-                                    onClick={() =>
-                                      void controlCalendarGuestSession(event, session, "lock")
-                                    }
-                                    type="button"
-                                  >
-                                    Lock
-                                  </button>
-                                  <button
-                                    className="secondary-button compact-button row-button"
-                                    disabled={
-                                      !hostedGuestSessionReady ||
-                                      session.status === "ended" ||
-                                      updatingCalendarGuestSessionKey === `${session.id}:end`
-                                    }
-                                    onClick={() =>
-                                      void controlCalendarGuestSession(event, session, "end")
-                                    }
-                                    type="button"
-                                  >
-                                    End
-                                  </button>
-                                  <button
-                                    className="secondary-button compact-button row-button"
-                                    disabled={
-                                      !hostedGuestSessionReady ||
-                                      session.status === "ended" ||
-                                      updatingCalendarGuestSessionKey === `${session.id}:issue`
-                                    }
-                                    onClick={() => void issueCalendarGuestLink(event, session)}
-                                    type="button"
-                                  >
-                                    Issue
-                                  </button>
-                                </div>
-                                {session.guests.length ? (
-                                  <div className="calendar-guest-link-list">
-                                    {session.guests.map((guest) => (
-                                      <div className="calendar-attendee-row" key={guest.id}>
-                                        <span>
-                                          <strong>Guest access</strong>
-                                          <small>
-                                            {guest.status.replace("_", " ")} · expires{" "}
-                                            {compactDate(guest.expiresAt)}
-                                          </small>
-                                        </span>
-                                        <div className="row-actions">
-                                          <button
-                                            className="secondary-button compact-button row-button"
-                                            disabled={
-                                              session.status !== "open" ||
-                                              guest.status === "admitted" ||
-                                              guest.status === "revoked" ||
-                                              updatingCalendarGuestSessionKey ===
-                                                `${guest.id}:admit`
-                                            }
-                                            onClick={() =>
-                                              void updateCalendarGuestLink(
-                                                event,
-                                                session,
-                                                guest.id,
-                                                "admit",
-                                              )
-                                            }
-                                            type="button"
-                                          >
-                                            Admit
-                                          </button>
-                                          <button
-                                            className="secondary-button compact-button row-button"
-                                            disabled={
-                                              guest.status === "denied" ||
-                                              guest.status === "revoked" ||
-                                              updatingCalendarGuestSessionKey === `${guest.id}:deny`
-                                            }
-                                            onClick={() =>
-                                              void updateCalendarGuestLink(
-                                                event,
-                                                session,
-                                                guest.id,
-                                                "deny",
-                                              )
-                                            }
-                                            type="button"
-                                          >
-                                            Deny
-                                          </button>
-                                          <button
-                                            aria-label={`Revoke guest access ${guest.id}`}
-                                            className="icon-button"
-                                            disabled={
-                                              guest.status === "revoked" ||
-                                              updatingCalendarGuestSessionKey ===
-                                                `${guest.id}:revoke`
-                                            }
-                                            onClick={() =>
-                                              void updateCalendarGuestLink(
-                                                event,
-                                                session,
-                                                guest.id,
-                                                "revoke",
-                                              )
-                                            }
-                                            title="Revoke guest access"
-                                            type="button"
-                                          >
-                                            <X size={16} />
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : null}
-                              </div>
-                            ))}
-                            {hostedGuestSessionReady && guestSessions.length === 0 ? (
-                              <button
-                                className="secondary-button compact-button row-button"
-                                disabled={creatingCalendarGuestSessionEventId === event.id}
-                                onClick={() => void createCalendarGuestSession(event)}
-                                type="button"
-                              >
-                                <Plus size={16} />
-                                {creatingCalendarGuestSessionEventId === event.id
-                                  ? "Creating..."
-                                  : "Create lobby"}
-                              </button>
-                            ) : null}
-                            {calendarGuestSessionSecret?.session.eventId === event.id ? (
-                              <OneTimeSecretPanel
-                                className="calendar-secret"
-                                items={[
-                                  {
-                                    label: "Guest status page",
-                                    value: calendarGuestSessionSecret.portalUrl,
-                                  },
-                                  {
-                                    label: "One-time token",
-                                    value: calendarGuestSessionSecret.token,
-                                  },
-                                ]}
-                              />
-                            ) : null}
-                          </div>
-                        ) : null}
-                        {pendingDeliveryConfirmation?.kind === "calendar-invitations" &&
-                        pendingDeliveryConfirmation.eventId === event.id ? (
-                          <DeliveryConfirmationPanel
-                            busy={sendingCalendarInvitationsEventId === event.id}
-                            confirmation={pendingDeliveryConfirmation}
-                            onCancel={() => setPendingDeliveryConfirmation(null)}
-                            onConfirm={confirmPendingDelivery}
-                          />
-                        ) : null}
-                        <div className="calendar-attendee-list">
-                          {(event.reminders ?? []).map((reminder) => (
-                            <div className="calendar-attendee-row" key={reminder.id}>
-                              <span>
-                                <strong>{compactDate(reminder.remindAt)}</strong>
-                                <small>
-                                  {reminder.channel} · {reminder.status.replace("_", " ")}
-                                  {reminder.note ? ` · ${reminder.note}` : ""}
-                                </small>
-                              </span>
-                              <div className="row-actions">
-                                <button
-                                  className="secondary-button compact-button row-button"
-                                  disabled={updatingCalendarReminderId === reminder.id}
-                                  onClick={() =>
-                                    void updateCalendarReminder(
-                                      event.id,
-                                      reminder.id,
-                                      "acknowledged",
-                                    )
-                                  }
-                                  type="button"
-                                >
-                                  Acknowledge
-                                </button>
-                                <button
-                                  aria-label={`Remove reminder ${reminder.id}`}
-                                  className="icon-button"
-                                  disabled={removingCalendarReminderId === reminder.id}
-                                  onClick={() => void removeCalendarReminder(event.id, reminder.id)}
-                                  title="Remove reminder"
-                                  type="button"
-                                >
-                                  <X size={16} />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                          {(event.reminders ?? []).length === 0 ? (
-                            <p className="inline-empty">No reminders are linked to this event.</p>
-                          ) : null}
-                        </div>
-                        <div className="calendar-attendee-list">
-                          {attendees.map((attendee) => (
-                            <div className="calendar-attendee-row" key={attendee.id}>
-                              <span>
-                                <strong>{attendee.name}</strong>
-                                <small>
-                                  {attendee.email} ·{" "}
-                                  {formatCalendarAttendeeRoleLabel(attendee.role)} ·{" "}
-                                  {attendee.responseStatus.replace("_", " ")}
-                                </small>
-                              </span>
-                              <div className="row-actions">
-                                <em
-                                  className={
-                                    attendee.invitationStatus === "skipped" ? "risk" : undefined
-                                  }
-                                >
-                                  {attendee.invitationStatus.replace("_", " ")}
-                                </em>
-                                <button
-                                  aria-label={`Remove ${attendee.name}`}
-                                  className="icon-button"
-                                  disabled={removingCalendarAttendeeId === attendee.id}
-                                  onClick={() => void removeCalendarAttendee(event.id, attendee.id)}
-                                  title="Remove attendee"
-                                  type="button"
-                                >
-                                  <X size={16} />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                          {attendees.length === 0 ? (
-                            <p className="inline-empty">No attendees are linked to this event.</p>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {activeCalendarEvents.length === 0 ? (
-                    <p className="inline-empty">No calendar events are linked to this matter.</p>
-                  ) : null}
-                </div>
-
-                <div className="share-controls calendar-reminder-controls">
-                  <div className="section-title">
-                    <h3>Reminder state</h3>
-                    <span>{selectedCalendarReminderEvent?.title ?? "No event selected"}</span>
-                  </div>
-                  <div className="calendar-attendee-form">
-                    <label className="search-field">
-                      <span>Event</span>
-                      <select
-                        onChange={(event) => setCalendarReminderEventId(event.target.value)}
-                        value={selectedCalendarReminderEvent?.id ?? ""}
-                      >
-                        {activeCalendarEvents.map((event) => (
-                          <option key={event.id} value={event.id}>
-                            {event.title}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="search-field">
-                      <span>Remind at</span>
-                      <input
-                        onChange={(event) => setCalendarReminderAt(event.target.value)}
-                        type="datetime-local"
-                        value={calendarReminderAt}
-                      />
-                    </label>
-                    <label className="search-field">
-                      <span>Status</span>
-                      <select
-                        onChange={(event) =>
-                          setCalendarReminderStatusValue(
-                            event.target.value as
-                              | "pending"
-                              | "acknowledged"
-                              | "dismissed"
-                              | "cancelled",
-                          )
-                        }
-                        value={calendarReminderStatusValue}
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="acknowledged">Acknowledged</option>
-                        <option value="dismissed">Dismissed</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
-                    </label>
-                    <label className="search-field">
-                      <span>Note</span>
-                      <input
-                        onChange={(event) => setCalendarReminderNote(event.target.value)}
-                        value={calendarReminderNote}
-                      />
-                    </label>
-                    <button
-                      className="secondary-button compact-button"
-                      disabled={
-                        !selectedCalendarReminderEvent ||
-                        !calendarReminderAt ||
-                        addingCalendarReminder
-                      }
-                      onClick={() => void addCalendarReminder()}
-                      type="button"
-                    >
-                      <Plus size={16} />
-                      {addingCalendarReminder ? "Adding..." : "Add reminder"}
-                    </button>
-                  </div>
-                  <p className="inline-empty">{calendarReminderStatus}</p>
-                </div>
-
-                <div className="share-controls calendar-meeting-controls">
-                  <div className="section-title">
-                    <h3>Meeting attendees</h3>
-                    <span>{selectedCalendarMeetingEvent?.title ?? "No event selected"}</span>
-                  </div>
-                  <div className="calendar-attendee-form">
-                    <label className="search-field">
-                      <span>Event</span>
-                      <select
-                        onChange={(event) => setCalendarMeetingEventId(event.target.value)}
-                        value={selectedCalendarMeetingEvent?.id ?? ""}
-                      >
-                        {activeCalendarEvents.map((event) => (
-                          <option key={event.id} value={event.id}>
-                            {event.title}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="search-field">
-                      <span>Name</span>
-                      <input
-                        onChange={(event) => setCalendarAttendeeName(event.target.value)}
-                        value={calendarAttendeeName}
-                      />
-                    </label>
-                    <label className="search-field">
-                      <span>Email</span>
-                      <input
-                        onChange={(event) => setCalendarAttendeeEmail(event.target.value)}
-                        type="email"
-                        value={calendarAttendeeEmail}
-                      />
-                    </label>
-                    <label className="search-field">
-                      <span>Role</span>
-                      <select
-                        onChange={(event) =>
-                          setCalendarAttendeeRole(event.target.value as "required" | "optional")
-                        }
-                        value={calendarAttendeeRole}
-                      >
-                        <option value="required">Required</option>
-                        <option value="optional">Optional</option>
-                      </select>
-                    </label>
-                    <button
-                      className="secondary-button compact-button"
-                      disabled={
-                        !selectedCalendarMeetingEvent ||
-                        !calendarAttendeeName.trim() ||
-                        !calendarAttendeeEmail.trim() ||
-                        addingCalendarAttendee
-                      }
-                      onClick={() => void addCalendarAttendee()}
-                      type="button"
-                    >
-                      <Plus size={16} />
-                      {addingCalendarAttendee ? "Adding..." : "Add attendee"}
-                    </button>
-                  </div>
-                  <p className="inline-empty">{calendarMeetingStatus}</p>
-                  <p className="inline-empty">{calendarGuestSessionStatus}</p>
-                </div>
-
-                <div className="section-title">
-                  <h3>Calendar sync</h3>
-                  <span>CalDAV / iCalendar</span>
-                </div>
-                <div className="upload-token calendar-sync-links">
-                  <span>Subscription URL</span>
-                  <code>{activeCalendarLinks?.subscriptionUrl ?? "Unavailable"}</code>
-                  <span>CalDAV URL</span>
-                  <code>{activeCalendarLinks?.caldavUrl ?? "Unavailable"}</code>
-                </div>
-
-                <div className="share-controls">
-                  <div className="section-title">
-                    <h3>App passwords</h3>
-                    <span>
-                      {calendarCredentials.filter((credential) => !credential.revokedAt).length}{" "}
-                      active
-                    </span>
-                  </div>
-                  <div className="share-form-row calendar-credential-form">
-                    <label className="search-field">
-                      <span>Label</span>
-                      <input
-                        onChange={(event) => setCalendarCredentialLabel(event.target.value)}
-                        value={calendarCredentialLabel}
-                      />
-                    </label>
-                    <button
-                      className="secondary-button compact-button"
-                      disabled={creatingCalendarCredential}
-                      onClick={() => void createCalendarCredential()}
-                      type="button"
-                    >
-                      <Plus size={16} />
-                      {creatingCalendarCredential ? "Creating..." : "Create password"}
-                    </button>
-                  </div>
-                  {calendarOneTimeSecret ? (
-                    <OneTimeSecretPanel
-                      className="calendar-secret"
-                      items={[
-                        { label: "Username", value: calendarOneTimeSecret.username },
-                        { label: "One-time password", value: calendarOneTimeSecret.password },
-                        { label: "Principal URL", value: calendarOneTimeSecret.principalUrl },
-                      ]}
-                    />
-                  ) : null}
-                  <p className="inline-empty">{calendarCredentialStatus}</p>
-                </div>
-
-                <div className="party-list">
-                  {calendarCredentials.map((credential) => (
-                    <div className="party-row" key={credential.id}>
-                      <span>
-                        <strong>{credential.label}</strong>
-                        <small>
-                          {credential.username} · created {compactDate(credential.createdAt)}
-                          {credential.lastUsedAt
-                            ? ` · last used ${compactDate(credential.lastUsedAt)}`
-                            : ""}
-                        </small>
-                      </span>
-                      <div className="row-actions">
-                        <em className={credential.revokedAt ? "risk" : undefined}>
-                          {credential.revokedAt ? "revoked" : "active"}
-                        </em>
-                        {!credential.revokedAt ? (
-                          <button
-                            className="secondary-button compact-button row-button"
-                            disabled={revokingCalendarCredentialId === credential.id}
-                            onClick={() => void revokeCalendarCredential(credential.id)}
-                            type="button"
-                          >
-                            {revokingCalendarCredentialId === credential.id
-                              ? "Revoking..."
-                              : "Revoke"}
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                  {calendarCredentials.length === 0 ? (
-                    <p className="inline-empty">No calendar app passwords have been created.</p>
-                  ) : null}
-                </div>
-              </>
+              <CalendarSection
+                activeCalendarBuckets={activeCalendarBuckets}
+                activeCalendarEvents={activeCalendarEvents}
+                activeCalendarLinks={activeCalendarLinks}
+                activeCalendarSchedulingRequests={activeCalendarSchedulingRequests}
+                activeMatterNumber={activeMatter.number}
+                addingCalendarAttendee={addingCalendarAttendee}
+                addingCalendarReminder={addingCalendarReminder}
+                calendarAttendeeEmail={calendarAttendeeEmail}
+                calendarAttendeeName={calendarAttendeeName}
+                calendarAttendeeRole={calendarAttendeeRole}
+                calendarCredentialLabel={calendarCredentialLabel}
+                calendarCredentialStatus={calendarCredentialStatus}
+                calendarCredentials={calendarCredentials}
+                calendarEventDescription={calendarEventDescription}
+                calendarEventEndsAt={calendarEventEndsAt}
+                calendarEventLifecycleStatus={calendarEventLifecycleStatus}
+                calendarEventLocation={calendarEventLocation}
+                calendarEventStartsAt={calendarEventStartsAt}
+                calendarEventStatusValue={calendarEventStatusValue}
+                calendarEventTitle={calendarEventTitle}
+                calendarGuestSessionSecret={calendarGuestSessionSecret}
+                calendarGuestSessionStatus={calendarGuestSessionStatus}
+                calendarGuestSessionsByEventId={calendarGuestSessionsByEventId}
+                calendarMeetingLinkModesByEventId={calendarMeetingLinkModesByEventId}
+                calendarMeetingLinkUrlsByEventId={calendarMeetingLinkUrlsByEventId}
+                calendarMeetingStatus={calendarMeetingStatus}
+                calendarOneTimeSecret={calendarOneTimeSecret}
+                calendarReminderAt={calendarReminderAt}
+                calendarReminderNote={calendarReminderNote}
+                calendarReminderStatus={calendarReminderStatus}
+                calendarReminderStatusValue={calendarReminderStatusValue}
+                cancelingCalendarEventId={cancelingCalendarEventId}
+                creatingCalendarCredential={creatingCalendarCredential}
+                creatingCalendarEvent={creatingCalendarEvent}
+                creatingCalendarGuestSessionEventId={creatingCalendarGuestSessionEventId}
+                pendingDeliveryConfirmation={pendingDeliveryConfirmation}
+                removingCalendarAttendeeId={removingCalendarAttendeeId}
+                removingCalendarReminderId={removingCalendarReminderId}
+                revokingCalendarCredentialId={revokingCalendarCredentialId}
+                selectedCalendarMeetingEvent={selectedCalendarMeetingEvent}
+                selectedCalendarReminderEvent={selectedCalendarReminderEvent}
+                sendingCalendarInvitationsEventId={sendingCalendarInvitationsEventId}
+                updatingCalendarEventId={updatingCalendarEventId}
+                updatingCalendarGuestSessionKey={updatingCalendarGuestSessionKey}
+                updatingCalendarMeetingLinkEventId={updatingCalendarMeetingLinkEventId}
+                updatingCalendarReminderId={updatingCalendarReminderId}
+                onAddCalendarAttendee={() => void addCalendarAttendee()}
+                onAddCalendarReminder={() => void addCalendarReminder()}
+                onCancelCalendarEvent={(event) => void cancelCalendarEvent(event)}
+                onCancelPendingDeliveryConfirmation={() => setPendingDeliveryConfirmation(null)}
+                onConfirmPendingDelivery={confirmPendingDelivery}
+                onControlCalendarGuestSession={(event, session, action) =>
+                  void controlCalendarGuestSession(event, session, action)
+                }
+                onCreateCalendarCredential={() => void createCalendarCredential()}
+                onCreateCalendarEvent={() => void createCalendarEvent()}
+                onCreateCalendarGuestSession={(event) => void createCalendarGuestSession(event)}
+                onIssueCalendarGuestLink={(event, session) =>
+                  void issueCalendarGuestLink(event, session)
+                }
+                onOpenCalendarInvitationConfirmation={openCalendarInvitationConfirmation}
+                onRemoveCalendarAttendee={(eventId, attendeeId) =>
+                  void removeCalendarAttendee(eventId, attendeeId)
+                }
+                onRemoveCalendarReminder={(eventId, reminderId) =>
+                  void removeCalendarReminder(eventId, reminderId)
+                }
+                onRescheduleCalendarEvent={(event) => void rescheduleCalendarEvent(event)}
+                onRevokeCalendarCredential={(credentialId) =>
+                  void revokeCalendarCredential(credentialId)
+                }
+                onSetCalendarAttendeeEmail={setCalendarAttendeeEmail}
+                onSetCalendarAttendeeName={setCalendarAttendeeName}
+                onSetCalendarAttendeeRole={setCalendarAttendeeRole}
+                onSetCalendarCredentialLabel={setCalendarCredentialLabel}
+                onSetCalendarEventDescription={setCalendarEventDescription}
+                onSetCalendarEventEndsAt={setCalendarEventEndsAt}
+                onSetCalendarEventLocation={setCalendarEventLocation}
+                onSetCalendarEventStartsAt={setCalendarEventStartsAt}
+                onSetCalendarEventStatusValue={setCalendarEventStatusValue}
+                onSetCalendarEventTitle={setCalendarEventTitle}
+                onSetCalendarMeetingEventId={setCalendarMeetingEventId}
+                onSetCalendarMeetingLinkMode={(eventId, mode) =>
+                  setCalendarMeetingLinkModesByEventId((current) => ({
+                    ...current,
+                    [eventId]: mode,
+                  }))
+                }
+                onSetCalendarMeetingLinkUrl={(eventId, url) =>
+                  setCalendarMeetingLinkUrlsByEventId((current) => ({
+                    ...current,
+                    [eventId]: url,
+                  }))
+                }
+                onSetCalendarReminderAt={setCalendarReminderAt}
+                onSetCalendarReminderEventId={setCalendarReminderEventId}
+                onSetCalendarReminderNote={setCalendarReminderNote}
+                onSetCalendarReminderStatusValue={setCalendarReminderStatusValue}
+                onUpdateCalendarGuestLink={(event, session, guestId, action) =>
+                  void updateCalendarGuestLink(event, session, guestId, action)
+                }
+                onUpdateCalendarMeetingLink={(event, mode, externalUrl) =>
+                  void updateCalendarMeetingLink(event, mode, externalUrl)
+                }
+                onUpdateCalendarReminder={(eventId, reminderId, status) =>
+                  void updateCalendarReminder(eventId, reminderId, status)
+                }
+              />
             ) : null}
 
             {activeSection === "drafting" ? (
-              <>
-                {selectedDraft && draftEditorJson ? (
-                  <div className="draft-editor-panel">
-                    <div className="draft-editor-header">
-                      <button
-                        aria-label="Back to matter drafts"
-                        className="icon-button"
-                        onClick={closeDraftEditor}
-                        title="Back to matter drafts"
-                        type="button"
-                      >
-                        <ArrowLeft size={18} />
-                      </button>
-                      <div>
-                        <h3>{selectedDraft.title}</h3>
-                        <span>
-                          v{selectedDraft.version} · updated{" "}
-                          {new Date(selectedDraft.updatedAt).toLocaleDateString("en-CA")}
-                        </span>
-                      </div>
-                      <button
-                        className="secondary-button compact-button save-draft-button"
-                        disabled={!draftHasChanges || savingDraft}
-                        onClick={() => void saveDraft()}
-                        type="button"
-                      >
-                        <Save size={16} />
-                        {savingDraft ? "Saving..." : "Save"}
-                      </button>
-                    </div>
-                    <DraftEditor
-                      key={selectedDraft.id}
-                      content={draftEditorJson}
-                      onChange={setDraftEditorJson}
-                    />
-                    <div className="draft-office-panel">
-                      <div className="section-title">
-                        <h3>Office output</h3>
-                        <span>{activeDraftExports.length} exports</span>
-                      </div>
-                      <div className="draft-office-controls">
-                        <label>
-                          <span>Merge field</span>
-                          <select
-                            value={draftMergeField}
-                            onChange={(event) =>
-                              setDraftMergeField(
-                                event.target.value as (typeof draftMergeFields)[number],
-                              )
-                            }
-                          >
-                            {draftMergeFields.map((field) => (
-                              <option key={field} value={field}>
-                                {field}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <button
-                          className="secondary-button compact-button"
-                          onClick={insertMergeField}
-                          type="button"
-                        >
-                          <Plus size={16} />
-                          Insert
-                        </button>
-                        <label>
-                          <span>Export title</span>
-                          <input
-                            value={draftExportTitle}
-                            onChange={(event) => setDraftExportTitle(event.target.value)}
-                            placeholder={selectedDraft.title}
-                          />
-                        </label>
-                        <label>
-                          <span>Format</span>
-                          <select
-                            value={draftExportFormat}
-                            onChange={(event) =>
-                              setDraftExportFormat(event.target.value as DraftExportFormat)
-                            }
-                          >
-                            <option value="pdf">PDF</option>
-                            <option value="docx">DOCX</option>
-                          </select>
-                        </label>
-                        <button
-                          className="secondary-button compact-button"
-                          disabled={draftHasChanges || exportingDraftFormat.length > 0}
-                          onClick={() => void exportDraft()}
-                          type="button"
-                        >
-                          <Download size={16} />
-                          {exportingDraftFormat ? "Exporting..." : "Export"}
-                        </button>
-                      </div>
-                      {draftHasChanges ? (
-                        <p className="inline-empty">Save draft changes before exporting.</p>
-                      ) : null}
-                      <div className="party-list">
-                        {activeDraftExports.map((record) => (
-                          <div
-                            className="party-row draft-export-row"
-                            key={record.generatedDocument.id}
-                          >
-                            <span>
-                              <strong>{record.title}</strong>
-                              <small>
-                                {record.format.toUpperCase()} ·{" "}
-                                {formatDraftExportSize(record.byteLength)} · {record.document.title}
-                              </small>
-                              <small>checksum {record.checksumSha256.slice(0, 12)}...</small>
-                            </span>
-                            <em>{record.document.scanStatus}</em>
-                          </div>
-                        ))}
-                        {activeDraftExports.length === 0 ? (
-                          <p className="inline-empty">No exports created for this draft.</p>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="draft-assist-panel">
-                      <div className="section-title">
-                        <h3>Draft assist</h3>
-                        <span>{draftAssistStatus.status}</span>
-                      </div>
-                      <div className="draft-assist-controls">
-                        <label>
-                          <span>Task</span>
-                          <select
-                            value={draftAssistTask}
-                            onChange={(event) =>
-                              setDraftAssistTask(
-                                event.target.value as DashboardDraftAssistRecord["task"],
-                              )
-                            }
-                          >
-                            <option value="summarize">Summarize</option>
-                            <option value="suggest_revision">Suggest revision</option>
-                            <option value="continue_draft">Continue draft</option>
-                          </select>
-                        </label>
-                        <label>
-                          <span>Instruction</span>
-                          <input
-                            value={draftAssistInstruction}
-                            onChange={(event) => setDraftAssistInstruction(event.target.value)}
-                            placeholder="Optional review instruction"
-                          />
-                        </label>
-                        <button
-                          className="secondary-button compact-button"
-                          disabled={draftAssistStatus.status !== "configured" || runningDraftAssist}
-                          onClick={() => void runDraftAssist()}
-                          type="button"
-                        >
-                          <Sparkles size={16} />
-                          {runningDraftAssist ? "Drafting..." : "Assist"}
-                        </button>
-                        <button
-                          className="secondary-button compact-button"
-                          disabled={
-                            aiOperationalProposals.generation.status !== "configured" ||
-                            queueingAiOperationalProposals
-                          }
-                          onClick={() => void queueDraftOperationalProposals()}
-                          type="button"
-                        >
-                          <Clock3 size={16} />
-                          {queueingAiOperationalProposals ? "Queueing..." : "Queue proposals"}
-                        </button>
-                      </div>
-                      <p className="inline-empty">{draftAssistMessage}</p>
-                      <p className="inline-empty">{aiOperationalProposalStatus}</p>
-                      <div className="party-list">
-                        {activeDraftAssistRecords.map((record) => (
-                          <div className="party-row draft-assist-row" key={record.id}>
-                            <span>
-                              <strong>{record.task.replaceAll("_", " ")}</strong>
-                              <small>{record.summary ?? record.suggestedText}</small>
-                              <small>
-                                {record.providerKey} · {record.providerModel} · {record.status}
-                              </small>
-                            </span>
-                            <div className="draft-assist-actions">
-                              <button
-                                className="secondary-button compact-button"
-                                onClick={() => void reviewDraftAssistRecord(record, "reviewed")}
-                                type="button"
-                              >
-                                Review
-                              </button>
-                              <button
-                                className="secondary-button compact-button"
-                                onClick={() => insertDraftAssistRecord(record)}
-                                type="button"
-                              >
-                                Insert
-                              </button>
-                              <button
-                                aria-label="Reject assist suggestion"
-                                className="icon-button"
-                                onClick={() => void reviewDraftAssistRecord(record, "rejected")}
-                                title="Reject assist suggestion"
-                                type="button"
-                              >
-                                <X size={16} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                        {activeDraftAssistRecords.length === 0 ? (
-                          <p className="inline-empty">No assist suggestions for this draft.</p>
-                        ) : null}
-                      </div>
-                    </div>
-                    <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-                      {draftStatus}
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="section-title">
-                      <h3>Templates</h3>
-                      <span>{drafting.templates.length} active</span>
-                    </div>
-                    <div className="activity-grid drafting-template-grid">
-                      <div className="activity-card draft-template-card">
-                        <Plus size={18} />
-                        <strong>Blank Draft</strong>
-                        <span>general</span>
-                        <button
-                          className="secondary-button compact-button"
-                          disabled={creatingTemplateId.length > 0}
-                          onClick={() => void createBlankDraft()}
-                          type="button"
-                        >
-                          {creatingTemplateId === "blank" ? "Starting..." : "Start draft"}
-                        </button>
-                      </div>
-                      {drafting.templates.map((template) => (
-                        <div className="activity-card draft-template-card" key={template.id}>
-                          <FilePenLine size={18} />
-                          <strong>{template.name}</strong>
-                          <span>{template.category}</span>
-                          <button
-                            className="secondary-button compact-button"
-                            disabled={creatingTemplateId.length > 0}
-                            onClick={() => void createDraftFromTemplate(template)}
-                            type="button"
-                          >
-                            {creatingTemplateId === template.id ? "Starting..." : "Start draft"}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    {drafting.templates.length === 0 ? (
-                      <p className="inline-empty">No active drafting templates are available.</p>
-                    ) : null}
-                    <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
-                      {draftStatus}
-                    </p>
-
-                    <div className="section-title">
-                      <h3>Matter drafts</h3>
-                      <span>{activeDrafts.length} records</span>
-                    </div>
-                    <div className="party-list">
-                      {activeDrafts.map((draft) => (
-                        <button
-                          className="party-row draft-row"
-                          key={draft.id}
-                          onClick={() => openDraft(draft)}
-                          type="button"
-                        >
-                          <span>
-                            <strong>{draft.title}</strong>
-                            <small>
-                              updated {new Date(draft.updatedAt).toLocaleDateString("en-CA")} ·{" "}
-                              {extractDraftPlainText(draft.editorJson)}
-                            </small>
-                          </span>
-                          <em>v{draft.version}</em>
-                        </button>
-                      ))}
-                      {activeDrafts.length === 0 ? (
-                        <p className="inline-empty">No drafts are linked to this matter.</p>
-                      ) : null}
-                    </div>
-                  </>
-                )}
-              </>
+              <DraftingSection
+                activeDraftAssistRecords={activeDraftAssistRecords}
+                activeDraftExports={activeDraftExports}
+                activeDrafts={activeDrafts}
+                aiOperationalProposals={aiOperationalProposals}
+                aiOperationalProposalStatus={aiOperationalProposalStatus}
+                creatingTemplateId={creatingTemplateId}
+                drafting={drafting}
+                draftAssistInstruction={draftAssistInstruction}
+                draftAssistMessage={draftAssistMessage}
+                draftAssistStatus={draftAssistStatus}
+                draftAssistTask={draftAssistTask}
+                draftEditorJson={draftEditorJson}
+                draftExportFormat={draftExportFormat}
+                draftExportTitle={draftExportTitle}
+                draftHasChanges={draftHasChanges}
+                draftMergeField={draftMergeField}
+                draftStatus={draftStatus}
+                exportingDraftFormat={exportingDraftFormat}
+                queueingAiOperationalProposals={queueingAiOperationalProposals}
+                runningDraftAssist={runningDraftAssist}
+                savingDraft={savingDraft}
+                selectedDraft={selectedDraft}
+                onCloseDraftEditor={closeDraftEditor}
+                onCreateBlankDraft={() => void createBlankDraft()}
+                onCreateDraftFromTemplate={(template) => void createDraftFromTemplate(template)}
+                onDraftAssistInstructionChange={setDraftAssistInstruction}
+                onDraftAssistTaskChange={setDraftAssistTask}
+                onDraftEditorJsonChange={setDraftEditorJson}
+                onDraftExportFormatChange={setDraftExportFormat}
+                onDraftExportTitleChange={setDraftExportTitle}
+                onDraftMergeFieldChange={setDraftMergeField}
+                onExportDraft={() => void exportDraft()}
+                onInsertDraftAssistRecord={insertDraftAssistRecord}
+                onInsertMergeField={insertMergeField}
+                onOpenDraft={openDraft}
+                onQueueDraftOperationalProposals={() => void queueDraftOperationalProposals()}
+                onReviewDraftAssistRecord={(record, decision) =>
+                  void reviewDraftAssistRecord(record, decision)
+                }
+                onRunDraftAssist={() => void runDraftAssist()}
+                onSaveDraft={() => void saveDraft()}
+              />
             ) : null}
 
             {activeSection === "signatures" ? (
-              <div className="party-list">
-                {activeSignatures.map((signature) => (
-                  <div className="party-row" key={signature.id}>
-                    <span>
-                      <strong>{signature.title}</strong>
-                      <small>
-                        {signature.provider} · {signature.externalId}
-                      </small>
-                    </span>
-                    <em>{signature.status.replace("_", " ")}</em>
-                  </div>
-                ))}
-                {activeSignatures.length === 0 ? (
-                  <p className="inline-empty">No signature requests are linked to this matter.</p>
-                ) : null}
-              </div>
+              <SignaturesSection activeSignatures={activeSignatures} />
             ) : null}
 
             {activeSection === "intake" ? (
-              <>
-                <div className="detail-grid">
-                  <div>
-                    <span className="field-label">Templates</span>
-                    <strong>{intakeTemplates.length}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Sessions</span>
-                    <strong>{activeIntakeSessions.length}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Form links</span>
-                    <strong>{activeIntakeFormLinks.length}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Pending reviews</span>
-                    <strong>{activePendingIntakeReviewLinks.length}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Pending proposals</span>
-                    <strong>{activePendingIntakeVariableProposals.length}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Public requests</span>
-                    <strong>{pendingPublicConsultationIntakes.length}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Pipeline leads</span>
-                    <strong>{intakePipeline.summary.totalLeads}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Conversions</span>
-                    <strong>{intakePipeline.summary.conversionCount}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Conflict review</span>
-                    <strong>
-                      {intakePipeline.summary.conflictReview.needs_review +
-                        intakePipeline.summary.conflictReview.reviewing}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Follow-up reviews</span>
-                    <strong>{intakePipeline.summary.followUpReview.totalItems}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">High priority</span>
-                    <strong>{intakePipeline.summary.followUpReview.highPriorityCount}</strong>
-                  </div>
-                  <div>
-                    <span className="field-label">Defaulted sources</span>
-                    <strong>{intakePipeline.summary.followUpReview.defaultedSourceCount}</strong>
-                  </div>
-                </div>
-
-                <div className="section-title">
-                  <h3>Intake pipeline</h3>
-                  <span>{intakePipelineSummaryLine(intakePipeline.summary)}</span>
-                </div>
-                <div className="party-list">
-                  {recentIntakePipelineLeads.map((lead) => (
-                    <div className="party-row upload-link-row" key={lead.id}>
-                      <span>
-                        <strong>{lead.displayName}</strong>
-                        <small>
-                          {intakePipelineSourceLabel(lead.sourceType)} ·{" "}
-                          {intakePipelineStatusLabel(lead.leadStatus)} ·{" "}
-                          {lead.sourceAttribution.label}
-                        </small>
-                        <small>
-                          conflict {intakePipelineStatusLabel(lead.conflictReview.posture)} ·{" "}
-                          {lead.requestLinks.length} request links · {lead.appointmentLinks.length}{" "}
-                          appointment links
-                        </small>
-                        <small>
-                          {intakePipelineFollowUpActionLabel(lead.followUpReview.action)} ·{" "}
-                          {intakePipelineStatusLabel(lead.followUpReview.posture)} ·{" "}
-                          {intakePipelineSourceQualityLabel(lead.followUpReview.sourceQuality)} ·{" "}
-                          {lead.followUpReview.priority} priority
-                        </small>
-                      </span>
-                      <em>{lead.conversionCount} conversions</em>
-                    </div>
-                  ))}
-                  {recentIntakePipelineLeads.length === 0 ? (
-                    <p className="inline-empty">
-                      {intakePipeline.status === "access_denied"
-                        ? "Intake pipeline is unavailable for this role."
-                        : "No intake pipeline leads are available."}
-                    </p>
-                  ) : null}
-                </div>
-
-                {activeMatterPipelineLeads.length > 0 ? (
-                  <div className="inline-empty">
-                    Current matter pipeline:{" "}
-                    {activeMatterPipelineLeads
-                      .map((lead) => intakePipelineStatusLabel(lead.leadStatus))
-                      .join(", ")}
-                  </div>
-                ) : null}
-
-                <div className="section-title">
-                  <h3>Public consultation requests</h3>
-                  <span>{pendingPublicConsultationIntakes.length} pending</span>
-                </div>
-                <div className="upload-create-grid">
-                  <label className="search-field compact">
-                    <span>Enabled</span>
-                    <input
-                      checked={publicConsultationEnabled}
-                      disabled={publicConsultationSettingsDisabled}
-                      onChange={(event) => setPublicConsultationEnabled(event.target.checked)}
-                      type="checkbox"
-                    />
-                  </label>
-                  <label className="search-field compact">
-                    <span>Send from</span>
-                    <input
-                      disabled={publicConsultationSettingsDisabled}
-                      onChange={(event) => setPublicConsultationSender(event.target.value)}
-                      value={publicConsultationSender}
-                    />
-                  </label>
-                  <label className="search-field compact">
-                    <span>Notify</span>
-                    <input
-                      disabled={publicConsultationSettingsDisabled}
-                      onChange={(event) => setPublicConsultationRecipients(event.target.value)}
-                      value={publicConsultationRecipients}
-                    />
-                  </label>
-                  <label className="search-field compact">
-                    <span>Review owner</span>
-                    <input
-                      disabled={publicConsultationSettingsDisabled}
-                      onChange={(event) => setPublicConsultationReviewOwner(event.target.value)}
-                      placeholder={session.user.id}
-                      value={publicConsultationReviewOwner}
-                    />
-                  </label>
-                  <button
-                    className="secondary-button compact-button"
-                    disabled={refreshingPublicConsultationIntakes}
-                    onClick={() => void refreshPublicConsultationIntakes()}
-                    type="button"
-                  >
-                    {refreshingPublicConsultationIntakes ? "Refreshing..." : "Refresh requests"}
-                  </button>
-                  <button
-                    className="secondary-button compact-button"
-                    disabled={
-                      savingPublicConsultationSettings || publicConsultationSettingsDisabled
-                    }
-                    onClick={() => void savePublicConsultationSettings(true)}
-                    type="button"
-                  >
-                    Rotate token
-                  </button>
-                  <button
-                    className="primary-button"
-                    disabled={
-                      savingPublicConsultationSettings || publicConsultationSettingsDisabled
-                    }
-                    onClick={() => void savePublicConsultationSettings()}
-                    type="button"
-                  >
-                    {savingPublicConsultationSettings ? "Saving..." : "Save settings"}
-                  </button>
-                </div>
-                <label className="form-field">
-                  <span>Allowed website origins</span>
-                  <textarea
-                    disabled={publicConsultationSettingsDisabled}
-                    onChange={(event) => setPublicConsultationOrigins(event.target.value)}
-                    value={publicConsultationOrigins}
-                  />
-                </label>
-                <p className="inline-empty" role="status" aria-live="polite">
-                  {publicConsultationStatus} Current settings:{" "}
-                  {publicConsultationSettingsSummary(publicConsultationSettings)}.
-                </p>
-                <div className="party-list">
-                  {pendingPublicConsultationIntakes.map((intakeRecord) => {
-                    const dismissReason = publicConsultationDismissReasons[intakeRecord.id] ?? "";
-                    const busyAction = publicConsultationReviewBusyAction(
-                      publicConsultationBusyIntakeId,
-                      intakeRecord.id,
-                    );
-                    const conflictAction = describePublicConsultationReviewAction({
-                      action: "conflict_check",
-                      intake: intakeRecord,
-                      dashboardStatus: publicConsultation.status,
-                      busyAction,
-                    });
-                    const dismissAction = describePublicConsultationReviewAction({
-                      action: "dismiss",
-                      intake: intakeRecord,
-                      dashboardStatus: publicConsultation.status,
-                      busyAction,
-                    });
-                    const convertAction = describePublicConsultationReviewAction({
-                      action: "convert",
-                      intake: intakeRecord,
-                      dashboardStatus: publicConsultation.status,
-                      busyAction,
-                    });
-                    const conflictActionReason = compactPublicConsultationReviewActionReason(
-                      conflictAction.disabledReason,
-                    );
-                    const dismissActionReason = compactPublicConsultationReviewActionReason(
-                      dismissAction.disabledReason,
-                    );
-                    const convertActionReason = compactPublicConsultationReviewActionReason(
-                      convertAction.disabledReason,
-                    );
-                    return (
-                      <div className="party-row upload-link-row" key={intakeRecord.id}>
-                        <span>
-                          <strong>{intakeRecord.clientName}</strong>
-                          <small>
-                            submitted {compactDate(intakeRecord.submittedAt)} · email{" "}
-                            {intakeRecord.email ?? "not provided"}
-                            {intakeRecord.telephone ? ` · phone ${intakeRecord.telephone}` : ""}
-                          </small>
-                          <small>
-                            opposing parties: {publicConsultationOpposingParties(intakeRecord)}
-                          </small>
-                          <small>{intakeRecord.matterDescription}</small>
-                        </span>
-                        <div className="row-actions">
-                          <button
-                            aria-label={
-                              conflictAction.disabledReason
-                                ? `${conflictAction.label}: ${conflictActionReason}`
-                                : conflictAction.label
-                            }
-                            className="secondary-button compact-button row-button"
-                            data-action-key={conflictAction.actionKey}
-                            disabled={!conflictAction.available}
-                            onClick={() => void runPublicConsultationConflictCheck(intakeRecord)}
-                            title={
-                              conflictAction.disabledReason
-                                ? `${conflictAction.label}: ${conflictActionReason}`
-                                : conflictAction.label
-                            }
-                            type="button"
-                          >
-                            {conflictAction.label}
-                          </button>
-                          <label className="search-field compact rejection-field">
-                            <span>Dismiss reason</span>
-                            <input
-                              onChange={(event) =>
-                                setPublicConsultationDismissReasons((current) => ({
-                                  ...current,
-                                  [intakeRecord.id]: event.target.value,
-                                }))
-                              }
-                              value={dismissReason}
-                            />
-                          </label>
-                          <button
-                            aria-label={
-                              dismissAction.disabledReason
-                                ? `${dismissAction.label}: ${dismissActionReason}`
-                                : dismissAction.label
-                            }
-                            className="secondary-button compact-button row-button"
-                            data-action-key={dismissAction.actionKey}
-                            disabled={!dismissAction.available}
-                            onClick={() => void dismissPublicConsultationIntake(intakeRecord)}
-                            title={
-                              dismissAction.disabledReason
-                                ? `${dismissAction.label}: ${dismissActionReason}`
-                                : dismissAction.label
-                            }
-                            type="button"
-                          >
-                            {dismissAction.label}
-                          </button>
-                          <button
-                            aria-label={
-                              convertAction.disabledReason
-                                ? `${convertAction.label}: ${convertActionReason}`
-                                : convertAction.label
-                            }
-                            className="primary-button row-button"
-                            data-action-key={convertAction.actionKey}
-                            disabled={!convertAction.available}
-                            onClick={() => void convertPublicConsultationIntake(intakeRecord)}
-                            title={
-                              convertAction.disabledReason
-                                ? `${convertAction.label}: ${convertActionReason}`
-                                : convertAction.label
-                            }
-                            type="button"
-                          >
-                            {convertAction.label}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {pendingPublicConsultationIntakes.length === 0 ? (
-                    <p className="inline-empty">
-                      No public consultation requests are pending review.
-                    </p>
-                  ) : null}
-                </div>
-
-                {activeLegalClinicProfile ? (
-                  <>
-                    <div className="section-title">
-                      <h3>Eligibility and referral</h3>
-                      <span>
-                        {describeLegalClinicProgram(
-                          activeLegalClinicProgram,
-                          activeLegalClinicProfile,
-                        )}
-                      </span>
-                    </div>
-                    <div className="detail-grid">
-                      <div>
-                        <span className="field-label">Eligibility</span>
-                        <strong>{compactStatus(activeLegalClinicProfile.eligibilityStatus)}</strong>
-                      </div>
-                      <div>
-                        <span className="field-label">Referral</span>
-                        <strong>{compactStatus(activeLegalClinicProfile.referralStatus)}</strong>
-                      </div>
-                      <div>
-                        <span className="field-label">Relationship</span>
-                        <strong>{activeLegalClinicProfile.clinicRelationshipRole}</strong>
-                      </div>
-                      <div>
-                        <span className="field-label">Next review</span>
-                        <strong>{compactDate(activeLegalClinicProfile.nextReviewDate)}</strong>
-                      </div>
-                      <div>
-                        <span className="field-label">Fiscal host</span>
-                        <strong>
-                          {describeFiscalHostProgramMetadata(
-                            activeFiscalHostMetadata.programMetadata,
-                          )}
-                        </strong>
-                      </div>
-                      <div>
-                        <span className="field-label">Restricted fund</span>
-                        <strong>
-                          {describeRestrictedFundMetadata(
-                            activeFiscalHostMetadata.restrictedFundMetadata,
-                          )}
-                        </strong>
-                      </div>
-                    </div>
-                  </>
-                ) : null}
-
-                <div className="section-title">
-                  <h3>Form builder</h3>
-                  <span>{selectedIntakeTemplate?.id ?? "new"}</span>
-                </div>
-                <div className="intake-builder-grid">
-                  <div className="party-list intake-template-list">
-                    {intakeTemplates.map((template) => (
-                      <button
-                        className={
-                          template.id === selectedIntakeTemplateId
-                            ? "party-row draft-row selected-template"
-                            : "party-row draft-row"
-                        }
-                        key={template.id}
-                        onClick={() => selectIntakeTemplate(template.id)}
-                        type="button"
-                      >
-                        <span>
-                          <strong>{template.name}</strong>
-                          <small>
-                            v{template.definitionVersion} ·{" "}
-                            {template.definition.schemaVersion === 2
-                              ? `${template.definition.sections.length} sections`
-                              : "legacy"}
-                          </small>
-                        </span>
-                        <em>{template.active ? "active" : "paused"}</em>
-                      </button>
-                    ))}
-                    <button
-                      className="secondary-button compact-button"
-                      onClick={startNewIntakeTemplate}
-                      type="button"
-                    >
-                      <Plus size={16} />
-                      New form
-                    </button>
-                  </div>
-                  <StructuredIntakeBuilder
-                    definition={intakeTemplateDefinition}
-                    name={intakeTemplateName}
-                    onDefinitionChange={setIntakeTemplateDefinition}
-                    onNameChange={setIntakeTemplateName}
-                    onSave={() => void saveIntakeTemplate()}
-                    saving={savingIntakeTemplate}
-                    status={intakeTemplateStatus}
-                  />
-                </div>
-
-                <div className="section-title">
-                  <h3>Preview checks</h3>
-                  <span className={previewStatusClass(intakePreviewResult)}>
-                    {intakePreviewResult?.status ?? "not run"}
-                  </span>
-                </div>
-                <div className="intake-preview-grid">
-                  <div className="intake-preview-inputs">
-                    {intakeTemplateDefinition.questions.map((question) => (
-                      <label className="form-field" key={question.id}>
-                        <span>{question.label}</span>
-                        {question.type === "boolean" ? (
-                          <input
-                            checked={Boolean(intakePreviewAnswers[question.id])}
-                            onChange={(event) =>
-                              updateIntakePreviewAnswer(question.id, event.target.checked)
-                            }
-                            type="checkbox"
-                          />
-                        ) : question.type === "select" ? (
-                          <select
-                            onChange={(event) =>
-                              updateIntakePreviewAnswer(question.id, event.target.value)
-                            }
-                            value={String(intakePreviewAnswers[question.id] ?? "")}
-                          >
-                            <option value="">No preview answer</option>
-                            {(question.options ?? []).map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : question.type === "textarea" ? (
-                          <textarea
-                            onChange={(event) =>
-                              updateIntakePreviewAnswer(question.id, event.target.value)
-                            }
-                            value={String(intakePreviewAnswers[question.id] ?? "")}
-                          />
-                        ) : (
-                          <input
-                            onChange={(event) =>
-                              updateIntakePreviewAnswer(question.id, event.target.value)
-                            }
-                            type={question.type === "date" ? "date" : "text"}
-                            value={String(intakePreviewAnswers[question.id] ?? "")}
-                          />
-                        )}
-                      </label>
-                    ))}
-                    {intakeTemplateDefinition.questions.length === 0 ? (
-                      <p className="inline-empty">No preview answers are needed.</p>
-                    ) : null}
-                  </div>
-                  <div className="intake-preview-results">
-                    <div className="row-actions">
-                      <button
-                        className="secondary-button compact-button"
-                        disabled={previewingIntakeTemplate}
-                        onClick={() => void previewIntakeTemplate()}
-                        type="button"
-                      >
-                        {previewingIntakeTemplate ? "Checking..." : "Preview checks"}
-                      </button>
-                    </div>
-                    <p className="inline-empty">{intakePreviewStatus}</p>
-                    {intakePreviewResult?.checks.length ? (
-                      <div className="party-list">
-                        {intakePreviewResult.checks.map((check, index) => (
-                          <div className="party-row" key={`${check.code}-${index}`}>
-                            <span>
-                              <strong>{check.code.replaceAll("_", " ")}</strong>
-                              <small>{check.message}</small>
-                              <small>
-                                {[check.sectionId, check.itemId, check.questionId, check.packageId]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </small>
-                            </span>
-                            <em className={check.severity === "blocking" ? "risk" : undefined}>
-                              {check.severity}
-                            </em>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                    {intakePreviewResult?.preview ? (
-                      <div className="detail-grid intake-preview-summary">
-                        <div>
-                          <span className="field-label">Visible items</span>
-                          <strong>
-                            {intakePreviewResult.preview.visibleFormItemIds?.length ?? 0}
-                          </strong>
-                        </div>
-                        <div>
-                          <span className="field-label">Required incomplete</span>
-                          <strong>
-                            {intakePreviewResult.preview.requiredIncompleteItemIds?.length ?? 0}
-                          </strong>
-                        </div>
-                        <div>
-                          <span className="field-label">Packages</span>
-                          <strong>{intakePreviewResult.preview.packageSummaries.length}</strong>
-                        </div>
-                        <div>
-                          <span className="field-label">Documents</span>
-                          <strong>{intakePreviewResult.preview.packageDocuments.length}</strong>
-                        </div>
-                      </div>
-                    ) : null}
-                    {intakePreviewResult?.preview?.requiredIncompleteItemIds?.length ? (
-                      <p className="field-hint">
-                        Required before submit:{" "}
-                        {intakePreviewResult.preview.requiredIncompleteItemIds.join(", ")}
-                      </p>
-                    ) : null}
-                    {intakePreviewResult?.preview?.packageSummaries.length ? (
-                      <p className="field-hint">
-                        Package preview:{" "}
-                        {intakePreviewResult.preview.packageSummaries
-                          .map((summary) => summary.title)
-                          .join(", ")}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="section-title">
-                  <h3>Client form links</h3>
-                  <span>{activeMatter.number}</span>
-                </div>
-                <div className="upload-create-grid">
-                  <label className="search-field compact">
-                    <span>Expiry</span>
-                    <input
-                      onChange={(event) => setIntakeFormExpiresAt(event.target.value)}
-                      type="datetime-local"
-                      value={intakeFormExpiresAt}
-                    />
-                  </label>
-                  <button
-                    className="secondary-button compact-button"
-                    disabled={startingIntakeSession || !selectedIntakeTemplate}
-                    onClick={() => openIntakeSessionConfirmation()}
-                    type="button"
-                  >
-                    <Plus size={16} />
-                    {startingIntakeSession ? "Starting..." : "Start session"}
-                  </button>
-                  <button
-                    className="primary-button"
-                    disabled={creatingIntakeFormLink || activeIntakeSessions.length === 0}
-                    onClick={() => void createIntakeFormLink()}
-                    type="button"
-                  >
-                    {creatingIntakeFormLink ? "Creating..." : "Create link"}
-                  </button>
-                </div>
-                {pendingDeliveryConfirmation?.kind === "intake-session-start" ? (
-                  <DeliveryConfirmationPanel
-                    busy={startingIntakeSession}
-                    confirmation={pendingDeliveryConfirmation}
-                    onCancel={() => setPendingDeliveryConfirmation(null)}
-                    onConfirm={confirmPendingDelivery}
-                  />
-                ) : null}
-                {intakeFormToken ? (
-                  <OneTimeSecretPanel
-                    items={[{ label: "One-time token", value: intakeFormToken }]}
-                  />
-                ) : null}
-                {intakeFormPortalUrl ? (
-                  <OneTimeSecretPanel
-                    items={[{ label: "Client form URL", value: intakeFormPortalUrl }]}
-                  />
-                ) : null}
-                <p className="inline-empty">{intakeFormStatus}</p>
-                <div className="party-list">
-                  {activeIntakeFormLinks.map((link) => {
-                    const linkState = getIntakeFormLinkState(link);
-                    const itemActions = intakeFormActionsByLinkId[link.id] ?? [];
-                    return (
-                      <div className="party-row upload-link-row" key={link.id}>
-                        <span>
-                          <strong>{link.id}</strong>
-                          <small>
-                            {link.intakeSessionId} · expires {compactDate(link.expiresAt)} · created{" "}
-                            {compactDate(link.createdAt)}
-                          </small>
-                          {itemActions.length > 0 ? (
-                            <small>{itemActions.map(summarizeIntakeItemAction).join(" · ")}</small>
-                          ) : null}
-                        </span>
-                        <div className="row-actions">
-                          <em className={linkState === "active" ? undefined : "risk"}>
-                            {linkState}
-                          </em>
-                          {!link.revokedAt && !link.submittedAt ? (
-                            <button
-                              className="secondary-button compact-button row-button"
-                              disabled={revokingIntakeFormLinkId === link.id}
-                              onClick={() => void revokeIntakeFormLink(link.id)}
-                              type="button"
-                            >
-                              {revokingIntakeFormLinkId === link.id ? "Revoking..." : "Revoke"}
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {activeIntakeFormLinks.length === 0 ? (
-                    <p className="inline-empty">No form links are linked to this matter.</p>
-                  ) : null}
-                </div>
-
-                <div className="section-title">
-                  <h3>Submitted review</h3>
-                  <span>{activePendingIntakeReviewLinks.length} pending</span>
-                </div>
-                <div className="party-list">
-                  {activePendingIntakeReviewLinks.map((link) => {
-                    const reviewPayload = intakeReviewDetailsByLinkId[link.id];
-                    const reason = intakeReviewReasons[link.id] ?? "";
-                    const busyAction = submittedIntakeReviewBusyAction({
-                      linkId: link.id,
-                      loadingLinkId: loadingIntakeReviewLinkId,
-                      reviewingKey: reviewingIntakeFormLinkId,
-                    });
-                    const reviewLoaded = Boolean(reviewPayload);
-                    const reviewDecisionCount = reviewPayload?.reviews.length ?? 0;
-                    const loadAction = describeSubmittedIntakeReviewAction({
-                      action: "load",
-                      reviewLoaded,
-                      reviewDecisionCount,
-                      reason,
-                      busyAction,
-                    });
-                    const acceptAction = describeSubmittedIntakeReviewAction({
-                      action: "accept",
-                      reviewLoaded,
-                      reviewDecisionCount,
-                      reason,
-                      busyAction,
-                    });
-                    const rejectAction = describeSubmittedIntakeReviewAction({
-                      action: "reject",
-                      reviewLoaded,
-                      reviewDecisionCount,
-                      reason,
-                      busyAction,
-                    });
-                    const moreInfoAction = describeSubmittedIntakeReviewAction({
-                      action: "request_more_info",
-                      reviewLoaded,
-                      reviewDecisionCount,
-                      reason,
-                      busyAction,
-                    });
-                    const loadActionReason = compactSubmittedIntakeReviewActionReason(
-                      loadAction.disabledReason,
-                    );
-                    const acceptActionReason = compactSubmittedIntakeReviewActionReason(
-                      acceptAction.disabledReason,
-                    );
-                    const rejectActionReason = compactSubmittedIntakeReviewActionReason(
-                      rejectAction.disabledReason,
-                    );
-                    const moreInfoActionReason = compactSubmittedIntakeReviewActionReason(
-                      moreInfoAction.disabledReason,
-                    );
-                    const answers = reviewPayload
-                      ? Object.entries(reviewPayload.snapshot.answers)
-                      : [];
-                    return (
-                      <div className="party-row upload-link-row" key={`review-${link.id}`}>
-                        <span>
-                          <strong>{link.id}</strong>
-                          <small>
-                            submitted {compactDate(link.submittedAt)} · session{" "}
-                            {link.intakeSessionId}
-                          </small>
-                          {reviewPayload ? (
-                            <>
-                              <small>
-                                snapshot {reviewPayload.snapshot.id} · captured{" "}
-                                {compactDate(reviewPayload.snapshot.capturedAt)}
-                              </small>
-                              <small>
-                                answers:{" "}
-                                {answers.length === 0
-                                  ? "none"
-                                  : answers
-                                      .map(
-                                        ([questionId, value]) =>
-                                          `${questionId}: ${summarizeAnswerValue(value)}`,
-                                      )
-                                      .join(" · ")}
-                              </small>
-                              {reviewPayload.actions.length > 0 ? (
-                                <small>
-                                  item actions:{" "}
-                                  {reviewPayload.actions.map(summarizeIntakeItemAction).join(" · ")}
-                                </small>
-                              ) : null}
-                              {reviewPayload.reviews.length > 0 ? (
-                                <small>
-                                  decisions:{" "}
-                                  {reviewPayload.reviews.map(summarizeIntakeReview).join(" · ")}
-                                </small>
-                              ) : null}
-                            </>
-                          ) : (
-                            <small>
-                              Load the staff review payload before recording a decision.
-                            </small>
-                          )}
-                        </span>
-                        <div className="row-actions">
-                          <button
-                            aria-label={
-                              loadAction.disabledReason
-                                ? `${loadAction.label}: ${loadActionReason}`
-                                : loadAction.label
-                            }
-                            className="secondary-button compact-button row-button"
-                            data-action-key={loadAction.actionKey}
-                            disabled={!loadAction.available}
-                            onClick={() => void loadSubmittedIntakeReview(link.id)}
-                            title={
-                              loadAction.disabledReason
-                                ? `${loadAction.label}: ${loadActionReason}`
-                                : loadAction.label
-                            }
-                            type="button"
-                          >
-                            {loadAction.label}
-                          </button>
-                          {reviewPayload && reviewPayload.reviews.length === 0 ? (
-                            <>
-                              <label className="search-field compact rejection-field">
-                                <span>Decision reason</span>
-                                <input
-                                  onChange={(event) =>
-                                    setIntakeReviewReasons((current) => ({
-                                      ...current,
-                                      [link.id]: event.target.value,
-                                    }))
-                                  }
-                                  value={reason}
-                                />
-                              </label>
-                              <button
-                                aria-label={
-                                  acceptAction.disabledReason
-                                    ? `${acceptAction.label}: ${acceptActionReason}`
-                                    : acceptAction.label
-                                }
-                                className="secondary-button compact-button row-button"
-                                data-action-key={acceptAction.actionKey}
-                                disabled={!acceptAction.available}
-                                onClick={() => void decideSubmittedIntakeReview(link.id, "accept")}
-                                title={
-                                  acceptAction.disabledReason
-                                    ? `${acceptAction.label}: ${acceptActionReason}`
-                                    : acceptAction.label
-                                }
-                                type="button"
-                              >
-                                {acceptAction.label}
-                              </button>
-                              <button
-                                aria-label={
-                                  rejectAction.disabledReason
-                                    ? `${rejectAction.label}: ${rejectActionReason}`
-                                    : rejectAction.label
-                                }
-                                className="secondary-button compact-button row-button"
-                                data-action-key={rejectAction.actionKey}
-                                disabled={!rejectAction.available}
-                                onClick={() => void decideSubmittedIntakeReview(link.id, "reject")}
-                                title={
-                                  rejectAction.disabledReason
-                                    ? `${rejectAction.label}: ${rejectActionReason}`
-                                    : rejectAction.label
-                                }
-                                type="button"
-                              >
-                                {rejectAction.label}
-                              </button>
-                              <button
-                                aria-label={
-                                  moreInfoAction.disabledReason
-                                    ? `${moreInfoAction.label}: ${moreInfoActionReason}`
-                                    : moreInfoAction.label
-                                }
-                                className="secondary-button compact-button row-button"
-                                data-action-key={moreInfoAction.actionKey}
-                                disabled={!moreInfoAction.available}
-                                onClick={() =>
-                                  void decideSubmittedIntakeReview(link.id, "request-more-info")
-                                }
-                                title={
-                                  moreInfoAction.disabledReason
-                                    ? `${moreInfoAction.label}: ${moreInfoActionReason}`
-                                    : moreInfoAction.label
-                                }
-                                type="button"
-                              >
-                                {moreInfoAction.label}
-                              </button>
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {activePendingIntakeReviewLinks.length === 0 ? (
-                    <p className="inline-empty">No submitted intake forms are pending review.</p>
-                  ) : null}
-                </div>
-
-                <div className="section-title">
-                  <h3>Variable proposals</h3>
-                  <span>{activeIntakeVariableProposals.length} records</span>
-                </div>
-                <div className="party-list">
-                  {activeIntakeVariableProposals.map((proposal) => (
-                    <div className="party-row upload-link-row" key={proposal.id}>
-                      <span>
-                        <strong>
-                          {proposal.targetScope}.{proposal.targetField}
-                        </strong>
-                        <small>
-                          proposed {proposal.proposedValue} · current{" "}
-                          {currentProposalValue(proposal, activeMatter)} · from{" "}
-                          {proposal.sourceQuestionId}
-                        </small>
-                        {proposal.rejectionReason ? (
-                          <small>reason: {proposal.rejectionReason}</small>
-                        ) : null}
-                      </span>
-                      <div className="row-actions">
-                        <em className={proposal.status === "pending" ? undefined : "risk"}>
-                          {proposal.status}
-                        </em>
-                        {proposal.status === "pending" ? (
-                          <>
-                            <label className="search-field compact rejection-field">
-                              <span>Reject reason</span>
-                              <input
-                                onChange={(event) =>
-                                  setProposalRejectionReasons((current) => ({
-                                    ...current,
-                                    [proposal.id]: event.target.value,
-                                  }))
-                                }
-                                value={proposalRejectionReasons[proposal.id] ?? ""}
-                              />
-                            </label>
-                            <button
-                              className="secondary-button compact-button row-button"
-                              disabled={reviewingIntakeProposalId === proposal.id}
-                              onClick={() =>
-                                void reviewIntakeVariableProposal(proposal, "approved")
-                              }
-                              type="button"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              className="secondary-button compact-button row-button"
-                              disabled={reviewingIntakeProposalId === proposal.id}
-                              onClick={() =>
-                                void reviewIntakeVariableProposal(proposal, "rejected")
-                              }
-                              type="button"
-                            >
-                              Reject
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                  {activeIntakeVariableProposals.length === 0 ? (
-                    <p className="inline-empty">No variable proposals are waiting for review.</p>
-                  ) : null}
-                </div>
-
-                <div className="section-title">
-                  <h3>Intake sessions</h3>
-                  <span>{activeIntakeSessions.length} records</span>
-                </div>
-                <div className="party-list">
-                  {activeIntakeSessions.map((sessionRecord) => (
-                    <div className="party-row" key={sessionRecord.id}>
-                      <span>
-                        <strong>
-                          {intakeTemplates.find(
-                            (template) => template.id === sessionRecord.templateId,
-                          )?.name ?? sessionRecord.templateId}
-                        </strong>
-                        <small>
-                          {sessionRecord.provider} · updated{" "}
-                          {new Date(sessionRecord.updatedAt).toLocaleDateString("en-CA")}
-                        </small>
-                      </span>
-                      <em>{sessionRecord.status.replace("_", " ")}</em>
-                    </div>
-                  ))}
-                  {activeIntakeSessions.length === 0 ? (
-                    <p className="inline-empty">No intake sessions are linked to this matter.</p>
-                  ) : null}
-                </div>
-              </>
+              <IntakeSection
+                activeFiscalHostMetadata={activeFiscalHostMetadata}
+                activeIntakeFormLinks={activeIntakeFormLinks}
+                activeIntakeSessions={activeIntakeSessions}
+                activeIntakeVariableProposals={activeIntakeVariableProposals}
+                activeLegalClinicProfile={activeLegalClinicProfile}
+                activeLegalClinicProgram={activeLegalClinicProgram}
+                activeMatter={activeMatter}
+                activeMatterPipelineLeads={activeMatterPipelineLeads}
+                activePendingIntakeReviewLinks={activePendingIntakeReviewLinks}
+                activePendingIntakeVariableProposals={activePendingIntakeVariableProposals}
+                confirmPendingDelivery={confirmPendingDelivery}
+                convertPublicConsultationIntake={convertPublicConsultationIntake}
+                createIntakeFormLink={createIntakeFormLink}
+                creatingIntakeFormLink={creatingIntakeFormLink}
+                decideSubmittedIntakeReview={decideSubmittedIntakeReview}
+                dismissPublicConsultationIntake={dismissPublicConsultationIntake}
+                intakeFormActionsByLinkId={intakeFormActionsByLinkId}
+                intakeFormExpiresAt={intakeFormExpiresAt}
+                intakeFormPortalUrl={intakeFormPortalUrl}
+                intakeFormStatus={intakeFormStatus}
+                intakeFormToken={intakeFormToken}
+                intakePipeline={intakePipeline}
+                intakePreviewAnswers={intakePreviewAnswers}
+                intakePreviewResult={intakePreviewResult}
+                intakePreviewStatus={intakePreviewStatus}
+                intakeReviewDetailsByLinkId={intakeReviewDetailsByLinkId}
+                intakeReviewReasons={intakeReviewReasons}
+                intakeTemplateDefinition={intakeTemplateDefinition}
+                intakeTemplateName={intakeTemplateName}
+                intakeTemplateStatus={intakeTemplateStatus}
+                intakeTemplates={intakeTemplates}
+                loadSubmittedIntakeReview={loadSubmittedIntakeReview}
+                loadingIntakeReviewLinkId={loadingIntakeReviewLinkId}
+                openIntakeSessionConfirmation={openIntakeSessionConfirmation}
+                pendingDeliveryConfirmation={pendingDeliveryConfirmation}
+                pendingPublicConsultationIntakes={pendingPublicConsultationIntakes}
+                previewingIntakeTemplate={previewingIntakeTemplate}
+                previewIntakeTemplate={previewIntakeTemplate}
+                proposalRejectionReasons={proposalRejectionReasons}
+                publicConsultation={publicConsultation}
+                publicConsultationBusyIntakeId={publicConsultationBusyIntakeId}
+                publicConsultationDismissReasons={publicConsultationDismissReasons}
+                publicConsultationEnabled={publicConsultationEnabled}
+                publicConsultationOrigins={publicConsultationOrigins}
+                publicConsultationRecipients={publicConsultationRecipients}
+                publicConsultationReviewOwner={publicConsultationReviewOwner}
+                publicConsultationSender={publicConsultationSender}
+                publicConsultationSettings={publicConsultationSettings}
+                publicConsultationSettingsDisabled={publicConsultationSettingsDisabled}
+                publicConsultationStatus={publicConsultationStatus}
+                recentIntakePipelineLeads={recentIntakePipelineLeads}
+                refreshPublicConsultationIntakes={refreshPublicConsultationIntakes}
+                refreshingPublicConsultationIntakes={refreshingPublicConsultationIntakes}
+                reviewIntakeVariableProposal={reviewIntakeVariableProposal}
+                reviewingIntakeFormLinkId={reviewingIntakeFormLinkId}
+                reviewingIntakeProposalId={reviewingIntakeProposalId}
+                revokeIntakeFormLink={revokeIntakeFormLink}
+                revokingIntakeFormLinkId={revokingIntakeFormLinkId}
+                runPublicConsultationConflictCheck={runPublicConsultationConflictCheck}
+                saveIntakeTemplate={saveIntakeTemplate}
+                savePublicConsultationSettings={savePublicConsultationSettings}
+                savingIntakeTemplate={savingIntakeTemplate}
+                savingPublicConsultationSettings={savingPublicConsultationSettings}
+                selectIntakeTemplate={selectIntakeTemplate}
+                selectedIntakeTemplate={selectedIntakeTemplate}
+                selectedIntakeTemplateId={selectedIntakeTemplateId}
+                session={session}
+                setIntakeFormExpiresAt={setIntakeFormExpiresAt}
+                setIntakeReviewReasons={setIntakeReviewReasons}
+                setIntakeTemplateDefinition={setIntakeTemplateDefinition}
+                setIntakeTemplateName={setIntakeTemplateName}
+                setPendingDeliveryConfirmation={setPendingDeliveryConfirmation}
+                setProposalRejectionReasons={setProposalRejectionReasons}
+                setPublicConsultationDismissReasons={setPublicConsultationDismissReasons}
+                setPublicConsultationEnabled={setPublicConsultationEnabled}
+                setPublicConsultationOrigins={setPublicConsultationOrigins}
+                setPublicConsultationRecipients={setPublicConsultationRecipients}
+                setPublicConsultationReviewOwner={setPublicConsultationReviewOwner}
+                setPublicConsultationSender={setPublicConsultationSender}
+                startNewIntakeTemplate={startNewIntakeTemplate}
+                startingIntakeSession={startingIntakeSession}
+                updateIntakePreviewAnswer={updateIntakePreviewAnswer}
+              />
             ) : null}
 
             {activeSection === "reports" ? (
@@ -8879,88 +5044,14 @@ export default function DashboardClient({
             ) : null}
 
             {activeSection === "audit" ? (
-              <>
-                <div
-                  className={`lane-refresh-panel ${auditFreshnessCue.tone}`}
-                  data-stale={auditFreshnessCue.stale ? "true" : "false"}
-                >
-                  <span>
-                    <strong>Audit activity</strong>
-                    <small>{auditFreshnessCue.detail}</small>
-                  </span>
-                  <button
-                    aria-label="Refresh audit activity"
-                    className="secondary-button compact-button lane-refresh-button"
-                    disabled={auditRefreshState.refreshing}
-                    onClick={() => void refreshAuditLane()}
-                    type="button"
-                  >
-                    <RotateCcw aria-hidden="true" size={16} />
-                    {auditRefreshState.refreshing ? "Refreshing" : auditFreshnessCue.label}
-                  </button>
-                </div>
-                <div className="party-list">
-                  <div className="audit-projection-summary">
-                    <div className="audit-projection-header">
-                      <span>
-                        <strong>Audit taxonomy projection</strong>
-                        <small>{auditProjectionStatusLabel(auditProjection.status)}</small>
-                      </span>
-                      <em>{auditProjection.valid === false ? "chain invalid" : "read-only"}</em>
-                    </div>
-                    <div className="audit-projection-grid">
-                      <span>
-                        <strong>{auditProjectionIssues.unknownActionCount}</strong>
-                        <small>Unknown actions</small>
-                      </span>
-                      <span>
-                        <strong>{auditProjectionIssues.matterScopeGapCount}</strong>
-                        <small>Matter-scope gaps</small>
-                      </span>
-                      <span>
-                        <strong>{auditProjectionIssues.resourceTypeMismatchCount}</strong>
-                        <small>Resource-type mismatches</small>
-                      </span>
-                    </div>
-                    <div className="audit-projection-details">
-                      <span>
-                        <strong>Unknown</strong>
-                        <small>
-                          {auditProjectionIssues.unknownActions.length > 0
-                            ? auditProjectionIssues.unknownActions.slice(0, 4).join(", ")
-                            : "No unknown actions in the loaded audit window."}
-                        </small>
-                      </span>
-                      <span>
-                        <strong>Mismatches</strong>
-                        <small>
-                          {auditProjectionIssues.resourceTypeMismatches.length > 0
-                            ? auditProjectionIssues.resourceTypeMismatches
-                                .slice(0, 3)
-                                .map(
-                                  (mismatch) =>
-                                    `${mismatch.action}: ${mismatch.observedResourceType} expected ${mismatch.expectedResourceType} (${mismatch.count})`,
-                                )
-                                .join("; ")
-                            : "No resource-type mismatches in the loaded audit window."}
-                        </small>
-                      </span>
-                    </div>
-                  </div>
-                  {activeMatter.activity.map((entry) => (
-                    <div className="party-row" key={entry.id}>
-                      <span>
-                        <strong>{entry.title}</strong>
-                        <small>{compactDate(entry.occurredAt)}</small>
-                      </span>
-                      <em>{entry.kind}</em>
-                    </div>
-                  ))}
-                  {activeMatter.activity.length === 0 ? (
-                    <p className="inline-empty">No activity has been recorded for this matter.</p>
-                  ) : null}
-                </div>
-              </>
+              <AuditSection
+                activity={activeMatter.activity}
+                auditFreshnessCue={auditFreshnessCue}
+                auditProjection={auditProjection}
+                auditRefreshState={auditRefreshState}
+                compactDate={compactDate}
+                onRefreshAudit={() => void refreshAuditLane()}
+              />
             ) : null}
 
             {activeSection === "queues" ? (

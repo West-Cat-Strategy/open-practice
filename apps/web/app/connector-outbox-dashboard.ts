@@ -3,7 +3,11 @@ import {
   disabledOperationalAction,
   type OperationalActionState,
 } from "@open-practice/domain/operational-actions";
-import type { ConnectorOperationsResponse, ConnectorOutboxItem, ConnectorSummary } from "./types";
+import type {
+  ConnectorOperationsResponse,
+  ConnectorOutboxItem,
+  ConnectorSummary,
+} from "./_features/connectors/models";
 
 export type ConnectorRecoveryAction = "retry" | "dead_letter";
 

@@ -37,9 +37,9 @@ import {
   fiscalHostWorkflowMetadata,
 } from "../legal-clinic-dashboard";
 import { formatMatterPartyRoleLabel } from "../participant-role-labels";
+import type { EmailDeliveryDashboardResponse } from "../_features/email-delivery/models";
 import type {
   CommunicationsInboxDashboardResponse,
-  EmailDeliveryDashboardResponse,
   LegalClinicDashboardResponse,
   MatterSummary,
   PracticeOverview,

@@ -1,0 +1,153 @@
+export interface CommunicationsInboxInboundEmail {
+  id: string;
+  matterId?: string;
+  status: string;
+  labels: string[];
+  receivedAt: string;
+  attachmentCount: number;
+  triage?: {
+    status?: string;
+    assignedToUserId?: string;
+    contactIds?: string[];
+    updatedAt?: string;
+    updatedByUserId?: string;
+  };
+}
+
+export interface CommunicationsInboxOutboundDelivery {
+  id: string;
+  matterId: string;
+  templateKey: string;
+  status: string;
+  relatedResourceType?: string;
+  relatedResourceId?: string;
+  recipientCount: number;
+  attemptCount: number;
+  queuedAt: string;
+  lastAttemptAt?: string;
+  sentAt?: string;
+  failedAt?: string;
+  terminalFailureAt?: string;
+  failureSummary?: string;
+  events: Array<{
+    id: string;
+    eventType: string;
+    occurredAt: string;
+    attemptNumber?: number;
+    source: string;
+    errorSummary?: string;
+  }>;
+}
+
+export interface CommunicationsInboxConversation {
+  id: string;
+  matterId: string;
+  topic: string;
+  status: string;
+  exportState: string;
+  notificationBoundary: string;
+  retentionUntil?: string;
+  accessRevokedAt?: string;
+  updatedAt: string;
+  messageCount?: number;
+  latestMessageAt?: string;
+  notificationSummary?: {
+    notificationCount: number;
+    unreadNotificationCount: number;
+    mutedNotificationCount: number;
+    latestNotificationAt?: string;
+    latestReadAt?: string;
+    latestMutedAt?: string;
+  };
+}
+
+export type CommunicationsChannelHistoryKind =
+  | "inbound_email"
+  | "outbound_email"
+  | "conversation"
+  | "phone_note_placeholder"
+  | "text_note_placeholder"
+  | "client_update_draft";
+
+export interface CommunicationsChannelHistoryItem {
+  id: string;
+  matterId: string;
+  kind: CommunicationsChannelHistoryKind;
+  channel: "email" | "conversation" | "phone" | "text" | "client_update";
+  direction: "inbound" | "outbound" | "internal" | "planned_outbound";
+  occurredAt: string;
+  status: string;
+  title: string;
+  detail: string;
+  sourceResourceType:
+    | "inbound_email"
+    | "email_outbox"
+    | "conversation_thread"
+    | "conversation_message";
+  sourceResourceId: string;
+  metadataRedacted: true;
+  bodyRedacted?: true;
+  consentStatus?: string;
+  recipientCount?: number;
+  attachmentCount?: number;
+  messageCount?: number;
+  eventCount?: number;
+  bodyLength?: number;
+}
+
+export interface ClientUpdateDraftRequestSummary {
+  id: string;
+  matterId: string;
+  threadId: string;
+  messageId: string;
+  status: "draft_requested" | "thread_closed" | "thread_revoked";
+  requestedAt: string;
+  requestedByUserIdPresent: boolean;
+  bodyLength: number;
+  bodyRedacted: true;
+  metadataRedacted: true;
+  automaticSendEnabled: false;
+  portalComposerEnabled: false;
+}
+
+export interface CommunicationsInboxContactCue {
+  contact: {
+    id: string;
+    kind: string;
+    displayName: string;
+  };
+  matterLinks: Array<{
+    matterId: string;
+    role: string;
+    adverse: boolean;
+    confidential: boolean;
+    portalActive: boolean;
+    portalPermissionCount: number;
+  }>;
+  cueSummary: {
+    conflictCueCount: number;
+    qualitySignalCount: number;
+    portalActiveGrantCount: number;
+  };
+}
+
+export interface CommunicationsInboxMatterResponse {
+  status: string;
+  matterId: string;
+  channelState: {
+    inboundEmailStatus: "configured" | "disabled";
+    outboundEmailStatus: "configured" | "disabled";
+    inboundEmailAddressCount: number;
+    enabledInboundEmailAddressCount: number;
+  };
+  inboundEmail: CommunicationsInboxInboundEmail[];
+  outboundDeliveryHistory: CommunicationsInboxOutboundDelivery[];
+  conversations: CommunicationsInboxConversation[];
+  channelHistory: CommunicationsChannelHistoryItem[];
+  clientUpdateDraftRequests: ClientUpdateDraftRequestSummary[];
+  contactCues: CommunicationsInboxContactCue[];
+}
+
+export interface CommunicationsInboxDashboardResponse {
+  inboxByMatterId: Record<string, CommunicationsInboxMatterResponse>;
+}

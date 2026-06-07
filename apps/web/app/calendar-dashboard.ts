@@ -4,16 +4,15 @@ import type {
   CalendarEventReminderRecord,
   CalendarMeetingInvitationBoundary,
   CalendarMeetingLinkMode,
-} from "@open-practice/domain";
+} from "@open-practice/domain/calendar-models";
 import type {
   CalendarCredentialSummary,
   CalendarDashboardResponse,
   CalendarEventsResponse,
   CalendarGuestSessionSummary,
   CalendarMatterLinks,
-  DeliveryConfirmationPayload,
-  MatterSummary,
-} from "./types";
+} from "./_features/calendar/models";
+import type { DeliveryConfirmationPayload, MatterSummary } from "./types";
 import { buildEmailDeliveryConfirmation } from "./types";
 
 export interface CalendarRadarBuckets {

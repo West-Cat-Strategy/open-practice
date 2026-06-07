@@ -4,8 +4,8 @@ import type {
   ExternalUploadsListResponse,
   ExternalUploadsDashboardResponse,
   ExternalUploadsStatusResponse,
-  MatterSummary,
-} from "./types";
+} from "./_features/external-uploads/models";
+import type { MatterSummary } from "./types";
 
 export interface ExternalUploadCreateFormState {
   matterId: string;

@@ -6,7 +6,7 @@ import {
 } from "@aws-sdk/client-s3";
 import type { InboundEmailParser } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
-import type { WorkerJobEnvelope, WorkerJobResult } from "../processors.js";
+import type { WorkerJobEnvelope, WorkerJobResult } from "./types.js";
 
 type InboundEmailS3Storage = {
   client: S3Client;

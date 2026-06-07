@@ -2,7 +2,7 @@ import type {
   ContactDataQualityResolutionRecord,
   ContactDossier,
   ContactReviewQueueItem,
-} from "./types";
+} from "./_features/contacts/models";
 
 export interface ContactDossierConflictCheckPrefill {
   prospectiveName: string;

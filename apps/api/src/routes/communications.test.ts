@@ -8,7 +8,7 @@ import type {
   ProfessionalRole,
   User,
 } from "@open-practice/domain";
-import { InMemoryOpenPracticeRepository } from "../../../../packages/database/src/repository/memory.js";
+import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import { registerCommunicationsRoutes } from "./communications.js";
 
 const firmId = "firm-west-legal";
