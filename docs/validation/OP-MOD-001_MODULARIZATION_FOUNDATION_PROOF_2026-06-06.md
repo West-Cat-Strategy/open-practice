@@ -1,5 +1,21 @@
 # OP-MOD-001 Modularization Foundation Proof - 2026-06-06
 
+## 2026-06-07 Mainline Consolidation Closeout
+
+The 2026-06-07 consolidation merged both local OP-MOD branches into
+`chore/op-mainline-consolidation-2026-06-07`: the broad backup branch
+`codex/op-modularization-2026-06-06-broad-backup-20260607` and the active review-slice branch
+`codex/op-modularization-2026-06-06`. The resolved tree keeps the broad backup's API route,
+dashboard component/resource, worker processor, database schema-module, domain/provider export, and
+repository modularization payload while layering in the active branch's dashboard shell-state
+helper/tests, selector/boundary guardrails, and updated proof/workboard language.
+
+Public behavior remains intentionally unchanged: no external HTTP route, response shape,
+authorization, matter-scope, audit-redaction, public-token, worker queue, provider, or migration
+contract changes are intended. The final consolidation delta is 330 paths relative to `origin/main`,
+and the changed-path proof list below matches that set after adding the dashboard shell-state helper
+and test paths.
+
 ## Summary
 
 OP-MOD-001 is the first modularization remediation slice for `/Users/bryan/projects/open-practice`.
@@ -375,6 +391,8 @@ Docker/runtime configuration.
 - `apps/web/app/_features/connectors/server-resources.ts`
 - `apps/web/app/_features/contacts/models.ts`
 - `apps/web/app/_features/contacts/server-resources.ts`
+- `apps/web/app/_features/dashboard/dashboard-shell-state.test.ts`
+- `apps/web/app/_features/dashboard/dashboard-shell-state.ts`
 - `apps/web/app/_features/dashboard/formatters.ts`
 - `apps/web/app/_features/dashboard/review-rail-preference.ts`
 - `apps/web/app/_features/document-assembly/models.ts`
@@ -1407,6 +1425,11 @@ Docker/runtime configuration.
 - Review-rail sessionStorage persistence moved from `dashboard-client.tsx` to
   `apps/web/app/_features/dashboard/review-rail-preference.ts`; dashboard URL/focus behavior and
   visual/copy behavior remain in `DashboardClient`.
+- Dashboard active-section URL selection, history updates, detail-panel focus restoration, and
+  review-rail collapse/expand refs now live in
+  `apps/web/app/_features/dashboard/dashboard-shell-state.ts` with helper-level unit coverage.
+  `dashboard-client.tsx` keeps the composed dashboard state consumers, mutation flows, and section
+  mounting.
 - The stateless document assembly dashboard rendering block moved from `dashboard-client.tsx` to
   `apps/web/app/dashboard/document-assembly-dashboard-block.tsx`; it imports only the existing
   document assembly status/summary helpers and `DocumentAssemblyWorkbenchResponse`, while
@@ -8115,9 +8138,8 @@ docs/planning-and-progress.md docs/validation/README.md`.
   - Passed after removing a stale external-upload repository type import from the public portal
     route submodule.
 - `pnpm verify:select -- --base origin/main`
-  - Returned no recommendations because this OP-MOD-001 lane remains an uncommitted dirty branch
-    diff; the final closeout therefore followed the explicit broad gates below plus the docs-aware
-    selector on the actual proof path set.
+  - Was a branch-local pre-consolidation selector pass; the final 2026-06-07 consolidation selector
+    evidence is recorded below after both OP-MOD branches were merged.
 - `pnpm ci:local`
   - Passed on the final modularization path set after lint cleanup; the local CI gate completed
     format, lint, typecheck, package tests, database schema check, policy checks, builds, and
@@ -8154,16 +8176,16 @@ docs/planning-and-progress.md docs/validation/README.md`.
     tests, 499 API tests, 159 web tests, migration parity, live boundary policy, database schema
     check, package typechecks, and the production build.
 - `pnpm ci:local`
-  - Passed on the final 328-path OP-MOD-001 tree after the intake dashboard section extraction, auth
+  - Passed on the pre-consolidation 328-path OP-MOD-001 tree after the intake dashboard section extraction, auth
     repository facade extraction, staff public-consultation route split, docs proof update, and auth
     Prettier normalization. The local CI gate completed format, lint, typecheck, package tests,
     database schema check, policy checks, builds, and whitespace validation.
 - `pnpm e2e:host`
-  - Passed on the final 328-path OP-MOD-001 tree: 33 Playwright checks passed and 3 suite-defined
+  - Passed on the pre-consolidation 328-path OP-MOD-001 tree: 33 Playwright checks passed and 3 suite-defined
     checks were skipped while sweeping hosted setup/login, dashboard sections, and public-token
     flows against dynamic loopback API/web servers.
 - `pnpm e2e:docker`
-  - Passed on the final 328-path OP-MOD-001 tree: Docker brought up Postgres, Redis, MinIO, and
+  - Passed on the pre-consolidation 328-path OP-MOD-001 tree: Docker brought up Postgres, Redis, MinIO, and
     Mailpit, applied existing migrations, passed the provider-backed dashboard sweep and external
     upload receipt flow, then removed the E2E containers, volumes, and network.
 - `pnpm exec prettier --write docs/planning-and-progress.md docs/validation/README.md docs/validation/OP-MOD-001_MODULARIZATION_FOUNDATION_PROOF_2026-06-06.md`
@@ -8180,10 +8202,67 @@ docs/planning-and-progress.md docs/validation/README.md`.
     dependency policy, migration parity, OSS reuse policy, docs links, proof index, local evidence
     Docker ignore validation, and Open Practice boundary policy all passed.
 - Proof-vs-diff equality check
-  - Passed after the final docs-only proof closeout: 328 actual changed paths, 328 proof-listed
+  - Passed after the final docs-only proof closeout: 330 actual changed paths, 330 proof-listed
     paths, no missing paths, and no extra paths.
 - `git diff --check`
   - Passed after the final docs-only proof closeout; no whitespace errors.
+- `pnpm verify:select -- --base origin/main`
+  - Passed on `chore/op-mainline-consolidation-2026-06-07` after both OP-MOD branches were merged.
+    It selected the broad consolidation gate set: `pnpm ci:local`, `pnpm deps:audit`,
+    `pnpm deps:licenses`, `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`,
+    `pnpm test`, package tests/typechecks/builds for domain, database, API, providers, worker, and
+    web, database `db:check`, migration parity, and `pnpm build`.
+- `node --test scripts/validate-open-practice-boundaries.test.mjs scripts/select-validation.test.mjs scripts/security-hot-path-rescan.test.mjs`
+  - Passed after the integrated branch set updated the hot-path rescan contract for the new
+    inbound-email child route modules and the database build selector id: 32 script contract tests.
+- `pnpm --filter @open-practice/domain test && pnpm --filter @open-practice/domain typecheck`
+  - Passed on the consolidation delta: 24 domain test files and 173 tests.
+- `pnpm --filter @open-practice/database test && pnpm --filter @open-practice/database db:check && pnpm migrations:check && pnpm --filter @open-practice/database typecheck && pnpm --filter @open-practice/database build`
+  - Passed on the consolidation delta: 18 database test files and 110 tests, Drizzle schema check
+    reported everything fine, and migration parity found 52 SQL files matching 52 journal entries.
+- `pnpm --filter @open-practice/providers test && pnpm --filter @open-practice/providers typecheck && pnpm --filter @open-practice/providers build`
+  - Passed on the consolidation delta: 7 provider test files and 18 tests.
+- `pnpm --filter @open-practice/api test && pnpm --filter @open-practice/api typecheck`
+  - Passed on the consolidation delta: 41 API test files and 499 tests.
+- `pnpm --filter @open-practice/worker test && pnpm --filter @open-practice/worker typecheck && pnpm --filter @open-practice/worker build`
+  - Passed on the consolidation delta: 3 worker test files and 36 tests.
+- `pnpm --filter @open-practice/web test && pnpm --filter @open-practice/web typecheck`
+  - Passed on the consolidation delta: 32 web test files and 163 tests.
+- `pnpm build`
+  - Passed on the consolidation delta after package typechecks and tests; all six workspace
+    packages built, including the Next.js production build.
+- `pnpm docs:check`
+  - Passed on the consolidation delta.
+- `pnpm policy:check`
+  - Passed on the consolidation delta; tracked-secret scan, package manifest dependency policy,
+    migration parity, OSS reuse policy, docs links, proof index, local evidence Docker ignore
+    validation, and Open Practice boundary policy all passed.
+- `pnpm deps:audit`
+  - Passed on the consolidation delta: production and development audits reported no known
+    vulnerabilities.
+- `pnpm deps:licenses`
+  - Passed on the consolidation delta: 550 packages and 579 versions summarized; existing
+    review-required license groups were reported without failing the command.
+- `pnpm test`
+  - Passed on the consolidation delta; package tests and script contract tests completed through
+    Turbo/root test orchestration.
+- `pnpm ci:local`
+  - Passed on the consolidation delta; format, lint, typecheck, package tests, database schema
+    check, policy checks, builds, and whitespace validation completed.
+- `pnpm e2e:host`
+  - Passed on the consolidation delta: 33 Playwright checks passed and 3 suite-defined checks were
+    skipped while sweeping hosted setup/login, dashboard sections, and public-token flows against
+    dynamic loopback API/web servers.
+- `pnpm e2e:docker`
+  - Passed on the consolidation delta: Docker brought up Postgres, Redis, MinIO, and Mailpit,
+    applied existing migrations, passed 5 Docker-backed Playwright checks for the provider-backed
+    dashboard sweep and external upload receipt flow, then removed the E2E containers, volumes, and
+    network.
+- Proof-vs-diff equality check
+  - Passed after the 2026-06-07 consolidation closeout: 330 actual changed paths, 330 proof-listed
+    paths, no missing paths, and no extra paths.
+- `git diff --check`
+  - Passed after the 2026-06-07 consolidation closeout; no whitespace errors.
 
 ## Deferred Follow-Up Slices
 

@@ -44,9 +44,13 @@ The latest OP-MOD-001 slice also extracts the intake dashboard section with stat
 moves staff public-consultation settings/list/dismiss/convert routes into a registrar-owned staff
 submodule, and moves auth repository facade construction into auth-owned Drizzle/memory modules
 while preserving the aggregate repository auth method surface.
-Final local closeout for the current OP-MOD-001 wave passed `pnpm ci:local`, `pnpm e2e:host`, and
-`pnpm e2e:docker`; the row-local proof notes that `pnpm verify:select -- --base origin/main`
-returned no recommendations while the branch remains an uncommitted dirty diff.
+Final 2026-06-07 consolidation for OP-MOD-001 merged the broad backup and active review-slice
+branches through `chore/op-mainline-consolidation-2026-06-07`, keeping the broad modularization
+payload and layering in the newer dashboard shell-state helper/tests plus selector and boundary
+guardrails. The row-local proof records `pnpm verify:select -- --base origin/main`, the selected
+broad package gates, `pnpm ci:local`, `pnpm e2e:host`, `pnpm e2e:docker`, dependency audit/license
+checks, docs/policy checks, proof-vs-diff equality, and whitespace proof for the 330-path
+consolidation delta.
 Connector repository facade construction now also lives in the connector-owned Drizzle and memory
 modules while the aggregate repository classes keep the same `OpenPracticeRepository` connector
 method surface through typed facade assignment.
