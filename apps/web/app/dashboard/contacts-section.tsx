@@ -16,7 +16,7 @@ import type {
   ContactDossier,
   ContactDossiersResponse,
   ContactReviewQueueResponse,
-} from "../types";
+} from "../_features/contacts/models";
 
 export function ContactsSection({
   activeContactDossier,

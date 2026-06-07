@@ -8,6 +8,7 @@ Open Practice is a TypeScript monorepo for Canadian legal-practice operations. T
 | --------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | API             | Fastify runtime, auth, route contracts, API authorization, provider/bootstrap wiring                                        | `apps/api/src/server.ts`, `apps/api/src/http/`, `apps/api/src/routes/` |
 | Web             | API-backed operational dashboard and navigation metadata                                                                    | `apps/web/app/`, `apps/web/routes/routeCatalog.ts`                     |
+| Worker          | Queue dispatch, worker lifecycle updates, queue-family processors, redacted job metadata                                    | `apps/worker/src/`, `apps/worker/src/processors/`                      |
 | Domain          | Provider-neutral models, permissions, legal rules, audit hashes, trust/funds, signatures, intake contracts, billing helpers | `packages/domain/src/`                                                 |
 | Database        | Drizzle schema, migrations, repository interfaces and implementations, seed support                                         | `packages/database/src/`, `packages/database/migrations/`              |
 | Providers       | Embedded signature and document-automation adapters                                                                         | `packages/providers/src/`                                              |
@@ -18,10 +19,33 @@ Start with the owning workspace before choosing commands. If a change touches `p
 ## Core Boundaries
 
 - `packages/domain` stays pure TypeScript. It should not import Fastify, Drizzle, S3 clients, environment config, provider SDKs, or runtime adapters.
-- `apps/api/src/server.ts` owns bootstrap, authentication hooks, environment setup, central error handling, and route registrar wiring. New route families belong under `apps/api/src/routes/`.
+- `apps/api/src/server.ts` owns bootstrap, authentication hooks, environment setup, central error handling, and route registrar wiring. New route families belong under `apps/api/src/routes/`; route submodules may own feature-specific route declarations when `scripts/validate-open-practice-boundaries.mjs` lists them in the parent registrar's `routeFiles`.
+- `apps/worker/src/processors.ts` stays the queue dispatcher and lifecycle wrapper. Queue-family implementations belong under `apps/worker/src/processors/`.
 - `packages/database` is the persistence boundary. Schema, migrations, in-memory behavior, PostgreSQL behavior, seed data, and repository tests should move together.
+- Database schema groups may live under `packages/database/src/schema/`; `packages/database/src/schema.ts` remains the compatibility aggregator until consumers are migrated to narrower schema modules. Preserve migrations unless the data model itself changes.
+- Repository capability contracts should live in focused modules under `packages/database/src/repository/`; `OpenPracticeRepository` remains the temporary aggregate compatibility surface while consumers migrate to narrower capabilities.
 - `apps/web` consumes API-shaped data. UI capability checks improve ergonomics but do not replace server-side authorization.
+- `apps/web/app/_features` owns feature-specific dashboard resources and UI helpers; `apps/web/app/_shared` owns server-safe resources that are reused across dashboard features.
 - `packages/providers` holds embedded provider implementations. Provider-specific HTTP or SDK logic should not leak into domain rules.
+
+## Package Graph
+
+The workspace import graph is intentionally one-way:
+
+| Owner                | May import workspace packages                                                  |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `packages/domain`    | none                                                                           |
+| `packages/database`  | `@open-practice/domain`                                                        |
+| `packages/providers` | `@open-practice/domain`                                                        |
+| `apps/api`           | `@open-practice/domain`, `@open-practice/database`, `@open-practice/providers` |
+| `apps/worker`        | `@open-practice/domain`, `@open-practice/database`, `@open-practice/providers` |
+| `apps/web`           | browser-safe `@open-practice/domain` exports only                              |
+
+App workspaces must import packages through package exports, not `packages/*/src` source paths. New browser-facing domain imports should prefer web-safe subpaths as they are added; the boundary policy ratchets existing root `@open-practice/domain` usage instead of allowing broad new imports.
+
+`@open-practice/domain`, `@open-practice/database`, and `@open-practice/providers` must keep `main`, `types`, and `exports["."]` aligned with their built root entrypoints. Keep root exports as compatibility shims while consumers migrate to narrower subpaths.
+
+Validation should build upstream packages before downstream checks when shared-package code or manifests change. In practice, run the selector first, then preserve this order for focused commands: domain build, database build, providers build, then API/worker/web tests and typechecks.
 
 ## Common Edit Paths
 

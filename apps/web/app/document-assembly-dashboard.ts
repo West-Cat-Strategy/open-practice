@@ -1,8 +1,8 @@
 import type {
   DocumentAssemblyDashboardResponse,
   DocumentAssemblyWorkbenchResponse,
-  MatterSummary,
-} from "./types";
+} from "./_features/document-assembly/models";
+import type { MatterSummary } from "./types";
 
 export function buildDocumentAssemblyWorkbenchPath(matterId: string): string {
   return `/api/document-assembly/workbench?matterId=${encodeURIComponent(matterId)}`;

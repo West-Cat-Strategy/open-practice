@@ -2,55 +2,47 @@ import type {
   AuditEventTaxonomySummary,
   AiOperationalProposalRecord,
   AiOperationalProposalSummary,
+  BillDeliveryState,
   BillingPeriodLockRecord,
   BillingRateRuleRecord,
   BillingRateSnapshot,
   BillingTimerDraftPolicy,
-  BillDeliveryState,
   BillReminderState,
   Contact,
   CreditWriteOffPosture,
-  HostedPaymentProcessorState,
   ConflictCandidate,
-  DocumentAssemblyWorkspace,
   DocumentRecord,
   GeneratedDocumentRecord,
   DraftRecord,
   DraftAssistRecord,
   DraftTemplateRecord,
-  ExpenseCategoryProfileCue,
   ExpenseEntry,
   Firm,
   ActivityTimelineEntry,
-  CalendarEventRecord,
-  CalendarEventAttendeeRecord,
-  CalendarEventReminderRecord,
-  CalendarMeetingInvitationBoundary,
-  CalendarSchedulingRequestSummary,
-  ContactDossier,
-  ContactDataQualityResolutionRecord,
   DashboardSectionCapability,
+  EmbeddedIntakeTemplateDefinition,
+  ExpenseCategoryProfileCue,
+  IntakeFormItemActionRecord,
+  IntakeFormReviewRecord,
   IntakeSessionRecord,
   IntakePipelineLeadRecord,
   IntakePipelineSummary,
   IntakeTemplateRecord,
-  IntakeFormReviewRecord,
   IntakeVariableProposal,
+  IntakeFormLinkRecord,
+  IntakeTemplatePreviewResult,
+  HostedPaymentProcessorState,
+  JurisdictionalTrustReport,
+  LegalResearchWorkspace,
   LedgerAccount,
   LedgerAccountingReviewProfileRecord,
+  LedgerAccountingReviewSummary,
   LedgerBankFeedReconciliationReviewSummary,
   LedgerEntry,
   LedgerReconciliationRecord,
-  LedgerAccountingReviewSummary,
   LedgerStatementImportBatchRecord,
   LedgerStatementMatchRuleProfileRecord,
   LedgerTransactionApprovalRecord,
-  EmbeddedIntakeTemplateDefinition,
-  IntakeFormLinkRecord,
-  IntakeFormItemActionRecord,
-  IntakeTemplatePreviewResult,
-  JurisdictionalTrustReport,
-  LegalResearchWorkspace,
   Matter,
   MatterParty,
   MatterSetupProfile,
@@ -64,13 +56,94 @@ import type {
   TimeEntry,
   User,
 } from "@open-practice/domain";
+import type {
+  DocumentProcessingProviderStatus,
+  DocumentProcessingReservedTask,
+} from "./_features/document-processing/models";
+import type {
+  CalendarGuestAccessStatus as CalendarGuestAccessStatusModel,
+  CalendarGuestSessionStatus as CalendarGuestSessionStatusModel,
+} from "./_features/calendar/models";
+
+export type {
+  BillDeliveryState,
+  BillingPeriodLockRecord,
+  BillingRateRuleRecord,
+  BillingRateSnapshot,
+  BillingTimerDraftPolicy,
+  BillReminderState,
+  CreditWriteOffPosture,
+  ExpenseCategoryProfileCue,
+  HostedPaymentProcessorState,
+  JurisdictionalTrustReport,
+  LedgerAccount,
+  LedgerAccountingReviewProfileRecord,
+  LedgerAccountingReviewSummary,
+  LedgerBankFeedReconciliationReviewSummary,
+  LedgerEntry,
+  LedgerReconciliationRecord,
+  LedgerStatementImportBatchRecord,
+  LedgerStatementMatchRuleProfileRecord,
+  LedgerTransactionApprovalRecord,
+  PaymentPlanPlaceholder,
+};
+
+export type {
+  BillingDashboardResponse,
+  BillingEntryStatus,
+  BillingExpenseItem,
+  BillingInvoiceSummary,
+  BillingPaymentRequestSummary,
+  BillingPaymentSummary,
+  BillingTimeItem,
+  JurisdictionalTrustReportResponse,
+  MatterBillingSummary,
+  TrustControlsDashboardResponse,
+} from "./_features/billing/models";
+
+export type {
+  DocumentAssemblyDashboardResponse,
+  DocumentAssemblyWorkbenchResponse,
+  DocumentAssemblyWorkbenchStatus,
+} from "./_features/document-assembly/models";
+
+export type {
+  DocumentMetadataOcrStatus,
+  DocumentMetadataSearchFilters,
+  DocumentMetadataSearchPosture,
+  DocumentMetadataSearchResultSummary,
+  DocumentMetadataTag,
+  DocumentMetadataTagGroup,
+  DocumentProcessingDashboardResponse,
+  DocumentProcessingDocumentSummary,
+  DocumentProcessingGroup,
+  DocumentProcessingLatestExtraction,
+  DocumentProcessingLatestJob,
+  DocumentProcessingProviderStatus,
+  DocumentProcessingQueueSummary,
+  DocumentProcessingReservedTask,
+  DocumentProcessingSummary,
+  DocumentProcessingWorkbenchItem,
+  DocumentProcessingWorkbenchResponse,
+  DocumentProcessingWorkerQueueStatus,
+  DocumentReviewSuggestionCue,
+  DocumentReviewSuggestionGroup,
+  DocumentReviewSuggestions,
+} from "./_features/document-processing/models";
 
 export type {
   ContactDossier,
   ContactDataQualityResolutionRecord,
-  IntakePipelineLeadRecord,
-  IntakePipelineSummary,
-};
+  ContactDataQualityResolutionsResponse,
+  ContactDossiersResponse,
+  ContactReviewQueueItem,
+  ContactReviewQueueResponse,
+  ContactReviewQueueSignal,
+} from "./_features/contacts/models";
+
+export { canRecordContactDataQualityResolutions } from "./_features/contacts/models";
+
+export type { IntakePipelineLeadRecord, IntakePipelineSummary };
 
 export interface MatterSummary extends Matter {
   parties: Array<MatterParty & { contact: Contact }>;
@@ -110,61 +183,6 @@ export interface SessionResponse {
 
 export interface CapabilitiesResponse {
   sections: DashboardSectionCapability[];
-}
-
-export function canRecordContactDataQualityResolutions(
-  sections: DashboardSectionCapability[],
-): boolean {
-  return sections.some(
-    (section) =>
-      section.key === "contacts" && section.enabled && section.actions.includes("update"),
-  );
-}
-
-export type ContactDossiersResponse = ContactDossier[];
-
-export type ContactReviewQueueSignal = Omit<
-  ContactDossier["qualityReview"]["signals"][number],
-  "matchedValue"
-> & {
-  matchedValueRedacted: boolean;
-};
-
-export interface ContactReviewQueueItem {
-  contact: {
-    id: string;
-    kind: Contact["kind"];
-    displayName: string;
-    aliasCount: number;
-    identifierCount: number;
-  };
-  matters: ContactDossier["matters"];
-  summary: ContactDossier["qualityReview"]["summary"];
-  signals: ContactReviewQueueSignal[];
-  auditSafe: true;
-}
-
-export interface ContactReviewQueueResponse {
-  summary: {
-    totalContacts: number;
-    reviewItemCount: number;
-    duplicateCandidateCount: number;
-    sensitivePartyCueCount: number;
-    revalidationPromptCount: number;
-  };
-  items: ContactReviewQueueItem[];
-}
-
-export type ContactDataQualityResolutionsResponse = ContactDataQualityResolutionRecord[];
-
-export type DocumentAssemblyWorkbenchStatus = "available" | "access_denied" | "unavailable";
-
-export type DocumentAssemblyWorkbenchResponse = DocumentAssemblyWorkspace & {
-  status: DocumentAssemblyWorkbenchStatus;
-};
-
-export interface DocumentAssemblyDashboardResponse {
-  workbenchesByMatterId: Record<string, DocumentAssemblyWorkbenchResponse>;
 }
 
 export type LegalResearchWorkspaceStatus = "available" | "access_denied" | "unavailable";
@@ -340,193 +358,43 @@ export interface DraftExportResponse {
   generatedDocument: GeneratedDocumentRecord;
 }
 
-export interface ExternalUploadLinkRecord {
-  id: string;
-  firmId: string;
-  matterId: string;
-  requestedByUserId: string;
-  expiresAt: string;
-  maxUploads: number;
-  usedUploads: number;
-  createdAt: string;
-  revokedAt?: string;
-}
+export type {
+  ExternalUploadCreateResponse,
+  ExternalUploadLinkRecord,
+  ExternalUploadReviewItem,
+  ExternalUploadRevokeResponse,
+  ExternalUploadsDashboardResponse,
+  ExternalUploadsListResponse,
+  ExternalUploadsStatusResponse,
+} from "./_features/external-uploads/models";
 
-export interface ExternalUploadReviewItem {
-  id: string;
-  matterId: string;
-  externalUploadLinkId?: string;
-  title: string;
-  version: number;
-  classification: string;
-  legalHold: boolean;
-  uploadStatus: string;
-  checksumStatus: string;
-  scanStatus: string;
-  reviewStatus: string;
-  reviewDecision?: string;
-  reviewReason?: string;
-  reviewMetadata: Record<string, unknown>;
-  reviewedByUserId?: string;
-  reviewedAt?: string;
-  duplicateOfDocumentId?: string;
-  uploadedAt?: string;
-  verifiedAt?: string;
-  accessLogProof?: {
-    total: number;
-    latestAt?: string;
-    outcomes: string[];
-  };
-}
-
-export interface ExternalUploadsStatusResponse {
-  status: string;
-  provider?: string;
-  reason?: string;
-  canCreate?: boolean;
-  canManage?: boolean;
-}
-
-export interface ExternalUploadsListResponse {
-  uploads: ExternalUploadLinkRecord[];
-  reviewItems?: ExternalUploadReviewItem[];
-}
-
-export interface ExternalUploadCreateResponse {
-  upload: ExternalUploadLinkRecord | null;
-  token?: string;
-  reason?: string;
-}
-
-export interface ExternalUploadRevokeResponse {
-  upload: ExternalUploadLinkRecord;
-}
-
-export interface ExternalUploadsDashboardResponse {
-  status: ExternalUploadsStatusResponse;
-  uploadsByMatterId: Record<string, ExternalUploadLinkRecord[]>;
-  reviewItemsByMatterId: Record<string, ExternalUploadReviewItem[]>;
-}
-
-export interface CalendarCredentialSummary {
-  id: string;
-  username: string;
-  label: string;
-  createdAt: string;
-  lastUsedAt?: string;
-  revokedAt?: string;
-}
-
-export interface CalendarEventsResponse {
-  events: CalendarEventRecord[];
-  guestSessions?: CalendarGuestSessionSummary[];
-  schedulingRequests?: CalendarSchedulingRequestSummary[];
-  caldavUrl: string;
-  subscriptionUrl: string;
-}
-
-export interface CalendarCredentialsResponse {
-  credentials: CalendarCredentialSummary[];
-}
-
-export interface CalendarCredentialCreateResponse {
-  credential: CalendarCredentialSummary;
-  username: string;
-  password: string;
-  caldavUrl: string;
-  principalUrl: string;
-  calendarHomeUrl: string;
-}
-
-export interface CalendarCredentialRevokeResponse {
-  credential: CalendarCredentialSummary;
-}
-
-export interface CalendarAttendeeMutationResponse {
-  attendee: CalendarEventAttendeeRecord;
-}
-
-export interface CalendarEventMutationResponse {
-  event: CalendarEventRecord;
-}
-
-export interface CalendarReminderMutationResponse {
-  reminder: CalendarEventReminderRecord;
-}
-
-export interface CalendarMeetingLinkMutationResponse {
-  event: CalendarEventRecord;
-}
-
-export interface CalendarInvitationResult {
-  attendee: CalendarEventAttendeeRecord;
-  queuedEmail?: {
-    id: string;
-    templateKey: string;
-    status: string;
-    queuedAt: string;
-    jobId: string;
-  };
-}
-
-export interface CalendarInvitationResponse {
-  results: CalendarInvitationResult[];
-  meetingInvitationBoundary?: CalendarMeetingInvitationBoundary;
-}
-
-export type CalendarGuestAccessStatus = "issued" | "waiting" | "admitted" | "denied" | "revoked";
-
-export type CalendarGuestSessionStatus = "created" | "open" | "locked" | "ended" | "expired";
-
-export interface CalendarGuestSessionGuestSummary {
-  id: string;
-  sessionId: string;
-  status: CalendarGuestAccessStatus;
-  expiresAt: string;
-  checkedInAt?: string;
-  admittedAt?: string;
-  deniedAt?: string;
-  revokedAt?: string;
-}
-
-export interface CalendarGuestSessionSummary {
-  id: string;
-  eventId: string;
-  status: CalendarGuestSessionStatus;
-  lobbyStatus?: CalendarGuestSessionStatus;
-  provider?: string;
-  createdAt: string;
-  updatedAt: string;
-  endedAt?: string;
-  retentionUntil?: string;
-  issuedCount: number;
-  waitingCount: number;
-  admittedCount: number;
-  deniedCount: number;
-  revokedCount: number;
-  guests: CalendarGuestSessionGuestSummary[];
-}
-
-export interface CalendarGuestSessionMutationResponse {
-  session: CalendarGuestSessionSummary;
-}
-
-export interface CalendarGuestSessionIssueResponse {
-  session: CalendarGuestSessionSummary;
-  guest: CalendarGuestSessionGuestSummary;
-  token: string;
-  portalUrl: string;
-}
-
-export interface CalendarGuestSessionGuestMutationResponse {
-  session?: CalendarGuestSessionSummary | null;
-  guest: CalendarGuestSessionGuestSummary;
-}
+export type {
+  CalendarAttendeeMutationResponse,
+  CalendarCredentialCreateResponse,
+  CalendarCredentialRevokeResponse,
+  CalendarCredentialSummary,
+  CalendarCredentialsResponse,
+  CalendarDashboardResponse,
+  CalendarEventMutationResponse,
+  CalendarEventsResponse,
+  CalendarGuestAccessStatus,
+  CalendarGuestSessionGuestMutationResponse,
+  CalendarGuestSessionGuestSummary,
+  CalendarGuestSessionIssueResponse,
+  CalendarGuestSessionMutationResponse,
+  CalendarGuestSessionStatus,
+  CalendarGuestSessionSummary,
+  CalendarInvitationResponse,
+  CalendarInvitationResult,
+  CalendarMatterLinks,
+  CalendarMeetingLinkMutationResponse,
+  CalendarReminderMutationResponse,
+} from "./_features/calendar/models";
 
 export interface PublicGuestSessionResponse {
   session: {
-    status: CalendarGuestSessionStatus;
-    lobbyStatus?: CalendarGuestSessionStatus;
+    status: CalendarGuestSessionStatusModel;
+    lobbyStatus?: CalendarGuestSessionStatusModel;
     startsAt?: string;
     endsAt?: string;
     issuedCount?: number;
@@ -541,32 +409,19 @@ export interface PublicGuestSessionResponse {
     meetingUrlAvailable: false;
   };
   guest?: {
-    status: CalendarGuestAccessStatus;
+    status: CalendarGuestAccessStatusModel;
     checkedInAt?: string;
     admittedAt?: string;
     deniedAt?: string;
     revokedAt?: string;
   };
   lobby?: {
-    status?: CalendarGuestSessionStatus;
+    status?: CalendarGuestSessionStatusModel;
     waitingCount?: number;
     admittedCount?: number;
     deniedCount?: number;
     revokedCount?: number;
   };
-}
-
-export interface CalendarMatterLinks {
-  caldavUrl: string;
-  subscriptionUrl: string;
-}
-
-export interface CalendarDashboardResponse {
-  eventsByMatterId: Record<string, CalendarEventRecord[]>;
-  guestSessionsByEventId: Record<string, CalendarGuestSessionSummary[]>;
-  schedulingRequestsByMatterId: Record<string, CalendarSchedulingRequestSummary[]>;
-  linksByMatterId: Record<string, CalendarMatterLinks>;
-  credentials: CalendarCredentialSummary[];
 }
 
 export interface LegalClinicProgramSummary {
@@ -636,425 +491,24 @@ export interface FiscalHostWorkflowSelectorSummary {
   restrictedFundMetadata: FiscalHostRestrictedFundMetadataSummary;
 }
 
-export interface EmailDeliveryEventSummary {
-  id: string;
-  eventType: string;
-  occurredAt: string;
-  providerMessageId?: string;
-  attemptNumber?: number;
-  jobId?: string;
-  source: string;
-  errorSummary?: string;
-}
+export type {
+  ClientUpdateDraftRequestSummary,
+  CommunicationsChannelHistoryItem,
+  CommunicationsChannelHistoryKind,
+  CommunicationsInboxContactCue,
+  CommunicationsInboxConversation,
+  CommunicationsInboxDashboardResponse,
+  CommunicationsInboxInboundEmail,
+  CommunicationsInboxMatterResponse,
+  CommunicationsInboxOutboundDelivery,
+} from "./_features/communications/models";
 
-export interface EmailDeliveryHistoryItem {
-  id: string;
-  matterId: string;
-  templateKey: string;
-  status: string;
-  relatedResourceType?: string;
-  relatedResourceId?: string;
-  recipientCount: number;
-  attemptCount: number;
-  queuedAt: string;
-  lastAttemptAt?: string;
-  sentAt?: string;
-  failedAt?: string;
-  terminalFailureAt?: string;
-  failureSummary?: string;
-  events: EmailDeliveryEventSummary[];
-}
-
-export interface EmailDeliveryHistoryResponse {
-  emails: EmailDeliveryHistoryItem[];
-}
-
-export interface EmailDeliveryDashboardResponse {
-  emailsByMatterId: Record<string, EmailDeliveryHistoryItem[]>;
-}
-
-export interface CommunicationsInboxInboundEmail {
-  id: string;
-  matterId?: string;
-  status: string;
-  labels: string[];
-  receivedAt: string;
-  attachmentCount: number;
-  triage?: {
-    status?: string;
-    assignedToUserId?: string;
-    contactIds?: string[];
-    updatedAt?: string;
-    updatedByUserId?: string;
-  };
-}
-
-export interface CommunicationsInboxOutboundDelivery {
-  id: string;
-  matterId: string;
-  templateKey: string;
-  status: string;
-  relatedResourceType?: string;
-  relatedResourceId?: string;
-  recipientCount: number;
-  attemptCount: number;
-  queuedAt: string;
-  lastAttemptAt?: string;
-  sentAt?: string;
-  failedAt?: string;
-  terminalFailureAt?: string;
-  failureSummary?: string;
-  events: Array<{
-    id: string;
-    eventType: string;
-    occurredAt: string;
-    attemptNumber?: number;
-    source: string;
-    errorSummary?: string;
-  }>;
-}
-
-export interface CommunicationsInboxConversation {
-  id: string;
-  matterId: string;
-  topic: string;
-  status: string;
-  exportState: string;
-  notificationBoundary: string;
-  retentionUntil?: string;
-  accessRevokedAt?: string;
-  updatedAt: string;
-  messageCount?: number;
-  latestMessageAt?: string;
-  notificationSummary?: {
-    notificationCount: number;
-    unreadNotificationCount: number;
-    mutedNotificationCount: number;
-    latestNotificationAt?: string;
-    latestReadAt?: string;
-    latestMutedAt?: string;
-  };
-}
-
-export type CommunicationsChannelHistoryKind =
-  | "inbound_email"
-  | "outbound_email"
-  | "conversation"
-  | "phone_note_placeholder"
-  | "text_note_placeholder"
-  | "client_update_draft";
-
-export interface CommunicationsChannelHistoryItem {
-  id: string;
-  matterId: string;
-  kind: CommunicationsChannelHistoryKind;
-  channel: "email" | "conversation" | "phone" | "text" | "client_update";
-  direction: "inbound" | "outbound" | "internal" | "planned_outbound";
-  occurredAt: string;
-  status: string;
-  title: string;
-  detail: string;
-  sourceResourceType:
-    | "inbound_email"
-    | "email_outbox"
-    | "conversation_thread"
-    | "conversation_message";
-  sourceResourceId: string;
-  metadataRedacted: true;
-  bodyRedacted?: true;
-  consentStatus?: string;
-  recipientCount?: number;
-  attachmentCount?: number;
-  messageCount?: number;
-  eventCount?: number;
-  bodyLength?: number;
-}
-
-export interface ClientUpdateDraftRequestSummary {
-  id: string;
-  matterId: string;
-  threadId: string;
-  messageId: string;
-  status: "draft_requested" | "thread_closed" | "thread_revoked";
-  requestedAt: string;
-  requestedByUserIdPresent: boolean;
-  bodyLength: number;
-  bodyRedacted: true;
-  metadataRedacted: true;
-  automaticSendEnabled: false;
-  portalComposerEnabled: false;
-}
-
-export interface CommunicationsInboxContactCue {
-  contact: {
-    id: string;
-    kind: string;
-    displayName: string;
-  };
-  matterLinks: Array<{
-    matterId: string;
-    role: string;
-    adverse: boolean;
-    confidential: boolean;
-    portalActive: boolean;
-    portalPermissionCount: number;
-  }>;
-  cueSummary: {
-    conflictCueCount: number;
-    qualitySignalCount: number;
-    portalActiveGrantCount: number;
-  };
-}
-
-export interface CommunicationsInboxMatterResponse {
-  status: string;
-  matterId: string;
-  channelState: {
-    inboundEmailStatus: "configured" | "disabled";
-    outboundEmailStatus: "configured" | "disabled";
-    inboundEmailAddressCount: number;
-    enabledInboundEmailAddressCount: number;
-  };
-  inboundEmail: CommunicationsInboxInboundEmail[];
-  outboundDeliveryHistory: CommunicationsInboxOutboundDelivery[];
-  conversations: CommunicationsInboxConversation[];
-  channelHistory: CommunicationsChannelHistoryItem[];
-  clientUpdateDraftRequests: ClientUpdateDraftRequestSummary[];
-  contactCues: CommunicationsInboxContactCue[];
-}
-
-export interface CommunicationsInboxDashboardResponse {
-  inboxByMatterId: Record<string, CommunicationsInboxMatterResponse>;
-}
-
-export type DocumentProcessingGroup =
-  | "ready_to_process"
-  | "queued_or_active"
-  | "needs_review"
-  | "blocked";
-
-export type DocumentProcessingDocumentSummary = Pick<
-  DocumentRecord,
-  | "id"
-  | "matterId"
-  | "title"
-  | "version"
-  | "classification"
-  | "legalHold"
-  | "uploadStatus"
-  | "checksumStatus"
-  | "scanStatus"
-  | "reviewStatus"
-  | "reviewDecision"
-  | "reviewReason"
-  | "reviewedAt"
-  | "duplicateOfDocumentId"
-  | "uploadedAt"
-  | "verifiedAt"
->;
-
-export interface DocumentProcessingProviderStatus {
-  kind: string;
-  status: "configured" | "disabled" | string;
-  reason?: string;
-  providers?: Array<{
-    key: string;
-    enabled: boolean;
-    updatedAt?: string;
-  }>;
-}
-
-export interface DocumentProcessingWorkerQueueStatus {
-  queueName: string;
-  status: "configured" | "not_configured" | "reserved" | string;
-  reason?: string;
-  task?: string;
-  actionable?: boolean;
-}
-
-export interface DocumentProcessingReservedTask {
-  task: string;
-  queueName: string;
-  status: "reserved" | string;
-  reason?: string;
-  actionable?: boolean;
-}
-
-export interface DocumentProcessingQueueSummary {
-  queueName: string;
-  total: number;
-  queued: number;
-  active: number;
-  failed: number;
-  terminal: number;
-  latestQueuedAt?: string;
-}
-
-export interface DocumentProcessingSummary {
-  total: number;
-  queued: number;
-  active: number;
-  failed: number;
-  terminal: number;
-  byQueue?: DocumentProcessingQueueSummary[];
-}
-
-export interface DocumentProcessingLatestJob {
-  id: string;
-  queueName: string;
-  jobName?: string;
-  status: string;
-  terminal?: boolean;
-  failed?: boolean;
-  retryable?: boolean;
-  attemptsMade?: number;
-  maxAttempts?: number;
-  queuedAt?: string;
-  startedAt?: string;
-  finishedAt?: string;
-  failedAt?: string;
-  errorSummary?: string;
-}
-
-export interface DocumentProcessingLatestExtraction {
-  id?: string;
-  status?: string;
-  provider?: string;
-  createdAt?: string;
-  completedAt?: string;
-  confidence?: number;
-  pageCount?: number;
-  language?: string;
-  summary?: string;
-  errorSummary?: string;
-}
-
-export type DocumentReviewSuggestionGroup =
-  | "classification"
-  | "duplicate_or_supersession"
-  | "matter_contact"
-  | "missing_metadata"
-  | "retention_review";
-
-export interface DocumentReviewSuggestionCue {
-  id: string;
-  group: DocumentReviewSuggestionGroup;
-  label: string;
-  detail?: string;
-  tone: "neutral" | "ready" | "risk";
-  documentId?: string;
-  relatedDocumentId?: string;
-  classification?: string;
-  confidence?: number;
-  status?: string;
-  role?: string;
-  contactId?: string;
-  contactName?: string;
-  metadataKeys?: string[];
-}
-
-export interface DocumentReviewSuggestions {
-  reviewerOnly: true;
-  mutating: false;
-  summaryCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
-  groups: Record<DocumentReviewSuggestionGroup, DocumentReviewSuggestionCue[]>;
-}
-
-export type DocumentMetadataTagGroup =
-  | "classification"
-  | "review_status"
-  | "scan_status"
-  | "legal_hold"
-  | "ocr"
-  | "reviewer_cue";
-
-export type DocumentMetadataOcrStatus = "not_available" | "queued" | "completed" | "failed";
-
-export interface DocumentMetadataTag {
-  key: string;
-  label: string;
-  value: string;
-  group: DocumentMetadataTagGroup;
-  tone: "neutral" | "ready" | "risk";
-  count?: number;
-}
-
-export interface DocumentMetadataSearchFilters {
-  q?: string;
-  classification?: DocumentRecord["classification"];
-  reviewStatus?: DocumentRecord["reviewStatus"];
-  scanStatus?: DocumentRecord["scanStatus"];
-  ocrStatus?: DocumentMetadataOcrStatus;
-  cueGroup?: DocumentReviewSuggestionGroup;
-  tag?: string;
-}
-
-export interface DocumentMetadataSearchResultSummary {
-  documentId: string;
-  title: string;
-  matterId: string;
-  classification: DocumentRecord["classification"];
-  reviewStatus: DocumentRecord["reviewStatus"];
-  scanStatus: DocumentRecord["scanStatus"];
-  legalHold: boolean;
-  ocrStatus: DocumentMetadataOcrStatus;
-  tagKeys: string[];
-  matchedFields: string[];
-  cueCounts: Record<DocumentReviewSuggestionGroup | "total", number>;
-}
-
-export interface DocumentMetadataSearchPosture {
-  reviewOnly: true;
-  mutating: false;
-  filters: DocumentMetadataSearchFilters;
-  totalCount: number;
-  matchedCount: number;
-  tags: DocumentMetadataTag[];
-  ocrPosture: {
-    rawTextSearch: false;
-    rawTextReturned: false;
-    searchableFields: string[];
-    statusCounts: Record<DocumentMetadataOcrStatus, number>;
-  };
-  results: DocumentMetadataSearchResultSummary[];
-}
-
-export interface DocumentProcessingWorkbenchItem {
-  document: DocumentProcessingDocumentSummary;
-  group: DocumentProcessingGroup;
-  queueEligibility: {
-    eligible: boolean;
-    reason?: string;
-  };
-  latestJob?: DocumentProcessingLatestJob;
-  latestExtraction?: DocumentProcessingLatestExtraction;
-  reviewSuggestions?: DocumentReviewSuggestions;
-  metadataTags?: DocumentMetadataTag[];
-}
-
-export interface DocumentProcessingWorkbenchResponse {
-  matterId: string;
-  status: "configured" | "disabled" | "available" | "unavailable" | string;
-  reason?: string;
-  providerStatus: DocumentProcessingProviderStatus[];
-  workerQueues: DocumentProcessingWorkerQueueStatus[];
-  reservedQueues?: DocumentProcessingWorkerQueueStatus[];
-  actionableTasks?: string[];
-  reservedTasks?: DocumentProcessingReservedTask[];
-  reviewQueue?: {
-    needsReviewCount: number;
-    duplicateCandidateCount: number;
-    supersessionCount: number;
-    failedScanCount: number;
-  };
-  metadataSearch?: DocumentMetadataSearchPosture;
-  summary: DocumentProcessingSummary;
-  documents: DocumentProcessingWorkbenchItem[];
-}
-
-export interface DocumentProcessingDashboardResponse {
-  workbenchesByMatterId: Record<string, DocumentProcessingWorkbenchResponse>;
-}
+export type {
+  EmailDeliveryDashboardResponse,
+  EmailDeliveryEventSummary,
+  EmailDeliveryHistoryItem,
+  EmailDeliveryHistoryResponse,
+} from "./_features/email-delivery/models";
 
 export interface DocumentProcessingStatusResponse {
   status: string;
@@ -1070,142 +524,6 @@ export interface DocumentProcessingStatusResponse {
   summary: WorkerRunSummary;
   jobs: WorkerRunSummaryItem[];
 }
-
-export type BillingEntryStatus = "draft" | "submitted" | "approved" | "billed" | "written_off";
-
-export interface BillingTimeItem {
-  id: string;
-  matterId: string;
-  userId?: string;
-  performedAt?: string;
-  minutes: number;
-  rateCents: number;
-  rateRuleId?: string;
-  rateSnapshot?: BillingRateSnapshot;
-  amountCents: number;
-  narrative: string;
-  billable?: boolean;
-  status: BillingEntryStatus;
-}
-
-export interface BillingExpenseItem {
-  id: string;
-  matterId: string;
-  incurredAt?: string;
-  amountCents: number;
-  category: string;
-  categoryProfileKey?: string;
-  description: string;
-  status: BillingEntryStatus;
-}
-
-export interface BillingInvoiceSummary {
-  id: string;
-  matterId: string;
-  number: string;
-  status: "draft" | "approved" | "issued" | "partially_paid" | "paid" | "void";
-  totalCents: number;
-  balanceDueCents: number;
-  issuedAt?: string;
-  dueAt?: string;
-}
-
-export interface BillingPaymentSummary {
-  id: string;
-  matterId: string;
-  invoiceId?: string;
-  amountCents: number;
-  method: "cash" | "card" | "eft" | "cheque" | "other";
-  receivedAt: string;
-  reference?: string;
-  evidencePresent?: boolean;
-}
-
-export interface BillingPaymentRequestSummary {
-  id: string;
-  matterId: string;
-  invoiceId: string;
-  clientContactId?: string;
-  status: "ready_to_send" | "sent" | "viewed" | "cancelled" | "expired";
-  amountCents: number;
-  hostedPath: string;
-  delivery: BillDeliveryState;
-  reminder: BillReminderState;
-  paymentPlan: PaymentPlanPlaceholder;
-  creditWriteOffPosture: CreditWriteOffPosture;
-  processor: HostedPaymentProcessorState;
-  evidencePresent: boolean;
-  createdAt: string;
-  updatedAt: string;
-  expiresAt?: string;
-}
-
-export interface MatterBillingSummary {
-  matterId: string;
-  captureReviewTime: BillingTimeItem[];
-  captureReviewExpenses: BillingExpenseItem[];
-  unbilledTime: BillingTimeItem[];
-  unbilledExpenses: BillingExpenseItem[];
-  invoices: BillingInvoiceSummary[];
-  payments: BillingPaymentSummary[];
-  paymentRequests: BillingPaymentRequestSummary[];
-}
-
-export interface BillingDashboardResponse {
-  canView: boolean;
-  summary: {
-    unbilledTimeCents: number;
-    unbilledExpenseCents: number;
-    draftInvoiceCents: number;
-    issuedBalanceDueCents: number;
-    hostedPaymentRequestCents: number;
-    lockedPeriodCount: number;
-    activeLockedPeriodCount: number;
-    activeRateRuleCount: number;
-  };
-  periodLocks: BillingPeriodLockRecord[];
-  rateRules: BillingRateRuleRecord[];
-  timerDraftPolicy: BillingTimerDraftPolicy;
-  expenseCategoryProfiles: readonly ExpenseCategoryProfileCue[];
-  matters: MatterBillingSummary[];
-}
-
-export interface TrustControlsDashboardResponse {
-  ledger: {
-    accounts: LedgerAccount[];
-    entries: LedgerEntry[];
-    balances: Record<string, number>;
-    trustBalances: Record<string, number>;
-  };
-  approvals: LedgerTransactionApprovalRecord[];
-  reconciliations: LedgerReconciliationRecord[];
-  accountingReview: {
-    importBatches: LedgerStatementImportBatchRecord[];
-    matchRuleProfiles: LedgerStatementMatchRuleProfileRecord[];
-    accountingProfiles: LedgerAccountingReviewProfileRecord[];
-    summary: LedgerAccountingReviewSummary;
-    bankFeedReviewSummary: LedgerBankFeedReconciliationReviewSummary;
-  };
-  diagnostics: {
-    pendingApprovalTransactionIds: string[];
-    rejectedApprovalTransactionIds: string[];
-    unreconciledAccountIds: string[];
-    exceptionReconciliationIds: string[];
-    overdrawnBalanceKeys: string[];
-  };
-  trustControlPolicy?: {
-    automaticTrustPosting: false;
-    transferRequestPosting: string;
-    makerChecker: {
-      ledgerTransactionApproval: string;
-      trustTransferRequest: string;
-      reconciliation: string;
-    };
-    compliancePosture: string;
-  };
-}
-
-export type JurisdictionalTrustReportResponse = JurisdictionalTrustReport;
 
 export interface QueueItem {
   id: string;
@@ -1237,65 +555,14 @@ export interface AiOperationalProposalsResponse {
   };
 }
 
-export interface ConnectorSummary {
-  id: string;
-  type: "calendar" | "document_processing" | "email" | "generic" | "inbound_email" | string;
-  key: string;
-  displayName: string;
-  status: "disabled" | "enabled" | "paused" | "error" | string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface ConnectorsResponse {
-  connectors: ConnectorSummary[];
-}
-
-export interface ConnectorOutboxItem {
-  id: string;
-  connectorId: string;
-  eventType: string;
-  resourceType?: string;
-  resourceId?: string;
-  idempotencyKeyPresent: boolean;
-  status: "pending" | "leased" | "delivered" | "failed" | "dead_letter" | "cancelled" | string;
-  payloadSummary: Record<string, unknown>;
-  attemptCount: number;
-  maxAttempts: number;
-  nextAttemptAt?: string;
-  leasePresent: boolean;
-  leasedUntil?: string;
-  deliveredAt?: string;
-  deadLetteredAt?: string;
-  lastErrorSummary?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface ConnectorOutboxResponse {
-  outbox: ConnectorOutboxItem[];
-}
-
-export interface ConnectorOutboxRecoveryResponse {
-  outbox: ConnectorOutboxItem;
-  deliveryJob?: {
-    id: string;
-    queueName: string;
-    jobName: string;
-    status: string;
-    bullJobId?: string;
-    targetResourceType?: string;
-    targetResourceId?: string;
-    queuedAt?: string;
-    idempotencyKeyPresent: boolean;
-  };
-}
-
-export interface ConnectorOperationsResponse {
-  connectors: ConnectorSummary[];
-  outbox: ConnectorOutboxItem[];
-  status: "available" | "access_denied" | "unavailable";
-}
+export type {
+  ConnectorOperationsResponse,
+  ConnectorOutboxItem,
+  ConnectorOutboxRecoveryResponse,
+  ConnectorOutboxResponse,
+  ConnectorSummary,
+  ConnectorsResponse,
+} from "./_features/connectors/models";
 
 export interface OperationalViewResult {
   [key: string]: unknown;
@@ -1519,34 +786,14 @@ export interface ProvidersStatusResponse {
 
 export type TaskDeadlineWorkbenchResponse = TaskDeadlineWorkbench;
 
-export type ShareLinkPermission = "view_documents";
-
-export interface ShareLinkRecord {
-  id: string;
-  firmId: string;
-  matterId: string;
-  grantedByUserId: string;
-  permissions: ShareLinkPermission[];
-  expiresAt?: string;
-  revokedAt?: string;
-  createdAt?: string;
-  tokenHash?: string;
-  requireEmailVerification?: boolean;
-  contactId?: string;
-}
-
-export interface ShareLinksResponse {
-  shares: ShareLinkRecord[];
-}
-
-export interface ShareLinksStatusResponse {
-  createStatus: "enabled" | "disabled";
-  status?: string;
-  provider?: string;
-  reason?: string;
-  canCreate?: boolean;
-  canManage?: boolean;
-}
+export type {
+  CreateShareLinkResponse,
+  RevokeShareLinkResponse,
+  ShareLinkPermission,
+  ShareLinkRecord,
+  ShareLinksResponse,
+  ShareLinksStatusResponse,
+} from "./_features/share-links/models";
 
 export type ClientPortalPermission = "view_documents" | "upload_documents" | "message" | "sign";
 
@@ -1676,25 +923,6 @@ export interface ClientPortalAccountSetupResponse {
         reason: "token_signing_not_configured";
         userId: string;
       };
-}
-
-export interface CreateShareLinkResponse {
-  share: ShareLinkRecord | null;
-  token?: string;
-  queuedEmail?: {
-    id: string;
-    templateKey: string;
-    status: string;
-    queuedAt: string;
-    jobId: string;
-    idempotencyKeyPresent?: boolean;
-  };
-  status?: string;
-  reason?: string;
-}
-
-export interface RevokeShareLinkResponse {
-  share: ShareLinkRecord;
 }
 
 export interface SetupStatusResponse {

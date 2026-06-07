@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { DocumentAutomationProvider, IntakeSessionRecord } from "@open-practice/domain";
+import { EmbeddedAutomationProvider } from "@open-practice/providers";
 import { registerIntakeRoutes } from "./intake.js";
 
 const servers: FastifyInstance[] = [];
@@ -35,7 +36,7 @@ function testServer({ repository, automationProvider }: TestServerOptions = {}) 
 
   registerIntakeRoutes(server, {
     repository: testRepository,
-    automationProvider,
+    automationProvider: automationProvider ?? new EmbeddedAutomationProvider(),
     emailJobQueue,
   });
 

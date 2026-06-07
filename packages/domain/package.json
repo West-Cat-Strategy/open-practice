@@ -19,6 +19,14 @@
       "types": "./dist/operational-actions.d.ts",
       "default": "./dist/operational-actions.js"
     },
+    "./calendar-models": {
+      "types": "./dist/calendar-models.d.ts",
+      "default": "./dist/calendar-models.js"
+    },
+    "./contact-models": {
+      "types": "./dist/contact-models.d.ts",
+      "default": "./dist/contact-models.js"
+    },
     "./sample-data": {
       "types": "./dist/sample-data.d.ts",
       "default": "./dist/sample-data.js"

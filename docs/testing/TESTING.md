@@ -56,19 +56,19 @@ pnpm verify:select -- --strict --files README.md
 
 Selection rules:
 
-| Changed path                                     | Recommended commands                                                                                                                                                                                                  |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api/**`                                    | `pnpm --filter @open-practice/api test`, `pnpm --filter @open-practice/api typecheck`, `pnpm policy:check`                                                                                                            |
-| `apps/worker/**`                                 | `pnpm --filter @open-practice/worker test`, `pnpm --filter @open-practice/worker typecheck`, `pnpm --filter @open-practice/worker build`, `pnpm policy:check`                                                         |
-| `packages/domain/**`                             | `pnpm --filter @open-practice/domain test`, `pnpm --filter @open-practice/domain typecheck`; source files also add API, providers, and worker tests                                                                   |
-| `packages/database/**` or any `migrations/` path | `pnpm --filter @open-practice/database test`, `pnpm --filter @open-practice/database db:check`, `pnpm --filter @open-practice/database typecheck`, `pnpm --filter @open-practice/api test`                            |
-| `packages/providers/**`                          | `pnpm --filter @open-practice/providers test`, `pnpm --filter @open-practice/providers typecheck`, `pnpm --filter @open-practice/providers build`, `pnpm --filter @open-practice/api test`, worker test and typecheck |
-| `apps/web/**`                                    | `pnpm --filter @open-practice/web test`, `pnpm --filter @open-practice/web typecheck`, `pnpm build`                                                                                                                   |
-| `e2e/**` or `playwright.config.*`                | `pnpm e2e:host`, `pnpm e2e:docker`                                                                                                                                                                                    |
-| `docs/**`                                        | `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`                                                                                                                                                           |
-| `scripts/**`                                     | `pnpm policy:check`, `pnpm test`                                                                                                                                                                                      |
-| Root config, local gate, Turbo, TS config        | `pnpm ci:local`                                                                                                                                                                                                       |
-| Package manifests or lockfile                    | `pnpm ci:local`, `pnpm deps:audit`, `pnpm deps:licenses`                                                                                                                                                              |
+| Changed path                                     | Recommended commands                                                                                                                                                                                                                                               |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/api/**`                                    | `pnpm --filter @open-practice/api test`, `pnpm --filter @open-practice/api typecheck`, `pnpm policy:check`                                                                                                                                                         |
+| `apps/worker/**`                                 | `pnpm --filter @open-practice/worker test`, `pnpm --filter @open-practice/worker typecheck`, `pnpm --filter @open-practice/worker build`, `pnpm policy:check`                                                                                                      |
+| `packages/domain/**`                             | `pnpm --filter @open-practice/domain test`, `pnpm --filter @open-practice/domain typecheck`, `pnpm --filter @open-practice/domain build`; source files also add API, providers, and worker tests                                                                   |
+| `packages/database/**` or any `migrations/` path | `pnpm --filter @open-practice/database test`, `pnpm --filter @open-practice/database db:check`, `pnpm migrations:check`, `pnpm --filter @open-practice/database typecheck`, `pnpm --filter @open-practice/database build`, `pnpm --filter @open-practice/api test` |
+| `packages/providers/**`                          | `pnpm --filter @open-practice/providers test`, `pnpm --filter @open-practice/providers typecheck`, `pnpm --filter @open-practice/providers build`, `pnpm --filter @open-practice/api test`, worker test and typecheck                                              |
+| `apps/web/**`                                    | `pnpm --filter @open-practice/web test`, `pnpm --filter @open-practice/web typecheck`, `pnpm build`                                                                                                                                                                |
+| `e2e/**` or `playwright.config.*`                | `pnpm e2e:host`, `pnpm e2e:docker`                                                                                                                                                                                                                                 |
+| `docs/**`                                        | `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`                                                                                                                                                                                                        |
+| `scripts/**`                                     | `pnpm policy:check`, `pnpm test`                                                                                                                                                                                                                                   |
+| Root config, local gate, Turbo, TS config        | `pnpm ci:local`                                                                                                                                                                                                                                                    |
+| Package manifests or lockfile                    | `pnpm ci:local`, `pnpm deps:audit`, `pnpm deps:licenses`                                                                                                                                                                                                           |
 
 Output is deterministic, de-duplicated, and one command per line after a short header.
 
@@ -84,7 +84,7 @@ for package-level evidence.
 ## Test Coverage Ratchets
 
 `pnpm policy:check` includes `scripts/validate-open-practice-boundaries.mjs`. That gate now treats
-route ownership and route test coverage as one contract:
+route ownership, route test coverage, and workspace package boundaries as one contract:
 
 - Every API route registrar imported by `apps/api/src/server.ts` must be represented in the
   boundary registry.
@@ -92,6 +92,19 @@ route ownership and route test coverage as one contract:
   `apps/api/src/routes/*.test.ts` file or the current `apps/api/src/server.test.ts` integration
   coverage for setup, session, and matter bootstrap flows.
 - New route families should add or update the route test before the boundary registry is expanded.
+- Route submodules that declare `server.get/post/put/patch/delete/route` calls must be listed in
+  the parent registrar's boundary `routeFiles` entry so authorization manifest coverage still sees
+  them.
+- App code must import workspace packages through `@open-practice/*` package exports instead of
+  `packages/*/src` source paths.
+- Workspace import direction follows the package graph in
+  [Repository Guide](../development/repo-guide.md): domain imports nothing; database/providers may
+  import domain; API/worker may import domain, database, and providers; web may import browser-safe
+  domain exports only.
+- `@open-practice/domain`, `@open-practice/database`, and `@open-practice/providers` must keep
+  `main`, `types`, and `exports["."]` aligned with their built root entrypoints.
+- Existing web root imports from `@open-practice/domain` are ratcheted. Add web-safe subpaths before
+  increasing broad browser-facing domain imports.
 
 When route ownership changes, update the route source, the route test, and
 `scripts/validate-open-practice-boundaries.mjs` together. Use `pnpm verify:select -- --files` with
@@ -145,15 +158,16 @@ or a required local port is unavailable, report the skipped Docker check with th
 
 - API route, auth, permission, or lifecycle changes: run API tests, typecheck, policy checks, and `pnpm ci:local` before handoff.
 - Domain invariants, trust/funds, conflicts, signatures, or billing rules: run the owning package tests plus API tests if routes expose the behavior.
-- Database schema or repository behavior: run database tests, `db:check`, API tests, and the full verification lane.
+- Database schema or repository behavior: run database tests, `db:check`, `pnpm migrations:check`, API tests, and the full verification lane.
 - Web dashboard, route catalog, or UI state changes: run web tests and typecheck; use `pnpm build` for Next app integration proof, and `pnpm e2e:host` when rendered browser behavior changes.
 - External upload, public-token, object-storage, or release browser proof: run `pnpm e2e:docker` when Docker is available.
 - Documentation-only changes: run `pnpm format:check`, `pnpm docs:check`, and `pnpm policy:check`.
 
 ## Current Gaps
 
-Dependency/dead-code review is not yet part of the default selector. The disposable migration replay
-lane exists, but it requires a local PostgreSQL service reachable through `DATABASE_URL` or
+Dead-code review is not yet part of the default selector. Package graph and export consistency are
+covered by `pnpm policy:check`. The disposable migration replay lane exists, but it requires a local
+PostgreSQL service reachable through `DATABASE_URL` or
 `MIGRATION_REPLAY_DATABASE_URL`.
 
 ## Local Release Proof

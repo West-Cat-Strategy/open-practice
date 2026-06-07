@@ -5,8 +5,8 @@ import type {
   BillingInvoiceSummary,
   BillingPaymentRequestSummary,
   BillingTimeItem,
-  MatterSummary,
-} from "./types";
+} from "./_features/billing/models";
+import type { MatterSummary } from "./types";
 
 const clientLikeRoles = new Set([
   "client",

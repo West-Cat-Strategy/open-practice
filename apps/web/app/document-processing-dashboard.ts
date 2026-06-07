@@ -17,8 +17,8 @@ import type {
   DocumentReviewSuggestionCue,
   DocumentReviewSuggestionGroup,
   DocumentReviewSuggestions,
-  MatterSummary,
-} from "./types";
+} from "./_features/document-processing/models";
+import type { MatterSummary } from "./types";
 
 const emptySummary = {
   total: 0,

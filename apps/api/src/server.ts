@@ -29,6 +29,7 @@ import {
   EmbeddedAutomationProvider,
   EmbeddedSignatureProvider,
   StripePaymentProcessorProvider,
+  renderDraftExport,
 } from "@open-practice/providers";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerAuthRoutes } from "./routes/auth.js";
@@ -72,7 +73,12 @@ import { registerSignatureRoutes } from "./routes/signatures.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
 import { registerWebAuthnRoutes } from "./routes/webauthn.js";
-import type { ApiJobQueue, ApiRouteDependencies, ConnectorDnsResolver } from "./routes/types.js";
+import type {
+  ApiJobQueue,
+  ApiRouteDependencies,
+  ConnectorDnsResolver,
+  DraftExportRenderer,
+} from "./routes/types.js";
 import {
   hashToken,
   hashPassword,
@@ -228,6 +234,7 @@ interface ApiOptions {
   signatureProvider?: SignatureProvider;
   automationProvider?: DocumentAutomationProvider;
   aiOperationalProposalProvider?: AiOperationalProposalProvider;
+  draftExportRenderer?: DraftExportRenderer;
   draftAssistProvider?: DraftAssistProvider;
   paymentProcessorProvider?: PaymentProcessorProvider;
   emailJobQueue?: ApiJobQueue;
@@ -632,7 +639,11 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     s3: options.s3,
     ocrJobQueue: options.ocrJobQueue,
   });
-  registerDraftRoutes(server, { repository: options.repository, s3: options.s3 });
+  registerDraftRoutes(server, {
+    repository: options.repository,
+    s3: options.s3,
+    draftExportRenderer: options.draftExportRenderer ?? renderDraftExport,
+  });
   registerDraftAssistRoutes(server, {
     repository: options.repository,
     draftAssistProvider: options.draftAssistProvider,

@@ -33,7 +33,7 @@ import {
   initialFirstMatterFormState,
   summarizeQueues,
 } from "./dashboard-utils";
-import { DocumentAssemblyDashboardBlock } from "./dashboard-client";
+import { DocumentAssemblyDashboardBlock } from "./dashboard/document-assembly-dashboard-block";
 import {
   buildConflictCheckPayload,
   describeConflictCheckStatus,
@@ -294,9 +294,22 @@ import {
 import {
   buildEmailDeliveryConfirmation,
   buildIntakeSessionCreatePayload,
-  canRecordContactDataQualityResolutions,
   upsertIntakeSession,
 } from "./types";
+import {
+  canRecordContactDataQualityResolutions,
+  type ContactDataQualityResolutionRecord,
+  type ContactDossier,
+} from "./_features/contacts/models";
+import type {
+  BillingDashboardResponse,
+  TrustControlsDashboardResponse,
+} from "./_features/billing/models";
+import type {
+  ExternalUploadLinkRecord,
+  ExternalUploadReviewItem,
+} from "./_features/external-uploads/models";
+import type { ShareLinkRecord } from "./_features/share-links/models";
 import { ContactsSection } from "./dashboard/contacts-section";
 import { MatterOverviewSection } from "./dashboard/matter-overview-section";
 import { QueuesSection } from "./dashboard/queues-section";
@@ -307,15 +320,9 @@ import {
   emptyAiOperationalProposalsResponse,
 } from "./ai-operational-proposals-dashboard";
 import type {
-  ExternalUploadLinkRecord,
-  ExternalUploadReviewItem,
   DocumentAssemblyWorkbenchResponse,
   DocumentProcessingWorkbenchResponse,
   CommunicationsInboxMatterResponse,
-  BillingDashboardResponse,
-  ConnectorOperationsResponse,
-  ContactDataQualityResolutionRecord,
-  ContactDossier,
   IntakeFormLinkSummary,
   MatterSummary,
   OperationalViewsResponse,
@@ -323,11 +330,10 @@ import type {
   PublicConsultationIntake,
   QueuesResponse,
   SavedOperationalViewDefinition,
-  ShareLinkRecord,
   TaskDeadlineWorkbenchResponse,
-  TrustControlsDashboardResponse,
   WorkerRunsDashboardResponse,
 } from "./types";
+import type { ConnectorOperationsResponse } from "./_features/connectors/models";
 
 const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapability["resource"]> = {
   matters: "matter",

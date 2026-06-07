@@ -10,7 +10,7 @@ import { buildDocumentProcessingStatus } from "./document-processing.js";
 import { buildDraftAssistStatus } from "./draft-assist.js";
 import { buildEmailStatus } from "./email.js";
 import { buildExternalUploadsStatus } from "./external-uploads.js";
-import { buildInboundEmailStatus } from "./inbound-email.js";
+import { buildInboundEmailStatus } from "./inbound-email/status.js";
 import {
   openPracticeQueueNames,
   providerStatus,

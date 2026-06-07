@@ -216,6 +216,105 @@ describe("intake form builder routes", () => {
     });
   });
 
+  it("creates and updates staff intake templates with audit metadata", async () => {
+    const { repository, server } = testServer();
+    const [seedTemplate] = await repository.listIntakeTemplates("firm-west-legal");
+    if (!seedTemplate || seedTemplate.definition.schemaVersion !== 2) {
+      throw new Error("Seeded V2 intake template is required for this test");
+    }
+    const definition = JSON.parse(
+      JSON.stringify(seedTemplate.definition),
+    ) as typeof seedTemplate.definition;
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/intake-templates",
+      payload: {
+        id: "intake-template-builder-test",
+        name: "Synthetic builder template",
+        active: true,
+        definitionVersion: 3,
+        definition,
+      },
+    });
+    const updated = await server.inject({
+      method: "PATCH",
+      url: "/api/intake-templates/intake-template-builder-test",
+      payload: {
+        name: "Synthetic builder template updated",
+        active: false,
+        definitionVersion: 4,
+        definition,
+      },
+    });
+
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      id: "intake-template-builder-test",
+      firmId: "firm-west-legal",
+      name: "Synthetic builder template",
+      category: "custom-intake",
+      provider: "embedded",
+      externalTemplateId: "embedded-form:intake-template-builder-test",
+      active: true,
+      definitionVersion: 3,
+      definition: expect.objectContaining({ schemaVersion: 2 }),
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String),
+      metadata: {
+        source: "open-practice-form-builder",
+        editable: true,
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json()).toMatchObject({
+      id: "intake-template-builder-test",
+      firmId: "firm-west-legal",
+      name: "Synthetic builder template updated",
+      category: "custom-intake",
+      provider: "embedded",
+      externalTemplateId: "embedded-form:intake-template-builder-test",
+      active: false,
+      definitionVersion: 4,
+      definition: expect.objectContaining({ schemaVersion: 2 }),
+      metadata: {
+        source: "open-practice-form-builder",
+        editable: true,
+      },
+    });
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      valid: true,
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "intake_template.created",
+          resourceType: "intake_template",
+          resourceId: "intake-template-builder-test",
+          metadata: {
+            templateId: "intake-template-builder-test",
+            definitionVersion: 3,
+            schemaVersion: 2,
+          },
+        }),
+        expect.objectContaining({
+          action: "intake_template.updated",
+          resourceType: "intake_template",
+          resourceId: "intake-template-builder-test",
+          metadata: {
+            templateId: "intake-template-builder-test",
+            definitionVersion: 4,
+            schemaVersion: 2,
+          },
+        }),
+      ]),
+    });
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    for (const event of audit.events.filter((candidate) =>
+      ["intake_template.created", "intake_template.updated"].includes(candidate.action),
+    )) {
+      expect(event.metadata).not.toHaveProperty("definition");
+    }
+  });
+
   it("creates tokenized form links and hides token hashes on list responses", async () => {
     const { server } = testServer();
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import vm from "node:vm";
 import ts from "typescript";
@@ -218,7 +218,100 @@ export const ROUTE_REGISTRARS = [
   ["tasks", "apps/api/src/routes/tasks.ts", "./routes/tasks.js", "registerTaskRoutes"],
   ["queues", "apps/api/src/routes/queues.ts", "./routes/queues.js", "registerQueuesRoutes"],
   ["reports", "apps/api/src/routes/reports.ts", "./routes/reports.js", "registerReportRoutes"],
-].map(([family, file, importPath, registrar]) => ({ family, file, importPath, registrar }));
+].map(([family, file, importPath, registrar]) => {
+  const routeFilesByRegistrar = {
+    registerBillingRoutes: [
+      "apps/api/src/routes/billing/controls.ts",
+      "apps/api/src/routes/billing/dashboard.ts",
+      "apps/api/src/routes/billing/expenses.ts",
+      "apps/api/src/routes/billing/export-requests.ts",
+      "apps/api/src/routes/billing/invoices.ts",
+      "apps/api/src/routes/billing/payments.ts",
+      "apps/api/src/routes/billing/payment-requests.ts",
+      "apps/api/src/routes/billing/time-entries.ts",
+      "apps/api/src/routes/billing/trust-transfer-requests.ts",
+    ],
+    registerCalendarRoutes: [
+      "apps/api/src/routes/calendar/attendees.ts",
+      "apps/api/src/routes/calendar/credentials.ts",
+      "apps/api/src/routes/calendar/feed.ts",
+      "apps/api/src/routes/calendar/guest-sessions.ts",
+      "apps/api/src/routes/calendar/invitations.ts",
+      "apps/api/src/routes/calendar/meeting-links.ts",
+      "apps/api/src/routes/calendar/reminders.ts",
+    ],
+    registerClientPortalRoutes: [
+      "apps/api/src/routes/client-portal/accounts.ts",
+      "apps/api/src/routes/client-portal/workspace.ts",
+    ],
+    registerConnectorRoutes: [
+      "apps/api/src/routes/connectors/developer-registration.ts",
+      "apps/api/src/routes/connectors/developer-recovery.ts",
+      "apps/api/src/routes/connectors/outbox.ts",
+    ],
+    registerCommunicationsRoutes: ["apps/api/src/routes/communications/inbox.ts"],
+    registerConversationThreadRoutes: [
+      "apps/api/src/routes/conversation-threads/export-requests.ts",
+      "apps/api/src/routes/conversation-threads/lifecycle.ts",
+    ],
+    registerDocumentProcessingRoutes: [
+      "apps/api/src/routes/document-processing/queue.ts",
+      "apps/api/src/routes/document-processing/status.ts",
+      "apps/api/src/routes/document-processing/workbench.ts",
+    ],
+    registerDraftRoutes: [
+      "apps/api/src/routes/drafts/exports.ts",
+      "apps/api/src/routes/drafts/templates.ts",
+    ],
+    registerEmailRoutes: [
+      "apps/api/src/routes/email/outbox.ts",
+      "apps/api/src/routes/email/receipts.ts",
+      "apps/api/src/routes/email/shared.ts",
+      "apps/api/src/routes/email/status.ts",
+    ],
+    registerExternalUploadRoutes: [
+      "apps/api/src/routes/external-uploads/public.ts",
+      "apps/api/src/routes/external-uploads/shared.ts",
+      "apps/api/src/routes/external-uploads/staff.ts",
+    ],
+    registerInboundEmailRoutes: [
+      "apps/api/src/routes/inbound-email/attachment-promotion.ts",
+      "apps/api/src/routes/inbound-email/mailgun-raw-mime.ts",
+      "apps/api/src/routes/inbound-email/messages.ts",
+      "apps/api/src/routes/inbound-email/parser-jobs.ts",
+      "apps/api/src/routes/inbound-email/status.ts",
+      "apps/api/src/routes/inbound-email/triage.ts",
+    ],
+    registerIntakeRoutes: ["apps/api/src/routes/intake/generated-documents.ts"],
+    registerIntakeFormRoutes: [
+      "apps/api/src/routes/intake-forms/links.ts",
+      "apps/api/src/routes/intake-forms/public.ts",
+      "apps/api/src/routes/intake-forms/templates.ts",
+    ],
+    registerPublicConsultationIntakeRoutes: [
+      "apps/api/src/routes/public-consultation-intakes/public.ts",
+      "apps/api/src/routes/public-consultation-intakes/staff.ts",
+    ],
+    registerLedgerRoutes: [
+      "apps/api/src/routes/ledger/read.ts",
+      "apps/api/src/routes/ledger/reconciliations.ts",
+      "apps/api/src/routes/ledger/reports.ts",
+      "apps/api/src/routes/ledger/transactions.ts",
+    ],
+    registerShareRoutes: [
+      "apps/api/src/routes/shares/public.ts",
+      "apps/api/src/routes/shares/staff.ts",
+    ],
+  };
+  const routeFiles = [file, ...(routeFilesByRegistrar[registrar] ?? [])];
+  return {
+    family,
+    file,
+    importPath,
+    registrar,
+    routeFiles,
+  };
+});
 
 export const ROUTE_REGISTRAR_TEST_FILES = {
   registerAuditRoutes: ["apps/api/src/routes/audit.test.ts"],
@@ -298,17 +391,22 @@ export const FORBIDDEN_SERVER_ROUTE_GROUPS = [
     ],
   },
   {
-    owner: "intake endpoints in apps/api/src/routes/intake.ts",
+    owner: "intake endpoints in apps/api/src/routes/intake.ts and apps/api/src/routes/intake/*.ts",
     routeLiterals: [
       "/api/intake-sessions",
       "/api/intake-sessions/:id/answer-snapshots",
       "/api/intake-sessions/:id/generated-documents",
+      "/api/intake-sessions/:id/generated-packages",
     ],
   },
   {
     owner: "ledger endpoints in apps/api/src/routes/ledger.ts",
     routeLiterals: [
       "/api/ledger",
+      "/api/ledger/reports/jurisdictional-trust",
+      "/api/ledger/reports/jurisdictional-trust/export-requests",
+      "/api/ledger/reports/jurisdictional-trust/export-requests/:exportJobId",
+      "/api/ledger/reports/jurisdictional-trust/export-requests/:exportJobId/download",
       "/api/ledger/transactions",
       "/api/ledger/transactions/:id/approvals",
       "/api/ledger/reconciliations/preview",
@@ -427,12 +525,196 @@ export const REQUIRED_ROUTE_CATALOG_IDS = [
   "queues",
 ];
 
+export const SOURCE_SCAN_ROOTS = [
+  "apps/api/src",
+  "apps/worker/src",
+  "apps/web/app",
+  "apps/web/routes",
+  "packages/domain/src",
+  "packages/database/src",
+  "packages/providers/src",
+];
+
+export const SOURCE_FILE_EXTENSIONS = [".ts", ".tsx", ".js", ".mjs"];
+export const IGNORED_SCAN_DIRECTORIES = new Set(["node_modules", "dist", ".next", ".turbo"]);
+
+export const WORKSPACE_IMPORT_POLICIES = [
+  {
+    prefix: "apps/api/",
+    owner: "apps/api",
+    allowedInternalPackages: ["database", "domain", "providers"],
+  },
+  {
+    prefix: "apps/worker/",
+    owner: "apps/worker",
+    allowedInternalPackages: ["database", "domain", "providers"],
+  },
+  {
+    prefix: "apps/web/",
+    owner: "apps/web",
+    allowedInternalPackages: ["domain"],
+  },
+  {
+    prefix: "packages/domain/",
+    owner: "packages/domain",
+    allowedInternalPackages: [],
+  },
+  {
+    prefix: "packages/database/",
+    owner: "packages/database",
+    allowedInternalPackages: ["domain"],
+  },
+  {
+    prefix: "packages/providers/",
+    owner: "packages/providers",
+    allowedInternalPackages: ["domain"],
+  },
+];
+
+export const PACKAGE_EXPORT_MANIFESTS = [
+  "packages/domain/package.json",
+  "packages/database/package.json",
+  "packages/providers/package.json",
+];
+
+export const WEB_DOMAIN_ROOT_IMPORT_LIMIT = 27;
+
+const API_ROUTE_SUBMODULE_PATTERN = /^apps\/api\/src\/routes\/[^/]+\/[^/]+\.ts$/;
+
 function defaultRead(path, root = ROOT) {
   return readFileSync(join(root, path), "utf8");
 }
 
 function defaultExists(path, root = ROOT) {
   return existsSync(join(root, path));
+}
+
+function defaultSourceFiles(root = ROOT, scanRoots = SOURCE_SCAN_ROOTS) {
+  const files = [];
+
+  const visit = (relativeDirectory) => {
+    const absoluteDirectory = join(root, relativeDirectory);
+    if (!existsSync(absoluteDirectory)) return;
+
+    for (const entry of readdirSync(absoluteDirectory, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        if (!IGNORED_SCAN_DIRECTORIES.has(entry.name)) {
+          visit(`${relativeDirectory}/${entry.name}`);
+        }
+        continue;
+      }
+
+      if (SOURCE_FILE_EXTENSIONS.some((extension) => entry.name.endsWith(extension))) {
+        files.push(`${relativeDirectory}/${entry.name}`);
+      }
+    }
+  };
+
+  for (const scanRoot of scanRoots) visit(scanRoot);
+  return files.sort();
+}
+
+function workspacePolicyForPath(path) {
+  return WORKSPACE_IMPORT_POLICIES.find((policy) => path.startsWith(policy.prefix));
+}
+
+function importSpecifiers(source) {
+  const specifiers = [];
+  for (const match of source.matchAll(
+    /(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["']([^"']+)["']/g,
+  )) {
+    specifiers.push(match[1]);
+  }
+  for (const match of source.matchAll(/import\s*\(\s*["']([^"']+)["']\s*\)/g)) {
+    specifiers.push(match[1]);
+  }
+  return specifiers;
+}
+
+function internalPackageFromSpecifier(specifier) {
+  const match = specifier.match(/^@open-practice\/([^/]+)(?:\/.*)?$/);
+  return match?.[1];
+}
+
+function isAppSourceImport(specifier) {
+  return specifier.includes("packages/") && specifier.includes("/src/");
+}
+
+export function collectWorkspaceImportFailures({
+  sourceFiles,
+  readText = defaultRead,
+  webDomainRootImportLimit = WEB_DOMAIN_ROOT_IMPORT_LIMIT,
+} = {}) {
+  const files = sourceFiles ?? defaultSourceFiles();
+  const failures = [];
+  let webDomainRootImports = 0;
+
+  for (const file of files) {
+    const policy = workspacePolicyForPath(file);
+    if (!policy) continue;
+
+    for (const specifier of importSpecifiers(readText(file))) {
+      if (file.startsWith("apps/") && isAppSourceImport(specifier)) {
+        failures.push(
+          `${file} imports ${specifier}; app code must use package exports instead of package source paths.`,
+        );
+      }
+
+      const internalPackage = internalPackageFromSpecifier(specifier);
+      if (!internalPackage) continue;
+
+      if (file.startsWith("apps/web/") && specifier === "@open-practice/domain") {
+        webDomainRootImports += 1;
+      }
+
+      if (!policy.allowedInternalPackages.includes(internalPackage)) {
+        failures.push(
+          `${file} imports ${specifier}; ${policy.owner} may only import ${policy.allowedInternalPackages.length > 0 ? policy.allowedInternalPackages.map((name) => `@open-practice/${name}`).join(", ") : "no @open-practice workspace packages"}.`,
+        );
+      }
+    }
+  }
+
+  if (webDomainRootImports > webDomainRootImportLimit) {
+    failures.push(
+      `apps/web has ${webDomainRootImports} root @open-practice/domain imports; current ratchet allows ${webDomainRootImportLimit}. Use web-safe domain subpaths for new browser-facing imports.`,
+    );
+  }
+
+  return failures;
+}
+
+export function collectPackageExportFailures({
+  packageManifests = PACKAGE_EXPORT_MANIFESTS,
+  readText = defaultRead,
+} = {}) {
+  return packageManifests.flatMap((manifestPath) => {
+    const failures = [];
+    const manifest = JSON.parse(readText(manifestPath));
+    const rootExport = manifest.exports?.["."];
+
+    if (!manifest.main) failures.push(`${manifestPath} must declare main.`);
+    if (!manifest.types) failures.push(`${manifestPath} must declare types.`);
+    if (!rootExport || typeof rootExport !== "object") {
+      failures.push(`${manifestPath} must declare exports["."].`);
+      return failures;
+    }
+
+    const expectedTypes = `./${manifest.types}`;
+    const expectedDefault = `./${manifest.main}`;
+    if (rootExport.types !== expectedTypes) {
+      failures.push(
+        `${manifestPath} exports["."].types must point to ${expectedTypes}; found ${rootExport.types ?? "<missing>"}.`,
+      );
+    }
+    if (rootExport.default !== expectedDefault) {
+      failures.push(
+        `${manifestPath} exports["."].default must point to ${expectedDefault}; found ${rootExport.default ?? "<missing>"}.`,
+      );
+    }
+
+    return failures;
+  });
 }
 
 export function serverContainsRouteLiteral(server, routeLiteral) {
@@ -516,6 +798,156 @@ export function collectUntrackedRegistrarFailures(server) {
           `${registrar} from ${importPath} must be represented in ROUTE_REGISTRARS so the boundary gate owns its route family.`,
         ],
   );
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+}
+
+function routeSubmoduleImportPath(parentFile, childFile) {
+  const importPath = relative(dirname(parentFile), childFile).replace(/\.ts$/, ".js");
+  return importPath.startsWith(".") ? importPath : `./${importPath}`;
+}
+
+function exportedRouteRegistrarNames(sourceFile) {
+  const registrars = [];
+  const visit = (node) => {
+    if (
+      ts.isFunctionDeclaration(node) &&
+      node.name &&
+      /^register[A-Za-z0-9]+Routes$/.test(node.name.text) &&
+      node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
+      registrars.push(node.name.text);
+    }
+
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return registrars;
+}
+
+function parentImportsRegistrar(parentSource, registrar, importPath) {
+  return new RegExp(
+    `import\\s*\\{[^}]*\\b${escapeRegExp(registrar)}\\b[^}]*\\}\\s*from\\s*["']${escapeRegExp(
+      importPath,
+    )}["']`,
+  ).test(parentSource);
+}
+
+function parentCallsRegistrar(parentSource, registrar) {
+  return new RegExp(`\\b${escapeRegExp(registrar)}\\s*\\(\\s*server\\b`).test(parentSource);
+}
+
+function routeDeclarationsForSource(sourceFile, registrar = "boundaryRouteProbe") {
+  const declarations = [];
+  const visit = (node, templateValues = new Map()) => {
+    const scopedTemplateValues = mergeTemplateValues(templateValues, loopTemplateValues(node));
+    if (ts.isCallExpression(node)) {
+      declarations.push(
+        ...routeDeclarationsFromCall(node, sourceFile, registrar, scopedTemplateValues),
+      );
+    }
+    ts.forEachChild(node, (child) => visit(child, scopedTemplateValues));
+  };
+  visit(sourceFile);
+  return declarations;
+}
+
+function isApiRouteSubmodule(path) {
+  return API_ROUTE_SUBMODULE_PATTERN.test(path) && !path.endsWith(".test.ts");
+}
+
+export function collectSubregistrarWiringFailures({
+  readText = defaultRead,
+  pathExists = defaultExists,
+  routeRegistrars = ROUTE_REGISTRARS,
+  sourceFiles,
+} = {}) {
+  const failures = [];
+  const routeFileOwners = new Map();
+  const readCache = new Map();
+  const sourceFileCache = new Map();
+  const files = sourceFiles ?? defaultSourceFiles();
+  const apiRouteSubmoduleFiles = new Set(files.filter(isApiRouteSubmodule));
+
+  const readCached = (file) => {
+    if (!readCache.has(file)) readCache.set(file, readText(file));
+    return readCache.get(file);
+  };
+
+  const sourceFileFor = (file) => {
+    if (!sourceFileCache.has(file)) {
+      sourceFileCache.set(
+        file,
+        ts.createSourceFile(file, readCached(file), ts.ScriptTarget.Latest, true),
+      );
+    }
+    return sourceFileCache.get(file);
+  };
+
+  for (const routeRegistrar of routeRegistrars) {
+    for (const routeFile of routeRegistrar.routeFiles ?? [routeRegistrar.file]) {
+      if (routeFile === routeRegistrar.file) continue;
+      const owners = routeFileOwners.get(routeFile) ?? [];
+      owners.push(routeRegistrar.registrar);
+      routeFileOwners.set(routeFile, owners);
+
+      if (!apiRouteSubmoduleFiles.has(routeFile)) continue;
+
+      if (!pathExists(routeFile)) {
+        failures.push(
+          `${routeFile} must exist as a child route file for ${routeRegistrar.registrar}.`,
+        );
+        continue;
+      }
+
+      const childRegistrars = exportedRouteRegistrarNames(sourceFileFor(routeFile));
+      if (childRegistrars.length === 0) continue;
+
+      const parentSource = readCached(routeRegistrar.file);
+      const expectedImport = routeSubmoduleImportPath(routeRegistrar.file, routeFile);
+      for (const childRegistrar of childRegistrars) {
+        if (!parentImportsRegistrar(parentSource, childRegistrar, expectedImport)) {
+          failures.push(
+            `${routeRegistrar.registrar} must import ${childRegistrar} from ${expectedImport} to wire ${routeFile}.`,
+          );
+        }
+        if (!parentCallsRegistrar(parentSource, childRegistrar)) {
+          failures.push(
+            `${routeRegistrar.registrar} must call ${childRegistrar}(server...) to wire ${routeFile}.`,
+          );
+        }
+      }
+    }
+  }
+
+  for (const routeFile of apiRouteSubmoduleFiles) {
+    const declarations = routeDeclarationsForSource(sourceFileFor(routeFile));
+    if (declarations.length === 0) continue;
+
+    const owners = routeFileOwners.get(routeFile) ?? [];
+    if (owners.length === 0) {
+      failures.push(
+        `${routeFile} declares API routes but is not listed in any ROUTE_REGISTRARS routeFiles entry.`,
+      );
+    } else if (owners.length !== 1) {
+      failures.push(
+        `${routeFile} declares API routes but is listed under multiple ROUTE_REGISTRARS owners: ${[
+          ...new Set(owners),
+        ].join(", ")}.`,
+      );
+    }
+
+    const childRegistrars = exportedRouteRegistrarNames(sourceFileFor(routeFile));
+    if (childRegistrars.length === 0) {
+      failures.push(
+        `${routeFile} declares API routes but does not export a register*Routes function.`,
+      );
+    }
+  }
+
+  return failures;
 }
 
 export function collectForbiddenRouteFailures(server) {
@@ -701,24 +1133,34 @@ export function collectApiRouteDeclarations({
   routeRegistrars = ROUTE_REGISTRARS,
 } = {}) {
   const routeOwners = [
-    { registrar: "serverHealth", file: "apps/api/src/server.ts" },
-    ...routeRegistrars.map(({ registrar, file }) => ({ registrar, file })),
+    {
+      registrar: "serverHealth",
+      file: "apps/api/src/server.ts",
+      routeFiles: ["apps/api/src/server.ts"],
+    },
+    ...routeRegistrars.map(({ registrar, file, routeFiles }) => ({
+      registrar,
+      file,
+      routeFiles: routeFiles ?? [file],
+    })),
   ];
   const declarations = [];
 
   for (const owner of routeOwners) {
-    const sourceText = readText(owner.file);
-    const sourceFile = ts.createSourceFile(owner.file, sourceText, ts.ScriptTarget.Latest, true);
-    const visit = (node, templateValues = new Map()) => {
-      const scopedTemplateValues = mergeTemplateValues(templateValues, loopTemplateValues(node));
-      if (ts.isCallExpression(node)) {
-        declarations.push(
-          ...routeDeclarationsFromCall(node, sourceFile, owner.registrar, scopedTemplateValues),
-        );
-      }
-      ts.forEachChild(node, (child) => visit(child, scopedTemplateValues));
-    };
-    visit(sourceFile);
+    for (const routeFile of owner.routeFiles) {
+      const sourceText = readText(routeFile);
+      const sourceFile = ts.createSourceFile(routeFile, sourceText, ts.ScriptTarget.Latest, true);
+      const visit = (node, templateValues = new Map()) => {
+        const scopedTemplateValues = mergeTemplateValues(templateValues, loopTemplateValues(node));
+        if (ts.isCallExpression(node)) {
+          declarations.push(
+            ...routeDeclarationsFromCall(node, sourceFile, owner.registrar, scopedTemplateValues),
+          );
+        }
+        ts.forEachChild(node, (child) => visit(child, scopedTemplateValues));
+      };
+      visit(sourceFile);
+    }
   }
 
   declarations.sort((left, right) =>
@@ -952,6 +1394,7 @@ export function evaluateBoundaryPolicy({
   root = ROOT,
   readText = (path) => defaultRead(path, root),
   pathExists = (path) => defaultExists(path, root),
+  sourceFiles,
   validateRouteAuthorizationManifest = true,
 } = {}) {
   const server = readText("apps/api/src/server.ts");
@@ -963,8 +1406,19 @@ export function evaluateBoundaryPolicy({
     ...collectRegistrarFailures(server, pathExists),
     ...collectRegistrarTestFailures(pathExists),
     ...collectUntrackedRegistrarFailures(server),
+    ...collectSubregistrarWiringFailures({
+      readText,
+      pathExists,
+      routeRegistrars: ROUTE_REGISTRARS,
+      sourceFiles: sourceFiles ?? defaultSourceFiles(root),
+    }),
     ...collectForbiddenRouteFailures(server),
     ...collectRouteCatalogFailures(routeCatalog),
+    ...collectWorkspaceImportFailures({
+      sourceFiles: sourceFiles ?? defaultSourceFiles(root),
+      readText,
+    }),
+    ...collectPackageExportFailures({ readText }),
     ...(validateRouteAuthorizationManifest
       ? [
           ...collectRouteAuthorizationManifestFailures({

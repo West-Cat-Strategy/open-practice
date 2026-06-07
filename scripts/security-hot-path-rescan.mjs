@@ -12,6 +12,9 @@ export const SOURCE_REPORT_PATH =
 
 export const HOT_PATHS = Object.freeze([
   "apps/api/src/routes/inbound-email.ts",
+  "apps/api/src/routes/inbound-email/mailgun-raw-mime.ts",
+  "apps/api/src/routes/inbound-email/messages.ts",
+  "apps/api/src/routes/inbound-email/triage.ts",
   "apps/api/src/routes/calendar.ts",
   "packages/database/src/repository/drizzle.ts",
 ]);
@@ -24,6 +27,7 @@ const COMMAND_ID_BY_RECOMMENDED_COMMAND = new Map([
   ["pnpm --filter @open-practice/database db:check", "selector-database-db-check"],
   ["pnpm migrations:check", "selector-migrations-check"],
   ["pnpm --filter @open-practice/database typecheck", "selector-database-typecheck"],
+  ["pnpm --filter @open-practice/database build", "selector-database-build"],
   ["pnpm --filter @open-practice/api test", "selector-api-test"],
   ["pnpm --filter @open-practice/api typecheck", "selector-api-typecheck"],
 ]);

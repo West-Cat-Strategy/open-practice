@@ -9,6 +9,7 @@ export const COMMANDS = {
   apiTypecheck: "pnpm --filter @open-practice/api typecheck",
   build: "pnpm build",
   ciLocal: "pnpm ci:local",
+  databaseBuild: "pnpm --filter @open-practice/database build",
   databaseCheck: "pnpm --filter @open-practice/database db:check",
   databaseTest: "pnpm --filter @open-practice/database test",
   databaseTypecheck: "pnpm --filter @open-practice/database typecheck",
@@ -16,6 +17,7 @@ export const COMMANDS = {
   depsLicenses: "pnpm deps:licenses",
   dockerResidualWatch: "pnpm docker:residual-watch",
   docsCheck: "pnpm docs:check",
+  domainBuild: "pnpm --filter @open-practice/domain build",
   domainTest: "pnpm --filter @open-practice/domain test",
   domainTypecheck: "pnpm --filter @open-practice/domain typecheck",
   e2eDocker: "pnpm e2e:docker",
@@ -47,15 +49,17 @@ export const COMMAND_ORDER = [
   COMMANDS.test,
   COMMANDS.domainTest,
   COMMANDS.domainTypecheck,
+  COMMANDS.domainBuild,
   COMMANDS.databaseTest,
   COMMANDS.databaseCheck,
   COMMANDS.migrationsCheck,
   COMMANDS.databaseTypecheck,
-  COMMANDS.apiTest,
-  COMMANDS.apiTypecheck,
+  COMMANDS.databaseBuild,
   COMMANDS.providersTest,
   COMMANDS.providersTypecheck,
   COMMANDS.providersBuild,
+  COMMANDS.apiTest,
+  COMMANDS.apiTypecheck,
   COMMANDS.workerTest,
   COMMANDS.workerTypecheck,
   COMMANDS.workerBuild,
@@ -252,6 +256,7 @@ export function classifyPath(path) {
   if (path.startsWith("packages/domain/")) {
     commands.add(COMMANDS.domainTest);
     commands.add(COMMANDS.domainTypecheck);
+    commands.add(COMMANDS.domainBuild);
 
     if (isDomainSource(path)) {
       commands.add(COMMANDS.apiTest);
@@ -265,6 +270,7 @@ export function classifyPath(path) {
     commands.add(COMMANDS.databaseCheck);
     commands.add(COMMANDS.migrationsCheck);
     commands.add(COMMANDS.databaseTypecheck);
+    commands.add(COMMANDS.databaseBuild);
     commands.add(COMMANDS.apiTest);
   }
 

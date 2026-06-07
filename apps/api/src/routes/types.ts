@@ -3,33 +3,58 @@ import type { OpenPracticeRepository } from "@open-practice/database";
 import type {
   AiOperationalProposalProvider,
   DocumentAutomationProvider,
+  DraftExportDocument,
+  DraftExportFormat,
   DraftAssistProvider,
   PaymentProcessorProvider,
   SignatureProvider,
 } from "@open-practice/domain";
 
-export interface ApiJobQueue {
+export type ApiJobEnvelope = {
+  firmId: string;
+  resourceType?: string;
+  resourceId?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export interface QueueProducerPort<Data extends ApiJobEnvelope = ApiJobEnvelope> {
   add(
     name: string,
-    data: {
-      firmId: string;
-      resourceType?: string;
-      resourceId?: string;
-      metadata?: Record<string, unknown>;
-    },
+    data: Data,
     options?: { jobId?: string; delay?: number },
   ): Promise<{ id?: string | number }>;
 }
 
+export type ApiJobQueue = QueueProducerPort;
+
+export interface ObjectStoragePort {
+  client: S3Client;
+  bucket: string;
+  serverSideEncryption?: "AES256";
+}
+
 export type ConnectorDnsResolver = (hostname: string) => Promise<string[]>;
 
-export interface ApiRouteDependencies {
-  repository: OpenPracticeRepository;
+export type DraftExportRenderer = (input: {
+  format: DraftExportFormat;
+  document: DraftExportDocument;
+}) => Promise<{
+  buffer: Buffer;
+  contentType: string;
+  extension: DraftExportFormat;
+}>;
+
+export interface ProviderAdapterPorts {
   automationProvider?: DocumentAutomationProvider;
   aiOperationalProposalProvider?: AiOperationalProposalProvider;
+  draftExportRenderer?: DraftExportRenderer;
   draftAssistProvider?: DraftAssistProvider;
   signatureProvider?: SignatureProvider;
   paymentProcessorProvider?: PaymentProcessorProvider;
+}
+
+export interface ApiRouteDependencies extends ProviderAdapterPorts {
+  repository: OpenPracticeRepository;
   publicWebBaseUrl?: string;
   meetingLinks?: {
     providerKey: string;
@@ -43,9 +68,5 @@ export interface ApiRouteDependencies {
   reportJobQueue?: ApiJobQueue;
   aiAssistJobQueue?: ApiJobQueue;
   ocrJobQueue?: ApiJobQueue;
-  s3?: {
-    client: S3Client;
-    bucket: string;
-    serverSideEncryption?: "AES256";
-  };
+  s3?: ObjectStoragePort;
 }
