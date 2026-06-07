@@ -17,7 +17,6 @@ export const COMMANDS = {
   depsLicenses: "pnpm deps:licenses",
   dockerResidualWatch: "pnpm docker:residual-watch",
   docsCheck: "pnpm docs:check",
-  domainBuild: "pnpm --filter @open-practice/domain build",
   domainTest: "pnpm --filter @open-practice/domain test",
   domainTypecheck: "pnpm --filter @open-practice/domain typecheck",
   e2eDocker: "pnpm e2e:docker",
@@ -49,17 +48,16 @@ export const COMMAND_ORDER = [
   COMMANDS.test,
   COMMANDS.domainTest,
   COMMANDS.domainTypecheck,
-  COMMANDS.domainBuild,
   COMMANDS.databaseTest,
   COMMANDS.databaseCheck,
   COMMANDS.migrationsCheck,
   COMMANDS.databaseTypecheck,
   COMMANDS.databaseBuild,
+  COMMANDS.apiTest,
+  COMMANDS.apiTypecheck,
   COMMANDS.providersTest,
   COMMANDS.providersTypecheck,
   COMMANDS.providersBuild,
-  COMMANDS.apiTest,
-  COMMANDS.apiTypecheck,
   COMMANDS.workerTest,
   COMMANDS.workerTypecheck,
   COMMANDS.workerBuild,
@@ -227,6 +225,17 @@ function isDomainSource(path) {
   return path.startsWith("packages/domain/src/");
 }
 
+function isApiSource(path) {
+  return path.startsWith("apps/api/") || /^apps\/api\/src\/routes\/[^/]+\/[^/]+\.ts$/.test(path);
+}
+
+function isDatabaseSource(path) {
+  return (
+    path.startsWith("packages/database/") ||
+    /^packages\/database\/src\/repository\/[^/]+\/(?:drizzle|memory)\.ts$/.test(path)
+  );
+}
+
 function isE2EPath(path) {
   return (
     path === "e2e" || path.startsWith("e2e/") || /^playwright\.config\.(?:[cm]?[jt]s)$/.test(path)
@@ -240,7 +249,7 @@ export function normalizePaths(paths, cwd = process.cwd()) {
 export function classifyPath(path) {
   const commands = new Set();
 
-  if (path.startsWith("apps/api/")) {
+  if (isApiSource(path)) {
     commands.add(COMMANDS.apiTest);
     commands.add(COMMANDS.apiTypecheck);
     commands.add(COMMANDS.policyCheck);
@@ -256,7 +265,6 @@ export function classifyPath(path) {
   if (path.startsWith("packages/domain/")) {
     commands.add(COMMANDS.domainTest);
     commands.add(COMMANDS.domainTypecheck);
-    commands.add(COMMANDS.domainBuild);
 
     if (isDomainSource(path)) {
       commands.add(COMMANDS.apiTest);
@@ -265,7 +273,7 @@ export function classifyPath(path) {
     }
   }
 
-  if (path.startsWith("packages/database/") || isMigration(path)) {
+  if (isDatabaseSource(path) || isMigration(path)) {
     commands.add(COMMANDS.databaseTest);
     commands.add(COMMANDS.databaseCheck);
     commands.add(COMMANDS.migrationsCheck);

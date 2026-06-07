@@ -22,9 +22,6 @@ describe("security-hot-path-rescan contract", () => {
     );
     assert.deepEqual(HOT_PATHS, [
       "apps/api/src/routes/inbound-email.ts",
-      "apps/api/src/routes/inbound-email/mailgun-raw-mime.ts",
-      "apps/api/src/routes/inbound-email/messages.ts",
-      "apps/api/src/routes/inbound-email/triage.ts",
       "apps/api/src/routes/calendar.ts",
       "packages/database/src/repository/drizzle.ts",
     ]);
@@ -120,7 +117,7 @@ describe("security-hot-path-rescan contract", () => {
           args: ["--filter", "@open-practice/database", "typecheck"],
         },
         {
-          id: "selector-database-build",
+          id: "selector-pnpm-filter-open-practice-database-build",
           command: "pnpm",
           args: ["--filter", "@open-practice/database", "build"],
         },

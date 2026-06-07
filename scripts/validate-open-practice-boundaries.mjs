@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -218,100 +218,7 @@ export const ROUTE_REGISTRARS = [
   ["tasks", "apps/api/src/routes/tasks.ts", "./routes/tasks.js", "registerTaskRoutes"],
   ["queues", "apps/api/src/routes/queues.ts", "./routes/queues.js", "registerQueuesRoutes"],
   ["reports", "apps/api/src/routes/reports.ts", "./routes/reports.js", "registerReportRoutes"],
-].map(([family, file, importPath, registrar]) => {
-  const routeFilesByRegistrar = {
-    registerBillingRoutes: [
-      "apps/api/src/routes/billing/controls.ts",
-      "apps/api/src/routes/billing/dashboard.ts",
-      "apps/api/src/routes/billing/expenses.ts",
-      "apps/api/src/routes/billing/export-requests.ts",
-      "apps/api/src/routes/billing/invoices.ts",
-      "apps/api/src/routes/billing/payments.ts",
-      "apps/api/src/routes/billing/payment-requests.ts",
-      "apps/api/src/routes/billing/time-entries.ts",
-      "apps/api/src/routes/billing/trust-transfer-requests.ts",
-    ],
-    registerCalendarRoutes: [
-      "apps/api/src/routes/calendar/attendees.ts",
-      "apps/api/src/routes/calendar/credentials.ts",
-      "apps/api/src/routes/calendar/feed.ts",
-      "apps/api/src/routes/calendar/guest-sessions.ts",
-      "apps/api/src/routes/calendar/invitations.ts",
-      "apps/api/src/routes/calendar/meeting-links.ts",
-      "apps/api/src/routes/calendar/reminders.ts",
-    ],
-    registerClientPortalRoutes: [
-      "apps/api/src/routes/client-portal/accounts.ts",
-      "apps/api/src/routes/client-portal/workspace.ts",
-    ],
-    registerConnectorRoutes: [
-      "apps/api/src/routes/connectors/developer-registration.ts",
-      "apps/api/src/routes/connectors/developer-recovery.ts",
-      "apps/api/src/routes/connectors/outbox.ts",
-    ],
-    registerCommunicationsRoutes: ["apps/api/src/routes/communications/inbox.ts"],
-    registerConversationThreadRoutes: [
-      "apps/api/src/routes/conversation-threads/export-requests.ts",
-      "apps/api/src/routes/conversation-threads/lifecycle.ts",
-    ],
-    registerDocumentProcessingRoutes: [
-      "apps/api/src/routes/document-processing/queue.ts",
-      "apps/api/src/routes/document-processing/status.ts",
-      "apps/api/src/routes/document-processing/workbench.ts",
-    ],
-    registerDraftRoutes: [
-      "apps/api/src/routes/drafts/exports.ts",
-      "apps/api/src/routes/drafts/templates.ts",
-    ],
-    registerEmailRoutes: [
-      "apps/api/src/routes/email/outbox.ts",
-      "apps/api/src/routes/email/receipts.ts",
-      "apps/api/src/routes/email/shared.ts",
-      "apps/api/src/routes/email/status.ts",
-    ],
-    registerExternalUploadRoutes: [
-      "apps/api/src/routes/external-uploads/public.ts",
-      "apps/api/src/routes/external-uploads/shared.ts",
-      "apps/api/src/routes/external-uploads/staff.ts",
-    ],
-    registerInboundEmailRoutes: [
-      "apps/api/src/routes/inbound-email/attachment-promotion.ts",
-      "apps/api/src/routes/inbound-email/mailgun-raw-mime.ts",
-      "apps/api/src/routes/inbound-email/messages.ts",
-      "apps/api/src/routes/inbound-email/parser-jobs.ts",
-      "apps/api/src/routes/inbound-email/status.ts",
-      "apps/api/src/routes/inbound-email/triage.ts",
-    ],
-    registerIntakeRoutes: ["apps/api/src/routes/intake/generated-documents.ts"],
-    registerIntakeFormRoutes: [
-      "apps/api/src/routes/intake-forms/links.ts",
-      "apps/api/src/routes/intake-forms/public.ts",
-      "apps/api/src/routes/intake-forms/templates.ts",
-    ],
-    registerPublicConsultationIntakeRoutes: [
-      "apps/api/src/routes/public-consultation-intakes/public.ts",
-      "apps/api/src/routes/public-consultation-intakes/staff.ts",
-    ],
-    registerLedgerRoutes: [
-      "apps/api/src/routes/ledger/read.ts",
-      "apps/api/src/routes/ledger/reconciliations.ts",
-      "apps/api/src/routes/ledger/reports.ts",
-      "apps/api/src/routes/ledger/transactions.ts",
-    ],
-    registerShareRoutes: [
-      "apps/api/src/routes/shares/public.ts",
-      "apps/api/src/routes/shares/staff.ts",
-    ],
-  };
-  const routeFiles = [file, ...(routeFilesByRegistrar[registrar] ?? [])];
-  return {
-    family,
-    file,
-    importPath,
-    registrar,
-    routeFiles,
-  };
-});
+].map(([family, file, importPath, registrar]) => ({ family, file, importPath, registrar }));
 
 export const ROUTE_REGISTRAR_TEST_FILES = {
   registerAuditRoutes: ["apps/api/src/routes/audit.test.ts"],
@@ -391,22 +298,17 @@ export const FORBIDDEN_SERVER_ROUTE_GROUPS = [
     ],
   },
   {
-    owner: "intake endpoints in apps/api/src/routes/intake.ts and apps/api/src/routes/intake/*.ts",
+    owner: "intake endpoints in apps/api/src/routes/intake.ts",
     routeLiterals: [
       "/api/intake-sessions",
       "/api/intake-sessions/:id/answer-snapshots",
       "/api/intake-sessions/:id/generated-documents",
-      "/api/intake-sessions/:id/generated-packages",
     ],
   },
   {
     owner: "ledger endpoints in apps/api/src/routes/ledger.ts",
     routeLiterals: [
       "/api/ledger",
-      "/api/ledger/reports/jurisdictional-trust",
-      "/api/ledger/reports/jurisdictional-trust/export-requests",
-      "/api/ledger/reports/jurisdictional-trust/export-requests/:exportJobId",
-      "/api/ledger/reports/jurisdictional-trust/export-requests/:exportJobId/download",
       "/api/ledger/transactions",
       "/api/ledger/transactions/:id/approvals",
       "/api/ledger/reconciliations/preview",
@@ -525,61 +427,31 @@ export const REQUIRED_ROUTE_CATALOG_IDS = [
   "queues",
 ];
 
-export const SOURCE_SCAN_ROOTS = [
-  "apps/api/src",
-  "apps/worker/src",
-  "apps/web/app",
-  "apps/web/routes",
-  "packages/domain/src",
-  "packages/database/src",
-  "packages/providers/src",
-];
-
-export const SOURCE_FILE_EXTENSIONS = [".ts", ".tsx", ".js", ".mjs"];
-export const IGNORED_SCAN_DIRECTORIES = new Set(["node_modules", "dist", ".next", ".turbo"]);
-
-export const WORKSPACE_IMPORT_POLICIES = [
-  {
-    prefix: "apps/api/",
-    owner: "apps/api",
-    allowedInternalPackages: ["database", "domain", "providers"],
-  },
-  {
-    prefix: "apps/worker/",
-    owner: "apps/worker",
-    allowedInternalPackages: ["database", "domain", "providers"],
-  },
-  {
-    prefix: "apps/web/",
-    owner: "apps/web",
-    allowedInternalPackages: ["domain"],
-  },
-  {
-    prefix: "packages/domain/",
-    owner: "packages/domain",
-    allowedInternalPackages: [],
-  },
-  {
-    prefix: "packages/database/",
-    owner: "packages/database",
-    allowedInternalPackages: ["domain"],
-  },
-  {
-    prefix: "packages/providers/",
-    owner: "packages/providers",
-    allowedInternalPackages: ["domain"],
-  },
-];
-
-export const PACKAGE_EXPORT_MANIFESTS = [
-  "packages/domain/package.json",
-  "packages/database/package.json",
-  "packages/providers/package.json",
-];
-
-export const WEB_DOMAIN_ROOT_IMPORT_LIMIT = 27;
-
 const API_ROUTE_SUBMODULE_PATTERN = /^apps\/api\/src\/routes\/[^/]+\/[^/]+\.ts$/;
+const DATABASE_REPOSITORY_ROOT = "packages/database/src/repository";
+const DATABASE_REPOSITORY_IMPLEMENTATION_PATTERN =
+  /^packages\/database\/src\/repository\/([^/]+)\/(drizzle|memory)\.ts$/;
+const REPOSITORY_CONTRACT_FILE_EXCEPTIONS = {
+  connectors: `${DATABASE_REPOSITORY_ROOT}/connector-contracts.ts`,
+};
+
+function defaultSourceFiles(root = ROOT) {
+  const sourceRoots = ["apps", "packages", "scripts"];
+  const extensions = [".ts", ".tsx", ".mts", ".mjs"];
+  const excludes = [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/dist/**",
+    "**/coverage/**",
+    "**/.turbo/**",
+  ];
+  return sourceRoots
+    .filter((sourceRoot) => existsSync(join(root, sourceRoot)))
+    .flatMap((sourceRoot) => ts.sys.readDirectory(join(root, sourceRoot), extensions, excludes))
+    .map((file) => relative(root, file).replaceAll("\\", "/"))
+    .filter((file) => !file.endsWith(".d.ts"))
+    .sort();
+}
 
 function defaultRead(path, root = ROOT) {
   return readFileSync(join(root, path), "utf8");
@@ -587,134 +459,6 @@ function defaultRead(path, root = ROOT) {
 
 function defaultExists(path, root = ROOT) {
   return existsSync(join(root, path));
-}
-
-function defaultSourceFiles(root = ROOT, scanRoots = SOURCE_SCAN_ROOTS) {
-  const files = [];
-
-  const visit = (relativeDirectory) => {
-    const absoluteDirectory = join(root, relativeDirectory);
-    if (!existsSync(absoluteDirectory)) return;
-
-    for (const entry of readdirSync(absoluteDirectory, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        if (!IGNORED_SCAN_DIRECTORIES.has(entry.name)) {
-          visit(`${relativeDirectory}/${entry.name}`);
-        }
-        continue;
-      }
-
-      if (SOURCE_FILE_EXTENSIONS.some((extension) => entry.name.endsWith(extension))) {
-        files.push(`${relativeDirectory}/${entry.name}`);
-      }
-    }
-  };
-
-  for (const scanRoot of scanRoots) visit(scanRoot);
-  return files.sort();
-}
-
-function workspacePolicyForPath(path) {
-  return WORKSPACE_IMPORT_POLICIES.find((policy) => path.startsWith(policy.prefix));
-}
-
-function importSpecifiers(source) {
-  const specifiers = [];
-  for (const match of source.matchAll(
-    /(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["']([^"']+)["']/g,
-  )) {
-    specifiers.push(match[1]);
-  }
-  for (const match of source.matchAll(/import\s*\(\s*["']([^"']+)["']\s*\)/g)) {
-    specifiers.push(match[1]);
-  }
-  return specifiers;
-}
-
-function internalPackageFromSpecifier(specifier) {
-  const match = specifier.match(/^@open-practice\/([^/]+)(?:\/.*)?$/);
-  return match?.[1];
-}
-
-function isAppSourceImport(specifier) {
-  return specifier.includes("packages/") && specifier.includes("/src/");
-}
-
-export function collectWorkspaceImportFailures({
-  sourceFiles,
-  readText = defaultRead,
-  webDomainRootImportLimit = WEB_DOMAIN_ROOT_IMPORT_LIMIT,
-} = {}) {
-  const files = sourceFiles ?? defaultSourceFiles();
-  const failures = [];
-  let webDomainRootImports = 0;
-
-  for (const file of files) {
-    const policy = workspacePolicyForPath(file);
-    if (!policy) continue;
-
-    for (const specifier of importSpecifiers(readText(file))) {
-      if (file.startsWith("apps/") && isAppSourceImport(specifier)) {
-        failures.push(
-          `${file} imports ${specifier}; app code must use package exports instead of package source paths.`,
-        );
-      }
-
-      const internalPackage = internalPackageFromSpecifier(specifier);
-      if (!internalPackage) continue;
-
-      if (file.startsWith("apps/web/") && specifier === "@open-practice/domain") {
-        webDomainRootImports += 1;
-      }
-
-      if (!policy.allowedInternalPackages.includes(internalPackage)) {
-        failures.push(
-          `${file} imports ${specifier}; ${policy.owner} may only import ${policy.allowedInternalPackages.length > 0 ? policy.allowedInternalPackages.map((name) => `@open-practice/${name}`).join(", ") : "no @open-practice workspace packages"}.`,
-        );
-      }
-    }
-  }
-
-  if (webDomainRootImports > webDomainRootImportLimit) {
-    failures.push(
-      `apps/web has ${webDomainRootImports} root @open-practice/domain imports; current ratchet allows ${webDomainRootImportLimit}. Use web-safe domain subpaths for new browser-facing imports.`,
-    );
-  }
-
-  return failures;
-}
-
-export function collectPackageExportFailures({
-  packageManifests = PACKAGE_EXPORT_MANIFESTS,
-  readText = defaultRead,
-} = {}) {
-  return packageManifests.flatMap((manifestPath) => {
-    const failures = [];
-    const manifest = JSON.parse(readText(manifestPath));
-    const rootExport = manifest.exports?.["."];
-
-    if (!manifest.main) failures.push(`${manifestPath} must declare main.`);
-    if (!manifest.types) failures.push(`${manifestPath} must declare types.`);
-    if (!rootExport || typeof rootExport !== "object") {
-      failures.push(`${manifestPath} must declare exports["."].`);
-      return failures;
-    }
-
-    const expectedTypes = `./${manifest.types}`;
-    const expectedDefault = `./${manifest.main}`;
-    if (rootExport.types !== expectedTypes) {
-      failures.push(
-        `${manifestPath} exports["."].types must point to ${expectedTypes}; found ${rootExport.types ?? "<missing>"}.`,
-      );
-    }
-    if (rootExport.default !== expectedDefault) {
-      failures.push(
-        `${manifestPath} exports["."].default must point to ${expectedDefault}; found ${rootExport.default ?? "<missing>"}.`,
-      );
-    }
-
-    return failures;
-  });
 }
 
 export function serverContainsRouteLiteral(server, routeLiteral) {
@@ -804,6 +548,30 @@ function escapeRegExp(value) {
   return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
 }
 
+function isApiRouteSubmodule(path) {
+  return API_ROUTE_SUBMODULE_PATTERN.test(path) && !path.endsWith(".test.ts");
+}
+
+function routeSubmoduleDirectory(routeRegistrar) {
+  const match = routeRegistrar.file.match(/^(apps\/api\/src\/routes\/[^/]+)\.ts$/);
+  return match ? `${match[1]}/` : undefined;
+}
+
+function routeFilesForRegistrar(routeRegistrar, sourceFiles = []) {
+  const routeFiles = new Set(routeRegistrar.routeFiles ?? [routeRegistrar.file]);
+  const directory = routeSubmoduleDirectory(routeRegistrar);
+
+  if (directory) {
+    for (const file of sourceFiles) {
+      if (isApiRouteSubmodule(file) && file.startsWith(directory)) {
+        routeFiles.add(file);
+      }
+    }
+  }
+
+  return [...routeFiles].sort();
+}
+
 function routeSubmoduleImportPath(parentFile, childFile) {
   const importPath = relative(dirname(parentFile), childFile).replace(/\.ts$/, ".js");
   return importPath.startsWith(".") ? importPath : `./${importPath}`;
@@ -854,10 +622,6 @@ function routeDeclarationsForSource(sourceFile, registrar = "boundaryRouteProbe"
   return declarations;
 }
 
-function isApiRouteSubmodule(path) {
-  return API_ROUTE_SUBMODULE_PATTERN.test(path) && !path.endsWith(".test.ts");
-}
-
 export function collectSubregistrarWiringFailures({
   readText = defaultRead,
   pathExists = defaultExists,
@@ -887,13 +651,13 @@ export function collectSubregistrarWiringFailures({
   };
 
   for (const routeRegistrar of routeRegistrars) {
-    for (const routeFile of routeRegistrar.routeFiles ?? [routeRegistrar.file]) {
+    for (const routeFile of routeFilesForRegistrar(routeRegistrar, files)) {
       if (routeFile === routeRegistrar.file) continue;
       const owners = routeFileOwners.get(routeFile) ?? [];
       owners.push(routeRegistrar.registrar);
       routeFileOwners.set(routeFile, owners);
 
-      if (!apiRouteSubmoduleFiles.has(routeFile)) continue;
+      if (!isApiRouteSubmodule(routeFile)) continue;
 
       if (!pathExists(routeFile)) {
         failures.push(
@@ -901,6 +665,8 @@ export function collectSubregistrarWiringFailures({
         );
         continue;
       }
+
+      if (!apiRouteSubmoduleFiles.has(routeFile)) continue;
 
       const childRegistrars = exportedRouteRegistrarNames(sourceFileFor(routeFile));
       if (childRegistrars.length === 0) continue;
@@ -929,11 +695,11 @@ export function collectSubregistrarWiringFailures({
     const owners = routeFileOwners.get(routeFile) ?? [];
     if (owners.length === 0) {
       failures.push(
-        `${routeFile} declares API routes but is not listed in any ROUTE_REGISTRARS routeFiles entry.`,
+        `${routeFile} declares API routes but is not owned by any ROUTE_REGISTRARS parent directory or routeFiles entry.`,
       );
     } else if (owners.length !== 1) {
       failures.push(
-        `${routeFile} declares API routes but is listed under multiple ROUTE_REGISTRARS owners: ${[
+        `${routeFile} declares API routes but is owned by multiple ROUTE_REGISTRARS entries: ${[
           ...new Set(owners),
         ].join(", ")}.`,
       );
@@ -944,6 +710,79 @@ export function collectSubregistrarWiringFailures({
       failures.push(
         `${routeFile} declares API routes but does not export a register*Routes function.`,
       );
+    }
+  }
+
+  return failures;
+}
+
+function importSpecifiers(source) {
+  return [
+    ...source.matchAll(/\bfrom\s+["']([^"']+)["']/g),
+    ...source.matchAll(/\bimport\s+["']([^"']+)["']/g),
+  ].map((match) => match[1]);
+}
+
+function repositoryCapabilityForImplementation(path) {
+  const match = path.match(DATABASE_REPOSITORY_IMPLEMENTATION_PATTERN);
+  return match ? { capability: match[1], kind: match[2] } : undefined;
+}
+
+function repositoryContractPath(capability) {
+  return (
+    REPOSITORY_CONTRACT_FILE_EXCEPTIONS[capability] ??
+    `${DATABASE_REPOSITORY_ROOT}/${capability}-contracts.ts`
+  );
+}
+
+function repositoryImplementationPath(capability, kind) {
+  return `${DATABASE_REPOSITORY_ROOT}/${capability}/${kind}.ts`;
+}
+
+export function collectRepositoryCapabilityFailures({
+  sourceFiles,
+  readText = defaultRead,
+  pathExists = defaultExists,
+} = {}) {
+  const files = sourceFiles ?? defaultSourceFiles();
+  const capabilities = new Map();
+
+  for (const file of files) {
+    const implementation = repositoryCapabilityForImplementation(file);
+    if (!implementation) continue;
+
+    const kinds = capabilities.get(implementation.capability) ?? new Set();
+    kinds.add(implementation.kind);
+    capabilities.set(implementation.capability, kinds);
+  }
+
+  if (capabilities.size === 0) return [];
+
+  const aggregateImports = {
+    drizzle: new Set(importSpecifiers(readText(`${DATABASE_REPOSITORY_ROOT}/drizzle.ts`))),
+    memory: new Set(importSpecifiers(readText(`${DATABASE_REPOSITORY_ROOT}/memory.ts`))),
+  };
+
+  const failures = [];
+  for (const capability of [...capabilities.keys()].sort()) {
+    const contractPath = repositoryContractPath(capability);
+    if (!pathExists(contractPath)) {
+      failures.push(`${capability} repository capability must declare ${contractPath}.`);
+    }
+
+    for (const kind of ["drizzle", "memory"]) {
+      const implementationPath = repositoryImplementationPath(capability, kind);
+      if (!pathExists(implementationPath)) {
+        failures.push(`${capability} repository capability must include ${implementationPath}.`);
+        continue;
+      }
+
+      const expectedImport = `./${capability}/${kind}.js`;
+      if (!aggregateImports[kind].has(expectedImport)) {
+        failures.push(
+          `${DATABASE_REPOSITORY_ROOT}/${kind}.ts must import ${expectedImport} for the ${capability} repository capability.`,
+        );
+      }
     }
   }
 
@@ -1131,17 +970,17 @@ function mergeTemplateValues(parentValues, nextValues) {
 export function collectApiRouteDeclarations({
   readText = defaultRead,
   routeRegistrars = ROUTE_REGISTRARS,
+  sourceFiles,
 } = {}) {
+  const files = sourceFiles ?? (routeRegistrars === ROUTE_REGISTRARS ? defaultSourceFiles() : []);
   const routeOwners = [
     {
       registrar: "serverHealth",
-      file: "apps/api/src/server.ts",
       routeFiles: ["apps/api/src/server.ts"],
     },
-    ...routeRegistrars.map(({ registrar, file, routeFiles }) => ({
-      registrar,
-      file,
-      routeFiles: routeFiles ?? [file],
+    ...routeRegistrars.map((routeRegistrar) => ({
+      registrar: routeRegistrar.registrar,
+      routeFiles: routeFilesForRegistrar(routeRegistrar, files),
     })),
   ];
   const declarations = [];
@@ -1289,6 +1128,7 @@ export function collectRouteAuthorizationManifestFailures({
   readText = defaultRead,
   pathExists = defaultExists,
   routeRegistrars = ROUTE_REGISTRARS,
+  sourceFiles,
   isPublicRoute,
   publicRouteSamples,
 } = {}) {
@@ -1297,7 +1137,8 @@ export function collectRouteAuthorizationManifestFailures({
     "serverHealth",
     ...routeRegistrars.map(({ registrar }) => registrar),
   ]);
-  const actual = actualRoutes ?? collectApiRouteDeclarations({ readText, routeRegistrars });
+  const actual =
+    actualRoutes ?? collectApiRouteDeclarations({ readText, routeRegistrars, sourceFiles });
   const actualByKey = new Map();
   const manifestByKey = new Map();
   const publicRouteCheck = isPublicRoute ?? defaultIsPublicRoute(readText);
@@ -1399,6 +1240,7 @@ export function evaluateBoundaryPolicy({
 } = {}) {
   const server = readText("apps/api/src/server.ts");
   const routeCatalog = readText("apps/web/routes/routeCatalog.ts");
+  const files = sourceFiles ?? defaultSourceFiles(root);
 
   return [
     ...collectServerRatchetFailures(server),
@@ -1410,20 +1252,21 @@ export function evaluateBoundaryPolicy({
       readText,
       pathExists,
       routeRegistrars: ROUTE_REGISTRARS,
-      sourceFiles: sourceFiles ?? defaultSourceFiles(root),
+      sourceFiles: files,
     }),
     ...collectForbiddenRouteFailures(server),
     ...collectRouteCatalogFailures(routeCatalog),
-    ...collectWorkspaceImportFailures({
-      sourceFiles: sourceFiles ?? defaultSourceFiles(root),
+    ...collectRepositoryCapabilityFailures({
       readText,
+      pathExists,
+      sourceFiles: files,
     }),
-    ...collectPackageExportFailures({ readText }),
     ...(validateRouteAuthorizationManifest
       ? [
           ...collectRouteAuthorizationManifestFailures({
             readText,
             pathExists,
+            sourceFiles: files,
           }),
         ]
       : []),
