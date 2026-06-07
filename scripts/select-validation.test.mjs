@@ -85,6 +85,32 @@ describe("select-validation contract", () => {
         COMMANDS.databaseCheck,
         COMMANDS.migrationsCheck,
         COMMANDS.databaseTypecheck,
+        COMMANDS.databaseBuild,
+        COMMANDS.apiTest,
+      ],
+    );
+  });
+
+  it("routes API child route modules through API and policy checks", () => {
+    assert.deepEqual(selectCommands(["apps/api/src/routes/billing/controls.ts"]), [
+      COMMANDS.policyCheck,
+      COMMANDS.apiTest,
+      COMMANDS.apiTypecheck,
+    ]);
+  });
+
+  it("routes database repository implementation modules through database and API checks", () => {
+    assert.deepEqual(
+      selectCommands([
+        "packages/database/src/repository/billing-controls/drizzle.ts",
+        "packages/database/src/repository/billing-controls/memory.ts",
+      ]),
+      [
+        COMMANDS.databaseTest,
+        COMMANDS.databaseCheck,
+        COMMANDS.migrationsCheck,
+        COMMANDS.databaseTypecheck,
+        COMMANDS.databaseBuild,
         COMMANDS.apiTest,
       ],
     );

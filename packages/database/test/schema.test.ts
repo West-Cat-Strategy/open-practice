@@ -608,24 +608,35 @@ describe("database schema hardening", () => {
   });
 
   it("guards duplicate document checks with the same advisory transaction lock", () => {
-    const repository = readFileSync(
-      new URL("../src/repository/drizzle.ts", import.meta.url),
+    const documentRepository = readFileSync(
+      new URL("../src/repository/documents/drizzle.ts", import.meta.url),
       "utf8",
     );
-    const completeUpload = repository.slice(
-      repository.indexOf("async completeDocumentUpload"),
-      repository.indexOf("async reviewUploadedDocument"),
+    const inboundRepository = readFileSync(
+      new URL("../src/repository/inbound-email/drizzle.ts", import.meta.url),
+      "utf8",
     );
-    const promoteAttachment = repository.slice(
-      repository.indexOf("async promoteInboundEmailAttachmentToDocument"),
+    const completeUpload = documentRepository.slice(
+      documentRepository.indexOf("export async function completeDrizzleDocumentUpload"),
+      documentRepository.indexOf("export async function reviewDrizzleUploadedDocument"),
+    );
+    const promoteAttachment = inboundRepository.slice(
+      inboundRepository.indexOf(
+        "export async function promoteDrizzleInboundEmailAttachmentToDocument",
+      ),
     );
 
-    expect(repository).toContain("function documentChecksumLockKey");
-    expect(repository).toContain(
-      "return `${input.firmId}|${input.matterId}|${input.checksumSha256}`;",
-    );
-    for (const method of [completeUpload, promoteAttachment]) {
-      expect(method).toContain("return this.db.transaction(async (tx) =>");
+    for (const source of [documentRepository, inboundRepository]) {
+      expect(source).toContain("function documentChecksumLockKey");
+      expect(source).toContain(
+        "return `${input.firmId}|${input.matterId}|${input.checksumSha256}`;",
+      );
+    }
+    for (const [method, transactionCall] of [
+      [completeUpload, "return db.transaction(async (tx) =>"],
+      [promoteAttachment, "return db.transaction(async (tx) =>"],
+    ]) {
+      expect(method).toContain(transactionCall);
       expect(method).toContain("pg_advisory_xact_lock");
       expect(method).toContain("documentChecksumLockKey({");
       expect(method.indexOf("pg_advisory_xact_lock")).toBeLessThan(

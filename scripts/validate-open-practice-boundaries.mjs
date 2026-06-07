@@ -2,7 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import vm from "node:vm";
 import ts from "typescript";
@@ -427,6 +427,32 @@ export const REQUIRED_ROUTE_CATALOG_IDS = [
   "queues",
 ];
 
+const API_ROUTE_SUBMODULE_PATTERN = /^apps\/api\/src\/routes\/[^/]+\/[^/]+\.ts$/;
+const DATABASE_REPOSITORY_ROOT = "packages/database/src/repository";
+const DATABASE_REPOSITORY_IMPLEMENTATION_PATTERN =
+  /^packages\/database\/src\/repository\/([^/]+)\/(drizzle|memory)\.ts$/;
+const REPOSITORY_CONTRACT_FILE_EXCEPTIONS = {
+  connectors: `${DATABASE_REPOSITORY_ROOT}/connector-contracts.ts`,
+};
+
+function defaultSourceFiles(root = ROOT) {
+  const sourceRoots = ["apps", "packages", "scripts"];
+  const extensions = [".ts", ".tsx", ".mts", ".mjs"];
+  const excludes = [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/dist/**",
+    "**/coverage/**",
+    "**/.turbo/**",
+  ];
+  return sourceRoots
+    .filter((sourceRoot) => existsSync(join(root, sourceRoot)))
+    .flatMap((sourceRoot) => ts.sys.readDirectory(join(root, sourceRoot), extensions, excludes))
+    .map((file) => relative(root, file).replaceAll("\\", "/"))
+    .filter((file) => !file.endsWith(".d.ts"))
+    .sort();
+}
+
 function defaultRead(path, root = ROOT) {
   return readFileSync(join(root, path), "utf8");
 }
@@ -516,6 +542,251 @@ export function collectUntrackedRegistrarFailures(server) {
           `${registrar} from ${importPath} must be represented in ROUTE_REGISTRARS so the boundary gate owns its route family.`,
         ],
   );
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+}
+
+function isApiRouteSubmodule(path) {
+  return API_ROUTE_SUBMODULE_PATTERN.test(path) && !path.endsWith(".test.ts");
+}
+
+function routeSubmoduleDirectory(routeRegistrar) {
+  const match = routeRegistrar.file.match(/^(apps\/api\/src\/routes\/[^/]+)\.ts$/);
+  return match ? `${match[1]}/` : undefined;
+}
+
+function routeFilesForRegistrar(routeRegistrar, sourceFiles = []) {
+  const routeFiles = new Set(routeRegistrar.routeFiles ?? [routeRegistrar.file]);
+  const directory = routeSubmoduleDirectory(routeRegistrar);
+
+  if (directory) {
+    for (const file of sourceFiles) {
+      if (isApiRouteSubmodule(file) && file.startsWith(directory)) {
+        routeFiles.add(file);
+      }
+    }
+  }
+
+  return [...routeFiles].sort();
+}
+
+function routeSubmoduleImportPath(parentFile, childFile) {
+  const importPath = relative(dirname(parentFile), childFile).replace(/\.ts$/, ".js");
+  return importPath.startsWith(".") ? importPath : `./${importPath}`;
+}
+
+function exportedRouteRegistrarNames(sourceFile) {
+  const registrars = [];
+  const visit = (node) => {
+    if (
+      ts.isFunctionDeclaration(node) &&
+      node.name &&
+      /^register[A-Za-z0-9]+Routes$/.test(node.name.text) &&
+      node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
+      registrars.push(node.name.text);
+    }
+
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return registrars;
+}
+
+function parentImportsRegistrar(parentSource, registrar, importPath) {
+  return new RegExp(
+    `import\\s*\\{[^}]*\\b${escapeRegExp(registrar)}\\b[^}]*\\}\\s*from\\s*["']${escapeRegExp(
+      importPath,
+    )}["']`,
+  ).test(parentSource);
+}
+
+function parentCallsRegistrar(parentSource, registrar) {
+  return new RegExp(`\\b${escapeRegExp(registrar)}\\s*\\(\\s*server\\b`).test(parentSource);
+}
+
+function routeDeclarationsForSource(sourceFile, registrar = "boundaryRouteProbe") {
+  const declarations = [];
+  const visit = (node, templateValues = new Map()) => {
+    const scopedTemplateValues = mergeTemplateValues(templateValues, loopTemplateValues(node));
+    if (ts.isCallExpression(node)) {
+      declarations.push(
+        ...routeDeclarationsFromCall(node, sourceFile, registrar, scopedTemplateValues),
+      );
+    }
+    ts.forEachChild(node, (child) => visit(child, scopedTemplateValues));
+  };
+  visit(sourceFile);
+  return declarations;
+}
+
+export function collectSubregistrarWiringFailures({
+  readText = defaultRead,
+  pathExists = defaultExists,
+  routeRegistrars = ROUTE_REGISTRARS,
+  sourceFiles,
+} = {}) {
+  const failures = [];
+  const routeFileOwners = new Map();
+  const readCache = new Map();
+  const sourceFileCache = new Map();
+  const files = sourceFiles ?? defaultSourceFiles();
+  const apiRouteSubmoduleFiles = new Set(files.filter(isApiRouteSubmodule));
+
+  const readCached = (file) => {
+    if (!readCache.has(file)) readCache.set(file, readText(file));
+    return readCache.get(file);
+  };
+
+  const sourceFileFor = (file) => {
+    if (!sourceFileCache.has(file)) {
+      sourceFileCache.set(
+        file,
+        ts.createSourceFile(file, readCached(file), ts.ScriptTarget.Latest, true),
+      );
+    }
+    return sourceFileCache.get(file);
+  };
+
+  for (const routeRegistrar of routeRegistrars) {
+    for (const routeFile of routeFilesForRegistrar(routeRegistrar, files)) {
+      if (routeFile === routeRegistrar.file) continue;
+      const owners = routeFileOwners.get(routeFile) ?? [];
+      owners.push(routeRegistrar.registrar);
+      routeFileOwners.set(routeFile, owners);
+
+      if (!isApiRouteSubmodule(routeFile)) continue;
+
+      if (!pathExists(routeFile)) {
+        failures.push(
+          `${routeFile} must exist as a child route file for ${routeRegistrar.registrar}.`,
+        );
+        continue;
+      }
+
+      if (!apiRouteSubmoduleFiles.has(routeFile)) continue;
+
+      const childRegistrars = exportedRouteRegistrarNames(sourceFileFor(routeFile));
+      if (childRegistrars.length === 0) continue;
+
+      const parentSource = readCached(routeRegistrar.file);
+      const expectedImport = routeSubmoduleImportPath(routeRegistrar.file, routeFile);
+      for (const childRegistrar of childRegistrars) {
+        if (!parentImportsRegistrar(parentSource, childRegistrar, expectedImport)) {
+          failures.push(
+            `${routeRegistrar.registrar} must import ${childRegistrar} from ${expectedImport} to wire ${routeFile}.`,
+          );
+        }
+        if (!parentCallsRegistrar(parentSource, childRegistrar)) {
+          failures.push(
+            `${routeRegistrar.registrar} must call ${childRegistrar}(server...) to wire ${routeFile}.`,
+          );
+        }
+      }
+    }
+  }
+
+  for (const routeFile of apiRouteSubmoduleFiles) {
+    const declarations = routeDeclarationsForSource(sourceFileFor(routeFile));
+    if (declarations.length === 0) continue;
+
+    const owners = routeFileOwners.get(routeFile) ?? [];
+    if (owners.length === 0) {
+      failures.push(
+        `${routeFile} declares API routes but is not owned by any ROUTE_REGISTRARS parent directory or routeFiles entry.`,
+      );
+    } else if (owners.length !== 1) {
+      failures.push(
+        `${routeFile} declares API routes but is owned by multiple ROUTE_REGISTRARS entries: ${[
+          ...new Set(owners),
+        ].join(", ")}.`,
+      );
+    }
+
+    const childRegistrars = exportedRouteRegistrarNames(sourceFileFor(routeFile));
+    if (childRegistrars.length === 0) {
+      failures.push(
+        `${routeFile} declares API routes but does not export a register*Routes function.`,
+      );
+    }
+  }
+
+  return failures;
+}
+
+function importSpecifiers(source) {
+  return [
+    ...source.matchAll(/\bfrom\s+["']([^"']+)["']/g),
+    ...source.matchAll(/\bimport\s+["']([^"']+)["']/g),
+  ].map((match) => match[1]);
+}
+
+function repositoryCapabilityForImplementation(path) {
+  const match = path.match(DATABASE_REPOSITORY_IMPLEMENTATION_PATTERN);
+  return match ? { capability: match[1], kind: match[2] } : undefined;
+}
+
+function repositoryContractPath(capability) {
+  return (
+    REPOSITORY_CONTRACT_FILE_EXCEPTIONS[capability] ??
+    `${DATABASE_REPOSITORY_ROOT}/${capability}-contracts.ts`
+  );
+}
+
+function repositoryImplementationPath(capability, kind) {
+  return `${DATABASE_REPOSITORY_ROOT}/${capability}/${kind}.ts`;
+}
+
+export function collectRepositoryCapabilityFailures({
+  sourceFiles,
+  readText = defaultRead,
+  pathExists = defaultExists,
+} = {}) {
+  const files = sourceFiles ?? defaultSourceFiles();
+  const capabilities = new Map();
+
+  for (const file of files) {
+    const implementation = repositoryCapabilityForImplementation(file);
+    if (!implementation) continue;
+
+    const kinds = capabilities.get(implementation.capability) ?? new Set();
+    kinds.add(implementation.kind);
+    capabilities.set(implementation.capability, kinds);
+  }
+
+  if (capabilities.size === 0) return [];
+
+  const aggregateImports = {
+    drizzle: new Set(importSpecifiers(readText(`${DATABASE_REPOSITORY_ROOT}/drizzle.ts`))),
+    memory: new Set(importSpecifiers(readText(`${DATABASE_REPOSITORY_ROOT}/memory.ts`))),
+  };
+
+  const failures = [];
+  for (const capability of [...capabilities.keys()].sort()) {
+    const contractPath = repositoryContractPath(capability);
+    if (!pathExists(contractPath)) {
+      failures.push(`${capability} repository capability must declare ${contractPath}.`);
+    }
+
+    for (const kind of ["drizzle", "memory"]) {
+      const implementationPath = repositoryImplementationPath(capability, kind);
+      if (!pathExists(implementationPath)) {
+        failures.push(`${capability} repository capability must include ${implementationPath}.`);
+        continue;
+      }
+
+      const expectedImport = `./${capability}/${kind}.js`;
+      if (!aggregateImports[kind].has(expectedImport)) {
+        failures.push(
+          `${DATABASE_REPOSITORY_ROOT}/${kind}.ts must import ${expectedImport} for the ${capability} repository capability.`,
+        );
+      }
+    }
+  }
+
+  return failures;
 }
 
 export function collectForbiddenRouteFailures(server) {
@@ -699,26 +970,36 @@ function mergeTemplateValues(parentValues, nextValues) {
 export function collectApiRouteDeclarations({
   readText = defaultRead,
   routeRegistrars = ROUTE_REGISTRARS,
+  sourceFiles,
 } = {}) {
+  const files = sourceFiles ?? (routeRegistrars === ROUTE_REGISTRARS ? defaultSourceFiles() : []);
   const routeOwners = [
-    { registrar: "serverHealth", file: "apps/api/src/server.ts" },
-    ...routeRegistrars.map(({ registrar, file }) => ({ registrar, file })),
+    {
+      registrar: "serverHealth",
+      routeFiles: ["apps/api/src/server.ts"],
+    },
+    ...routeRegistrars.map((routeRegistrar) => ({
+      registrar: routeRegistrar.registrar,
+      routeFiles: routeFilesForRegistrar(routeRegistrar, files),
+    })),
   ];
   const declarations = [];
 
   for (const owner of routeOwners) {
-    const sourceText = readText(owner.file);
-    const sourceFile = ts.createSourceFile(owner.file, sourceText, ts.ScriptTarget.Latest, true);
-    const visit = (node, templateValues = new Map()) => {
-      const scopedTemplateValues = mergeTemplateValues(templateValues, loopTemplateValues(node));
-      if (ts.isCallExpression(node)) {
-        declarations.push(
-          ...routeDeclarationsFromCall(node, sourceFile, owner.registrar, scopedTemplateValues),
-        );
-      }
-      ts.forEachChild(node, (child) => visit(child, scopedTemplateValues));
-    };
-    visit(sourceFile);
+    for (const routeFile of owner.routeFiles) {
+      const sourceText = readText(routeFile);
+      const sourceFile = ts.createSourceFile(routeFile, sourceText, ts.ScriptTarget.Latest, true);
+      const visit = (node, templateValues = new Map()) => {
+        const scopedTemplateValues = mergeTemplateValues(templateValues, loopTemplateValues(node));
+        if (ts.isCallExpression(node)) {
+          declarations.push(
+            ...routeDeclarationsFromCall(node, sourceFile, owner.registrar, scopedTemplateValues),
+          );
+        }
+        ts.forEachChild(node, (child) => visit(child, scopedTemplateValues));
+      };
+      visit(sourceFile);
+    }
   }
 
   declarations.sort((left, right) =>
@@ -847,6 +1128,7 @@ export function collectRouteAuthorizationManifestFailures({
   readText = defaultRead,
   pathExists = defaultExists,
   routeRegistrars = ROUTE_REGISTRARS,
+  sourceFiles,
   isPublicRoute,
   publicRouteSamples,
 } = {}) {
@@ -855,7 +1137,8 @@ export function collectRouteAuthorizationManifestFailures({
     "serverHealth",
     ...routeRegistrars.map(({ registrar }) => registrar),
   ]);
-  const actual = actualRoutes ?? collectApiRouteDeclarations({ readText, routeRegistrars });
+  const actual =
+    actualRoutes ?? collectApiRouteDeclarations({ readText, routeRegistrars, sourceFiles });
   const actualByKey = new Map();
   const manifestByKey = new Map();
   const publicRouteCheck = isPublicRoute ?? defaultIsPublicRoute(readText);
@@ -952,10 +1235,12 @@ export function evaluateBoundaryPolicy({
   root = ROOT,
   readText = (path) => defaultRead(path, root),
   pathExists = (path) => defaultExists(path, root),
+  sourceFiles,
   validateRouteAuthorizationManifest = true,
 } = {}) {
   const server = readText("apps/api/src/server.ts");
   const routeCatalog = readText("apps/web/routes/routeCatalog.ts");
+  const files = sourceFiles ?? defaultSourceFiles(root);
 
   return [
     ...collectServerRatchetFailures(server),
@@ -963,13 +1248,25 @@ export function evaluateBoundaryPolicy({
     ...collectRegistrarFailures(server, pathExists),
     ...collectRegistrarTestFailures(pathExists),
     ...collectUntrackedRegistrarFailures(server),
+    ...collectSubregistrarWiringFailures({
+      readText,
+      pathExists,
+      routeRegistrars: ROUTE_REGISTRARS,
+      sourceFiles: files,
+    }),
     ...collectForbiddenRouteFailures(server),
     ...collectRouteCatalogFailures(routeCatalog),
+    ...collectRepositoryCapabilityFailures({
+      readText,
+      pathExists,
+      sourceFiles: files,
+    }),
     ...(validateRouteAuthorizationManifest
       ? [
           ...collectRouteAuthorizationManifestFailures({
             readText,
             pathExists,
+            sourceFiles: files,
           }),
         ]
       : []),

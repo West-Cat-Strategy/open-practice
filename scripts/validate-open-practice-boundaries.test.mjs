@@ -6,8 +6,10 @@ import {
   ROUTE_REGISTRARS,
   collectApiRouteDeclarations,
   collectForbiddenRouteFailures,
+  collectRepositoryCapabilityFailures,
   collectRegistrarTestFailures,
   collectRouteAuthorizationManifestFailures,
+  collectSubregistrarWiringFailures,
   collectUntrackedRegistrarFailures,
   evaluateBoundaryPolicy,
 } from "./validate-open-practice-boundaries.mjs";
@@ -42,6 +44,7 @@ describe("validate-open-practice-boundaries contract", () => {
         throw new Error(`unexpected read: ${path}`);
       },
       pathExists: () => true,
+      sourceFiles: [],
       validateRouteAuthorizationManifest: false,
     });
 
@@ -58,6 +61,7 @@ describe("validate-open-practice-boundaries contract", () => {
         throw new Error(`unexpected read: ${path}`);
       },
       pathExists: (path) => path !== "apps/api/src/routes/tasks.ts",
+      sourceFiles: [],
       validateRouteAuthorizationManifest: false,
     });
 
@@ -77,6 +81,203 @@ describe("validate-open-practice-boundaries contract", () => {
     assert.deepEqual(failures, [
       "registerUnreviewedRoutes from ./routes/unreviewed.js must be represented in ROUTE_REGISTRARS so the boundary gate owns its route family.",
     ]);
+  });
+
+  it("derives child route ownership from the parent registrar directory", () => {
+    const failures = collectSubregistrarWiringFailures({
+      routeRegistrars: [
+        {
+          family: "billing",
+          file: "apps/api/src/routes/billing.ts",
+          importPath: "./routes/billing.js",
+          registrar: "registerBillingRoutes",
+        },
+      ],
+      sourceFiles: [
+        "apps/api/src/routes/billing/controls.ts",
+        "apps/api/src/routes/billing/payments.ts",
+      ],
+      pathExists: () => true,
+      readText: (path) => {
+        if (path === "apps/api/src/routes/billing.ts") {
+          return `
+import { registerBillingControlRoutes } from "./billing/controls.js";
+
+export function registerBillingRoutes(server, dependencies) {
+  registerBillingPaymentRoutes(server, dependencies);
+}
+`;
+        }
+        if (path === "apps/api/src/routes/billing/controls.ts") {
+          return `
+export function registerBillingControlRoutes(server) {
+  server.get("/api/billing/period-locks", async () => ({}));
+}
+`;
+        }
+        if (path === "apps/api/src/routes/billing/payments.ts") {
+          return `
+export function registerBillingPaymentRoutes(server) {
+  server.get("/api/payments", async () => ({}));
+}
+`;
+        }
+        throw new Error(`unexpected read: ${path}`);
+      },
+    });
+
+    assert.deepEqual(failures, [
+      "registerBillingRoutes must call registerBillingControlRoutes(server...) to wire apps/api/src/routes/billing/controls.ts.",
+      "registerBillingRoutes must import registerBillingPaymentRoutes from ./billing/payments.js to wire apps/api/src/routes/billing/payments.ts.",
+    ]);
+  });
+
+  it("requires route-declaring child files to have exactly one owner", () => {
+    const routeRegistrars = [
+      {
+        family: "billing",
+        file: "apps/api/src/routes/billing.ts",
+        importPath: "./routes/billing.js",
+        registrar: "registerBillingRoutes",
+      },
+      {
+        family: "ledger",
+        file: "apps/api/src/routes/ledger.ts",
+        importPath: "./routes/ledger.js",
+        registrar: "registerLedgerRoutes",
+        routeFiles: [
+          "apps/api/src/routes/ledger.ts",
+          "apps/api/src/routes/billing/shared-route.ts",
+        ],
+      },
+    ];
+    const failures = collectSubregistrarWiringFailures({
+      routeRegistrars,
+      sourceFiles: [
+        "apps/api/src/routes/billing/shared-route.ts",
+        "apps/api/src/routes/unregistered/unlisted.ts",
+      ],
+      pathExists: () => true,
+      readText: (path) => {
+        if (path === "apps/api/src/routes/billing.ts") {
+          return `
+import { registerSharedRouteRoutes } from "./billing/shared-route.js";
+
+export function registerBillingRoutes(server, dependencies) {
+  registerSharedRouteRoutes(server, dependencies);
+}
+`;
+        }
+        if (path === "apps/api/src/routes/ledger.ts") {
+          return `
+import { registerSharedRouteRoutes } from "./billing/shared-route.js";
+
+export function registerLedgerRoutes(server, dependencies) {
+  registerSharedRouteRoutes(server, dependencies);
+}
+`;
+        }
+        if (path === "apps/api/src/routes/billing/shared-route.ts") {
+          return `
+export function registerSharedRouteRoutes(server) {
+  server.get("/api/shared-route", async () => ({}));
+}
+`;
+        }
+        if (path === "apps/api/src/routes/unregistered/unlisted.ts") {
+          return `
+export function registerUnlistedRoutes(server) {
+  server.get("/api/unlisted", async () => ({}));
+}
+`;
+        }
+        throw new Error(`unexpected read: ${path}`);
+      },
+    });
+
+    assert.deepEqual(failures, [
+      "apps/api/src/routes/billing/shared-route.ts declares API routes but is owned by multiple ROUTE_REGISTRARS entries: registerBillingRoutes, registerLedgerRoutes.",
+      "apps/api/src/routes/unregistered/unlisted.ts declares API routes but is not owned by any ROUTE_REGISTRARS parent directory or routeFiles entry.",
+    ]);
+  });
+
+  it("allows helper-only route submodules without child registrar wiring", () => {
+    const failures = collectSubregistrarWiringFailures({
+      routeRegistrars: [
+        {
+          family: "billing",
+          file: "apps/api/src/routes/billing.ts",
+          importPath: "./routes/billing.js",
+          registrar: "registerBillingRoutes",
+        },
+      ],
+      sourceFiles: ["apps/api/src/routes/billing/shared.ts"],
+      pathExists: () => true,
+      readText: (path) => {
+        if (path === "apps/api/src/routes/billing.ts") {
+          return `export function registerBillingRoutes(server, dependencies) {}`;
+        }
+        if (path === "apps/api/src/routes/billing/shared.ts") {
+          return `export function billingRoutePrefix() { return "/api/billing"; }`;
+        }
+        throw new Error(`unexpected read: ${path}`);
+      },
+    });
+
+    assert.deepEqual(failures, []);
+  });
+
+  it("requires database repository capability contracts, implementation pairs, and aggregate imports", () => {
+    const failures = collectRepositoryCapabilityFailures({
+      sourceFiles: [
+        "packages/database/src/repository/billing-controls/drizzle.ts",
+        "packages/database/src/repository/connectors/drizzle.ts",
+        "packages/database/src/repository/connectors/memory.ts",
+        "packages/database/src/repository/contacts/drizzle.ts",
+        "packages/database/src/repository/contacts/memory.ts",
+        "packages/database/src/repository/calendar-event-details/read.ts",
+      ],
+      pathExists: (path) =>
+        ![
+          "packages/database/src/repository/billing-controls-contracts.ts",
+          "packages/database/src/repository/billing-controls/memory.ts",
+          "packages/database/src/repository/connector-contracts.ts",
+        ].includes(path),
+      readText: (path) => {
+        if (path === "packages/database/src/repository/drizzle.ts") {
+          return `
+import { createDrizzleBillingControlsRepository } from "./billing-controls/drizzle.js";
+import { createDrizzleConnectorRepository } from "./connectors/drizzle.js";
+`;
+        }
+        if (path === "packages/database/src/repository/memory.ts") {
+          return `
+import { createMemoryContactRepository } from "./contacts/memory.js";
+`;
+        }
+        throw new Error(`unexpected read: ${path}`);
+      },
+    });
+
+    assert.deepEqual(failures, [
+      "billing-controls repository capability must declare packages/database/src/repository/billing-controls-contracts.ts.",
+      "billing-controls repository capability must include packages/database/src/repository/billing-controls/memory.ts.",
+      "connectors repository capability must declare packages/database/src/repository/connector-contracts.ts.",
+      "packages/database/src/repository/memory.ts must import ./connectors/memory.js for the connectors repository capability.",
+      "packages/database/src/repository/drizzle.ts must import ./contacts/drizzle.js for the contacts repository capability.",
+    ]);
+  });
+
+  it("allows support-only repository subdirectories without facade contracts", () => {
+    const failures = collectRepositoryCapabilityFailures({
+      sourceFiles: ["packages/database/src/repository/calendar-event-details/read.ts"],
+      pathExists: () => false,
+      readText: () => {
+        throw new Error("support-only folders should not require aggregate reads");
+      },
+    });
+
+    assert.deepEqual(failures, []);
   });
 
   it("requires tracked route families to keep at least one route test file", () => {
@@ -265,6 +466,41 @@ export function registerBillingRoutes(server) {
         "POST /api/time-entries/:id/submit",
         "POST /api/time-entries/:id/write-off",
       ],
+    );
+  });
+
+  it("collects route declarations from directory-owned child route files", () => {
+    const declarations = collectApiRouteDeclarations({
+      routeRegistrars: [
+        {
+          family: "billing",
+          file: "apps/api/src/routes/billing.ts",
+          importPath: "./routes/billing.js",
+          registrar: "registerBillingRoutes",
+        },
+      ],
+      sourceFiles: ["apps/api/src/routes/billing/controls.ts"],
+      readText: (path) => {
+        if (path === "apps/api/src/server.ts") return "";
+        if (path === "apps/api/src/routes/billing.ts") {
+          return `export function registerBillingRoutes(server) {}`;
+        }
+        if (path === "apps/api/src/routes/billing/controls.ts") {
+          return `
+export function registerBillingControlRoutes(server) {
+  server.get("/api/billing/period-locks", async () => ({}));
+}
+`;
+        }
+        throw new Error(`unexpected read: ${path}`);
+      },
+    });
+
+    assert.deepEqual(
+      declarations.map(
+        (declaration) => `${declaration.registrar} ${declaration.method} ${declaration.path}`,
+      ),
+      ["registerBillingRoutes GET /api/billing/period-locks"],
     );
   });
 

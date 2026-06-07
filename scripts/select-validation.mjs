@@ -9,6 +9,7 @@ export const COMMANDS = {
   apiTypecheck: "pnpm --filter @open-practice/api typecheck",
   build: "pnpm build",
   ciLocal: "pnpm ci:local",
+  databaseBuild: "pnpm --filter @open-practice/database build",
   databaseCheck: "pnpm --filter @open-practice/database db:check",
   databaseTest: "pnpm --filter @open-practice/database test",
   databaseTypecheck: "pnpm --filter @open-practice/database typecheck",
@@ -51,6 +52,7 @@ export const COMMAND_ORDER = [
   COMMANDS.databaseCheck,
   COMMANDS.migrationsCheck,
   COMMANDS.databaseTypecheck,
+  COMMANDS.databaseBuild,
   COMMANDS.apiTest,
   COMMANDS.apiTypecheck,
   COMMANDS.providersTest,
@@ -223,6 +225,17 @@ function isDomainSource(path) {
   return path.startsWith("packages/domain/src/");
 }
 
+function isApiSource(path) {
+  return path.startsWith("apps/api/") || /^apps\/api\/src\/routes\/[^/]+\/[^/]+\.ts$/.test(path);
+}
+
+function isDatabaseSource(path) {
+  return (
+    path.startsWith("packages/database/") ||
+    /^packages\/database\/src\/repository\/[^/]+\/(?:drizzle|memory)\.ts$/.test(path)
+  );
+}
+
 function isE2EPath(path) {
   return (
     path === "e2e" || path.startsWith("e2e/") || /^playwright\.config\.(?:[cm]?[jt]s)$/.test(path)
@@ -236,7 +249,7 @@ export function normalizePaths(paths, cwd = process.cwd()) {
 export function classifyPath(path) {
   const commands = new Set();
 
-  if (path.startsWith("apps/api/")) {
+  if (isApiSource(path)) {
     commands.add(COMMANDS.apiTest);
     commands.add(COMMANDS.apiTypecheck);
     commands.add(COMMANDS.policyCheck);
@@ -260,11 +273,12 @@ export function classifyPath(path) {
     }
   }
 
-  if (path.startsWith("packages/database/") || isMigration(path)) {
+  if (isDatabaseSource(path) || isMigration(path)) {
     commands.add(COMMANDS.databaseTest);
     commands.add(COMMANDS.databaseCheck);
     commands.add(COMMANDS.migrationsCheck);
     commands.add(COMMANDS.databaseTypecheck);
+    commands.add(COMMANDS.databaseBuild);
     commands.add(COMMANDS.apiTest);
   }
 

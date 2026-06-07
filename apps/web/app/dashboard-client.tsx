@@ -27,7 +27,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import type {
   AiOperationalProposalRecord,
   ConflictCandidate,
@@ -40,9 +40,7 @@ import type {
   StaffReportGroupingKey,
 } from "@open-practice/domain";
 import {
-  buildDashboardSectionUrl,
   buildSidebarNavigationSections,
-  resolveDashboardRouteSelection,
   type DashboardNavigationSectionKey,
   type OpenPracticeSidebarNavigationSection,
 } from "../routes/routeCatalog";
@@ -313,6 +311,7 @@ import {
   type MatterActivityStatusFilter,
 } from "./matter-command-center";
 import { dashboardApiStatus, requestDashboardJson } from "./api-client";
+import { useDashboardShellState } from "./_features/dashboard/dashboard-shell-state";
 import {
   ContextRail,
   DashboardMetrics,
@@ -594,8 +593,6 @@ type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][numb
 type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
 type DashboardIntakeVariableProposal = IntakeVariableProposalsResponse["proposals"][number];
 type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
-
-const reviewRailCollapsedStorageKey = "open-practice.dashboard.reviewRailCollapsed";
 
 const documentMetadataClassificationOptions = [
   "general",
@@ -901,14 +898,6 @@ export default function DashboardClient({
   workerRuns,
   shareLinksStatus,
 }: DashboardClientProps) {
-  const detailPanelRef = useRef<HTMLElement>(null);
-  const reviewRailToggleRef = useRef<HTMLButtonElement>(null);
-  const reviewRailExpandHandleRef = useRef<HTMLButtonElement>(null);
-  const shouldFocusDetailRef = useRef(false);
-  const shouldFocusReviewRailToggleRef = useRef(false);
-  const hasAppliedUrlSectionRef = useRef(false);
-  const [isContextRailCollapsed, setIsContextRailCollapsed] = useState(false);
-  const [hasLoadedContextRailPreference, setHasLoadedContextRailPreference] = useState(false);
   const [matters, setMatters] = useState(initialMatters);
   const [queues, setQueues] = useState(initialQueues);
   const [aiOperationalProposals, setAiOperationalProposals] = useState(
@@ -941,7 +930,6 @@ export default function DashboardClient({
     refreshing: false,
   });
   const [activeMatterId, setActiveMatterId] = useState(initialMatters[0]?.id ?? "");
-  const [activeSection, setActiveSection] = useState<LocalDashboardSectionKey>(initialSection);
   const [workerRunFilter, setWorkerRunFilter] = useState<WorkerRunQueueFilter>("all");
   const [savedOperationalViewDefinitions, setSavedOperationalViewDefinitions] = useState(
     operationalViewDefinitions,
@@ -1610,6 +1598,19 @@ export default function DashboardClient({
     session.user.role,
     shareLinksCreateAvailable,
   ]);
+  const {
+    activeSection,
+    detailPanelRef,
+    expandContextRail,
+    isContextRailCollapsed,
+    reviewRailExpandHandleRef,
+    reviewRailToggleRef,
+    selectDashboardSection,
+    toggleContextRail,
+  } = useDashboardShellState({
+    initialSection,
+    navigationSections,
+  });
   const activeSectionLabel =
     activeSection === "matters"
       ? activeMatter?.title
@@ -1869,58 +1870,6 @@ export default function DashboardClient({
       cancelled = true;
     };
   }, [apiBaseUrl, devHeaders, selectedDraft]);
-
-  useEffect(() => {
-    function applySectionFromUrl() {
-      const selection = resolveDashboardRouteSelection({
-        requestedSection: new URLSearchParams(window.location.search).get("section"),
-        navigationSections,
-      });
-      if (hasAppliedUrlSectionRef.current) shouldFocusDetailRef.current = true;
-      hasAppliedUrlSectionRef.current = true;
-      setActiveSection(selection.sectionKey);
-    }
-
-    applySectionFromUrl();
-    window.addEventListener("popstate", applySectionFromUrl);
-    return () => window.removeEventListener("popstate", applySectionFromUrl);
-  }, [navigationSections]);
-
-  useEffect(() => {
-    if (!shouldFocusDetailRef.current) return;
-    detailPanelRef.current?.focus();
-    shouldFocusDetailRef.current = false;
-  }, [activeSection]);
-
-  useEffect(() => {
-    try {
-      const stored = window.sessionStorage.getItem(reviewRailCollapsedStorageKey);
-      if (stored === "true") setIsContextRailCollapsed(true);
-      if (stored === "false") setIsContextRailCollapsed(false);
-    } catch {
-      // Keep the default expanded posture when session storage is unavailable.
-    } finally {
-      setHasLoadedContextRailPreference(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!hasLoadedContextRailPreference) return;
-    try {
-      window.sessionStorage.setItem(
-        reviewRailCollapsedStorageKey,
-        isContextRailCollapsed ? "true" : "false",
-      );
-    } catch {
-      // Session storage persistence is ergonomic only; the dashboard remains usable without it.
-    }
-  }, [hasLoadedContextRailPreference, isContextRailCollapsed]);
-
-  useEffect(() => {
-    if (!shouldFocusReviewRailToggleRef.current || isContextRailCollapsed) return;
-    reviewRailToggleRef.current?.focus();
-    shouldFocusReviewRailToggleRef.current = false;
-  }, [isContextRailCollapsed]);
 
   const metrics = useMemo<DashboardMetric[]>(
     () => [
@@ -4290,15 +4239,7 @@ export default function DashboardClient({
       }));
       setFirstMatterForm(initialFirstMatterFormState);
       setFirstMatterStatus(`${created.number} created.`);
-      shouldFocusDetailRef.current = true;
-      setActiveSection("matters");
-      if (typeof window !== "undefined") {
-        window.history.pushState(
-          { section: "matters" },
-          "",
-          buildDashboardSectionUrl(window.location.href, "matters"),
-        );
-      }
+      selectDashboardSection("matters");
     } catch (error) {
       setFirstMatterStatus(`Matter creation failed: ${dashboardApiStatus(error)}`);
     } finally {
@@ -4620,29 +4561,6 @@ export default function DashboardClient({
     } finally {
       setExportingReportKey("");
     }
-  }
-
-  function selectDashboardSection(sectionKey: LocalDashboardSectionKey): void {
-    shouldFocusDetailRef.current = true;
-    setActiveSection(sectionKey);
-    window.history.pushState(
-      { section: sectionKey },
-      "",
-      buildDashboardSectionUrl(window.location.href, sectionKey),
-    );
-  }
-
-  function toggleContextRail(): void {
-    setIsContextRailCollapsed((isCollapsed) => {
-      const nextCollapsed = !isCollapsed;
-      if (!nextCollapsed) shouldFocusReviewRailToggleRef.current = true;
-      return nextCollapsed;
-    });
-  }
-
-  function expandContextRail(): void {
-    shouldFocusReviewRailToggleRef.current = true;
-    setIsContextRailCollapsed(false);
   }
 
   if (!activeMatter) {

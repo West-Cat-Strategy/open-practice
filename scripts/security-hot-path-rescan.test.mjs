@@ -117,6 +117,11 @@ describe("security-hot-path-rescan contract", () => {
           args: ["--filter", "@open-practice/database", "typecheck"],
         },
         {
+          id: "selector-pnpm-filter-open-practice-database-build",
+          command: "pnpm",
+          args: ["--filter", "@open-practice/database", "build"],
+        },
+        {
           id: "selector-api-test",
           command: "pnpm",
           args: ["--filter", "@open-practice/api", "test"],
