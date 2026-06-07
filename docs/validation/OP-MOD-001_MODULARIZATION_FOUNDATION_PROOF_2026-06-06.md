@@ -8264,6 +8264,29 @@ docs/planning-and-progress.md docs/validation/README.md`.
 - `git diff --check`
   - Passed after the 2026-06-07 consolidation closeout; no whitespace errors.
 
+## 2026-06-07 Push And Prune Closeout
+
+- `git push origin main`
+  - Passed after fast-forwarding local `main` from `ad25b758` to the validated consolidation
+    commit `1afa4d85`; `origin/main` advanced to the same commit.
+- `git branch --merged main`
+  - Listed `chore/op-mainline-consolidation-2026-06-07`,
+    `codex/op-modularization-2026-06-06`,
+    `codex/op-modularization-2026-06-06-broad-backup-20260607`, and `main`, confirming all local
+    OP-MOD branches were contained in final `main`.
+- `git branch --no-merged main`
+  - Returned no branches.
+- `git worktree list --porcelain`
+  - Listed only `/Users/bryan/projects/open-practice` on `refs/heads/main`.
+- `git ls-remote --heads origin`
+  - Advertised only `refs/heads/main` at `1afa4d85` before this docs-only closeout commit.
+- `git branch -d chore/op-mainline-consolidation-2026-06-07 codex/op-modularization-2026-06-06 codex/op-modularization-2026-06-06-broad-backup-20260607`
+  - Deleted the three proven-merged local branches.
+- `git remote prune origin`
+  - Passed with no remote topic refs to remove.
+- `git worktree prune`
+  - Passed with no stale worktree entries to remove.
+
 ## Deferred Follow-Up Slices
 
 - Continue splitting large route families behind stable `register*Routes` entrypoints, starting

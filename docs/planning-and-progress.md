@@ -8,17 +8,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                                                                 |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Current focus         | OP-MOD-001 modularization foundation is merged through the local consolidation branch and ready for mainline handoff. |
-| Next recommended pick | Push/prune closeout, then continue the next OP-MOD follow-up from a fresh branch after selector review.               |
-| Ready rows            | 0                                                                                                                     |
-| Candidate rows        | 0                                                                                                                     |
-| In progress rows      | 0                                                                                                                     |
-| Review rows           | 0                                                                                                                     |
-| Blocked rows          | 0                                                                                                                     |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                                                  |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                                                      |
+| Snapshot              | Value                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| Current focus         | OP-MOD-001 modularization foundation is merged to `main`, pushed, and locally pruned. |
+| Next recommended pick | Continue the next OP-MOD follow-up from a fresh branch after selector review.         |
+| Ready rows            | 0                                                                                     |
+| Candidate rows        | 0                                                                                     |
+| In progress rows      | 0                                                                                     |
+| Review rows           | 0                                                                                     |
+| Blocked rows          | 0                                                                                     |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                  |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                      |
 
 ## Forward Development Plan
 
@@ -31,7 +31,10 @@ and repository modularization payload while adding the newer dashboard shell-sta
 selector and boundary guardrails, and proof/workboard closeout. `pnpm verify:select -- --base
 origin/main`, `pnpm ci:local`, `pnpm e2e:host`, `pnpm e2e:docker`, dependency audit/license checks,
 package tests/typechecks/builds, docs/policy checks, proof-vs-diff equality, and whitespace
-validation pass on the final 330-path consolidation delta.
+validation pass on the final 330-path consolidation delta. `main` was pushed to `origin`, the
+merged OP-MOD local branches plus the temporary consolidation branch were deleted, `git remote prune
+origin` and `git worktree prune` ran, and the remote advertised only `refs/heads/main` during the
+post-prune check.
 
 Earlier OP-MOD-001 addendum: intake dashboard rendering now lives in
 `apps/web/app/dashboard/intake-section.tsx` with static render coverage, staff

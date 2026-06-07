@@ -50,7 +50,9 @@ payload and layering in the newer dashboard shell-state helper/tests plus select
 guardrails. The row-local proof records `pnpm verify:select -- --base origin/main`, the selected
 broad package gates, `pnpm ci:local`, `pnpm e2e:host`, `pnpm e2e:docker`, dependency audit/license
 checks, docs/policy checks, proof-vs-diff equality, and whitespace proof for the 330-path
-consolidation delta.
+consolidation delta. The post-push closeout deleted the merged OP-MOD local branches plus the
+temporary consolidation branch, ran remote and worktree pruning, and confirmed the remote advertised
+only `refs/heads/main` before this docs-only closeout commit.
 Connector repository facade construction now also lives in the connector-owned Drizzle and memory
 modules while the aggregate repository classes keep the same `OpenPracticeRepository` connector
 method surface through typed facade assignment.
