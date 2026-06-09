@@ -50,20 +50,22 @@ evidence directory is needed.
   manual. Follow [License Policy](../license-policy.md) before adding dependencies or copied
   excerpts.
 - Include Docker surfaces in dependency refreshes. Run `docker compose config`, scan base and service
-  images with Docker Scout when available, prefer deterministic service tags over `latest`, and
-  document residual upstream CVEs that have no safer same-scope image recommendation.
+  images with Docker Scout when available, prefer deterministic service tags over `latest`, run
+  `pnpm docker:app-smoke` when app image behavior changes, and document residual upstream CVEs that
+  have no safer same-scope image recommendation.
 
 ### Docker Dependency Snapshot
 
 2026-06-05 Docker image CVE follow-up evidence, building on the 2026-05-28 dependency refresh and
 the 2026-05-12 / 2026-05-16 / 2026-06-04 infra-image follow-ups:
 
-- `node:26.3.0-alpine3.23` is pinned by digest as the app base. The Dockerfile updates bundled npm
-  and pnpm explicitly to `npm@11.16.0` and `pnpm@11.4.0`, deploys runtime images with production
-  dependencies, and uses Node's built-in `fetch` for API health checks instead of installing `curl`.
-  Final local app images, not only the upstream base, are the validation target. The 2026-06-05
-  Docker follow-up rebuilt API, Web, and Worker on this base; all three local app images report
-  `0C`/`0H` in critical/high Scout scans and `0C`/`0H`/`1M`/`0L` in quickview.
+- `node:26.3.0-alpine3.23` is pinned by digest as the app base. The Dockerfile updates npm and pnpm
+  only in build stages, installs from manifest-first layers with BuildKit caches, deploys runtime
+  images with production dependencies, and uses direct service commands instead of a generic
+  `pnpm start` runtime default. Final local app images, not only the upstream base, are the
+  validation target. The 2026-06-05 Docker follow-up rebuilt API, Web, and Worker on this base; all
+  three local app images report `0C`/`0H` in critical/high Scout scans and `0C`/`0H`/`1M`/`0L` in
+  quickview.
 - The local Postgres service now builds `open-practice-postgres:18-alpine-su-exec` from the pinned
   `postgres:18-alpine` 18.4 digest and replaces the vulnerable bundled `gosu` helper with Alpine
   `su-exec` while preserving the standard Postgres 18 entrypoint and health-check contract. The
@@ -80,14 +82,16 @@ the 2026-05-12 / 2026-05-16 / 2026-06-04 infra-image follow-ups:
   `9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a`. Docker Hub and Quay `latest` still resolve to the old
   pinned `RELEASE.2025-09-07T16-13-09Z` manifest, and neither registry publishes the newer tag, so
   the local wrapped-service image preserves the same Compose S3 contract while moving to the
-  digest-pinned Go `1.26.4` builder. The 2026-06-05 local Scout scan reports `11C`/`16H`, with the
-  Alpine base current and the remaining findings in MinIO/application Go modules; no same-contract
-  base-image recommendation clears those residuals.
+  digest-pinned Go `1.26.4` builder. The runtime now starts as a non-root user while preserving the
+  `/data` volume contract. The 2026-06-05 local Scout scan reports `11C`/`16H`, with the Alpine base
+  current and the remaining findings in MinIO/application Go modules; no same-contract base-image
+  recommendation clears those residuals.
 - The local Mailpit service now builds `open-practice-mailpit:v1.30.1-go1.26.4` from the checked
   v1.30.1 source archive on a fixed Go toolchain while preserving SMTP port `1025` and web port
-  `8025`. The builder is now pinned to `golang:1.26.4-alpine3.23` by digest. The 2026-06-05 local
-  Scout scan reports `0C`/`1H`, with the single residual high in `github.com/gomarkdown/markdown`
-  marked not fixed and the Alpine base current.
+  `8025`. The runtime now starts as a non-root user. The builder is now pinned to
+  `golang:1.26.4-alpine3.23` by digest. The 2026-06-05 local Scout scan reports `0C`/`1H`, with the
+  single residual high in `github.com/gomarkdown/markdown` marked not fixed and the Alpine base
+  current.
 - The 2026-06-05 all-image follow-up artifact is local-only at
   `/tmp/codex-security-scans/open-practice/0484630_20260605T221819Z_docker_followup/summary.md`.
   It records the Compose image inventory, the all-image Scout matrix, and the rationale for closing
@@ -112,6 +116,20 @@ means a newer upstream tag, registry manifest, or Scout recommendation needs a s
 review, and exit `1` records Docker, Scout, registry, or network blockers in the artifact. Keep any
 actual image pin, base, source-tag, provenance, license, or Docker E2E change in a separate
 follow-up proof.
+
+Use the app-image smoke after Dockerfile, Compose command, bind, capability, or runtime dependency
+changes:
+
+```bash
+pnpm docker:app-smoke
+pnpm docker:app-smoke -- --refresh
+pnpm docker:app-smoke -- --keep-up
+```
+
+The first form validates the app images in a disposable Compose project on alternate loopback ports
+and removes disposable volumes afterward. Add `-- --refresh` when the proof needs pinned Redis pulls
+and `--pull` image rebuilds. The `--keep-up` form uses the default Compose dev project and leaves the
+local dev stack available at web `33000` and API `34000`.
 
 ## GitHub Settings Cutover
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import nextConfig, { buildContentSecurityPolicy } from "../next.config.mjs";
+import nextConfig, { buildContentSecurityPolicy, validateRelaxedCspFlag } from "../next.config.mjs";
 
 describe("web security headers", () => {
   it("sets baseline hardening headers without exposing the Next powered-by header", async () => {
@@ -71,5 +71,25 @@ describe("web security headers", () => {
     expect(dockerDevCsp).toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval'");
     expect(dockerDevCsp).toContain("connect-src 'self' http://localhost:* http://127.0.0.1:*");
     expect(dockerDevCsp).not.toContain("upgrade-insecure-requests");
+  });
+
+  it("requires the explicit local Docker flag before relaxing CSP", () => {
+    expect(() => validateRelaxedCspFlag({ relaxed: true, localDockerDev: false })).toThrow(
+      /OPEN_PRACTICE_DOCKER_LOCAL_DEV/,
+    );
+    expect(() =>
+      validateRelaxedCspFlag({
+        relaxed: true,
+        localDockerDev: true,
+        profile: "production",
+      }),
+    ).toThrow(/OPEN_PRACTICE_IMAGE_PROFILE/);
+    expect(() =>
+      validateRelaxedCspFlag({
+        relaxed: true,
+        localDockerDev: true,
+        profile: "local-dev",
+      }),
+    ).not.toThrow();
   });
 });

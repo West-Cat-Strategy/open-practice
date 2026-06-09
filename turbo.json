@@ -3,7 +3,11 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "env": ["OPEN_PRACTICE_RELAXED_CSP"],
+      "env": [
+        "OPEN_PRACTICE_RELAXED_CSP",
+        "OPEN_PRACTICE_DOCKER_LOCAL_DEV",
+        "OPEN_PRACTICE_IMAGE_PROFILE"
+      ],
       "outputs": [".next/**", "dist/**"]
     },
     "dev": {

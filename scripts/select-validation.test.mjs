@@ -48,6 +48,7 @@ describe("select-validation contract", () => {
       selectCommands([".dockerignore", "docker-compose.yml", "docker/prod/Caddyfile"]),
       [
         COMMANDS.dockerResidualWatch,
+        COMMANDS.dockerAppSmoke,
         COMMANDS.e2eDocker,
         COMMANDS.formatCheck,
         COMMANDS.docsCheck,

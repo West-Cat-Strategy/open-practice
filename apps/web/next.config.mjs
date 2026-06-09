@@ -4,7 +4,28 @@ import { URL, fileURLToPath } from "node:url";
 
 const projectRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const isProduction = env.NODE_ENV === "production";
+const dockerLocalDev = env.OPEN_PRACTICE_DOCKER_LOCAL_DEV === "true";
 const relaxedCsp = env.OPEN_PRACTICE_RELAXED_CSP === "true";
+const imageProfile = env.OPEN_PRACTICE_IMAGE_PROFILE ?? "production";
+
+export function validateRelaxedCspFlag({
+  relaxed = relaxedCsp,
+  localDockerDev = dockerLocalDev,
+  profile = imageProfile,
+} = {}) {
+  if (relaxed && !localDockerDev) {
+    throw new Error(
+      "OPEN_PRACTICE_RELAXED_CSP=true is only allowed with OPEN_PRACTICE_DOCKER_LOCAL_DEV=true",
+    );
+  }
+  if (relaxed && profile !== "local-dev") {
+    throw new Error(
+      "OPEN_PRACTICE_RELAXED_CSP=true is only allowed for OPEN_PRACTICE_IMAGE_PROFILE=local-dev",
+    );
+  }
+}
+
+validateRelaxedCspFlag();
 
 export function buildContentSecurityPolicy({
   production = isProduction,

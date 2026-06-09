@@ -4,9 +4,17 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export const REQUIRED_LOCAL_EVIDENCE_DOCKERIGNORE_ENTRIES = [
+  ".aws",
+  ".netrc",
+  ".npmrc",
+  ".pnpmrc",
+  ".secrets",
+  ".ssh",
+  ".yarnrc",
   ".tmp",
   "artifacts",
   "artifacts/release-local",
+  "output",
 ];
 
 function normalizeIgnoreEntry(entry) {

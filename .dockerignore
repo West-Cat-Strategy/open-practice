@@ -3,6 +3,16 @@
 .env
 .env.*
 !.env.example
+.npmrc
+.pnpmrc
+.yarnrc
+.netrc
+.aws
+.aws/
+.ssh
+.ssh/
+.secrets
+.secrets/
 
 node_modules
 **/node_modules
@@ -18,6 +28,8 @@ dist
 build
 **/build
 coverage
+output
+**/output
 playwright-report
 test-results
 *.tsbuildinfo
