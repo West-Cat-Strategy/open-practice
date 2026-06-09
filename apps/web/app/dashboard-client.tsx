@@ -32,11 +32,7 @@ import type {
   StaffReportGroupingKey,
 } from "@open-practice/domain";
 import type { CalendarMeetingLinkMode } from "@open-practice/domain/calendar-models";
-import {
-  buildSidebarNavigationSections,
-  type DashboardNavigationSectionKey,
-  type OpenPracticeSidebarNavigationSection,
-} from "../routes/routeCatalog";
+import { type DashboardNavigationSectionKey } from "../routes/routeCatalog";
 import {
   buildCreateShareLinkPayload,
   describeCreateShareLinkResult,
@@ -90,7 +86,6 @@ import { ExternalUploadsSection } from "./dashboard/external-uploads-section";
 import { ShareLinksSection } from "./dashboard/share-links-section";
 import { TrustControlsSection } from "./dashboard/trust-controls-section";
 import {
-  applyMatterAvailabilityToNavigation,
   applySavedQueueFocus,
   applySavedMatterFocus,
   buildCreateMatterPayload,
@@ -98,7 +93,6 @@ import {
   dashboardLaneFreshnessCue,
   describeSavedMatterFocus,
   describeSavedQueueFocus,
-  enableMatterScopedCapabilitiesForLocalMatter,
   filterMatters,
   getSavedMatterPresetDefinition,
   initialFirstMatterFormState,
@@ -257,6 +251,10 @@ import {
   formatSavedOperationalViewDefinition,
   minutes,
 } from "./_features/dashboard/formatters";
+import {
+  buildDashboardShellNavigationModel,
+  dashboardActiveSectionLabel,
+} from "./_features/dashboard/dashboard-shell-model";
 import { useDashboardShellState } from "./_features/dashboard/dashboard-shell-state";
 import {
   ContextRail,
@@ -425,7 +423,7 @@ interface DashboardClientProps {
   workerRuns: WorkerRunsDashboardResponse;
 }
 
-type LocalDashboardSectionKey = OpenPracticeSidebarNavigationSection["key"];
+type LocalDashboardSectionKey = DashboardNavigationSectionKey;
 type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][number];
 type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
 type DashboardIntakeVariableProposal = IntakeVariableProposalsResponse["proposals"][number];
@@ -1145,31 +1143,27 @@ export default function DashboardClient({
   const canCreateMatter = capabilities.sections.some(
     (section) => section.key === "matters" && section.actions.includes("create"),
   );
-  const navigationCapabilitySections = useMemo(
-    () => enableMatterScopedCapabilitiesForLocalMatter(capabilities.sections, hasAccessibleMatter),
-    [capabilities.sections, hasAccessibleMatter],
-  );
-  const navigationSections = useMemo<OpenPracticeSidebarNavigationSection[]>(() => {
-    return applyMatterAvailabilityToNavigation(
-      buildSidebarNavigationSections({
+  const { navigationSections, matterActionSections } = useMemo(
+    () =>
+      buildDashboardShellNavigationModel({
         billingCanView: billingDashboard.canView,
-        capabilitySections: navigationCapabilitySections,
+        capabilitySections: capabilities.sections,
+        hasAccessibleMatter,
+        canCreateMatter,
         shareLinksEnabled: shareLinksCreateAvailable,
         externalUploadsEnabled: externalUploadCreateAvailable,
-        adminReadinessEnabled: ["owner_admin", "auditor"].includes(session.user.role),
+        sessionRole: session.user.role,
       }),
-      hasAccessibleMatter,
+    [
+      billingDashboard.canView,
       canCreateMatter,
-    );
-  }, [
-    billingDashboard.canView,
-    canCreateMatter,
-    externalUploadCreateAvailable,
-    hasAccessibleMatter,
-    navigationCapabilitySections,
-    session.user.role,
-    shareLinksCreateAvailable,
-  ]);
+      capabilities.sections,
+      externalUploadCreateAvailable,
+      hasAccessibleMatter,
+      session.user.role,
+      shareLinksCreateAvailable,
+    ],
+  );
   const {
     activeSection,
     detailPanelRef,
@@ -1183,18 +1177,11 @@ export default function DashboardClient({
     initialSection,
     navigationSections,
   });
-  const activeSectionLabel =
-    activeSection === "matters"
-      ? activeMatter?.title
-      : (navigationSections.find((section) => section.key === activeSection)?.title ?? "Dashboard");
-  const matterActionSections = useMemo(
-    () =>
-      navigationSections.filter(
-        (section) =>
-          section.key !== "matters" && (section.requiresMatterContext || section.key === "queues"),
-      ),
-    [navigationSections],
-  );
+  const activeSectionLabel = dashboardActiveSectionLabel({
+    activeMatterTitle: activeMatter?.title,
+    activeSection,
+    navigationSections,
+  });
   const activeSavedOperationalViewDefinition = useMemo(
     () =>
       queueOperationalViewDefinitions.find(

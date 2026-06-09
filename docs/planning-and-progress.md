@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-07
+**Last Updated:** 2026-06-08
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -8,19 +8,33 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                                 |
-| --------------------- | ------------------------------------------------------------------------------------- |
-| Current focus         | OP-MOD-001 modularization foundation is merged to `main`, pushed, and locally pruned. |
-| Next recommended pick | Continue the next OP-MOD follow-up from a fresh branch after selector review.         |
-| Ready rows            | 0                                                                                     |
-| Candidate rows        | 0                                                                                     |
-| In progress rows      | 0                                                                                     |
-| Review rows           | 0                                                                                     |
-| Blocked rows          | 0                                                                                     |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                  |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                      |
+| Snapshot              | Value                                                                               |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| Current focus         | OP-MOD-002 dashboard shell navigation model extraction is in Review.                |
+| Next recommended pick | Review the OP-MOD-002 branch proof and merge after selected validation stays green. |
+| Ready rows            | 0                                                                                   |
+| Candidate rows        | 0                                                                                   |
+| In progress rows      | 0                                                                                   |
+| Review rows           | 1                                                                                   |
+| Blocked rows          | 0                                                                                   |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                    |
+
+## Active Review Rows
+
+| Status | ID         | Task                                        | Immediate Next Move                                                                                                                                                                                                                                                                                 | Validation Plan                                                                                                                                                                                                                                                                                       |
+| ------ | ---------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Review | OP-MOD-002 | Dashboard shell navigation model extraction | Extracted dashboard shell navigation availability/model derivation into `apps/web/app/_features/dashboard/dashboard-shell-model.ts` while preserving rendered markup, URL/focus behavior, review-rail sessionStorage persistence, request/response handling, and composed dashboard mutation state. | Review proof recorded in [OP-MOD-002 dashboard shell navigation model proof](validation/OP-MOD-002_DASHBOARD_SHELL_NAVIGATION_MODEL_PROOF_2026-06-08.md); final handoff requires `pnpm verify:select -- --files <exact final changed paths...>` plus the selector-chosen web/docs/policy/build gates. |
 
 ## Forward Development Plan
+
+Latest OP-MOD-002 addendum: 2026-06-08 dashboard shell navigation availability/model derivation
+now lives in `apps/web/app/_features/dashboard/dashboard-shell-model.ts` with focused unit coverage.
+`DashboardClient` still owns composed mutation state, response handling, the existing
+`useDashboardShellState` URL/focus behavior, and review-rail sessionStorage behavior; the helper only
+returns navigation sections, matter action sections, and active-section labels from the existing
+shell inputs. Selector-driven `format:check`, `docs:check`, `policy:check`, web test, web
+typecheck, `pnpm build`, and `git diff --check` proof is recorded in the OP-MOD-002 note.
 
 Latest OP-MOD-001 addendum: 2026-06-07 mainline consolidation merged both local OP-MOD branches
 (`codex/op-modularization-2026-06-06-broad-backup-20260607` and
