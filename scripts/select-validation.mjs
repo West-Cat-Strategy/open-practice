@@ -15,6 +15,7 @@ export const COMMANDS = {
   databaseTypecheck: "pnpm --filter @open-practice/database typecheck",
   depsAudit: "pnpm deps:audit",
   depsLicenses: "pnpm deps:licenses",
+  dockerAppSmoke: "pnpm docker:app-smoke",
   dockerResidualWatch: "pnpm docker:residual-watch",
   docsCheck: "pnpm docs:check",
   domainTest: "pnpm --filter @open-practice/domain test",
@@ -40,6 +41,7 @@ export const COMMAND_ORDER = [
   COMMANDS.depsAudit,
   COMMANDS.depsLicenses,
   COMMANDS.dockerResidualWatch,
+  COMMANDS.dockerAppSmoke,
   COMMANDS.e2eHost,
   COMMANDS.e2eDocker,
   COMMANDS.formatCheck,
@@ -325,6 +327,7 @@ export function classifyPath(path) {
 
   if (isRuntimeConfig(path)) {
     commands.add(COMMANDS.dockerResidualWatch);
+    commands.add(COMMANDS.dockerAppSmoke);
     commands.add(COMMANDS.e2eDocker);
     commands.add(COMMANDS.formatCheck);
     commands.add(COMMANDS.docsCheck);

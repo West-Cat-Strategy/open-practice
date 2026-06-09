@@ -27,10 +27,16 @@ COPY --from=builder /minio /usr/local/bin/minio
 COPY --from=builder /src/LICENSE /licenses/LICENSE
 COPY --from=builder /src/CREDITS /licenses/CREDITS
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata \
+  && addgroup -S minio \
+  && adduser -S -D -H -u 10001 -G minio minio \
+  && mkdir -p /data \
+  && chown -R minio:minio /data /licenses
 
 EXPOSE 9000/tcp 9001/tcp
 
 VOLUME ["/data"]
+
+USER minio
 
 ENTRYPOINT ["/usr/local/bin/minio"]

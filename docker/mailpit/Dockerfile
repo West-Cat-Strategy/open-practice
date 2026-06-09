@@ -25,7 +25,12 @@ LABEL org.opencontainers.image.title="Mailpit" \
 
 COPY --from=builder /mailpit /mailpit
 
-RUN apk add --no-cache tzdata
+RUN apk add --no-cache tzdata \
+  && addgroup -S mailpit \
+  && adduser -S -D -H -u 10001 -G mailpit mailpit
+
+WORKDIR /tmp
+USER mailpit
 
 EXPOSE 1025/tcp 1110/tcp 8025/tcp
 

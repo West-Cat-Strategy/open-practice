@@ -83,11 +83,16 @@ Environment variables must be treated as deployment inputs, not application defa
 - Public-consultation website origins configured in the API should be treated as route-specific:
   they are allowed only for public intake `POST`/preflight CORS and must not become credentialed CORS
   origins for authenticated dashboard routes.
-- Local Docker Compose host ports bind to `127.0.0.1` by default. Set
-  `OPEN_PRACTICE_DOCKER_HOST_BIND` only for intentional LAN testing on a trusted network.
+- Local Docker Compose host ports bind to `127.0.0.1` by default through scoped bind variables and
+  per-service host-port variables. `OPEN_PRACTICE_DOCKER_API_HOST_BIND` must stay loopback-bound
+  because the Compose API intentionally carries dev-only auth and setup flags. Do not reuse the local
+  Docker stack as a LAN or production API profile.
 - `OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP` is a local Docker Compose-only bootstrap switch for
   first-run setup requests that arrive from the Docker bridge gateway. It must stay disabled in
   production and should not be paired with LAN-exposed setup ports.
+- `OPEN_PRACTICE_RELAXED_CSP=true` is a local Docker development escape hatch only and must be paired
+  with `OPEN_PRACTICE_DOCKER_LOCAL_DEV=true` and `OPEN_PRACTICE_IMAGE_PROFILE=local-dev`; do not
+  promote relaxed-CSP Compose images outside local development.
 - `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY` must reference a
   private bucket or compatible object store. Endpoint, access key, and secret key must be provided
   together when S3 is enabled. Production S3 deployments must set `S3_SERVER_SIDE_ENCRYPTION=AES256`
