@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-07
+**Last Updated:** 2026-06-09
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -8,19 +8,28 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                                 |
-| --------------------- | ------------------------------------------------------------------------------------- |
-| Current focus         | OP-MOD-001 modularization foundation is merged to `main`, pushed, and locally pruned. |
-| Next recommended pick | Continue the next OP-MOD follow-up from a fresh branch after selector review.         |
-| Ready rows            | 0                                                                                     |
-| Candidate rows        | 0                                                                                     |
-| In progress rows      | 0                                                                                     |
-| Review rows           | 0                                                                                     |
-| Blocked rows          | 0                                                                                     |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                  |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                      |
+| Snapshot              | Value                                                                          |
+| --------------------- | ------------------------------------------------------------------------------ |
+| Current focus         | OP-MOD-001 dashboard-loading resource follow-up is isolated for review.        |
+| Next recommended pick | Merge or hand off the dashboard-loading resource follow-up after proof review. |
+| Ready rows            | 0                                                                              |
+| Candidate rows        | 0                                                                              |
+| In progress rows      | 0                                                                              |
+| Review rows           | 0                                                                              |
+| Blocked rows          | 0                                                                              |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).           |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`               |
 
 ## Forward Development Plan
+
+Latest OP-MOD-001 addendum: 2026-06-09 dashboard bootstrap/core staff loading now lives in
+`apps/web/app/_features/dashboard/server-resources.ts` behind
+`loadDashboardCoreResources`, and first-matter trust controls plus the jurisdictional trust report
+now load through `loadDashboardTrustResources`. `apps/web/app/page.tsx` still owns search-param
+parsing, setup/login/client-portal gating, capability-derived section flags, dashboard route
+selection, and final `DashboardClient` prop wiring. The new server-resource test covers the
+existing core endpoint list/header forwarding plus no-matter, access-denied, and unavailable trust
+fallbacks without changing response shapes or dashboard routing behavior.
 
 Latest OP-MOD-001 addendum: 2026-06-07 mainline consolidation merged both local OP-MOD branches
 (`codex/op-modularization-2026-06-06-broad-backup-20260607` and

@@ -28,12 +28,7 @@ import { loadAuditProjection } from "./_features/audit/server-resources";
 import { loadCalendarDashboardResources } from "./_features/calendar/server-resources";
 import type { CalendarDashboardResponse } from "./_features/calendar/models";
 import { loadCommunicationsInboxResources } from "./_features/communications/server-resources";
-import type { ContactDossiersResponse } from "./_features/contacts/models";
 import { loadContactDashboardResources } from "./_features/contacts/server-resources";
-import type {
-  JurisdictionalTrustReportResponse,
-  TrustControlsDashboardResponse,
-} from "./_features/billing/models";
 import type { DocumentAssemblyDashboardResponse } from "./_features/document-assembly/models";
 import type { EmailDeliveryDashboardResponse } from "./_features/email-delivery/models";
 import { loadEmailDeliveryDashboardResources } from "./_features/email-delivery/server-resources";
@@ -51,25 +46,16 @@ import { loadLegalClinicDashboardResources } from "./_features/legal-clinic/serv
 import { loadLegalResearchDashboardResources } from "./_features/legal-research/server-resources";
 import { loadOperationsDashboardResources } from "./_features/operations/server-resources";
 import {
-  buildJurisdictionalTrustReportPath,
-  buildTrustControlsPath,
-  emptyJurisdictionalTrustReport,
-  emptyTrustControlsDashboard,
-  loadTrustControlsDashboardData,
-} from "./trust-controls-dashboard";
+  loadDashboardCoreResources,
+  loadDashboardTrustResources,
+} from "./_features/dashboard/server-resources";
 import type {
-  CapabilitiesResponse,
   ClientPortalWorkspaceResponse,
   DocumentProcessingDashboardResponse,
   DocumentProcessingWorkbenchResponse,
   DraftingDashboardResponse,
-  IntakeSessionsResponse,
-  MatterSummary,
-  PracticeOverview,
-  QueuesResponse,
   SessionResponse,
   SetupStatusResponse,
-  SignatureRequestsResponse,
 } from "./types";
 
 export const dynamic = "force-dynamic";
@@ -121,24 +107,9 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     return <ClientPortalWorkspace workspace={workspace} />;
   }
 
-  let capabilities: CapabilitiesResponse;
-  let overview: PracticeOverview;
-  let matters: MatterSummary[];
-  let signatures: SignatureRequestsResponse;
-  let intake: IntakeSessionsResponse;
-  let queues: QueuesResponse;
-  let contactDossiers: ContactDossiersResponse;
+  let coreResources: Awaited<ReturnType<typeof loadDashboardCoreResources>>;
   try {
-    [capabilities, overview, matters, signatures, intake, queues, contactDossiers] =
-      await Promise.all([
-        apiGet<CapabilitiesResponse>("/api/capabilities", headers),
-        apiGet<PracticeOverview>("/api/overview", headers),
-        apiGet<MatterSummary[]>("/api/matters", headers),
-        apiGet<SignatureRequestsResponse>("/api/signature-requests", headers),
-        apiGet<IntakeSessionsResponse>("/api/intake-sessions", headers),
-        apiGet<QueuesResponse>("/api/queues", headers),
-        apiGet<ContactDossiersResponse>("/api/contacts/dossiers", headers),
-      ]);
+    coreResources = await loadDashboardCoreResources(headers);
   } catch (error) {
     if (
       error instanceof ApiRequestError &&
@@ -148,6 +119,8 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     }
     throw error;
   }
+  const { capabilities, overview, matters, signatures, intake, queues, contactDossiers } =
+    coreResources;
   const { contactReviewQueue, contactDataQualityResolutions } = await loadContactDashboardResources(
     {
       contactCount: contactDossiers.length,
@@ -158,22 +131,10 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   const connectorOperations = await loadConnectorOperations(headers);
   const auditProjection = await loadAuditProjection(headers);
   const billing = await loadBillingDashboardData({ headers, matters, session });
-  const trustControls = await loadTrustControlsDashboardData({
-    matter: matters[0],
-    getControls: (matterId) =>
-      apiGetOptional<TrustControlsDashboardResponse>(
-        buildTrustControlsPath(matterId),
-        emptyTrustControlsDashboard(),
-        headers,
-        emptyTrustControlsDashboard(),
-      ),
-  });
-  const jurisdictionalTrustReport = await apiGetOptional<JurisdictionalTrustReportResponse>(
-    buildJurisdictionalTrustReportPath(),
-    emptyJurisdictionalTrustReport(),
+  const { trustControls, jurisdictionalTrustReport } = await loadDashboardTrustResources({
     headers,
-    emptyJurisdictionalTrustReport(),
-  );
+    matters,
+  });
   const canViewDrafting = capabilities.sections.some(
     (section) => section.key === "drafting" && section.enabled,
   );
