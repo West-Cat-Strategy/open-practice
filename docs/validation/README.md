@@ -17,6 +17,13 @@ lives in [Archive](../archive/README.md).
 
 ## Active Proof Notes
 
+OP-MOD-001 now also includes the 2026-06-09 dashboard-loading resource follow-up: core staff
+dashboard bootstrap reads and first-matter trust report loading moved from
+`apps/web/app/page.tsx` to `apps/web/app/_features/dashboard/server-resources.ts` with
+fetch-backed contract coverage while setup/login/client-portal gating, route selection,
+capability-derived fallbacks, `DashboardClient` props, endpoint paths, and response shapes remain
+unchanged.
+
 OP-MOD-002 records the dashboard shell navigation model follow-up in
 [OP-MOD-002_DASHBOARD_SHELL_NAVIGATION_MODEL_PROOF_2026-06-08.md](OP-MOD-002_DASHBOARD_SHELL_NAVIGATION_MODEL_PROOF_2026-06-08.md).
 The slice extracts navigation availability, matter action section, and active-section label

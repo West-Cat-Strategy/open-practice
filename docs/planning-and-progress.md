@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-08
+**Last Updated:** 2026-06-09
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -8,27 +8,45 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                               |
-| --------------------- | ----------------------------------------------------------------------------------- |
-| Current focus         | OP-MOD-002 dashboard shell navigation model extraction is in Review.                |
-| Next recommended pick | Review the OP-MOD-002 branch proof and merge after selected validation stays green. |
-| Ready rows            | 0                                                                                   |
-| Candidate rows        | 0                                                                                   |
-| In progress rows      | 0                                                                                   |
-| Review rows           | 1                                                                                   |
-| Blocked rows          | 0                                                                                   |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                    |
-
-## Active Review Rows
-
-| Status | ID         | Task                                        | Immediate Next Move                                                                                                                                                                                                                                                                                 | Validation Plan                                                                                                                                                                                                                                                                                       |
-| ------ | ---------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Review | OP-MOD-002 | Dashboard shell navigation model extraction | Extracted dashboard shell navigation availability/model derivation into `apps/web/app/_features/dashboard/dashboard-shell-model.ts` while preserving rendered markup, URL/focus behavior, review-rail sessionStorage persistence, request/response handling, and composed dashboard mutation state. | Review proof recorded in [OP-MOD-002 dashboard shell navigation model proof](validation/OP-MOD-002_DASHBOARD_SHELL_NAVIGATION_MODEL_PROOF_2026-06-08.md); final handoff requires `pnpm verify:select -- --files <exact final changed paths...>` plus the selector-chosen web/docs/policy/build gates. |
+| Snapshot              | Value                                                                                     |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| Current focus         | 2026-06-09 mainline consolidation is merging dashboard follow-ups and Docker hardening.    |
+| Next recommended pick | Complete consolidation validation, push `main`, prune merged branches, then deploy.        |
+| Ready rows            | 0                                                                                         |
+| Candidate rows        | 0                                                                                         |
+| In progress rows      | 1                                                                                         |
+| Review rows           | 0                                                                                         |
+| Blocked rows          | 0                                                                                         |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                      |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                          |
 
 ## Forward Development Plan
 
-Latest OP-MOD-002 addendum: 2026-06-08 dashboard shell navigation availability/model derivation
+Latest mainline consolidation addendum: 2026-06-09 consolidation is merging the dashboard shell
+navigation model, dashboard server-resource loading, and Docker security/efficiency hardening
+slices. Dashboard navigation availability, matter action sections, and active-section label
+derivation now live in `apps/web/app/_features/dashboard/dashboard-shell-model.ts`; dashboard
+bootstrap/core staff loading and first-matter trust resources now live in
+`apps/web/app/_features/dashboard/server-resources.ts`. The local Docker stack now carries scoped
+loopback bind defaults, no-new-privileges/capability drops, non-root API/Web/Worker/Mailpit/MinIO
+containers, MinIO init ownership repair, manifest-first Dockerfile caching, production deploy
+pruning, explicit image commands, dev-only `tsx`, local-proof/secret `.dockerignore` coverage,
+relaxed local-development CSP gating, and selector/docs coverage for `pnpm docker:app-smoke`.
+The combined work preserves dashboard response shapes, routing, URL/focus behavior, review-rail
+sessionStorage persistence, API request/response handling, and local-development service contracts.
+Final consolidation validation will be recorded after the merged branch completes release and
+deployment gates.
+
+Earlier OP-MOD-001 addendum: 2026-06-09 dashboard bootstrap/core staff loading now lives in
+`apps/web/app/_features/dashboard/server-resources.ts` behind
+`loadDashboardCoreResources`, and first-matter trust controls plus the jurisdictional trust report
+now load through `loadDashboardTrustResources`. `apps/web/app/page.tsx` still owns search-param
+parsing, setup/login/client-portal gating, capability-derived section flags, dashboard route
+selection, and final `DashboardClient` prop wiring. The new server-resource test covers the
+existing core endpoint list/header forwarding plus no-matter, access-denied, and unavailable trust
+fallbacks without changing response shapes or dashboard routing behavior.
+
+Earlier OP-MOD-002 addendum: 2026-06-08 dashboard shell navigation availability/model derivation
 now lives in `apps/web/app/_features/dashboard/dashboard-shell-model.ts` with focused unit coverage.
 `DashboardClient` still owns composed mutation state, response handling, the existing
 `useDashboardShellState` URL/focus behavior, and review-rail sessionStorage behavior; the helper only

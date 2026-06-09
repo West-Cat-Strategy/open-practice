@@ -1,5 +1,74 @@
 # OP-MOD-001 Modularization Foundation Proof - 2026-06-06
 
+## 2026-06-09 Dashboard Loading Resource Follow-Up
+
+This follow-up starts from clean `main` at `76d950e9` on
+`codex/op-mod-dashboard-resources-2026-06-09` and keeps the existing dirty
+`codex/docker-hardening-efficiency-2026-06-07` checkout untouched.
+
+The slice moves the authenticated staff dashboard bootstrap reads for capabilities, overview,
+matters, signature requests, intake sessions, queues, and contact dossiers from
+`apps/web/app/page.tsx` to `apps/web/app/_features/dashboard/server-resources.ts` as
+`loadDashboardCoreResources`. It also moves first-matter trust-controls loading plus the
+jurisdictional trust report optional fetch into `loadDashboardTrustResources`.
+
+`apps/web/app/page.tsx` still owns search parameter parsing, setup blocked/setup/login gating,
+client-portal routing, capability-derived dashboard feature flags, navigation construction,
+dashboard route selection, document-processing optional workbench loading, and final
+`DashboardClient` prop wiring. Endpoint paths, request headers, optional fallback semantics,
+access-denied fallback semantics, and response shapes are intentionally unchanged.
+
+### Follow-Up Changed Path Set
+
+- `apps/web/app/_features/dashboard/server-resources.test.ts`
+- `apps/web/app/_features/dashboard/server-resources.ts`
+- `apps/web/app/page.tsx`
+- `docs/planning-and-progress.md`
+- `docs/validation/OP-MOD-001_MODULARIZATION_FOUNDATION_PROOF_2026-06-06.md`
+- `docs/validation/README.md`
+
+### Follow-Up Validation
+
+- `pnpm --filter @open-practice/domain build`
+  - Passed to hydrate fresh-worktree package outputs after the first focused web test attempt could
+    not resolve built `@open-practice/domain` exports.
+- `pnpm --filter @open-practice/web test -- app/_features/dashboard/server-resources.test.ts`
+  - Passed after hydration: 33 web test files and 167 tests.
+- `pnpm --filter @open-practice/web typecheck`
+  - Passed after restoring the `apiGetOptional` import that `page.tsx` still needs for
+    document-processing optional workbench loading.
+- `pnpm verify:select -- --files apps/web/app/page.tsx apps/web/app/_features/dashboard/server-resources.ts apps/web/app/_features/dashboard/server-resources.test.ts docs/planning-and-progress.md docs/validation/README.md docs/validation/OP-MOD-001_MODULARIZATION_FOUNDATION_PROOF_2026-06-06.md`
+  - Selected `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`,
+    `pnpm --filter @open-practice/web test`, `pnpm --filter @open-practice/web typecheck`, and
+    `pnpm build` for the exact follow-up path set.
+- `pnpm format:check`
+  - Passed after formatting the dashboard-loading resource follow-up and proof/workboard updates.
+- `pnpm docs:check`
+  - Passed after the dashboard-loading resource proof/index/workboard updates.
+- `pnpm policy:check`
+  - Passed after the dashboard-loading resource proof/index/workboard updates; tracked-secret scan,
+    package manifest dependency policy, migration parity, OSS reuse policy, docs links, proof index,
+    local evidence Docker ignore validation, and Open Practice boundary policy all passed.
+- `pnpm --filter @open-practice/web test`
+  - Passed: 33 web test files and 167 tests after adding the dashboard server-resource contract
+    coverage.
+- `pnpm --filter @open-practice/web typecheck`
+  - Passed for the final dashboard-loading resource follow-up path set.
+- `pnpm build`
+  - Passed: all 6 Turbo build tasks succeeded, including the Next.js production build for
+    `@open-practice/web`.
+- `git diff --name-status --no-renames main...HEAD`
+  - Returned no committed branch delta because this follow-up remains uncommitted in the isolated
+    worktree.
+- `git diff --name-only --no-renames` plus `git ls-files --others --exclude-standard`
+  - Passed for the working tree: the four modified paths and two untracked paths exactly match the
+    follow-up changed path set above.
+- `git diff --check`
+  - Passed with no whitespace errors.
+- `git status --short --branch`
+  - Passed: `codex/op-mod-dashboard-resources-2026-06-09` contains only the four modified planned
+    paths and the two new dashboard server-resource files.
+
 ## 2026-06-07 Mainline Consolidation Closeout
 
 The 2026-06-07 consolidation merged both local OP-MOD branches into
