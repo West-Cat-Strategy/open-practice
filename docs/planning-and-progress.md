@@ -8,17 +8,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                                     |
-| --------------------- | ----------------------------------------------------------------------------------------- |
-| Current focus         | 2026-06-09 mainline consolidation is merging dashboard follow-ups and Docker hardening.    |
-| Next recommended pick | Complete consolidation validation, push `main`, prune merged branches, then deploy.        |
-| Ready rows            | 0                                                                                         |
-| Candidate rows        | 0                                                                                         |
-| In progress rows      | 1                                                                                         |
-| Review rows           | 0                                                                                         |
-| Blocked rows          | 0                                                                                         |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                      |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                          |
+| Snapshot              | Value                                                                               |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| Current focus         | 2026-06-09 mainline consolidation is validated for push, prune, and deploy handoff. |
+| Next recommended pick | Push `main`, verify parity, prune merged branches/worktrees, then deploy.           |
+| Ready rows            | 0                                                                                   |
+| Candidate rows        | 0                                                                                   |
+| In progress rows      | 1                                                                                   |
+| Review rows           | 0                                                                                   |
+| Blocked rows          | 0                                                                                   |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                    |
 
 ## Forward Development Plan
 
@@ -34,8 +34,9 @@ pruning, explicit image commands, dev-only `tsx`, local-proof/secret `.dockerign
 relaxed local-development CSP gating, and selector/docs coverage for `pnpm docker:app-smoke`.
 The combined work preserves dashboard response shapes, routing, URL/focus behavior, review-rail
 sessionStorage persistence, API request/response handling, and local-development service contracts.
-Final consolidation validation will be recorded after the merged branch completes release and
-deployment gates.
+Final consolidation validation passed and is recorded in
+[OP mainline consolidation Westcat deploy proof](validation/OP_MAINLINE_CONSOLIDATION_WESTCAT_DEPLOY_PROOF_2026-06-09.md);
+deployment must use only the pushed and parity-verified `main` commit.
 
 Earlier OP-MOD-001 addendum: 2026-06-09 dashboard bootstrap/core staff loading now lives in
 `apps/web/app/_features/dashboard/server-resources.ts` behind
