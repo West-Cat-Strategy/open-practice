@@ -51,13 +51,13 @@ describe("web security headers", () => {
     expect(reportOnly).not.toContain("frame-ancestors");
   });
 
-  it("keeps production CSP free of inline script and loopback connect allowances", () => {
+  it("allows production Next hydration without unsafe-eval or loopback connect sources", () => {
     const productionCsp = buildContentSecurityPolicy({ production: true });
     const scriptSrc = productionCsp
       .split(";")
       .map((directive) => directive.trim())
       .find((directive) => directive.startsWith("script-src"));
-    expect(scriptSrc).toBe("script-src 'self'");
+    expect(scriptSrc).toBe("script-src 'self' 'unsafe-inline'");
     expect(productionCsp).toContain("connect-src 'self'");
     expect(productionCsp).toContain("upgrade-insecure-requests");
     expect(productionCsp).not.toContain("http://localhost:*");

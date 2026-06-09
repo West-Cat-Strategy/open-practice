@@ -3,7 +3,8 @@
 - Require TLS for all browser, API, portal, and object-storage traffic.
 - Serve the web app with baseline response hardening headers, including no powered-by header,
   `nosniff`, no-referrer policy, restrictive permissions policy, and frame/object/base CSP guards.
-  Keep the stricter `Content-Security-Policy-Report-Only` directives enabled while nonce-compatible
+  Production enforced CSP permits inline Next.js hydration scripts without `unsafe-eval`; keep the
+  stricter `Content-Security-Policy-Report-Only` directives enabled while nonce-compatible
   script/style enforcement is prepared.
 - Configure embedded session auth with strong password setup/invitation flows for practice users and portal users.
 - Configure a one-time `OPEN_PRACTICE_SETUP_KEY` for production first-run setup and remove or rotate it after the first owner admin is created.
@@ -92,7 +93,9 @@ Environment variables must be treated as deployment inputs, not application defa
   production and should not be paired with LAN-exposed setup ports.
 - `OPEN_PRACTICE_RELAXED_CSP=true` is a local Docker development escape hatch only and must be paired
   with `OPEN_PRACTICE_DOCKER_LOCAL_DEV=true` and `OPEN_PRACTICE_IMAGE_PROFILE=local-dev`; do not
-  promote relaxed-CSP Compose images outside local development.
+  promote relaxed-CSP Compose images outside local development. This is separate from the production
+  inline-script allowance needed for Next.js hydration, which must not enable `unsafe-eval` or
+  loopback API connections.
 - `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY` must reference a
   private bucket or compatible object store. Endpoint, access key, and secret key must be provided
   together when S3 is enabled. Production S3 deployments must set `S3_SERVER_SIDE_ENCRYPTION=AES256`

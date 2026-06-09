@@ -20,9 +20,10 @@ origins are limited to development or e2e support. Production accepts embedded s
 `x-open-practice-session` tokens backed by PostgreSQL session records. Development may use
 `x-open-practice-user-id`, `x-open-practice-firm-id`, and bearer JWT helpers. Production rejects
 unauthenticated requests, development headers, and bearer JWTs.
-The web app publishes explicit security headers. Production CSP allows scripts and API connections
-from `self` only, while local development keeps loopback API targets and inline script support for
-the dev toolchain; inline styles remain allowed for existing rendered UI.
+The web app publishes explicit security headers. Production CSP keeps API connections scoped to
+`self` and allows inline Next.js hydration scripts without `unsafe-eval` until nonce-compatible
+script enforcement lands; local development keeps loopback API targets and dev-toolchain script
+support. Inline styles remain allowed for existing rendered UI.
 Open Practice is a single-tenant application at the user-facing auth boundary: public embedded-auth
 login, passkey login, recovery-code verification, and password setup accept user credentials only
 and resolve the sole configured practice internally. `firmId` remains an internal authorization,
