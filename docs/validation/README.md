@@ -17,6 +17,12 @@ lives in [Archive](../archive/README.md).
 
 ## Active Proof Notes
 
+OP-MOD-002 records the dashboard shell navigation model follow-up in
+[OP-MOD-002_DASHBOARD_SHELL_NAVIGATION_MODEL_PROOF_2026-06-08.md](OP-MOD-002_DASHBOARD_SHELL_NAVIGATION_MODEL_PROOF_2026-06-08.md).
+The slice extracts navigation availability, matter action section, and active-section label
+derivation into a feature-owned dashboard helper while preserving `DashboardClient` rendering, URL
+and focus shell behavior, review-rail sessionStorage behavior, and API request/response handling.
+
 OP-MOD-001 now also includes the connector operations model barrel plus client reload helper, the
 share-link model barrel plus focused share-link, billing, document-processing documents,
 signatures, audit, and drafting dashboard section extraction/static render guards, the contacts
