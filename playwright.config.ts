@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const hostOnly = /@docker/;
+const hostExcluded = /@docker|@first-run/;
 const dockerOnly = /@docker/;
+const firstRunOnly = /@first-run/;
 
 export default defineConfig({
   testDir: "e2e",
@@ -23,27 +24,32 @@ export default defineConfig({
   projects: [
     {
       name: "host-chromium",
-      grepInvert: hostOnly,
+      grepInvert: hostExcluded,
       use: { ...devices["Desktop Chrome"] },
     },
     {
       name: "host-mobile-chromium",
-      grepInvert: hostOnly,
+      grepInvert: hostExcluded,
       use: { ...devices["Pixel 7"] },
     },
     {
       name: "host-firefox",
-      grepInvert: hostOnly,
+      grepInvert: hostExcluded,
       use: { ...devices["Desktop Firefox"] },
     },
     {
       name: "host-webkit",
-      grepInvert: hostOnly,
+      grepInvert: hostExcluded,
       use: { ...devices["Desktop Safari"] },
     },
     {
       name: "docker-chromium",
       grep: dockerOnly,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "first-run-chromium",
+      grep: firstRunOnly,
       use: { ...devices["Desktop Chrome"] },
     },
   ],

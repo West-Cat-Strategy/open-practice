@@ -40,9 +40,7 @@ function setupStatusDetail(setupStatus: SetupStatusResponse): string {
     return setupStatus.reason ?? "Partial setup state needs operator review before sign-in.";
   }
   if (setupStatus.required) {
-    return setupStatus.setupKeyRequired
-      ? "First-run owner setup is waiting behind the configured setup key."
-      : "First-run owner setup is waiting before staff sign-in.";
+    return "First-run owner setup is waiting before staff sign-in.";
   }
   return "First-run setup is complete; owner changes still need explicit staff workflows.";
 }

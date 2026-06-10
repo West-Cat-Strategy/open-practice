@@ -62,8 +62,9 @@ pnpm --filter @open-practice/web dev
 - PostgreSQL is selected when `DATABASE_URL` is set.
 - In-memory persistence is available through `OPEN_PRACTICE_USE_MEMORY_REPO=true` or when no database URL is provided.
 - Development seed data is enabled with `OPEN_PRACTICE_DEV_SEED=true`.
-- Empty local firm/user state exposes first-run setup. Production first-run setup also requires
-  `OPEN_PRACTICE_SETUP_KEY` and the matching `x-open-practice-setup-key` header.
+- Empty firm/user state exposes first-run setup. Non-production setup requests are limited to
+  loopback or the explicit local Docker bridge allowance; production setup should be completed only
+  over the intended TLS deployment surface.
 - Background workers are scaffolded through `@open-practice/worker`. The local `pnpm dev` lane can run
   the worker against Redis, but provider processors return skipped/not-configured results until setup
   enables SMTP, inbound email, AI, OCR, transcription, or media processing. OCR uses the local

@@ -7,7 +7,8 @@
   stricter `Content-Security-Policy-Report-Only` directives enabled while nonce-compatible
   script/style enforcement is prepared.
 - Configure embedded session auth with strong password setup/invitation flows for practice users and portal users.
-- Configure a one-time `OPEN_PRACTICE_SETUP_KEY` for production first-run setup and remove or rotate it after the first owner admin is created.
+- Complete production first-run setup only over the intended TLS deployment surface, while the firm
+  and user tables are empty, then rely on embedded owner-admin authentication for subsequent access.
 - Keep S3 buckets private; serve files only through expiring signed URLs after server-side authorization.
 - Verify upload-completion callbacks against expected storage keys, object existence, checksums, size policy, and server-controlled scan state before documents can be shared.
 - Run malware scanning before a document can be shared through the portal.
@@ -68,10 +69,10 @@ Environment variables must be treated as deployment inputs, not application defa
   manager, not through images or checked-in env files.
 - `SESSION_TTL_HOURS` controls embedded session expiry and should be set intentionally per
   deployment.
-- `OPEN_PRACTICE_SETUP_KEY` is required to start and complete first-run setup in production. The
-  setup route only proceeds while both firm and user tables are empty; any missing production setup
-  key or partial bootstrap state is blocked for operator review. The web setup flow is intentionally
-  minimal and creates editable operational defaults after the first owner admin is created.
+- First-run setup proceeds only while both firm and user tables are empty; partial bootstrap state is
+  blocked for operator review. The web setup flow creates editable operational defaults, OP-authored
+  starter templates, an optional first matter, and the first owner-admin session without relying on
+  development seed data.
 - `OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY` must decode to exactly 32 bytes as base64, base64url, or
   hex. PostgreSQL-backed API and worker startup fails without it, while synthetic memory-mode tests
   can omit it. Rotate it through the secret manager; do not bake it into images or checked-in env

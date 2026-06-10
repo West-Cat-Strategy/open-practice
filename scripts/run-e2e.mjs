@@ -29,6 +29,7 @@ function spawnLongLived(name, command, args, options = {}) {
   const child = spawn(command, args, {
     cwd: options.cwd ?? root,
     env: { ...process.env, ...options.env },
+    detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout.on("data", (chunk) =>
@@ -46,6 +47,18 @@ function spawnLongLived(name, command, args, options = {}) {
   });
   spawned.push({ name, child });
   return child;
+}
+
+function stopLongLivedChild(child, signal) {
+  if (process.platform === "win32") {
+    child.kill(signal);
+    return;
+  }
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    child.kill(signal);
+  }
 }
 
 function run(name, command, args, options = {}) {
@@ -108,12 +121,12 @@ async function cleanup() {
   for (const { name, child } of spawned.reverse()) {
     if (child.exitCode === null && !child.killed) {
       process.stdout.write(`[${name}] stopping\n`);
-      child.kill("SIGTERM");
+      stopLongLivedChild(child, "SIGTERM");
     }
   }
   await delay(1000);
   for (const { child } of spawned) {
-    if (child.exitCode === null && !child.killed) child.kill("SIGKILL");
+    if (child.exitCode === null && !child.killed) stopLongLivedChild(child, "SIGKILL");
   }
   await restoreNextEnv();
   if (dockerDatabaseName) {
@@ -245,6 +258,41 @@ async function startHostRuntime() {
   return env;
 }
 
+async function startFirstRunRuntime() {
+  const apiPort = Number(process.env.E2E_FIRST_RUN_API_PORT ?? 34130);
+  const webPort = Number(process.env.E2E_FIRST_RUN_WEB_PORT ?? 33130);
+  const apiBaseUrl = `http://localhost:${apiPort}`;
+  const webBaseUrl = `http://localhost:${webPort}`;
+  const env = {
+    NODE_ENV: "development",
+    API_PORT: String(apiPort),
+    WEB_PORT: String(webPort),
+    API_BASE_URL: apiBaseUrl,
+    NEXT_PUBLIC_API_BASE_URL: apiBaseUrl,
+    PUBLIC_WEB_BASE_URL: webBaseUrl,
+    WEBAUTHN_ORIGIN: webBaseUrl,
+    AUTH_JWT_SECRET: commonSecret,
+    DEV_AUTH_FIRM_ID: "firm-west-legal",
+    DEV_AUTH_USER_ID: "user-admin",
+    E2E_API_BASE_URL: apiBaseUrl,
+    E2E_WEB_BASE_URL: webBaseUrl,
+    DATABASE_URL: "",
+    REDIS_URL: "",
+    S3_ENDPOINT: "",
+    S3_ACCESS_KEY: "",
+    S3_SECRET_KEY: "",
+    OPEN_PRACTICE_USE_MEMORY_REPO: "true",
+    OPEN_PRACTICE_DEV_SEED: "false",
+  };
+
+  spawnLongLived("api", "pnpm", ["--filter", "@open-practice/api", "dev"], { env });
+  await waitForUrl("API", `${apiBaseUrl}/health`);
+  spawnLongLived("web", "pnpm", ["--filter", "@open-practice/web", "dev"], { env });
+  await waitForUrl("web", webBaseUrl, { timeoutMs: 90_000 });
+
+  return env;
+}
+
 async function ensureMinioBucket(env) {
   await run("minio-bucket", "docker", [
     ...dockerComposeBaseArgs,
@@ -325,8 +373,8 @@ async function startDockerRuntime() {
 }
 
 async function main() {
-  if (!["host", "docker"].includes(mode)) {
-    throw new Error("Usage: node scripts/run-e2e.mjs <host|docker> [playwright args...]");
+  if (!["host", "docker", "first-run"].includes(mode)) {
+    throw new Error("Usage: node scripts/run-e2e.mjs <host|docker|first-run> [playwright args...]");
   }
 
   process.once("SIGINT", () => {
@@ -338,11 +386,18 @@ async function main() {
 
   await buildRuntimeWorkspacePackages();
   await snapshotNextEnv();
-  const env = mode === "docker" ? await startDockerRuntime() : await startHostRuntime();
+  const env =
+    mode === "docker"
+      ? await startDockerRuntime()
+      : mode === "first-run"
+        ? await startFirstRunRuntime()
+        : await startHostRuntime();
   const projects =
     mode === "docker"
       ? ["docker-chromium"]
-      : ["host-chromium", "host-mobile-chromium", "host-firefox", "host-webkit"];
+      : mode === "first-run"
+        ? ["first-run-chromium"]
+        : ["host-chromium", "host-mobile-chromium", "host-firefox", "host-webkit"];
   await runPlaywright(env, projects);
 }
 

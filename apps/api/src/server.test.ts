@@ -153,7 +153,6 @@ describe("API auth and persistence boundaries", () => {
     const seeded = await testServer().inject({ method: "GET", url: "/api/setup/status" });
     const empty = await testServer({
       repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
-      setupKey: "setup-key",
     }).inject({ method: "GET", url: "/api/setup/status" });
 
     expect(seeded.statusCode).toBe(200);
@@ -162,7 +161,6 @@ describe("API auth and persistence boundaries", () => {
     expect(empty.json()).toMatchObject({
       required: true,
       blocked: false,
-      setupKeyRequired: true,
     });
   });
 
@@ -254,9 +252,10 @@ describe("API auth and persistence boundaries", () => {
     });
   });
 
-  it("requires a configured setup key for production setup completion", async () => {
+  it("allows production first-run setup completion without a setup key", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
     const response = await testServer({
-      repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
+      repository,
       nodeEnv: "production",
       jwtSecret: "production-test-secret-at-least-32-characters",
     }).inject({
@@ -265,10 +264,11 @@ describe("API auth and persistence boundaries", () => {
       payload: setupPayload(),
     });
 
-    expect(response.statusCode).toBe(503);
+    expect(response.statusCode).toBe(200);
+    await expect(repository.getSetupStatus()).resolves.toEqual({ required: false, blocked: false });
   });
 
-  it("blocks production first-run setup status until a setup key is configured", async () => {
+  it("reports production first-run setup status without requiring a setup key", async () => {
     const response = await testServer({
       repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
       nodeEnv: "production",
@@ -277,44 +277,27 @@ describe("API auth and persistence boundaries", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      required: false,
-      blocked: true,
-      setupKeyRequired: true,
-      reason: "OPEN_PRACTICE_SETUP_KEY is required before production first-run setup can start.",
+      required: true,
+      blocked: false,
     });
   });
 
-  it("applies the setup key gate to first-run passkey registration options", async () => {
+  it("returns first-run passkey registration options without a setup key", async () => {
     const server = testServer({
       repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
-      setupKey: "setup-key",
     });
     const payload = { email: "avery@example.test" };
-    const missingKey = await server.inject({
+    const response = await server.inject({
       method: "POST",
       url: "/api/setup/webauthn-options",
-      payload,
-    });
-    const invalidKey = await server.inject({
-      method: "POST",
-      url: "/api/setup/webauthn-options",
-      headers: { "x-open-practice-setup-key": "wrong-key" },
-      payload,
-    });
-    const validKey = await server.inject({
-      method: "POST",
-      url: "/api/setup/webauthn-options",
-      headers: { "x-open-practice-setup-key": "setup-key" },
       payload,
     });
 
-    expect(missingKey.statusCode).toBe(403);
-    expect(invalidKey.statusCode).toBe(403);
-    expect(validKey.statusCode).toBe(200);
-    expect(validKey.json<{ challenge: string; rp: { id: string; name: string } }>()).toMatchObject({
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ challenge: string; rp: { id: string; name: string } }>()).toMatchObject({
       rp: { id: "localhost", name: "Test RP" },
     });
-    expect(validKey.json<{ challenge: string }>().challenge).toEqual(expect.any(String));
+    expect(response.json<{ challenge: string }>().challenge).toEqual(expect.any(String));
   });
 
   it("requires an explicit dev flag before accepting Docker bridge setup requests", async () => {
@@ -359,7 +342,6 @@ describe("API auth and persistence boundaries", () => {
     const server = testServer({
       repository,
       jwtSecret: "production-test-secret-at-least-32-characters",
-      setupKey: "setup-key",
     });
     await repository.createWebAuthnChallenge({
       id: "challenge-expired",
@@ -372,7 +354,6 @@ describe("API auth and persistence boundaries", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/setup/complete",
-      headers: { "x-open-practice-setup-key": "setup-key" },
       payload: setupPayload({
         owner: {
           displayName: "Avery Owner",
@@ -403,7 +384,6 @@ describe("API auth and persistence boundaries", () => {
     const server = testServer({
       repository,
       jwtSecret: "production-test-secret-at-least-32-characters",
-      setupKey: "setup-key",
     });
     await repository.createWebAuthnChallenge({
       id: "challenge-failed",
@@ -417,7 +397,6 @@ describe("API auth and persistence boundaries", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/setup/complete",
-      headers: { "x-open-practice-setup-key": "setup-key" },
       payload: setupPayload({
         owner: {
           displayName: "Avery Owner",
@@ -455,12 +434,10 @@ describe("API auth and persistence boundaries", () => {
     const server = testServer({
       repository,
       jwtSecret: "production-test-secret-at-least-32-characters",
-      setupKey: "setup-key",
     });
     const response = await server.inject({
       method: "POST",
       url: "/api/setup/complete",
-      headers: { "x-open-practice-setup-key": "setup-key" },
       payload: setupPayload(),
     });
     const body = response.json<{ token: string; user: { firmId: string; id: string } }>();
@@ -493,12 +470,10 @@ describe("API auth and persistence boundaries", () => {
     const server = testServer({
       repository,
       jwtSecret: "production-test-secret-at-least-32-characters",
-      setupKey: "setup-key",
     });
     const response = await server.inject({
       method: "POST",
       url: "/api/setup/complete",
-      headers: { "x-open-practice-setup-key": "setup-key" },
       payload: minimalSetupPayload(),
     });
     const body = response.json<{ token: string; user: { firmId: string; id: string } }>();
@@ -537,12 +512,10 @@ describe("API auth and persistence boundaries", () => {
     const server = testServer({
       repository,
       jwtSecret: "production-test-secret-at-least-32-characters",
-      setupKey: "setup-key",
     });
     const response = await server.inject({
       method: "POST",
       url: "/api/setup/complete",
-      headers: { "x-open-practice-setup-key": "setup-key" },
       payload: setupPayload({
         selectedPresetIds: ["bc-notarial", "canada-small-business-records"],
         firstMatter: undefined,
@@ -583,11 +556,9 @@ describe("API auth and persistence boundaries", () => {
     const response = await testServer({
       repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
       jwtSecret: "production-test-secret-at-least-32-characters",
-      setupKey: "setup-key",
     }).inject({
       method: "POST",
       url: "/api/setup/complete",
-      headers: { "x-open-practice-setup-key": "setup-key" },
       payload: setupPayload({ selectedPresetIds: ["unknown-preset"] }),
     });
 
@@ -611,18 +582,15 @@ describe("API auth and persistence boundaries", () => {
     const server = testServer({
       repository,
       jwtSecret: "production-test-secret-at-least-32-characters",
-      setupKey: "setup-key",
     });
     await server.inject({
       method: "POST",
       url: "/api/setup/complete",
-      headers: { "x-open-practice-setup-key": "setup-key" },
       payload: setupPayload({ firstMatter: undefined }),
     });
     const repeated = await server.inject({
       method: "POST",
       url: "/api/setup/complete",
-      headers: { "x-open-practice-setup-key": "setup-key" },
       payload: setupPayload({ firstMatter: undefined }),
     });
     const partial = await testServer({
@@ -961,6 +929,30 @@ describe("API auth and persistence boundaries", () => {
     expect(
       envSchema.parse({ OPEN_PRACTICE_USE_MEMORY_REPO: "true" }).OPEN_PRACTICE_USE_MEMORY_REPO,
     ).toBe(true);
+  });
+
+  it("respects OPEN_PRACTICE_DEV_SEED for memory repository startup", async () => {
+    const empty = await createRepositoryFromEnv(
+      envSchema.parse({
+        OPEN_PRACTICE_USE_MEMORY_REPO: "true",
+        OPEN_PRACTICE_DEV_SEED: "false",
+      }),
+    );
+    const seeded = await createRepositoryFromEnv(
+      envSchema.parse({
+        OPEN_PRACTICE_USE_MEMORY_REPO: "true",
+        OPEN_PRACTICE_DEV_SEED: "true",
+      }),
+    );
+
+    await expect(empty.repository.getSetupStatus()).resolves.toEqual({
+      required: true,
+      blocked: false,
+    });
+    await expect(seeded.repository.getSetupStatus()).resolves.toEqual({
+      required: false,
+      blocked: false,
+    });
   });
 
   it("requires a provider config encryption key before API PostgreSQL repository startup", async () => {

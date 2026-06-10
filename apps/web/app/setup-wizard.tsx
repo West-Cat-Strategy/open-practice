@@ -7,17 +7,21 @@ import {
   ChevronLeft,
   ChevronRight,
   Fingerprint,
-  KeyRound,
   ListChecks,
   Loader2,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
+import {
+  PRACTICE_PRESET_CATALOG,
+  type PracticePresetId,
+} from "@open-practice/domain/practice-presets";
 import type { ComponentType } from "react";
 import { useMemo, useState } from "react";
 import { startRegistration } from "@simplewebauthn/browser";
 import {
-  trimmedSetupKey,
+  buildSetupCompletePayload,
+  selectedPracticeAreas,
   updateSetupWizardState,
   validateSetupWizardState,
   type SetupWizardState,
@@ -25,8 +29,9 @@ import {
 
 interface SetupWizardProps {
   apiBaseUrl: string;
-  setupKeyRequired: boolean;
 }
+
+const defaultPresetIds = PRACTICE_PRESET_CATALOG.map((preset) => preset.id);
 
 const initialState: SetupWizardState = {
   firmName: "",
@@ -34,7 +39,15 @@ const initialState: SetupWizardState = {
   ownerEmail: "",
   ownerPassword: "",
   ownerPasswordConfirmation: "",
-  setupKey: "",
+  selectedPresetIds: [...defaultPresetIds],
+  firstMatterEnabled: true,
+  firstMatterTitle: "",
+  firstMatterPracticeArea: "General practice",
+  firstMatterJurisdiction: "BC",
+  firstMatterClientKind: "person",
+  firstMatterClientName: "",
+  firstMatterClientEmail: "",
+  firstMatterClientPhone: "",
   trustFundsCaveatAccepted: false,
 };
 
@@ -62,8 +75,8 @@ const steps = [
 ];
 
 const stepErrorMatchers = [
-  ["Workspace name"],
-  ["Owner", "Backup password", "Setup key"],
+  ["Workspace name", "First matter"],
+  ["Owner", "Backup password"],
   ["Trust/funds"],
   [],
 ];
@@ -78,15 +91,12 @@ function errorsForStep(stepIndex: number, errors: string[]): string[] {
   return errors.filter((error) => matchers.some((matcher) => error.includes(matcher)));
 }
 
-export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizardProps) {
+export default function SetupWizard({ apiBaseUrl }: SetupWizardProps) {
   const [state, setState] = useState<SetupWizardState>(initialState);
   const [step, setStep] = useState(0);
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const validation = useMemo(
-    () => validateSetupWizardState(state, setupKeyRequired),
-    [setupKeyRequired, state],
-  );
+  const validation = useMemo(() => validateSetupWizardState(state), [state]);
   const stepErrors = useMemo(
     () => steps.map((_, index) => errorsForStep(index, validation.errors)),
     [validation.errors],
@@ -101,16 +111,32 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
     ownerEmail: ownerEmailError,
     ownerPassword: fieldError(validation.errors, ["Backup password must"]),
     ownerPasswordConfirmation: fieldError(validation.errors, ["Backup password confirmation"]),
-    setupKey: fieldError(validation.errors, ["Setup key"]),
+    firstMatterTitle: fieldError(validation.errors, ["First matter title"]),
+    firstMatterPracticeArea: fieldError(validation.errors, ["First matter practice area"]),
+    firstMatterClientName: fieldError(validation.errors, ["First matter client name"]),
+    firstMatterClientEmail: fieldError(validation.errors, ["First matter client email"]),
     trustFunds: fieldError(validation.errors, ["Trust/funds"]),
   };
+  const setupPracticeAreas = useMemo(
+    () => selectedPracticeAreas(state, PRACTICE_PRESET_CATALOG),
+    [state],
+  );
 
   function update<K extends keyof SetupWizardState>(key: K, value: SetupWizardState[K]) {
     setState((current) => updateSetupWizardState(current, key, value));
   }
 
+  function togglePreset(presetId: PracticePresetId, selected: boolean) {
+    const selectedSet = new Set(state.selectedPresetIds);
+    if (selected) selectedSet.add(presetId);
+    else selectedSet.delete(presetId);
+    update(
+      "selectedPresetIds",
+      defaultPresetIds.filter((id) => selectedSet.has(id)),
+    );
+  }
+
   async function registerPasskey() {
-    const setupKey = trimmedSetupKey(state);
     const ownerEmail = state.ownerEmail.trim();
     if (!ownerEmail) {
       setStatus("Enter the owner email before registering a passkey.");
@@ -120,11 +146,6 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
       setStatus("Enter a valid owner email before registering a passkey.");
       return;
     }
-    if (setupKeyRequired && !setupKey) {
-      setStatus("Enter the setup key before registering a passkey.");
-      return;
-    }
-
     setSubmitting(true);
     setStatus("Generating passkey options...");
 
@@ -133,7 +154,6 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(setupKeyRequired ? { "x-open-practice-setup-key": setupKey } : {}),
         },
         body: JSON.stringify({ email: ownerEmail }),
       });
@@ -157,8 +177,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
   }
 
   async function submitSetup() {
-    const setupKey = trimmedSetupKey(state);
-    const nextValidation = validateSetupWizardState(state, setupKeyRequired);
+    const nextValidation = validateSetupWizardState(state);
     if (!nextValidation.valid) {
       setStatus(nextValidation.errors[0] ?? "Setup details need review.");
       return;
@@ -172,20 +191,8 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...(setupKeyRequired ? { "x-open-practice-setup-key": setupKey } : {}),
         },
-        body: JSON.stringify({
-          firm: { name: state.firmName.trim() },
-          compliance: {
-            trustFundsCaveatAccepted: state.trustFundsCaveatAccepted,
-          },
-          owner: {
-            displayName: state.ownerName.trim(),
-            email: state.ownerEmail.trim(),
-            password: state.ownerPassword,
-            webAuthn: state.webAuthnCredential,
-          },
-        }),
+        body: JSON.stringify(buildSetupCompletePayload(state, PRACTICE_PRESET_CATALOG)),
       });
 
       if (!response.ok) {
@@ -315,6 +322,115 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                   hint="Detailed practice settings can be completed after setup."
                   error={fieldErrors.firmName}
                 />
+                <fieldset className="setup-fieldset wide glass-card">
+                  <legend>Starter templates</legend>
+                  <p>
+                    Select the OP-authored starter material to create with the workspace. Templates
+                    stay editable after setup.
+                  </p>
+                  <div className="preset-grid">
+                    {PRACTICE_PRESET_CATALOG.map((preset) => (
+                      <label className="preset-option" key={preset.id}>
+                        <input
+                          checked={state.selectedPresetIds.includes(preset.id)}
+                          onChange={(event) => togglePreset(preset.id, event.target.checked)}
+                          type="checkbox"
+                        />
+                        <span>
+                          <strong>{preset.name}</strong>
+                          <small>{preset.description}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <fieldset className="setup-fieldset wide glass-card">
+                  <legend>First matter</legend>
+                  <label className="check-row first-matter-toggle">
+                    <input
+                      checked={state.firstMatterEnabled}
+                      onChange={(event) => update("firstMatterEnabled", event.target.checked)}
+                      type="checkbox"
+                    />
+                    <span>Create an initial matter during setup</span>
+                  </label>
+                  {state.firstMatterEnabled && (
+                    <div className="setup-grid first-matter-grid">
+                      <TextField
+                        id="setup-first-matter-title"
+                        label="Matter title"
+                        name="firstMatterTitle"
+                        placeholder="e.g. Initial consultation"
+                        value={state.firstMatterTitle}
+                        onChange={(value) => update("firstMatterTitle", value)}
+                        error={fieldErrors.firstMatterTitle}
+                      />
+                      <TextField
+                        id="setup-first-matter-practice-area"
+                        label="Practice area"
+                        name="firstMatterPracticeArea"
+                        placeholder="General practice"
+                        value={state.firstMatterPracticeArea}
+                        onChange={(value) => update("firstMatterPracticeArea", value)}
+                        error={fieldErrors.firstMatterPracticeArea}
+                      />
+                      <SelectField
+                        id="setup-first-matter-jurisdiction"
+                        label="Jurisdiction"
+                        name="firstMatterJurisdiction"
+                        value={state.firstMatterJurisdiction}
+                        onChange={(value) => update("firstMatterJurisdiction", value)}
+                        options={[
+                          { label: "BC", value: "BC" },
+                          { label: "Ontario", value: "ON" },
+                          { label: "Canada", value: "CANADA" },
+                          { label: "Other", value: "OTHER" },
+                        ]}
+                      />
+                      <SelectField
+                        id="setup-first-matter-client-kind"
+                        label="Client type"
+                        name="firstMatterClientKind"
+                        value={state.firstMatterClientKind}
+                        onChange={(value) => update("firstMatterClientKind", value)}
+                        options={[
+                          { label: "Person", value: "person" },
+                          { label: "Organization", value: "organization" },
+                        ]}
+                      />
+                      <TextField
+                        id="setup-first-matter-client-name"
+                        label="Client name"
+                        name="firstMatterClientName"
+                        placeholder="Client or organization"
+                        value={state.firstMatterClientName}
+                        onChange={(value) => update("firstMatterClientName", value)}
+                        error={fieldErrors.firstMatterClientName}
+                      />
+                      <TextField
+                        id="setup-first-matter-client-email"
+                        label="Client email"
+                        name="firstMatterClientEmail"
+                        autoComplete="off"
+                        inputMode="email"
+                        passwordManagerIgnore
+                        spellCheck={false}
+                        value={state.firstMatterClientEmail}
+                        onChange={(value) => update("firstMatterClientEmail", value)}
+                        error={fieldErrors.firstMatterClientEmail}
+                      />
+                      <TextField
+                        className="wide"
+                        id="setup-first-matter-client-phone"
+                        label="Client phone"
+                        name="firstMatterClientPhone"
+                        inputMode="tel"
+                        value={state.firstMatterClientPhone}
+                        onChange={(value) => update("firstMatterClientPhone", value)}
+                      />
+                    </div>
+                  )}
+                </fieldset>
               </section>
             )}
 
@@ -343,20 +459,6 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                   onChange={(value) => update("ownerEmail", value)}
                   error={fieldErrors.ownerEmail}
                 />
-                {setupKeyRequired && (
-                  <TextField
-                    className="wide"
-                    id="setup-key"
-                    label="System setup key"
-                    name="setupKey"
-                    type="password"
-                    autoComplete="off"
-                    value={state.setupKey}
-                    onChange={(value) => update("setupKey", value)}
-                    hint="Whitespace is ignored when the key is submitted."
-                    error={fieldErrors.setupKey}
-                  />
-                )}
                 <TextField
                   id="setup-owner-password"
                   label="Backup password"
@@ -448,7 +550,7 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     icon={Building2}
                     label="Workspace"
                     title={state.firmName || "Not set"}
-                    description="Operational defaults will be created now."
+                    description={`${setupPracticeAreas.join(", ")} will seed the practice settings.`}
                   />
                   <ReviewCard
                     icon={UserRound}
@@ -458,14 +560,31 @@ export default function SetupWizard({ apiBaseUrl, setupKeyRequired }: SetupWizar
                     meta={state.webAuthnCredential ? "Passkey enabled" : "Password only"}
                   />
                   <ReviewCard
-                    icon={KeyRound}
-                    label="Setup gate"
-                    title={setupKeyRequired ? "Setup key required" : "Local/private setup"}
+                    icon={ListChecks}
+                    label="Starter material"
+                    title={`${state.selectedPresetIds.length} preset${
+                      state.selectedPresetIds.length === 1 ? "" : "s"
+                    } selected`}
                     description={
-                      setupKeyRequired
-                        ? "The key will be sent with setup and passkey requests."
-                        : "No configured setup key is required for this local environment."
+                      state.selectedPresetIds.length > 0
+                        ? "Selected OP-authored starter draft and intake templates will be created."
+                        : "Only the basic drafting templates will be created."
                     }
+                  />
+                  <ReviewCard
+                    icon={ShieldCheck}
+                    label="First matter"
+                    title={
+                      state.firstMatterEnabled
+                        ? state.firstMatterTitle || "Matter details needed"
+                        : "Skipped"
+                    }
+                    description={
+                      state.firstMatterEnabled
+                        ? state.firstMatterClientName || "Client name missing"
+                        : "The workspace will start without an initial matter."
+                    }
+                    meta={state.firstMatterEnabled ? state.firstMatterPracticeArea : undefined}
                   />
                 </div>
                 <div className="setup-review-strip" aria-label="Initialization summary">
@@ -610,6 +729,40 @@ function TextField({
         value={value}
       />
       <FieldMessage id={messageId} hint={hint} error={error} />
+    </label>
+  );
+}
+
+function SelectField<T extends string>({
+  label,
+  id,
+  name,
+  onChange,
+  value,
+  options,
+}: {
+  label: string;
+  id: string;
+  name: string;
+  onChange: (value: T) => void;
+  value: T;
+  options: Array<{ label: string; value: T }>;
+}) {
+  return (
+    <label className="form-field">
+      <span>{label}</span>
+      <select
+        id={id}
+        name={name}
+        onChange={(event) => onChange(event.target.value as T)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }

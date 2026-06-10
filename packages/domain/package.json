@@ -27,6 +27,10 @@
       "types": "./dist/contact-models.d.ts",
       "default": "./dist/contact-models.js"
     },
+    "./practice-presets": {
+      "types": "./dist/practice-presets.d.ts",
+      "default": "./dist/practice-presets.js"
+    },
     "./sample-data": {
       "types": "./dist/sample-data.d.ts",
       "default": "./dist/sample-data.js"

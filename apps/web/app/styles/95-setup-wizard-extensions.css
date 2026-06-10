@@ -101,6 +101,76 @@
   border-left: 2px solid var(--line);
 }
 
+.setup-fieldset {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.setup-fieldset legend {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  padding: 0;
+}
+
+.setup-fieldset p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.preset-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 12px;
+  min-width: 0;
+}
+
+.preset-option input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  margin-top: 2px;
+}
+
+.preset-option span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.preset-option strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.preset-option small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.first-matter-toggle {
+  margin-bottom: 2px;
+}
+
+.first-matter-grid {
+  margin-top: 2px;
+}
+
 .review-container {
   display: grid;
   gap: 18px;

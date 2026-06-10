@@ -3,6 +3,8 @@ import type { EmbeddedIntakeTemplateDefinition } from "./intake.js";
 import type { Province } from "./models.js";
 import type { IntakeTemplateRecord } from "./signatures.js";
 
+export type { Province } from "./models.js";
+
 const PRACTICE_PRESET_VERSION = 1;
 
 export const PRACTICE_PRESET_IDS = [

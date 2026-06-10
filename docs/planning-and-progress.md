@@ -8,19 +8,28 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                               |
-| --------------------- | ----------------------------------------------------------------------------------- |
-| Current focus         | 2026-06-09 mainline consolidation is validated for push, prune, and deploy handoff. |
-| Next recommended pick | Push `main`, verify parity, prune merged branches/worktrees, then deploy.           |
-| Ready rows            | 0                                                                                   |
-| Candidate rows        | 0                                                                                   |
-| In progress rows      | 1                                                                                   |
-| Review rows           | 0                                                                                   |
-| Blocked rows          | 0                                                                                   |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).                |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`                    |
+| Snapshot              | Value                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| Current focus         | First-run no-key setup hydration is validated for review.            |
+| Next recommended pick | Review and merge `codex/op-first-run-no-key-hydration-2026-06-09`.   |
+| Ready rows            | 0                                                                    |
+| Candidate rows        | 0                                                                    |
+| In progress rows      | 0                                                                    |
+| Review rows           | 1                                                                    |
+| Blocked rows          | 0                                                                    |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Forward Development Plan
+
+Latest first-run setup addendum: 2026-06-09 first-run setup no longer accepts or requires a setup
+key. Empty-database setup now reports only `required`, `blocked`, and optional `reason`;
+production empty-state setup is available without a key; partial setup remains blocked; and
+non-production setup remains loopback-only except for the explicit Docker bridge development flag.
+The setup wizard now defaults all OP-authored starter presets, derives workspace practice areas,
+can create an optional first matter/contact/party, and completes with an owner session and setup
+audit event without dev/demo seed data. Proof is recorded in
+[OP first-run setup hydration proof](validation/OP_FIRST_RUN_SETUP_HYDRATION_PROOF_2026-06-09.md).
 
 Latest mainline consolidation addendum: 2026-06-09 consolidation is merging the dashboard shell
 navigation model, dashboard server-resource loading, and Docker security/efficiency hardening

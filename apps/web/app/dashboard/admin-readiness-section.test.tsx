@@ -65,7 +65,6 @@ const overview: PracticeOverview = {
 const setupStatus: SetupStatusResponse = {
   required: false,
   blocked: false,
-  setupKeyRequired: true,
 };
 
 const reportingWorkspace = {

@@ -929,5 +929,4 @@ export interface SetupStatusResponse {
   required: boolean;
   blocked: boolean;
   reason?: string;
-  setupKeyRequired: boolean;
 }

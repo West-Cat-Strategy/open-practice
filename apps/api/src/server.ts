@@ -174,7 +174,6 @@ export const envSchema = z.object({
   S3_SERVER_SIDE_ENCRYPTION: optionalS3ServerSideEncryption,
   REDIS_URL: optionalUrl,
   SESSION_TTL_HOURS: z.coerce.number().int().positive().default(12),
-  OPEN_PRACTICE_SETUP_KEY: optionalString,
   DOCUSEAL_BASE_URL: optionalUrl,
   DOCUSEAL_API_KEY: optionalString,
   DOCUSEAL_WEBHOOK_SECRET_HEADER: optionalString,
@@ -256,7 +255,6 @@ interface ApiOptions {
     hostedMeetingBaseUrl?: string;
     guestAccessTokenSigningConfigured?: boolean;
   };
-  setupKey?: string;
   allowDockerBridgeSetup?: boolean;
   s3?: ApiRouteDependencies["s3"];
   e2eSupport?: boolean;
@@ -553,7 +551,6 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
     repository: options.repository,
     jwtSecret: options.jwtSecret,
     nodeEnv: options.nodeEnv,
-    setupKey: options.setupKey,
     allowDockerBridgeSetup: options.allowDockerBridgeSetup,
     sessionTtlHours: options.sessionTtlHours,
     hashPassword,
@@ -839,7 +836,11 @@ export async function createRepositoryFromEnv(env: ApiEnv): Promise<{
   close?: () => Promise<void>;
 }> {
   if (env.OPEN_PRACTICE_USE_MEMORY_REPO || !env.DATABASE_URL) {
-    return { repository: new InMemoryOpenPracticeRepository() };
+    return {
+      repository: new InMemoryOpenPracticeRepository({
+        seedSampleData: env.OPEN_PRACTICE_DEV_SEED,
+      }),
+    };
   }
 
   const providerConfigCipher = createProviderConfigCipherForPostgres(env);
@@ -1164,7 +1165,6 @@ if (process.env.NODE_ENV !== "test") {
       actorUserId: env.PUBLIC_CONSULTATION_INTAKE_ACTOR_USER_ID ?? env.DEV_AUTH_USER_ID,
     },
     meetingLinks: createMeetingLinksFromEnv(env),
-    setupKey: env.OPEN_PRACTICE_SETUP_KEY,
     allowDockerBridgeSetup: env.OPEN_PRACTICE_ALLOW_DOCKER_BRIDGE_SETUP,
     s3: createS3FromEnv(env),
     e2eSupport: Boolean(env.E2E_MODE),

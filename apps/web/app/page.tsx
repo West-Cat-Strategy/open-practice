@@ -80,9 +80,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     );
   }
   if (selectStartupView(setupStatus, null) === "setup") {
-    return (
-      <SetupWizard apiBaseUrl={browserApiBaseUrl} setupKeyRequired={setupStatus.setupKeyRequired} />
-    );
+    return <SetupWizard apiBaseUrl={browserApiBaseUrl} />;
   }
 
   const headers = await buildApiHeaders();

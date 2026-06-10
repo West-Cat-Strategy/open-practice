@@ -64,9 +64,9 @@ documentation; dependency admission and service reuse still follow
 Current development defaults live in `.env.example`: `NODE_ENV=development`, `WEB_PORT=33000`,
 `API_PORT=34000`, `API_BASE_URL=http://localhost:34000`, PostgreSQL `DATABASE_URL`,
 `OPEN_PRACTICE_USE_MEMORY_REPO=false`, `OPEN_PRACTICE_DEV_SEED=true`,
-`AUTH_JWT_SECRET=dev-only-change-me-at-least-16-chars`, `SESSION_TTL_HOURS=12`, empty
-`OPEN_PRACTICE_SETUP_KEY`, browser-facing local origin `http://localhost:33000`, and local
-S3-compatible storage at `http://localhost:39000`.
+`AUTH_JWT_SECRET=dev-only-change-me-at-least-16-chars`, `SESSION_TTL_HOURS=12`,
+browser-facing local origin `http://localhost:33000`, and local S3-compatible storage at
+`http://localhost:39000`.
 
 Worker/provider defaults:
 

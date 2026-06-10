@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { timingSafeEqual, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { appendAuditEvent, isPracticePresetId } from "@open-practice/domain";
 import { FirstRunSetupConflictError, type OpenPracticeRepository } from "@open-practice/database";
@@ -93,7 +93,6 @@ export interface SetupRouteDependencies {
   repository: OpenPracticeRepository;
   jwtSecret?: string;
   nodeEnv?: string;
-  setupKey?: string;
   allowDockerBridgeSetup?: boolean;
   sessionTtlHours?: number;
   hashPassword: (password: string) => string;
@@ -103,31 +102,6 @@ export interface SetupRouteDependencies {
   rpName: string;
   rpID: string;
   origin: string;
-}
-
-function setupKeyRequired(options: Pick<SetupRouteDependencies, "nodeEnv" | "setupKey">): boolean {
-  return options.nodeEnv === "production" || Boolean(options.setupKey);
-}
-
-const PRODUCTION_SETUP_KEY_MISSING_REASON =
-  "OPEN_PRACTICE_SETUP_KEY is required before production first-run setup can start.";
-
-function productionSetupKeyMissing(
-  options: Pick<SetupRouteDependencies, "nodeEnv" | "setupKey">,
-): boolean {
-  return options.nodeEnv === "production" && !options.setupKey;
-}
-
-function headerValue(request: FastifyRequest, name: string): string | undefined {
-  const value = request.headers[name];
-  if (Array.isArray(value)) return value[0];
-  return value;
-}
-
-function constantTimeEqual(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function isLoopbackAddress(address: string): boolean {
@@ -144,20 +118,7 @@ function isDockerBridgeGateway(address: string): boolean {
 }
 
 function assertSetupGate(request: FastifyRequest, options: SetupRouteDependencies): void {
-  const suppliedKey = headerValue(request, "x-open-practice-setup-key");
-  if (options.setupKey) {
-    if (!suppliedKey || !constantTimeEqual(suppliedKey, options.setupKey)) {
-      throw Object.assign(new Error("Valid setup key required"), { statusCode: 403 });
-    }
-    return;
-  }
-
-  if (options.nodeEnv === "production") {
-    throw Object.assign(new Error("OPEN_PRACTICE_SETUP_KEY is required for production setup"), {
-      statusCode: 503,
-    });
-  }
-
+  if (options.nodeEnv === "production") return;
   if (
     !isLoopbackAddress(request.ip) &&
     !(options.allowDockerBridgeSetup && isDockerBridgeGateway(request.ip))
@@ -207,22 +168,7 @@ export function registerSetupRoutes(
   options: SetupRouteDependencies,
 ): void {
   server.get("/api/setup/status", async () => {
-    const status = await options.repository.getSetupStatus();
-    const publicStatus = {
-      ...status,
-      setupKeyRequired: setupKeyRequired(options),
-    };
-
-    if (status.required && !status.blocked && productionSetupKeyMissing(options)) {
-      return {
-        ...publicStatus,
-        required: false,
-        blocked: true,
-        reason: PRODUCTION_SETUP_KEY_MISSING_REASON,
-      };
-    }
-
-    return publicStatus;
+    return options.repository.getSetupStatus();
   });
 
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this setup route has a tighter per-route cap.

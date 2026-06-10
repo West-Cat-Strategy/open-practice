@@ -55,5 +55,5 @@ Final dirty-tree selector after adding this proof note returned the same command
 ## Deployment Notes
 
 The pushed hotfix commit must be deployed as the exact release source for
-`https://op.crockettparalegal.ca`. Remote setup keys and generated secrets remain outside the
-repository and must not be printed during deploy verification.
+`https://op.crockettparalegal.ca`. Remote generated secrets remain outside the repository and must
+not be printed during deploy verification.
