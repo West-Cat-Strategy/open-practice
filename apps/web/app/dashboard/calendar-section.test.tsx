@@ -70,6 +70,7 @@ describe("CalendarSection", () => {
           subscriptionUrl: "https://calendar.example.test/feed/matter_synthetic.ics",
         },
         activeCalendarSchedulingRequests: [],
+        activeCalendarScope: "matter",
         activeMatterNumber: "OP-2026-001",
         addingCalendarAttendee: false,
         addingCalendarReminder: false,
@@ -97,6 +98,8 @@ describe("CalendarSection", () => {
         calendarReminderNote: "",
         calendarReminderStatus: "Reminder state has not changed.",
         calendarReminderStatusValue: "pending",
+        calendarClientContactId: "",
+        calendarClientOptions: [],
         cancelingCalendarEventId: "",
         creatingCalendarCredential: false,
         creatingCalendarEvent: false,
@@ -108,6 +111,7 @@ describe("CalendarSection", () => {
         selectedCalendarMeetingEvent: syntheticEvent,
         selectedCalendarReminderEvent: syntheticEvent,
         sendingCalendarInvitationsEventId: "",
+        matterCalendarControlsEnabled: true,
         updatingCalendarEventId: "",
         updatingCalendarGuestSessionKey: "",
         updatingCalendarMeetingLinkEventId: "",
@@ -130,6 +134,8 @@ describe("CalendarSection", () => {
         onSetCalendarAttendeeEmail: noop,
         onSetCalendarAttendeeName: noop,
         onSetCalendarAttendeeRole: noop,
+        onSetCalendarScope: noop,
+        onSetCalendarClientContactId: noop,
         onSetCalendarCredentialLabel: noop,
         onSetCalendarEventDescription: noop,
         onSetCalendarEventEndsAt: noop,
@@ -153,7 +159,7 @@ describe("CalendarSection", () => {
     expect(html).toContain('class="activity-grid calendar-radar-grid"');
     expect(html).toContain("Deadline radar");
     expect(html).toContain("No scheduling request records for this matter.");
-    expect(html).toContain("Matter calendar events");
+    expect(html).toContain("Calendar events");
     expect(html).toContain("OP-2026-001");
     expect(html).toContain("Synthetic hearing");
     expect(html).toContain("Meeting link");

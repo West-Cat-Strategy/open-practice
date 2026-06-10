@@ -2219,12 +2219,28 @@ describe("dashboard client behavior", () => {
 
     const commonProps = {
       activeContactDossier: dossier,
+      canCreateContact: true,
+      canCreateMatter: true,
       compactStatus: (value?: string) => value ?? "",
+      contactCreateDisplayName: "",
+      contactCreateEmail: "",
+      contactCreateKind: "person" as const,
+      contactCreatePhone: "",
+      contactCreateStatus: "No standalone contact created in this session.",
       contactDataQualityResolutions: resolutions,
       contactDataQualityStatus: "1 resolution loaded.",
       contactDossiers: [dossier],
       contactSearch: "",
+      creatingContact: false,
+      creatingMatterFromContactId: "",
       filteredContactDossiers: [dossier],
+      onContactCreateDisplayNameChange: () => {},
+      onContactCreateEmailChange: () => {},
+      onContactCreateKindChange: () => {},
+      onContactCreatePhoneChange: () => {},
+      onCreateContact: () => {},
+      onCreateMatterFromContact: () => {},
+      onNewAppointmentForContact: () => {},
       onContactSearchChange: () => {},
       onPrepareConflictCheckFromContact: () => {},
       onRecordContactDataQualityResolution: () => {},
@@ -2390,7 +2406,7 @@ describe("dashboard client behavior", () => {
       ],
     });
 
-    expect(navigationSections.find((section) => section.key === "billing")).toEqual({
+    expect(navigationSections.find((section) => section.key === "billing")).toMatchObject({
       area: "finance",
       enabled: false,
       key: "billing",
@@ -2398,7 +2414,7 @@ describe("dashboard client behavior", () => {
       requiresMatterContext: true,
       title: "Billing",
     });
-    expect(navigationSections.find((section) => section.key === "shares")).toEqual({
+    expect(navigationSections.find((section) => section.key === "shares")).toMatchObject({
       area: "operations",
       label: "Shares",
       enabled: false,
@@ -2406,7 +2422,7 @@ describe("dashboard client behavior", () => {
       requiresMatterContext: true,
       title: "Share Links",
     });
-    expect(navigationSections.find((section) => section.key === "externalUploads")).toEqual({
+    expect(navigationSections.find((section) => section.key === "externalUploads")).toMatchObject({
       area: "workspace",
       enabled: false,
       key: "externalUploads",
@@ -2414,7 +2430,7 @@ describe("dashboard client behavior", () => {
       requiresMatterContext: true,
       title: "External Uploads",
     });
-    expect(navigationSections.find((section) => section.key === "calendar")).toEqual({
+    expect(navigationSections.find((section) => section.key === "calendar")).toMatchObject({
       area: "workspace",
       enabled: false,
       key: "calendar",
@@ -2422,7 +2438,7 @@ describe("dashboard client behavior", () => {
       requiresMatterContext: true,
       title: "Calendar Radar",
     });
-    expect(navigationSections.find((section) => section.key === "queues")).toEqual({
+    expect(navigationSections.find((section) => section.key === "queues")).toMatchObject({
       area: "operations",
       enabled: true,
       key: "queues",
@@ -3343,7 +3359,7 @@ describe("dashboard client behavior", () => {
     expect(emptyAiOperationalProposalsResponse().summary.total).toBe(0);
   });
 
-  it("keeps operational navigation available while disabling matter-scoped surfaces", () => {
+  it("keeps operational navigation available while opening mixed zero-matter surfaces", () => {
     const navigation = applyMatterAvailabilityToNavigation(
       buildSidebarNavigationSections({
         billingCanView: true,
@@ -3365,8 +3381,8 @@ describe("dashboard client behavior", () => {
       enabled: true,
     });
     expect(navigation.find((section) => section.key === "documents")).toMatchObject({
-      enabled: false,
-      disabledReason: "Create or assign a matter to enable this matter-scoped section.",
+      enabled: true,
+      availability: "mixed",
     });
     expect(navigation.find((section) => section.key === "contacts")).toMatchObject({
       enabled: true,
@@ -5385,6 +5401,11 @@ describe("dashboard client behavior", () => {
     const event = calendarEvent({ matterId: "matter-002" });
     const data = await loadCalendarDashboardData({
       matters: [matter({ id: "matter-001" }), matter({ id: "matter-002" })],
+      listStandaloneEvents: async () => ({
+        events: [],
+        caldavUrl: "",
+        subscriptionUrl: "",
+      }),
       listEventsForMatter: async (matterId) => ({
         events: matterId === "matter-002" ? [event] : [],
         schedulingRequests:

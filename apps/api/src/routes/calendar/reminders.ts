@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { CalendarEventRecord, CalendarEventReminderRecord } from "@open-practice/domain";
 import { createSessionToken } from "../../http/auth-helpers.js";
+import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
 import {
   deliveryConfirmationSchema,
@@ -10,8 +11,12 @@ import {
 import type { DeliveryConfirmation } from "../delivery-confirmation.js";
 import { queueRouteEmailOutbox } from "../outbound-email.js";
 import {
-  assertCalendarAccess,
+  assertCalendarScopeAccess,
   calendarEventParamsSchema,
+  calendarEventScope,
+  calendarScopeSchema,
+  calendarScopeTarget,
+  calendarScopeTargetMatchesEvent,
   recordCalendarAuditEvent,
 } from "./shared.js";
 import type { CalendarRouteDependencies } from "./shared.js";
@@ -22,7 +27,9 @@ const calendarEventReminderParamsSchema = z.object({
 });
 
 const calendarEventReminderBodySchema = z.object({
-  matterId: z.string().min(1),
+  scope: calendarScopeSchema.optional(),
+  matterId: z.string().min(1).optional(),
+  clientContactId: z.string().min(1).optional(),
   remindAt: z.string().datetime(),
   channel: z.literal("dashboard").default("dashboard"),
   status: z.enum(["pending", "acknowledged", "dismissed", "cancelled"]).default("pending"),
@@ -31,11 +38,15 @@ const calendarEventReminderBodySchema = z.object({
 });
 
 const calendarEventReminderPatchBodySchema = calendarEventReminderBodySchema.partial().extend({
-  matterId: z.string().min(1),
+  scope: calendarScopeSchema.optional(),
+  matterId: z.string().min(1).optional(),
+  clientContactId: z.string().min(1).optional(),
 });
 
 const calendarEventReminderDeleteQuerySchema = z.object({
-  matterId: z.string().min(1),
+  scope: calendarScopeSchema.optional(),
+  matterId: z.string().min(1).optional(),
+  clientContactId: z.string().min(1).optional(),
 });
 
 function calendarReminderText(
@@ -55,7 +66,7 @@ function calendarReminderText(
 async function queueCalendarReminderNotification(input: {
   repository: CalendarRouteDependencies["repository"];
   emailJobQueue: CalendarRouteDependencies["emailJobQueue"];
-  auth: Parameters<typeof assertCalendarAccess>[0];
+  auth: Parameters<typeof assertCalendarScopeAccess>[1];
   event: CalendarEventRecord;
   reminder: CalendarEventReminderRecord;
 }) {
@@ -72,6 +83,9 @@ async function queueCalendarReminderNotification(input: {
   }
   if (!input.emailJobQueue) {
     return { queuedEmail: undefined, reason: "email_queue_not_configured" };
+  }
+  if (!input.event.matterId) {
+    return { queuedEmail: undefined, reason: "matter_required" };
   }
 
   const delayMs = Math.max(0, Date.parse(input.reminder.remindAt) - Date.now());
@@ -114,7 +128,9 @@ function calendarReminderAuditMetadata(
   reminder: CalendarEventReminderRecord,
 ): Record<string, unknown> {
   return {
+    scope: calendarEventScope(reminder),
     matterId: reminder.matterId,
+    clientContactId: reminder.clientContactId,
     eventId: reminder.eventId,
     reminderId: reminder.id,
     channel: reminder.channel,
@@ -131,25 +147,37 @@ export function registerCalendarReminderRoutes(
   server.post("/api/calendar/events/:eventId/reminders", async (request, reply) => {
     const params = parseRequestPart(calendarEventParamsSchema, request.params, "params");
     const body = parseRequestPart(calendarEventReminderBodySchema, request.body, "body");
-    assertCalendarAccess(request.auth, body.matterId, "update");
+    const target = calendarScopeTarget(body);
+    await assertCalendarScopeAccess(repository, request.auth, target, "update");
     const event = await repository.getCalendarEvent(
       request.auth.firmId,
-      body.matterId,
+      target.matterId,
       params.eventId,
     );
-    if (!event) return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    if (!event || !calendarScopeTargetMatchesEvent(target, event)) {
+      return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    }
     const notificationRequested = isCalendarReminderNotificationRequested({
       status: body.status,
       deliveryConfirmation: body.deliveryConfirmation,
     });
     if (notificationRequested) {
+      if (!event.matterId) {
+        throw new ApiHttpError(
+          400,
+          "CALENDAR_REMINDER_EMAIL_REQUIRES_MATTER",
+          "Email calendar reminder delivery is available only for matter events",
+        );
+      }
       requireEmailDeliveryConfirmation(body.deliveryConfirmation, { recipientCount: 1 });
     }
     const now = new Date().toISOString();
     const reminder = await repository.upsertCalendarEventReminder({
       id: `calendar-reminder-${createSessionToken().slice(0, 16)}`,
       firmId: request.auth.firmId,
-      matterId: body.matterId,
+      scope: calendarEventScope(event),
+      matterId: event.matterId,
+      clientContactId: event.clientContactId,
       eventId: event.id,
       remindAt: body.remindAt,
       channel: body.channel,
@@ -216,15 +244,18 @@ export function registerCalendarReminderRoutes(
   server.patch("/api/calendar/events/:eventId/reminders/:reminderId", async (request, reply) => {
     const params = parseRequestPart(calendarEventReminderParamsSchema, request.params, "params");
     const body = parseRequestPart(calendarEventReminderPatchBodySchema, request.body, "body");
-    assertCalendarAccess(request.auth, body.matterId, "update");
+    const target = calendarScopeTarget(body);
+    await assertCalendarScopeAccess(repository, request.auth, target, "update");
     const event = await repository.getCalendarEvent(
       request.auth.firmId,
-      body.matterId,
+      target.matterId,
       params.eventId,
     );
-    if (!event) return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    if (!event || !calendarScopeTargetMatchesEvent(target, event)) {
+      return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    }
     const current = (
-      await repository.listCalendarEventReminders(request.auth.firmId, body.matterId, event.id)
+      await repository.listCalendarEventReminders(request.auth.firmId, event.matterId, event.id)
     ).find((reminder) => reminder.id === params.reminderId);
     if (!current) return reply.code(404).send({ error: "NotFound", message: "Reminder not found" });
     const nextStatus = body.status ?? current.status;
@@ -235,6 +266,13 @@ export function registerCalendarReminderRoutes(
         deliveryConfirmation: body.deliveryConfirmation,
       });
     if (notificationRequested) {
+      if (!event.matterId) {
+        throw new ApiHttpError(
+          400,
+          "CALENDAR_REMINDER_EMAIL_REQUIRES_MATTER",
+          "Email calendar reminder delivery is available only for matter events",
+        );
+      }
       requireEmailDeliveryConfirmation(body.deliveryConfirmation, { recipientCount: 1 });
     }
     const now = new Date().toISOString();
@@ -303,17 +341,22 @@ export function registerCalendarReminderRoutes(
   server.delete("/api/calendar/events/:eventId/reminders/:reminderId", async (request, reply) => {
     const params = parseRequestPart(calendarEventReminderParamsSchema, request.params, "params");
     const query = parseRequestPart(calendarEventReminderDeleteQuerySchema, request.query, "query");
-    assertCalendarAccess(request.auth, query.matterId, "update");
+    const target = calendarScopeTarget(query);
+    await assertCalendarScopeAccess(repository, request.auth, target, "update");
     const event = await repository.getCalendarEvent(
       request.auth.firmId,
-      query.matterId,
+      target.matterId,
       params.eventId,
     );
-    if (!event) return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    if (!event || !calendarScopeTargetMatchesEvent(target, event)) {
+      return reply.code(404).send({ error: "NotFound", message: "Event not found" });
+    }
     const now = new Date().toISOString();
     const reminder = await repository.deleteCalendarEventReminder({
       firmId: request.auth.firmId,
-      matterId: query.matterId,
+      scope: calendarEventScope(event),
+      matterId: event.matterId,
+      clientContactId: event.clientContactId,
       eventId: event.id,
       reminderId: params.reminderId,
       deletedAt: now,

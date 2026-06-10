@@ -3,11 +3,13 @@ import type { FastifyRequest } from "fastify";
 import { buildCalendarMeetingInvitationBoundary } from "@open-practice/domain";
 import type {
   CalendarEventRecord,
+  CalendarEventScope,
   CalendarMeetingInvitationBoundary,
   NewAuditEvent,
 } from "@open-practice/domain";
 import { requireAccess } from "../../http/auth-guards.js";
 import { createSessionToken } from "../../http/auth-helpers.js";
+import { ApiHttpError } from "../../http/response.js";
 import type { ApiAuthContext } from "../../server.js";
 import type { ApiRouteDependencies } from "../types.js";
 
@@ -19,6 +21,14 @@ export type CalendarRouteDependencies = ApiRouteDependencies & {
 export const calendarEventParamsSchema = z.object({
   eventId: z.string().min(1),
 });
+
+export const calendarScopeSchema = z.enum(["matter", "firm", "client"]);
+
+export interface CalendarScopeTarget {
+  scope: CalendarEventScope;
+  matterId?: string;
+  clientContactId?: string;
+}
 
 export function baseUrl(request: FastifyRequest): string {
   const forwardedProto = request.headers["x-forwarded-proto"];
@@ -49,6 +59,104 @@ export function assertCalendarAccess(
     matterId,
   });
   if (!access.ok) throw access.error;
+}
+
+export function calendarEventScope(event: Pick<CalendarEventRecord, "scope">): CalendarEventScope {
+  return event.scope ?? "matter";
+}
+
+export function calendarScopeTarget(input: {
+  scope?: CalendarEventScope;
+  matterId?: string;
+  clientContactId?: string;
+}): CalendarScopeTarget {
+  const scope =
+    input.scope ?? (input.matterId ? "matter" : input.clientContactId ? "client" : "firm");
+  if (scope === "matter" && (!input.matterId || input.clientContactId)) {
+    throw new ApiHttpError(
+      400,
+      "CALENDAR_SCOPE_INVALID",
+      "Matter calendar events require matterId only",
+    );
+  }
+  if (scope === "client" && (!input.clientContactId || input.matterId)) {
+    throw new ApiHttpError(
+      400,
+      "CALENDAR_SCOPE_INVALID",
+      "Client calendar events require clientContactId only",
+    );
+  }
+  if (scope === "firm" && (input.matterId || input.clientContactId)) {
+    throw new ApiHttpError(
+      400,
+      "CALENDAR_SCOPE_INVALID",
+      "Firm calendar events cannot include matterId or clientContactId",
+    );
+  }
+  return {
+    scope,
+    ...(scope === "matter" ? { matterId: input.matterId } : {}),
+    ...(scope === "client" ? { clientContactId: input.clientContactId } : {}),
+  };
+}
+
+export function calendarScopeTargetMatchesEvent(
+  target: CalendarScopeTarget,
+  event: Pick<CalendarEventRecord, "scope" | "matterId" | "clientContactId">,
+): boolean {
+  return (
+    target.scope === calendarEventScope(event) &&
+    target.matterId === event.matterId &&
+    target.clientContactId === event.clientContactId
+  );
+}
+
+export async function visibleCalendarClientContactIds(
+  repository: ApiRouteDependencies["repository"],
+  context: ApiAuthContext,
+): Promise<string[]> {
+  const contactAccess = requireAccess(context, { resource: "contact", action: "read" });
+  if (!contactAccess.ok) throw contactAccess.error;
+  const dossiers = await repository.listContactDossiersForUser(context.user);
+  return dossiers.map((dossier) => dossier.contact.id);
+}
+
+export async function assertCalendarScopeAccess(
+  repository: ApiRouteDependencies["repository"],
+  context: ApiAuthContext,
+  target: CalendarScopeTarget,
+  action: "create" | "read" | "update" | "delete",
+): Promise<void> {
+  if (target.scope === "matter") {
+    assertCalendarAccess(context, target.matterId!, action);
+    return;
+  }
+
+  const access = requireAccess(context, {
+    resource: "calendar_event",
+    action,
+  });
+  if (!access.ok) throw access.error;
+
+  if (target.scope === "client") {
+    const visibleContactIds = await visibleCalendarClientContactIds(repository, context);
+    if (!visibleContactIds.includes(target.clientContactId!)) {
+      throw new ApiHttpError(
+        403,
+        "CALENDAR_CLIENT_CONTACT_NOT_VISIBLE",
+        "Calendar client contact is not visible",
+      );
+    }
+    return;
+  }
+
+  if (action !== "read" && context.user.role !== "owner_admin") {
+    throw new ApiHttpError(
+      403,
+      "FIRM_CALENDAR_ACTION_REQUIRES_ADMIN",
+      "Firm calendar writes require owner/admin access",
+    );
+  }
 }
 
 export async function calendarMeetingInvitationBoundaryForRequest(

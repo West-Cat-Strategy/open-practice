@@ -13,6 +13,7 @@ export interface ContactDataQualityResolutionListOptions {
 
 export interface ContactRepository {
   listContactDossiersForUser(user: User): Promise<ContactDossier[]>;
+  createContact(contact: Contact): Promise<Contact>;
   createContactRelationship(
     relationship: ContactRelationshipRecord,
   ): Promise<ContactRelationshipRecord>;

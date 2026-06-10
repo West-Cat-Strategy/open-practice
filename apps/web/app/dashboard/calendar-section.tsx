@@ -35,6 +35,7 @@ export interface CalendarSectionProps {
   activeCalendarEvents: DashboardCalendarEvent[];
   activeCalendarLinks?: CalendarMatterLinks;
   activeCalendarSchedulingRequests: CalendarSchedulingRequest[];
+  activeCalendarScope: "matter" | "firm" | "client";
   activeMatterNumber: string;
   addingCalendarAttendee: boolean;
   addingCalendarReminder: boolean;
@@ -62,6 +63,8 @@ export interface CalendarSectionProps {
   calendarReminderNote: string;
   calendarReminderStatus: string;
   calendarReminderStatusValue: CalendarReminderStatus;
+  calendarClientContactId: string;
+  calendarClientOptions: Array<{ id: string; label: string }>;
   cancelingCalendarEventId: string;
   creatingCalendarCredential: boolean;
   creatingCalendarEvent: boolean;
@@ -73,6 +76,7 @@ export interface CalendarSectionProps {
   selectedCalendarMeetingEvent?: DashboardCalendarEvent;
   selectedCalendarReminderEvent?: DashboardCalendarEvent;
   sendingCalendarInvitationsEventId: string;
+  matterCalendarControlsEnabled: boolean;
   updatingCalendarEventId: string;
   updatingCalendarGuestSessionKey: string;
   updatingCalendarMeetingLinkEventId: string;
@@ -105,6 +109,8 @@ export interface CalendarSectionProps {
   onSetCalendarAttendeeEmail: (value: string) => void;
   onSetCalendarAttendeeName: (value: string) => void;
   onSetCalendarAttendeeRole: (value: "required" | "optional") => void;
+  onSetCalendarScope: (value: "matter" | "firm" | "client") => void;
+  onSetCalendarClientContactId: (value: string) => void;
   onSetCalendarCredentialLabel: (value: string) => void;
   onSetCalendarEventDescription: (value: string) => void;
   onSetCalendarEventEndsAt: (value: string) => void;
@@ -156,6 +162,7 @@ export function CalendarSection({
   activeCalendarEvents,
   activeCalendarLinks,
   activeCalendarSchedulingRequests,
+  activeCalendarScope,
   activeMatterNumber,
   addingCalendarAttendee,
   addingCalendarReminder,
@@ -183,6 +190,8 @@ export function CalendarSection({
   calendarReminderNote,
   calendarReminderStatus,
   calendarReminderStatusValue,
+  calendarClientContactId,
+  calendarClientOptions,
   cancelingCalendarEventId,
   creatingCalendarCredential,
   creatingCalendarEvent,
@@ -194,6 +203,7 @@ export function CalendarSection({
   selectedCalendarMeetingEvent,
   selectedCalendarReminderEvent,
   sendingCalendarInvitationsEventId,
+  matterCalendarControlsEnabled,
   updatingCalendarEventId,
   updatingCalendarGuestSessionKey,
   updatingCalendarMeetingLinkEventId,
@@ -216,6 +226,8 @@ export function CalendarSection({
   onSetCalendarAttendeeEmail,
   onSetCalendarAttendeeName,
   onSetCalendarAttendeeRole,
+  onSetCalendarScope,
+  onSetCalendarClientContactId,
   onSetCalendarCredentialLabel,
   onSetCalendarEventDescription,
   onSetCalendarEventEndsAt,
@@ -262,9 +274,55 @@ export function CalendarSection({
         </div>
       </div>
 
+      <div className="share-controls calendar-scope-controls">
+        <div className="section-title">
+          <h3>Calendar scope</h3>
+          <span>{activeMatterNumber}</span>
+        </div>
+        <div className="calendar-attendee-form calendar-event-form">
+          <label className="search-field">
+            <span>Scope</span>
+            <select
+              onChange={(event) =>
+                onSetCalendarScope(event.currentTarget.value as "matter" | "firm" | "client")
+              }
+              value={activeCalendarScope}
+            >
+              <option disabled={!matterCalendarControlsEnabled} value="matter">
+                Matter
+              </option>
+              <option value="firm">Firm</option>
+              <option value="client">Client</option>
+            </select>
+          </label>
+          {activeCalendarScope === "client" ? (
+            <label className="search-field">
+              <span>Client</span>
+              <select
+                disabled={calendarClientOptions.length === 0}
+                onChange={(event) => onSetCalendarClientContactId(event.currentTarget.value)}
+                value={calendarClientContactId}
+              >
+                {calendarClientOptions.map((contact) => (
+                  <option key={contact.id} value={contact.id}>
+                    {contact.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+        {!matterCalendarControlsEnabled ? (
+          <p className="inline-empty">
+            Meeting links, invitations, guest sessions, public links, feeds, and email delivery are
+            available after selecting a matter.
+          </p>
+        ) : null}
+      </div>
+
       <div className="section-title">
         <h3>Deadline radar</h3>
-        <span>{activeCalendarEvents.length} matter events</span>
+        <span>{activeCalendarEvents.length} event records</span>
       </div>
       <div className="activity-grid calendar-radar-grid">
         <div className="activity-card calendar-radar-card">
@@ -325,16 +383,20 @@ export function CalendarSection({
           </div>
         ))}
         {activeCalendarSchedulingRequests.length === 0 ? (
-          <p className="inline-empty">No scheduling request records for this matter.</p>
+          <p className="inline-empty">
+            {matterCalendarControlsEnabled
+              ? "No scheduling request records for this matter."
+              : "Scheduling request review is available after selecting a matter."}
+          </p>
         ) : null}
       </div>
 
       <div className="share-controls calendar-event-controls">
         <div className="section-title">
           <h3>Event lifecycle</h3>
-          <span>Create or reschedule one matter event</span>
+          <span>Create or reschedule one event</span>
         </div>
-        <div className="calendar-attendee-form">
+        <div className="calendar-attendee-form calendar-reminder-form">
           <label className="search-field">
             <span>Title</span>
             <input
@@ -406,7 +468,7 @@ export function CalendarSection({
       </div>
 
       <div className="section-title">
-        <h3>Matter calendar events</h3>
+        <h3>Calendar events</h3>
         <span>{activeMatterNumber}</span>
       </div>
       <div className="party-list">
@@ -457,25 +519,27 @@ export function CalendarSection({
                   >
                     {event.status === "cancelled" ? "cancelled" : timing}
                   </em>
-                  <button
-                    aria-label={meetingLinkAvailability.detail}
-                    className={`secondary-button compact-button row-button calendar-meeting-link-status ${meetingLinkAvailability.status}`}
-                    disabled={
-                      !meetingLinkAvailability.actionable ||
-                      attendees.length === 0 ||
-                      sendingCalendarInvitationsEventId === event.id
-                    }
-                    onClick={() =>
-                      onOpenCalendarInvitationConfirmation(event, { includeMeetingLink: true })
-                    }
-                    title={meetingLinkAvailability.detail}
-                    type="button"
-                  >
-                    <Link2 size={14} />
-                    {sendingCalendarInvitationsEventId === event.id
-                      ? "Sending..."
-                      : meetingLinkAvailability.label}
-                  </button>
+                  {matterCalendarControlsEnabled ? (
+                    <button
+                      aria-label={meetingLinkAvailability.detail}
+                      className={`secondary-button compact-button row-button calendar-meeting-link-status ${meetingLinkAvailability.status}`}
+                      disabled={
+                        !meetingLinkAvailability.actionable ||
+                        attendees.length === 0 ||
+                        sendingCalendarInvitationsEventId === event.id
+                      }
+                      onClick={() =>
+                        onOpenCalendarInvitationConfirmation(event, { includeMeetingLink: true })
+                      }
+                      title={meetingLinkAvailability.detail}
+                      type="button"
+                    >
+                      <Link2 size={14} />
+                      {sendingCalendarInvitationsEventId === event.id
+                        ? "Sending..."
+                        : meetingLinkAvailability.label}
+                    </button>
+                  ) : null}
                   <button
                     className="secondary-button compact-button row-button"
                     disabled={
@@ -496,68 +560,76 @@ export function CalendarSection({
                   >
                     {cancelingCalendarEventId === event.id ? "Cancelling..." : "Cancel"}
                   </button>
+                  {matterCalendarControlsEnabled ? (
+                    <button
+                      className="secondary-button compact-button row-button"
+                      disabled={
+                        attendees.length === 0 || sendingCalendarInvitationsEventId === event.id
+                      }
+                      onClick={() => onOpenCalendarInvitationConfirmation(event)}
+                      type="button"
+                    >
+                      {sendingCalendarInvitationsEventId === event.id
+                        ? "Sending..."
+                        : "Send invites"}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {matterCalendarControlsEnabled ? (
+                <div className="calendar-meeting-link-form">
+                  <label>
+                    <span className="field-label">Meeting link</span>
+                    <select
+                      value={meetingLinkMode}
+                      onChange={(changeEvent) =>
+                        onSetCalendarMeetingLinkMode(
+                          event.id,
+                          changeEvent.currentTarget.value as CalendarMeetingLinkMode,
+                        )
+                      }
+                    >
+                      <option value="blank">Blank</option>
+                      <option value="external_url">Other link</option>
+                      <option disabled={!hostedMeetingConfigured} value="hosted_webrtc">
+                        Hosted WebRTC
+                      </option>
+                    </select>
+                  </label>
+                  {meetingLinkMode === "external_url" ? (
+                    <label>
+                      <span className="field-label">URL</span>
+                      <input
+                        type="url"
+                        value={meetingLinkUrl}
+                        onChange={(inputEvent) =>
+                          onSetCalendarMeetingLinkUrl(event.id, inputEvent.currentTarget.value)
+                        }
+                        placeholder="https://meet.example.test/room"
+                      />
+                    </label>
+                  ) : null}
+                  {meetingLinkMode === "hosted_webrtc" && !hostedMeetingConfigured ? (
+                    <p className="inline-empty">Hosted WebRTC meetings are not configured.</p>
+                  ) : null}
+                  {event.meetingLinkUrl ? (
+                    <code className="calendar-meeting-link-url">{event.meetingLinkUrl}</code>
+                  ) : null}
                   <button
                     className="secondary-button compact-button row-button"
                     disabled={
-                      attendees.length === 0 || sendingCalendarInvitationsEventId === event.id
+                      updatingCalendarMeetingLinkEventId === event.id || !canSaveMeetingLink
                     }
-                    onClick={() => onOpenCalendarInvitationConfirmation(event)}
+                    onClick={() =>
+                      onUpdateCalendarMeetingLink(event, meetingLinkMode, meetingLinkUrl)
+                    }
                     type="button"
                   >
-                    {sendingCalendarInvitationsEventId === event.id ? "Sending..." : "Send invites"}
+                    {updatingCalendarMeetingLinkEventId === event.id ? "Saving..." : "Save link"}
                   </button>
                 </div>
-              </div>
-              <div className="calendar-meeting-link-form">
-                <label>
-                  <span className="field-label">Meeting link</span>
-                  <select
-                    value={meetingLinkMode}
-                    onChange={(changeEvent) =>
-                      onSetCalendarMeetingLinkMode(
-                        event.id,
-                        changeEvent.currentTarget.value as CalendarMeetingLinkMode,
-                      )
-                    }
-                  >
-                    <option value="blank">Blank</option>
-                    <option value="external_url">Other link</option>
-                    <option disabled={!hostedMeetingConfigured} value="hosted_webrtc">
-                      Hosted WebRTC
-                    </option>
-                  </select>
-                </label>
-                {meetingLinkMode === "external_url" ? (
-                  <label>
-                    <span className="field-label">URL</span>
-                    <input
-                      type="url"
-                      value={meetingLinkUrl}
-                      onChange={(inputEvent) =>
-                        onSetCalendarMeetingLinkUrl(event.id, inputEvent.currentTarget.value)
-                      }
-                      placeholder="https://meet.example.test/room"
-                    />
-                  </label>
-                ) : null}
-                {meetingLinkMode === "hosted_webrtc" && !hostedMeetingConfigured ? (
-                  <p className="inline-empty">Hosted WebRTC meetings are not configured.</p>
-                ) : null}
-                {event.meetingLinkUrl ? (
-                  <code className="calendar-meeting-link-url">{event.meetingLinkUrl}</code>
-                ) : null}
-                <button
-                  className="secondary-button compact-button row-button"
-                  disabled={updatingCalendarMeetingLinkEventId === event.id || !canSaveMeetingLink}
-                  onClick={() =>
-                    onUpdateCalendarMeetingLink(event, meetingLinkMode, meetingLinkUrl)
-                  }
-                  type="button"
-                >
-                  {updatingCalendarMeetingLinkEventId === event.id ? "Saving..." : "Save link"}
-                </button>
-              </div>
-              {event.meetingLinkMode === "hosted_webrtc" ? (
+              ) : null}
+              {matterCalendarControlsEnabled && event.meetingLinkMode === "hosted_webrtc" ? (
                 <div className="calendar-guest-session-panel">
                   <div className="section-title compact-section-title">
                     <h4>Guest lobby</h4>
@@ -736,7 +808,8 @@ export function CalendarSection({
                   ) : null}
                 </div>
               ) : null}
-              {pendingDeliveryConfirmation?.kind === "calendar-invitations" &&
+              {matterCalendarControlsEnabled &&
+              pendingDeliveryConfirmation?.kind === "calendar-invitations" &&
               pendingDeliveryConfirmation.eventId === event.id ? (
                 <DeliveryConfirmationPanel
                   busy={sendingCalendarInvitationsEventId === event.id}
@@ -783,42 +856,46 @@ export function CalendarSection({
                   <p className="inline-empty">No reminders are linked to this event.</p>
                 ) : null}
               </div>
-              <div className="calendar-attendee-list">
-                {attendees.map((attendee) => (
-                  <div className="calendar-attendee-row" key={attendee.id}>
-                    <span>
-                      <strong>{attendee.name}</strong>
-                      <small>
-                        {attendee.email} · {formatCalendarAttendeeRoleLabel(attendee.role)} ·{" "}
-                        {attendee.responseStatus.replace("_", " ")}
-                      </small>
-                    </span>
-                    <div className="row-actions">
-                      <em className={attendee.invitationStatus === "skipped" ? "risk" : undefined}>
-                        {attendee.invitationStatus.replace("_", " ")}
-                      </em>
-                      <button
-                        aria-label={`Remove ${attendee.name}`}
-                        className="icon-button"
-                        disabled={removingCalendarAttendeeId === attendee.id}
-                        onClick={() => void onRemoveCalendarAttendee(event.id, attendee.id)}
-                        title="Remove attendee"
-                        type="button"
-                      >
-                        <X size={16} />
-                      </button>
+              {matterCalendarControlsEnabled ? (
+                <div className="calendar-attendee-list">
+                  {attendees.map((attendee) => (
+                    <div className="calendar-attendee-row" key={attendee.id}>
+                      <span>
+                        <strong>{attendee.name}</strong>
+                        <small>
+                          {attendee.email} · {formatCalendarAttendeeRoleLabel(attendee.role)} ·{" "}
+                          {attendee.responseStatus.replace("_", " ")}
+                        </small>
+                      </span>
+                      <div className="row-actions">
+                        <em
+                          className={attendee.invitationStatus === "skipped" ? "risk" : undefined}
+                        >
+                          {attendee.invitationStatus.replace("_", " ")}
+                        </em>
+                        <button
+                          aria-label={`Remove ${attendee.name}`}
+                          className="icon-button"
+                          disabled={removingCalendarAttendeeId === attendee.id}
+                          onClick={() => void onRemoveCalendarAttendee(event.id, attendee.id)}
+                          title="Remove attendee"
+                          type="button"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {attendees.length === 0 ? (
-                  <p className="inline-empty">No attendees are linked to this event.</p>
-                ) : null}
-              </div>
+                  ))}
+                  {attendees.length === 0 ? (
+                    <p className="inline-empty">No attendees are linked to this event.</p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           );
         })}
         {activeCalendarEvents.length === 0 ? (
-          <p className="inline-empty">No calendar events are linked to this matter.</p>
+          <p className="inline-empty">No calendar events are linked to this scope.</p>
         ) : null}
       </div>
 
@@ -885,81 +962,87 @@ export function CalendarSection({
         <p className="inline-empty">{calendarReminderStatus}</p>
       </div>
 
-      <div className="share-controls calendar-meeting-controls">
-        <div className="section-title">
-          <h3>Meeting attendees</h3>
-          <span>{selectedCalendarMeetingEvent?.title ?? "No event selected"}</span>
-        </div>
-        <div className="calendar-attendee-form">
-          <label className="search-field">
-            <span>Event</span>
-            <select
-              onChange={(event) => onSetCalendarMeetingEventId(event.target.value)}
-              value={selectedCalendarMeetingEvent?.id ?? ""}
-            >
-              {activeCalendarEvents.map((event) => (
-                <option key={event.id} value={event.id}>
-                  {event.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="search-field">
-            <span>Name</span>
-            <input
-              onChange={(event) => onSetCalendarAttendeeName(event.target.value)}
-              value={calendarAttendeeName}
-            />
-          </label>
-          <label className="search-field">
-            <span>Email</span>
-            <input
-              onChange={(event) => onSetCalendarAttendeeEmail(event.target.value)}
-              type="email"
-              value={calendarAttendeeEmail}
-            />
-          </label>
-          <label className="search-field">
-            <span>Role</span>
-            <select
-              onChange={(event) =>
-                onSetCalendarAttendeeRole(event.target.value as "required" | "optional")
+      {matterCalendarControlsEnabled ? (
+        <div className="share-controls calendar-meeting-controls">
+          <div className="section-title">
+            <h3>Meeting attendees</h3>
+            <span>{selectedCalendarMeetingEvent?.title ?? "No event selected"}</span>
+          </div>
+          <div className="calendar-attendee-form">
+            <label className="search-field">
+              <span>Event</span>
+              <select
+                onChange={(event) => onSetCalendarMeetingEventId(event.target.value)}
+                value={selectedCalendarMeetingEvent?.id ?? ""}
+              >
+                {activeCalendarEvents.map((event) => (
+                  <option key={event.id} value={event.id}>
+                    {event.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="search-field">
+              <span>Name</span>
+              <input
+                onChange={(event) => onSetCalendarAttendeeName(event.target.value)}
+                value={calendarAttendeeName}
+              />
+            </label>
+            <label className="search-field">
+              <span>Email</span>
+              <input
+                onChange={(event) => onSetCalendarAttendeeEmail(event.target.value)}
+                type="email"
+                value={calendarAttendeeEmail}
+              />
+            </label>
+            <label className="search-field">
+              <span>Role</span>
+              <select
+                onChange={(event) =>
+                  onSetCalendarAttendeeRole(event.target.value as "required" | "optional")
+                }
+                value={calendarAttendeeRole}
+              >
+                <option value="required">Required</option>
+                <option value="optional">Optional</option>
+              </select>
+            </label>
+            <button
+              className="secondary-button compact-button"
+              disabled={
+                !selectedCalendarMeetingEvent ||
+                !calendarAttendeeName.trim() ||
+                !calendarAttendeeEmail.trim() ||
+                addingCalendarAttendee
               }
-              value={calendarAttendeeRole}
+              onClick={() => void onAddCalendarAttendee()}
+              type="button"
             >
-              <option value="required">Required</option>
-              <option value="optional">Optional</option>
-            </select>
-          </label>
-          <button
-            className="secondary-button compact-button"
-            disabled={
-              !selectedCalendarMeetingEvent ||
-              !calendarAttendeeName.trim() ||
-              !calendarAttendeeEmail.trim() ||
-              addingCalendarAttendee
-            }
-            onClick={() => void onAddCalendarAttendee()}
-            type="button"
-          >
-            <Plus size={16} />
-            {addingCalendarAttendee ? "Adding..." : "Add attendee"}
-          </button>
+              <Plus size={16} />
+              {addingCalendarAttendee ? "Adding..." : "Add attendee"}
+            </button>
+          </div>
+          <p className="inline-empty">{calendarMeetingStatus}</p>
+          <p className="inline-empty">{calendarGuestSessionStatus}</p>
         </div>
-        <p className="inline-empty">{calendarMeetingStatus}</p>
-        <p className="inline-empty">{calendarGuestSessionStatus}</p>
-      </div>
+      ) : null}
 
-      <div className="section-title">
-        <h3>Calendar sync</h3>
-        <span>CalDAV / iCalendar</span>
-      </div>
-      <div className="upload-token calendar-sync-links">
-        <span>Subscription URL</span>
-        <code>{activeCalendarLinks?.subscriptionUrl ?? "Unavailable"}</code>
-        <span>CalDAV URL</span>
-        <code>{activeCalendarLinks?.caldavUrl ?? "Unavailable"}</code>
-      </div>
+      {matterCalendarControlsEnabled ? (
+        <>
+          <div className="section-title">
+            <h3>Calendar sync</h3>
+            <span>CalDAV / iCalendar</span>
+          </div>
+          <div className="upload-token calendar-sync-links">
+            <span>Subscription URL</span>
+            <code>{activeCalendarLinks?.subscriptionUrl ?? "Unavailable"}</code>
+            <span>CalDAV URL</span>
+            <code>{activeCalendarLinks?.caldavUrl ?? "Unavailable"}</code>
+          </div>
+        </>
+      ) : null}
 
       <div className="share-controls">
         <div className="section-title">

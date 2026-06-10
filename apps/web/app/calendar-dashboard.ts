@@ -177,7 +177,9 @@ export function buildCalendarMeetingLinkPayload(input: {
 }
 
 export function buildCalendarEventPayload(input: {
-  matterId: string;
+  scope?: CalendarEventRecord["scope"];
+  matterId?: string;
+  clientContactId?: string;
   title: string;
   startsAt: string;
   endsAt: string;
@@ -185,7 +187,9 @@ export function buildCalendarEventPayload(input: {
   description?: string;
   location?: string;
 }): {
-  matterId: string;
+  scope?: CalendarEventRecord["scope"];
+  matterId?: string;
+  clientContactId?: string;
   title: string;
   startsAt: string;
   endsAt: string;
@@ -194,7 +198,9 @@ export function buildCalendarEventPayload(input: {
   location?: string;
 } {
   return {
-    matterId: input.matterId,
+    ...(input.scope ? { scope: input.scope } : {}),
+    ...(input.matterId ? { matterId: input.matterId } : {}),
+    ...(input.clientContactId ? { clientContactId: input.clientContactId } : {}),
     title: input.title.trim(),
     startsAt: input.startsAt,
     endsAt: input.endsAt,
@@ -205,18 +211,24 @@ export function buildCalendarEventPayload(input: {
 }
 
 export function buildCalendarReschedulePayload(input: {
-  matterId: string;
+  scope?: CalendarEventRecord["scope"];
+  matterId?: string;
+  clientContactId?: string;
   startsAt: string;
   endsAt: string;
   status?: CalendarEventRecord["status"];
 }): {
-  matterId: string;
+  scope?: CalendarEventRecord["scope"];
+  matterId?: string;
+  clientContactId?: string;
   startsAt: string;
   endsAt: string;
   status?: CalendarEventRecord["status"];
 } {
   return {
-    matterId: input.matterId,
+    ...(input.scope ? { scope: input.scope } : {}),
+    ...(input.matterId ? { matterId: input.matterId } : {}),
+    ...(input.clientContactId ? { clientContactId: input.clientContactId } : {}),
     startsAt: input.startsAt,
     endsAt: input.endsAt,
     ...(input.status ? { status: input.status } : {}),
@@ -224,19 +236,25 @@ export function buildCalendarReschedulePayload(input: {
 }
 
 export function buildCalendarReminderPayload(input: {
-  matterId: string;
+  scope?: CalendarEventRecord["scope"];
+  matterId?: string;
+  clientContactId?: string;
   remindAt: string;
   status?: CalendarEventReminderRecord["status"];
   note?: string;
 }): {
-  matterId: string;
+  scope?: CalendarEventRecord["scope"];
+  matterId?: string;
+  clientContactId?: string;
   remindAt: string;
   channel: "dashboard";
   status?: CalendarEventReminderRecord["status"];
   note?: string;
 } {
   return {
-    matterId: input.matterId,
+    ...(input.scope ? { scope: input.scope } : {}),
+    ...(input.matterId ? { matterId: input.matterId } : {}),
+    ...(input.clientContactId ? { clientContactId: input.clientContactId } : {}),
     remindAt: input.remindAt,
     channel: "dashboard",
     ...(input.status ? { status: input.status } : {}),
@@ -276,6 +294,17 @@ export function upsertCalendarEvent(
   };
 }
 
+export function upsertStandaloneCalendarEvent(
+  events: CalendarEventRecord[],
+  event: CalendarEventRecord,
+): CalendarEventRecord[] {
+  const exists = events.some((candidate) => candidate.id === event.id);
+  const nextEvents = exists
+    ? events.map((candidate) => (candidate.id === event.id ? event : candidate))
+    : [...events, event];
+  return sortCalendarEvents(nextEvents);
+}
+
 export function upsertCalendarCredential(
   credentials: CalendarCredentialSummary[],
   credential: CalendarCredentialSummary,
@@ -313,6 +342,30 @@ export function upsertCalendarEventReminder(
   };
 }
 
+export function upsertStandaloneCalendarEventReminder(
+  events: CalendarEventRecord[],
+  eventId: string,
+  reminder: CalendarEventReminderRecord,
+): CalendarEventRecord[] {
+  return events.map((event) => {
+    if (event.id !== eventId) return event;
+    const reminders = event.reminders ?? [];
+    const exists = reminders.some((candidate) => candidate.id === reminder.id);
+    const nextReminders = exists
+      ? reminders.map((candidate) => (candidate.id === reminder.id ? reminder : candidate))
+      : [...reminders, reminder];
+    return {
+      ...event,
+      reminders: nextReminders
+        .filter((candidate) => !candidate.deletedAt)
+        .sort((left, right) => {
+          const remindAtDifference = Date.parse(left.remindAt) - Date.parse(right.remindAt);
+          return remindAtDifference === 0 ? left.id.localeCompare(right.id) : remindAtDifference;
+        }),
+    };
+  });
+}
+
 export function removeCalendarEventReminder(
   eventsByMatterId: Record<string, CalendarEventRecord[]>,
   matterId: string,
@@ -330,6 +383,21 @@ export function removeCalendarEventReminder(
         : event,
     ),
   };
+}
+
+export function removeStandaloneCalendarEventReminder(
+  events: CalendarEventRecord[],
+  eventId: string,
+  reminderId: string,
+): CalendarEventRecord[] {
+  return events.map((event) =>
+    event.id === eventId
+      ? {
+          ...event,
+          reminders: (event.reminders ?? []).filter((reminder) => reminder.id !== reminderId),
+        }
+      : event,
+  );
 }
 
 export function upsertCalendarEventAttendee(
@@ -378,11 +446,13 @@ export function removeCalendarEventAttendee(
 
 export async function loadCalendarDashboardData(input: {
   matters: MatterSummary[];
+  listStandaloneEvents: () => Promise<CalendarEventsResponse>;
   listEventsForMatter: (matterId: string) => Promise<CalendarEventsResponse>;
   listCredentials: () => Promise<CalendarCredentialSummary[]>;
 }): Promise<CalendarDashboardResponse> {
-  const [credentials, matterResponses] = await Promise.all([
+  const [credentials, standaloneResponse, matterResponses] = await Promise.all([
     input.listCredentials(),
+    input.listStandaloneEvents(),
     Promise.all(
       input.matters.map(async (matter) => ({
         matterId: matter.id,
@@ -414,6 +484,7 @@ export async function loadCalendarDashboardData(input: {
 
   return {
     eventsByMatterId,
+    standaloneEvents: standaloneResponse.events,
     guestSessionsByEventId,
     schedulingRequestsByMatterId,
     linksByMatterId,

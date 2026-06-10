@@ -18,7 +18,7 @@ export interface CreateMatterWithClientInput {
   openedOn: string;
   occurredAt: string;
   auditEventId: string;
-  client: {
+  client?: {
     kind: ContactKind;
     displayName: string;
     identifiers: ContactIdentifier[];

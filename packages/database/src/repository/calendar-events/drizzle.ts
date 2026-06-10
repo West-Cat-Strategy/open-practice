@@ -122,9 +122,21 @@ export async function listDrizzleCalendarEvents(
 ): Promise<CalendarEventRecord[]> {
   const filters = [
     eq(schema.calendarEvents.firmId, firmId),
-    eq(schema.calendarEvents.matterId, options.matterId),
     isNull(schema.calendarEvents.deletedAt),
   ];
+  if (options.matterId) {
+    filters.push(eq(schema.calendarEvents.matterId, options.matterId));
+  } else {
+    filters.push(sql`${schema.calendarEvents.matterId} is null`);
+  }
+  if (options.scopes?.length) {
+    filters.push(inArray(schema.calendarEvents.scope, options.scopes));
+  }
+  if (options.clientContactIds?.length) {
+    filters.push(inArray(schema.calendarEvents.clientContactId, options.clientContactIds));
+  } else if (options.clientContactIds) {
+    filters.push(sql`false`);
+  }
   if (options.startsAfter) {
     filters.push(sql`${schema.calendarEvents.startsAt} >= ${new Date(options.startsAfter)}`);
   }
@@ -142,20 +154,21 @@ export async function listDrizzleCalendarEvents(
 export async function getDrizzleCalendarEvent(
   db: OpenPracticeDatabase,
   firmId: string,
-  matterId: string,
+  matterId: string | undefined,
   eventId: string,
 ): Promise<CalendarEventRecord | undefined> {
+  const filters = [
+    eq(schema.calendarEvents.firmId, firmId),
+    eq(schema.calendarEvents.id, eventId),
+    isNull(schema.calendarEvents.deletedAt),
+  ];
+  if (matterId !== undefined) {
+    filters.push(eq(schema.calendarEvents.matterId, matterId));
+  }
   const [row] = await db
     .select()
     .from(schema.calendarEvents)
-    .where(
-      and(
-        eq(schema.calendarEvents.firmId, firmId),
-        eq(schema.calendarEvents.matterId, matterId),
-        eq(schema.calendarEvents.id, eventId),
-        isNull(schema.calendarEvents.deletedAt),
-      ),
-    );
+    .where(and(...filters));
   if (!row) return undefined;
   return (await attachDrizzleCalendarEventChildren(db, [mapCalendarEventRow(row)]))[0];
 }
@@ -188,7 +201,9 @@ export async function upsertDrizzleCalendarEvent(
   const values = {
     id: event.id,
     firmId: event.firmId,
-    matterId: event.matterId,
+    scope: event.scope ?? "matter",
+    matterId: event.matterId ?? null,
+    clientContactId: event.clientContactId ?? null,
     uid: event.uid,
     title: event.title,
     startsAt: new Date(event.startsAt),
@@ -213,7 +228,10 @@ export async function upsertDrizzleCalendarEvent(
     .where(eq(schema.calendarEvents.id, event.id));
   if (
     eventIdCollision &&
-    (eventIdCollision.firmId !== event.firmId || eventIdCollision.matterId !== event.matterId)
+    (eventIdCollision.firmId !== event.firmId ||
+      eventIdCollision.scope !== (event.scope ?? "matter") ||
+      eventIdCollision.matterId !== (event.matterId ?? null) ||
+      eventIdCollision.clientContactId !== (event.clientContactId ?? null))
   ) {
     throw new CalendarEventScopeConflictError(event.id);
   }
@@ -224,7 +242,13 @@ export async function upsertDrizzleCalendarEvent(
     .where(
       and(
         eq(schema.calendarEvents.firmId, event.firmId),
-        eq(schema.calendarEvents.matterId, event.matterId),
+        eq(schema.calendarEvents.scope, event.scope ?? "matter"),
+        event.matterId
+          ? eq(schema.calendarEvents.matterId, event.matterId)
+          : sql`${schema.calendarEvents.matterId} is null`,
+        event.clientContactId
+          ? eq(schema.calendarEvents.clientContactId, event.clientContactId)
+          : sql`${schema.calendarEvents.clientContactId} is null`,
         eq(schema.calendarEvents.uid, event.uid),
         isNull(schema.calendarEvents.deletedAt),
       ),
@@ -242,6 +266,9 @@ export async function upsertDrizzleCalendarEvent(
         target: schema.calendarEvents.id,
         set: {
           uid: values.uid,
+          scope: values.scope,
+          matterId: values.matterId,
+          clientContactId: values.clientContactId,
           title: values.title,
           startsAt: values.startsAt,
           endsAt: values.endsAt,
@@ -257,11 +284,15 @@ export async function upsertDrizzleCalendarEvent(
           deletedAt: values.deletedAt,
           updatedByUserId: values.updatedByUserId,
         },
-        setWhere: sql`${schema.calendarEvents.firmId} = ${event.firmId} and ${schema.calendarEvents.matterId} = ${event.matterId}`,
+        setWhere: sql`${schema.calendarEvents.firmId} = ${event.firmId}`,
       })
       .returning();
   } catch (error) {
-    if (isPostgresUniqueViolation(error, "calendar_events_firm_matter_uid_idx")) {
+    if (
+      isPostgresUniqueViolation(error, "calendar_events_firm_matter_uid_idx") ||
+      isPostgresUniqueViolation(error, "calendar_events_firm_scope_uid_idx") ||
+      isPostgresUniqueViolation(error, "calendar_events_firm_client_uid_idx")
+    ) {
       throw new CalendarEventUidConflictError(event.uid);
     }
     throw error;
@@ -417,20 +448,21 @@ export async function replaceDrizzleCalendarEventAttendees(
 export async function listDrizzleCalendarEventReminders(
   db: OpenPracticeDatabase,
   firmId: string,
-  matterId: string,
+  matterId: string | undefined,
   eventId: string,
 ): Promise<CalendarEventReminderRecord[]> {
+  const filters = [
+    eq(schema.calendarEventReminders.firmId, firmId),
+    eq(schema.calendarEventReminders.eventId, eventId),
+    isNull(schema.calendarEventReminders.deletedAt),
+  ];
+  if (matterId !== undefined) {
+    filters.push(eq(schema.calendarEventReminders.matterId, matterId));
+  }
   const rows = await db
     .select()
     .from(schema.calendarEventReminders)
-    .where(
-      and(
-        eq(schema.calendarEventReminders.firmId, firmId),
-        eq(schema.calendarEventReminders.matterId, matterId),
-        eq(schema.calendarEventReminders.eventId, eventId),
-        isNull(schema.calendarEventReminders.deletedAt),
-      ),
-    )
+    .where(and(...filters))
     .orderBy(asc(schema.calendarEventReminders.remindAt), asc(schema.calendarEventReminders.id));
   return rows.map(mapCalendarEventReminderRow);
 }
@@ -442,7 +474,9 @@ export async function upsertDrizzleCalendarEventReminder(
   const values = {
     id: reminder.id,
     firmId: reminder.firmId,
-    matterId: reminder.matterId,
+    scope: reminder.scope ?? "matter",
+    matterId: reminder.matterId ?? null,
+    clientContactId: reminder.clientContactId ?? null,
     eventId: reminder.eventId,
     remindAt: new Date(reminder.remindAt),
     channel: reminder.channel,
@@ -461,6 +495,9 @@ export async function upsertDrizzleCalendarEventReminder(
       target: schema.calendarEventReminders.id,
       set: {
         remindAt: values.remindAt,
+        scope: values.scope,
+        matterId: values.matterId,
+        clientContactId: values.clientContactId,
         channel: values.channel,
         status: values.status,
         note: values.note,
@@ -468,7 +505,7 @@ export async function upsertDrizzleCalendarEventReminder(
         deletedAt: values.deletedAt,
         updatedByUserId: values.updatedByUserId,
       },
-      setWhere: sql`${schema.calendarEventReminders.firmId} = ${reminder.firmId} and ${schema.calendarEventReminders.matterId} = ${reminder.matterId} and ${schema.calendarEventReminders.eventId} = ${reminder.eventId}`,
+      setWhere: sql`${schema.calendarEventReminders.firmId} = ${reminder.firmId} and ${schema.calendarEventReminders.eventId} = ${reminder.eventId}`,
     })
     .returning();
   if (!row) {
@@ -572,7 +609,13 @@ export async function deleteDrizzleCalendarEventReminder(
     .where(
       and(
         eq(schema.calendarEventReminders.firmId, input.firmId),
-        eq(schema.calendarEventReminders.matterId, input.matterId),
+        eq(schema.calendarEventReminders.scope, input.scope ?? "matter"),
+        input.matterId
+          ? eq(schema.calendarEventReminders.matterId, input.matterId)
+          : sql`${schema.calendarEventReminders.matterId} is null`,
+        input.clientContactId
+          ? eq(schema.calendarEventReminders.clientContactId, input.clientContactId)
+          : sql`${schema.calendarEventReminders.clientContactId} is null`,
         eq(schema.calendarEventReminders.eventId, input.eventId),
         eq(schema.calendarEventReminders.id, input.reminderId),
         isNull(schema.calendarEventReminders.deletedAt),

@@ -92,6 +92,7 @@ export const sampleContacts: Contact[] = [
     displayName: "Ada Morgan",
     aliases: ["Ada M. Nguyen"],
     identifiers: [{ type: "email", value: "ada@example.test" }],
+    createdByUserId: "user-licensee",
   },
   {
     id: "contact-northstar",
@@ -100,6 +101,7 @@ export const sampleContacts: Contact[] = [
     displayName: "North Star Holdings Ltd.",
     aliases: ["Northstar Holdings"],
     identifiers: [{ type: "registry_id", value: "BC1234567" }],
+    createdByUserId: "user-admin",
   },
   {
     id: "contact-river",
@@ -108,6 +110,7 @@ export const sampleContacts: Contact[] = [
     displayName: "River City Rentals Inc.",
     aliases: [],
     identifiers: [{ type: "email", value: "legal@rivercity.example" }],
+    createdByUserId: "user-licensee",
   },
 ];
 

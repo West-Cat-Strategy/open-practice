@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-09
+**Last Updated:** 2026-06-10
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,17 +10,30 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | First-run no-key setup hydration is validated for review.            |
-| Next recommended pick | Review and merge `codex/op-first-run-no-key-hydration-2026-06-09`.   |
+| Current focus         | Matterless contacts/calendar workflow is validated for review.       |
+| Next recommended pick | Review and merge `codex/matterless-open-practice-2026-06-10`.        |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
-| Review rows           | 1                                                                    |
+| Review rows           | 2                                                                    |
 | Blocked rows          | 0                                                                    |
 | Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Forward Development Plan
+
+Latest matterless workflow addendum: 2026-06-10 the dashboard now opens useful work surfaces before
+any matter exists. Standalone contacts can be created from Contacts, contact dossiers include
+visible linked matters at a glance, and matter creation can reuse an existing visible
+`clientContactId`. Calendar events and dashboard reminders now carry explicit `matter`, `firm`, or
+`client` scope so owner/admin users can create firm appointments and staff can create client
+appointments for visible contacts without first creating a matter. Matter-only controls remain
+bounded to matters: attendees, invitations, guest sessions, meeting links, calendar feeds, public
+links, and email reminder delivery stay unavailable for firm/client events. Route availability now
+distinguishes firm, mixed, and matter sections so zero-matter deep links render section-specific
+content and create/link matter actions instead of falling back to First Matter everywhere. Proof,
+review notes, and desktop/mobile screenshots are recorded in
+[OP matterless workflow proof](validation/OP_MATTERLESS_WORKFLOW_PROOF_2026-06-10.md).
 
 Latest first-run setup addendum: 2026-06-09 first-run setup no longer accepts or requires a setup
 key. Empty-database setup now reports only `required`, `blocked`, and optional `reason`;

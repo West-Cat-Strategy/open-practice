@@ -13,6 +13,7 @@ import type {
   User,
 } from "@open-practice/domain";
 import { requireAccess, requireStaffAccess } from "../http/auth-guards.js";
+import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 
 const provinceSchema = z.enum(["BC", "ON", "CANADA", "OTHER"]);
@@ -27,17 +28,30 @@ const optionalPhoneSchema = z.preprocess(
   z.string().trim().min(1).optional(),
 );
 
-const createMatterBodySchema = z.object({
-  title: z.string().trim().min(1),
-  practiceArea: z.string().trim().min(1),
-  jurisdiction: provinceSchema,
-  client: z.object({
-    kind: z.enum(["person", "organization"]),
-    displayName: z.string().trim().min(1),
-    email: optionalEmailSchema,
-    phone: optionalPhoneSchema,
-  }),
-});
+const createMatterBodySchema = z
+  .object({
+    title: z.string().trim().min(1),
+    practiceArea: z.string().trim().min(1),
+    jurisdiction: provinceSchema,
+    clientContactId: z.string().trim().min(1).optional(),
+    client: z
+      .object({
+        kind: z.enum(["person", "organization"]),
+        displayName: z.string().trim().min(1),
+        email: optionalEmailSchema,
+        phone: optionalPhoneSchema,
+      })
+      .optional(),
+  })
+  .superRefine((body, context) => {
+    if (Boolean(body.client) === Boolean(body.clientContactId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["client"],
+        message: "Provide either client or clientContactId",
+      });
+    }
+  });
 
 const conflictBodySchema = z.object({
   prospectiveName: z.string().min(1),
@@ -132,17 +146,26 @@ export function registerMatterRoutes(
   server.post("/api/matters", async (request, reply) => {
     const access = requireAccess(request.auth, { resource: "matter", action: "create" });
     if (!access.ok) throw access.error;
-    const contactAccess = requireAccess(request.auth, { resource: "contact", action: "create" });
-    if (!contactAccess.ok) throw contactAccess.error;
-
     const body = parseRequestPart(createMatterBodySchema, request.body, "body");
+    if (body.client) {
+      const contactAccess = requireAccess(request.auth, { resource: "contact", action: "create" });
+      if (!contactAccess.ok) throw contactAccess.error;
+    } else {
+      const contactAccess = requireAccess(request.auth, { resource: "contact", action: "read" });
+      if (!contactAccess.ok) throw contactAccess.error;
+      const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+      if (!dossiers.some((dossier) => dossier.contact.id === body.clientContactId)) {
+        throw new ApiHttpError(403, "CONTACT_NOT_VISIBLE", "Matter client contact is not visible");
+      }
+    }
     const occurredAt = new Date();
     const openedOn = occurredAt.toISOString().slice(0, 10);
+    const contactId = body.clientContactId ?? prefixedId("contact");
     const matter = await options.repository.createMatterWithClient({
       firmId: request.auth.firmId,
       actorUserId: request.auth.user.id,
       matterId: prefixedId("matter"),
-      contactId: prefixedId("contact"),
+      contactId,
       partyId: prefixedId("party"),
       title: body.title,
       practiceArea: body.practiceArea,
@@ -150,11 +173,13 @@ export function registerMatterRoutes(
       openedOn,
       occurredAt: occurredAt.toISOString(),
       auditEventId: prefixedId("audit"),
-      client: {
-        kind: body.client.kind,
-        displayName: body.client.displayName,
-        identifiers: contactIdentifiers(body.client),
-      },
+      client: body.client
+        ? {
+            kind: body.client.kind,
+            displayName: body.client.displayName,
+            identifiers: contactIdentifiers(body.client),
+          }
+        : undefined,
     });
 
     reply.code(201);

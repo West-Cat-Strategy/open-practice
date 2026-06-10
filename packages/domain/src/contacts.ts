@@ -6,7 +6,7 @@ import {
   type ConflictSeverity,
 } from "./conflicts.js";
 
-export type ContactDossierContactSummary = Omit<Contact, "notes">;
+export type ContactDossierContactSummary = Omit<Contact, "notes" | "createdByUserId">;
 
 export interface ContactDossierMatterLink {
   matterId: string;
@@ -694,9 +694,10 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
     linksByContactId.set(party.contactId, links);
   }
 
-  return Array.from(linksByContactId.entries())
-    .map(([contactId, matters]) => {
+  return Array.from(contactById.keys())
+    .map((contactId) => {
       const contact = contactById.get(contactId)!;
+      const matters = linksByContactId.get(contactId) ?? [];
       const contactGrants = activePortalGrants.filter((grant) => grant.contactId === contactId);
       const sortedMatters = matters.sort((left, right) =>
         left.matterNumber.localeCompare(right.matterNumber),

@@ -78,6 +78,7 @@ import {
 } from "./calendar-events/drizzle.js";
 import { runDrizzleConflictCheck } from "./conflict-checks/drizzle.js";
 import {
+  createDrizzleContact,
   createDrizzleContactDataQualityResolution,
   createDrizzleContactRelationship,
   getDrizzleContact,
@@ -477,6 +478,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       listIntakeVariableProposals: (firmId, options) =>
         this.listIntakeVariableProposals(firmId, options),
     });
+  }
+
+  async createContact(
+    contact: Parameters<OpenPracticeRepository["createContact"]>[0],
+  ): ReturnType<OpenPracticeRepository["createContact"]> {
+    return createDrizzleContact(this.db, contact);
   }
 
   async createContactRelationship(

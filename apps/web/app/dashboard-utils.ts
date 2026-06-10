@@ -178,7 +178,13 @@ export function describeDisabledNavigationReason(
   return `${section.label} requires access that is not enabled for this role.`;
 }
 
-const matterRequiredNavigationKeys = new Set<OpenPracticeSidebarNavigationSection["key"]>(
+const zeroMatterDisabledNavigationKeys = new Set<OpenPracticeSidebarNavigationSection["key"]>(
+  routeCatalog
+    .filter((entry) => entry.showInSidebar && entry.availability === "matter")
+    .map((entry) => (entry.sectionKey ?? entry.id) as OpenPracticeSidebarNavigationSection["key"]),
+);
+
+const matterScopedNavigationKeys = new Set<OpenPracticeSidebarNavigationSection["key"]>(
   routeCatalog
     .filter((entry) => entry.showInSidebar && entry.requiresMatterContext)
     .map((entry) => (entry.sectionKey ?? entry.id) as OpenPracticeSidebarNavigationSection["key"]),
@@ -195,7 +201,7 @@ export function applyMatterAvailabilityToNavigation(
     if (section.key === "matters" && canCreateMatter) {
       return { ...section, enabled: true, disabledReason: undefined };
     }
-    if (!matterRequiredNavigationKeys.has(section.key)) return section;
+    if (!zeroMatterDisabledNavigationKeys.has(section.key)) return section;
     return {
       ...section,
       enabled: false,
@@ -215,9 +221,7 @@ export function enableMatterScopedCapabilitiesForLocalMatter<
 
   return sections.map((section) => {
     if (
-      !matterRequiredNavigationKeys.has(
-        section.key as OpenPracticeSidebarNavigationSection["key"],
-      ) ||
+      !matterScopedNavigationKeys.has(section.key as OpenPracticeSidebarNavigationSection["key"]) ||
       !section.actions?.includes("read")
     ) {
       return section;

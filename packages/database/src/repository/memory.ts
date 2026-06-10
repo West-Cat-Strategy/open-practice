@@ -198,6 +198,7 @@ import {
 } from "./calendar-events/memory.js";
 import { runMemoryConflictCheck, type MemoryConflictCheckStore } from "./conflict-checks/memory.js";
 import {
+  createMemoryContact,
   createMemoryContactDataQualityResolution,
   createMemoryContactRelationship,
   getMemoryContact,
@@ -991,12 +992,42 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private get contactStore(): MemoryContactStore {
     const repository = this;
     return {
-      contacts: this.contacts,
-      matters: this.matters,
-      matterParties: this.matterParties,
-      portalGrants: this.portalGrants,
-      intakeVariableProposals: this.intakeVariableProposals,
-      conflictChecks: this.conflictChecks,
+      get contacts() {
+        return repository.contacts;
+      },
+      set contacts(value: Contact[]) {
+        repository.contacts = value;
+      },
+      get matters() {
+        return repository.matters;
+      },
+      set matters(value: Matter[]) {
+        repository.matters = value;
+      },
+      get matterParties() {
+        return repository.matterParties;
+      },
+      set matterParties(value: MatterParty[]) {
+        repository.matterParties = value;
+      },
+      get portalGrants() {
+        return repository.portalGrants;
+      },
+      set portalGrants(value: PortalGrant[]) {
+        repository.portalGrants = value;
+      },
+      get intakeVariableProposals() {
+        return repository.intakeVariableProposals;
+      },
+      set intakeVariableProposals(value: IntakeVariableProposal[]) {
+        repository.intakeVariableProposals = value;
+      },
+      get conflictChecks() {
+        return repository.conflictChecks;
+      },
+      set conflictChecks(value: ConflictCheckRecord[]) {
+        repository.conflictChecks = value;
+      },
       get contactRelationships() {
         return repository.contactRelationships;
       },
@@ -1425,6 +1456,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return listMemoryContactDossiersForUser(this.contactStore, user, {
       listMattersForUser: (candidate) => this.listMattersForUser(candidate),
     });
+  }
+
+  async createContact(
+    contact: Parameters<OpenPracticeRepository["createContact"]>[0],
+  ): ReturnType<OpenPracticeRepository["createContact"]> {
+    return Promise.resolve(createMemoryContact(this.contactStore, contact));
   }
 
   async createContactRelationship(

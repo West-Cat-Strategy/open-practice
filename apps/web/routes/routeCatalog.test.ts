@@ -20,6 +20,7 @@ function enabledSidebarNavigation(): OpenPracticeSidebarNavigationSection[] {
     label: entry.shortLabel,
     title: entry.title,
     area: entry.area,
+    availability: entry.availability,
     enabled: true,
     requiresMatterContext: entry.requiresMatterContext,
   }));

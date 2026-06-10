@@ -235,7 +235,9 @@ export function mapCalendarEventRow(
   return {
     id: row.id,
     firmId: row.firmId,
-    matterId: row.matterId,
+    scope: row.scope as CalendarEventRecord["scope"],
+    matterId: row.matterId ?? undefined,
+    clientContactId: row.clientContactId ?? undefined,
     uid: row.uid,
     title: row.title,
     startsAt: row.startsAt.toISOString(),
@@ -286,7 +288,9 @@ export function mapCalendarEventReminderRow(
   return {
     id: row.id,
     firmId: row.firmId,
-    matterId: row.matterId,
+    scope: row.scope as CalendarEventReminderRecord["scope"],
+    matterId: row.matterId ?? undefined,
+    clientContactId: row.clientContactId ?? undefined,
     eventId: row.eventId,
     remindAt: row.remindAt.toISOString(),
     channel: row.channel as CalendarEventReminderRecord["channel"],
@@ -421,6 +425,7 @@ export function activeCalendarAttendees(
   attendees: CalendarEventAttendeeRecord[] | undefined,
   event: Pick<CalendarEventRecord, "firmId" | "matterId" | "id">,
 ): CalendarEventAttendeeRecord[] {
+  if (!event.matterId) return [];
   return (attendees ?? [])
     .filter(
       (attendee) =>
@@ -434,13 +439,15 @@ export function activeCalendarAttendees(
 
 export function activeCalendarReminders(
   reminders: CalendarEventReminderRecord[] | undefined,
-  event: Pick<CalendarEventRecord, "firmId" | "matterId" | "id">,
+  event: Pick<CalendarEventRecord, "firmId" | "scope" | "matterId" | "clientContactId" | "id">,
 ): CalendarEventReminderRecord[] {
   return (reminders ?? [])
     .filter(
       (reminder) =>
         reminder.firmId === event.firmId &&
+        (reminder.scope ?? "matter") === (event.scope ?? "matter") &&
         reminder.matterId === event.matterId &&
+        reminder.clientContactId === event.clientContactId &&
         reminder.eventId === event.id &&
         !reminder.deletedAt,
     )
@@ -870,6 +877,7 @@ export function mapContactRow(row: typeof schema.contacts.$inferSelect): Contact
     aliases: row.aliases,
     identifiers: row.identifiers as Contact["identifiers"],
     notes: row.notes ?? undefined,
+    createdByUserId: row.createdByUserId ?? undefined,
   };
 }
 

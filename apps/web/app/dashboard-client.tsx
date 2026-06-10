@@ -116,12 +116,15 @@ import {
   buildCalendarReminderPayload,
   buildCalendarReschedulePayload,
   removeCalendarEventReminder,
+  removeStandaloneCalendarEventReminder,
   removeCalendarEventAttendee,
   upsertCalendarEvent,
   upsertCalendarEventAttendee,
   upsertCalendarCredential,
   upsertCalendarEventReminder,
   upsertCalendarGuestSession,
+  upsertStandaloneCalendarEvent,
+  upsertStandaloneCalendarEventReminder,
 } from "./calendar-dashboard";
 import {
   buildDocumentProcessingOcrProviderPath,
@@ -428,6 +431,7 @@ type DashboardDraft = DraftingDashboardResponse["draftsByMatterId"][string][numb
 type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
 type DashboardIntakeVariableProposal = IntakeVariableProposalsResponse["proposals"][number];
 type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
+type DashboardCalendarScope = NonNullable<DashboardCalendarEvent["scope"]>;
 
 const dashboardLaneStaleAfterMs = 5 * 60 * 1000;
 
@@ -569,8 +573,18 @@ export default function DashboardClient({
   const [activityKindFilter, setActivityKindFilter] = useState<MatterActivityKindFilter>("all");
   const [activityStatusFilter, setActivityStatusFilter] =
     useState<MatterActivityStatusFilter>("all");
+  const [contactDossierRecords, setContactDossierRecords] = useState(contactDossiers);
   const [contactSearch, setContactSearch] = useState("");
   const [activeContactId, setActiveContactId] = useState(contactDossiers[0]?.contact.id ?? "");
+  const [contactCreateKind, setContactCreateKind] = useState<"person" | "organization">("person");
+  const [contactCreateDisplayName, setContactCreateDisplayName] = useState("");
+  const [contactCreateEmail, setContactCreateEmail] = useState("");
+  const [contactCreatePhone, setContactCreatePhone] = useState("");
+  const [creatingContact, setCreatingContact] = useState(false);
+  const [creatingMatterFromContactId, setCreatingMatterFromContactId] = useState("");
+  const [contactCreateStatus, setContactCreateStatus] = useState(
+    "No standalone contact created in this session.",
+  );
   const [contactDataQualityResolutions, setContactDataQualityResolutions] = useState(
     initialContactDataQualityResolutions,
   );
@@ -708,6 +722,15 @@ export default function DashboardClient({
     useState<Record<string, string>>({});
   const [calendarEventsByMatterId, setCalendarEventsByMatterId] = useState(
     calendar.eventsByMatterId,
+  );
+  const [standaloneCalendarEvents, setStandaloneCalendarEvents] = useState(
+    calendar.standaloneEvents,
+  );
+  const [calendarScope, setCalendarScope] = useState<DashboardCalendarScope>(
+    initialMatters[0] ? "matter" : "firm",
+  );
+  const [calendarClientContactId, setCalendarClientContactId] = useState(
+    contactDossiers[0]?.contact.id ?? "",
   );
   const [calendarCredentials, setCalendarCredentials] = useState(calendar.credentials);
   const [calendarCredentialLabel, setCalendarCredentialLabel] = useState("iOS Calendar");
@@ -873,13 +896,13 @@ export default function DashboardClient({
     [savedMatterFocusedMatters, matterSearch],
   );
   const filteredContactDossiers = useMemo(
-    () => filterContactDossiers(contactDossiers, contactSearch),
-    [contactDossiers, contactSearch],
+    () => filterContactDossiers(contactDossierRecords, contactSearch),
+    [contactDossierRecords, contactSearch],
   );
   const activeContactDossier =
     filteredContactDossiers.find((dossier) => dossier.contact.id === activeContactId) ??
     filteredContactDossiers[0] ??
-    contactDossiers[0];
+    contactDossierRecords[0];
   const activeContactDataQualityResolutions = activeContactDossier
     ? contactDataQualityResolutions.filter(
         (resolution) => resolution.contactId === activeContactDossier.contact.id,
@@ -887,6 +910,10 @@ export default function DashboardClient({
     : [];
   const canRecordContactDataQualityResolution = Boolean(
     canRecordContactDataQualityResolutions(capabilities.sections),
+  );
+  const canCreateContact = capabilities.sections.some(
+    (section) =>
+      section.key === "contacts" && section.enabled && section.actions.includes("create"),
   );
   const activeMatter = matters.find((matter) => matter.id === activeMatterId) ?? matters[0];
   const activeSignatures = signatures.filter(
@@ -1012,13 +1039,46 @@ export default function DashboardClient({
   const activeExternalUploadDocuments = activeMatter
     ? (externalUploadDocumentsByMatterId[activeMatter.id] ?? [])
     : [];
-  const activeCalendarEvents = activeMatter
-    ? (calendarEventsByMatterId[activeMatter.id] ?? [])
-    : [];
-  const activeCalendarSchedulingRequests = activeMatter
-    ? (calendar.schedulingRequestsByMatterId?.[activeMatter.id] ?? [])
-    : [];
-  const activeCalendarLinks = activeMatter ? calendar.linksByMatterId[activeMatter.id] : undefined;
+  const calendarClientOptions = contactDossierRecords.map((dossier) => ({
+    id: dossier.contact.id,
+    label: dossier.contact.displayName,
+  }));
+  const selectedCalendarClientContactId = calendarClientOptions.some(
+    (option) => option.id === calendarClientContactId,
+  )
+    ? calendarClientContactId
+    : (calendarClientOptions[0]?.id ?? "");
+  const activeCalendarScope =
+    calendarScope === "matter" && !activeMatter ? ("firm" as const) : calendarScope;
+  const activeStandaloneCalendarEvents = standaloneCalendarEvents.filter((event) => {
+    const scope =
+      event.scope ?? (event.matterId ? "matter" : event.clientContactId ? "client" : "firm");
+    if (activeCalendarScope === "firm") return scope === "firm";
+    if (activeCalendarScope === "client") {
+      return scope === "client" && event.clientContactId === selectedCalendarClientContactId;
+    }
+    return false;
+  });
+  const activeCalendarEvents =
+    activeCalendarScope === "matter" && activeMatter
+      ? (calendarEventsByMatterId[activeMatter.id] ?? [])
+      : activeStandaloneCalendarEvents;
+  const activeCalendarSchedulingRequests =
+    activeCalendarScope === "matter" && activeMatter
+      ? (calendar.schedulingRequestsByMatterId?.[activeMatter.id] ?? [])
+      : [];
+  const activeCalendarLinks =
+    activeCalendarScope === "matter" && activeMatter
+      ? calendar.linksByMatterId[activeMatter.id]
+      : undefined;
+  const activeCalendarLabel =
+    activeCalendarScope === "matter" && activeMatter
+      ? activeMatter.number
+      : activeCalendarScope === "client"
+        ? (calendarClientOptions.find((option) => option.id === selectedCalendarClientContactId)
+            ?.label ?? "Client calendar")
+        : "Firm calendar";
+  const matterCalendarControlsEnabled = activeCalendarScope === "matter" && Boolean(activeMatter);
   const activeCalendarBuckets = useMemo(
     () => buildCalendarRadarBuckets(activeCalendarEvents),
     [activeCalendarEvents],
@@ -1920,6 +1980,123 @@ export default function DashboardClient({
     );
   }
 
+  async function refreshContactDossiers(selectedContactId?: string): Promise<void> {
+    const dossiers = await requestDashboardJson<ContactDossiersResponse>(
+      apiBaseUrl,
+      "/api/contacts/dossiers",
+      { headers: devHeaders },
+    );
+    setContactDossierRecords(dossiers);
+    if (selectedContactId) {
+      setActiveContactId(selectedContactId);
+      setCalendarClientContactId(selectedContactId);
+    } else if (!dossiers.some((dossier) => dossier.contact.id === activeContactId)) {
+      setActiveContactId(dossiers[0]?.contact.id ?? "");
+      setCalendarClientContactId(dossiers[0]?.contact.id ?? "");
+    }
+  }
+
+  async function createContact(): Promise<void> {
+    const displayName = contactCreateDisplayName.trim();
+    if (!canCreateContact || !displayName) return;
+    setCreatingContact(true);
+    setContactCreateStatus("Creating standalone contact...");
+    const identifiers: Array<{ type: "email" | "phone"; value: string }> = [];
+    if (contactCreateEmail.trim()) {
+      identifiers.push({ type: "email", value: contactCreateEmail.trim() });
+    }
+    if (contactCreatePhone.trim()) {
+      identifiers.push({ type: "phone", value: contactCreatePhone.trim() });
+    }
+    try {
+      const payload = await requestDashboardJson<{
+        contact: ContactDossiersResponse[number]["contact"];
+      }>(apiBaseUrl, "/api/contacts", {
+        method: "POST",
+        headers: devHeaders,
+        payload: {
+          kind: contactCreateKind,
+          displayName,
+          identifiers,
+        },
+      });
+      await refreshContactDossiers(payload.contact.id);
+      setContactCreateDisplayName("");
+      setContactCreateEmail("");
+      setContactCreatePhone("");
+      setContactCreateStatus("Standalone contact created.");
+    } catch (error) {
+      setContactCreateStatus(`Contact create failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setCreatingContact(false);
+    }
+  }
+
+  async function createMatterFromContact(dossier: ContactDossiersResponse[number]): Promise<void> {
+    if (!canCreateMatter) return;
+    setCreatingMatterFromContactId(dossier.contact.id);
+    setFirstMatterStatus(`Creating matter for ${dossier.contact.displayName}...`);
+    try {
+      const created = await requestDashboardJson<MatterSummary>(apiBaseUrl, "/api/matters", {
+        method: "POST",
+        headers: devHeaders,
+        payload: {
+          title: firstMatterForm.title.trim() || `${dossier.contact.displayName} matter`,
+          practiceArea: firstMatterForm.practiceArea.trim() || "General practice",
+          jurisdiction: firstMatterForm.jurisdiction,
+          clientContactId: dossier.contact.id,
+        },
+      });
+      setMatters((current) => [created, ...current.filter((matter) => matter.id !== created.id)]);
+      setActiveMatterId(created.id);
+      setDraftsByMatterId((current) => ({ ...current, [created.id]: current[created.id] ?? [] }));
+      setExternalUploadsByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? [],
+      }));
+      setExternalUploadDocumentsByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? [],
+      }));
+      setDocumentProcessingByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? emptyDocumentProcessingWorkbench(created.id),
+      }));
+      setCalendarEventsByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? [],
+      }));
+      setIntakeFormLinksByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? [],
+      }));
+      setIntakeVariableProposalsByMatterId((current) => ({
+        ...current,
+        [created.id]: current[created.id] ?? [],
+      }));
+      await refreshContactDossiers(dossier.contact.id);
+      setFirstMatterStatus(`Created matter ${created.number} for ${dossier.contact.displayName}.`);
+      selectDashboardSection("matters");
+    } catch (error) {
+      setFirstMatterStatus(`Matter create failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setCreatingMatterFromContactId("");
+    }
+  }
+
+  function prepareAppointmentForContact(dossier: ContactDossiersResponse[number]): void {
+    setActiveContactId(dossier.contact.id);
+    setCalendarClientContactId(dossier.contact.id);
+    setCalendarScope("client");
+    if (!calendarEventTitle.trim()) {
+      setCalendarEventTitle(`${dossier.contact.displayName} appointment`);
+    }
+    setCalendarEventLifecycleStatus(
+      `Prepared client appointment for ${dossier.contact.displayName}.`,
+    );
+    selectDashboardSection("calendar");
+  }
+
   async function recordContactDataQualityResolution(
     signal: ContactDossiersResponse[number]["qualityReview"]["signals"][number],
     decision: ContactDataQualityResolutionRecord["decision"],
@@ -2597,8 +2774,48 @@ export default function DashboardClient({
     return value ? new Date(value).toISOString() : "";
   }
 
+  function calendarTargetPayload(
+    event?: Pick<DashboardCalendarEvent, "scope" | "matterId" | "clientContactId">,
+  ): { scope: DashboardCalendarScope; matterId?: string; clientContactId?: string } | null {
+    if (event) {
+      const scope =
+        event.scope ?? (event.matterId ? "matter" : event.clientContactId ? "client" : "firm");
+      return {
+        scope,
+        ...(scope === "matter" && event.matterId ? { matterId: event.matterId } : {}),
+        ...(scope === "client" && event.clientContactId
+          ? { clientContactId: event.clientContactId }
+          : {}),
+      };
+    }
+
+    if (activeCalendarScope === "matter") {
+      return activeMatter ? { scope: "matter", matterId: activeMatter.id } : null;
+    }
+    if (activeCalendarScope === "client") {
+      return selectedCalendarClientContactId
+        ? { scope: "client", clientContactId: selectedCalendarClientContactId }
+        : null;
+    }
+    return { scope: "firm" };
+  }
+
+  function upsertCalendarEventForScope(
+    current: Record<string, DashboardCalendarEvent[]>,
+    event: DashboardCalendarEvent,
+  ): Record<string, DashboardCalendarEvent[]> {
+    if (!event.matterId) return current;
+    return upsertCalendarEvent(current, event.matterId, event);
+  }
+
   async function createCalendarEvent(): Promise<void> {
-    if (!activeMatter) return;
+    const target = calendarTargetPayload();
+    if (!target) {
+      setCalendarEventLifecycleStatus(
+        "Select a visible client contact before creating a client event.",
+      );
+      return;
+    }
     setCreatingCalendarEvent(true);
     setCalendarEventLifecycleStatus("Creating calendar event...");
     let payload: CalendarEventMutationResponse;
@@ -2610,7 +2827,7 @@ export default function DashboardClient({
           method: "POST",
           headers: devHeaders,
           payload: buildCalendarEventPayload({
-            matterId: activeMatter.id,
+            ...target,
             title: calendarEventTitle,
             startsAt: calendarDateTimePayload(calendarEventStartsAt),
             endsAt: calendarDateTimePayload(calendarEventEndsAt),
@@ -2625,9 +2842,13 @@ export default function DashboardClient({
       setCreatingCalendarEvent(false);
       return;
     }
-    setCalendarEventsByMatterId((current) =>
-      upsertCalendarEvent(current, activeMatter.id, payload.event),
-    );
+    if (payload.event.matterId) {
+      setCalendarEventsByMatterId((current) => upsertCalendarEventForScope(current, payload.event));
+    } else {
+      setStandaloneCalendarEvents((current) =>
+        upsertStandaloneCalendarEvent(current, payload.event),
+      );
+    }
     setCalendarEventTitle("");
     setCalendarEventStartsAt("");
     setCalendarEventEndsAt("");
@@ -2638,7 +2859,8 @@ export default function DashboardClient({
   }
 
   async function rescheduleCalendarEvent(event: DashboardCalendarEvent): Promise<void> {
-    if (!activeMatter || !calendarEventStartsAt || !calendarEventEndsAt) return;
+    const target = calendarTargetPayload(event);
+    if (!target || !calendarEventStartsAt || !calendarEventEndsAt) return;
     setUpdatingCalendarEventId(event.id);
     setCalendarEventLifecycleStatus("Rescheduling calendar event...");
     let payload: CalendarEventMutationResponse;
@@ -2650,7 +2872,7 @@ export default function DashboardClient({
           method: "POST",
           headers: devHeaders,
           payload: buildCalendarReschedulePayload({
-            matterId: activeMatter.id,
+            ...target,
             startsAt: calendarDateTimePayload(calendarEventStartsAt),
             endsAt: calendarDateTimePayload(calendarEventEndsAt),
             status: event.status === "cancelled" ? "confirmed" : undefined,
@@ -2662,15 +2884,20 @@ export default function DashboardClient({
       setUpdatingCalendarEventId("");
       return;
     }
-    setCalendarEventsByMatterId((current) =>
-      upsertCalendarEvent(current, activeMatter.id, payload.event),
-    );
+    if (payload.event.matterId) {
+      setCalendarEventsByMatterId((current) => upsertCalendarEventForScope(current, payload.event));
+    } else {
+      setStandaloneCalendarEvents((current) =>
+        upsertStandaloneCalendarEvent(current, payload.event),
+      );
+    }
     setCalendarEventLifecycleStatus("Calendar event rescheduled.");
     setUpdatingCalendarEventId("");
   }
 
   async function cancelCalendarEvent(event: DashboardCalendarEvent): Promise<void> {
-    if (!activeMatter) return;
+    const target = calendarTargetPayload(event);
+    if (!target) return;
     setCancelingCalendarEventId(event.id);
     setCalendarEventLifecycleStatus("Cancelling calendar event...");
     let payload: CalendarEventMutationResponse;
@@ -2681,7 +2908,7 @@ export default function DashboardClient({
         {
           method: "POST",
           headers: devHeaders,
-          payload: { matterId: activeMatter.id },
+          payload: target,
         },
       );
     } catch (error) {
@@ -2689,15 +2916,21 @@ export default function DashboardClient({
       setCancelingCalendarEventId("");
       return;
     }
-    setCalendarEventsByMatterId((current) =>
-      upsertCalendarEvent(current, activeMatter.id, payload.event),
-    );
+    if (payload.event.matterId) {
+      setCalendarEventsByMatterId((current) => upsertCalendarEventForScope(current, payload.event));
+    } else {
+      setStandaloneCalendarEvents((current) =>
+        upsertStandaloneCalendarEvent(current, payload.event),
+      );
+    }
     setCalendarEventLifecycleStatus("Calendar event cancelled.");
     setCancelingCalendarEventId("");
   }
 
   async function addCalendarReminder(): Promise<void> {
-    if (!activeMatter || !selectedCalendarReminderEvent) return;
+    if (!selectedCalendarReminderEvent) return;
+    const target = calendarTargetPayload(selectedCalendarReminderEvent);
+    if (!target) return;
     setAddingCalendarReminder(true);
     setCalendarReminderStatus("Adding reminder...");
     let payload: CalendarReminderMutationResponse;
@@ -2709,7 +2942,7 @@ export default function DashboardClient({
           method: "POST",
           headers: devHeaders,
           payload: buildCalendarReminderPayload({
-            matterId: activeMatter.id,
+            ...target,
             remindAt: calendarDateTimePayload(calendarReminderAt),
             status: calendarReminderStatusValue,
             note: calendarReminderNote,
@@ -2721,14 +2954,24 @@ export default function DashboardClient({
       setAddingCalendarReminder(false);
       return;
     }
-    setCalendarEventsByMatterId((current) =>
-      upsertCalendarEventReminder(
-        current,
-        activeMatter.id,
-        selectedCalendarReminderEvent.id,
-        payload.reminder,
-      ),
-    );
+    if (selectedCalendarReminderEvent.matterId) {
+      setCalendarEventsByMatterId((current) =>
+        upsertCalendarEventReminder(
+          current,
+          selectedCalendarReminderEvent.matterId!,
+          selectedCalendarReminderEvent.id,
+          payload.reminder,
+        ),
+      );
+    } else {
+      setStandaloneCalendarEvents((current) =>
+        upsertStandaloneCalendarEventReminder(
+          current,
+          selectedCalendarReminderEvent.id,
+          payload.reminder,
+        ),
+      );
+    }
     setCalendarReminderAt("");
     setCalendarReminderNote("");
     setCalendarReminderStatus("Reminder added.");
@@ -2740,7 +2983,9 @@ export default function DashboardClient({
     reminderId: string,
     status: "pending" | "acknowledged" | "dismissed" | "cancelled",
   ): Promise<void> {
-    if (!activeMatter) return;
+    const event = activeCalendarEvents.find((candidate) => candidate.id === eventId);
+    const target = event ? calendarTargetPayload(event) : null;
+    if (!event || !target) return;
     setUpdatingCalendarReminderId(reminderId);
     setCalendarReminderStatus("Updating reminder...");
     let payload: CalendarReminderMutationResponse;
@@ -2753,7 +2998,7 @@ export default function DashboardClient({
         {
           method: "PATCH",
           headers: devHeaders,
-          payload: { matterId: activeMatter.id, status },
+          payload: { ...target, status },
         },
       );
     } catch (error) {
@@ -2761,23 +3006,33 @@ export default function DashboardClient({
       setUpdatingCalendarReminderId("");
       return;
     }
-    setCalendarEventsByMatterId((current) =>
-      upsertCalendarEventReminder(current, activeMatter.id, eventId, payload.reminder),
-    );
+    if (event.matterId) {
+      setCalendarEventsByMatterId((current) =>
+        upsertCalendarEventReminder(current, event.matterId!, eventId, payload.reminder),
+      );
+    } else {
+      setStandaloneCalendarEvents((current) =>
+        upsertStandaloneCalendarEventReminder(current, eventId, payload.reminder),
+      );
+    }
     setCalendarReminderStatus("Reminder updated.");
     setUpdatingCalendarReminderId("");
   }
 
   async function removeCalendarReminder(eventId: string, reminderId: string): Promise<void> {
-    if (!activeMatter) return;
+    const event = activeCalendarEvents.find((candidate) => candidate.id === eventId);
+    const target = event ? calendarTargetPayload(event) : null;
+    if (!event || !target) return;
     setRemovingCalendarReminderId(reminderId);
     setCalendarReminderStatus("Removing reminder...");
+    const query = new URLSearchParams();
+    query.set("scope", target.scope);
+    if (target.matterId) query.set("matterId", target.matterId);
+    if (target.clientContactId) query.set("clientContactId", target.clientContactId);
     const response = await fetch(
       `${apiBaseUrl}/api/calendar/events/${encodeURIComponent(
         eventId,
-      )}/reminders/${encodeURIComponent(reminderId)}?matterId=${encodeURIComponent(
-        activeMatter.id,
-      )}`,
+      )}/reminders/${encodeURIComponent(reminderId)}?${query.toString()}`,
       { method: "DELETE", credentials: "include", headers: devHeaders },
     );
     if (!response.ok) {
@@ -2785,9 +3040,15 @@ export default function DashboardClient({
       setRemovingCalendarReminderId("");
       return;
     }
-    setCalendarEventsByMatterId((current) =>
-      removeCalendarEventReminder(current, activeMatter.id, eventId, reminderId),
-    );
+    if (event.matterId) {
+      setCalendarEventsByMatterId((current) =>
+        removeCalendarEventReminder(current, event.matterId!, eventId, reminderId),
+      );
+    } else {
+      setStandaloneCalendarEvents((current) =>
+        removeStandaloneCalendarEventReminder(current, eventId, reminderId),
+      );
+    }
     setCalendarReminderStatus("Reminder removed.");
     setRemovingCalendarReminderId("");
   }
@@ -3785,6 +4046,7 @@ export default function DashboardClient({
               ...current.matters,
             ],
       }));
+      await refreshContactDossiers();
       setFirstMatterForm(initialFirstMatterFormState);
       setFirstMatterStatus(`${created.number} created.`);
       selectDashboardSection("matters");
@@ -4166,19 +4428,168 @@ export default function DashboardClient({
                 <ContactsSection
                   activeContactDossier={activeContactDossier}
                   canRecordContactDataQualityResolution={canRecordContactDataQualityResolution}
+                  canCreateContact={canCreateContact}
+                  canCreateMatter={canCreateMatter}
                   compactStatus={compactStatus}
-                  contactDossiers={contactDossiers}
+                  contactCreateDisplayName={contactCreateDisplayName}
+                  contactCreateEmail={contactCreateEmail}
+                  contactCreateKind={contactCreateKind}
+                  contactCreatePhone={contactCreatePhone}
+                  contactCreateStatus={contactCreateStatus}
+                  contactDossiers={contactDossierRecords}
                   contactDataQualityResolutions={activeContactDataQualityResolutions}
                   contactDataQualityStatus={contactDataQualityStatus}
                   contactReviewQueue={contactReviewQueue}
                   contactSearch={contactSearch}
+                  creatingContact={creatingContact}
+                  creatingMatterFromContactId={creatingMatterFromContactId}
                   filteredContactDossiers={filteredContactDossiers}
+                  onContactCreateDisplayNameChange={setContactCreateDisplayName}
+                  onContactCreateEmailChange={setContactCreateEmail}
+                  onContactCreateKindChange={setContactCreateKind}
+                  onContactCreatePhoneChange={setContactCreatePhone}
+                  onCreateContact={() => void createContact()}
+                  onCreateMatterFromContact={(dossier) => void createMatterFromContact(dossier)}
+                  onNewAppointmentForContact={prepareAppointmentForContact}
                   onRecordContactDataQualityResolution={recordContactDataQualityResolution}
                   onContactSearchChange={setContactSearch}
                   onPrepareConflictCheckFromContact={prepareConflictCheckFromContact}
                   onSelectContact={setActiveContactId}
                   onSelectMatter={selectMatter}
                   recordingContactResolutionKey={recordingContactResolutionKey}
+                />
+              </article>
+            ) : null}
+
+            {activeSection === "calendar" ? (
+              <article
+                aria-labelledby="zero-calendar-title"
+                className="panel matter-detail matter-detail-panel"
+                id="matter-workspace"
+                ref={detailPanelRef}
+                tabIndex={-1}
+              >
+                <div className="panel-header matter-detail-header">
+                  <div>
+                    <p className="eyebrow">Calendar radar</p>
+                    <h2 id="zero-calendar-title">Calendar</h2>
+                  </div>
+                  <span className="status-chip">Firm/client surface</span>
+                </div>
+                <CalendarSection
+                  activeCalendarBuckets={activeCalendarBuckets}
+                  activeCalendarEvents={activeCalendarEvents}
+                  activeCalendarLinks={activeCalendarLinks}
+                  activeCalendarSchedulingRequests={activeCalendarSchedulingRequests}
+                  activeCalendarScope={activeCalendarScope}
+                  activeMatterNumber={activeCalendarLabel}
+                  addingCalendarAttendee={addingCalendarAttendee}
+                  addingCalendarReminder={addingCalendarReminder}
+                  calendarAttendeeEmail={calendarAttendeeEmail}
+                  calendarAttendeeName={calendarAttendeeName}
+                  calendarAttendeeRole={calendarAttendeeRole}
+                  calendarCredentialLabel={calendarCredentialLabel}
+                  calendarCredentialStatus={calendarCredentialStatus}
+                  calendarCredentials={calendarCredentials}
+                  calendarEventDescription={calendarEventDescription}
+                  calendarEventEndsAt={calendarEventEndsAt}
+                  calendarEventLifecycleStatus={calendarEventLifecycleStatus}
+                  calendarEventLocation={calendarEventLocation}
+                  calendarEventStartsAt={calendarEventStartsAt}
+                  calendarEventStatusValue={calendarEventStatusValue}
+                  calendarEventTitle={calendarEventTitle}
+                  calendarGuestSessionSecret={calendarGuestSessionSecret}
+                  calendarGuestSessionStatus={calendarGuestSessionStatus}
+                  calendarGuestSessionsByEventId={calendarGuestSessionsByEventId}
+                  calendarMeetingLinkModesByEventId={calendarMeetingLinkModesByEventId}
+                  calendarMeetingLinkUrlsByEventId={calendarMeetingLinkUrlsByEventId}
+                  calendarMeetingStatus={calendarMeetingStatus}
+                  calendarOneTimeSecret={calendarOneTimeSecret}
+                  calendarReminderAt={calendarReminderAt}
+                  calendarReminderNote={calendarReminderNote}
+                  calendarReminderStatus={calendarReminderStatus}
+                  calendarReminderStatusValue={calendarReminderStatusValue}
+                  calendarClientContactId={selectedCalendarClientContactId}
+                  calendarClientOptions={calendarClientOptions}
+                  cancelingCalendarEventId={cancelingCalendarEventId}
+                  creatingCalendarCredential={creatingCalendarCredential}
+                  creatingCalendarEvent={creatingCalendarEvent}
+                  creatingCalendarGuestSessionEventId={creatingCalendarGuestSessionEventId}
+                  pendingDeliveryConfirmation={pendingDeliveryConfirmation}
+                  removingCalendarAttendeeId={removingCalendarAttendeeId}
+                  removingCalendarReminderId={removingCalendarReminderId}
+                  revokingCalendarCredentialId={revokingCalendarCredentialId}
+                  selectedCalendarMeetingEvent={selectedCalendarMeetingEvent}
+                  selectedCalendarReminderEvent={selectedCalendarReminderEvent}
+                  sendingCalendarInvitationsEventId={sendingCalendarInvitationsEventId}
+                  matterCalendarControlsEnabled={matterCalendarControlsEnabled}
+                  updatingCalendarEventId={updatingCalendarEventId}
+                  updatingCalendarGuestSessionKey={updatingCalendarGuestSessionKey}
+                  updatingCalendarMeetingLinkEventId={updatingCalendarMeetingLinkEventId}
+                  updatingCalendarReminderId={updatingCalendarReminderId}
+                  onAddCalendarAttendee={() => void addCalendarAttendee()}
+                  onAddCalendarReminder={() => void addCalendarReminder()}
+                  onCancelCalendarEvent={(event) => void cancelCalendarEvent(event)}
+                  onCancelPendingDeliveryConfirmation={() => setPendingDeliveryConfirmation(null)}
+                  onConfirmPendingDelivery={confirmPendingDelivery}
+                  onControlCalendarGuestSession={(event, session, action) =>
+                    void controlCalendarGuestSession(event, session, action)
+                  }
+                  onCreateCalendarCredential={() => void createCalendarCredential()}
+                  onCreateCalendarEvent={() => void createCalendarEvent()}
+                  onCreateCalendarGuestSession={(event) => void createCalendarGuestSession(event)}
+                  onIssueCalendarGuestLink={(event, session) =>
+                    void issueCalendarGuestLink(event, session)
+                  }
+                  onOpenCalendarInvitationConfirmation={openCalendarInvitationConfirmation}
+                  onRemoveCalendarAttendee={(eventId, attendeeId) =>
+                    void removeCalendarAttendee(eventId, attendeeId)
+                  }
+                  onRemoveCalendarReminder={(eventId, reminderId) =>
+                    void removeCalendarReminder(eventId, reminderId)
+                  }
+                  onRescheduleCalendarEvent={(event) => void rescheduleCalendarEvent(event)}
+                  onRevokeCalendarCredential={(credentialId) =>
+                    void revokeCalendarCredential(credentialId)
+                  }
+                  onSetCalendarAttendeeEmail={setCalendarAttendeeEmail}
+                  onSetCalendarAttendeeName={setCalendarAttendeeName}
+                  onSetCalendarAttendeeRole={setCalendarAttendeeRole}
+                  onSetCalendarScope={(scope) => setCalendarScope(scope)}
+                  onSetCalendarClientContactId={setCalendarClientContactId}
+                  onSetCalendarCredentialLabel={setCalendarCredentialLabel}
+                  onSetCalendarEventDescription={setCalendarEventDescription}
+                  onSetCalendarEventEndsAt={setCalendarEventEndsAt}
+                  onSetCalendarEventLocation={setCalendarEventLocation}
+                  onSetCalendarEventStartsAt={setCalendarEventStartsAt}
+                  onSetCalendarEventStatusValue={setCalendarEventStatusValue}
+                  onSetCalendarEventTitle={setCalendarEventTitle}
+                  onSetCalendarMeetingEventId={setCalendarMeetingEventId}
+                  onSetCalendarMeetingLinkMode={(eventId, mode) =>
+                    setCalendarMeetingLinkModesByEventId((current) => ({
+                      ...current,
+                      [eventId]: mode,
+                    }))
+                  }
+                  onSetCalendarMeetingLinkUrl={(eventId, url) =>
+                    setCalendarMeetingLinkUrlsByEventId((current) => ({
+                      ...current,
+                      [eventId]: url,
+                    }))
+                  }
+                  onSetCalendarReminderAt={setCalendarReminderAt}
+                  onSetCalendarReminderEventId={setCalendarReminderEventId}
+                  onSetCalendarReminderNote={setCalendarReminderNote}
+                  onSetCalendarReminderStatusValue={setCalendarReminderStatusValue}
+                  onUpdateCalendarGuestLink={(event, session, guestId, action) =>
+                    void updateCalendarGuestLink(event, session, guestId, action)
+                  }
+                  onUpdateCalendarMeetingLink={(event, mode, externalUrl) =>
+                    void updateCalendarMeetingLink(event, mode, externalUrl)
+                  }
+                  onUpdateCalendarReminder={(eventId, reminderId, status) =>
+                    void updateCalendarReminder(eventId, reminderId, status)
+                  }
                 />
               </article>
             ) : null}
@@ -4347,11 +4758,7 @@ export default function DashboardClient({
               </article>
             ) : null}
 
-            {activeSection !== "contacts" &&
-            activeSection !== "audit" &&
-            activeSection !== "queues" &&
-            activeSection !== "reports" &&
-            activeSection !== "admin" ? (
+            {activeSection === "matters" ? (
               <FirstMatterWorkspace
                 canCreateMatter={canCreateMatter}
                 creating={creatingFirstMatter}
@@ -4360,6 +4767,70 @@ export default function DashboardClient({
                 onCreate={() => void createFirstMatter()}
                 status={firstMatterStatus}
               />
+            ) : null}
+
+            {activeSection !== "matters" &&
+            activeSection !== "contacts" &&
+            activeSection !== "calendar" &&
+            activeSection !== "audit" &&
+            activeSection !== "queues" &&
+            activeSection !== "reports" &&
+            activeSection !== "admin" ? (
+              <article
+                aria-labelledby="zero-mixed-section-title"
+                className="panel matter-detail matter-detail-panel"
+                id="matter-workspace"
+                ref={detailPanelRef}
+                tabIndex={-1}
+              >
+                <div className="panel-header matter-detail-header">
+                  <div>
+                    <p className="eyebrow">Matter-bound workspace</p>
+                    <h2 id="zero-mixed-section-title">{activeSectionLabel}</h2>
+                  </div>
+                  <span className="status-chip">Ready after matter link</span>
+                </div>
+                <div className="detail-grid compact-detail-grid">
+                  <div>
+                    <span className="field-label">Section</span>
+                    <strong>{activeSectionLabel}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Firm</span>
+                    <strong>{overview.firm.name}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Visible contacts</span>
+                    <strong>{contactDossierRecords.length}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Matters</span>
+                    <strong>{matters.length}</strong>
+                  </div>
+                </div>
+                <p className="detail-note">
+                  This section can open before a matter exists. Create a matter or start from a
+                  visible contact to unlock matter-scoped records here.
+                </p>
+                <div className="row-actions">
+                  <button
+                    className="secondary-button compact-button"
+                    onClick={() => selectDashboardSection("contacts")}
+                    type="button"
+                  >
+                    <ContactRound size={16} />
+                    Contacts
+                  </button>
+                  <button
+                    className="secondary-button compact-button"
+                    onClick={() => selectDashboardSection("matters")}
+                    type="button"
+                  >
+                    <Gavel size={16} />
+                    Create matter
+                  </button>
+                </div>
+              </article>
             ) : null}
 
             {!isContextRailCollapsed ? (
@@ -4485,13 +4956,29 @@ export default function DashboardClient({
               <ContactsSection
                 activeContactDossier={activeContactDossier}
                 canRecordContactDataQualityResolution={canRecordContactDataQualityResolution}
+                canCreateContact={canCreateContact}
+                canCreateMatter={canCreateMatter}
                 compactStatus={compactStatus}
-                contactDossiers={contactDossiers}
+                contactCreateDisplayName={contactCreateDisplayName}
+                contactCreateEmail={contactCreateEmail}
+                contactCreateKind={contactCreateKind}
+                contactCreatePhone={contactCreatePhone}
+                contactCreateStatus={contactCreateStatus}
+                contactDossiers={contactDossierRecords}
                 contactDataQualityResolutions={activeContactDataQualityResolutions}
                 contactDataQualityStatus={contactDataQualityStatus}
                 contactReviewQueue={contactReviewQueue}
                 contactSearch={contactSearch}
+                creatingContact={creatingContact}
+                creatingMatterFromContactId={creatingMatterFromContactId}
                 filteredContactDossiers={filteredContactDossiers}
+                onContactCreateDisplayNameChange={setContactCreateDisplayName}
+                onContactCreateEmailChange={setContactCreateEmail}
+                onContactCreateKindChange={setContactCreateKind}
+                onContactCreatePhoneChange={setContactCreatePhone}
+                onCreateContact={() => void createContact()}
+                onCreateMatterFromContact={(dossier) => void createMatterFromContact(dossier)}
+                onNewAppointmentForContact={prepareAppointmentForContact}
                 onRecordContactDataQualityResolution={recordContactDataQualityResolution}
                 onContactSearchChange={setContactSearch}
                 onPrepareConflictCheckFromContact={prepareConflictCheckFromContact}
@@ -4703,7 +5190,8 @@ export default function DashboardClient({
                 activeCalendarEvents={activeCalendarEvents}
                 activeCalendarLinks={activeCalendarLinks}
                 activeCalendarSchedulingRequests={activeCalendarSchedulingRequests}
-                activeMatterNumber={activeMatter.number}
+                activeCalendarScope={activeCalendarScope}
+                activeMatterNumber={activeCalendarLabel}
                 addingCalendarAttendee={addingCalendarAttendee}
                 addingCalendarReminder={addingCalendarReminder}
                 calendarAttendeeEmail={calendarAttendeeEmail}
@@ -4730,6 +5218,8 @@ export default function DashboardClient({
                 calendarReminderNote={calendarReminderNote}
                 calendarReminderStatus={calendarReminderStatus}
                 calendarReminderStatusValue={calendarReminderStatusValue}
+                calendarClientContactId={selectedCalendarClientContactId}
+                calendarClientOptions={calendarClientOptions}
                 cancelingCalendarEventId={cancelingCalendarEventId}
                 creatingCalendarCredential={creatingCalendarCredential}
                 creatingCalendarEvent={creatingCalendarEvent}
@@ -4741,6 +5231,7 @@ export default function DashboardClient({
                 selectedCalendarMeetingEvent={selectedCalendarMeetingEvent}
                 selectedCalendarReminderEvent={selectedCalendarReminderEvent}
                 sendingCalendarInvitationsEventId={sendingCalendarInvitationsEventId}
+                matterCalendarControlsEnabled={matterCalendarControlsEnabled}
                 updatingCalendarEventId={updatingCalendarEventId}
                 updatingCalendarGuestSessionKey={updatingCalendarGuestSessionKey}
                 updatingCalendarMeetingLinkEventId={updatingCalendarMeetingLinkEventId}
@@ -4773,6 +5264,8 @@ export default function DashboardClient({
                 onSetCalendarAttendeeEmail={setCalendarAttendeeEmail}
                 onSetCalendarAttendeeName={setCalendarAttendeeName}
                 onSetCalendarAttendeeRole={setCalendarAttendeeRole}
+                onSetCalendarScope={(scope) => setCalendarScope(scope)}
+                onSetCalendarClientContactId={setCalendarClientContactId}
                 onSetCalendarCredentialLabel={setCalendarCredentialLabel}
                 onSetCalendarEventDescription={setCalendarEventDescription}
                 onSetCalendarEventEndsAt={setCalendarEventEndsAt}

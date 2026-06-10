@@ -292,7 +292,9 @@ export function registerOperationalViewRoutes(
       intakeFormLinks: intakeFormLinks.filter((link) => matterIds.has(link.matterId)),
       calendarGuestLinks: calendarGuestLinks.filter((link) => matterIds.has(link.matterId)),
       accessLogs,
-      calendarEvents: calendarEvents.filter((event) => matterIds.has(event.matterId)),
+      calendarEvents: calendarEvents.filter((event): event is typeof event & { matterId: string } =>
+        Boolean(event.matterId && matterIds.has(event.matterId)),
+      ),
       contactDossiers,
       emailOutbox: emailOutbox
         .filter((email) => email.matterId !== undefined && matterIds.has(email.matterId))
