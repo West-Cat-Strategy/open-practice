@@ -54,6 +54,12 @@ export const sampleFirm: Firm = {
   defaultProvince: "BC",
 };
 
+export const sampleMatterlessFirm: Firm = {
+  id: "firm-matterless-e2e",
+  name: "Matterless E2E Legal Operations",
+  defaultProvince: "BC",
+};
+
 export const sampleUsers: User[] = [
   {
     id: "user-admin",
@@ -80,6 +86,15 @@ export const sampleUsers: User[] = [
     email: "jordan@example.test",
     role: "firm_member",
     assignedMatterIds: ["matter-001"],
+    mfaEnabled: false,
+  },
+  {
+    id: "user-matterless-admin",
+    firmId: sampleMatterlessFirm.id,
+    displayName: "Synthetic Matterless Admin",
+    email: "matterless-admin@example.test",
+    role: "owner_admin",
+    assignedMatterIds: [],
     mfaEnabled: false,
   },
 ];

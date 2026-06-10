@@ -12,6 +12,7 @@ import {
   sampleDocuments,
   sampleExpenseEntries,
   sampleFirm,
+  sampleMatterlessFirm,
   sampleGeneratedDocuments,
   sampleIntakeSessions,
   sampleIntakeTemplates,
@@ -56,7 +57,7 @@ function userRow(user: (typeof sampleUsers)[number]): typeof schema.users.$infer
 }
 
 export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
-  await db.insert(schema.firms).values(sampleFirm).onConflictDoNothing();
+  await db.insert(schema.firms).values([sampleFirm, sampleMatterlessFirm]).onConflictDoNothing();
   await db.insert(schema.users).values(sampleUsers.map(userRow)).onConflictDoNothing();
   await db.insert(schema.contacts).values(sampleContacts).onConflictDoNothing();
   await db

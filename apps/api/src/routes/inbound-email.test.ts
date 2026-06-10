@@ -11,7 +11,7 @@ import type {
   ProfessionalRole,
   User,
 } from "@open-practice/domain";
-import { sampleUsers } from "@open-practice/domain/sample-data";
+import { sampleFirm, sampleUsers } from "@open-practice/domain/sample-data";
 import { registerInboundEmailRoutes } from "./inbound-email.js";
 import type { ApiJobQueue } from "./types.js";
 
@@ -237,9 +237,16 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
+function singleFirmMemoryRepository(): InMemoryOpenPracticeRepository {
+  return new InMemoryOpenPracticeRepository({
+    firms: [sampleFirm],
+    users: sampleUsers.filter((user) => user.firmId === sampleFirm.id),
+  });
+}
+
 describe("inbound email routes", () => {
   it("accepts signed Mailgun raw MIME webhooks, stores the raw body, and queues parsing", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = singleFirmMemoryRepository();
     await enableMailgunProvider(repository);
     const { s3, puts } = writableFakeS3({ serverSideEncryption: "AES256" });
     const inboundQueue = fakeInboundEmailQueue();
@@ -317,7 +324,7 @@ describe("inbound email routes", () => {
   });
 
   it("accepts legacy plaintext Mailgun provider signing secrets", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = singleFirmMemoryRepository();
     await enableMailgunProvider(repository, "legacy-plaintext-mailgun-secret");
     const { s3 } = writableFakeS3();
     const inboundQueue = fakeInboundEmailQueue();
@@ -340,7 +347,7 @@ describe("inbound email routes", () => {
   });
 
   it("rejects Mailgun raw MIME webhooks with invalid or stale signatures", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = singleFirmMemoryRepository();
     await enableMailgunProvider(repository);
     const { s3, puts } = writableFakeS3();
     const inboundQueue = fakeInboundEmailQueue();
@@ -373,7 +380,7 @@ describe("inbound email routes", () => {
   });
 
   it("rejects Mailgun raw MIME webhooks that omit body-mime", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = singleFirmMemoryRepository();
     await enableMailgunProvider(repository);
     const { s3, puts } = writableFakeS3();
     const inboundQueue = fakeInboundEmailQueue();
@@ -397,11 +404,11 @@ describe("inbound email routes", () => {
   });
 
   it("returns 503 when Mailgun signing, object storage, or inbound queue is unavailable", async () => {
-    const missingSecretRepository = new InMemoryOpenPracticeRepository();
+    const missingSecretRepository = singleFirmMemoryRepository();
     await enableMailgunProvider(missingSecretRepository, { domain: "mail.example.test" });
-    const missingS3Repository = new InMemoryOpenPracticeRepository();
+    const missingS3Repository = singleFirmMemoryRepository();
     await enableMailgunProvider(missingS3Repository);
-    const missingQueueRepository = new InMemoryOpenPracticeRepository();
+    const missingQueueRepository = singleFirmMemoryRepository();
     await enableMailgunProvider(missingQueueRepository);
     const { s3, puts } = writableFakeS3();
     const inboundQueue = fakeInboundEmailQueue();
@@ -450,7 +457,7 @@ describe("inbound email routes", () => {
   });
 
   it("keeps Mailgun token replays idempotent without enqueueing duplicate parser jobs", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = singleFirmMemoryRepository();
     await enableMailgunProvider(repository);
     const { s3 } = writableFakeS3();
     const inboundQueue = fakeInboundEmailQueue();
@@ -489,7 +496,7 @@ describe("inbound email routes", () => {
   });
 
   it("marks Mailgun lifecycle jobs failed when the parser queue rejects enqueue", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = singleFirmMemoryRepository();
     await enableMailgunProvider(repository);
     const { s3 } = writableFakeS3();
     const inboundQueue = fakeInboundEmailQueue({ reject: true });

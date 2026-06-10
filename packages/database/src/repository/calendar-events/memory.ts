@@ -50,6 +50,7 @@ function calendarScopeMatches(
 ): boolean {
   if (options.matterId) return event.matterId === options.matterId;
   if (options.scopes && !options.scopes.includes(calendarScope(event))) return false;
+  if (calendarScope(event) === "client" && !options.clientContactIds) return false;
   if (
     options.clientContactIds &&
     (calendarScope(event) !== "client" ||
@@ -392,7 +393,7 @@ export function deleteMemoryCalendarEvent(
   const existing = store.calendarEvents.find(
     (event) =>
       event.firmId === input.firmId &&
-      event.matterId === input.matterId &&
+      (input.matterId === undefined ? !event.matterId : event.matterId === input.matterId) &&
       event.id === input.eventId &&
       !event.deletedAt,
   );

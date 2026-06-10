@@ -190,6 +190,48 @@ describe("matter creation permissions", () => {
   });
 });
 
+describe("matterless calendar permissions", () => {
+  const licenseeWithoutMatters: User = {
+    id: "user-licensee",
+    firmId: "firm-west-legal",
+    displayName: "Synthetic Licensee",
+    email: "licensee@example.test",
+    role: "licensee",
+    assignedMatterIds: [],
+    mfaEnabled: true,
+  };
+
+  it("requires explicit client visibility for non-admin matterless calendar writes", () => {
+    expect(
+      canAccess({
+        user: licenseeWithoutMatters,
+        firmId: "firm-west-legal",
+        resource: "calendar_event",
+        action: "read",
+      }),
+    ).toBe(true);
+
+    expect(
+      canAccess({
+        user: licenseeWithoutMatters,
+        firmId: "firm-west-legal",
+        resource: "calendar_event",
+        action: "create",
+      }),
+    ).toBe(false);
+
+    expect(
+      canAccess({
+        user: licenseeWithoutMatters,
+        firmId: "firm-west-legal",
+        resource: "calendar_event",
+        action: "create",
+        contactId: "contact-visible",
+      }),
+    ).toBe(true);
+  });
+});
+
 describe("job metadata redaction", () => {
   it("keeps connector delivery retry counts while dropping raw delivery identifiers and payloads", () => {
     expect(

@@ -132,9 +132,18 @@ export async function assertCalendarScopeAccess(
     return;
   }
 
+  if (target.scope === "firm" && action !== "read" && context.user.role !== "owner_admin") {
+    throw new ApiHttpError(
+      403,
+      "FIRM_CALENDAR_ACTION_REQUIRES_ADMIN",
+      "Firm calendar writes require owner/admin access",
+    );
+  }
+
   const access = requireAccess(context, {
     resource: "calendar_event",
     action,
+    ...(target.scope === "client" ? { contactId: target.clientContactId } : {}),
   });
   if (!access.ok) throw access.error;
 
@@ -148,14 +157,6 @@ export async function assertCalendarScopeAccess(
       );
     }
     return;
-  }
-
-  if (action !== "read" && context.user.role !== "owner_admin") {
-    throw new ApiHttpError(
-      403,
-      "FIRM_CALENDAR_ACTION_REQUIRES_ADMIN",
-      "Firm calendar writes require owner/admin access",
-    );
   }
 }
 

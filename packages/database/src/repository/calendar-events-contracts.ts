@@ -75,7 +75,7 @@ export interface CalendarEventReminderDeleteInput {
 
 export interface CalendarEventDeleteInput {
   firmId: string;
-  matterId: string;
+  matterId?: string;
   eventId: string;
   deletedAt: string;
   updatedByUserId: string;

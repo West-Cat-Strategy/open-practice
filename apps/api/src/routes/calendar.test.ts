@@ -455,6 +455,13 @@ describe("calendar routes", () => {
     expect(clientCreated.json().event).not.toHaveProperty("matterId");
     const clientEventId = clientCreated.json().event.id;
 
+    await expect(
+      repository.listCalendarEvents("firm-west-legal", { scopes: ["client"] }),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.listCalendarEvents("firm-west-legal", { scopes: ["firm", "client"] }),
+    ).resolves.toEqual([expect.objectContaining({ scope: "firm" })]);
+
     const matterlessList = await licenseeServer.inject({
       method: "GET",
       url: "/api/calendar/events",

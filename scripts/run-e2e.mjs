@@ -198,6 +198,19 @@ async function buildRuntimeWorkspacePackages() {
   }
 }
 
+function startApi(env) {
+  return spawnLongLived(
+    "api",
+    "pnpm",
+    ["--filter", "@open-practice/api", "exec", "tsx", "src/server.ts"],
+    { env },
+  );
+}
+
+function startWeb(env) {
+  return spawnLongLived("web", "pnpm", ["--filter", "@open-practice/web", "dev"], { env });
+}
+
 async function runPlaywright(env, projects) {
   const args = [
     "exec",
@@ -224,8 +237,8 @@ function runtimeEnv(input) {
     PUBLIC_WEB_BASE_URL: input.webBaseUrl,
     WEBAUTHN_ORIGIN: input.webBaseUrl,
     AUTH_JWT_SECRET: commonSecret,
-    DEV_AUTH_FIRM_ID: "firm-west-legal",
-    DEV_AUTH_USER_ID: "user-admin",
+    DEV_AUTH_FIRM_ID: process.env.DEV_AUTH_FIRM_ID ?? "firm-west-legal",
+    DEV_AUTH_USER_ID: process.env.DEV_AUTH_USER_ID ?? "user-admin",
     WEBRTC_MEETING_PROVIDER_KEY: `${input.mode}-meeting-provider`,
     WEBRTC_MEETING_BASE_URL: `${input.webBaseUrl}/meeting`,
     E2E_MODE: input.mode,
@@ -250,9 +263,9 @@ async function startHostRuntime() {
     OPEN_PRACTICE_DEV_SEED: "true",
   };
 
-  spawnLongLived("api", "pnpm", ["--filter", "@open-practice/api", "dev"], { env });
+  startApi(env);
   await waitForUrl("API", `${apiBaseUrl}/health`);
-  spawnLongLived("web", "pnpm", ["--filter", "@open-practice/web", "dev"], { env });
+  startWeb(env);
   await waitForUrl("web", webBaseUrl, { timeoutMs: 90_000 });
 
   return env;
@@ -272,8 +285,8 @@ async function startFirstRunRuntime() {
     PUBLIC_WEB_BASE_URL: webBaseUrl,
     WEBAUTHN_ORIGIN: webBaseUrl,
     AUTH_JWT_SECRET: commonSecret,
-    DEV_AUTH_FIRM_ID: "firm-west-legal",
-    DEV_AUTH_USER_ID: "user-admin",
+    DEV_AUTH_FIRM_ID: process.env.DEV_AUTH_FIRM_ID ?? "firm-west-legal",
+    DEV_AUTH_USER_ID: process.env.DEV_AUTH_USER_ID ?? "user-admin",
     E2E_API_BASE_URL: apiBaseUrl,
     E2E_WEB_BASE_URL: webBaseUrl,
     DATABASE_URL: "",
@@ -285,9 +298,9 @@ async function startFirstRunRuntime() {
     OPEN_PRACTICE_DEV_SEED: "false",
   };
 
-  spawnLongLived("api", "pnpm", ["--filter", "@open-practice/api", "dev"], { env });
+  startApi(env);
   await waitForUrl("API", `${apiBaseUrl}/health`);
-  spawnLongLived("web", "pnpm", ["--filter", "@open-practice/web", "dev"], { env });
+  startWeb(env);
   await waitForUrl("web", webBaseUrl, { timeoutMs: 90_000 });
 
   return env;
@@ -363,10 +376,10 @@ async function startDockerRuntime() {
   await run("db-migrate", "pnpm", ["--filter", "@open-practice/database", "db:migrate"], { env });
   await ensureMinioBucket(env);
 
-  spawnLongLived("api", "pnpm", ["--filter", "@open-practice/api", "dev"], { env });
+  startApi(env);
   await waitForUrl("API", `${apiBaseUrl}/health`);
   spawnLongLived("worker", "pnpm", ["--filter", "@open-practice/worker", "dev"], { env });
-  spawnLongLived("web", "pnpm", ["--filter", "@open-practice/web", "dev"], { env });
+  startWeb(env);
   await waitForUrl("web", webBaseUrl, { timeoutMs: 90_000 });
 
   return env;

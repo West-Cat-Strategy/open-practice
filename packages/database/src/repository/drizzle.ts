@@ -655,7 +655,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
 
   async getCalendarEvent(
     firmId: string,
-    matterId: string,
+    matterId: string | undefined,
     eventId: string,
   ): ReturnType<OpenPracticeRepository["getCalendarEvent"]> {
     return getDrizzleCalendarEvent(this.db, firmId, matterId, eventId);
@@ -703,7 +703,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
 
   async listCalendarEventReminders(
     firmId: string,
-    matterId: string,
+    matterId: string | undefined,
     eventId: string,
   ): ReturnType<OpenPracticeRepository["listCalendarEventReminders"]> {
     return listDrizzleCalendarEventReminders(this.db, firmId, matterId, eventId);

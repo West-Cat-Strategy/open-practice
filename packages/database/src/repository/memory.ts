@@ -101,6 +101,7 @@ import {
   sampleDraftTemplates,
   sampleExpenseEntries,
   sampleFirm,
+  sampleMatterlessFirm,
   sampleGeneratedDocuments,
   sampleIntakeSessions,
   sampleIntakeTemplates,
@@ -1300,7 +1301,11 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     } = {},
   ) {
     const seeded = options.seedSampleData ?? true;
-    this.firms = options.firms ? clone(options.firms) : seeded ? [clone(sampleFirm)] : [];
+    this.firms = options.firms
+      ? clone(options.firms)
+      : seeded
+        ? [clone(sampleFirm), clone(sampleMatterlessFirm)]
+        : [];
     this.users = options.users ? clone(options.users) : seeded ? clone(sampleUsers) : [];
     this.contacts = seeded ? clone(sampleContacts) : [];
     this.contactRelationships = seeded ? clone(sampleContactRelationships) : [];
@@ -1633,7 +1638,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async getCalendarEvent(
     firmId: string,
-    matterId: string,
+    matterId: string | undefined,
     eventId: string,
   ): ReturnType<OpenPracticeRepository["getCalendarEvent"]> {
     return Promise.resolve(
@@ -1687,7 +1692,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async listCalendarEventReminders(
     firmId: string,
-    matterId: string,
+    matterId: string | undefined,
     eventId: string,
   ): ReturnType<OpenPracticeRepository["listCalendarEventReminders"]> {
     return Promise.resolve(

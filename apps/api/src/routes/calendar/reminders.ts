@@ -148,7 +148,7 @@ export function registerCalendarReminderRoutes(
     const params = parseRequestPart(calendarEventParamsSchema, request.params, "params");
     const body = parseRequestPart(calendarEventReminderBodySchema, request.body, "body");
     const target = calendarScopeTarget(body);
-    await assertCalendarScopeAccess(repository, request.auth, target, "update");
+    await assertCalendarScopeAccess(repository, request.auth, target, "create");
     const event = await repository.getCalendarEvent(
       request.auth.firmId,
       target.matterId,
@@ -342,7 +342,7 @@ export function registerCalendarReminderRoutes(
     const params = parseRequestPart(calendarEventReminderParamsSchema, request.params, "params");
     const query = parseRequestPart(calendarEventReminderDeleteQuerySchema, request.query, "query");
     const target = calendarScopeTarget(query);
-    await assertCalendarScopeAccess(repository, request.auth, target, "update");
+    await assertCalendarScopeAccess(repository, request.auth, target, "delete");
     const event = await repository.getCalendarEvent(
       request.auth.firmId,
       target.matterId,

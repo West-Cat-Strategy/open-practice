@@ -32,7 +32,7 @@ bounded to matters: attendees, invitations, guest sessions, meeting links, calen
 links, and email reminder delivery stay unavailable for firm/client events. Route availability now
 distinguishes firm, mixed, and matter sections so zero-matter deep links render section-specific
 content and create/link matter actions instead of falling back to First Matter everywhere. Proof,
-review notes, and desktop/mobile screenshots are recorded in
+review notes, desktop/mobile screenshots, and host/Docker E2E evidence are recorded in
 [OP matterless workflow proof](validation/OP_MATTERLESS_WORKFLOW_PROOF_2026-06-10.md).
 
 Latest first-run setup addendum: 2026-06-09 first-run setup no longer accepts or requires a setup

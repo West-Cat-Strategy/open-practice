@@ -136,6 +136,8 @@ export async function listDrizzleCalendarEvents(
     filters.push(inArray(schema.calendarEvents.clientContactId, options.clientContactIds));
   } else if (options.clientContactIds) {
     filters.push(sql`false`);
+  } else if (options.scopes?.includes("client")) {
+    filters.push(sql`${schema.calendarEvents.scope} <> 'client'`);
   }
   if (options.startsAfter) {
     filters.push(sql`${schema.calendarEvents.startsAt} >= ${new Date(options.startsAfter)}`);
@@ -629,13 +631,16 @@ export async function deleteDrizzleCalendarEvent(
   db: OpenPracticeDatabase,
   input: CalendarEventDeleteInput,
 ): Promise<CalendarEventRecord | undefined> {
+  const matterId = input.matterId;
   const [existing] = await db
     .select()
     .from(schema.calendarEvents)
     .where(
       and(
         eq(schema.calendarEvents.firmId, input.firmId),
-        eq(schema.calendarEvents.matterId, input.matterId),
+        matterId
+          ? eq(schema.calendarEvents.matterId, matterId)
+          : sql`${schema.calendarEvents.matterId} is null`,
         eq(schema.calendarEvents.id, input.eventId),
         isNull(schema.calendarEvents.deletedAt),
       ),
@@ -652,7 +657,9 @@ export async function deleteDrizzleCalendarEvent(
     .where(
       and(
         eq(schema.calendarEvents.firmId, input.firmId),
-        eq(schema.calendarEvents.matterId, input.matterId),
+        matterId
+          ? eq(schema.calendarEvents.matterId, matterId)
+          : sql`${schema.calendarEvents.matterId} is null`,
         eq(schema.calendarEvents.id, input.eventId),
         isNull(schema.calendarEvents.deletedAt),
       ),

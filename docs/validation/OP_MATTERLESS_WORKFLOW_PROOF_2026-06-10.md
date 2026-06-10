@@ -20,9 +20,11 @@ only for matter-scoped events. Audit metadata records safe IDs, counts, status, 
 - `apps/api/src/routes/calendar/shared.ts`
 - `apps/api/src/routes/contacts.test.ts`
 - `apps/api/src/routes/contacts.ts`
+- `apps/api/src/routes/inbound-email.test.ts`
 - `apps/api/src/routes/matters.test.ts`
 - `apps/api/src/routes/matters.ts`
 - `apps/api/src/routes/operational-views.ts`
+- `apps/api/src/server.test.ts`
 - `apps/web/app/_features/calendar/models.ts`
 - `apps/web/app/_features/calendar/server-resources.ts`
 - `apps/web/app/_features/dashboard/dashboard-shell-model.test.ts`
@@ -41,6 +43,8 @@ only for matter-scoped events. Audit metadata records safe IDs, counts, status, 
 - `docs/planning-and-progress.md`
 - `docs/validation/README.md`
 - `docs/validation/OP_MATTERLESS_WORKFLOW_PROOF_2026-06-10.md`
+- `e2e/helpers/e2e-fixtures.ts`
+- `e2e/ui-ux.spec.ts`
 - `output/playwright/matterless-open-practice/calendar-desktop.png`
 - `output/playwright/matterless-open-practice/calendar-mobile.png`
 - `output/playwright/matterless-open-practice/contacts-desktop.png`
@@ -62,6 +66,7 @@ only for matter-scoped events. Audit metadata records safe IDs, counts, status, 
 - `packages/database/src/repository/memory.ts`
 - `packages/database/src/schema/calendar.ts`
 - `packages/database/src/schema/contacts.ts`
+- `packages/database/src/seed.ts`
 - `packages/domain/src/calendar-models.ts`
 - `packages/domain/src/calendar.ts`
 - `packages/domain/src/contacts.test.ts`
@@ -69,9 +74,11 @@ only for matter-scoped events. Audit metadata records safe IDs, counts, status, 
 - `packages/domain/src/intake-pipeline.ts`
 - `packages/domain/src/models.ts`
 - `packages/domain/src/operational-views.ts`
+- `packages/domain/src/permissions.test.ts`
 - `packages/domain/src/permissions.ts`
 - `packages/domain/src/sample-data.ts`
 - `scripts/route-authorization-manifest.mjs`
+- `scripts/run-e2e.mjs`
 
 ## Review Notes
 
@@ -83,17 +90,22 @@ only for matter-scoped events. Audit metadata records safe IDs, counts, status, 
   as real zero-matter surfaces, showed linked matters at a glance, added create-contact and
   create-matter-from-contact actions, added firm/client calendar scope controls, and replaced the
   old global First Matter fallback with section-specific create/link matter actions.
+- E2E review added matterless deep-link coverage and stabilized the local runner by using a
+  non-watch API process plus managed web readiness/restart handling for host and Docker browser
+  proof.
 
 ## Validation
 
 - `pnpm verify:select -- --files <final changed paths>` passed and recommended the broad
-  domain/database/API/web/docs/build gate set for this cross-package slice.
+  host/Docker E2E plus domain/database/API/web/docs/build gate set for this cross-package slice.
 - `pnpm format:check` passed after targeted Prettier formatting for dashboard utility/test files,
   the API contract doc, and the screenshot result JSON.
 - `pnpm docs:check` passed.
 - `pnpm policy:check` passed.
 - `pnpm test` passed, including all workspace test tasks and 63 script contract tests.
-- `pnpm --filter @open-practice/domain test` passed: 24 files, 173 tests.
+- `pnpm e2e:host` passed: 33 tests passed, 7 skipped.
+- `pnpm e2e:docker` passed: 5 tests passed, with Compose services and volumes cleaned up.
+- `pnpm --filter @open-practice/domain test` passed: 24 files, 174 tests.
 - `pnpm --filter @open-practice/domain typecheck` passed.
 - `pnpm --filter @open-practice/database test` passed: 18 files, 110 tests.
 - `pnpm --filter @open-practice/database typecheck` passed.
@@ -106,7 +118,7 @@ only for matter-scoped events. Audit metadata records safe IDs, counts, status, 
   for firm/client-scoped matterless events, hidden contact denial, disabled matterless reminder
   email delivery, and contact-first matter creation from visible standalone contacts.
 - `pnpm --filter @open-practice/api typecheck` passed.
-- `pnpm --filter @open-practice/web test` passed: 34 files, 174 tests.
+- `pnpm --filter @open-practice/web test` passed: 34 files, 177 tests.
 - `pnpm --filter @open-practice/web typecheck` passed.
 - `pnpm build` passed.
 - `git diff --check` passed.
@@ -133,8 +145,9 @@ proof.
 
 ## Skipped Or Unavailable
 
-No required focused checks were skipped. Browser proof used direct local API/Web processes instead
-of the worker runtime because this slice does not require Redis-backed worker execution.
+No required focused checks were skipped. The standalone browser screenshots used direct local
+API/Web processes with synthetic memory-backed data; the selected host and Docker E2E gates also
+passed for the broader app/runtime proof.
 
 ## Synthetic Data
 
