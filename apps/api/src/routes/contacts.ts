@@ -238,8 +238,16 @@ export function registerContactRoutes(
         ),
       },
     });
-    const { notes: _notes, createdByUserId: _createdByUserId, ...safeContact } = contact;
-    return reply.code(201).send({ contact: safeContact });
+    return reply.code(201).send({
+      contact: {
+        id: contact.id,
+        firmId: contact.firmId,
+        kind: contact.kind,
+        displayName: contact.displayName,
+        aliases: contact.aliases,
+        identifiers: contact.identifiers,
+      },
+    });
   });
 
   server.get("/api/contacts/review-queue", async (request) => {
