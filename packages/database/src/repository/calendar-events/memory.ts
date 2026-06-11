@@ -38,6 +38,30 @@ export interface MemoryCalendarEventStore {
   calendarGuestLinks: CalendarGuestLinkRecord[];
 }
 
+function calendarScope(
+  event: Pick<CalendarEventRecord, "scope">,
+): NonNullable<CalendarEventRecord["scope"]> {
+  return event.scope ?? "matter";
+}
+
+function calendarScopeMatches(
+  event: Pick<CalendarEventRecord, "scope" | "matterId" | "clientContactId">,
+  options: CalendarEventListOptions,
+): boolean {
+  if (options.matterId) return event.matterId === options.matterId;
+  if (options.scopes && !options.scopes.includes(calendarScope(event))) return false;
+  if (calendarScope(event) === "client" && !options.clientContactIds) return false;
+  if (
+    options.clientContactIds &&
+    (calendarScope(event) !== "client" ||
+      !event.clientContactId ||
+      !options.clientContactIds.includes(event.clientContactId))
+  ) {
+    return false;
+  }
+  return !event.matterId;
+}
+
 export function listMemoryCalendarEvents(
   store: MemoryCalendarEventStore,
   firmId: string,
@@ -48,7 +72,7 @@ export function listMemoryCalendarEvents(
       .filter(
         (event) =>
           event.firmId === firmId &&
-          event.matterId === options.matterId &&
+          calendarScopeMatches(event, options) &&
           !event.deletedAt &&
           (!options.startsAfter || Date.parse(event.startsAt) >= Date.parse(options.startsAfter)) &&
           (!options.startsBefore || Date.parse(event.startsAt) < Date.parse(options.startsBefore)),
@@ -68,13 +92,13 @@ export function listMemoryCalendarEvents(
 export function getMemoryCalendarEvent(
   store: MemoryCalendarEventStore,
   firmId: string,
-  matterId: string,
+  matterId: string | undefined,
   eventId: string,
 ): CalendarEventRecord | undefined {
   const event = store.calendarEvents.find(
     (candidate) =>
       candidate.firmId === firmId &&
-      candidate.matterId === matterId &&
+      (matterId === undefined || candidate.matterId === matterId) &&
       candidate.id === eventId &&
       !candidate.deletedAt,
   );
@@ -116,7 +140,10 @@ export function upsertMemoryCalendarEvent(
   const eventIdCollision = store.calendarEvents.find((candidate) => candidate.id === event.id);
   if (
     eventIdCollision &&
-    (eventIdCollision.firmId !== event.firmId || eventIdCollision.matterId !== event.matterId)
+    (eventIdCollision.firmId !== event.firmId ||
+      eventIdCollision.matterId !== event.matterId ||
+      eventIdCollision.clientContactId !== event.clientContactId ||
+      calendarScope(eventIdCollision) !== calendarScope(event))
   ) {
     throw new CalendarEventScopeConflictError(event.id);
   }
@@ -124,7 +151,9 @@ export function upsertMemoryCalendarEvent(
   const activeUidCollision = store.calendarEvents.find(
     (candidate) =>
       candidate.firmId === event.firmId &&
+      calendarScope(candidate) === calendarScope(event) &&
       candidate.matterId === event.matterId &&
+      candidate.clientContactId === event.clientContactId &&
       candidate.uid === event.uid &&
       candidate.id !== event.id &&
       !candidate.deletedAt,
@@ -136,7 +165,9 @@ export function upsertMemoryCalendarEvent(
   const existingIndex = store.calendarEvents.findIndex(
     (candidate) =>
       candidate.firmId === event.firmId &&
+      calendarScope(candidate) === calendarScope(event) &&
       candidate.matterId === event.matterId &&
+      candidate.clientContactId === event.clientContactId &&
       candidate.id === event.id,
   );
   if (existingIndex >= 0) {
@@ -250,17 +281,18 @@ export function replaceMemoryCalendarEventAttendees(
 export function listMemoryCalendarEventReminders(
   store: MemoryCalendarEventStore,
   firmId: string,
-  matterId: string,
+  matterId: string | undefined,
   eventId: string,
 ): CalendarEventReminderRecord[] {
   const event = store.calendarEvents.find(
     (candidate) =>
       candidate.firmId === firmId &&
-      candidate.matterId === matterId &&
+      (matterId === undefined || candidate.matterId === matterId) &&
       candidate.id === eventId &&
       !candidate.deletedAt,
   );
-  return clone(activeCalendarReminders(event?.reminders, { firmId, matterId, id: eventId }));
+  if (!event) return [];
+  return clone(activeCalendarReminders(event.reminders, event));
 }
 
 export function upsertMemoryCalendarEventReminder(
@@ -270,7 +302,9 @@ export function upsertMemoryCalendarEventReminder(
   const event = store.calendarEvents.find(
     (candidate) =>
       candidate.firmId === reminder.firmId &&
+      calendarScope(candidate) === (reminder.scope ?? "matter") &&
       candidate.matterId === reminder.matterId &&
+      candidate.clientContactId === reminder.clientContactId &&
       candidate.id === reminder.eventId &&
       !candidate.deletedAt,
   );
@@ -336,7 +370,9 @@ export function deleteMemoryCalendarEventReminder(
   const event = store.calendarEvents.find(
     (candidate) =>
       candidate.firmId === input.firmId &&
+      calendarScope(candidate) === (input.scope ?? "matter") &&
       candidate.matterId === input.matterId &&
+      candidate.clientContactId === input.clientContactId &&
       candidate.id === input.eventId &&
       !candidate.deletedAt,
   );
@@ -357,7 +393,7 @@ export function deleteMemoryCalendarEvent(
   const existing = store.calendarEvents.find(
     (event) =>
       event.firmId === input.firmId &&
-      event.matterId === input.matterId &&
+      (input.matterId === undefined ? !event.matterId : event.matterId === input.matterId) &&
       event.id === input.eventId &&
       !event.deletedAt,
   );

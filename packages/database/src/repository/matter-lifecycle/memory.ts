@@ -61,14 +61,23 @@ export async function createMemoryMatterWithClient(
     responsibleUserId: input.actorUserId,
     openedOn: input.openedOn,
   };
-  const contact: Contact = {
-    id: input.contactId,
-    firmId: input.firmId,
-    kind: input.client.kind,
-    displayName: input.client.displayName,
-    aliases: [],
-    identifiers: input.client.identifiers,
-  };
+  const existingContact = store.contacts.find(
+    (contact) => contact.firmId === input.firmId && contact.id === input.contactId,
+  );
+  if (!input.client && !existingContact) {
+    throw new Error(`Contact ${input.contactId} was not found`);
+  }
+  const contact: Contact | undefined = input.client
+    ? {
+        id: input.contactId,
+        firmId: input.firmId,
+        kind: input.client.kind,
+        displayName: input.client.displayName,
+        aliases: [],
+        identifiers: input.client.identifiers,
+        createdByUserId: input.actorUserId,
+      }
+    : undefined;
   const party: MatterParty = {
     id: input.partyId,
     firmId: input.firmId,
@@ -79,7 +88,7 @@ export async function createMemoryMatterWithClient(
     confidential: true,
   };
 
-  store.contacts = [clone(contact), ...store.contacts];
+  if (contact) store.contacts = [clone(contact), ...store.contacts];
   store.matters = [clone(matter), ...store.matters];
   store.matterParties = [clone(party), ...store.matterParties];
   store.users = store.users.map((user) =>
@@ -101,7 +110,7 @@ export async function createMemoryMatterWithClient(
     metadata: {
       matterId: input.matterId,
       source: "dashboard_zero_matter",
-      clientContactCreated: true,
+      clientContactCreated: Boolean(input.client),
       partyRole: "prospective_client",
     },
   });
@@ -153,6 +162,7 @@ export async function convertMemoryPublicConsultationIntakeToMatter(
     displayName: intake.clientName,
     aliases: [],
     identifiers: clientIdentifiers,
+    createdByUserId: input.actorUserId,
   };
   const clientParty: MatterParty = {
     id: input.clientPartyId,
@@ -170,6 +180,7 @@ export async function convertMemoryPublicConsultationIntakeToMatter(
     displayName: party.displayName,
     aliases: [],
     identifiers: [],
+    createdByUserId: input.actorUserId,
   }));
   const opposingMatterParties: MatterParty[] = input.opposingParties.map((party) => ({
     id: party.partyId,

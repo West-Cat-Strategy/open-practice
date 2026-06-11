@@ -6,6 +6,11 @@ type ApiOptions = {
   method?: string;
 };
 
+type DevAuthHeaders = {
+  "x-open-practice-firm-id": string;
+  "x-open-practice-user-id": string;
+};
+
 type ShareLinkFixture = {
   token: string;
   verificationCode: string;
@@ -17,7 +22,7 @@ export const webBaseUrl = process.env.E2E_WEB_BASE_URL ?? "http://localhost:3311
 const defaultHeaders = {
   "x-open-practice-firm-id": "firm-west-legal",
   "x-open-practice-user-id": "user-admin",
-};
+} satisfies DevAuthHeaders;
 
 const ignoredConsoleErrorPatterns = [
   /favicon\.ico/i,
@@ -35,6 +40,22 @@ function shouldIgnoreConsoleError(message: string): boolean {
   return ignoredConsoleErrorPatterns.some((pattern) => pattern.test(message));
 }
 
+async function waitForWebReady(timeoutMs = 30_000): Promise<void> {
+  const start = Date.now();
+  let lastError = "";
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const response = await fetch(webBaseUrl, { redirect: "manual" });
+      if (response.ok) return;
+      lastError = `${response.status} ${response.statusText}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 750));
+  }
+  throw new Error(`web app was not ready at ${webBaseUrl}: ${lastError}`);
+}
+
 export async function expectPageHealthy(page: Page): Promise<void> {
   await expect(page).toHaveTitle(/Open Practice/);
   const body = page.locator("body");
@@ -49,15 +70,21 @@ export class OpenPracticeE2EClient {
   constructor(
     readonly apiUrl = apiBaseUrl,
     readonly webUrl = webBaseUrl,
+    readonly devHeaders: DevAuthHeaders = defaultHeaders,
   ) {}
 
   url(path: string): string {
     return `${this.webUrl}${path}`;
   }
 
+  publicTokenUrl(path: string, token: string): string {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    return this.url(`${normalizedPath}#${encodeURIComponent(token)}`);
+  }
+
   async apiJson<T>(path: string, options: ApiOptions = {}): Promise<T> {
     const headers = {
-      ...defaultHeaders,
+      ...this.devHeaders,
       ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
       ...options.headers,
     };
@@ -161,6 +188,7 @@ export const test = base.extend<{ app: OpenPracticeE2EClient }>({
     await use(new OpenPracticeE2EClient());
   },
   page: async ({ page }, use) => {
+    await waitForWebReady();
     const consoleErrors: string[] = [];
     const pageErrors: string[] = [];
     page.on("console", (message) => {

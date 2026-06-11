@@ -18,6 +18,23 @@ const deepReviewSections = new Set<OpenPracticeRouteId>([
   "calendar",
   "intake",
 ]);
+const matterlessDeepLinkSections = [
+  "contacts",
+  "calendar",
+  "audit",
+  "reports",
+  "admin",
+  "queues",
+] as const satisfies readonly OpenPracticeRouteId[];
+
+const matterlessSectionHeadings: Record<(typeof matterlessDeepLinkSections)[number], RegExp> = {
+  contacts: /^Contacts$/,
+  calendar: /^Calendar$/,
+  audit: /^Audit activity$/,
+  reports: /^Reports$/,
+  admin: /^Admin Readiness$/,
+  queues: /^Queues$/,
+};
 
 const sectionSentinels: Record<OpenPracticeRouteId, RegExp[]> = {
   matters: [/Activity and files/i, /Documents, time, and expenses/i],
@@ -133,6 +150,19 @@ async function sweepDashboardSections({
   }
 }
 
+async function expectMatterlessDeepLink(
+  page: Page,
+  sectionId: (typeof matterlessDeepLinkSections)[number],
+): Promise<void> {
+  const workspace = page.locator("#matter-workspace");
+  await expect(
+    workspace.getByRole("heading", { name: matterlessSectionHeadings[sectionId] }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create the first matter" })).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("Morgan tenancy dispute");
+  await expectSectionSentinels(page, sectionId);
+}
+
 test.describe("UI/UX screenshot QA", () => {
   test("sweeps every host dashboard section for layout health and active navigation", async ({
     app,
@@ -147,6 +177,39 @@ test.describe("UI/UX screenshot QA", () => {
   }, testInfo) => {
     testInfo.setTimeout(120_000);
     await sweepDashboardSections({ app, disabledSections: new Set(), page, testInfo });
+  });
+
+  test("renders matterless deep links without falling back to First Matter @matterless", async ({
+    app,
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "host-chromium", "covered once with the matterless user");
+    test.skip(
+      process.env.DEV_AUTH_FIRM_ID !== "firm-matterless-e2e" ||
+        process.env.DEV_AUTH_USER_ID !== "user-matterless-admin",
+      "run with DEV_AUTH_FIRM_ID=firm-matterless-e2e DEV_AUTH_USER_ID=user-matterless-admin",
+    );
+
+    for (const sectionId of matterlessDeepLinkSections) {
+      const section = routeCatalog.find((entry) => entry.id === sectionId)!;
+      await page.goto(app.url(`/?section=${sectionId}`));
+      await expectPageHealthy(page);
+
+      const sidebarButton = page
+        .getByLabel("Primary")
+        .getByRole("button", { name: labelPattern(section.shortLabel) })
+        .first();
+      await expect(sidebarButton, `${sectionId} matterless sidebar entry`).toBeVisible();
+      await expect(sidebarButton, `${sectionId} matterless active state`).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+
+      await expectMatterlessDeepLink(page, sectionId);
+      await expectNavigationLabelsReadable(page, `${sectionId} matterless deep link`);
+      await expectNoUnexpectedHorizontalOverflow(page, `${sectionId} matterless deep link`);
+      await attachUiScreenshot(page, testInfo, `dashboard-matterless-${sectionId}`);
+    }
   });
 
   test("keeps dashboard rail and sidebar controls stable", async ({ app, page }, testInfo) => {
@@ -215,7 +278,7 @@ test.describe("UI/UX screenshot QA", () => {
     page,
   }, testInfo) => {
     const share = await app.createShareLink();
-    await page.goto(app.url(`/share-links/${share.token}`));
+    await page.goto(app.publicTokenUrl("share-links", share.token));
     await expectPageHealthy(page);
     await expect(page.getByText("Email verification is required")).toBeVisible();
     await expectNoUnexpectedHorizontalOverflow(page, "share verification gate");
@@ -229,7 +292,7 @@ test.describe("UI/UX screenshot QA", () => {
     await attachUiScreenshot(page, testInfo, "public-share-verified");
 
     const intakeToken = await app.createIntakeFormLink();
-    await page.goto(app.url(`/intake-forms/${intakeToken}`));
+    await page.goto(app.publicTokenUrl("intake-forms", intakeToken));
     await expectPageHealthy(page);
     await page.getByLabel("Preferred client name").fill("Ada Morgan");
     await page.getByLabel("Short matter title").fill("Synthetic repair request");
@@ -243,7 +306,7 @@ test.describe("UI/UX screenshot QA", () => {
     await attachUiScreenshot(page, testInfo, "public-intake-incomplete");
 
     const guest = await app.createGuestSession();
-    await page.goto(app.url(`/guest-sessions/${guest.token}`));
+    await page.goto(app.publicTokenUrl("guest-sessions", guest.token));
     await expectPageHealthy(page);
     await expect(page.getByRole("status").filter({ hasText: "The lobby is open." })).toBeVisible();
     await page.getByRole("button", { name: /Check in/i }).click();
@@ -263,7 +326,7 @@ test.describe("UI/UX screenshot QA", () => {
     expect(health.persistence).toBe("postgres");
 
     const token = await app.createExternalUploadLink();
-    await page.goto(app.url(`/external-uploads/${token}`));
+    await page.goto(app.publicTokenUrl("external-uploads", token));
     await expectPageHealthy(page);
     await expect(page.getByText(/Upload link ready/)).toBeVisible();
     await expectNoUnexpectedHorizontalOverflow(page, "external upload ready state");

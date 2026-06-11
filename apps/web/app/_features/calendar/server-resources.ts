@@ -10,6 +10,7 @@ import type {
 export function emptyCalendarDashboard(): CalendarDashboardResponse {
   return {
     eventsByMatterId: {},
+    standaloneEvents: [],
     guestSessionsByEventId: {},
     schedulingRequestsByMatterId: {},
     linksByMatterId: {},
@@ -30,6 +31,7 @@ export async function loadCalendarDashboardResources({
 
   return loadCalendarDashboardData({
     matters,
+    listStandaloneEvents: () => apiGet<CalendarEventsResponse>("/api/calendar/events", headers),
     listEventsForMatter: (matterId) =>
       apiGet<CalendarEventsResponse>(
         `/api/calendar/events?matterId=${encodeURIComponent(matterId)}`,

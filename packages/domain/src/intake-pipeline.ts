@@ -481,7 +481,9 @@ function intakeSessionLead(input: {
   });
   const conversionCount = input.reviews.filter((review) => review.decision === "accepted").length;
   const appointmentLinks = input.events
-    .filter((event) => !event.deletedAt)
+    .filter((event): event is CalendarEventRecord & { matterId: string } =>
+      Boolean(event.matterId && !event.deletedAt),
+    )
     .map((event) => ({
       eventId: event.id,
       matterId: event.matterId,
@@ -600,6 +602,7 @@ export function buildIntakePipelineSnapshot(
 
   const eventsByMatterId = new Map<string, CalendarEventRecord[]>();
   for (const event of input.calendarEvents) {
+    if (!event.matterId) continue;
     const existing = eventsByMatterId.get(event.matterId) ?? [];
     existing.push(event);
     eventsByMatterId.set(event.matterId, existing);

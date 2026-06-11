@@ -37,6 +37,9 @@ export async function listDrizzleContactDossiersForUser(
   dependencies: DrizzleContactDependencies,
 ): Promise<ContactDossier[]> {
   const matters = await dependencies.listMattersForUser(user);
+  const linkedContactIds = new Set(
+    matters.flatMap((matter) => matter.parties.map((party) => party.contactId)),
+  );
   const matterParties = matters.flatMap((matter) =>
     matter.parties.map((party) => ({
       id: party.id,
@@ -48,7 +51,24 @@ export async function listDrizzleContactDossiersForUser(
       confidential: party.confidential,
     })),
   );
-  const contacts = matters.flatMap((matter) => matter.parties.map((party) => party.contact));
+  const firmContacts = (
+    await db.select().from(schema.contacts).where(eq(schema.contacts.firmId, user.firmId))
+  ).map(mapContactRow);
+  const allMatterLinkedContactIds = new Set(
+    (
+      await db
+        .select({ contactId: schema.matterParties.contactId })
+        .from(schema.matterParties)
+        .where(eq(schema.matterParties.firmId, user.firmId))
+    ).map((party) => party.contactId),
+  );
+  const hasFirmWideContactVisibility = ["owner_admin", "auditor"].includes(user.role);
+  const contacts = firmContacts.filter(
+    (contact) =>
+      hasFirmWideContactVisibility ||
+      linkedContactIds.has(contact.id) ||
+      (contact.createdByUserId === user.id && !allMatterLinkedContactIds.has(contact.id)),
+  );
   const portalGrants = await dependencies.listPortalGrants(user.firmId);
   const intakeVariableProposals = (
     await dependencies.listIntakeVariableProposals(user.firmId, {
@@ -80,6 +100,26 @@ export async function listDrizzleContactDossiersForUser(
     intakeVariableProposals,
     conflictChecks,
   });
+}
+
+export async function createDrizzleContact(
+  db: OpenPracticeDatabase,
+  contact: Contact,
+): Promise<Contact> {
+  const [row] = await db
+    .insert(schema.contacts)
+    .values({
+      id: contact.id,
+      firmId: contact.firmId,
+      kind: contact.kind,
+      displayName: contact.displayName,
+      aliases: contact.aliases,
+      identifiers: contact.identifiers,
+      notes: contact.notes ?? null,
+      createdByUserId: contact.createdByUserId ?? null,
+    })
+    .returning();
+  return mapContactRow(row!);
 }
 
 export async function createDrizzleContactRelationship(

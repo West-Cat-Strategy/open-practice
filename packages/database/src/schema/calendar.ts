@@ -15,6 +15,7 @@ import type {
   CalendarSchedulingRequestRecord,
 } from "@open-practice/domain";
 import { firms, users } from "./core.js";
+import { contacts } from "./contacts.js";
 import { emailOutbox, jobLifecycleRecords } from "./jobs-email.js";
 import { matters } from "./matters.js";
 import { tasks } from "./tasks.js";
@@ -56,9 +57,9 @@ export const calendarEvents = pgTable(
     firmId: text("firm_id")
       .notNull()
       .references(() => firms.id),
-    matterId: text("matter_id")
-      .notNull()
-      .references(() => matters.id),
+    scope: text("scope").notNull().default("matter"),
+    matterId: text("matter_id").references(() => matters.id),
+    clientContactId: text("client_contact_id").references(() => contacts.id),
     uid: text("uid").notNull(),
     title: text("title").notNull(),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
@@ -84,11 +85,37 @@ export const calendarEvents = pgTable(
   (table) => ({
     firmMatterUid: uniqueIndex("calendar_events_firm_matter_uid_idx")
       .on(table.firmId, table.matterId, table.uid)
-      .where(sql`${table.deletedAt} is null`),
+      .where(sql`${table.deletedAt} is null and ${table.matterId} is not null`),
+    firmScopeUid: uniqueIndex("calendar_events_firm_scope_uid_idx")
+      .on(table.firmId, table.scope, table.uid)
+      .where(
+        sql`${table.deletedAt} is null and ${table.matterId} is null and ${table.clientContactId} is null`,
+      ),
+    firmClientUid: uniqueIndex("calendar_events_firm_client_uid_idx")
+      .on(table.firmId, table.clientContactId, table.uid)
+      .where(sql`${table.deletedAt} is null and ${table.clientContactId} is not null`),
     matterStart: index("calendar_events_matter_start_idx").on(
       table.firmId,
       table.matterId,
       table.startsAt,
+    ),
+    scopeStart: index("calendar_events_scope_start_idx").on(
+      table.firmId,
+      table.scope,
+      table.startsAt,
+    ),
+    clientStart: index("calendar_events_client_start_idx").on(
+      table.firmId,
+      table.clientContactId,
+      table.startsAt,
+    ),
+    scopeValue: check(
+      "calendar_events_scope_value",
+      sql`${table.scope} in ('matter', 'firm', 'client')`,
+    ),
+    scopeTarget: check(
+      "calendar_events_scope_target",
+      sql`(${table.scope} = 'matter' and ${table.matterId} is not null and ${table.clientContactId} is null) or (${table.scope} = 'firm' and ${table.matterId} is null and ${table.clientContactId} is null) or (${table.scope} = 'client' and ${table.matterId} is null and ${table.clientContactId} is not null)`,
     ),
     meetingLinkModeValue: check(
       "calendar_events_meeting_link_mode_value",
@@ -160,9 +187,9 @@ export const calendarEventReminders = pgTable(
     firmId: text("firm_id")
       .notNull()
       .references(() => firms.id),
-    matterId: text("matter_id")
-      .notNull()
-      .references(() => matters.id),
+    scope: text("scope").notNull().default("matter"),
+    matterId: text("matter_id").references(() => matters.id),
+    clientContactId: text("client_contact_id").references(() => contacts.id),
     eventId: text("event_id")
       .notNull()
       .references(() => calendarEvents.id),
@@ -191,6 +218,24 @@ export const calendarEventReminders = pgTable(
       table.firmId,
       table.status,
       table.remindAt,
+    ),
+    scopeDue: index("calendar_event_reminders_scope_due_idx").on(
+      table.firmId,
+      table.scope,
+      table.remindAt,
+    ),
+    clientDue: index("calendar_event_reminders_client_due_idx").on(
+      table.firmId,
+      table.clientContactId,
+      table.remindAt,
+    ),
+    scopeValue: check(
+      "calendar_event_reminders_scope_value",
+      sql`${table.scope} in ('matter', 'firm', 'client')`,
+    ),
+    scopeTarget: check(
+      "calendar_event_reminders_scope_target",
+      sql`(${table.scope} = 'matter' and ${table.matterId} is not null and ${table.clientContactId} is null) or (${table.scope} = 'firm' and ${table.matterId} is null and ${table.clientContactId} is null) or (${table.scope} = 'client' and ${table.matterId} is null and ${table.clientContactId} is not null)`,
     ),
     channelValue: check(
       "calendar_event_reminders_channel_value",

@@ -128,6 +128,7 @@ export interface CalendarMatterLinks {
 
 export interface CalendarDashboardResponse {
   eventsByMatterId: Record<string, CalendarEventRecord[]>;
+  standaloneEvents: CalendarEventRecord[];
   guestSessionsByEventId: Record<string, CalendarGuestSessionSummary[]>;
   schedulingRequestsByMatterId: Record<string, CalendarSchedulingRequestSummary[]>;
   linksByMatterId: Record<string, CalendarMatterLinks>;

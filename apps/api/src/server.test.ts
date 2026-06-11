@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Buffer } from "node:buffer";
 import { InMemoryOpenPracticeRepository, type MatterSummary } from "@open-practice/database";
+import { sampleFirm, sampleUsers } from "@open-practice/domain/sample-data";
 import { verifyRegistrationResponse } from "@simplewebauthn/server";
 import {
   buildPublicConsultationIntakeSettingsFromEnv,
@@ -70,6 +71,13 @@ function testServer(overrides: Partial<CreateServerOptions> = {}) {
   });
   servers.push(server);
   return server;
+}
+
+function singleFirmMemoryRepository(): InMemoryOpenPracticeRepository {
+  return new InMemoryOpenPracticeRepository({
+    firms: [sampleFirm],
+    users: sampleUsers.filter((user) => user.firmId === sampleFirm.id),
+  });
 }
 
 function productionEnv(overrides: Record<string, unknown> = {}) {
@@ -226,7 +234,7 @@ describe("API auth and persistence boundaries", () => {
   });
 
   it("restricts password setup token creation to owner admins", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = singleFirmMemoryRepository();
     const jwtSecret = "password-setup-token-test-secret-at-least-32";
     const sessionToken = "licensee-fresh-session";
     const now = new Date().toISOString();
@@ -646,7 +654,7 @@ describe("API auth and persistence boundaries", () => {
   });
 
   it("authenticates production requests with embedded sessions", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = singleFirmMemoryRepository();
     const jwtSecret = "production-test-secret-at-least-32-characters";
     await setAdminPassword({
       repository,
@@ -738,7 +746,11 @@ describe("API auth and persistence boundaries", () => {
 
   it("rate-limits repeated embedded login attempts", async () => {
     const jwtSecret = "production-test-secret-at-least-32-characters";
-    const server = testServer({ nodeEnv: "production", jwtSecret });
+    const server = testServer({
+      repository: singleFirmMemoryRepository(),
+      nodeEnv: "production",
+      jwtSecret,
+    });
     const responses = [];
 
     for (let attempt = 0; attempt < 11; attempt += 1) {
@@ -770,7 +782,7 @@ describe("API auth and persistence boundaries", () => {
   });
 
   it("revokes embedded sessions on logout", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = singleFirmMemoryRepository();
     const jwtSecret = "production-test-secret-at-least-32-characters";
     await setAdminPassword({ repository, password: "logout password" });
     await repository.updateUserMfaStatus("firm-west-legal", "user-admin", false);
@@ -800,7 +812,7 @@ describe("API auth and persistence boundaries", () => {
   });
 
   it("rejects expired embedded sessions", async () => {
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = singleFirmMemoryRepository();
     const jwtSecret = "production-test-secret-at-least-32-characters";
     await setAdminPassword({ repository, password: "expired password" });
     await repository.updateUserMfaStatus("firm-west-legal", "user-admin", false);
@@ -978,7 +990,7 @@ describe("API auth and persistence boundaries", () => {
       PUBLIC_CONSULTATION_INTAKE_ACTOR_USER_ID: "user-admin",
       PUBLIC_CONSULTATION_INTAKE_SUBMISSION_TOKEN_HASH: "a".repeat(64),
     });
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = singleFirmMemoryRepository();
 
     expect(buildPublicConsultationIntakeSettingsFromEnv(corsOnly)).toBeUndefined();
     expect(buildPublicConsultationIntakeSettingsFromEnv(configured)).toEqual({
@@ -1016,7 +1028,7 @@ describe("API auth and persistence boundaries", () => {
       INBOUND_EMAIL_WEBHOOK_SECRET: "synthetic-mailgun-signing-key",
       INBOUND_EMAIL_DOMAIN: "mail.example.test",
     });
-    const repository = new InMemoryOpenPracticeRepository();
+    const repository = singleFirmMemoryRepository();
 
     expect(buildInboundEmailMailgunSettingsFromEnv(domainOnly)).toBeUndefined();
     expect(buildInboundEmailMailgunSettingsFromEnv(configured)).toEqual({

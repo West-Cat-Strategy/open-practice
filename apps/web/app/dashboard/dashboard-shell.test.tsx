@@ -254,7 +254,9 @@ describe("dashboard shell review rail controls", () => {
 
     expect(html).toContain('class="sidebar dashboard-sidebar zero-matter-sidebar"');
     expect(html).toContain('data-matter-state="empty"');
-    expect(html).toContain("Create or assign a matter to enable this matter-scoped section.");
+    expect(html).toContain("Documents");
+    expect(html).toContain("Calendar");
+    expect(html).not.toContain("Create or assign a matter to enable this matter-scoped section.");
   });
 
   it("renders unavailable navigation entries as disabled controls", () => {

@@ -435,8 +435,13 @@ export function buildICalendarEvent(event: CalendarEventRecord, generatedAt?: st
     `CREATED:${formatUtcDateTime(event.createdAt)}`,
     `LAST-MODIFIED:${formatUtcDateTime(event.updatedAt)}`,
     `X-OPEN-PRACTICE-FIRM-ID:${escapeICalendarText(event.firmId)}`,
-    `X-OPEN-PRACTICE-MATTER-ID:${escapeICalendarText(event.matterId)}`,
   ];
+  if (event.matterId) {
+    lines.push(`X-OPEN-PRACTICE-MATTER-ID:${escapeICalendarText(event.matterId)}`);
+  }
+  if (event.clientContactId) {
+    lines.push(`X-OPEN-PRACTICE-CLIENT-CONTACT-ID:${escapeICalendarText(event.clientContactId)}`);
+  }
   if (event.description) {
     lines.push(`DESCRIPTION:${escapeICalendarText(event.description)}`);
   }

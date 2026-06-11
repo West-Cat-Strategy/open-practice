@@ -708,6 +708,7 @@ function buildOverdueTaskDeadlineResults(
   mattersById: Map<string, OperationalMatterInput>,
 ): OperationalViewResult[] {
   return (input.calendarEvents ?? []).flatMap((event): OperationalViewResult[] => {
+    if (!event.matterId) return [];
     const matter = mattersById.get(event.matterId);
     const startsAt = toTime(event.startsAt);
     if (!matter || event.status === "cancelled" || startsAt === undefined || startsAt >= nowMs) {

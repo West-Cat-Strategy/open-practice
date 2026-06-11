@@ -26,7 +26,16 @@ describe("contact dossiers", () => {
       now: "2026-05-02T12:00:00.000Z",
     });
 
-    expect(dossiers.map((dossier) => dossier.contact.id)).toEqual(["contact-ada", "contact-river"]);
+    expect(dossiers.map((dossier) => dossier.contact.id)).toEqual([
+      "contact-ada",
+      "contact-northstar",
+      "contact-river",
+    ]);
+    expect(dossiers.find((dossier) => dossier.contact.id === "contact-northstar")).toMatchObject({
+      contact: { displayName: "North Star Holdings Ltd." },
+      matters: [],
+      portal: { activeGrantCount: 0 },
+    });
     expect(dossiers.find((dossier) => dossier.contact.id === "contact-ada")).toMatchObject({
       contact: { displayName: "Ada Morgan" },
       portal: { activeGrantCount: 1 },
@@ -142,8 +151,6 @@ describe("contact dossiers", () => {
       },
     ]);
     expect(JSON.stringify(ada.relationships)).not.toContain("contact-river");
-    expect(JSON.stringify(dossiers)).not.toContain("North Star Holdings");
-    expect(JSON.stringify(dossiers)).not.toContain("contact-northstar");
   });
 
   it("marks adverse party links without adding conflict-check records", () => {

@@ -438,7 +438,7 @@ export function registerCalendarGuestSessionRoutes(
     const session = await repository.createCalendarMeetingSession({
       id: `calendar-meeting-session-${createSessionToken().slice(0, 16)}`,
       firmId: request.auth.firmId,
-      matterId: event.matterId,
+      matterId: body.matterId,
       eventId: event.id,
       status: "lobby_closed",
       retentionUntil: defaultRetentionBoundary(event),
@@ -604,7 +604,7 @@ export function registerCalendarGuestSessionRoutes(
       const link = await repository.createCalendarGuestLink({
         id: `calendar-guest-link-${createSessionToken().slice(0, 16)}`,
         firmId: request.auth.firmId,
-        matterId: event.matterId,
+        matterId: body.matterId,
         eventId: event.id,
         sessionId: session.id,
         tokenHash: hashToken(token, secret),

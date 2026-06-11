@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import type {
+  ContactIdentifier,
   ContactDataQualityResolutionRecord,
   ContactDossier,
   ContactDossierQualitySignal,
@@ -29,6 +30,20 @@ const contactDataQualityResolutionBodySchema = z.object({
   relatedContactId: z.string().min(1).optional(),
   sourceRecordId: z.string().min(1).optional(),
   resolutionNote: z.string().min(1),
+});
+
+const createContactBodySchema = z.object({
+  kind: z.enum(["person", "organization"]),
+  displayName: z.string().trim().min(1).max(160),
+  aliases: z.array(z.string().trim().min(1).max(160)).default([]),
+  identifiers: z
+    .array(
+      z.object({
+        type: z.enum(["email", "phone", "tax_id", "registry_id"]),
+        value: z.string().trim().min(1).max(320),
+      }),
+    )
+    .default([]),
 });
 
 const contactDataQualityResolutionDecisionsByKind: Record<
@@ -195,6 +210,36 @@ export function registerContactRoutes(
     if (!access.ok) throw access.error;
     const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
     return dossiers.map(serializeContactDossier);
+  });
+
+  server.post("/api/contacts", async (request, reply) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "create" });
+    if (!access.ok) throw access.error;
+    const body = parseRequestPart(createContactBodySchema, request.body, "body");
+    const contact = await options.repository.createContact({
+      id: `contact-${randomUUID()}`,
+      firmId: request.auth.firmId,
+      kind: body.kind,
+      displayName: body.displayName,
+      aliases: Array.from(new Set(body.aliases)),
+      identifiers: body.identifiers as ContactIdentifier[],
+      createdByUserId: request.auth.user.id,
+    });
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: "contact.created",
+      resourceType: "contact",
+      resourceId: contact.id,
+      metadata: {
+        contactId: contact.id,
+        kind: contact.kind,
+        aliasCount: contact.aliases.length,
+        identifierTypes: Array.from(
+          new Set(contact.identifiers.map((identifier) => identifier.type)),
+        ),
+      },
+    });
+    const { notes: _notes, createdByUserId: _createdByUserId, ...safeContact } = contact;
+    return reply.code(201).send({ contact: safeContact });
   });
 
   server.get("/api/contacts/review-queue", async (request) => {

@@ -87,7 +87,7 @@ describe("dashboard shell navigation model", () => {
     });
   });
 
-  it("keeps firm surfaces available while disabling zero-matter work surfaces", () => {
+  it("keeps firm and mixed surfaces available in zero-matter mode", () => {
     const model = buildDashboardShellNavigationModel({
       billingCanView: true,
       capabilitySections: baseCapabilitySections,
@@ -102,12 +102,16 @@ describe("dashboard shell navigation model", () => {
       enabled: true,
     });
     expect(model.navigationSections.find((section) => section.key === "documents")).toMatchObject({
-      enabled: false,
-      disabledReason: "Create or assign a matter to enable this matter-scoped section.",
+      enabled: true,
+      availability: "mixed",
     });
     expect(model.navigationSections.find((section) => section.key === "funds")).toMatchObject({
-      enabled: false,
-      disabledReason: "Create or assign a matter to enable this matter-scoped section.",
+      enabled: true,
+      availability: "mixed",
+    });
+    expect(model.navigationSections.find((section) => section.key === "calendar")).toMatchObject({
+      enabled: true,
+      availability: "mixed",
     });
     expect(model.navigationSections.find((section) => section.key === "contacts")).toMatchObject({
       enabled: true,

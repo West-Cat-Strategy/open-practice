@@ -78,6 +78,7 @@ import {
 } from "./calendar-events/drizzle.js";
 import { runDrizzleConflictCheck } from "./conflict-checks/drizzle.js";
 import {
+  createDrizzleContact,
   createDrizzleContactDataQualityResolution,
   createDrizzleContactRelationship,
   getDrizzleContact,
@@ -479,6 +480,12 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     });
   }
 
+  async createContact(
+    contact: Parameters<OpenPracticeRepository["createContact"]>[0],
+  ): ReturnType<OpenPracticeRepository["createContact"]> {
+    return createDrizzleContact(this.db, contact);
+  }
+
   async createContactRelationship(
     relationship: Parameters<OpenPracticeRepository["createContactRelationship"]>[0],
   ): ReturnType<OpenPracticeRepository["createContactRelationship"]> {
@@ -648,7 +655,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
 
   async getCalendarEvent(
     firmId: string,
-    matterId: string,
+    matterId: string | undefined,
     eventId: string,
   ): ReturnType<OpenPracticeRepository["getCalendarEvent"]> {
     return getDrizzleCalendarEvent(this.db, firmId, matterId, eventId);
@@ -696,7 +703,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
 
   async listCalendarEventReminders(
     firmId: string,
-    matterId: string,
+    matterId: string | undefined,
     eventId: string,
   ): ReturnType<OpenPracticeRepository["listCalendarEventReminders"]> {
     return listDrizzleCalendarEventReminders(this.db, firmId, matterId, eventId);

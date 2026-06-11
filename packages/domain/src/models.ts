@@ -124,6 +124,7 @@ export interface Contact {
   aliases: string[];
   identifiers: ContactIdentifier[];
   notes?: string;
+  createdByUserId?: string;
 }
 
 export interface Matter {
@@ -339,6 +340,8 @@ export interface CalendarMeetingInvitationBoundary {
   invitationEmail: CalendarMeetingBoundaryCapability;
 }
 
+export type CalendarEventScope = "matter" | "firm" | "client";
+
 export interface CalendarEventAttendeeRecord {
   id: string;
   firmId: string;
@@ -362,7 +365,9 @@ export interface CalendarEventAttendeeRecord {
 export interface CalendarEventReminderRecord {
   id: string;
   firmId: string;
-  matterId: string;
+  scope?: CalendarEventScope;
+  matterId?: string;
+  clientContactId?: string;
   eventId: string;
   remindAt: string;
   channel: CalendarEventReminderChannel;
@@ -378,7 +383,9 @@ export interface CalendarEventReminderRecord {
 export interface CalendarEventRecord {
   id: string;
   firmId: string;
-  matterId: string;
+  scope?: CalendarEventScope;
+  matterId?: string;
+  clientContactId?: string;
   uid: string;
   title: string;
   startsAt: string;

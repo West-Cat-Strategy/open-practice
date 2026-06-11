@@ -373,6 +373,11 @@ export function canAccess(request: AccessRequest): boolean {
     return true;
   }
 
+  if (request.resource === "calendar_event" && !request.matterId) {
+    if (request.action === "read") return true;
+    return Boolean(request.contactId);
+  }
+
   if (matterScopedResources.has(request.resource) && !request.matterId) {
     return false;
   }

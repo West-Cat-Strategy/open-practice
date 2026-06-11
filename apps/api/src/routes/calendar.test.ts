@@ -383,6 +383,170 @@ describe("calendar routes", () => {
     expect(invalidRange.json()).toMatchObject({ code: "INVALID_CALENDAR_EVENT_RANGE" });
   });
 
+  it("keeps firm and client calendar events matterless while disabling matter-only delivery", async () => {
+    const repository = new AuditRecordingRepository();
+    await repository.createContact({
+      id: "contact-standalone-calendar",
+      firmId: "firm-west-legal",
+      kind: "person",
+      displayName: "Synthetic Standalone Calendar Client",
+      aliases: [],
+      identifiers: [{ type: "email", value: "standalone.calendar@example.test" }],
+      createdByUserId: "user-licensee",
+    });
+    const ownerServer = testServer(user("owner_admin", []), repository);
+    const licenseeServer = testServer(user("licensee", []), repository, {
+      add: async () => ({ id: "bull-calendar-reminder-001" }),
+    });
+
+    const firmCreated = await ownerServer.inject({
+      method: "POST",
+      url: "/api/calendar/events",
+      payload: {
+        scope: "firm",
+        title: "Synthetic firm planning block",
+        startsAt: "2026-05-14T16:00:00.000Z",
+        endsAt: "2026-05-14T17:00:00.000Z",
+      },
+    });
+    expect(firmCreated.statusCode).toBe(201);
+    expect(firmCreated.json().event).toMatchObject({
+      scope: "firm",
+      title: "Synthetic firm planning block",
+      reminders: [],
+      attendees: [],
+    });
+    expect(firmCreated.json().event).not.toHaveProperty("matterId");
+    expect(firmCreated.json().event).not.toHaveProperty("clientContactId");
+
+    const firmWriteDenied = await licenseeServer.inject({
+      method: "POST",
+      url: "/api/calendar/events",
+      payload: {
+        scope: "firm",
+        title: "Synthetic licensee firm write",
+        startsAt: "2026-05-14T18:00:00.000Z",
+        endsAt: "2026-05-14T19:00:00.000Z",
+      },
+    });
+    expect(firmWriteDenied.statusCode).toBe(403);
+    expect(firmWriteDenied.json()).toMatchObject({
+      code: "FIRM_CALENDAR_ACTION_REQUIRES_ADMIN",
+    });
+
+    const clientCreated = await licenseeServer.inject({
+      method: "POST",
+      url: "/api/calendar/events",
+      payload: {
+        scope: "client",
+        clientContactId: "contact-standalone-calendar",
+        title: "Synthetic client intake call",
+        startsAt: "2026-05-15T16:00:00.000Z",
+        endsAt: "2026-05-15T16:30:00.000Z",
+      },
+    });
+    expect(clientCreated.statusCode).toBe(201);
+    expect(clientCreated.json().event).toMatchObject({
+      scope: "client",
+      clientContactId: "contact-standalone-calendar",
+      title: "Synthetic client intake call",
+      attendees: [],
+    });
+    expect(clientCreated.json().event).not.toHaveProperty("matterId");
+    const clientEventId = clientCreated.json().event.id;
+
+    await expect(
+      repository.listCalendarEvents("firm-west-legal", { scopes: ["client"] }),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.listCalendarEvents("firm-west-legal", { scopes: ["firm", "client"] }),
+    ).resolves.toEqual([expect.objectContaining({ scope: "firm" })]);
+
+    const matterlessList = await licenseeServer.inject({
+      method: "GET",
+      url: "/api/calendar/events",
+    });
+    expect(matterlessList.statusCode).toBe(200);
+    expect(matterlessList.json()).toMatchObject({
+      guestSessions: [],
+      schedulingRequests: [],
+      caldavUrl: "",
+      subscriptionUrl: "",
+    });
+    expect(matterlessList.json().events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ scope: "firm", title: "Synthetic firm planning block" }),
+        expect.objectContaining({
+          scope: "client",
+          clientContactId: "contact-standalone-calendar",
+        }),
+      ]),
+    );
+
+    const emailReminder = await licenseeServer.inject({
+      method: "POST",
+      url: `/api/calendar/events/${clientEventId}/reminders`,
+      payload: {
+        scope: "client",
+        clientContactId: "contact-standalone-calendar",
+        remindAt: "2026-05-15T15:30:00.000Z",
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+    expect(emailReminder.statusCode).toBe(400);
+    expect(emailReminder.json()).toMatchObject({
+      code: "CALENDAR_REMINDER_EMAIL_REQUIRES_MATTER",
+    });
+
+    const dashboardReminder = await licenseeServer.inject({
+      method: "POST",
+      url: `/api/calendar/events/${clientEventId}/reminders`,
+      payload: {
+        scope: "client",
+        clientContactId: "contact-standalone-calendar",
+        remindAt: "2026-05-15T15:30:00.000Z",
+      },
+    });
+    expect(dashboardReminder.statusCode).toBe(201);
+    expect(dashboardReminder.json().reminder).toMatchObject({
+      scope: "client",
+      clientContactId: "contact-standalone-calendar",
+      eventId: clientEventId,
+      status: "pending",
+    });
+    expect(await repository.listJobLifecycleRecords("firm-west-legal", {})).toEqual([]);
+  });
+
+  it("denies matterless calendar access to hidden client contacts and external clients", async () => {
+    const repository = new AuditRecordingRepository();
+    const server = testServer(user("firm_member", []), repository);
+
+    const hiddenClientEvent = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events",
+      payload: {
+        scope: "client",
+        clientContactId: "contact-ada",
+        title: "Hidden client event",
+        startsAt: "2026-05-15T16:00:00.000Z",
+        endsAt: "2026-05-15T17:00:00.000Z",
+      },
+    });
+    expect(hiddenClientEvent.statusCode).toBe(403);
+    expect(hiddenClientEvent.json()).toMatchObject({
+      code: "CALENDAR_CLIENT_CONTACT_NOT_VISIBLE",
+    });
+
+    const externalList = await testServer(user("client_external", []), repository).inject({
+      method: "GET",
+      url: "/api/calendar/events",
+    });
+    expect(externalList.statusCode).toBe(403);
+    expect(externalList.json()).toMatchObject({
+      message: "Calendar event access required",
+    });
+  });
+
   it("creates, updates, and deletes manual reminder-state records without delivery side effects", async () => {
     const repository = new AuditRecordingRepository();
     const server = testServer(user("licensee", ["matter-001"]), repository);

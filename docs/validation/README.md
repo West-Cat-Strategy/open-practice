@@ -17,6 +17,17 @@ lives in [Archive](../archive/README.md).
 
 ## Active Proof Notes
 
+The matterless workflow branch is recorded in
+[OP_MATTERLESS_WORKFLOW_PROOF_2026-06-10.md](OP_MATTERLESS_WORKFLOW_PROOF_2026-06-10.md).
+It covers standalone contact creation and visibility, contact-first matter creation,
+firm/client-scoped calendar events and dashboard reminders, zero-matter dashboard navigation,
+desktop/mobile browser proof, host/Docker E2E proof, scope-aware matterless permissions, and the
+retained matter-only boundaries for attendees, invitations, guest sessions, meeting links, calendar
+feeds, public links, and email reminder delivery. The 2026-06-11 final review follow-up
+reconfirmed changed-path and screenshot proof consistency, fixed public-token browser navigation
+to use canonical hash URLs, and reran the selected host and Docker E2E gates green for merge
+handoff.
+
 First-run setup no longer accepts or requires a setup key. The current proof is recorded in
 [OP_FIRST_RUN_SETUP_HYDRATION_PROOF_2026-06-09.md](OP_FIRST_RUN_SETUP_HYDRATION_PROOF_2026-06-09.md)
 and covers empty-state production setup without a key, partial-state blocking, loopback/Docker

@@ -1,6 +1,7 @@
 import type {
   CalendarEventAttendeeRecord,
   CalendarEventRecord,
+  CalendarEventScope,
   CalendarEventReminderRecord,
   CalendarGuestLinkRecord,
   CalendarGuestLinkStatus,
@@ -30,7 +31,9 @@ export class CalendarEventUidConflictError extends Error {
 }
 
 export interface CalendarEventListOptions {
-  matterId: string;
+  matterId?: string;
+  scopes?: CalendarEventScope[];
+  clientContactIds?: string[];
   startsAfter?: string;
   startsBefore?: string;
 }
@@ -61,7 +64,9 @@ export interface CalendarSchedulingRequestListOptions {
 
 export interface CalendarEventReminderDeleteInput {
   firmId: string;
-  matterId: string;
+  scope?: CalendarEventScope;
+  matterId?: string;
+  clientContactId?: string;
   eventId: string;
   reminderId: string;
   deletedAt: string;
@@ -70,7 +75,7 @@ export interface CalendarEventReminderDeleteInput {
 
 export interface CalendarEventDeleteInput {
   firmId: string;
-  matterId: string;
+  matterId?: string;
   eventId: string;
   deletedAt: string;
   updatedByUserId: string;
@@ -127,7 +132,7 @@ export interface CalendarEventsRepository {
   ): Promise<CalendarEventRecord[]>;
   getCalendarEvent(
     firmId: string,
-    matterId: string,
+    matterId: string | undefined,
     eventId: string,
   ): Promise<CalendarEventRecord | undefined>;
   getCalendarEventByUid(
@@ -152,7 +157,7 @@ export interface CalendarEventsRepository {
   ): Promise<CalendarEventAttendeeRecord[]>;
   listCalendarEventReminders(
     firmId: string,
-    matterId: string,
+    matterId: string | undefined,
     eventId: string,
   ): Promise<CalendarEventReminderRecord[]>;
   upsertCalendarEventReminder(

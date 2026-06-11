@@ -224,6 +224,80 @@ describe("matter routes", () => {
     expect(JSON.stringify(createdEvent?.metadata)).not.toContain("+1-555-0100");
   });
 
+  it("creates a first matter from a visible standalone contact without duplicating the contact", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createContact({
+      id: "contact-standalone-matter",
+      firmId,
+      kind: "person",
+      displayName: "Synthetic Existing Client",
+      aliases: [],
+      identifiers: [{ type: "email", value: "existing.client@example.test" }],
+      createdByUserId: "user-licensee",
+    });
+
+    const response = await testServer(user("licensee", []), repository).inject({
+      method: "POST",
+      url: "/api/matters",
+      payload: {
+        title: "Synthetic contact-first intake",
+        practiceArea: "Residential tenancy",
+        jurisdiction: "BC",
+        clientContactId: "contact-standalone-matter",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const created = response.json<MatterSummary>();
+    expect(created.parties).toEqual([
+      expect.objectContaining({
+        contactId: "contact-standalone-matter",
+        role: "prospective_client",
+        contact: expect.objectContaining({
+          id: "contact-standalone-matter",
+          displayName: "Synthetic Existing Client",
+        }),
+      }),
+    ]);
+    const contact = await repository.getContact(firmId, "contact-standalone-matter");
+    expect(contact).toMatchObject({
+      id: "contact-standalone-matter",
+      displayName: "Synthetic Existing Client",
+    });
+    const audit = await repository.listAuditEvents(firmId);
+    const createdEvent = audit.events.find(
+      (event) => event.action === "matter.opened" && event.resourceId === created.id,
+    );
+    expect(createdEvent).toMatchObject({
+      metadata: {
+        matterId: created.id,
+        source: "dashboard_zero_matter",
+        clientContactCreated: false,
+        partyRole: "prospective_client",
+      },
+    });
+    expect(JSON.stringify(createdEvent?.metadata)).not.toContain("Synthetic Existing Client");
+    expect(JSON.stringify(createdEvent?.metadata)).not.toContain("existing.client@example.test");
+  });
+
+  it("denies first matter creation from hidden contacts", async () => {
+    const response = await testServer(user("licensee", [])).inject({
+      method: "POST",
+      url: "/api/matters",
+      payload: {
+        title: "Synthetic hidden-contact intake",
+        practiceArea: "Residential tenancy",
+        jurisdiction: "BC",
+        clientContactId: "contact-northstar",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      message: "Matter client contact is not visible",
+    });
+  });
+
   it("validates first matter creation requests", async () => {
     const response = await testServer(user("licensee", [])).inject({
       method: "POST",

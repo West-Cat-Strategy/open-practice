@@ -40,9 +40,11 @@ export const contacts = pgTable(
       .notNull()
       .default([]),
     notes: text("notes"),
+    createdByUserId: text("created_by_user_id").references(() => users.id),
   },
   (table) => ({
     firmName: index("contacts_firm_name_idx").on(table.firmId, table.displayName),
+    firmCreatedBy: index("contacts_firm_created_by_idx").on(table.firmId, table.createdByUserId),
   }),
 );
 

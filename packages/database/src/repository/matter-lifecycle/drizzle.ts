@@ -59,14 +59,25 @@ export async function createDrizzleMatterWithClient(
       openedOn: input.openedOn,
     };
 
-    await tx.insert(schema.contacts).values({
-      id: input.contactId,
-      firmId: input.firmId,
-      kind: input.client.kind,
-      displayName: input.client.displayName,
-      aliases: [],
-      identifiers: input.client.identifiers,
-    });
+    if (input.client) {
+      await tx.insert(schema.contacts).values({
+        id: input.contactId,
+        firmId: input.firmId,
+        kind: input.client.kind,
+        displayName: input.client.displayName,
+        aliases: [],
+        identifiers: input.client.identifiers,
+        createdByUserId: input.actorUserId,
+      });
+    } else {
+      const [existingContact] = await tx
+        .select({ id: schema.contacts.id })
+        .from(schema.contacts)
+        .where(
+          and(eq(schema.contacts.firmId, input.firmId), eq(schema.contacts.id, input.contactId)),
+        );
+      if (!existingContact) throw new Error(`Contact ${input.contactId} was not found`);
+    }
     await tx.insert(schema.matters).values({
       ...matter,
       openedOn: new Date(input.openedOn),
@@ -111,7 +122,7 @@ export async function createDrizzleMatterWithClient(
       metadata: {
         matterId: input.matterId,
         source: "dashboard_zero_matter",
-        clientContactCreated: true,
+        clientContactCreated: Boolean(input.client),
         partyRole: "prospective_client",
       },
     });
@@ -188,6 +199,7 @@ export async function convertDrizzlePublicConsultationIntakeToMatter(
       displayName: currentIntake.clientName,
       aliases: [],
       identifiers: clientIdentifiers,
+      createdByUserId: input.actorUserId,
     });
     if (input.opposingParties.length > 0) {
       await tx.insert(schema.contacts).values(
@@ -198,6 +210,7 @@ export async function convertDrizzlePublicConsultationIntakeToMatter(
           displayName: party.displayName,
           aliases: [],
           identifiers: [],
+          createdByUserId: input.actorUserId,
         })),
       );
     }

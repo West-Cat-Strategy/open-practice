@@ -19,6 +19,7 @@ export type OpenPracticeRouteId =
   | "queues";
 
 export type OpenPracticeRouteArea = "workspace" | "operations" | "finance" | "review";
+export type OpenPracticeRouteAvailability = "firm" | "mixed" | "matter";
 export type OpenPracticeDashboardSectionKey =
   | DashboardSectionKey
   | "shares"
@@ -33,6 +34,7 @@ export interface OpenPracticeRouteCatalogEntry {
   path: string;
   sectionKey?: OpenPracticeDashboardSectionKey;
   area: OpenPracticeRouteArea;
+  availability: OpenPracticeRouteAvailability;
   requiresMatterContext: boolean;
   order: number;
   showInSidebar: boolean;
@@ -50,6 +52,7 @@ export interface OpenPracticeSidebarNavigationSection {
   label: string;
   title: string;
   area: OpenPracticeRouteArea;
+  availability: OpenPracticeRouteAvailability;
   enabled: boolean;
   requiresMatterContext: boolean;
   disabledReason?: string;
@@ -79,6 +82,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=matters",
     sectionKey: "matters",
     area: "workspace",
+    availability: "firm",
     requiresMatterContext: true,
     order: 10,
     showInSidebar: true,
@@ -90,6 +94,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=contacts",
     sectionKey: "contacts",
     area: "workspace",
+    availability: "firm",
     requiresMatterContext: false,
     order: 15,
     showInSidebar: true,
@@ -101,6 +106,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=funds",
     sectionKey: "funds",
     area: "finance",
+    availability: "mixed",
     requiresMatterContext: true,
     order: 20,
     showInSidebar: true,
@@ -112,6 +118,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=billing",
     sectionKey: "billing",
     area: "finance",
+    availability: "mixed",
     requiresMatterContext: true,
     order: 30,
     showInSidebar: true,
@@ -123,6 +130,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=documents",
     sectionKey: "documents",
     area: "workspace",
+    availability: "mixed",
     requiresMatterContext: true,
     order: 40,
     showInSidebar: true,
@@ -134,6 +142,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=research",
     sectionKey: "research",
     area: "workspace",
+    availability: "mixed",
     requiresMatterContext: true,
     order: 41,
     showInSidebar: true,
@@ -145,6 +154,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=shares",
     sectionKey: "shares",
     area: "operations",
+    availability: "mixed",
     requiresMatterContext: true,
     order: 42,
     showInSidebar: true,
@@ -156,6 +166,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=externalUploads",
     sectionKey: "externalUploads",
     area: "workspace",
+    availability: "mixed",
     requiresMatterContext: true,
     order: 44,
     showInSidebar: true,
@@ -167,6 +178,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=drafting",
     sectionKey: "drafting",
     area: "workspace",
+    availability: "mixed",
     requiresMatterContext: true,
     order: 45,
     showInSidebar: true,
@@ -178,6 +190,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=calendar",
     sectionKey: "calendar",
     area: "workspace",
+    availability: "mixed",
     requiresMatterContext: true,
     order: 47,
     showInSidebar: true,
@@ -189,6 +202,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=signatures",
     sectionKey: "signatures",
     area: "operations",
+    availability: "mixed",
     requiresMatterContext: true,
     order: 50,
     showInSidebar: true,
@@ -200,6 +214,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=intake",
     sectionKey: "intake",
     area: "operations",
+    availability: "mixed",
     requiresMatterContext: true,
     order: 60,
     showInSidebar: true,
@@ -211,6 +226,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=audit",
     sectionKey: "audit",
     area: "review",
+    availability: "firm",
     requiresMatterContext: false,
     order: 70,
     showInSidebar: true,
@@ -222,6 +238,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=reports",
     sectionKey: "reports",
     area: "review",
+    availability: "firm",
     requiresMatterContext: false,
     order: 75,
     showInSidebar: true,
@@ -233,6 +250,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=admin",
     sectionKey: "admin",
     area: "review",
+    availability: "firm",
     requiresMatterContext: false,
     order: 78,
     showInSidebar: true,
@@ -244,6 +262,7 @@ export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
     path: "/?section=queues",
     sectionKey: "queues",
     area: "operations",
+    availability: "firm",
     requiresMatterContext: false,
     order: 80,
     showInSidebar: true,
@@ -299,6 +318,7 @@ export function buildSidebarNavigationSections(input: {
     label: string;
     title: string;
     area: OpenPracticeRouteArea;
+    availability: OpenPracticeRouteAvailability;
     enabled: boolean;
     order: number;
     requiresMatterContext: boolean;
@@ -312,6 +332,7 @@ export function buildSidebarNavigationSections(input: {
       label: entry.shortLabel,
       title: entry.title,
       area: entry.area,
+      availability: entry.availability,
       enabled:
         section.key === "billing"
           ? input.billingCanView
@@ -333,6 +354,7 @@ export function buildSidebarNavigationSections(input: {
         label: billingEntry.shortLabel,
         title: billingEntry.title,
         area: billingEntry.area,
+        availability: billingEntry.availability,
         enabled: input.billingCanView,
         order: billingEntry.order,
         requiresMatterContext: billingEntry.requiresMatterContext,
@@ -346,6 +368,7 @@ export function buildSidebarNavigationSections(input: {
       label: shareLinksEntry.shortLabel,
       title: shareLinksEntry.title,
       area: shareLinksEntry.area,
+      availability: shareLinksEntry.availability,
       enabled: input.shareLinksEnabled ?? false,
       order: shareLinksEntry.order,
       requiresMatterContext: shareLinksEntry.requiresMatterContext,
@@ -360,6 +383,7 @@ export function buildSidebarNavigationSections(input: {
         label: externalUploadsEntry.shortLabel,
         title: externalUploadsEntry.title,
         area: externalUploadsEntry.area,
+        availability: externalUploadsEntry.availability,
         enabled: input.externalUploadsEnabled ?? false,
         order: externalUploadsEntry.order,
         requiresMatterContext: externalUploadsEntry.requiresMatterContext,
@@ -374,6 +398,7 @@ export function buildSidebarNavigationSections(input: {
       label: queuesEntry.shortLabel,
       title: queuesEntry.title,
       area: queuesEntry.area,
+      availability: queuesEntry.availability,
       enabled: true,
       order: queuesEntry.order,
       requiresMatterContext: queuesEntry.requiresMatterContext,
@@ -387,6 +412,7 @@ export function buildSidebarNavigationSections(input: {
       label: adminEntry.shortLabel,
       title: adminEntry.title,
       area: adminEntry.area,
+      availability: adminEntry.availability,
       enabled: input.adminReadinessEnabled ?? false,
       order: adminEntry.order,
       requiresMatterContext: adminEntry.requiresMatterContext,
@@ -395,11 +421,12 @@ export function buildSidebarNavigationSections(input: {
 
   return displayCandidates
     .sort((left, right) => left.order - right.order)
-    .map(({ key, label, title, area, enabled, requiresMatterContext }) => ({
+    .map(({ key, label, title, area, availability, enabled, requiresMatterContext }) => ({
       key,
       label,
       title,
       area,
+      availability,
       enabled,
       requiresMatterContext,
     }));

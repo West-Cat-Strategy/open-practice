@@ -301,6 +301,14 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
   authRoute(
     "registerContactRoutes",
     "apps/api/src/routes/contacts.test.ts",
+    "POST",
+    "/api/contacts",
+    "contact",
+    "create",
+  ),
+  authRoute(
+    "registerContactRoutes",
+    "apps/api/src/routes/contacts.test.ts",
     "GET",
     "/api/contacts/review-queue",
     "contact",

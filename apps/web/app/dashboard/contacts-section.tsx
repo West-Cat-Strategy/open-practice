@@ -1,4 +1,4 @@
-import { Check, ClipboardCheck, Search } from "lucide-react";
+import { CalendarDays, Check, ClipboardCheck, Plus, Search, UserPlus } from "lucide-react";
 import {
   contactDataQualityResolutionActions,
   contactDataQualitySignalKey,
@@ -21,13 +21,29 @@ import type {
 export function ContactsSection({
   activeContactDossier,
   canRecordContactDataQualityResolution,
+  canCreateContact,
+  canCreateMatter,
   compactStatus,
+  contactCreateDisplayName,
+  contactCreateEmail,
+  contactCreateKind,
+  contactCreatePhone,
+  contactCreateStatus,
   contactDataQualityResolutions,
   contactDataQualityStatus,
   contactDossiers,
   contactReviewQueue,
   contactSearch,
+  creatingContact,
+  creatingMatterFromContactId,
   filteredContactDossiers,
+  onContactCreateDisplayNameChange,
+  onContactCreateEmailChange,
+  onContactCreateKindChange,
+  onContactCreatePhoneChange,
+  onCreateContact,
+  onCreateMatterFromContact,
+  onNewAppointmentForContact,
   onRecordContactDataQualityResolution,
   onContactSearchChange,
   onPrepareConflictCheckFromContact,
@@ -37,13 +53,29 @@ export function ContactsSection({
 }: {
   activeContactDossier?: ContactDossier;
   canRecordContactDataQualityResolution: boolean;
+  canCreateContact: boolean;
+  canCreateMatter: boolean;
   compactStatus: (value?: string) => string;
+  contactCreateDisplayName: string;
+  contactCreateEmail: string;
+  contactCreateKind: "person" | "organization";
+  contactCreatePhone: string;
+  contactCreateStatus: string;
   contactDataQualityResolutions: ContactDataQualityResolutionRecord[];
   contactDataQualityStatus: string;
   contactDossiers: ContactDossiersResponse;
   contactReviewQueue?: ContactReviewQueueResponse;
   contactSearch: string;
+  creatingContact: boolean;
+  creatingMatterFromContactId: string;
   filteredContactDossiers: ContactDossiersResponse;
+  onContactCreateDisplayNameChange: (value: string) => void;
+  onContactCreateEmailChange: (value: string) => void;
+  onContactCreateKindChange: (value: "person" | "organization") => void;
+  onContactCreatePhoneChange: (value: string) => void;
+  onCreateContact: () => void;
+  onCreateMatterFromContact: (dossier: ContactDossier) => void;
+  onNewAppointmentForContact: (dossier: ContactDossier) => void;
   onRecordContactDataQualityResolution: (
     signal: ContactDossier["qualityReview"]["signals"][number],
     decision: ContactDataQualityResolutionRecord["decision"],
@@ -90,6 +122,61 @@ export function ContactsSection({
           <strong>
             {contactDossiers.reduce((sum, dossier) => sum + dossier.relationships.length, 0)}
           </strong>
+        </div>
+      </div>
+
+      <div className="share-controls contact-create-controls">
+        <div className="section-title">
+          <h3>Create standalone contact</h3>
+          <span>{contactCreateStatus}</span>
+        </div>
+        <div className="calendar-attendee-form">
+          <label className="search-field">
+            <span>Kind</span>
+            <select
+              onChange={(event) =>
+                onContactCreateKindChange(event.currentTarget.value as "person" | "organization")
+              }
+              value={contactCreateKind}
+            >
+              <option value="person">Person</option>
+              <option value="organization">Organization</option>
+            </select>
+          </label>
+          <label className="search-field">
+            <span>Display name</span>
+            <input
+              onChange={(event) => onContactCreateDisplayNameChange(event.currentTarget.value)}
+              value={contactCreateDisplayName}
+            />
+          </label>
+          <label className="search-field">
+            <span>Email</span>
+            <input
+              inputMode="email"
+              onChange={(event) => onContactCreateEmailChange(event.currentTarget.value)}
+              type="email"
+              value={contactCreateEmail}
+            />
+          </label>
+          <label className="search-field">
+            <span>Phone</span>
+            <input
+              inputMode="tel"
+              onChange={(event) => onContactCreatePhoneChange(event.currentTarget.value)}
+              type="tel"
+              value={contactCreatePhone}
+            />
+          </label>
+          <button
+            className="secondary-button compact-button"
+            disabled={creatingContact || !canCreateContact || !contactCreateDisplayName.trim()}
+            onClick={() => void onCreateContact()}
+            type="button"
+          >
+            <UserPlus size={16} />
+            {creatingContact ? "Creating..." : "Create contact"}
+          </button>
         </div>
       </div>
 
@@ -217,14 +304,38 @@ export function ContactsSection({
             <>
               <div className="section-title">
                 <h3>{activeContactDossier.contact.displayName}</h3>
-                <button
-                  className="secondary-button compact-action-button"
-                  onClick={onPrepareConflictCheckFromContact}
-                  type="button"
-                >
-                  <Search size={16} />
-                  Check this contact
-                </button>
+                <span className="row-actions">
+                  <button
+                    className="secondary-button compact-action-button"
+                    onClick={onPrepareConflictCheckFromContact}
+                    type="button"
+                  >
+                    <Search size={16} />
+                    Check
+                  </button>
+                  <button
+                    className="secondary-button compact-action-button"
+                    onClick={() => onNewAppointmentForContact(activeContactDossier)}
+                    type="button"
+                  >
+                    <CalendarDays size={16} />
+                    Appointment
+                  </button>
+                  <button
+                    className="secondary-button compact-action-button"
+                    disabled={
+                      !canCreateMatter ||
+                      creatingMatterFromContactId === activeContactDossier.contact.id
+                    }
+                    onClick={() => void onCreateMatterFromContact(activeContactDossier)}
+                    type="button"
+                  >
+                    <Plus size={16} />
+                    {creatingMatterFromContactId === activeContactDossier.contact.id
+                      ? "Creating..."
+                      : "Matter"}
+                  </button>
+                </span>
               </div>
               <p className="detail-note">
                 {activeContactDossier.contact.kind} · {activeContactDossier.conflictHistory.length}{" "}
@@ -376,6 +487,11 @@ export function ContactsSection({
                     </em>
                   </button>
                 ))}
+                {activeContactDossier.matters.length === 0 ? (
+                  <p className="inline-empty">
+                    No linked matters yet. Create a matter from this contact when one is needed.
+                  </p>
+                ) : null}
               </div>
 
               <div className="section-title">

@@ -38,6 +38,9 @@ export async function listMemoryContactDossiersForUser(
   dependencies: MemoryContactDependencies,
 ): Promise<ContactDossier[]> {
   const matters = await dependencies.listMattersForUser(user);
+  const linkedContactIds = new Set(
+    matters.flatMap((matter) => matter.parties.map((party) => party.contactId)),
+  );
   const matterParties = matters.flatMap((matter) =>
     matter.parties.map((party) => ({
       id: party.id,
@@ -49,7 +52,19 @@ export async function listMemoryContactDossiersForUser(
       confidential: party.confidential,
     })),
   );
-  const contacts = matters.flatMap((matter) => matter.parties.map((party) => party.contact));
+  const hasFirmWideContactVisibility = ["owner_admin", "auditor"].includes(user.role);
+  const allMatterLinkedContactIds = new Set(
+    store.matterParties
+      .filter((party) => party.firmId === user.firmId)
+      .map((party) => party.contactId),
+  );
+  const contacts = store.contacts.filter(
+    (contact) =>
+      contact.firmId === user.firmId &&
+      (hasFirmWideContactVisibility ||
+        linkedContactIds.has(contact.id) ||
+        (contact.createdByUserId === user.id && !allMatterLinkedContactIds.has(contact.id))),
+  );
   const intakeVariableProposals = store.intakeVariableProposals.filter(
     (proposal) =>
       proposal.firmId === user.firmId &&
@@ -67,6 +82,18 @@ export async function listMemoryContactDossiersForUser(
     intakeVariableProposals,
     conflictChecks: store.conflictChecks,
   });
+}
+
+export function createMemoryContact(store: MemoryContactStore, contact: Contact): Contact {
+  if (
+    store.contacts.some(
+      (candidate) => candidate.firmId === contact.firmId && candidate.id === contact.id,
+    )
+  ) {
+    throw new Error(`Contact ${contact.id} already exists`);
+  }
+  store.contacts = [clone(contact), ...store.contacts];
+  return clone(contact);
 }
 
 export function createMemoryContactRelationship(

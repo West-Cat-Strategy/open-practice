@@ -173,6 +173,72 @@ describe("contact routes", () => {
     expect(JSON.stringify(payload)).not.toContain('"relatedContact":{"id"');
   });
 
+  it("creates standalone contacts with safe response and audit metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const authUser = user("firm_member", []);
+    const response = await testServer({
+      repository,
+      user: authUser,
+    }).inject({
+      method: "POST",
+      url: "/api/contacts",
+      payload: {
+        kind: "person",
+        displayName: "  Synthetic Intake Client  ",
+        aliases: ["  Synthetic Client  ", "Synthetic Client"],
+        identifiers: [{ type: "email", value: "synthetic.client@example.test" }],
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const payload = response.json<{
+      contact: {
+        id: string;
+        firmId: string;
+        kind: string;
+        displayName: string;
+        aliases: string[];
+        identifiers: Array<{ type: string; value: string }>;
+      };
+    }>();
+    expect(payload.contact).toMatchObject({
+      firmId: "firm-west-legal",
+      kind: "person",
+      displayName: "Synthetic Intake Client",
+      aliases: ["Synthetic Client"],
+      identifiers: [{ type: "email", value: "synthetic.client@example.test" }],
+    });
+    expect(payload.contact).not.toHaveProperty("notes");
+    expect(payload.contact).not.toHaveProperty("createdByUserId");
+    const dossiers = await testServer({
+      repository,
+      user: authUser,
+    }).inject({ method: "GET", url: "/api/contacts/dossiers" });
+    expect(dossiers.statusCode).toBe(200);
+    expect(dossiers.json<Array<{ contact: { id: string }; matters: unknown[] }>>()).toEqual([
+      expect.objectContaining({
+        contact: expect.objectContaining({ id: payload.contact.id }),
+        matters: [],
+      }),
+    ]);
+
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const createdEvent = audit.events.find((event) => event.action === "contact.created");
+    expect(createdEvent).toMatchObject({
+      resourceType: "contact",
+      resourceId: payload.contact.id,
+      metadata: {
+        contactId: payload.contact.id,
+        kind: "person",
+        aliasCount: 1,
+        identifierTypes: ["email"],
+      },
+    });
+    const serializedAudit = JSON.stringify(createdEvent);
+    expect(serializedAudit).not.toContain("Synthetic Intake Client");
+    expect(serializedAudit).not.toContain("synthetic.client@example.test");
+  });
+
   it("returns an audit-safe contact review queue without widening matter visibility", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const visibleContacts = (repository as unknown as { contacts: Contact[] }).contacts;
@@ -457,6 +523,13 @@ describe("contact routes", () => {
     const resolutions = await testServer({
       user: user("client_external", ["matter-001"]),
     }).inject({ method: "GET", url: "/api/contacts/data-quality-resolutions" });
+    const createContact = await testServer({
+      user: user("client_external", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: "/api/contacts",
+      payload: { kind: "person", displayName: "Synthetic Client" },
+    });
 
     expect(dossiers.statusCode).toBe(403);
     expect(dossiers.json()).toMatchObject({
@@ -468,6 +541,10 @@ describe("contact routes", () => {
     });
     expect(resolutions.statusCode).toBe(403);
     expect(resolutions.json()).toMatchObject({
+      message: "Contact access required",
+    });
+    expect(createContact.statusCode).toBe(403);
+    expect(createContact.json()).toMatchObject({
       message: "Contact access required",
     });
   });

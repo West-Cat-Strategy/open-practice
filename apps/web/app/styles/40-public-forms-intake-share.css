@@ -295,6 +295,17 @@
   align-items: end;
 }
 
+.calendar-event-form,
+.calendar-reminder-form {
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
+.calendar-event-form .compact-button,
+.calendar-reminder-form .compact-button {
+  width: fit-content;
+  min-width: 140px;
+}
+
 .row-actions {
   display: flex;
   align-items: center;
