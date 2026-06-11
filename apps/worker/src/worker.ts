@@ -4,6 +4,7 @@ import { z } from "zod";
 import type {
   AiOperationalProposalProvider,
   DraftAssistProvider,
+  MailSender,
   OpenPracticeQueueName,
 } from "@open-practice/domain";
 import {
@@ -16,11 +17,11 @@ import {
 } from "@open-practice/database";
 import {
   TesseractOcrProvider,
-  SmtpMailSender,
-  DisabledMailSender,
+  ImapMailboxPoller,
   MailParserProvider,
 } from "@open-practice/providers";
 import { createOpenPracticeQueue, openPracticeQueues, redisConnectionFromUrl } from "./queues.js";
+import { ProviderConfiguredSmtpMailSender } from "./provider-mail-sender.js";
 import {
   processOpenPracticeJob,
   type ConnectorSecretResolver,
@@ -79,12 +80,6 @@ export const workerEnvSchema = z.object({
   S3_ACCESS_KEY: optionalString,
   S3_SECRET_KEY: optionalString,
   S3_SERVER_SIDE_ENCRYPTION: optionalS3ServerSideEncryption,
-  SMTP_HOST: z.string().default("localhost"),
-  SMTP_PORT: z.coerce.number().default(1025),
-  SMTP_SECURE: booleanFromEnv,
-  SMTP_FROM: z.string().default("Open Practice <no-reply@open-practice.local>"),
-  SMTP_USERNAME: optionalString,
-  SMTP_PASSWORD: optionalString,
   CONNECTOR_WEBHOOK_SECRETS: optionalString,
 });
 
@@ -178,10 +173,12 @@ export function createWorkers(input: {
   ocrProvider: TesseractOcrProvider;
   aiOperationalProposalProvider?: AiOperationalProposalProvider;
   draftAssistProvider?: DraftAssistProvider;
-  mailSender: SmtpMailSender | DisabledMailSender;
+  mailSender: MailSender;
   inboundEmailParser: MailParserProvider;
+  imapMailboxPoller?: ImapMailboxPoller;
   connectorSecretResolver?: ConnectorSecretResolver;
   connectorJobQueue?: WorkerJobQueue;
+  inboundEmailJobQueue?: WorkerJobQueue;
 }): Worker[] {
   const connection = redisConnectionFromUrl(input.redisUrl);
   return input.queues.map(
@@ -206,8 +203,10 @@ export function createWorkers(input: {
             draftAssistProvider: input.draftAssistProvider,
             mailSender: input.mailSender,
             inboundEmailParser: input.inboundEmailParser,
+            imapMailboxPoller: input.imapMailboxPoller,
             connectorSecretResolver: input.connectorSecretResolver,
             connectorJobQueue: input.connectorJobQueue,
+            inboundEmailJobQueue: input.inboundEmailJobQueue,
           }),
         { connection, concurrency: input.concurrency },
       ),
@@ -230,18 +229,7 @@ if (process.env.NODE_ENV !== "test") {
 
   const ocrProvider = new TesseractOcrProvider();
 
-  const mailSender =
-    env.SMTP_HOST && env.SMTP_PORT
-      ? new SmtpMailSender({
-          host: env.SMTP_HOST,
-          port: env.SMTP_PORT,
-          secure: env.SMTP_SECURE,
-          auth:
-            env.SMTP_USERNAME && env.SMTP_PASSWORD
-              ? { user: env.SMTP_USERNAME, pass: env.SMTP_PASSWORD }
-              : undefined,
-        })
-      : new DisabledMailSender();
+  const mailSender = new ProviderConfiguredSmtpMailSender(repository);
 
   const connectorSecrets = env.CONNECTOR_WEBHOOK_SECRETS
     ? (JSON.parse(env.CONNECTOR_WEBHOOK_SECRETS) as Record<string, string>)
@@ -250,6 +238,9 @@ if (process.env.NODE_ENV !== "test") {
   const queues = selectedQueues(env.WORKER_QUEUES);
   const connectorJobQueue = queues.includes("connectors")
     ? createOpenPracticeQueue("connectors", env.REDIS_URL)
+    : undefined;
+  const inboundEmailJobQueue = queues.includes("inbound_email")
+    ? createOpenPracticeQueue("inbound_email", env.REDIS_URL)
     : undefined;
 
   const workers = createWorkers({
@@ -265,8 +256,10 @@ if (process.env.NODE_ENV !== "test") {
     ocrProvider,
     mailSender,
     inboundEmailParser: new MailParserProvider(),
+    imapMailboxPoller: new ImapMailboxPoller(),
     connectorSecretResolver: (secretReferenceId) => connectorSecrets[secretReferenceId],
     connectorJobQueue,
+    inboundEmailJobQueue,
   });
 
   for (const worker of workers) {
@@ -285,6 +278,7 @@ if (process.env.NODE_ENV !== "test") {
     void Promise.all([
       ...workers.map((worker) => worker.close()),
       connectorJobQueue?.close(),
+      inboundEmailJobQueue?.close(),
       close?.(),
     ]).then(() => process.exit(0));
   });

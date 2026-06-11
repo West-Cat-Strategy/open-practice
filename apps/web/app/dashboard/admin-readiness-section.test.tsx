@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { AdminReadinessSection, buildAdminReadinessSummary } from "./admin-readiness-section";
 import type {
   CapabilitiesResponse,
+  EmailSettings,
+  ImapSettings,
   MatterSummary,
   PracticeOverview,
   SessionResponse,
@@ -96,9 +98,50 @@ const workerHealth: WorkerHealthResponse = {
 
 const matters = [{ id: "matter-001" }] as unknown as MatterSummary[];
 
+const emailSettings: EmailSettings = {
+  key: "default",
+  enabled: true,
+  host: "smtp.example.test",
+  port: 587,
+  secure: false,
+  username: "mailer@example.test",
+  fromAddress: "Open Practice <mailer@example.test>",
+  passwordConfigured: true,
+  configValid: true,
+  missingFields: [],
+  createdAt: "2026-05-30T00:00:00.000Z",
+  updatedAt: "2026-05-30T00:00:00.000Z",
+};
+
+const imapSettings: ImapSettings = {
+  key: "imap",
+  enabled: true,
+  host: "imap.example.test",
+  port: 993,
+  secure: true,
+  username: "inbound@example.test",
+  mailbox: "INBOX",
+  pollIntervalSeconds: 300,
+  markSeen: false,
+  passwordConfigured: true,
+  uidValidity: 12,
+  lastSuccessfullyQueuedUid: 30,
+  lastPollAt: "2026-05-30T00:00:00.000Z",
+  lastSuccessfulPollAt: "2026-05-30T00:00:00.000Z",
+  nextPollAt: "2026-05-30T00:05:00.000Z",
+  configValid: true,
+  missingFields: [],
+  createdAt: "2026-05-30T00:00:00.000Z",
+  updatedAt: "2026-05-30T00:00:00.000Z",
+};
+
 function input() {
   return {
+    apiBaseUrl: "http://127.0.0.1:4000",
     capabilities,
+    devHeaders: { "x-open-practice-dev-user": "owner@example.test" },
+    emailSettings,
+    imapSettings,
     matters,
     overview,
     reportingWorkspace,
@@ -134,5 +177,17 @@ describe("AdminReadinessSection", () => {
     expect(markup).toContain("bounded staff export metadata");
     expect(markup).toContain("Backup and restore evidence");
     expect(markup).toContain("no hosted backup guarantee");
+  });
+
+  it("renders email settings without exposing configured secrets", () => {
+    const markup = renderToStaticMarkup(createElement(AdminReadinessSection, input()));
+
+    expect(markup).toContain("Transactional SMTP");
+    expect(markup).toContain("Inbound IMAP");
+    expect(markup).toContain("smtp.example.test");
+    expect(markup).toContain("imap.example.test");
+    expect(markup).not.toContain('value="Configured"');
+    expect(markup).not.toContain("synthetic-smtp-secret");
+    expect(markup).not.toContain("synthetic-imap-secret");
   });
 });

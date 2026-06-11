@@ -11,6 +11,11 @@ import type {
   ProfessionalRole,
   User,
 } from "@open-practice/domain";
+import {
+  IMAP_INBOUND_PROVIDER_KEY,
+  IMAP_POLL_JOB_NAME,
+  serializeImapProviderConfig,
+} from "@open-practice/domain";
 import { sampleUsers } from "@open-practice/domain/sample-data";
 import { registerInboundEmailRoutes } from "./inbound-email.js";
 import type { ApiJobQueue } from "./types.js";
@@ -994,6 +999,175 @@ describe("inbound email routes", () => {
       ],
     });
     expect(JSON.stringify(response.json())).not.toContain("sealed:provider-secret");
+  });
+
+  it("updates and returns redacted IMAP settings without leaking passwords", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const { queue, jobs } = fakeInboundEmailQueue();
+
+    const response = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      fakeS3(),
+      queue,
+    ).inject({
+      method: "PUT",
+      url: "/api/inbound-email/settings/imap",
+      payload: {
+        enabled: true,
+        host: "imap.example.test",
+        port: 993,
+        secure: true,
+        username: "inbox@example.test",
+        password: "imap-secret",
+        mailbox: "INBOX",
+        pollIntervalSeconds: 300,
+        markSeen: false,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      settings: {
+        enabled: true,
+        host: "imap.example.test",
+        port: 993,
+        username: "inbox@example.test",
+        mailbox: "INBOX",
+        passwordConfigured: true,
+        configValid: true,
+      },
+      poll: {
+        status: "queued",
+        job: {
+          queueName: "inbound_email",
+          jobName: IMAP_POLL_JOB_NAME,
+          status: "queued",
+        },
+      },
+    });
+    expect(response.body).not.toContain("imap-secret");
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({
+      name: IMAP_POLL_JOB_NAME,
+      data: {
+        firmId,
+        resourceType: "provider_setting",
+        resourceId: IMAP_INBOUND_PROVIDER_KEY,
+      },
+    });
+
+    const getResponse = await testServer(repository).inject({
+      method: "GET",
+      url: "/api/inbound-email/settings/imap",
+    });
+    expect(getResponse.statusCode).toBe(200);
+    expect(getResponse.body).not.toContain("imap-secret");
+    expect(getResponse.json().settings.passwordConfigured).toBe(true);
+  });
+
+  it("preserves the IMAP password when settings are updated without a replacement", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-inbound-email-imap",
+      firmId,
+      kind: "inbound_email",
+      key: IMAP_INBOUND_PROVIDER_KEY,
+      enabled: true,
+      encryptedConfig: serializeImapProviderConfig({
+        version: 1,
+        host: "imap.old.example.test",
+        port: 993,
+        secure: true,
+        username: "inbox@example.test",
+        password: "imap-secret",
+        mailbox: "INBOX",
+        pollIntervalSeconds: 300,
+        markSeen: false,
+        state: { uidValidity: 7, lastSuccessfullyQueuedUid: 10 },
+      }),
+      createdAt: now,
+      updatedAt: now,
+    });
+    const { queue } = fakeInboundEmailQueue();
+
+    const response = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      fakeS3(),
+      queue,
+    ).inject({
+      method: "PUT",
+      url: "/api/inbound-email/settings/imap",
+      payload: {
+        enabled: true,
+        host: "imap.new.example.test",
+        port: 143,
+        secure: false,
+        username: "inbox@example.test",
+        mailbox: "All Mail",
+        pollIntervalSeconds: 600,
+        markSeen: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const provider = (
+      await repository.listProviderSettings(firmId, { kind: "inbound_email" })
+    ).find((candidate) => candidate.key === IMAP_INBOUND_PROVIDER_KEY);
+    expect(JSON.parse(provider!.encryptedConfig)).toMatchObject({
+      host: "imap.new.example.test",
+      port: 143,
+      password: "imap-secret",
+      state: { uidValidity: 7, lastSuccessfullyQueuedUid: 10 },
+    });
+    expect(response.body).not.toContain("imap-secret");
+  });
+
+  it("enqueues a manual IMAP poll without returning raw config", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-inbound-email-imap",
+      firmId,
+      kind: "inbound_email",
+      key: IMAP_INBOUND_PROVIDER_KEY,
+      enabled: true,
+      encryptedConfig: serializeImapProviderConfig({
+        version: 1,
+        host: "imap.example.test",
+        port: 993,
+        secure: true,
+        username: "inbox@example.test",
+        password: "imap-secret",
+        mailbox: "INBOX",
+        pollIntervalSeconds: 300,
+        markSeen: false,
+        state: {},
+      }),
+      createdAt: now,
+      updatedAt: now,
+    });
+    const { queue, jobs } = fakeInboundEmailQueue();
+
+    const response = await testServer(
+      repository,
+      user("owner_admin", ["matter-001", "matter-002"]),
+      undefined,
+      fakeS3(),
+      queue,
+    ).inject({
+      method: "POST",
+      url: "/api/inbound-email/settings/imap/poll",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).not.toContain("imap-secret");
+    expect(response.json()).toMatchObject({
+      poll: { status: "queued", job: { jobName: IMAP_POLL_JOB_NAME } },
+    });
+    expect(jobs.map((job) => job.name)).toEqual([IMAP_POLL_JOB_NAME]);
   });
 
   it("filters inbound address status for matter-scoped users", async () => {

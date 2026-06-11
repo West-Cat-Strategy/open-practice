@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-09
+**Last Updated:** 2026-06-10
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | First-run no-key setup hydration is validated for review.            |
-| Next recommended pick | Review and merge `codex/op-first-run-no-key-hydration-2026-06-09`.   |
+| Current focus         | Email SMTP/IMAP settings refactor is implemented for review.         |
+| Next recommended pick | Review and merge `codex/email-settings-smtp-imap-2026-06-10`.        |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Forward Development Plan
+
+Latest email settings addendum: 2026-06-10 transactional SMTP and IMAP inbound polling now use
+encrypted firm provider settings instead of worker-wide SMTP environment variables. First-run setup
+can optionally save `smtp/default` and `inbound_email/imap` settings, owner-admin Admin settings can
+read/update redacted SMTP and IMAP settings, and IMAP settings can enqueue an immediate
+`poll_imap_mailbox` job on the existing `inbound_email` queue. The worker resolves outbound SMTP per
+firm, IMAP polling fetches raw MIME with ImapFlow into the existing inbound raw namespace, queues the
+existing parser jobs, and tracks UIDVALIDITY/watermark/timestamps/next-poll state in encrypted
+provider config. Mailgun raw-MIME webhook support remains a parallel inbound provider. Proof is
+recorded in
+[Email settings SMTP/IMAP proof](validation/OP_EMAIL_SETTINGS_SMTP_IMAP_PROOF_2026-06-10.md).
 
 Latest first-run setup addendum: 2026-06-09 first-run setup no longer accepts or requires a setup
 key. Empty-database setup now reports only `required`, `blocked`, and optional `reason`;

@@ -7,8 +7,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Fingerprint,
+  Inbox,
   ListChecks,
   Loader2,
+  Mail,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
@@ -48,6 +50,22 @@ const initialState: SetupWizardState = {
   firstMatterClientName: "",
   firstMatterClientEmail: "",
   firstMatterClientPhone: "",
+  smtpEnabled: false,
+  smtpHost: "",
+  smtpPort: "587",
+  smtpSecure: false,
+  smtpUsername: "",
+  smtpPassword: "",
+  smtpFromAddress: "",
+  imapEnabled: false,
+  imapHost: "",
+  imapPort: "993",
+  imapSecure: true,
+  imapUsername: "",
+  imapPassword: "",
+  imapMailbox: "INBOX",
+  imapPollIntervalSeconds: "300",
+  imapMarkSeen: false,
   trustFundsCaveatAccepted: false,
 };
 
@@ -61,6 +79,11 @@ const steps = [
     label: "Owner",
     summary: "Create the first owner-admin account and backup password.",
     icon: UserRound,
+  },
+  {
+    label: "Email",
+    summary: "Optionally configure SMTP delivery and IMAP inbound polling.",
+    icon: Mail,
   },
   {
     label: "Security",
@@ -77,6 +100,7 @@ const steps = [
 const stepErrorMatchers = [
   ["Workspace name", "First matter"],
   ["Owner", "Backup password"],
+  ["SMTP", "IMAP"],
   ["Trust/funds"],
   [],
 ];
@@ -115,6 +139,17 @@ export default function SetupWizard({ apiBaseUrl }: SetupWizardProps) {
     firstMatterPracticeArea: fieldError(validation.errors, ["First matter practice area"]),
     firstMatterClientName: fieldError(validation.errors, ["First matter client name"]),
     firstMatterClientEmail: fieldError(validation.errors, ["First matter client email"]),
+    smtpHost: fieldError(validation.errors, ["SMTP host"]),
+    smtpPort: fieldError(validation.errors, ["SMTP port"]),
+    smtpFromAddress: fieldError(validation.errors, ["SMTP from address"]),
+    smtpUsername: fieldError(validation.errors, ["SMTP username"]),
+    smtpPassword: fieldError(validation.errors, ["SMTP password"]),
+    imapHost: fieldError(validation.errors, ["IMAP host"]),
+    imapPort: fieldError(validation.errors, ["IMAP port"]),
+    imapUsername: fieldError(validation.errors, ["IMAP username"]),
+    imapPassword: fieldError(validation.errors, ["IMAP password"]),
+    imapMailbox: fieldError(validation.errors, ["IMAP mailbox"]),
+    imapPollIntervalSeconds: fieldError(validation.errors, ["IMAP poll interval"]),
     trustFunds: fieldError(validation.errors, ["Trust/funds"]),
   };
   const setupPracticeAreas = useMemo(
@@ -484,6 +519,164 @@ export default function SetupWizard({ apiBaseUrl }: SetupWizardProps) {
             )}
 
             {step === 2 && (
+              <section className="setup-grid setup-step-pane" aria-label="Email setup">
+                <fieldset className="setup-fieldset wide glass-card">
+                  <legend>Transactional SMTP</legend>
+                  <label className="check-row first-matter-toggle">
+                    <input
+                      checked={state.smtpEnabled}
+                      onChange={(event) => update("smtpEnabled", event.target.checked)}
+                      type="checkbox"
+                    />
+                    <span>Enable SMTP delivery after setup</span>
+                  </label>
+                  <div className="setup-grid first-matter-grid">
+                    <TextField
+                      id="setup-smtp-host"
+                      label="SMTP host"
+                      name="smtpHost"
+                      placeholder="smtp.example.test"
+                      value={state.smtpHost}
+                      onChange={(value) => update("smtpHost", value)}
+                      error={fieldErrors.smtpHost}
+                    />
+                    <TextField
+                      id="setup-smtp-port"
+                      label="SMTP port"
+                      name="smtpPort"
+                      inputMode="numeric"
+                      value={state.smtpPort}
+                      onChange={(value) => update("smtpPort", value)}
+                      error={fieldErrors.smtpPort}
+                    />
+                    <label className="check-row">
+                      <input
+                        checked={state.smtpSecure}
+                        onChange={(event) => update("smtpSecure", event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>Use implicit TLS</span>
+                    </label>
+                    <TextField
+                      id="setup-smtp-from"
+                      label="From address"
+                      name="smtpFromAddress"
+                      placeholder="Open Practice <no-reply@example.test>"
+                      value={state.smtpFromAddress}
+                      onChange={(value) => update("smtpFromAddress", value)}
+                      error={fieldErrors.smtpFromAddress}
+                    />
+                    <TextField
+                      id="setup-smtp-username"
+                      label="SMTP username"
+                      name="smtpUsername"
+                      autoComplete="off"
+                      passwordManagerIgnore
+                      value={state.smtpUsername}
+                      onChange={(value) => update("smtpUsername", value)}
+                      error={fieldErrors.smtpUsername}
+                    />
+                    <TextField
+                      id="setup-smtp-password"
+                      label="SMTP password"
+                      name="smtpPassword"
+                      type="password"
+                      autoComplete="new-password"
+                      value={state.smtpPassword}
+                      onChange={(value) => update("smtpPassword", value)}
+                      error={fieldErrors.smtpPassword}
+                    />
+                  </div>
+                </fieldset>
+
+                <fieldset className="setup-fieldset wide glass-card">
+                  <legend>Inbound IMAP</legend>
+                  <label className="check-row first-matter-toggle">
+                    <input
+                      checked={state.imapEnabled}
+                      onChange={(event) => update("imapEnabled", event.target.checked)}
+                      type="checkbox"
+                    />
+                    <span>Enable IMAP polling after setup</span>
+                  </label>
+                  <div className="setup-grid first-matter-grid">
+                    <TextField
+                      id="setup-imap-host"
+                      label="IMAP host"
+                      name="imapHost"
+                      placeholder="imap.example.test"
+                      value={state.imapHost}
+                      onChange={(value) => update("imapHost", value)}
+                      error={fieldErrors.imapHost}
+                    />
+                    <TextField
+                      id="setup-imap-port"
+                      label="IMAP port"
+                      name="imapPort"
+                      inputMode="numeric"
+                      value={state.imapPort}
+                      onChange={(value) => update("imapPort", value)}
+                      error={fieldErrors.imapPort}
+                    />
+                    <label className="check-row">
+                      <input
+                        checked={state.imapSecure}
+                        onChange={(event) => update("imapSecure", event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>Use TLS</span>
+                    </label>
+                    <TextField
+                      id="setup-imap-mailbox"
+                      label="Mailbox"
+                      name="imapMailbox"
+                      value={state.imapMailbox}
+                      onChange={(value) => update("imapMailbox", value)}
+                      error={fieldErrors.imapMailbox}
+                    />
+                    <TextField
+                      id="setup-imap-username"
+                      label="IMAP username"
+                      name="imapUsername"
+                      autoComplete="off"
+                      passwordManagerIgnore
+                      value={state.imapUsername}
+                      onChange={(value) => update("imapUsername", value)}
+                      error={fieldErrors.imapUsername}
+                    />
+                    <TextField
+                      id="setup-imap-password"
+                      label="IMAP password"
+                      name="imapPassword"
+                      type="password"
+                      autoComplete="new-password"
+                      value={state.imapPassword}
+                      onChange={(value) => update("imapPassword", value)}
+                      error={fieldErrors.imapPassword}
+                    />
+                    <TextField
+                      id="setup-imap-poll-interval"
+                      label="Poll interval seconds"
+                      name="imapPollIntervalSeconds"
+                      inputMode="numeric"
+                      value={state.imapPollIntervalSeconds}
+                      onChange={(value) => update("imapPollIntervalSeconds", value)}
+                      error={fieldErrors.imapPollIntervalSeconds}
+                    />
+                    <label className="check-row">
+                      <input
+                        checked={state.imapMarkSeen}
+                        onChange={(event) => update("imapMarkSeen", event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>Mark fetched messages seen</span>
+                    </label>
+                  </div>
+                </fieldset>
+              </section>
+            )}
+
+            {step === 3 && (
               <section className="setup-grid setup-step-pane" aria-label="Security setup">
                 <div
                   className={`passkey-section passkey-card wide ${
@@ -540,7 +733,7 @@ export default function SetupWizard({ apiBaseUrl }: SetupWizardProps) {
               </section>
             )}
 
-            {step === 3 && (
+            {step === 4 && (
               <section
                 className="review-container setup-step-pane review-step-pane"
                 aria-label="Setup review"
@@ -585,6 +778,23 @@ export default function SetupWizard({ apiBaseUrl }: SetupWizardProps) {
                         : "The workspace will start without an initial matter."
                     }
                     meta={state.firstMatterEnabled ? state.firstMatterPracticeArea : undefined}
+                  />
+                  <ReviewCard
+                    icon={Inbox}
+                    label="Email"
+                    title={
+                      state.smtpEnabled || state.imapEnabled
+                        ? `${state.smtpEnabled ? "SMTP" : ""}${
+                            state.smtpEnabled && state.imapEnabled ? " + " : ""
+                          }${state.imapEnabled ? "IMAP" : ""}`
+                        : "Skipped"
+                    }
+                    description={
+                      state.smtpEnabled || state.imapEnabled
+                        ? "Email settings will be stored redacted and editable in Admin."
+                        : "Transactional and inbound email can be configured later."
+                    }
+                    meta={state.imapEnabled ? `Mailbox ${state.imapMailbox || "INBOX"}` : undefined}
                   />
                 </div>
                 <div className="setup-review-strip" aria-label="Initialization summary">

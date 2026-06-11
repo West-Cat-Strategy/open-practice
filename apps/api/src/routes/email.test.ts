@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
+import { serializeSmtpProviderConfig } from "@open-practice/domain";
 import type { ProfessionalRole, User } from "@open-practice/domain";
 import { registerEmailRoutes } from "./email.js";
 import type { ApiJobQueue } from "./types.js";
@@ -86,6 +87,89 @@ describe("email routes", () => {
     });
 
     expect(response.statusCode).toBe(403);
+  });
+
+  it("updates and returns redacted SMTP settings without leaking passwords", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const response = await testServer({ repository }).inject({
+      method: "PUT",
+      url: "/api/email/settings",
+      payload: {
+        enabled: true,
+        host: "smtp.example.test",
+        port: 587,
+        secure: false,
+        username: "mailer@example.test",
+        password: "smtp-secret",
+        fromAddress: "Open Practice <no-reply@example.test>",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      settings: {
+        enabled: true,
+        host: "smtp.example.test",
+        port: 587,
+        username: "mailer@example.test",
+        fromAddress: "Open Practice <no-reply@example.test>",
+        passwordConfigured: true,
+        configValid: true,
+      },
+    });
+    expect(response.body).not.toContain("smtp-secret");
+
+    const getResponse = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/email/settings",
+    });
+    expect(getResponse.statusCode).toBe(200);
+    expect(getResponse.body).not.toContain("smtp-secret");
+    expect(getResponse.json().settings.passwordConfigured).toBe(true);
+  });
+
+  it("preserves the SMTP password when settings are updated without a replacement", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.upsertProviderSetting({
+      id: "provider-smtp-default",
+      firmId: "firm-west-legal",
+      kind: "smtp",
+      key: "default",
+      enabled: true,
+      encryptedConfig: serializeSmtpProviderConfig({
+        version: 1,
+        host: "smtp.old.example.test",
+        port: 587,
+        secure: false,
+        username: "mailer@example.test",
+        password: "smtp-secret",
+        fromAddress: "Open Practice <no-reply@example.test>",
+      }),
+      createdAt: "2026-06-10T00:00:00.000Z",
+      updatedAt: "2026-06-10T00:00:00.000Z",
+    });
+
+    const response = await testServer({ repository }).inject({
+      method: "PUT",
+      url: "/api/email/settings",
+      payload: {
+        enabled: true,
+        host: "smtp.new.example.test",
+        port: 465,
+        secure: true,
+        username: "mailer@example.test",
+        fromAddress: "Open Practice <no-reply@example.test>",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const [saved] = await repository.listProviderSettings("firm-west-legal", { kind: "smtp" });
+    expect(JSON.parse(saved!.encryptedConfig)).toMatchObject({
+      host: "smtp.new.example.test",
+      port: 465,
+      password: "smtp-secret",
+    });
+    expect(response.body).not.toContain("smtp-secret");
   });
 
   it("renders email previews without SMTP, outbox, job, or audit side effects", async () => {

@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import {
+  SMTP_PROVIDER_KEY,
+  redactSmtpProviderSettings,
+  serializeSmtpProviderConfig,
+} from "@open-practice/domain";
 import { DrizzleOpenPracticeRepository } from "../src/repository/drizzle.js";
 import { FirstRunSetupConflictError } from "../src/repository/contracts.js";
 import * as schema from "../src/schema.js";
@@ -100,6 +105,50 @@ describe("repository first-run setup", () => {
     ]);
     await expect(repository.listIntakeTemplates(input.firm.id)).resolves.toEqual([]);
     await expect(repository.listMattersForUser(input.owner)).resolves.toHaveLength(1);
+  });
+
+  it("creates first-run provider settings through the existing provider settings store", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const input = setupInput();
+
+    await repository.completeFirstRunSetup({
+      ...input,
+      providerSettings: [
+        {
+          id: "provider-smtp-first-run",
+          firmId: input.firm.id,
+          kind: "smtp",
+          key: SMTP_PROVIDER_KEY,
+          enabled: true,
+          encryptedConfig: serializeSmtpProviderConfig({
+            version: 1,
+            host: "smtp.example.test",
+            port: 587,
+            secure: false,
+            username: "mailer@example.test",
+            password: "synthetic-smtp-secret",
+            fromAddress: "mailer@example.test",
+          }),
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+    });
+
+    const [smtpSettings] = await repository.listProviderSettings(input.firm.id, { kind: "smtp" });
+    expect(smtpSettings).toMatchObject({
+      kind: "smtp",
+      key: SMTP_PROVIDER_KEY,
+      enabled: true,
+    });
+    expect(redactSmtpProviderSettings(smtpSettings)).toMatchObject({
+      enabled: true,
+      host: "smtp.example.test",
+      port: 587,
+      username: "mailer@example.test",
+      passwordConfigured: true,
+      configValid: true,
+    });
   });
 
   it("creates selected preset draft and intake templates during first-run setup", async () => {

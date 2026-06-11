@@ -321,8 +321,6 @@ async function startDockerRuntime() {
     S3_BUCKET: "open-practice-documents",
     S3_ACCESS_KEY: "open_practice",
     S3_SECRET_KEY: "open_practice_secret",
-    SMTP_HOST: "localhost",
-    SMTP_PORT: "31025",
     OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: syntheticConfigEncryptionKey,
     OPEN_PRACTICE_DEV_SEED: "true",
     WORKER_QUEUES: "email,inbound_email,ai_triage,ocr,transcription,media",

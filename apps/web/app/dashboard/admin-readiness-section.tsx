@@ -1,6 +1,22 @@
-import { ClipboardCheck, DatabaseBackup, FileDown, LockKeyhole, MapPinned } from "lucide-react";
+"use client";
+
+import {
+  ClipboardCheck,
+  DatabaseBackup,
+  FileDown,
+  Inbox,
+  LockKeyhole,
+  Mail,
+  MapPinned,
+  RefreshCcw,
+  Save,
+} from "lucide-react";
+import { useState } from "react";
+import { dashboardApiStatus, requestDashboardJson } from "../api-client";
 import type {
   CapabilitiesResponse,
+  EmailSettings,
+  ImapSettings,
   MatterSummary,
   PracticeOverview,
   SessionResponse,
@@ -165,8 +181,86 @@ function ReadinessList({ items }: { items: AdminReadinessItem[] }) {
   );
 }
 
+type EmailSettingsFormState = {
+  enabled: boolean;
+  host: string;
+  port: string;
+  secure: boolean;
+  username: string;
+  password: string;
+  fromAddress: string;
+};
+
+type ImapSettingsFormState = {
+  enabled: boolean;
+  host: string;
+  port: string;
+  secure: boolean;
+  username: string;
+  password: string;
+  mailbox: string;
+  pollIntervalSeconds: string;
+  markSeen: boolean;
+};
+
+function formatPort(port: number | undefined): string {
+  return port ? String(port) : "";
+}
+
+function settingsStateFromEmail(settings: EmailSettings): EmailSettingsFormState {
+  return {
+    enabled: settings.enabled,
+    host: settings.host ?? "",
+    port: formatPort(settings.port),
+    secure: settings.secure,
+    username: settings.username ?? "",
+    password: "",
+    fromAddress: settings.fromAddress ?? "",
+  };
+}
+
+function settingsStateFromImap(settings: ImapSettings): ImapSettingsFormState {
+  return {
+    enabled: settings.enabled,
+    host: settings.host ?? "",
+    port: formatPort(settings.port),
+    secure: settings.secure,
+    username: settings.username ?? "",
+    password: "",
+    mailbox: settings.mailbox,
+    pollIntervalSeconds: String(settings.pollIntervalSeconds),
+    markSeen: settings.markSeen,
+  };
+}
+
+function optionalPort(value: string): number | undefined {
+  const trimmed = value.trim();
+  return trimmed ? Number(trimmed) : undefined;
+}
+
+function optionalNumber(value: string): number | undefined {
+  const trimmed = value.trim();
+  return trimmed ? Number(trimmed) : undefined;
+}
+
+function emailSettingsStatus(settings: EmailSettings): string {
+  if (!settings.enabled) return "SMTP is disabled.";
+  if (settings.configValid) return "SMTP is enabled with complete settings.";
+  return `SMTP is enabled but missing ${settings.missingFields.join(", ")}.`;
+}
+
+function imapSettingsStatus(settings: ImapSettings): string {
+  if (!settings.enabled) return "IMAP polling is disabled.";
+  if (settings.configValid) return "IMAP polling is enabled with complete settings.";
+  return `IMAP polling is enabled but missing ${settings.missingFields.join(", ")}.`;
+}
+
 export function AdminReadinessSection({
+  apiBaseUrl,
   capabilities,
+  devHeaders,
+  emailSettings,
+  imapSettings,
   matters,
   overview,
   reportingWorkspace,
@@ -174,7 +268,11 @@ export function AdminReadinessSection({
   setupStatus,
   workerHealth,
 }: {
+  apiBaseUrl: string;
   capabilities: CapabilitiesResponse;
+  devHeaders: Record<string, string>;
+  emailSettings: EmailSettings;
+  imapSettings: ImapSettings;
   matters: MatterSummary[];
   overview: PracticeOverview;
   reportingWorkspace: StaffReportingWorkspaceResponse;
@@ -191,6 +289,95 @@ export function AdminReadinessSection({
     setupStatus,
     workerHealth,
   });
+  const canUpdateEmailSettings = session.user.role === "owner_admin";
+  const [smtpSettings, setSmtpSettings] = useState(emailSettings);
+  const [imapPollingSettings, setImapPollingSettings] = useState(imapSettings);
+  const [smtpForm, setSmtpForm] = useState(() => settingsStateFromEmail(emailSettings));
+  const [imapForm, setImapForm] = useState(() => settingsStateFromImap(imapSettings));
+  const [smtpSaving, setSmtpSaving] = useState(false);
+  const [imapSaving, setImapSaving] = useState(false);
+  const [imapPolling, setImapPolling] = useState(false);
+  const [smtpStatus, setSmtpStatus] = useState(emailSettingsStatus(emailSettings));
+  const [imapStatus, setImapStatus] = useState(imapSettingsStatus(imapSettings));
+
+  async function saveSmtpSettings(): Promise<void> {
+    setSmtpSaving(true);
+    try {
+      const payload = {
+        enabled: smtpForm.enabled,
+        host: smtpForm.host,
+        port: optionalPort(smtpForm.port),
+        secure: smtpForm.secure,
+        username: smtpForm.username,
+        ...(smtpForm.password.trim() ? { password: smtpForm.password } : {}),
+        fromAddress: smtpForm.fromAddress,
+      };
+      const response = await requestDashboardJson<{ settings: EmailSettings }>(
+        apiBaseUrl,
+        "/api/email/settings",
+        {
+          method: "PUT",
+          headers: devHeaders,
+          payload,
+        },
+      );
+      setSmtpSettings(response.settings);
+      setSmtpForm(settingsStateFromEmail(response.settings));
+      setSmtpStatus(`SMTP settings saved. ${emailSettingsStatus(response.settings)}`);
+    } catch (error) {
+      setSmtpStatus(`SMTP settings save failed: ${dashboardApiStatus(error)}.`);
+    } finally {
+      setSmtpSaving(false);
+    }
+  }
+
+  async function saveImapSettings(): Promise<void> {
+    setImapSaving(true);
+    try {
+      const payload = {
+        enabled: imapForm.enabled,
+        host: imapForm.host,
+        port: optionalPort(imapForm.port),
+        secure: imapForm.secure,
+        username: imapForm.username,
+        ...(imapForm.password.trim() ? { password: imapForm.password } : {}),
+        mailbox: imapForm.mailbox,
+        pollIntervalSeconds: optionalNumber(imapForm.pollIntervalSeconds),
+        markSeen: imapForm.markSeen,
+      };
+      const response = await requestDashboardJson<{ settings: ImapSettings }>(
+        apiBaseUrl,
+        "/api/inbound-email/settings/imap",
+        {
+          method: "PUT",
+          headers: devHeaders,
+          payload,
+        },
+      );
+      setImapPollingSettings(response.settings);
+      setImapForm(settingsStateFromImap(response.settings));
+      setImapStatus(`IMAP settings saved. ${imapSettingsStatus(response.settings)}`);
+    } catch (error) {
+      setImapStatus(`IMAP settings save failed: ${dashboardApiStatus(error)}.`);
+    } finally {
+      setImapSaving(false);
+    }
+  }
+
+  async function pollImapNow(): Promise<void> {
+    setImapPolling(true);
+    try {
+      await requestDashboardJson(apiBaseUrl, "/api/inbound-email/settings/imap/poll", {
+        method: "POST",
+        headers: devHeaders,
+      });
+      setImapStatus("Immediate IMAP poll queued.");
+    } catch (error) {
+      setImapStatus(`Immediate IMAP poll failed: ${dashboardApiStatus(error)}.`);
+    } finally {
+      setImapPolling(false);
+    }
+  }
 
   return (
     <>
@@ -266,6 +453,253 @@ export function AdminReadinessSection({
         </div>
       </div>
       <ReadinessList items={summary.operations} />
+
+      <div className="section-title">
+        <h3>Email settings</h3>
+        <span>{canUpdateEmailSettings ? "owner-admin editable" : "read only"}</span>
+      </div>
+      <div className="activity-grid two-column">
+        <div className="activity-card">
+          <Mail aria-hidden="true" size={20} />
+          <strong>Transactional SMTP</strong>
+          <small>{smtpSettings.enabled ? "Enabled" : "Disabled"}</small>
+          <div className="upload-create-grid">
+            <label className="search-field compact">
+              <span>Enabled</span>
+              <input
+                checked={smtpForm.enabled}
+                disabled={!canUpdateEmailSettings || smtpSaving}
+                onChange={(event) =>
+                  setSmtpForm((current) => ({ ...current, enabled: event.target.checked }))
+                }
+                type="checkbox"
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Host</span>
+              <input
+                disabled={!canUpdateEmailSettings || smtpSaving}
+                onChange={(event) =>
+                  setSmtpForm((current) => ({ ...current, host: event.target.value }))
+                }
+                value={smtpForm.host}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Port</span>
+              <input
+                disabled={!canUpdateEmailSettings || smtpSaving}
+                inputMode="numeric"
+                min={1}
+                onChange={(event) =>
+                  setSmtpForm((current) => ({ ...current, port: event.target.value }))
+                }
+                type="number"
+                value={smtpForm.port}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>TLS</span>
+              <input
+                checked={smtpForm.secure}
+                disabled={!canUpdateEmailSettings || smtpSaving}
+                onChange={(event) =>
+                  setSmtpForm((current) => ({ ...current, secure: event.target.checked }))
+                }
+                type="checkbox"
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Username</span>
+              <input
+                disabled={!canUpdateEmailSettings || smtpSaving}
+                onChange={(event) =>
+                  setSmtpForm((current) => ({ ...current, username: event.target.value }))
+                }
+                value={smtpForm.username}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Password</span>
+              <input
+                disabled={!canUpdateEmailSettings || smtpSaving}
+                onChange={(event) =>
+                  setSmtpForm((current) => ({ ...current, password: event.target.value }))
+                }
+                placeholder={smtpSettings.passwordConfigured ? "Configured" : ""}
+                type="password"
+                value={smtpForm.password}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Send from</span>
+              <input
+                disabled={!canUpdateEmailSettings || smtpSaving}
+                onChange={(event) =>
+                  setSmtpForm((current) => ({ ...current, fromAddress: event.target.value }))
+                }
+                value={smtpForm.fromAddress}
+              />
+            </label>
+            <button
+              className="primary-button"
+              disabled={!canUpdateEmailSettings || smtpSaving}
+              onClick={() => void saveSmtpSettings()}
+              type="button"
+            >
+              <Save aria-hidden="true" size={16} />
+              {smtpSaving ? "Saving..." : "Save SMTP"}
+            </button>
+          </div>
+          <p className="inline-empty" role="status" aria-live="polite">
+            {smtpStatus} Password{" "}
+            {smtpSettings.passwordConfigured ? "configured" : "not configured"}.
+          </p>
+        </div>
+
+        <div className="activity-card">
+          <Inbox aria-hidden="true" size={20} />
+          <strong>Inbound IMAP</strong>
+          <small>{imapPollingSettings.enabled ? "Enabled" : "Disabled"}</small>
+          <div className="upload-create-grid">
+            <label className="search-field compact">
+              <span>Enabled</span>
+              <input
+                checked={imapForm.enabled}
+                disabled={!canUpdateEmailSettings || imapSaving}
+                onChange={(event) =>
+                  setImapForm((current) => ({ ...current, enabled: event.target.checked }))
+                }
+                type="checkbox"
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Host</span>
+              <input
+                disabled={!canUpdateEmailSettings || imapSaving}
+                onChange={(event) =>
+                  setImapForm((current) => ({ ...current, host: event.target.value }))
+                }
+                value={imapForm.host}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Port</span>
+              <input
+                disabled={!canUpdateEmailSettings || imapSaving}
+                inputMode="numeric"
+                min={1}
+                onChange={(event) =>
+                  setImapForm((current) => ({ ...current, port: event.target.value }))
+                }
+                type="number"
+                value={imapForm.port}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>TLS</span>
+              <input
+                checked={imapForm.secure}
+                disabled={!canUpdateEmailSettings || imapSaving}
+                onChange={(event) =>
+                  setImapForm((current) => ({ ...current, secure: event.target.checked }))
+                }
+                type="checkbox"
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Username</span>
+              <input
+                disabled={!canUpdateEmailSettings || imapSaving}
+                onChange={(event) =>
+                  setImapForm((current) => ({ ...current, username: event.target.value }))
+                }
+                value={imapForm.username}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Password</span>
+              <input
+                disabled={!canUpdateEmailSettings || imapSaving}
+                onChange={(event) =>
+                  setImapForm((current) => ({ ...current, password: event.target.value }))
+                }
+                placeholder={imapPollingSettings.passwordConfigured ? "Configured" : ""}
+                type="password"
+                value={imapForm.password}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Mailbox</span>
+              <input
+                disabled={!canUpdateEmailSettings || imapSaving}
+                onChange={(event) =>
+                  setImapForm((current) => ({ ...current, mailbox: event.target.value }))
+                }
+                value={imapForm.mailbox}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Poll seconds</span>
+              <input
+                disabled={!canUpdateEmailSettings || imapSaving}
+                inputMode="numeric"
+                min={60}
+                onChange={(event) =>
+                  setImapForm((current) => ({
+                    ...current,
+                    pollIntervalSeconds: event.target.value,
+                  }))
+                }
+                type="number"
+                value={imapForm.pollIntervalSeconds}
+              />
+            </label>
+            <label className="search-field compact">
+              <span>Mark seen</span>
+              <input
+                checked={imapForm.markSeen}
+                disabled={!canUpdateEmailSettings || imapSaving}
+                onChange={(event) =>
+                  setImapForm((current) => ({ ...current, markSeen: event.target.checked }))
+                }
+                type="checkbox"
+              />
+            </label>
+            <button
+              className="secondary-button compact-button"
+              disabled={
+                !canUpdateEmailSettings ||
+                imapPolling ||
+                !imapPollingSettings.enabled ||
+                !imapPollingSettings.configValid
+              }
+              onClick={() => void pollImapNow()}
+              type="button"
+            >
+              <RefreshCcw aria-hidden="true" size={16} />
+              {imapPolling ? "Queueing..." : "Poll now"}
+            </button>
+            <button
+              className="primary-button"
+              disabled={!canUpdateEmailSettings || imapSaving}
+              onClick={() => void saveImapSettings()}
+              type="button"
+            >
+              <Save aria-hidden="true" size={16} />
+              {imapSaving ? "Saving..." : "Save IMAP"}
+            </button>
+          </div>
+          <p className="inline-empty" role="status" aria-live="polite">
+            {imapStatus} Password{" "}
+            {imapPollingSettings.passwordConfigured ? "configured" : "not configured"}.
+          </p>
+          <p className="inline-empty">
+            Last successful poll: {imapPollingSettings.lastSuccessfulPollAt ?? "none"}; next poll:{" "}
+            {imapPollingSettings.nextPollAt ?? "not scheduled"}.
+          </p>
+        </div>
+      </div>
     </>
   );
 }

@@ -388,7 +388,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   async completeFirstRunSetup(
     input: Parameters<OpenPracticeRepository["completeFirstRunSetup"]>[0],
   ): ReturnType<OpenPracticeRepository["completeFirstRunSetup"]> {
-    return completeDrizzleFirstRunSetup(this.db, input);
+    return completeDrizzleFirstRunSetup(this.db, input, this.options.providerConfigCipher);
   }
 
   async getOverview(firmId: string): ReturnType<OpenPracticeRepository["getOverview"]> {

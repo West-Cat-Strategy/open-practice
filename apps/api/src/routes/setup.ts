@@ -1,14 +1,70 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { appendAuditEvent, isPracticePresetId } from "@open-practice/domain";
+import {
+  appendAuditEvent,
+  DEFAULT_IMAP_MAILBOX,
+  DEFAULT_IMAP_POLL_INTERVAL_SECONDS,
+  IMAP_INBOUND_PROVIDER_KEY,
+  imapProviderConfigSchema,
+  imapProviderMissingFields,
+  isPracticePresetId,
+  SMTP_PROVIDER_KEY,
+  smtpProviderConfigSchema,
+  smtpProviderMissingFields,
+  type ProviderSettingRecord,
+} from "@open-practice/domain";
 import { FirstRunSetupConflictError, type OpenPracticeRepository } from "@open-practice/database";
+import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
+import { enqueueImapMailboxPoll } from "./inbound-email/imap-polling.js";
+import type { ApiJobQueue } from "./types.js";
 
 const provinceSchema = z.enum(["BC", "ON", "CANADA", "OTHER"]);
 
 const setupWebAuthnOptionsBodySchema = z.object({
   email: z.string().email(),
+});
+
+const optionalTrimmedString = z.preprocess((value) => {
+  if (value === null) return undefined;
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}, z.string().min(1).max(2048).optional());
+
+const optionalPassword = z.preprocess((value) => {
+  if (value === null) return undefined;
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}, z.string().max(2048).optional());
+
+const setupSmtpSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  host: optionalTrimmedString,
+  port: z.coerce.number().int().min(1).max(65_535).optional(),
+  secure: z.boolean().default(false),
+  username: optionalTrimmedString,
+  password: optionalPassword,
+  fromAddress: optionalTrimmedString,
+});
+
+const setupImapSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  host: optionalTrimmedString,
+  port: z.coerce.number().int().min(1).max(65_535).optional(),
+  secure: z.boolean().default(true),
+  username: optionalTrimmedString,
+  password: optionalPassword,
+  mailbox: optionalTrimmedString.default(DEFAULT_IMAP_MAILBOX),
+  pollIntervalSeconds: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(86_400)
+    .default(DEFAULT_IMAP_POLL_INTERVAL_SECONDS),
+  markSeen: z.boolean().default(false),
 });
 
 const setupBodySchema = z.object({
@@ -88,9 +144,16 @@ const setupBodySchema = z.object({
       jurisdiction: provinceSchema,
     })
     .optional(),
+  email: z
+    .object({
+      smtp: setupSmtpSettingsSchema.optional(),
+      imap: setupImapSettingsSchema.optional(),
+    })
+    .optional(),
 });
 export interface SetupRouteDependencies {
   repository: OpenPracticeRepository;
+  inboundEmailJobQueue?: ApiJobQueue;
   jwtSecret?: string;
   nodeEnv?: string;
   allowDockerBridgeSetup?: boolean;
@@ -154,6 +217,59 @@ function invoicePrefixFromFirmName(name: string): string {
     .replace(/[^A-Z0-9]+/g, "")
     .slice(0, 16);
   return prefix || "OP";
+}
+
+function setupProviderSettings(input: {
+  firmId: string;
+  nowIso: string;
+  email: z.infer<typeof setupBodySchema>["email"];
+}): ProviderSettingRecord[] {
+  const settings: ProviderSettingRecord[] = [];
+  if (input.email?.smtp) {
+    const config = smtpProviderConfigSchema.parse(input.email.smtp);
+    const missingFields = smtpProviderMissingFields(config);
+    if (input.email.smtp.enabled && missingFields.length > 0) {
+      throw new ApiHttpError(
+        400,
+        "SMTP_SETTINGS_INCOMPLETE",
+        "Enabled SMTP settings require host, port, sender, and complete authentication when a username is set.",
+        { missingFields },
+      );
+    }
+    settings.push({
+      id: `provider-smtp-${input.firmId}-${SMTP_PROVIDER_KEY}`,
+      firmId: input.firmId,
+      kind: "smtp",
+      key: SMTP_PROVIDER_KEY,
+      enabled: input.email.smtp.enabled,
+      encryptedConfig: JSON.stringify(config),
+      createdAt: input.nowIso,
+      updatedAt: input.nowIso,
+    });
+  }
+  if (input.email?.imap) {
+    const config = imapProviderConfigSchema.parse({ ...input.email.imap, state: {} });
+    const missingFields = imapProviderMissingFields(config);
+    if (input.email.imap.enabled && missingFields.length > 0) {
+      throw new ApiHttpError(
+        400,
+        "IMAP_SETTINGS_INCOMPLETE",
+        "Enabled IMAP settings require host, port, username, password, and mailbox.",
+        { missingFields },
+      );
+    }
+    settings.push({
+      id: `provider-inbound-email-${IMAP_INBOUND_PROVIDER_KEY}-${input.firmId}`,
+      firmId: input.firmId,
+      kind: "inbound_email",
+      key: IMAP_INBOUND_PROVIDER_KEY,
+      enabled: input.email.imap.enabled,
+      encryptedConfig: JSON.stringify(config),
+      createdAt: input.nowIso,
+      updatedAt: input.nowIso,
+    });
+  }
+  return settings;
 }
 
 const SETUP_RATE_LIMIT = { max: 5, timeWindow: "15 minutes" };
@@ -266,6 +382,11 @@ export function registerSetupRoutes(
       const firstContactId = body.firstMatter ? id("contact") : undefined;
       const firstMatterPartyId = body.firstMatter ? id("party") : undefined;
       const currentYear = now.getUTCFullYear();
+      const initialProviderSettings = setupProviderSettings({
+        firmId: newFirmId,
+        nowIso,
+        email: body.email,
+      });
 
       const owner = {
         id: ownerId,
@@ -393,6 +514,7 @@ export function registerSetupRoutes(
           firstContact,
           firstMatter,
           firstMatterParty,
+          providerSettings: initialProviderSettings,
           selectedPresetIds: body.selectedPresetIds,
           auditEvent: appendAuditEvent(undefined, {
             id: id("audit"),
@@ -406,6 +528,8 @@ export function registerSetupRoutes(
               practiceAreas: firmSettings.practiceAreas,
               firstMatterCreated: Boolean(firstMatter),
               selectedPresetIds: body.selectedPresetIds,
+              smtpConfigured: Boolean(body.email?.smtp?.enabled),
+              imapConfigured: Boolean(body.email?.imap?.enabled),
             },
           }),
         })
@@ -420,6 +544,14 @@ export function registerSetupRoutes(
           body.owner.webAuthn.challengeHash,
           nowIso,
         );
+      }
+      if (body.email?.imap?.enabled) {
+        await enqueueImapMailboxPoll({
+          repository: options.repository,
+          inboundEmailJobQueue: options.inboundEmailJobQueue,
+          auth: { firmId: newFirmId, user: owner },
+          reason: "settings_updated",
+        }).catch(() => undefined);
       }
 
       const token = options.createSessionToken();

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { registerInboundEmailAttachmentPromotionRoutes } from "./inbound-email/attachment-promotion.js";
+import { registerInboundEmailImapSettingsRoutes } from "./inbound-email/imap-settings.js";
 import { registerInboundEmailRawMimeRoutes } from "./inbound-email/mailgun-raw-mime.js";
 import { registerInboundEmailMessageRoutes } from "./inbound-email/messages.js";
 import { registerInboundEmailParserJobRoutes } from "./inbound-email/parser-jobs.js";
@@ -12,6 +13,7 @@ export function registerInboundEmailRoutes(
   { repository, inboundEmailJobQueue, s3 }: ApiRouteDependencies,
 ): void {
   registerInboundEmailRawMimeRoutes(server, { repository, inboundEmailJobQueue, s3 });
+  registerInboundEmailImapSettingsRoutes(server, { repository, inboundEmailJobQueue, s3 });
   registerInboundEmailParserJobRoutes(server, { repository, inboundEmailJobQueue });
   registerInboundEmailStatusRoutes(server, { repository });
   registerInboundEmailAttachmentPromotionRoutes(server, { repository });

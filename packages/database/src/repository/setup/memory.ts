@@ -9,9 +9,11 @@ import {
   type IntakeTemplateRecord,
   type Matter,
   type MatterParty,
+  type ProviderSettingRecord,
   type User,
   type WebAuthnCredentialRecord,
 } from "@open-practice/domain";
+import type { ProviderConfigCipher } from "../../config-encryption.js";
 import type { AuthAccountRecord } from "../auth-contracts.js";
 import { clone } from "../contracts.js";
 import {
@@ -22,6 +24,7 @@ import {
   type FirstRunSetupStatus,
 } from "../setup-contracts.js";
 import { setupStatusFromCounts } from "../drizzle-mappers.js";
+import { encryptProviderSetting } from "../provider-settings/encryption.js";
 
 export interface MemorySetupStore {
   firms: Firm[];
@@ -35,6 +38,8 @@ export interface MemorySetupStore {
   draftTemplates: DraftTemplateRecord[];
   intakeTemplates: IntakeTemplateRecord[];
   auditEvents: AuditEvent[];
+  providerSettings: ProviderSettingRecord[];
+  providerConfigCipher?: ProviderConfigCipher;
 }
 
 export function getMemorySetupStatus(store: MemorySetupStore): FirstRunSetupStatus {
@@ -97,6 +102,14 @@ export function completeMemoryFirstRunSetup(
   ];
   store.intakeTemplates = presetTemplates.intakeTemplates;
   store.auditEvents = [clone(input.auditEvent)];
+  if ((input.providerSettings ?? []).length > 0) {
+    store.providerSettings.length = 0;
+    store.providerSettings.push(
+      ...input.providerSettings!.map((setting) =>
+        clone(encryptProviderSetting(setting, store.providerConfigCipher)),
+      ),
+    );
+  }
 
   return {
     firm: clone(input.firm),

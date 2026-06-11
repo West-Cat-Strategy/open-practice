@@ -49,6 +49,8 @@ import type {
   PaymentPlanPlaceholder,
   PublicConsultationIntakeNotificationSettings,
   PublicConsultationIntakeRecord,
+  RedactedImapProviderSettings,
+  RedactedSmtpProviderSettings,
   StaffReportHistoryItem,
   StaffReportingWorkspace,
   SignatureRequestRecord,
@@ -87,6 +89,9 @@ export type {
   LedgerTransactionApprovalRecord,
   PaymentPlanPlaceholder,
 };
+
+export type EmailSettings = RedactedSmtpProviderSettings;
+export type ImapSettings = RedactedImapProviderSettings;
 
 export type {
   BillingDashboardResponse,
@@ -317,6 +322,9 @@ export interface PublicConsultationDashboardResponse {
   intakes: PublicConsultationIntake[];
   status: "available" | "access_denied" | "unavailable";
 }
+
+export type EmailSettingsResponse = { settings: RedactedSmtpProviderSettings };
+export type ImapSettingsResponse = { settings: RedactedImapProviderSettings };
 
 export interface IntakeTemplateSavePayload {
   id?: string;
