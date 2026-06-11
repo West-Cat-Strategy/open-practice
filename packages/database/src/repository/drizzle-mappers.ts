@@ -416,8 +416,21 @@ export function mapTaskDeadlineRow(row: typeof schema.tasks.$inferSelect): TaskD
     matterId: row.matterId,
     assignedToUserId: row.assignedToUserId ?? undefined,
     title: row.title,
+    description: row.description ?? undefined,
+    status: row.status as TaskDeadlineRecord["status"],
+    priority: row.priority as TaskDeadlineRecord["priority"],
+    sourceType: (row.sourceType ?? undefined) as TaskDeadlineRecord["sourceType"],
+    sourceId: row.sourceId ?? undefined,
     dueAt: dateToIso(row.dueAt),
     completedAt: dateToIso(row.completedAt),
+    completedByUserId: row.completedByUserId ?? undefined,
+    archivedAt: dateToIso(row.archivedAt),
+    archivedByUserId: row.archivedByUserId ?? undefined,
+    createdAt: dateToIso(row.createdAt)!,
+    createdByUserId: row.createdByUserId ?? undefined,
+    updatedAt: dateToIso(row.updatedAt)!,
+    updatedByUserId: row.updatedByUserId ?? undefined,
+    version: row.version,
   };
 }
 

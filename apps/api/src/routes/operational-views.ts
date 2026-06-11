@@ -251,6 +251,7 @@ export function registerOperationalViewRoutes(
       emailOutbox,
       inboundEmailMessages,
       calendarEvents,
+      taskDeadlines,
     ] = await Promise.all([
       repository.listSignatureRequests(request.auth.firmId),
       repository.listShareLinks(request.auth.firmId),
@@ -266,6 +267,10 @@ export function registerOperationalViewRoutes(
           repository.listCalendarEvents(request.auth.firmId, { matterId: matter.id }),
         ),
       ).then((events) => events.flat()),
+      repository.listTaskDeadlines(request.auth.firmId, {
+        matterIds: Array.from(matterIds),
+        includeCompleted: false,
+      }),
     ]);
 
     const views = buildBuiltInOperationalViews({
@@ -295,6 +300,7 @@ export function registerOperationalViewRoutes(
       calendarEvents: calendarEvents.filter((event): event is typeof event & { matterId: string } =>
         Boolean(event.matterId && matterIds.has(event.matterId)),
       ),
+      taskDeadlines: taskDeadlines.filter((task) => matterIds.has(task.matterId)),
       contactDossiers,
       emailOutbox: emailOutbox
         .filter((email) => email.matterId !== undefined && matterIds.has(email.matterId))

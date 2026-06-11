@@ -8,6 +8,7 @@ import {
   sampleMatterParties,
   sampleMatters,
   sampleSignatureRequests,
+  sampleTaskDeadlines,
 } from "./sample-data.js";
 
 const now = "2026-05-10T12:00:00.000Z";
@@ -65,6 +66,7 @@ describe("built-in operational views", () => {
         },
       ],
       signatures: sampleSignatureRequests,
+      taskDeadlines: sampleTaskDeadlines,
       shareLinks: [
         {
           id: "share-link-001",
@@ -266,12 +268,20 @@ describe("built-in operational views", () => {
         reason: "Linked to a confidential matter party record",
       }),
     ]);
-    expect(view(payload, "overdue_tasks_deadlines").results).toEqual([
-      expect.objectContaining({
-        id: "calendar:calendar-event-001",
-        matterId: "matter-001",
-      }),
-    ]);
+    expect(view(payload, "overdue_tasks_deadlines").results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "task:task-deadline-001",
+          matterId: "matter-001",
+          title: "Review tenant evidence package",
+          metadata: expect.objectContaining({ taskPriority: "high" }),
+        }),
+        expect.objectContaining({
+          id: "calendar:calendar-event-001",
+          matterId: "matter-001",
+        }),
+      ]),
+    );
     expect(view(payload, "portal_access_activity").results[0]).toEqual(
       expect.objectContaining({
         id: "portal-access:access-granted-latest",

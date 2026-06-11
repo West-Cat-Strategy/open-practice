@@ -47,6 +47,7 @@ const navIcons = {
   reports: FileText,
   admin: FileText,
   queues: FileText,
+  tasks: FileText,
 } satisfies Record<OpenPracticeSidebarSectionKey, LucideIcon>;
 
 const queues: QueuesResponse = {

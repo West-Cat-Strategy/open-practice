@@ -45,6 +45,7 @@ export interface TaskDeadlineWorkbench {
     unassignedTaskIds: string[];
   };
   taskReview: TaskDeadlineReviewWorkspace;
+  suggestedFollowUps: TaskFollowUpSuggestion[];
 }
 
 export type TaskDeadlineReviewPriority = "high" | "medium" | "low";
@@ -120,6 +121,26 @@ export interface TaskDeadlineReviewWorkspace {
   items: TaskDeadlineReviewItem[];
 }
 
+export interface TaskFollowUpSuggestion {
+  id: string;
+  matterId: string;
+  title: string;
+  reason: string;
+  priority: TaskDeadlineReviewPriority;
+  dueAt?: string;
+  source: {
+    type: "calendar_scheduling";
+    id: string;
+    label: string;
+  };
+  reviewBoundary: {
+    automaticTaskCreation: false;
+    automaticDeadlineMutation: false;
+    automaticReminderChanges: false;
+    queueDelivery: false;
+  };
+}
+
 type TaskReviewMatterLink = Pick<Matter, "id" | "number" | "title">;
 
 const CLIENT_LIKE_ROLES = new Set<MatterParty["role"]>([
@@ -161,7 +182,7 @@ export function projectTaskDeadline(
   return {
     ...task,
     assignmentStatus: task.assignedToUserId ? "assigned" : "unassigned",
-    completionStatus: task.completedAt ? "completed" : "open",
+    completionStatus: task.status === "completed" || task.completedAt ? "completed" : "open",
     bucket: classifyTaskDeadline(task, now),
   };
 }
@@ -360,6 +381,57 @@ function buildTaskReview(input: {
   };
 }
 
+const TASK_FOLLOW_UP_REVIEW_BOUNDARY = {
+  automaticTaskCreation: false,
+  automaticDeadlineMutation: false,
+  automaticReminderChanges: false,
+  queueDelivery: false,
+} as const;
+
+function buildSuggestedFollowUps(input: {
+  tasks: TaskDeadlineProjection[];
+  schedulingRequests?: CalendarSchedulingRequestRecord[];
+  matters?: TaskReviewMatterLink[];
+}): TaskFollowUpSuggestion[] {
+  const existingTaskIds = new Set(input.tasks.map((task) => task.id));
+  const mattersById = new Map((input.matters ?? []).map((matter) => [matter.id, matter]));
+  return (input.schedulingRequests ?? [])
+    .filter(
+      (request) =>
+        request.status === "needs_review" &&
+        (!request.taskId || !existingTaskIds.has(request.taskId)) &&
+        !(
+          request.sourceType === "task_deadline" &&
+          request.sourceId !== undefined &&
+          existingTaskIds.has(request.sourceId)
+        ),
+    )
+    .map((request): TaskFollowUpSuggestion => {
+      const dueAt = request.requestedDueAt ?? request.requestedStartsAt;
+      const matter = mattersById.get(request.matterId);
+      return {
+        id: `calendar-scheduling:${request.id}`,
+        matterId: request.matterId,
+        title: request.title,
+        reason: `${matter?.number ?? request.matterId} scheduling cue is waiting for staff task review.`,
+        priority: request.privacy === "staff_only" ? "high" : "medium",
+        dueAt,
+        source: {
+          type: "calendar_scheduling",
+          id: request.id,
+          label: request.sourceLabel ?? request.kind,
+        },
+        reviewBoundary: TASK_FOLLOW_UP_REVIEW_BOUNDARY,
+      };
+    })
+    .sort((left, right) => {
+      const leftDue = left.dueAt ? Date.parse(left.dueAt) : Number.POSITIVE_INFINITY;
+      const rightDue = right.dueAt ? Date.parse(right.dueAt) : Number.POSITIVE_INFINITY;
+      if (leftDue !== rightDue) return leftDue - rightDue;
+      return left.id.localeCompare(right.id);
+    });
+}
+
 export function buildTaskDeadlineWorkbench(input: {
   tasks: TaskDeadlineRecord[];
   matterParties: MatterParty[];
@@ -370,6 +442,7 @@ export function buildTaskDeadlineWorkbench(input: {
 }): TaskDeadlineWorkbench {
   const now = input.now ?? new Date();
   const projections = input.tasks
+    .filter((task) => task.status !== "archived")
     .map((task) => projectTaskDeadline(task, now))
     .sort((left, right) => {
       const leftDue = left.dueAt ? Date.parse(left.dueAt) : Number.POSITIVE_INFINITY;
@@ -477,6 +550,11 @@ export function buildTaskDeadlineWorkbench(input: {
       matters: input.matters,
       schedulingRequests: input.schedulingRequests,
       userId: input.userId,
+    }),
+    suggestedFollowUps: buildSuggestedFollowUps({
+      tasks: projections,
+      matters: input.matters,
+      schedulingRequests: input.schedulingRequests,
     }),
   };
 }

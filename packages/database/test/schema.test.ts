@@ -85,6 +85,7 @@ import {
   trustTransactionApprovals,
   trustTransactions,
   timeEntries,
+  tasks,
 } from "../src/schema.js";
 
 describe("database schema hardening", () => {
@@ -152,6 +153,46 @@ describe("database schema hardening", () => {
         "supersedes_document_id",
         "superseded_at",
         "verified_at",
+      ]),
+    );
+  });
+
+  it("persists task lifecycle metadata and lookup indexes", () => {
+    const config = getTableConfig(tasks);
+
+    expect(config.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "status",
+        "priority",
+        "description",
+        "source_type",
+        "source_id",
+        "completed_by_user_id",
+        "archived_at",
+        "archived_by_user_id",
+        "created_at",
+        "created_by_user_id",
+        "updated_at",
+        "updated_by_user_id",
+        "version",
+      ]),
+    );
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        "tasks_firm_matter_status_due_idx",
+        "tasks_firm_assignee_status_due_idx",
+        "tasks_firm_source_idx",
+      ]),
+    );
+    expect(config.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        "tasks_status_value",
+        "tasks_priority_value",
+        "tasks_source_type_value",
+        "tasks_source_pair",
+        "tasks_archive_fields",
+        "tasks_completed_fields",
+        "tasks_version_positive",
       ]),
     );
   });

@@ -68,6 +68,7 @@ function emptyTaskDeadlineWorkbench(): TaskDeadlineWorkbenchResponse {
       },
       items: [],
     },
+    suggestedFollowUps: [],
   };
 }
 

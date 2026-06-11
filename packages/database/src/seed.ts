@@ -169,8 +169,18 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
       sampleTaskDeadlines.map((task) => ({
         ...task,
         assignedToUserId: task.assignedToUserId ?? null,
+        description: task.description ?? null,
+        sourceType: task.sourceType ?? null,
+        sourceId: task.sourceId ?? null,
         dueAt: task.dueAt ? new Date(task.dueAt) : null,
         completedAt: task.completedAt ? new Date(task.completedAt) : null,
+        completedByUserId: task.completedByUserId ?? null,
+        archivedAt: task.archivedAt ? new Date(task.archivedAt) : null,
+        archivedByUserId: task.archivedByUserId ?? null,
+        createdAt: new Date(task.createdAt),
+        createdByUserId: task.createdByUserId ?? null,
+        updatedAt: new Date(task.updatedAt),
+        updatedByUserId: task.updatedByUserId ?? null,
       })),
     )
     .onConflictDoNothing();
