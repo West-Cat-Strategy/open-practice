@@ -278,7 +278,7 @@ test.describe("UI/UX screenshot QA", () => {
     page,
   }, testInfo) => {
     const share = await app.createShareLink();
-    await page.goto(app.url(`/share-links/${share.token}`));
+    await page.goto(app.publicTokenUrl("share-links", share.token));
     await expectPageHealthy(page);
     await expect(page.getByText("Email verification is required")).toBeVisible();
     await expectNoUnexpectedHorizontalOverflow(page, "share verification gate");
@@ -292,7 +292,7 @@ test.describe("UI/UX screenshot QA", () => {
     await attachUiScreenshot(page, testInfo, "public-share-verified");
 
     const intakeToken = await app.createIntakeFormLink();
-    await page.goto(app.url(`/intake-forms/${intakeToken}`));
+    await page.goto(app.publicTokenUrl("intake-forms", intakeToken));
     await expectPageHealthy(page);
     await page.getByLabel("Preferred client name").fill("Ada Morgan");
     await page.getByLabel("Short matter title").fill("Synthetic repair request");
@@ -306,7 +306,7 @@ test.describe("UI/UX screenshot QA", () => {
     await attachUiScreenshot(page, testInfo, "public-intake-incomplete");
 
     const guest = await app.createGuestSession();
-    await page.goto(app.url(`/guest-sessions/${guest.token}`));
+    await page.goto(app.publicTokenUrl("guest-sessions", guest.token));
     await expectPageHealthy(page);
     await expect(page.getByRole("status").filter({ hasText: "The lobby is open." })).toBeVisible();
     await page.getByRole("button", { name: /Check in/i }).click();
@@ -326,7 +326,7 @@ test.describe("UI/UX screenshot QA", () => {
     expect(health.persistence).toBe("postgres");
 
     const token = await app.createExternalUploadLink();
-    await page.goto(app.url(`/external-uploads/${token}`));
+    await page.goto(app.publicTokenUrl("external-uploads", token));
     await expectPageHealthy(page);
     await expect(page.getByText(/Upload link ready/)).toBeVisible();
     await expectNoUnexpectedHorizontalOverflow(page, "external upload ready state");

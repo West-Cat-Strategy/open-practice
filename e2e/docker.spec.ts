@@ -21,7 +21,7 @@ test.describe("Docker-backed Playwright suite @docker", () => {
   }) => {
     const token = await app.createExternalUploadLink();
 
-    await page.goto(app.url(`/external-uploads/${token}`));
+    await page.goto(app.publicTokenUrl("external-uploads", token));
     await expectPageHealthy(page);
     await expect(page.getByText(/Upload link ready/)).toBeVisible();
     await page.getByLabel("Classification").selectOption("privileged");
@@ -41,14 +41,14 @@ test.describe("Docker-backed Playwright suite @docker", () => {
 
   test("reuses public-token flows against the Docker-backed API", async ({ app, page }) => {
     const share = await app.createShareLink();
-    await page.goto(app.url(`/share-links/${share.token}`));
+    await page.goto(app.publicTokenUrl("share-links", share.token));
     await expectPageHealthy(page);
     await page.getByLabel("Email verification code").fill(share.verificationCode);
     await page.getByRole("button", { name: /Verify email/i }).click();
     await expect(page.getByText("Synthetic shareable disclosure.pdf")).toBeVisible();
 
     const guest = await app.createGuestSession();
-    await page.goto(app.url(`/guest-sessions/${guest.token}`));
+    await page.goto(app.publicTokenUrl("guest-sessions", guest.token));
     await expect(page.getByRole("status").filter({ hasText: "The lobby is open." })).toBeVisible();
     await page.getByRole("button", { name: /Check in/i }).click();
     await expect(

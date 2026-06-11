@@ -77,6 +77,11 @@ export class OpenPracticeE2EClient {
     return `${this.webUrl}${path}`;
   }
 
+  publicTokenUrl(path: string, token: string): string {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    return this.url(`${normalizedPath}#${encodeURIComponent(token)}`);
+  }
+
   async apiJson<T>(path: string, options: ApiOptions = {}): Promise<T> {
     const headers = {
       ...this.devHeaders,

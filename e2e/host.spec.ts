@@ -35,7 +35,7 @@ test.describe("host Playwright suite", () => {
   test("verifies a secure share before showing documents", async ({ app, page }) => {
     const share = await app.createShareLink();
 
-    await page.goto(app.url(`/share-links/${share.token}`));
+    await page.goto(app.publicTokenUrl("share-links", share.token));
     await expectPageHealthy(page);
     await expect(page.getByText("Email verification is required")).toBeVisible();
     await page.getByLabel("Email verification code").fill(share.verificationCode);
@@ -53,7 +53,7 @@ test.describe("host Playwright suite", () => {
   }) => {
     const token = await app.createIntakeFormLink();
 
-    await page.goto(app.url(`/intake-forms/${token}`));
+    await page.goto(app.publicTokenUrl("intake-forms", token));
     await expectPageHealthy(page);
     await expect(page.getByRole("heading", { name: "Residential tenancy intake" })).toBeVisible();
     await page.getByLabel("Preferred client name").fill("Ada Morgan");
@@ -75,7 +75,7 @@ test.describe("host Playwright suite", () => {
   }) => {
     const guest = await app.createGuestSession();
 
-    await page.goto(app.url(`/guest-sessions/${guest.token}`));
+    await page.goto(app.publicTokenUrl("guest-sessions", guest.token));
     await expectPageHealthy(page);
     await expect(page.getByRole("status").filter({ hasText: "The lobby is open." })).toBeVisible();
     await page.getByRole("button", { name: /Check in/i }).click();
