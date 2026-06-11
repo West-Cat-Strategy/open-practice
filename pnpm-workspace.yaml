@@ -10,36 +10,35 @@ allowBuilds:
   tesseract.js: true
 
 minimumReleaseAgeExclude:
-  - "@aws-sdk/client-s3@3.1055.0"
-  - "@aws-sdk/core@3.974.14"
-  - "@aws-sdk/credential-provider-env@3.972.40"
-  - "@aws-sdk/credential-provider-http@3.972.42"
-  - "@aws-sdk/credential-provider-ini@3.972.44"
-  - "@aws-sdk/credential-provider-login@3.972.44"
-  - "@aws-sdk/credential-provider-node@3.972.45"
-  - "@aws-sdk/credential-provider-process@3.972.40"
-  - "@aws-sdk/credential-provider-sso@3.972.44"
-  - "@aws-sdk/credential-provider-web-identity@3.972.44"
-  - "@aws-sdk/middleware-bucket-endpoint@3.972.16"
-  - "@aws-sdk/middleware-flexible-checksums@3.974.22"
-  - "@aws-sdk/middleware-sdk-s3@3.972.43"
-  - "@aws-sdk/nested-clients@3.997.12"
-  - "@aws-sdk/s3-request-presigner@3.1055.0"
-  - "@aws-sdk/token-providers@3.1054.0"
-  - "@types/node@25.9.1"
-  - "@typescript-eslint/eslint-plugin@8.60.0"
-  - "@typescript-eslint/parser@8.60.0"
-  - "@typescript-eslint/project-service@8.60.0"
-  - "@typescript-eslint/scope-manager@8.60.0"
-  - "@typescript-eslint/tsconfig-utils@8.60.0"
-  - "@typescript-eslint/type-utils@8.60.0"
-  - "@typescript-eslint/types@8.60.0"
-  - "@typescript-eslint/typescript-estree@8.60.0"
-  - "@typescript-eslint/utils@8.60.0"
-  - "@typescript-eslint/visitor-keys@8.60.0"
-  - prosemirror-model@1.25.7
-  - tsx@4.22.3
-  - typescript-eslint@8.60.0
+  - "@aws-sdk/client-s3@3.1066.0"
+  - "@aws-sdk/core@3.974.20"
+  - "@aws-sdk/credential-provider-env@3.972.46"
+  - "@aws-sdk/credential-provider-http@3.972.48"
+  - "@aws-sdk/credential-provider-ini@3.972.53"
+  - "@aws-sdk/credential-provider-login@3.972.52"
+  - "@aws-sdk/credential-provider-node@3.972.55"
+  - "@aws-sdk/credential-provider-process@3.972.46"
+  - "@aws-sdk/credential-provider-sso@3.972.52"
+  - "@aws-sdk/credential-provider-web-identity@3.972.52"
+  - "@aws-sdk/middleware-flexible-checksums@3.974.30"
+  - "@aws-sdk/middleware-sdk-s3@3.972.51"
+  - "@aws-sdk/nested-clients@3.997.20"
+  - "@aws-sdk/s3-request-presigner@3.1066.0"
+  - "@aws-sdk/token-providers@3.1066.0"
+  - "@types/node@25.9.3"
+  - "@typescript-eslint/eslint-plugin@8.61.0"
+  - "@typescript-eslint/parser@8.61.0"
+  - "@typescript-eslint/project-service@8.61.0"
+  - "@typescript-eslint/scope-manager@8.61.0"
+  - "@typescript-eslint/tsconfig-utils@8.61.0"
+  - "@typescript-eslint/type-utils@8.61.0"
+  - "@typescript-eslint/types@8.61.0"
+  - "@typescript-eslint/typescript-estree@8.61.0"
+  - "@typescript-eslint/utils@8.61.0"
+  - "@typescript-eslint/visitor-keys@8.61.0"
+  - prosemirror-model@1.25.8
+  - tsx@4.22.4
+  - typescript-eslint@8.61.0
 
 overrides:
   next>postcss: 8.5.10

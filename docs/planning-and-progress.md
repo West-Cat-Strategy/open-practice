@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Matterless contacts/calendar workflow is validated for merge.        |
-| Next recommended pick | Merge and prune `codex/matterless-open-practice-2026-06-10`.         |
+| Current focus         | Dependency refresh slice is validated for merge.                     |
+| Next recommended pick | Merge and prune `chore/dependency-refresh-2026-06-11`.               |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
