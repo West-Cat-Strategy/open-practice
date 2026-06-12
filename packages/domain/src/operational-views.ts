@@ -5,6 +5,7 @@ import type {
   CalendarGuestLinkRecord,
   Matter,
   MatterParty,
+  TaskRecord,
 } from "./models.js";
 import type { IntakeFormLinkRecord } from "./intake.js";
 import type {
@@ -113,6 +114,7 @@ export interface BuildBuiltInOperationalViewsInput {
   calendarGuestLinks?: CalendarGuestLinkRecord[];
   accessLogs?: AccessLogRecord[];
   calendarEvents?: CalendarEventRecord[];
+  taskDeadlines?: TaskRecord[];
   contactDossiers?: ContactDossier[];
   emailOutbox?: Array<
     Pick<EmailOutboxRecord, "matterId" | "status" | "queuedAt" | "sentAt" | "relatedResourceType">
@@ -161,7 +163,7 @@ export const BUILT_IN_OPERATIONAL_VIEW_DEFINITIONS: BuiltInOperationalViewDefini
   {
     key: "overdue_tasks_deadlines",
     label: "Overdue tasks and deadlines",
-    description: "Visible past calendar task or deadline signals that are still active.",
+    description: "Visible past task and calendar deadline signals that are still active.",
     defaultPriority: "high",
   },
   {
@@ -707,7 +709,40 @@ function buildOverdueTaskDeadlineResults(
   nowMs: number,
   mattersById: Map<string, OperationalMatterInput>,
 ): OperationalViewResult[] {
-  return (input.calendarEvents ?? []).flatMap((event): OperationalViewResult[] => {
+  const taskResults = (input.taskDeadlines ?? []).flatMap((task): OperationalViewResult[] => {
+    const matter = mattersById.get(task.matterId);
+    const dueAt = toTime(task.dueAt);
+    if (
+      !matter ||
+      task.status !== "open" ||
+      task.archivedAt ||
+      task.completedAt ||
+      dueAt === undefined ||
+      dueAt >= nowMs
+    ) {
+      return [];
+    }
+    const overdueDays = Math.max(daysBetween(nowMs, dueAt), 0);
+    return [
+      {
+        id: `task:${task.id}`,
+        viewKey: "overdue_tasks_deadlines",
+        matterId: task.matterId,
+        title: task.title,
+        status: task.status,
+        priority: task.priority === "high" || overdueDays >= 3 ? "high" : "medium",
+        reason: `Task deadline is ${overdueDays} days overdue`,
+        dueAt: task.dueAt,
+        metadata: {
+          overdueDays,
+          matterNumber: matter.number,
+          assignedToUserId: task.assignedToUserId,
+          taskPriority: task.priority,
+        },
+      },
+    ];
+  });
+  const calendarResults = (input.calendarEvents ?? []).flatMap((event): OperationalViewResult[] => {
     if (!event.matterId) return [];
     const matter = mattersById.get(event.matterId);
     const startsAt = toTime(event.startsAt);
@@ -729,6 +764,12 @@ function buildOverdueTaskDeadlineResults(
         metadata: { overdueDays, matterNumber: matter.number },
       },
     ];
+  });
+  return [...taskResults, ...calendarResults].sort((left, right) => {
+    const leftDue = toTime(left.dueAt) ?? Number.POSITIVE_INFINITY;
+    const rightDue = toTime(right.dueAt) ?? Number.POSITIVE_INFINITY;
+    if (leftDue !== rightDue) return leftDue - rightDue;
+    return left.id.localeCompare(right.id);
   });
 }
 

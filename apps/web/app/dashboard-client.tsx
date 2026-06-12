@@ -6,6 +6,7 @@ import {
   BarChart3,
   CalendarDays,
   Clock3,
+  ClipboardCheck,
   ContactRound,
   CreditCard,
   FileText,
@@ -84,6 +85,11 @@ import { DocumentsSection } from "./dashboard/documents-section";
 import { DraftingSection } from "./dashboard/drafting-section";
 import { ExternalUploadsSection } from "./dashboard/external-uploads-section";
 import { ShareLinksSection } from "./dashboard/share-links-section";
+import {
+  TasksSection,
+  type TaskCreatePayload,
+  type TaskUpdatePayload,
+} from "./dashboard/tasks-section";
 import { TrustControlsSection } from "./dashboard/trust-controls-section";
 import {
   applySavedQueueFocus,
@@ -432,6 +438,7 @@ type DashboardDraftAssistRecord = DraftAssistRecordsResponse["records"][number];
 type DashboardIntakeVariableProposal = IntakeVariableProposalsResponse["proposals"][number];
 type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
 type DashboardCalendarScope = NonNullable<DashboardCalendarEvent["scope"]>;
+type DashboardTaskListResponse = { tasks: TaskDeadlineWorkbenchResponse["tasks"] };
 
 const dashboardLaneStaleAfterMs = 5 * 60 * 1000;
 
@@ -452,6 +459,7 @@ const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   audit: ShieldCheck,
   admin: LockKeyhole,
   queues: Clock3,
+  tasks: ClipboardCheck,
 };
 
 export default function DashboardClient({
@@ -489,7 +497,7 @@ export default function DashboardClient({
   session,
   signatures,
   setupStatus,
-  taskWorkbench,
+  taskWorkbench: initialTaskWorkbench,
   trustControls,
   queues: initialQueues,
   workerHealth,
@@ -498,6 +506,17 @@ export default function DashboardClient({
 }: DashboardClientProps) {
   const [matters, setMatters] = useState(initialMatters);
   const [queues, setQueues] = useState(initialQueues);
+  const [taskWorkbench, setTaskWorkbench] = useState(initialTaskWorkbench);
+  const [taskRows, setTaskRows] = useState<TaskDeadlineWorkbenchResponse["tasks"]>(
+    initialTaskWorkbench.tasks,
+  );
+  const [taskIncludeArchived, setTaskIncludeArchived] = useState(false);
+  const [taskActionBusyKey, setTaskActionBusyKey] = useState("");
+  const [taskActionStatus, setTaskActionStatus] = useState(
+    initialTaskWorkbench.tasks.length > 0
+      ? `${initialTaskWorkbench.tasks.length} task${initialTaskWorkbench.tasks.length === 1 ? "" : "s"} loaded.`
+      : "No tasks loaded yet.",
+  );
   const [aiOperationalProposals, setAiOperationalProposals] = useState(
     initialAiOperationalProposals,
   );
@@ -1525,23 +1544,161 @@ export default function DashboardClient({
     ],
   );
 
+  function buildTaskListPath(includeArchived: boolean): string {
+    const params = new URLSearchParams({ includeCompleted: "true" });
+    if (includeArchived) params.set("includeArchived", "true");
+    return `/api/tasks?${params.toString()}`;
+  }
+
+  async function refreshTaskWorkspace(options: { includeArchived?: boolean } = {}): Promise<void> {
+    const includeArchived = options.includeArchived ?? taskIncludeArchived;
+    const [workbenchPayload, taskListPayload] = await Promise.all([
+      requestDashboardJson<TaskDeadlineWorkbenchResponse>(apiBaseUrl, "/api/tasks/workbench", {
+        headers: devHeaders,
+      }),
+      requestDashboardJson<DashboardTaskListResponse>(
+        apiBaseUrl,
+        buildTaskListPath(includeArchived),
+        {
+          headers: devHeaders,
+        },
+      ),
+    ]);
+    setTaskWorkbench(workbenchPayload);
+    setTaskRows(taskListPayload.tasks);
+  }
+
+  async function updateTaskArchivedVisibility(includeArchived: boolean): Promise<void> {
+    setTaskIncludeArchived(includeArchived);
+    setTaskActionStatus(includeArchived ? "Loading archived tasks..." : "Hiding archived tasks...");
+    try {
+      await refreshTaskWorkspace({ includeArchived });
+      setTaskActionStatus(
+        includeArchived ? "Archived tasks are visible." : "Archived tasks are hidden.",
+      );
+    } catch (error) {
+      setTaskActionStatus(`Task refresh failed: ${dashboardApiStatus(error)}`);
+    }
+  }
+
+  async function createTask(payload: TaskCreatePayload): Promise<void> {
+    setTaskActionBusyKey("create");
+    setTaskActionStatus("Creating task...");
+    try {
+      await requestDashboardJson(apiBaseUrl, "/api/tasks", {
+        method: "POST",
+        headers: devHeaders,
+        payload,
+      });
+      await refreshTaskWorkspace();
+      setTaskActionStatus("Task created.");
+    } catch (error) {
+      setTaskActionStatus(`Task create failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setTaskActionBusyKey("");
+    }
+  }
+
+  async function updateTask(taskId: string, payload: TaskUpdatePayload): Promise<void> {
+    setTaskActionBusyKey(`update:${taskId}`);
+    setTaskActionStatus("Saving task...");
+    try {
+      await requestDashboardJson(apiBaseUrl, `/api/tasks/${encodeURIComponent(taskId)}`, {
+        method: "PATCH",
+        headers: devHeaders,
+        payload,
+      });
+      await refreshTaskWorkspace();
+      setTaskActionStatus("Task updated.");
+    } catch (error) {
+      setTaskActionStatus(`Task update failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setTaskActionBusyKey("");
+    }
+  }
+
+  async function completeTask(taskId: string): Promise<void> {
+    setTaskActionBusyKey(`complete:${taskId}`);
+    setTaskActionStatus("Completing task...");
+    try {
+      await requestDashboardJson(apiBaseUrl, `/api/tasks/${encodeURIComponent(taskId)}/complete`, {
+        method: "PATCH",
+        headers: devHeaders,
+        payload: {},
+      });
+      await refreshTaskWorkspace();
+      setTaskActionStatus("Task completed.");
+    } catch (error) {
+      setTaskActionStatus(`Task complete failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setTaskActionBusyKey("");
+    }
+  }
+
+  async function reopenTask(taskId: string): Promise<void> {
+    setTaskActionBusyKey(`reopen:${taskId}`);
+    setTaskActionStatus("Reopening task...");
+    try {
+      await requestDashboardJson(apiBaseUrl, `/api/tasks/${encodeURIComponent(taskId)}/reopen`, {
+        method: "PATCH",
+        headers: devHeaders,
+        payload: {},
+      });
+      await refreshTaskWorkspace();
+      setTaskActionStatus("Task reopened.");
+    } catch (error) {
+      setTaskActionStatus(`Task reopen failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setTaskActionBusyKey("");
+    }
+  }
+
+  async function archiveTask(taskId: string): Promise<void> {
+    setTaskActionBusyKey(`archive:${taskId}`);
+    setTaskActionStatus("Archiving task...");
+    try {
+      await requestDashboardJson(apiBaseUrl, `/api/tasks/${encodeURIComponent(taskId)}/archive`, {
+        method: "PATCH",
+        headers: devHeaders,
+        payload: {},
+      });
+      await refreshTaskWorkspace();
+      setTaskActionStatus("Task archived.");
+    } catch (error) {
+      setTaskActionStatus(`Task archive failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setTaskActionBusyKey("");
+    }
+  }
+
   async function refreshQueueLane(): Promise<void> {
     setQueueRefreshState((current) => ({ ...current, refreshing: true, error: undefined }));
     try {
-      const [payload, connectorPayload, aiProposalPayload] = await Promise.all([
-        requestDashboardJson<QueuesResponse>(apiBaseUrl, "/api/queues", {
-          headers: devHeaders,
-        }),
-        requestConnectorOperationsForDashboard(apiBaseUrl, devHeaders),
-        requestDashboardJson<AiOperationalProposalsResponse>(
-          apiBaseUrl,
-          buildAiOperationalProposalsPath(),
-          { headers: devHeaders },
-        ),
-      ]);
+      const [payload, connectorPayload, aiProposalPayload, taskWorkbenchPayload, taskListPayload] =
+        await Promise.all([
+          requestDashboardJson<QueuesResponse>(apiBaseUrl, "/api/queues", {
+            headers: devHeaders,
+          }),
+          requestConnectorOperationsForDashboard(apiBaseUrl, devHeaders),
+          requestDashboardJson<AiOperationalProposalsResponse>(
+            apiBaseUrl,
+            buildAiOperationalProposalsPath(),
+            { headers: devHeaders },
+          ),
+          requestDashboardJson<TaskDeadlineWorkbenchResponse>(apiBaseUrl, "/api/tasks/workbench", {
+            headers: devHeaders,
+          }),
+          requestDashboardJson<DashboardTaskListResponse>(
+            apiBaseUrl,
+            buildTaskListPath(taskIncludeArchived),
+            { headers: devHeaders },
+          ),
+        ]);
       setQueues(payload);
       setConnectorOperations(connectorPayload);
       setAiOperationalProposals(aiProposalPayload);
+      setTaskWorkbench(taskWorkbenchPayload);
+      setTaskRows(taskListPayload.tasks);
       setAiOperationalProposalStatus(describeAiOperationalProposalGeneration(aiProposalPayload));
       setQueueRefreshState({ loadedAt: new Date().toISOString(), refreshing: false });
       setFreshnessNow(new Date());
@@ -4702,6 +4859,45 @@ export default function DashboardClient({
               </article>
             ) : null}
 
+            {activeSection === "tasks" ? (
+              <article
+                aria-labelledby="zero-tasks-title"
+                className="panel matter-detail matter-detail-panel"
+                id="matter-workspace"
+                ref={detailPanelRef}
+                tabIndex={-1}
+              >
+                <div className="panel-header matter-detail-header">
+                  <div>
+                    <p className="eyebrow">Task workspace</p>
+                    <h2 id="zero-tasks-title">Tasks</h2>
+                  </div>
+                  <span className="status-chip">Firm surface</span>
+                </div>
+                <TasksSection
+                  activeMatterId=""
+                  busyKey={taskActionBusyKey}
+                  compactDate={compactDate}
+                  currentUserId={session.user.id}
+                  includeArchived={taskIncludeArchived}
+                  matters={matters}
+                  onArchiveTask={(taskId) => void archiveTask(taskId)}
+                  onCompleteTask={(taskId) => void completeTask(taskId)}
+                  onCreateTask={(payload) => void createTask(payload)}
+                  onIncludeArchivedChange={(includeArchived) =>
+                    void updateTaskArchivedVisibility(includeArchived)
+                  }
+                  onReopenTask={(taskId) => void reopenTask(taskId)}
+                  onSelectMatter={selectMatter}
+                  onUpdateTask={(taskId, payload) => void updateTask(taskId, payload)}
+                  status={taskActionStatus}
+                  taskWorkbench={taskWorkbench}
+                  tasks={taskRows}
+                  users={overview.users}
+                />
+              </article>
+            ) : null}
+
             {activeSection === "reports" ? (
               <article
                 aria-labelledby="zero-reports-title"
@@ -5539,6 +5735,30 @@ export default function DashboardClient({
                 workerRunSafeContext={workerRunSafeContext}
                 workerRunStatus={describeWorkerRunStatus}
                 workerRunSummary={workerRunSummary}
+              />
+            ) : null}
+
+            {activeSection === "tasks" ? (
+              <TasksSection
+                activeMatterId={activeMatter.id}
+                busyKey={taskActionBusyKey}
+                compactDate={compactDate}
+                currentUserId={session.user.id}
+                includeArchived={taskIncludeArchived}
+                matters={matters}
+                onArchiveTask={(taskId) => void archiveTask(taskId)}
+                onCompleteTask={(taskId) => void completeTask(taskId)}
+                onCreateTask={(payload) => void createTask(payload)}
+                onIncludeArchivedChange={(includeArchived) =>
+                  void updateTaskArchivedVisibility(includeArchived)
+                }
+                onReopenTask={(taskId) => void reopenTask(taskId)}
+                onSelectMatter={selectMatter}
+                onUpdateTask={(taskId, payload) => void updateTask(taskId, payload)}
+                status={taskActionStatus}
+                taskWorkbench={taskWorkbench}
+                tasks={taskRows}
+                users={overview.users}
               />
             ) : null}
           </MatterDetailShell>

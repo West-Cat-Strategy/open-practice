@@ -33,7 +33,7 @@ describe("repository calendar and tasks", () => {
     ).resolves.toMatchObject([{ id: "calendar-event-003", matterId: "matter-002" }]);
   });
 
-  it("lists and completes matter-scoped task deadlines in memory", async () => {
+  it("creates, updates, completes, reopens, and archives matter-scoped task deadlines in memory", async () => {
     const repository = new InMemoryOpenPracticeRepository();
 
     await expect(
@@ -55,23 +55,114 @@ describe("repository calendar and tasks", () => {
       matterId: "matter-001",
       assignedToUserId: "user-licensee",
       title: "Synthetic task deadline",
+      description: "Synthetic staff-owned follow-up.",
+      priority: "high",
+      sourceType: "manual",
+      sourceId: "manual-task-test",
       dueAt: "2026-05-03T17:00:00.000Z",
+      createdAt: "2026-05-02T16:00:00.000Z",
+      createdByUserId: "user-licensee",
     });
-    expect(created).toMatchObject({ id: "task-deadline-test" });
+    expect(created).toMatchObject({
+      id: "task-deadline-test",
+      status: "open",
+      priority: "high",
+      version: 1,
+    });
+
+    await expect(
+      repository.updateTaskDeadline({
+        firmId: "firm-west-legal",
+        taskId: "task-deadline-test",
+        title: "Updated synthetic task deadline",
+        assignedToUserId: "user-staff",
+        priority: "medium",
+        dueAt: "2026-05-04T17:00:00.000Z",
+        updatedAt: "2026-05-02T17:00:00.000Z",
+        updatedByUserId: "user-licensee",
+      }),
+    ).resolves.toMatchObject({
+      title: "Updated synthetic task deadline",
+      assignedToUserId: "user-staff",
+      priority: "medium",
+      version: 2,
+    });
 
     await expect(
       repository.completeTaskDeadline({
         firmId: "firm-west-legal",
         taskId: "task-deadline-test",
         completedAt: "2026-05-02T17:30:00.000Z",
+        completedByUserId: "user-licensee",
       }),
     ).resolves.toMatchObject({
       id: "task-deadline-test",
+      status: "completed",
       completedAt: "2026-05-02T17:30:00.000Z",
+      completedByUserId: "user-licensee",
+      version: 3,
     });
     await expect(
       repository.getTaskDeadline("firm-west-legal", "task-deadline-test"),
-    ).resolves.toMatchObject({ completedAt: "2026-05-02T17:30:00.000Z" });
+    ).resolves.toMatchObject({ status: "completed", completedAt: "2026-05-02T17:30:00.000Z" });
+
+    await expect(
+      repository.reopenTaskDeadline({
+        firmId: "firm-west-legal",
+        taskId: "task-deadline-test",
+        reopenedAt: "2026-05-02T18:00:00.000Z",
+        reopenedByUserId: "user-licensee",
+      }),
+    ).resolves.toMatchObject({
+      status: "open",
+      completedAt: undefined,
+      completedByUserId: undefined,
+      version: 4,
+    });
+
+    await expect(
+      repository.archiveTaskDeadline({
+        firmId: "firm-west-legal",
+        taskId: "task-deadline-test",
+        archivedAt: "2026-05-02T18:30:00.000Z",
+        archivedByUserId: "user-licensee",
+      }),
+    ).resolves.toMatchObject({
+      status: "archived",
+      archivedAt: "2026-05-02T18:30:00.000Z",
+      version: 5,
+    });
+    await expect(
+      repository.getTaskDeadline("firm-west-legal", "task-deadline-test"),
+    ).resolves.toBeUndefined();
+    await expect(
+      repository.getTaskDeadline("firm-west-legal", "task-deadline-test", {
+        includeArchived: true,
+      }),
+    ).resolves.toMatchObject({ status: "archived" });
+  });
+
+  it("rejects invalid task source pairs before persistence", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+
+    await expect(
+      repository.createTaskDeadline({
+        id: "task-invalid-source",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        title: "Synthetic invalid source",
+        sourceType: "manual",
+      }),
+    ).rejects.toThrow("Task source type and source id must be set together");
+
+    await expect(
+      repository.updateTaskDeadline({
+        firmId: "firm-west-legal",
+        taskId: "task-deadline-001",
+        sourceId: "manual-source-id-only",
+        updatedAt: "2026-05-02T17:00:00.000Z",
+      }),
+    ).rejects.toThrow("Task source type and source id must be set together");
   });
 
   it("persists and filters calendar scheduling requests by matter and owner", async () => {

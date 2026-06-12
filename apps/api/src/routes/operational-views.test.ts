@@ -228,6 +228,7 @@ describe("operational view routes", () => {
     expect(view(payload, "conflicts_pending_review").resultCount).toBeGreaterThan(0);
     expect(view(payload, "overdue_tasks_deadlines").results).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ id: "task:task-deadline-001", matterId: "matter-001" }),
         expect.objectContaining({ id: "calendar:calendar-event-001", matterId: "matter-001" }),
       ]),
     );

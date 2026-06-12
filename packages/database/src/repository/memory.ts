@@ -320,10 +320,13 @@ import {
   type MemoryDraftStore,
 } from "./drafts/memory.js";
 import {
+  archiveMemoryTaskDeadline,
   completeMemoryTaskDeadline,
   createMemoryTaskDeadline,
   getMemoryTaskDeadline,
   listMemoryTaskDeadlines,
+  reopenMemoryTaskDeadline,
+  updateMemoryTaskDeadline,
   type MemoryTaskStore,
 } from "./tasks/memory.js";
 import {
@@ -1505,23 +1508,47 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async listTaskDeadlines(
     firmId: string,
-    options: { matterIds?: string[]; matterId?: string; includeCompleted?: boolean } = {},
+    options: Parameters<OpenPracticeRepository["listTaskDeadlines"]>[1] = {},
   ): Promise<TaskDeadlineRecord[]> {
     return listMemoryTaskDeadlines(this.taskStore, firmId, options);
   }
 
-  async getTaskDeadline(firmId: string, taskId: string): Promise<TaskDeadlineRecord | undefined> {
-    return getMemoryTaskDeadline(this.taskStore, firmId, taskId);
+  async getTaskDeadline(
+    firmId: string,
+    taskId: string,
+    options: Parameters<OpenPracticeRepository["getTaskDeadline"]>[2] = {},
+  ): Promise<TaskDeadlineRecord | undefined> {
+    return getMemoryTaskDeadline(this.taskStore, firmId, taskId, options);
   }
 
-  async createTaskDeadline(task: TaskDeadlineRecord): Promise<TaskDeadlineRecord> {
+  async createTaskDeadline(
+    task: Parameters<OpenPracticeRepository["createTaskDeadline"]>[0],
+  ): Promise<TaskDeadlineRecord> {
     return createMemoryTaskDeadline(this.taskStore, task);
+  }
+
+  async updateTaskDeadline(
+    input: Parameters<OpenPracticeRepository["updateTaskDeadline"]>[0],
+  ): Promise<TaskDeadlineRecord | undefined> {
+    return updateMemoryTaskDeadline(this.taskStore, input);
   }
 
   async completeTaskDeadline(
     input: Parameters<OpenPracticeRepository["completeTaskDeadline"]>[0],
   ): Promise<TaskDeadlineRecord | undefined> {
     return completeMemoryTaskDeadline(this.taskStore, input);
+  }
+
+  async reopenTaskDeadline(
+    input: Parameters<OpenPracticeRepository["reopenTaskDeadline"]>[0],
+  ): Promise<TaskDeadlineRecord | undefined> {
+    return reopenMemoryTaskDeadline(this.taskStore, input);
+  }
+
+  async archiveTaskDeadline(
+    input: Parameters<OpenPracticeRepository["archiveTaskDeadline"]>[0],
+  ): Promise<TaskDeadlineRecord | undefined> {
+    return archiveMemoryTaskDeadline(this.taskStore, input);
   }
 
   async listConversationThreads(

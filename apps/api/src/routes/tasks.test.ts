@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type InjectOptions } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   InMemoryOpenPracticeRepository,
@@ -185,10 +185,243 @@ describe("task routes", () => {
     );
   });
 
+  it("lists task records with lifecycle fields and filters by status and bucket", async () => {
+    const response = await testServer({
+      user: user("licensee", ["matter-001"]),
+    }).inject({ method: "GET", url: "/api/tasks?status=open&bucket=overdue" });
+    const payload = response.json<{
+      tasks: Array<{
+        id: string;
+        matterId: string;
+        status: string;
+        priority: string;
+        bucket: string;
+        version: number;
+      }>;
+    }>();
+
+    expect(response.statusCode).toBe(200);
+    expect(payload.tasks).toEqual([
+      expect.objectContaining({
+        id: "task-deadline-001",
+        matterId: "matter-001",
+        status: "open",
+        priority: "high",
+        bucket: "overdue",
+        version: 1,
+      }),
+    ]);
+  });
+
   it("rejects cross-matter workbench reads for matter-scoped users", async () => {
     const response = await testServer({
       user: user("licensee", ["matter-001"]),
     }).inject({ method: "GET", url: "/api/tasks/workbench?matterId=matter-002" });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("returns task detail only within the user's assigned matter scope", async () => {
+    const server = testServer({
+      user: user("licensee", ["matter-001"]),
+    });
+
+    const detailResponse = await server.inject({
+      method: "GET",
+      url: "/api/tasks/task-deadline-001",
+    });
+    const crossMatterResponse = await server.inject({
+      method: "GET",
+      url: "/api/tasks/task-deadline-003",
+    });
+
+    expect(detailResponse.statusCode).toBe(200);
+    expect(detailResponse.json()).toMatchObject({
+      task: {
+        id: "task-deadline-001",
+        matterId: "matter-001",
+        status: "open",
+        priority: "high",
+      },
+    });
+    expect(crossMatterResponse.statusCode).toBe(403);
+  });
+
+  it("rejects non-staff task lifecycle mutations", async () => {
+    const server = testServer({
+      user: user("client_external", ["matter-001"]),
+    });
+    const mutationRequests: InjectOptions[] = [
+      { method: "POST", url: "/api/tasks", payload: { matterId: "matter-001", title: "Denied" } },
+      { method: "PATCH", url: "/api/tasks/task-deadline-001", payload: { title: "Denied" } },
+      { method: "PATCH", url: "/api/tasks/task-deadline-001/complete", payload: {} },
+      { method: "PATCH", url: "/api/tasks/task-deadline-001/reopen", payload: {} },
+      { method: "PATCH", url: "/api/tasks/task-deadline-001/archive", payload: {} },
+    ];
+
+    for (const request of mutationRequests) {
+      const response = await server.inject(request);
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ message: "Staff access required" });
+    }
+  });
+
+  it("creates and updates staff task records with audit-safe metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    });
+    const createResponse = await server.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: {
+        matterId: "matter-001",
+        title: "Prepare synthetic hearing brief",
+        description: "Synthetic staff-only task note.",
+        assignedToUserId: "user-staff",
+        priority: "high",
+        sourceType: "manual",
+        sourceId: "manual-brief",
+        dueAt: "2026-05-03T18:00:00.000Z",
+      },
+    });
+    const created = createResponse.json<{
+      task: { id: string; status: string; priority: string; version: number };
+    }>().task;
+
+    expect(createResponse.statusCode).toBe(201);
+    expect(created).toMatchObject({ status: "open", priority: "high", version: 1 });
+
+    const updateResponse = await server.inject({
+      method: "PATCH",
+      url: `/api/tasks/${created.id}`,
+      payload: {
+        title: "Prepare updated synthetic hearing brief",
+        assignedToUserId: null,
+        priority: "medium",
+        dueAt: "2026-05-04T18:00:00.000Z",
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json()).toMatchObject({
+      task: {
+        id: created.id,
+        title: "Prepare updated synthetic hearing brief",
+        priority: "medium",
+        sourceType: "manual",
+        sourceId: "manual-brief",
+        version: 2,
+      },
+    });
+
+    const clearSourceResponse = await server.inject({
+      method: "PATCH",
+      url: `/api/tasks/${created.id}`,
+      payload: {
+        sourceType: null,
+        sourceId: null,
+      },
+    });
+    const clearSourcePayload = clearSourceResponse.json<{
+      task: { sourceType?: string; sourceId?: string; version: number };
+    }>();
+
+    expect(clearSourceResponse.statusCode).toBe(200);
+    expect(clearSourcePayload.task).toMatchObject({ version: 3 });
+    expect(clearSourcePayload.task).not.toHaveProperty("sourceType");
+    expect(clearSourcePayload.task).not.toHaveProperty("sourceId");
+    await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          action: "task.created",
+          resourceType: "task",
+          resourceId: created.id,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            taskId: created.id,
+            assignedToUserId: "user-staff",
+            priority: "high",
+            sourceType: "manual",
+            sourceId: "manual-brief",
+          }),
+        }),
+        expect.objectContaining({
+          action: "task.updated",
+          resourceType: "task",
+          resourceId: created.id,
+          metadata: expect.objectContaining({
+            matterId: "matter-001",
+            taskId: created.id,
+            assignmentChanged: true,
+            dueAtChanged: true,
+            sourceChanged: false,
+          }),
+        }),
+      ]),
+      valid: true,
+    });
+  });
+
+  it("rejects empty and invalid-source task updates", async () => {
+    const server = testServer({
+      user: user("licensee", ["matter-001"]),
+    });
+
+    const emptyPatchResponse = await server.inject({
+      method: "PATCH",
+      url: "/api/tasks/task-deadline-001",
+      payload: {},
+    });
+    const sourceTypeOnlyResponse = await server.inject({
+      method: "PATCH",
+      url: "/api/tasks/task-deadline-001",
+      payload: { sourceType: "manual" },
+    });
+    const clearSourceTypeOnlyResponse = await server.inject({
+      method: "PATCH",
+      url: "/api/tasks/task-deadline-001",
+      payload: { sourceType: null },
+    });
+    const clearSourceIdOnlyResponse = await server.inject({
+      method: "PATCH",
+      url: "/api/tasks/task-deadline-001",
+      payload: { sourceId: null },
+    });
+    const sourceIdOnlyResponse = await server.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: {
+        matterId: "matter-001",
+        title: "Synthetic invalid source",
+        sourceId: "manual-only",
+      },
+    });
+
+    expect(emptyPatchResponse.statusCode).toBe(400);
+    expect(emptyPatchResponse.json()).toMatchObject({
+      message: "Task update requires a changed field",
+    });
+    expect(sourceTypeOnlyResponse.statusCode).toBe(400);
+    expect(clearSourceTypeOnlyResponse.statusCode).toBe(400);
+    expect(clearSourceIdOnlyResponse.statusCode).toBe(400);
+    expect(sourceIdOnlyResponse.statusCode).toBe(400);
+  });
+
+  it("rejects task creation when the assignee cannot read the matter", async () => {
+    const response = await testServer({
+      user: user("owner_admin", ["matter-001", "matter-002"]),
+    }).inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: {
+        matterId: "matter-002",
+        title: "Synthetic cross-matter assignment",
+        assignedToUserId: "user-staff",
+        priority: "medium",
+      },
+    });
 
     expect(response.statusCode).toBe(403);
   });
@@ -208,7 +441,9 @@ describe("task routes", () => {
     expect(response.json()).toMatchObject({
       task: {
         id: "task-deadline-002",
+        status: "completed",
         completedAt: "2026-05-02T18:00:00.000Z",
+        completedByUserId: "user-licensee",
       },
       completion: {
         taskId: "task-deadline-002",
@@ -232,6 +467,71 @@ describe("task routes", () => {
         }),
       ]),
       valid: true,
+    });
+  });
+
+  it("reopens and archives task records while hiding archived rows by default", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({
+      repository,
+      user: user("licensee", ["matter-001"]),
+    });
+
+    const completeResponse = await server.inject({
+      method: "PATCH",
+      url: "/api/tasks/task-deadline-002/complete",
+      payload: { completedAt: "2026-05-02T18:00:00.000Z" },
+    });
+    expect(completeResponse.statusCode).toBe(200);
+
+    const reopenResponse = await server.inject({
+      method: "PATCH",
+      url: "/api/tasks/task-deadline-002/reopen",
+      payload: {},
+    });
+    expect(reopenResponse.statusCode).toBe(200);
+    expect(reopenResponse.json()).toMatchObject({
+      task: { id: "task-deadline-002", status: "open" },
+      reopening: {
+        taskId: "task-deadline-002",
+        matterId: "matter-001",
+        reopenedByUserId: "user-licensee",
+        auditSafe: true,
+      },
+    });
+
+    const archiveResponse = await server.inject({
+      method: "PATCH",
+      url: "/api/tasks/task-deadline-002/archive",
+      payload: {},
+    });
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(archiveResponse.json()).toMatchObject({
+      task: { id: "task-deadline-002", status: "archived" },
+      archive: {
+        taskId: "task-deadline-002",
+        matterId: "matter-001",
+        archivedByUserId: "user-licensee",
+        auditSafe: true,
+      },
+    });
+
+    const defaultList = await server.inject({
+      method: "GET",
+      url: "/api/tasks?matterId=matter-001",
+    });
+    expect(defaultList.statusCode).toBe(200);
+    expect(JSON.stringify(defaultList.json())).not.toContain("task-deadline-002");
+
+    const archivedList = await server.inject({
+      method: "GET",
+      url: "/api/tasks?matterId=matter-001&includeArchived=true",
+    });
+    expect(archivedList.statusCode).toBe(200);
+    expect(archivedList.json()).toMatchObject({
+      tasks: expect.arrayContaining([
+        expect.objectContaining({ id: "task-deadline-002", status: "archived" }),
+      ]),
     });
   });
 

@@ -39,6 +39,7 @@ describe("Open Practice route catalog", () => {
       "shares",
       "externalUploads",
       "drafting",
+      "tasks",
       "calendar",
       "signatures",
       "intake",
@@ -67,6 +68,7 @@ describe("Open Practice route catalog", () => {
     expect(getRoutesByArea("finance").map((entry) => entry.id)).toEqual(["funds", "billing"]);
     expect(getRoutesByArea("operations").map((entry) => entry.id)).toEqual([
       "shares",
+      "tasks",
       "signatures",
       "intake",
       "queues",
@@ -107,6 +109,7 @@ describe("Open Practice route catalog", () => {
       "shares",
       "externalUploads",
       "drafting",
+      "tasks",
       "calendar",
       "signatures",
       "intake",
@@ -125,6 +128,7 @@ describe("Open Practice route catalog", () => {
     expect(matchRouteCatalogEntry("/?section=shares")?.id).toBe("shares");
     expect(matchRouteCatalogEntry("/?section=externalUploads")?.id).toBe("externalUploads");
     expect(matchRouteCatalogEntry("/?section=drafting")?.id).toBe("drafting");
+    expect(matchRouteCatalogEntry("/?section=tasks")?.id).toBe("tasks");
     expect(matchRouteCatalogEntry("/?section=calendar")?.id).toBe("calendar");
     expect(matchRouteCatalogEntry("/?section=reports")?.id).toBe("reports");
     expect(matchRouteCatalogEntry("/?section=admin")?.id).toBe("admin");

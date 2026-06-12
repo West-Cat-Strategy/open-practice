@@ -227,10 +227,13 @@ import {
   updateDrizzleDraftAssistRecord,
 } from "./drafts/drizzle.js";
 import {
+  archiveDrizzleTaskDeadline,
   completeDrizzleTaskDeadline,
   createDrizzleTaskDeadline,
   getDrizzleTaskDeadline,
   listDrizzleTaskDeadlines,
+  reopenDrizzleTaskDeadline,
+  updateDrizzleTaskDeadline,
 } from "./tasks/drizzle.js";
 import {
   createDrizzleConversationMessage,
@@ -522,23 +525,47 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
 
   async listTaskDeadlines(
     firmId: string,
-    options: { matterIds?: string[]; matterId?: string; includeCompleted?: boolean } = {},
+    options: Parameters<OpenPracticeRepository["listTaskDeadlines"]>[1] = {},
   ): Promise<TaskDeadlineRecord[]> {
     return listDrizzleTaskDeadlines(this.db, firmId, options);
   }
 
-  async getTaskDeadline(firmId: string, taskId: string): Promise<TaskDeadlineRecord | undefined> {
-    return getDrizzleTaskDeadline(this.db, firmId, taskId);
+  async getTaskDeadline(
+    firmId: string,
+    taskId: string,
+    options: Parameters<OpenPracticeRepository["getTaskDeadline"]>[2] = {},
+  ): Promise<TaskDeadlineRecord | undefined> {
+    return getDrizzleTaskDeadline(this.db, firmId, taskId, options);
   }
 
-  async createTaskDeadline(task: TaskDeadlineRecord): Promise<TaskDeadlineRecord> {
+  async createTaskDeadline(
+    task: Parameters<OpenPracticeRepository["createTaskDeadline"]>[0],
+  ): Promise<TaskDeadlineRecord> {
     return createDrizzleTaskDeadline(this.db, task);
+  }
+
+  async updateTaskDeadline(
+    input: Parameters<OpenPracticeRepository["updateTaskDeadline"]>[0],
+  ): Promise<TaskDeadlineRecord | undefined> {
+    return updateDrizzleTaskDeadline(this.db, input);
   }
 
   async completeTaskDeadline(
     input: Parameters<OpenPracticeRepository["completeTaskDeadline"]>[0],
   ): Promise<TaskDeadlineRecord | undefined> {
     return completeDrizzleTaskDeadline(this.db, input);
+  }
+
+  async reopenTaskDeadline(
+    input: Parameters<OpenPracticeRepository["reopenTaskDeadline"]>[0],
+  ): Promise<TaskDeadlineRecord | undefined> {
+    return reopenDrizzleTaskDeadline(this.db, input);
+  }
+
+  async archiveTaskDeadline(
+    input: Parameters<OpenPracticeRepository["archiveTaskDeadline"]>[0],
+  ): Promise<TaskDeadlineRecord | undefined> {
+    return archiveDrizzleTaskDeadline(this.db, input);
   }
 
   async listConversationThreads(

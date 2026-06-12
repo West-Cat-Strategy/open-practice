@@ -220,16 +220,41 @@ export interface ExpenseEntry {
 export type TaskDeadlineCompletionStatus = "open" | "completed";
 export type TaskDeadlineAssignmentStatus = "assigned" | "unassigned";
 export type TaskDeadlineBucket = "overdue" | "today" | "upcoming" | "unscheduled" | "completed";
+export type TaskStatus = "open" | "completed" | "archived";
+export type TaskPriority = "high" | "medium" | "low";
+export type TaskSourceType =
+  | "manual"
+  | "intake_review"
+  | "inbound_email_follow_up"
+  | "signature_follow_up"
+  | "calendar_scheduling"
+  | "operational_view"
+  | "system_import";
 
-export interface TaskDeadlineRecord {
+export interface TaskRecord {
   id: string;
   firmId: string;
   matterId: string;
   assignedToUserId?: string;
   title: string;
+  description?: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  sourceType?: TaskSourceType;
+  sourceId?: string;
   dueAt?: string;
   completedAt?: string;
+  completedByUserId?: string;
+  archivedAt?: string;
+  archivedByUserId?: string;
+  createdAt: string;
+  createdByUserId?: string;
+  updatedAt: string;
+  updatedByUserId?: string;
+  version: number;
 }
+
+export type TaskDeadlineRecord = TaskRecord;
 
 export interface TaskDeadlineProjection extends TaskDeadlineRecord {
   assignmentStatus: TaskDeadlineAssignmentStatus;

@@ -312,6 +312,7 @@ export function buildOperationalFocusSummary(input: {
             detail: "Assigned open task deadlines that are already past due.",
             tone: "risk" as const,
             section: "Tasks" as const,
+            targetSection: "tasks" as const,
           },
         ]
       : []),
@@ -324,6 +325,7 @@ export function buildOperationalFocusSummary(input: {
             detail: "Assigned task deadlines due before tomorrow.",
             tone: "neutral" as const,
             section: "Tasks" as const,
+            targetSection: "tasks" as const,
           },
         ]
       : []),

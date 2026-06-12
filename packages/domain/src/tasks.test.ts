@@ -11,6 +11,11 @@ function task(
     firmId: "firm-west-legal",
     matterId: "matter-001",
     title: input.id,
+    status: input.completedAt ? "completed" : "open",
+    priority: "medium",
+    createdAt: "2026-04-30T12:00:00.000Z",
+    updatedAt: input.completedAt ?? "2026-04-30T12:00:00.000Z",
+    version: input.completedAt ? 2 : 1,
     ...input,
   };
 }
@@ -309,5 +314,63 @@ describe("task deadline workbench", () => {
       },
     });
     expect(JSON.stringify(workbench.taskReview)).not.toContain("Cross matter private source");
+  });
+
+  it("surfaces review-first suggested follow-ups without auto-created task mutations", () => {
+    const workbench = buildTaskDeadlineWorkbench({
+      tasks: [],
+      matterParties: [],
+      matters: [{ id: "matter-001", number: "2026-0001", title: "Residential tenancy review" }],
+      schedulingRequests: [
+        {
+          id: "calendar-scheduling-request-follow-up",
+          firmId: "firm-west-legal",
+          matterId: "matter-001",
+          kind: "event_scheduling",
+          status: "needs_review",
+          title: "Schedule synthetic inspection call",
+          sourceType: "calendar_event",
+          sourceId: "calendar-event-follow-up",
+          sourceLabel: "Inspection scheduling request",
+          requestedDueAt: "2026-05-03T17:00:00.000Z",
+          reminderPosture: "dashboard_pending",
+          privacy: "staff_only",
+          timeCaptureCue: {
+            posture: "none",
+            existingTimeEntryCount: 0,
+            billable: false,
+          },
+          createdAt: "2026-05-02T12:00:00.000Z",
+          updatedAt: "2026-05-02T12:00:00.000Z",
+          createdByUserId: "user-licensee",
+          updatedByUserId: "user-licensee",
+        },
+      ],
+      userId: "user-licensee",
+      now,
+    });
+
+    expect(workbench.tasks).toEqual([]);
+    expect(workbench.suggestedFollowUps).toEqual([
+      expect.objectContaining({
+        id: "calendar-scheduling:calendar-scheduling-request-follow-up",
+        matterId: "matter-001",
+        title: "Schedule synthetic inspection call",
+        reason: "2026-0001 scheduling cue is waiting for staff task review.",
+        priority: "high",
+        dueAt: "2026-05-03T17:00:00.000Z",
+        source: {
+          type: "calendar_scheduling",
+          id: "calendar-scheduling-request-follow-up",
+          label: "Inspection scheduling request",
+        },
+        reviewBoundary: {
+          automaticTaskCreation: false,
+          automaticDeadlineMutation: false,
+          automaticReminderChanges: false,
+          queueDelivery: false,
+        },
+      }),
+    ]);
   });
 });

@@ -343,6 +343,7 @@ const capabilityResources: Record<DashboardSectionKey, DashboardSectionCapabilit
   documents: "document",
   research: "legal_research",
   drafting: "draft",
+  tasks: "task",
   calendar: "calendar_event",
   signatures: "signature_request",
   intake: "intake_session",
@@ -3142,6 +3143,7 @@ describe("dashboard client behavior", () => {
           },
         ],
       },
+      suggestedFollowUps: [],
     };
     const commonProps = {
       activeWorkerRuns: { jobs: [] },
@@ -4414,6 +4416,7 @@ describe("dashboard client behavior", () => {
         unassignedTaskIds: [],
       },
       taskReview: emptyTaskReview(),
+      suggestedFollowUps: [],
     };
     const queues: QueuesResponse = {
       sections: [
@@ -4517,6 +4520,8 @@ describe("dashboard client behavior", () => {
       "workers-failed",
       "workers-active",
     ]);
+    expect(focus.items.find((item) => item.key === "tasks-overdue")?.targetSection).toBe("tasks");
+    expect(focus.items.find((item) => item.key === "tasks-today")?.targetSection).toBe("tasks");
     expect(focus.items.map((item) => item.key).slice(4, 7)).toEqual([
       "operational-view-conflicts_pending_review",
       "operational-view-overdue_tasks_deadlines",
@@ -4573,6 +4578,7 @@ describe("dashboard client behavior", () => {
           unassignedTaskIds: [],
         },
         taskReview: emptyTaskReview(),
+        suggestedFollowUps: [],
       },
       queues: { sections: [] },
       operationalViews: {
@@ -4708,6 +4714,7 @@ describe("dashboard client behavior", () => {
           unassignedTaskIds: [],
         },
         taskReview: emptyTaskReview(),
+        suggestedFollowUps: [],
       },
       queues: { sections: [] },
       operationalViews: { views: [] },
@@ -4736,6 +4743,7 @@ describe("dashboard client behavior", () => {
           unassignedTaskIds: [],
         },
         taskReview: emptyTaskReview(),
+        suggestedFollowUps: [],
       },
       queues: { sections: [] },
       operationalViews: { views: [] },
@@ -4800,6 +4808,7 @@ describe("dashboard client behavior", () => {
           unassignedTaskIds: [],
         },
         taskReview: emptyTaskReview(),
+        suggestedFollowUps: [],
       },
       queues: { sections: [] },
       operationalViews: { views: [] },

@@ -51,6 +51,7 @@ const sectionSentinels: Record<OpenPracticeRouteId, RegExp[]> = {
   intake: [/Intake pipeline/i],
   audit: [/Audit taxonomy projection/i],
   reports: [/Saved report definitions/i],
+  tasks: [/Create task/i, /Suggested follow-ups/i],
   admin: [
     /Access and support controls/i,
     /Portability and migration/i,

@@ -448,6 +448,7 @@ export type DashboardSectionKey =
   | "documents"
   | "research"
   | "drafting"
+  | "tasks"
   | "calendar"
   | "billing"
   | "reports"
@@ -488,6 +489,12 @@ const dashboardSections: Array<{
     key: "drafting",
     label: "Drafting",
     resource: "draft",
+    preferredMatterScopedAction: "read",
+  },
+  {
+    key: "tasks",
+    label: "Tasks",
+    resource: "task",
     preferredMatterScopedAction: "read",
   },
   {
