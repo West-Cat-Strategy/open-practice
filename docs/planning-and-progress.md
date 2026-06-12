@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-11
+**Last Updated:** 2026-06-12
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Mainline merge/prune integration is in progress.                     |
-| Next recommended pick | Complete local validation, push `main`, and prune merged branches.   |
+| Current focus         | Mainline merge/prune closeout is validated for final push and prune. |
+| Next recommended pick | Confirm clean `main`, then choose the next tracked row.              |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -22,9 +22,11 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
-The live board below contains only completed rows in this branch. The most recent validated
-implementation handoff remains the separate matterless contacts/calendar workflow branch; merge and
-prune that lane outside this docs-only cleanup before choosing a new tracked row.
+The 2026-06-12 mainline merge/prune integration collected the dirty docs-review,
+validation-index cleanup, whole-app review, and test-suite pruning worktrees; merged OP-T153 task
+system V2 and SMTP/IMAP provider settings; and passed the selected host, Docker, dependency, policy,
+and build gates before final `main` push/prune. Proof is recorded in
+[OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-12.md).
 
 Recent proof context is indexed in [Validation Proof Index](validation/README.md). Historical
 completed-work summaries live in [Archive](archive/README.md). Keep new status, owner, blocker, and
