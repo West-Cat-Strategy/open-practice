@@ -669,6 +669,10 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       set auditEvents(value: AuditEvent[]) {
         repository.auditEvents = value;
       },
+      get providerSettings() {
+        return repository.providerSettings;
+      },
+      providerConfigCipher: repository.options.providerConfigCipher,
     };
   }
 

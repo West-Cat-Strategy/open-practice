@@ -55,6 +55,17 @@ review notes, desktop/mobile screenshots, and host/Docker E2E evidence are recor
 hash-based URLs while preserving header-token API helpers; the selected host and Docker E2E reruns
 now pass for merge handoff.
 
+Latest email settings addendum: 2026-06-10 transactional SMTP and IMAP inbound polling now use
+encrypted firm provider settings instead of worker-wide SMTP environment variables. First-run setup
+can optionally save `smtp/default` and `inbound_email/imap` settings, owner-admin Admin settings can
+read/update redacted SMTP and IMAP settings, and IMAP settings can enqueue an immediate
+`poll_imap_mailbox` job on the existing `inbound_email` queue. The worker resolves outbound SMTP per
+firm, IMAP polling fetches raw MIME with ImapFlow into the existing inbound raw namespace, queues the
+existing parser jobs, and tracks UIDVALIDITY/watermark/timestamps/next-poll state in encrypted
+provider config. Mailgun raw-MIME webhook support remains a parallel inbound provider. Proof is
+recorded in
+[Email settings SMTP/IMAP proof](validation/OP_EMAIL_SETTINGS_SMTP_IMAP_PROOF_2026-06-10.md).
+
 Latest first-run setup addendum: 2026-06-09 first-run setup no longer accepts or requires a setup
 key. Empty-database setup now reports only `required`, `blocked`, and optional `reason`;
 production empty-state setup is available without a key; partial setup remains blocked; and

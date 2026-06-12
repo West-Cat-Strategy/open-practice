@@ -54,6 +54,8 @@ import type {
   DocumentProcessingDashboardResponse,
   DocumentProcessingWorkbenchResponse,
   DraftingDashboardResponse,
+  EmailSettingsResponse,
+  ImapSettingsResponse,
   SessionResponse,
   SetupStatusResponse,
 } from "./types";
@@ -197,6 +199,43 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
   const intakeForms = await loadIntakeFormsDashboardResources({ headers, matters });
   const intakePipeline = await loadIntakePipelineResources(headers);
   const publicConsultation = await loadPublicConsultationDashboardResources(headers);
+  const emptyEmailSettings: EmailSettingsResponse = {
+    settings: {
+      key: "default",
+      enabled: false,
+      secure: false,
+      passwordConfigured: false,
+      configValid: false,
+      missingFields: ["config"],
+    },
+  };
+  const emptyImapSettings: ImapSettingsResponse = {
+    settings: {
+      key: "imap",
+      enabled: false,
+      secure: true,
+      mailbox: "INBOX",
+      pollIntervalSeconds: 300,
+      markSeen: false,
+      passwordConfigured: false,
+      configValid: false,
+      missingFields: ["config"],
+    },
+  };
+  const [emailSettings, imapSettings] = await Promise.all([
+    apiGetOptional<EmailSettingsResponse>(
+      "/api/email/settings",
+      emptyEmailSettings,
+      headers,
+      emptyEmailSettings,
+    ),
+    apiGetOptional<ImapSettingsResponse>(
+      "/api/inbound-email/settings/imap",
+      emptyImapSettings,
+      headers,
+      emptyImapSettings,
+    ),
+  ]);
   const legalClinic = await loadLegalClinicDashboardResources({
     headers,
     matters,
@@ -239,11 +278,13 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       documentProcessing={documentProcessing}
       drafting={drafting}
       emailDeliveryHistory={emailDeliveryHistory}
+      emailSettings={emailSettings.settings}
       externalUploads={externalUploads}
       initialSection={initialSection}
       intake={intake}
       intakeForms={intakeForms}
       intakePipeline={intakePipeline}
+      imapSettings={imapSettings.settings}
       publicConsultation={publicConsultation}
       legalClinic={legalClinic}
       legalResearch={legalResearch}

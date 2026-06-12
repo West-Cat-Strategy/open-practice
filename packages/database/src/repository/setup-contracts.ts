@@ -5,6 +5,7 @@ import type {
   FirmSettings,
   Matter,
   MatterParty,
+  ProviderSettingRecord,
   User,
   WebAuthnCredentialRecord,
 } from "@open-practice/domain";
@@ -30,6 +31,7 @@ export interface FirstRunSetupInput {
   firstContact?: Contact;
   firstMatter?: Matter;
   firstMatterParty?: MatterParty;
+  providerSettings?: ProviderSettingRecord[];
   selectedPresetIds?: string[];
   auditEvent: AuditEvent;
 }

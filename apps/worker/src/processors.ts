@@ -6,11 +6,14 @@ import type {
   OcrProvider,
   OpenPracticeQueueName,
 } from "@open-practice/domain";
+import { IMAP_POLL_JOB_NAME } from "@open-practice/domain";
 import type { OpenPracticeRepository } from "@open-practice/database";
+import type { ImapMailboxPoller } from "@open-practice/providers";
 import { processAiTriageJob } from "./processors/ai-triage.js";
 import { processConnectorJob } from "./processors/connectors.js";
 import { processEmailJob } from "./processors/email.js";
 import { processInboundEmailJob } from "./processors/inbound-email.js";
+import { processInboundEmailPollJob } from "./processors/inbound-email-poll.js";
 import { processOcrJob } from "./processors/ocr.js";
 import { processReportJob } from "./processors/reports.js";
 import type {
@@ -63,10 +66,12 @@ export async function processOpenPracticeJob(input: {
   draftAssistProvider?: DraftAssistProvider;
   mailSender: MailSender;
   inboundEmailParser: InboundEmailParser;
+  imapMailboxPoller?: ImapMailboxPoller;
   connectorSecretResolver?: ConnectorSecretResolver;
   connectorHttpDeliverer?: ConnectorHttpDeliverer;
   connectorDnsResolver?: ConnectorDnsResolver;
   connectorJobQueue?: WorkerJobQueue;
+  inboundEmailJobQueue?: WorkerJobQueue;
 }): Promise<WorkerJobResult> {
   const { data } = input;
 
@@ -116,16 +121,21 @@ async function processOpenPracticeJobBody(input: {
   draftAssistProvider?: DraftAssistProvider;
   mailSender: MailSender;
   inboundEmailParser: InboundEmailParser;
+  imapMailboxPoller?: ImapMailboxPoller;
   connectorSecretResolver?: ConnectorSecretResolver;
   connectorHttpDeliverer?: ConnectorHttpDeliverer;
   connectorDnsResolver?: ConnectorDnsResolver;
   connectorJobQueue?: WorkerJobQueue;
+  inboundEmailJobQueue?: WorkerJobQueue;
 }): Promise<WorkerJobResult> {
   const { queueName, data } = input;
 
   if (queueName === "ocr") return processOcrJob(input);
   if (queueName === "email") return processEmailJob(input);
   if (queueName === "connectors") return processConnectorJob(input);
+  if (queueName === "inbound_email" && input.jobName === IMAP_POLL_JOB_NAME) {
+    return processInboundEmailPollJob(input);
+  }
   if (queueName === "inbound_email") return processInboundEmailJob(input);
   if (queueName === "reports") return processReportJob(input);
   if (queueName === "ai_triage") {

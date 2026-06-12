@@ -26,6 +26,22 @@ function state(overrides: Partial<SetupWizardState> = {}): SetupWizardState {
     firstMatterClientName: "First Client",
     firstMatterClientEmail: "client@example.test",
     firstMatterClientPhone: "",
+    smtpEnabled: false,
+    smtpHost: "",
+    smtpPort: "587",
+    smtpSecure: false,
+    smtpUsername: "",
+    smtpPassword: "",
+    smtpFromAddress: "",
+    imapEnabled: false,
+    imapHost: "",
+    imapPort: "993",
+    imapSecure: true,
+    imapUsername: "",
+    imapPassword: "",
+    imapMailbox: "INBOX",
+    imapPollIntervalSeconds: "300",
+    imapMarkSeen: false,
     trustFundsCaveatAccepted: true,
     ...overrides,
   };
@@ -161,6 +177,85 @@ describe("setup wizard startup and validation", () => {
         phone: "604-555-0199",
       },
     });
+  });
+
+  it("omits optional email settings when the email setup step is skipped", () => {
+    const payload = buildSetupCompletePayload(state(), PRACTICE_PRESET_CATALOG);
+
+    expect(payload).not.toHaveProperty("email");
+  });
+
+  it("builds SMTP and IMAP first-run settings when enabled", () => {
+    const payload = buildSetupCompletePayload(
+      state({
+        smtpEnabled: true,
+        smtpHost: "smtp.example.test",
+        smtpPort: "587",
+        smtpSecure: false,
+        smtpUsername: "mailer@example.test",
+        smtpPassword: "synthetic-smtp-secret",
+        smtpFromAddress: "mailer@example.test",
+        imapEnabled: true,
+        imapHost: "imap.example.test",
+        imapPort: "993",
+        imapSecure: true,
+        imapUsername: "inbound@example.test",
+        imapPassword: "synthetic-imap-secret",
+        imapMailbox: "Practice",
+        imapPollIntervalSeconds: "600",
+        imapMarkSeen: true,
+      }),
+      PRACTICE_PRESET_CATALOG,
+    );
+
+    expect(payload.email).toEqual({
+      smtp: {
+        enabled: true,
+        host: "smtp.example.test",
+        port: 587,
+        secure: false,
+        username: "mailer@example.test",
+        password: "synthetic-smtp-secret",
+        fromAddress: "mailer@example.test",
+      },
+      imap: {
+        enabled: true,
+        host: "imap.example.test",
+        port: 993,
+        secure: true,
+        username: "inbound@example.test",
+        password: "synthetic-imap-secret",
+        mailbox: "Practice",
+        pollIntervalSeconds: 600,
+        markSeen: true,
+      },
+    });
+  });
+
+  it("requires complete SMTP and IMAP settings only when each provider is enabled", () => {
+    const validation = validateSetupWizardState(
+      state({
+        smtpEnabled: true,
+        smtpPort: "",
+        imapEnabled: true,
+        imapPort: "",
+        imapPollIntervalSeconds: "",
+      }),
+    );
+
+    expect(validation.valid).toBe(false);
+    expect(validation.errors).toEqual(
+      expect.arrayContaining([
+        "SMTP host is required when SMTP is enabled.",
+        "SMTP port must be between 1 and 65535.",
+        "SMTP from address is required when SMTP is enabled.",
+        "IMAP host is required when IMAP is enabled.",
+        "IMAP port must be between 1 and 65535.",
+        "IMAP username is required when IMAP is enabled.",
+        "IMAP password is required when IMAP is enabled.",
+        "IMAP poll interval must be a positive number of seconds.",
+      ]),
+    );
   });
 
   it("falls back to general practice when no starter presets or first matter are selected", () => {

@@ -281,6 +281,7 @@ const safeJobMetadataKeys = new Set([
   "proposalTitleLength",
   "recipientCount",
   "recordCount",
+  "queuedParserJobCount",
   "reportDefinitionKey",
   "requestedByUserId",
   "requestType",
@@ -308,6 +309,10 @@ const safeJobMetadataKeys = new Set([
   "threadId",
   "timeEntryCount",
   "trustTransferRequestCount",
+  "uidValidity",
+  "lastSuccessfullyQueuedUid",
+  "nextPollJobId",
+  "delayMs",
 ]);
 
 const portalPermissionByResourceAction: Partial<

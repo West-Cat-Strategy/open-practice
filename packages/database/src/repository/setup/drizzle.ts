@@ -3,6 +3,7 @@ import {
   buildPracticePresetTemplates,
   type Firm,
 } from "@open-practice/domain";
+import type { ProviderConfigCipher } from "../../config-encryption.js";
 import type { OpenPracticeDatabase } from "../../runtime.js";
 import * as schema from "../../schema.js";
 import {
@@ -13,6 +14,7 @@ import {
   type FirstRunSetupStatus,
 } from "../setup-contracts.js";
 import { setupStatusFromCounts } from "../drizzle-mappers.js";
+import { encryptProviderSetting } from "../provider-settings/encryption.js";
 
 export async function getDrizzleSetupStatus(
   db: OpenPracticeDatabase,
@@ -56,6 +58,7 @@ export async function resolveDrizzleConfiguredFirm(
 export async function completeDrizzleFirstRunSetup(
   db: OpenPracticeDatabase,
   input: FirstRunSetupInput,
+  providerConfigCipher?: ProviderConfigCipher,
 ): Promise<FirstRunSetupResult> {
   return db.transaction(async (tx) => {
     const firms = await tx.select({ id: schema.firms.id }).from(schema.firms).limit(2);
@@ -127,6 +130,18 @@ export async function completeDrizzleFirstRunSetup(
           ? new Date(input.webAuthnCredential.disabledAt)
           : null,
       });
+    }
+    if ((input.providerSettings ?? []).length > 0) {
+      await tx.insert(schema.providerSettings).values(
+        input.providerSettings!.map((setting) => {
+          const encrypted = encryptProviderSetting(setting, providerConfigCipher);
+          return {
+            ...encrypted,
+            createdAt: new Date(encrypted.createdAt),
+            updatedAt: new Date(encrypted.updatedAt),
+          };
+        }),
+      );
     }
     const presetTemplates = buildPracticePresetTemplates({
       firmId: input.firm.id,

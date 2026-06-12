@@ -179,11 +179,11 @@ describe("worker queue foundation", () => {
       DATABASE_URL: "postgresql://open_practice:open_practice@localhost:5432/open_practice",
       OPEN_PRACTICE_USE_MEMORY_REPO: "false",
       OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY: providerConfigEncryptionKey,
-      SMTP_SECURE: "false",
+      S3_SERVER_SIDE_ENCRYPTION: "AES256",
     });
 
     expect(parsed.OPEN_PRACTICE_USE_MEMORY_REPO).toBe(false);
-    expect(parsed.SMTP_SECURE).toBe(false);
+    expect(parsed.S3_SERVER_SIDE_ENCRYPTION).toBe("AES256");
     expect(
       workerEnvSchema.parse({ OPEN_PRACTICE_USE_MEMORY_REPO: "true" })
         .OPEN_PRACTICE_USE_MEMORY_REPO,

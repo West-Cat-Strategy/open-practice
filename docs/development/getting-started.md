@@ -67,10 +67,12 @@ pnpm --filter @open-practice/web dev
   over the intended TLS deployment surface.
 - Background workers are scaffolded through `@open-practice/worker`. The local `pnpm dev` lane can run
   the worker against Redis, but provider processors return skipped/not-configured results until setup
-  enables SMTP, inbound email, AI, OCR, transcription, or media processing. OCR uses the local
-  Tesseract provider; owner/admin users can enable or disable that provider from the Queues provider
-  posture panel, and OCR queue buttons stay disabled until both the provider and Redis-backed OCR
-  queue are ready.
+  or owner-admin settings enable SMTP, IMAP inbound email, Mailgun inbound email, AI, OCR,
+  transcription, or media processing. Transactional SMTP and IMAP polling are configured in first-run
+  setup or Admin email settings and stored as encrypted provider settings; local SMTP capture should
+  point at Mailpit host `localhost` and port `31025`. OCR uses the local Tesseract provider;
+  owner/admin users can enable or disable that provider from the Queues provider posture panel, and
+  OCR queue buttons stay disabled until both the provider and Redis-backed OCR queue are ready.
 - Production rejects memory persistence, dev seed data, development auth helpers, deprecated external-provider env, and unsafe local S3 endpoints.
 
 ## Local Services

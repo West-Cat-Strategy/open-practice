@@ -5,6 +5,7 @@ import type {
   EmailReceiptTokenRecord,
   JobLifecycleRecord,
 } from "@open-practice/domain";
+import { safeParseSmtpProviderConfig } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import type { ApiAuthContext } from "../server.js";
@@ -188,6 +189,8 @@ export async function queueRouteEmailOutbox(
   const to = [...input.to];
   const cc = [...(input.cc ?? [])];
   const bcc = [...(input.bcc ?? [])];
+  const configuredFrom = safeParseSmtpProviderConfig(enabledProvider.encryptedConfig)?.fromAddress;
+  const fromAddress = input.from ?? configuredFrom ?? DEFAULT_FROM;
   const requestedHtmlBody = input.htmlBody?.trim() ? input.htmlBody : "";
   const requestedTextBody = input.textBody?.trim() ? input.textBody : "";
   const appendReceiptLink = Boolean(input.deliveryReceipt?.includeInBody);
@@ -245,7 +248,7 @@ export async function queueRouteEmailOutbox(
     to,
     cc,
     bcc,
-    from: input.from ?? DEFAULT_FROM,
+    from: fromAddress,
     subject: input.subject,
     relatedResourceType: input.relatedResourceType,
     relatedResourceId: input.relatedResourceId,
@@ -277,7 +280,7 @@ export async function queueRouteEmailOutbox(
         to,
         cc,
         bcc,
-        from: input.from ?? DEFAULT_FROM,
+        from: fromAddress,
         subject: input.subject,
         htmlBody,
         textBody,

@@ -549,6 +549,7 @@ function registerApiRoutes(server: FastifyInstance, options: ApiOptions): void {
 
   registerSetupRoutes(server, {
     repository: options.repository,
+    inboundEmailJobQueue: options.inboundEmailJobQueue,
     jwtSecret: options.jwtSecret,
     nodeEnv: options.nodeEnv,
     allowDockerBridgeSetup: options.allowDockerBridgeSetup,

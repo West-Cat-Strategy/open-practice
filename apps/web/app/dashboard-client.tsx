@@ -355,8 +355,10 @@ import type {
   DraftExportResponse,
   DraftAssistRecordsResponse,
   DraftAssistStatusResponse,
+  EmailSettings,
   IntakeSessionsResponse,
   IntakeSessionCreateResponse,
+  ImapSettings,
   IntakeFormsDashboardResponse,
   IntakePipelineDashboardResponse,
   IntakeFormLinkCreateResponse,
@@ -406,7 +408,9 @@ interface DashboardClientProps {
   documentProcessing: DocumentProcessingDashboardResponse;
   drafting: DraftingDashboardResponse;
   emailDeliveryHistory: EmailDeliveryDashboardResponse;
+  emailSettings: EmailSettings;
   externalUploads: ExternalUploadsDashboardResponse;
+  imapSettings: ImapSettings;
   intake: IntakeSessionsResponse;
   intakeForms: IntakeFormsDashboardResponse;
   intakePipeline: IntakePipelineDashboardResponse;
@@ -479,7 +483,9 @@ export default function DashboardClient({
   documentProcessing,
   drafting,
   emailDeliveryHistory,
+  emailSettings,
   externalUploads,
+  imapSettings,
   intake,
   intakeForms,
   intakePipeline,
@@ -4943,7 +4949,11 @@ export default function DashboardClient({
                   <span className="status-chip">Firm surface</span>
                 </div>
                 <AdminReadinessSection
+                  apiBaseUrl={apiBaseUrl}
                   capabilities={capabilities}
+                  devHeaders={devHeaders}
+                  emailSettings={emailSettings}
+                  imapSettings={imapSettings}
                   matters={matters}
                   overview={overview}
                   reportingWorkspace={reportingWorkspace}
@@ -5651,7 +5661,11 @@ export default function DashboardClient({
 
             {activeSection === "admin" ? (
               <AdminReadinessSection
+                apiBaseUrl={apiBaseUrl}
                 capabilities={capabilities}
+                devHeaders={devHeaders}
+                emailSettings={emailSettings}
+                imapSettings={imapSettings}
                 matters={matters}
                 overview={overview}
                 reportingWorkspace={reportingWorkspace}

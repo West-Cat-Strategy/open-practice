@@ -62,6 +62,13 @@ reconfirmed changed-path and screenshot proof consistency, fixed public-token br
 to use canonical hash URLs, and reran the selected host and Docker E2E gates green for merge
 handoff.
 
+Email settings SMTP/IMAP proof is recorded in
+[OP_EMAIL_SETTINGS_SMTP_IMAP_PROOF_2026-06-10.md](OP_EMAIL_SETTINGS_SMTP_IMAP_PROOF_2026-06-10.md)
+and covers optional first-run SMTP/IMAP setup, owner-admin redacted Admin settings, DB-backed SMTP
+delivery resolution, IMAP raw-MIME polling/parser enqueueing, and the new ImapFlow dependency.
+The reconciled proof is matched to the current 52-path source/docs/config diff; selector-driven
+local validation, Docker residual watch, Docker app smoke, and Docker E2E pass.
+
 First-run setup no longer accepts or requires a setup key. The current proof is recorded in
 [OP_FIRST_RUN_SETUP_HYDRATION_PROOF_2026-06-09.md](OP_FIRST_RUN_SETUP_HYDRATION_PROOF_2026-06-09.md)
 and covers empty-state production setup without a key, partial-state blocking, loopback/Docker

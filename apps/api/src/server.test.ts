@@ -4,6 +4,12 @@ import { InMemoryOpenPracticeRepository, type MatterSummary } from "@open-practi
 import { sampleFirm, sampleUsers } from "@open-practice/domain/sample-data";
 import { verifyRegistrationResponse } from "@simplewebauthn/server";
 import {
+  IMAP_INBOUND_PROVIDER_KEY,
+  IMAP_POLL_JOB_NAME,
+  redactImapProviderSettings,
+  redactSmtpProviderSettings,
+} from "@open-practice/domain";
+import {
   buildPublicConsultationIntakeSettingsFromEnv,
   buildInboundEmailMailgunSettingsFromEnv,
   configurePublicConsultationIntakeSettingsFromEnv,
@@ -14,6 +20,7 @@ import {
   validateProductionReadiness,
 } from "./server.js";
 import { hashPassword, hashToken } from "./http/auth-helpers.js";
+import type { ApiJobQueue } from "./routes/types.js";
 
 vi.mock("@simplewebauthn/server", () => ({
   generateRegistrationOptions: vi.fn(async () => ({
@@ -96,6 +103,17 @@ async function setAdminPassword(input: {
     passwordHash: hashPassword(input.password),
     passwordUpdatedAt: new Date().toISOString(),
   });
+}
+
+function fakeApiJobQueue() {
+  const jobs: Array<{ name: string; data: unknown; jobId?: string; delay?: number }> = [];
+  const queue: ApiJobQueue = {
+    async add(name, data, options) {
+      jobs.push({ name, data, jobId: options?.jobId, delay: options?.delay });
+      return { id: options?.jobId ?? "fake-job" };
+    },
+  };
+  return { queue, jobs };
 }
 
 function setupPayload(overrides: Record<string, unknown> = {}) {
@@ -467,6 +485,117 @@ describe("API auth and persistence boundaries", () => {
 
     expect(overview.statusCode).toBe(200);
     expect(matters.json<Array<{ number: string }>>()).toMatchObject([{ number: "2026-0001" }]);
+  });
+
+  it("accepts optional SMTP and IMAP first-run settings without returning secrets", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const inboundQueue = fakeApiJobQueue();
+    const server = testServer({
+      repository,
+      inboundEmailJobQueue: inboundQueue.queue,
+      jwtSecret: "production-test-secret-at-least-32-characters",
+    });
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      payload: setupPayload({
+        email: {
+          smtp: {
+            enabled: true,
+            host: "smtp.example.test",
+            port: 587,
+            secure: false,
+            username: "mailer@example.test",
+            password: "synthetic-smtp-secret",
+            fromAddress: "Open Practice <mailer@example.test>",
+          },
+          imap: {
+            enabled: true,
+            host: "imap.example.test",
+            port: 993,
+            secure: true,
+            username: "inbound@example.test",
+            password: "synthetic-imap-secret",
+            mailbox: "INBOX",
+            pollIntervalSeconds: 300,
+            markSeen: false,
+          },
+        },
+      }),
+    });
+    const body = response.json<{ token: string; user: { firmId: string; id: string } }>();
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.stringify(body)).not.toContain("synthetic-smtp-secret");
+    expect(JSON.stringify(body)).not.toContain("synthetic-imap-secret");
+
+    const [smtpSettings] = await repository.listProviderSettings(body.user.firmId, {
+      kind: "smtp",
+    });
+    expect(redactSmtpProviderSettings(smtpSettings)).toMatchObject({
+      enabled: true,
+      host: "smtp.example.test",
+      port: 587,
+      username: "mailer@example.test",
+      fromAddress: "Open Practice <mailer@example.test>",
+      passwordConfigured: true,
+      configValid: true,
+    });
+
+    const [imapSettings] = await repository.listProviderSettings(body.user.firmId, {
+      kind: "inbound_email",
+    });
+    expect(imapSettings).toMatchObject({ key: IMAP_INBOUND_PROVIDER_KEY, enabled: true });
+    expect(redactImapProviderSettings(imapSettings)).toMatchObject({
+      enabled: true,
+      host: "imap.example.test",
+      port: 993,
+      username: "inbound@example.test",
+      mailbox: "INBOX",
+      passwordConfigured: true,
+      configValid: true,
+    });
+    expect(inboundQueue.jobs).toHaveLength(1);
+    expect(inboundQueue.jobs[0]).toMatchObject({
+      name: IMAP_POLL_JOB_NAME,
+      data: {
+        firmId: body.user.firmId,
+        metadata: {
+          requestedByUserId: body.user.id,
+        },
+      },
+    });
+  });
+
+  it("rejects incomplete enabled first-run email settings", async () => {
+    const response = await testServer({
+      repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
+      jwtSecret: "production-test-secret-at-least-32-characters",
+    }).inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      payload: setupPayload({
+        email: {
+          smtp: {
+            enabled: true,
+            secure: false,
+          },
+          imap: {
+            enabled: true,
+            secure: true,
+            mailbox: "INBOX",
+            markSeen: false,
+          },
+        },
+      }),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "SMTP_SETTINGS_INCOMPLETE",
+      message: expect.stringContaining("Enabled SMTP settings require"),
+    });
+    expect(JSON.stringify(response.json())).not.toContain("synthetic");
   });
 
   it("completes first-run setup from the minimal workspace payload with defaults", async () => {
