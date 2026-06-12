@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   buildLedgerReconciliationExceptionResolutionStatementRow,
   buildJurisdictionalTrustReport,
+  clientTrustBalanceByMatter,
+  clientTrustBalanceDeltas,
+  createReversalTransaction,
   ledgerAccountingReviewSummary,
+  ledgerBalanceByMatter,
   ledgerBankFeedReconciliationReviewSummary,
   ledgerControlsDiagnostics,
   ledgerReconciliationReviewSummary,
+  postLedgerTransaction,
   previewLedgerStatementImport,
   validateLedgerAccountingReviewProfileRecord,
   validateLedgerReconciliationExceptionResolutionRecord,
@@ -21,7 +26,9 @@ import type {
   LedgerStatementImportBatchRecord,
   LedgerStatementMatchRuleProfileRecord,
   LedgerTransactionApprovalRecord,
+  PostedLedgerTransaction,
 } from "./ledger.js";
+import { sampleFirm, sampleLedgerAccounts, sampleLedgerEntries } from "./sample-data.js";
 
 const accounts: LedgerAccount[] = [
   { id: "acct-trust-bank", firmId: "firm-west-legal", name: "Pooled trust", type: "trust_asset" },
@@ -118,6 +125,179 @@ const reconciliations: LedgerReconciliationRecord[] = [
 ];
 
 describe("ledger controls diagnostics", () => {
+  it("keeps core trust ledger posting balanced, idempotent, and reversible", () => {
+    expect(() =>
+      postLedgerTransaction(
+        { postedTransactions: [], accounts: sampleLedgerAccounts },
+        {
+          id: "bad",
+          firmId: sampleFirm.id,
+          idempotencyKey: "bad",
+          postedByUserId: "user-admin",
+          postedAt: "2026-04-05T12:00:00.000Z",
+          entries: [
+            {
+              firmId: sampleFirm.id,
+              matterId: "matter-001",
+              clientId: "contact-ada",
+              accountId: "acct-trust-bank",
+              debitCents: 100,
+              creditCents: 0,
+              memo: "Bad transaction",
+            },
+          ],
+        },
+      ),
+    ).toThrow(/balanced/);
+
+    const first = postLedgerTransaction(
+      { postedTransactions: [], accounts: sampleLedgerAccounts },
+      {
+        id: "trust-retainer",
+        firmId: sampleFirm.id,
+        idempotencyKey: "bank-event-001",
+        postedByUserId: "user-admin",
+        postedAt: "2026-04-05T12:00:00.000Z",
+        entries: [
+          {
+            firmId: sampleFirm.id,
+            matterId: "matter-001",
+            clientId: "contact-ada",
+            accountId: "acct-trust-bank",
+            debitCents: 100,
+            creditCents: 0,
+            memo: "Retainer",
+          },
+          {
+            firmId: sampleFirm.id,
+            matterId: "matter-001",
+            clientId: "contact-ada",
+            accountId: "acct-client-liability",
+            debitCents: 0,
+            creditCents: 100,
+            memo: "Retainer",
+          },
+        ],
+      },
+    );
+
+    expect(() =>
+      postLedgerTransaction(
+        { postedTransactions: [first], accounts: sampleLedgerAccounts },
+        {
+          id: "trust-retainer-replay",
+          firmId: sampleFirm.id,
+          idempotencyKey: "bank-event-001",
+          postedByUserId: "user-admin",
+          postedAt: "2026-04-05T12:05:00.000Z",
+          entries: [
+            {
+              firmId: sampleFirm.id,
+              matterId: "matter-001",
+              clientId: "contact-ada",
+              accountId: "acct-trust-bank",
+              debitCents: 200,
+              creditCents: 0,
+              memo: "Changed retainer",
+            },
+            {
+              firmId: sampleFirm.id,
+              matterId: "matter-001",
+              clientId: "contact-ada",
+              accountId: "acct-client-liability",
+              debitCents: 0,
+              creditCents: 200,
+              memo: "Changed retainer",
+            },
+          ],
+        },
+      ),
+    ).toThrow(/different ledger payload/);
+
+    const original: PostedLedgerTransaction = {
+      id: "trust-retainer",
+      firmId: sampleFirm.id,
+      idempotencyKey: "bank-event-002",
+      requestFingerprint: "seed",
+      entries: sampleLedgerEntries,
+    };
+    const posted = postLedgerTransaction(
+      { postedTransactions: [original], accounts: sampleLedgerAccounts },
+      createReversalTransaction(original, {
+        id: "trust-retainer-reversal",
+        idempotencyKey: "bank-event-002-reversal",
+        postedByUserId: "user-admin",
+        postedAt: "2026-04-05T12:00:00.000Z",
+      }),
+    );
+
+    expect(posted.reversesTransactionId).toBe(original.id);
+    expect(
+      clientTrustBalanceByMatter(posted.entries, sampleLedgerAccounts)["contact-ada:matter-001"],
+    ).toBe(-150000);
+  });
+
+  it("computes persistent matter trust balances and rejects overdrafts", () => {
+    expect(ledgerBalanceByMatter(sampleLedgerEntries)["contact-ada:matter-001"]).toBe(0);
+    expect(
+      clientTrustBalanceByMatter(sampleLedgerEntries, sampleLedgerAccounts)[
+        "contact-ada:matter-001"
+      ],
+    ).toBe(150000);
+    expect(clientTrustBalanceDeltas(sampleLedgerEntries, sampleLedgerAccounts)).toEqual([
+      {
+        firmId: sampleFirm.id,
+        matterId: "matter-001",
+        clientId: "contact-ada",
+        deltaCents: 150000,
+      },
+    ]);
+
+    expect(() =>
+      postLedgerTransaction(
+        {
+          postedTransactions: [
+            {
+              id: "trust-retainer",
+              firmId: sampleFirm.id,
+              idempotencyKey: "retainer",
+              requestFingerprint: "seed",
+              entries: sampleLedgerEntries,
+            },
+          ],
+          accounts: sampleLedgerAccounts,
+        },
+        {
+          id: "overdraft",
+          firmId: sampleFirm.id,
+          idempotencyKey: "overdraft",
+          postedByUserId: "user-admin",
+          postedAt: "2026-04-05T12:00:00.000Z",
+          entries: [
+            {
+              firmId: sampleFirm.id,
+              matterId: "matter-001",
+              clientId: "contact-ada",
+              accountId: "acct-client-liability",
+              debitCents: 200000,
+              creditCents: 0,
+              memo: "Overdraw client liability",
+            },
+            {
+              firmId: sampleFirm.id,
+              matterId: "matter-001",
+              clientId: "contact-ada",
+              accountId: "acct-trust-bank",
+              debitCents: 0,
+              creditCents: 200000,
+              memo: "Overdraw trust asset",
+            },
+          ],
+        },
+      ),
+    ).toThrow(/overdraw/);
+  });
+
   it("summarizes approval, reconciliation, and overdrawn-balance signals", () => {
     const diagnostics = ledgerControlsDiagnostics({
       ledger: {

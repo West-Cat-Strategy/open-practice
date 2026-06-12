@@ -62,8 +62,8 @@ const queues: QueuesResponse = {
 };
 
 describe("dashboard shell review rail controls", () => {
-  it("labels the topbar review rail toggle when expanded", () => {
-    const html = renderToStaticMarkup(
+  it("labels review rail controls across expanded and collapsed states", () => {
+    const expandedTopbar = renderToStaticMarkup(
       createElement(DashboardTopbar, {
         firmName: "Synthetic Firm",
         session,
@@ -73,16 +73,7 @@ describe("dashboard shell review rail controls", () => {
         reviewRailToggleRef: { current: null },
       }),
     );
-
-    expect(html).toContain("Hide review tools");
-    expect(html).toContain('aria-controls="dashboard-review-rail"');
-    expect(html).toContain('aria-expanded="true"');
-    expect(html).toContain('aria-label="Toggle review tools"');
-    expect(html).not.toContain("Hide Sidebar");
-  });
-
-  it("labels the topbar review rail toggle when collapsed", () => {
-    const html = renderToStaticMarkup(
+    const collapsedTopbar = renderToStaticMarkup(
       createElement(DashboardTopbar, {
         firmName: "Synthetic Firm",
         session,
@@ -92,27 +83,26 @@ describe("dashboard shell review rail controls", () => {
         reviewRailToggleRef: { current: null },
       }),
     );
-
-    expect(html).toContain("Show review tools");
-    expect(html).toContain('class="context-rail-toggle-btn collapsed"');
-    expect(html).toContain('aria-controls="dashboard-review-rail"');
-    expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain('aria-label="Toggle review tools"');
-    expect(html).not.toContain("Show Sidebar");
-  });
-
-  it("renders the collapsed rail handle with the same review rail target", () => {
-    const html = renderToStaticMarkup(
+    const handle = renderToStaticMarkup(
       createElement(DashboardReviewRailExpandHandle, {
         expandHandleRef: { current: null },
         onExpand: () => {},
       }),
     );
 
-    expect(html).toContain('class="context-rail-toggle-handle"');
-    expect(html).toContain('aria-controls="dashboard-review-rail"');
-    expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain('aria-label="Open review tools"');
+    expect(expandedTopbar).toContain("Hide review tools");
+    expect(expandedTopbar).toContain('aria-controls="dashboard-review-rail"');
+    expect(expandedTopbar).toContain('aria-expanded="true"');
+    expect(expandedTopbar).not.toContain("Hide Sidebar");
+    expect(collapsedTopbar).toContain("Show review tools");
+    expect(collapsedTopbar).toContain('class="context-rail-toggle-btn collapsed"');
+    expect(collapsedTopbar).toContain('aria-controls="dashboard-review-rail"');
+    expect(collapsedTopbar).toContain('aria-expanded="false"');
+    expect(collapsedTopbar).not.toContain("Show Sidebar");
+    expect(handle).toContain('class="context-rail-toggle-handle"');
+    expect(handle).toContain('aria-controls="dashboard-review-rail"');
+    expect(handle).toContain('aria-expanded="false"');
+    expect(handle).toContain('aria-label="Open review tools"');
   });
 
   it("keeps collapsed controls anchored to a mounted review rail placeholder", () => {

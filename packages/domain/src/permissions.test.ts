@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { DocumentRecord, PortalGrant, User } from "./models.js";
-import { canAccess, canShareDocumentThroughPortal, redactJobMetadata } from "./permissions.js";
+import {
+  canAccess,
+  canShareDocumentThroughPortal,
+  dashboardCapabilities,
+  redactJobMetadata,
+} from "./permissions.js";
+import { sampleFirm, samplePortalGrants, sampleUsers } from "./sample-data.js";
 
 const baseDocument: DocumentRecord = {
   id: "doc-external-upload",
@@ -107,6 +113,103 @@ describe("matter creation permissions", () => {
         firmId: "firm-west-legal",
         resource: "matter",
         action: "create",
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps matter-scoped access and dashboard capabilities server-derived", () => {
+    const licensee = sampleUsers.find((candidate) => candidate.id === "user-licensee")!;
+    const bookkeeper: User = {
+      id: "user-bookkeeper",
+      firmId: sampleFirm.id,
+      displayName: "Synthetic Bookkeeper",
+      email: "bookkeeper@example.test",
+      role: "billing_bookkeeper",
+      assignedMatterIds: ["matter-001"],
+      mfaEnabled: true,
+    };
+
+    expect(
+      canAccess({
+        user: licensee,
+        firmId: sampleFirm.id,
+        resource: "matter",
+        action: "read",
+        matterId: "matter-002",
+      }),
+    ).toBe(false);
+    expect(
+      canAccess({
+        user: licensee,
+        firmId: sampleFirm.id,
+        resource: "signature_request",
+        action: "approve",
+        matterId: "matter-001",
+      }),
+    ).toBe(true);
+    expect(
+      canAccess({
+        user: bookkeeper,
+        firmId: sampleFirm.id,
+        resource: "calendar_event",
+        action: "read",
+        matterId: "matter-001",
+      }),
+    ).toBe(false);
+    expect(
+      dashboardCapabilities({ user: licensee, firmId: sampleFirm.id, matterId: "matter-001" }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "funds", enabled: true }),
+        expect.objectContaining({ key: "drafting", enabled: true }),
+        expect.objectContaining({ key: "calendar", enabled: true }),
+        expect.objectContaining({ key: "audit", enabled: true }),
+      ]),
+    );
+    expect(
+      dashboardCapabilities({ user: bookkeeper, firmId: sampleFirm.id, matterId: "matter-001" }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "drafting", enabled: false }),
+        expect.objectContaining({ key: "calendar", enabled: false }),
+      ]),
+    );
+  });
+
+  it("requires active portal grants for external client document reads", () => {
+    const externalUser: User = {
+      id: "user-client",
+      firmId: sampleFirm.id,
+      displayName: "Ada Morgan",
+      email: "ada@example.test",
+      role: "client_external",
+      assignedMatterIds: [],
+      mfaEnabled: true,
+    };
+
+    expect(
+      canAccess({
+        user: externalUser,
+        firmId: sampleFirm.id,
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        portalGrants: samplePortalGrants,
+        resource: "document",
+        action: "read",
+        now: "2026-04-10T12:00:00.000Z",
+      }),
+    ).toBe(true);
+
+    expect(
+      canAccess({
+        user: externalUser,
+        firmId: sampleFirm.id,
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        portalGrants: [{ ...samplePortalGrants[0]!, revokedAt: "2026-04-09" }],
+        resource: "document",
+        action: "read",
+        now: "2026-04-10T12:00:00.000Z",
       }),
     ).toBe(false);
   });

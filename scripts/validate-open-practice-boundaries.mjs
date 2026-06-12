@@ -249,7 +249,7 @@ export const ROUTE_REGISTRAR_TEST_FILES = {
   registerLedgerRoutes: ["apps/api/src/routes/ledger.test.ts"],
   registerLegalClinicRoutes: ["apps/api/src/routes/legal-clinics.test.ts"],
   registerLegalResearchRoutes: ["apps/api/src/routes/legal-research.test.ts"],
-  registerMatterRoutes: ["apps/api/src/server.test.ts"],
+  registerMatterRoutes: ["apps/api/src/routes/matters.test.ts"],
   registerOperationalViewRoutes: ["apps/api/src/routes/operational-views.test.ts"],
   registerOutboundWebhookRoutes: ["apps/api/src/routes/outbound-webhooks.test.ts"],
   registerProviderStatusRoutes: ["apps/api/src/routes/providers-status.test.ts"],

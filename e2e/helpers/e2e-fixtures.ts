@@ -181,6 +181,16 @@ export class OpenPracticeE2EClient {
     if (!response.token) throw new Error("External upload token was not returned");
     return response.token;
   }
+
+  async ensureClientPortalAccount(userId = "user-client-external"): Promise<void> {
+    await this.apiJson("/api/e2e/client-portal-account", {
+      body: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        userId,
+      },
+    });
+  }
 }
 
 export const test = base.extend<{ app: OpenPracticeE2EClient }>({

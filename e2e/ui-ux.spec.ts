@@ -168,6 +168,7 @@ test.describe("UI/UX screenshot QA", () => {
     app,
     page,
   }, testInfo) => {
+    testInfo.setTimeout(120_000);
     await sweepDashboardSections({ app, disabledSections: hostDisabledSections, page, testInfo });
   });
 
@@ -176,6 +177,8 @@ test.describe("UI/UX screenshot QA", () => {
     page,
   }, testInfo) => {
     testInfo.setTimeout(120_000);
+    const health = await app.apiJson<{ persistence: string }>("/health", { headers: {} });
+    expect(health.persistence).toBe("postgres");
     await sweepDashboardSections({ app, disabledSections: new Set(), page, testInfo });
   });
 

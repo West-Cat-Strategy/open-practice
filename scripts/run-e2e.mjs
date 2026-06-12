@@ -8,7 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const mode = process.argv[2] ?? "host";
-const passthroughArgs = process.argv.slice(3);
+const passthroughArgs = process.argv[3] === "--" ? process.argv.slice(4) : process.argv.slice(3);
 const spawned = [];
 let dockerDatabaseName;
 let dockerStarted = false;
