@@ -28,6 +28,13 @@ split the held majors into OP-T153 for the API rate-limit major and OP-T154 for 
 PDF-rendering major, with exact compatibility risks and validation gates recorded while dependency
 versions remain unchanged in this lane.
 
+The 2026-06-11 whole-application review branch is recorded in
+[OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md](OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md).
+It covers the repository-wide Codex Security scan artifact at
+`/tmp/codex-security-scans/open-practice/30a26a17_20260611T230554Z/`, code-review findings,
+UI/UX review findings, validation pass/fail evidence, and the current OSS reference-lock drift and
+host Playwright readiness blockers.
+
 The matterless workflow branch is recorded in
 [OP_MATTERLESS_WORKFLOW_PROOF_2026-06-10.md](OP_MATTERLESS_WORKFLOW_PROOF_2026-06-10.md).
 It covers standalone contact creation and visibility, contact-first matter creation,
