@@ -165,7 +165,8 @@ Legal review is required before:
 - Copying any third-party source into tracked core files.
 - Adding AGPL/GPL/LGPL/MPL/EPL/CDDL/source-available/custom-license dependencies.
 - Shipping optional copyleft services in a hosted production deployment.
-- Modifying and redistributing DocuSeal, paperless-ngx, Kimai, CiviCRM, j-lawyer.org, LedgerSMB, ArkCase, or Midaz.
+- Modifying and redistributing DocuSeal, docassemble, paperless-ngx, Kimai, CiviCRM, j-lawyer.org,
+  LedgerSMB, ArkCase, or Midaz.
 - Depending on a project whose README and LICENSE disagree.
 - Importing generated code from OpenAPI/GraphQL/protobuf schemas with unclear licensing.
 - Using upstream trademarks, logos, screenshots, sample data, forms, legal templates, or jurisdiction-specific compliance content.

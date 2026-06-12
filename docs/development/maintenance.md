@@ -11,7 +11,8 @@ handoff. Use [Repository Guide](repo-guide.md) for workspace ownership,
 - Keep durable direction in [Planning](../planning.md) and live task status in [Planning and Progress](../planning-and-progress.md).
 - Keep route and lifecycle behavior in [API and State Machines](../api-and-state-machines.md) aligned with implemented API routes.
 - Keep deployment assumptions in [Deployment Hardening](../deployment-hardening.md), especially when env vars, auth, object storage, migrations, billing, or trust/funds behavior changes.
-- Use relative links for repo-local docs and run `pnpm docs:check`.
+- Use relative links for repo-local docs, run
+  `pnpm verify:select -- --files <changed docs...>` first, then run the selected docs checks.
 
 ## Validation Control Plane
 
@@ -19,13 +20,26 @@ Open Practice has a small validation control plane that should stay boring and e
 
 - `pnpm verify:select -- --files <paths...>` prints recommended commands for a change set and never runs them.
 - `pnpm docs:check` validates local Markdown links.
-- `pnpm policy:check` runs OSS reuse validation, docs link validation, and Open Practice boundary policy.
+- `pnpm policy:check` runs the combined local policy/integrity gate: tracked-secret scan, package
+  manifest policy, migration parity, OSS reuse validation, docs links, validation-proof index,
+  local-evidence `.dockerignore` coverage, and Open Practice boundary policy.
 - `pnpm verify` runs the package verification lane.
 - `pnpm ci:local` runs `pnpm verify` and `git diff --check`.
 - `pnpm deps:audit` runs local production and development dependency audits.
 - `pnpm release:local` runs dependency audits plus the full local gate.
 
-When adding a new package, app, route family, or docs category, update [Testing](../testing/TESTING.md) and `scripts/select-validation.mjs` together.
+When adding a new package, app, route family, or docs category, update
+[Testing](../testing/TESTING.md) and `scripts/select-validation.mjs` together.
+
+## Known Follow-Ups
+
+- `docs/testing/TESTING.md` expects domain source changes to include
+  `pnpm --filter @open-practice/domain build`, but the current selector output does not emit that
+  command. Keep docs-only cleanups out of `scripts/select-validation.mjs`; align the selector and
+  its tests in a separate tooling slice.
+- The external `/Users/bryan/.codex/skills/maintain-open-practice-docs` skill still points to its
+  own `references/docs-workflows.md`. Repo docs remain canonical; refresh external skills only in an
+  explicit skill-upkeep task.
 
 ## Local Repository Gate
 

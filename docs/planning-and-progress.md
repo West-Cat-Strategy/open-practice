@@ -10,17 +10,27 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Dependency refresh slice is validated for merge.                     |
-| Next recommended pick | Merge and prune `chore/dependency-refresh-2026-06-11`.               |
+| Current focus         | Mainline merge/prune integration is in progress.                     |
+| Next recommended pick | Complete local validation, push `main`, and prune merged branches.   |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
-| Review rows           | 2                                                                    |
+| Review rows           | 0                                                                    |
 | Blocked rows          | 0                                                                    |
 | Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
-## Forward Development Plan
+## Current Handoff Notes
+
+The live board below contains only completed rows in this branch. The most recent validated
+implementation handoff remains the separate matterless contacts/calendar workflow branch; merge and
+prune that lane outside this docs-only cleanup before choosing a new tracked row.
+
+Recent proof context is indexed in [Validation Proof Index](validation/README.md). Historical
+completed-work summaries live in [Archive](archive/README.md). Keep new status, owner, blocker, and
+immediate-next-move changes here only when they reflect active tracked work.
+
+## Forward Development Plan History
 
 Latest matterless workflow addendum: 2026-06-10 the dashboard now opens useful work surfaces before
 any matter exists. Standalone contacts can be created from Contacts, contact dossiers include

@@ -186,11 +186,11 @@ assets, or distinctive prose are copied into this repo by this catalogue.
   - **References:** `jlawyerorg__j-lawyer-org`.
   - **Reuse and snippets:** AGPL/reference-only; no direct snippets.
 
-- **Contact relationship graph**
-  - **First slice:** Add read-only contact-to-contact relationship records in contact dossiers,
-    separate from duplicate/conflict/data-quality controls.
-  - **Local gap / shipped boundary:** Contact dossiers derive matter-party links, aliases,
-    identifiers, portal grants, and review signals; they do not model relationships between contacts.
+- **Contact relationship graph expansion**
+  - **Shipped first slice:** OP-T130 added the first contact relationship graph and CRM taxonomy
+    surface.
+  - **Remaining gap:** Future work should stay read-only and focus on relationship maintenance,
+    filtering, and review cues that are separate from duplicate/conflict/data-quality controls.
   - **References:** `civicrm__civicrm-core`, `espocrm__espocrm`.
   - **Reuse and snippets:** AGPL/high-risk architecture-only; no direct snippets.
 
@@ -236,11 +236,12 @@ assets, or distinctive prose are copied into this repo by this catalogue.
   - **Reuse and snippets:** Apache-2.0/adopt-selectively; tiny snippets may be allowable only after a
     reuse decision and notices, but clean-room TypeScript should be preferred.
 
-- **Reconciliation freshness report**
-  - **First slice:** Add read-only reconciliation freshness by trust asset account with stale-days,
-    last statement period, last matched/reviewed reconciliation, and exception counts.
-  - **Local gap / shipped boundary:** Current diagnostics identify missing reviewed reconciliation,
-    but do not expose staleness or last-period review posture.
+- **Reconciliation freshness report expansion**
+  - **Shipped slices:** Trust/accounting diagnostics and reporting surfaces now expose review-only
+    reconciliation depth and staff reporting cues.
+  - **Remaining gap:** A future slice could add account-level freshness aging with stale-days, last
+    statement period, last matched/reviewed reconciliation, and exception counts without changing
+    posting behavior.
   - **References:** `ledgersmb__ledgersmb` aging/reporting vocabulary and `blnkfinance__blnk`
     reconciliation progress concepts.
   - **Reuse and snippets:** LedgerSMB is GPL/reference-only; no snippets. Blnk patterns may inform
@@ -291,21 +292,21 @@ assets, or distinctive prose are copied into this repo by this catalogue.
   - **References:** `opencollective__opencollective-api` accounting category and rule concepts.
   - **Reuse and snippets:** MIT/architecture-only; no direct code without a reuse decision.
 
-- **Invoice aging report**
-  - **First slice:** Add a read-only invoice aging report grouped by client, matter, and invoice with
-    current/30/60/90-style buckets.
-  - **Local gap / shipped boundary:** Billing dashboards expose issued balances and exports, but not
-    an aging report surface.
+- **Invoice aging report expansion**
+  - **Shipped slices:** Billing dashboards and staff reporting now expose review-only billing
+    posture and issued-balance surfaces.
+  - **Remaining gap:** A future slice could add an aged receivables report grouped by client, matter,
+    and invoice with current/30/60/90-style buckets and export-profile alignment.
   - **References:** `ledgersmb__ledgersmb` aging-report vocabulary and Open Collective overdue
     billing concepts.
   - **Reuse and snippets:** LedgerSMB is GPL/reference-only and Open Collective is architecture-only;
     snippets are not recommended.
 
 - **Timer-generated draft time entries**
-  - **First slice:** Add a local timer-to-draft-time-entry flow that always creates reviewable draft
-    records and respects billing period locks before submit/approve.
-  - **Local gap / shipped boundary:** OP has time-entry capture, rate rules, approvals, write-off, and
-    locks, but no timer capture workflow.
+  - **Shipped first slice:** OP-T134 added time and expense capture with rate rules, approvals,
+    write-off, and billing-period locks.
+  - **Remaining gap:** A future timer-to-draft-time-entry flow should always create reviewable draft
+    records and respect billing-period locks before submit/approve.
   - **References:** `kimai__kimai`.
   - **Reuse and snippets:** AGPL/reference-only; no direct snippets.
 

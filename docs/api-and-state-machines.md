@@ -13,8 +13,8 @@ options/verification, and token-scoped public portal routes such as share links,
 collection links, intake-form links, guest-session status links, and the origin-restricted public
 consultation intake submission route. New public portal callers send tokens in
 `x-open-practice-public-token`; legacy path-token routes remain compatibility shims. Configured
-public consultation
-origins are scoped to that unauthenticated submission route only; authenticated API CORS allows the
+public consultation origins are scoped to that unauthenticated submission route only; authenticated
+API CORS allows the
 configured web origin from `PUBLIC_WEB_BASE_URL`/`WEBAUTHN_ORIGIN`, and arbitrary localhost browser
 origins are limited to development or e2e support. Production accepts embedded session cookies or
 `x-open-practice-session` tokens backed by PostgreSQL session records. Development may use
