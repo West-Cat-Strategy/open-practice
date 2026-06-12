@@ -11,12 +11,12 @@ Use this index as the first stop for repo orientation. Open Practice is a legal-
 4. [Getting Started](development/getting-started.md) covers local runtime choices, services, and environment defaults.
 5. [Repository Guide](development/repo-guide.md) maps workspace ownership, boundaries, and common edit paths.
 6. [GitHub Maintenance](development/github-maintenance.md) covers local-only repository gates,
-   GitHub settings cutover, dependency audits, and branch cleanup.
+   GitHub settings posture, dependency audits, branch cleanup, and release handoff.
 7. [Application Strengthening Plan](development/application-strengthening-plan.md) records the
    ordered hardening wave and clean-room reference map.
 8. [Testing](testing/TESTING.md) maps change types to validation commands.
-9. [Validation Proof Index](validation/README.md) tracks active validation notes and skipped-check
-   context.
+9. [Validation Proof Index](validation/README.md) indexes validation notes and skipped-check context;
+   live ownership and row status stay in [Planning and Progress](planning-and-progress.md).
 10. [API and State Machines](api-and-state-machines.md) records the current API and lifecycle contracts.
 
 ## Governance
@@ -26,12 +26,11 @@ Use this index as the first stop for repo orientation. Open Practice is a legal-
   workboard proof that is no longer active status.
 - [Threat Model](threat-model.md), [Deployment Hardening](deployment-hardening.md), and [Trust/Funds Caveats](trust-funds-caveats.md) define security and compliance posture.
 - [OSS References](oss-references.md), [Reference Repos](reference-repos.md), [Reference Review 2026-05-12](reference-review-2026-05-12.md), [Clio Product Specification Review 2026-05-26](reference-review-clio-2026-05-26.md), [Reuse Decision Policy](reuse-decision-policy.md), [License Policy](license-policy.md), and [OSS reference lockfile](oss-references.lock.json) define clean-room reference and reuse rules.
-- [Maintenance](development/maintenance.md), [Agent Workflows](development/agent-workflows.md), and
-  [GitHub Maintenance](development/github-maintenance.md) define ongoing upkeep and AI-assisted
-  development practices.
+- [Maintenance](development/maintenance.md) and [Agent Workflows](development/agent-workflows.md)
+  define ongoing upkeep and AI-assisted development practices.
 
 ## Maintenance Rules
 
 - Keep live status in [Planning and Progress](planning-and-progress.md), not scattered across feature docs.
 - Keep API examples aligned with implemented routes before publishing them as current behavior.
-- Use relative links for local docs and run `pnpm docs:check` after documentation edits.
+- Use `pnpm verify:select -- --files <changed docs...>` first, then run the selected docs checks.

@@ -23,7 +23,7 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Database schema check  | `pnpm --filter @open-practice/database db:check` | Required for schema or migration changes.                                                                                                                                         |
 | Migration parity       | `pnpm migrations:check`                          | Verifies SQL migration files and Drizzle journal entries stay in lockstep.                                                                                                        |
 | Migration replay       | `pnpm migrations:replay`                         | Applies migrations to a disposable local PostgreSQL database and cleans it up.                                                                                                    |
-| Policy and docs checks | `pnpm policy:check`                              | Runs tracked-secret, package manifest, OSS reuse, docs link, and architecture-boundary policy checks.                                                                             |
+| Policy and docs checks | `pnpm policy:check`                              | Runs tracked-secret, package manifest, migration parity, OSS reuse, docs link, validation-proof index, local-evidence, and architecture-boundary policy checks.                   |
 | Build                  | `pnpm build`                                     | Required for release or app shell changes.                                                                                                                                        |
 
 ## Selective Validation
@@ -77,11 +77,19 @@ Output is deterministic, de-duplicated, and one command per line after a short h
 `pnpm policy:check` includes `scripts/validate-package-manifests.mjs`, which blocks dependency,
 development dependency, optional dependency, or peer dependency ranges set to `latest` in repo
 package manifests. Use pinned or semver-bounded ranges so local validation stays repeatable.
+It also runs migration parity, OSS reuse, docs link, validation-proof index, local-evidence
+`.dockerignore`, and architecture-boundary checks; keep command-specific proof in the relevant
+validation note when one of those subchecks drives a change.
 Use `pnpm deps:licenses` when adding or upgrading dependencies to keep a reviewable license-group
 summary. The command highlights copyleft, public-license, and unusual groups for review but only
 fails the local run when a dependency reports an unknown, unlicensed, or empty license group. Use
 `node scripts/report-dependency-licenses.mjs --json` or `pnpm deps:licenses -- --json-output <path>`
 for package-level evidence.
+
+Known follow-up: this table expects domain source changes to include
+`pnpm --filter @open-practice/domain build`, but the current selector output does not emit that
+command. Until the selector and tests are aligned in a tooling slice, add the domain build manually
+when validating domain source changes.
 
 ## Test Coverage Ratchets
 

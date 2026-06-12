@@ -8,7 +8,9 @@ Detailed reuse classes and admission rules live in `docs/reuse-decision-policy.m
 
 - Original project code.
 - Permissively licensed dependencies compatible with Apache-2.0.
-- Small code excerpts from permissively licensed projects only when notices are preserved and the reuse is documented.
+- Small code excerpts from permissively licensed projects only when notices are preserved, the
+  reuse record is documented, and any copied source follows the legal-review path in
+  [Reuse Decision Policy](reuse-decision-policy.md).
 
 ## Not Allowed in Core Without Review
 

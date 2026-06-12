@@ -8,8 +8,9 @@ branch cleanup, pull request hygiene, or release handoff for Open Practice.
 - Local validation is authoritative. Use `pnpm verify:select -- --files <changed paths...>` to
   choose focused checks, `pnpm ci:local` for broad handoff, and `pnpm release:local` for dependency
   or release-readiness work.
-- GitHub Actions, checked-in Actions workflows, Dependency Review, Dependabot auto-merge, CodeQL
-  default setup, Copilot automatic review, and Copilot cloud agents are intentionally disabled.
+- GitHub Actions, checked-in Actions workflows, Dependency Review, Dependabot alerts/security
+  updates/auto-merge, CodeQL default setup, Copilot automatic review, and Copilot cloud agents are
+  intentionally disabled.
 - `main` does not use a required GitHub status check or protected-branch merge gate. Keep branch
   discipline local: start from a branch, do not push directly to `main` unless the user explicitly
   asks, and record local validation evidence before merge or release.
@@ -39,8 +40,9 @@ evidence directory is needed.
 ## Local Dependency Maintenance
 
 - Use `pnpm deps:audit` for production and development dependency audits.
-- Use `pnpm policy:check` for OSS reuse, docs links, tracked-secret scanning, and architecture
-  boundary checks.
+- Use `pnpm policy:check` for the combined local policy/integrity gate: tracked-secret scanning,
+  package manifest policy, migration parity, OSS reuse, docs links, validation-proof index,
+  local-evidence `.dockerignore` coverage, and architecture boundary checks.
 - For dependency changes, inspect the package path locally with `pnpm list` or `pnpm why`, make the
   smallest manifest or lockfile change, then run `pnpm deps:audit` and `pnpm ci:local`.
 - Pnpm workspace policy lives in `pnpm-workspace.yaml`: keep overrides there, keep required native
@@ -158,8 +160,9 @@ gh api repos/West-Cat-Strategy/open-practice/vulnerability-alerts
 ```
 
 Expected results are absent branch protection, disabled Actions permissions, CodeQL default setup not
-configured, and disabled or unavailable Dependabot alert surfaces. Keep the exact command output in
-the PR, issue, or release notes when settings change.
+configured, and disabled or unavailable Dependabot alert/security-update surfaces. Secret scanning,
+push protection, the security policy, and private vulnerability reporting should remain enabled.
+Keep the exact command output in the PR, issue, or release notes when settings change.
 
 ## Branches, Pull Requests, And Releases
 

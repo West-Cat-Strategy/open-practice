@@ -42,13 +42,16 @@ up stale local-only commits first.
 - Keep live status in [Planning and Progress](../planning-and-progress.md), not in feature docs.
 - Keep long-lived direction in [Planning](../planning.md).
 - Keep API and lifecycle contracts in [API and State Machines](../api-and-state-machines.md).
-- Keep local links relative and run `pnpm docs:check`.
+- Keep local links relative. For docs-only edits, run
+  `pnpm verify:select -- --files <changed docs...>` first, then run the selected docs checks.
 
 ## Validation Habits
 
 Use the narrowest safe command first, then broaden when work crosses package boundaries. Typical final checks:
 
-- Documentation-only: `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `git diff --check`.
+- Documentation-only: start with `pnpm verify:select -- --files <changed docs...>`, then run the
+  selected docs checks, usually `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, and
+  `git diff --check`.
 - API or auth: API tests, API typecheck, `pnpm policy:check`, and broader verification for cross-cutting behavior.
 - Domain rules: domain tests and typecheck, plus API tests when routes expose the rule.
 - Database schema or repository: database tests, `db:check`, database typecheck, API tests, and migration confidence when needed.
