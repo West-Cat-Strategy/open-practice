@@ -131,6 +131,47 @@ describe("e2e support routes", () => {
     expect(response.json()).toEqual({ verificationCode: "ABC123DEF456" });
   });
 
+  it("creates a deterministic client portal account only for e2e browser proof", async () => {
+    const { repository, server } = testServer({ e2eSupport: true });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/e2e/client-portal-account",
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        userId: "user-client-external",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      account: {
+        id: "user-client-external",
+        email: "ada@example.test",
+        role: "client_external",
+      },
+      grant: {
+        status: "active",
+        permissions: ["view_documents", "upload_documents", "message", "sign"],
+      },
+    });
+    await expect(
+      repository.getUser("firm-west-legal", "user-client-external"),
+    ).resolves.toMatchObject({
+      role: "client_external",
+    });
+    await expect(
+      repository.getConversationThread("firm-west-legal", "conversation-thread-e2e-matter-001"),
+    ).resolves.toMatchObject({
+      matterId: "matter-001",
+      status: "open",
+      metadata: { source: "e2e_support" },
+    });
+    expect(JSON.stringify(response.json())).not.toContain("tokenHash");
+    expect(JSON.stringify(response.json())).not.toContain("conversation-thread-e2e-matter-001");
+  });
+
   it("does not register e2e support routes by default", async () => {
     const { server } = testServer();
 
@@ -151,5 +192,17 @@ describe("e2e support routes", () => {
     });
 
     expect(codeResponse.statusCode).toBe(404);
+
+    const clientPortalResponse = await server.inject({
+      method: "POST",
+      url: "/api/e2e/client-portal-account",
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        userId: "user-client-external",
+      },
+    });
+
+    expect(clientPortalResponse.statusCode).toBe(404);
   });
 });

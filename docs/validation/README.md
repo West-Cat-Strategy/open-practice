@@ -35,6 +35,14 @@ It covers the repository-wide Codex Security scan artifact at
 UI/UX review findings, validation pass/fail evidence, and the current OSS reference-lock drift and
 host Playwright readiness blockers.
 
+The test-suite pruning branch is recorded in
+[OP_TEST_SUITE_PRUNING_PROOF_2026-06-11.md](OP_TEST_SUITE_PRUNING_PROOF_2026-06-11.md).
+It covers aggressive removal of redundant API/domain/database/provider/web/E2E tests, rehomes
+signature, billing, ledger, permissions, conflicts, audit sequence, and matter setup projection
+guardrails into focused suites, keeps public-token, trust/funds, auth/setup, redaction, queue, and
+Docker-backed storage behavior covered, and adds focused client-portal browser proof for redacted
+workspace data.
+
 The matterless workflow branch is recorded in
 [OP_MATTERLESS_WORKFLOW_PROOF_2026-06-10.md](OP_MATTERLESS_WORKFLOW_PROOF_2026-06-10.md).
 It covers standalone contact creation and visibility, contact-first matter creation,

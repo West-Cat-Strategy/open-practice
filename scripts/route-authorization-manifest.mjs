@@ -2056,6 +2056,15 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "read",
     "required",
   ),
+  authRoute(
+    "registerE2ESupportRoutes",
+    "apps/api/src/routes/e2e-support.test.ts",
+    "POST",
+    "/api/e2e/client-portal-account",
+    "auth_credential",
+    "create",
+    "derived",
+  ),
 
   authRoute(
     "registerAuthExtensionRoutes",

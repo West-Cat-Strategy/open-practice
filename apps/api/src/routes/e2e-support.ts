@@ -16,8 +16,22 @@ const shareVerificationCodeQuerySchema = z.object({
   token: z.string().min(1),
 });
 
+const clientPortalAccountBodySchema = z.object({
+  matterId: z.string().min(1).default("matter-001"),
+  contactId: z.string().min(1).default("contact-ada"),
+  userId: z.string().min(1).default("user-client-external"),
+});
+
+const defaultPortalPermissions = ["view_documents", "upload_documents", "message", "sign"] as const;
+
 function sanitizeFilename(filename: string): string {
   return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function contactEmail(contact: { identifiers?: Array<{ type: string; value: string }> }): string {
+  const email = contact.identifiers?.find((identifier) => identifier.type === "email")?.value;
+  if (!email) throw new ApiHttpError(409, "E2E_CLIENT_EMAIL_REQUIRED", "E2E contact needs email");
+  return email.trim().toLowerCase();
 }
 
 export function registerE2ESupportRoutes(
@@ -116,5 +130,132 @@ export function registerE2ESupportRoutes(
       );
     }
     return { verificationCode: code };
+  });
+
+  server.post("/api/e2e/client-portal-account", async (request, reply) => {
+    const body = parseRequestPart(clientPortalAccountBodySchema, request.body, "body");
+    const credentialAccess = requireAccess(request.auth, {
+      resource: "auth_credential",
+      action: "create",
+    });
+    if (!credentialAccess.ok) throw credentialAccess.error;
+
+    const matterAccess = requireAccess(request.auth, {
+      resource: "matter",
+      action: "read",
+      matterId: body.matterId,
+    });
+    if (!matterAccess.ok) throw matterAccess.error;
+
+    const contact = await repository.getContact(request.auth.firmId, body.contactId);
+    const matter = (await repository.listMattersForUser(request.auth.user)).find(
+      (candidate) => candidate.id === body.matterId,
+    );
+    const party = matter?.parties.find((candidate) => candidate.contactId === body.contactId);
+    if (!contact || !matter || !party) {
+      throw new ApiHttpError(
+        404,
+        "E2E_CLIENT_CONTACT_NOT_FOUND",
+        "E2E client contact was not found on this matter",
+      );
+    }
+    if (party.adverse) {
+      throw new ApiHttpError(
+        409,
+        "E2E_CLIENT_CONTACT_ADVERSE",
+        "E2E adverse contacts cannot be issued client portal accounts",
+      );
+    }
+
+    const email = contactEmail(contact);
+    const existingById = await repository.getUser(request.auth.firmId, body.userId);
+    const existingByEmail = await repository.getUserByEmail(request.auth.firmId, email);
+    const account = existingById ?? existingByEmail;
+    if (account && account.role !== "client_external") {
+      throw new ApiHttpError(
+        409,
+        "E2E_CLIENT_EMAIL_IN_USE",
+        "E2E client email already belongs to a non-client account",
+      );
+    }
+    const user =
+      account ??
+      (await repository.createUser({
+        id: body.userId,
+        firmId: request.auth.firmId,
+        displayName: contact.displayName,
+        email,
+        role: "client_external",
+        assignedMatterIds: [],
+        mfaEnabled: false,
+      }));
+
+    const now = new Date().toISOString();
+    const existingGrant = (await repository.listPortalGrants(request.auth.firmId)).find(
+      (grant) =>
+        grant.matterId === body.matterId &&
+        grant.contactId === body.contactId &&
+        !grant.revokedAt &&
+        (!grant.expiresAt || Date.parse(grant.expiresAt) > Date.parse(now)) &&
+        defaultPortalPermissions.every((permission) => grant.permissions.includes(permission)),
+    );
+    const grant =
+      existingGrant ??
+      (await repository.createPortalGrant({
+        id: `portal-grant-e2e-${body.userId}`,
+        firmId: request.auth.firmId,
+        matterId: body.matterId,
+        contactId: body.contactId,
+        grantedByUserId: request.auth.user.id,
+        permissions: [...defaultPortalPermissions],
+      }));
+
+    const conversationThreadId = `conversation-thread-e2e-${body.matterId}`;
+    const existingThread = await repository.getConversationThread(
+      request.auth.firmId,
+      conversationThreadId,
+    );
+    if (!existingThread) {
+      await repository.createConversationThread({
+        id: conversationThreadId,
+        firmId: request.auth.firmId,
+        matterId: body.matterId,
+        topic: "Synthetic client portal thread",
+        status: "open",
+        exportState: "not_requested",
+        notificationBoundary: "disabled",
+        createdAt: now,
+        updatedAt: now,
+        createdByUserId: request.auth.user.id,
+        updatedByUserId: request.auth.user.id,
+        metadata: { source: "e2e_support" },
+      });
+    }
+
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "portal.account_setup.created",
+      resourceType: "portal_grant",
+      resourceId: grant.id,
+      metadata: {
+        matterId: body.matterId,
+        contactId: body.contactId,
+        clientUserId: user.id,
+        source: "e2e_support",
+      },
+    });
+
+    reply.code(account && existingGrant ? 200 : 201);
+    return {
+      account: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      grant: {
+        id: grant.id,
+        status: "active",
+        permissions: grant.permissions,
+      },
+    };
   });
 }

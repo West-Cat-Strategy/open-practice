@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertBillingStatusTransition,
   billingDateFallsInsideLock,
   billingPeriodLocksOverlap,
   billingRateRulesOverlapAtSameActiveScope,
@@ -12,18 +13,43 @@ import {
   defaultHostedPaymentProcessorState,
   defaultPaymentPlanPlaceholder,
   buildPaymentSettlementReview,
+  calculateInvoiceTotals,
   defaultPaymentSettlementReview,
   expenseCategoryProfileCues,
   expenseCategoryProfileForKey,
   hostedPaymentRequestPath,
+  isBillableUnbilled,
   resolveBillingRateRule,
   summarizeTrustTransferLedgerLink,
   timerDraftMinutesFromWindow,
   trustTransferRequestAvailableBalanceCents,
   type BillingRateRuleRecord,
 } from "./billing.js";
+import {
+  sampleInvoiceLines,
+  samplePaymentAllocations,
+  sampleTimeEntries,
+  sampleTrustTransferRequests,
+} from "./sample-data.js";
 
 describe("billing period locks and rate rules", () => {
+  it("computes invoice totals, outstanding balances, and invalid transitions", () => {
+    expect(
+      calculateInvoiceTotals({ lines: sampleInvoiceLines, allocations: samplePaymentAllocations }),
+    ).toMatchObject({
+      subtotalCents: 12600,
+      taxCents: 630,
+      totalCents: 13230,
+      balanceDueCents: 13230,
+    });
+    expect(sampleTrustTransferRequests[0]?.status).toBe("pending_approval");
+    expect(sampleTrustTransferRequests[0]?.ledgerTransactionId).toBeUndefined();
+    expect(isBillableUnbilled(sampleTimeEntries[0]!)).toBe(true);
+    expect(() => assertBillingStatusTransition("approved", "submitted")).toThrow(
+      /Invalid billing status transition/,
+    );
+  });
+
   it("treats billing period locks as start-inclusive and end-exclusive", () => {
     const lock = {
       periodStart: "2026-04-01T00:00:00.000Z",

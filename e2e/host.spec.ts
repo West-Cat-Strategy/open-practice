@@ -13,25 +13,6 @@ test.describe("host Playwright suite", () => {
     await expect(page.getByRole("heading", { name: "Morgan tenancy dispute" })).toBeVisible();
   });
 
-  test("deep-links through core dashboard sections", async ({ app, page }) => {
-    const sections = [
-      { label: "Matters", path: "/" },
-      { label: "Calendar", path: "/?section=calendar" },
-      { label: "Queues", path: "/?section=queues" },
-      { label: "Billing", path: "/?section=billing" },
-      { label: "Funds", path: "/?section=funds" },
-      { label: "Intake", path: "/?section=intake" },
-    ];
-
-    for (const section of sections) {
-      await page.goto(app.url(section.path));
-      await expectPageHealthy(page);
-      await expect(
-        page.getByLabel("Primary").getByRole("button", { name: section.label, exact: true }),
-      ).toHaveAttribute("aria-current", "page");
-    }
-  });
-
   test("verifies a secure share before showing documents", async ({ app, page }) => {
     const share = await app.createShareLink();
 
@@ -90,5 +71,28 @@ test.describe("host Playwright suite", () => {
     ).toBeVisible();
     await expect(page.getByText("admitted", { exact: true }).first()).toBeVisible();
     await expect(page.locator("body")).not.toContainText(guest.token);
+  });
+
+  test("renders the client portal workspace without leaking private fields @client-portal", async ({
+    app,
+    page,
+  }, testInfo) => {
+    test.skip(
+      process.env.DEV_AUTH_USER_ID !== "user-client-external",
+      "run with DEV_AUTH_USER_ID=user-client-external",
+    );
+    testInfo.setTimeout(90_000);
+
+    await app.ensureClientPortalAccount();
+    await page.goto(app.url("/"));
+    await expectPageHealthy(page);
+
+    await expect(page.getByRole("heading", { name: "Ada Morgan" })).toBeVisible();
+    await expect(page.getByLabel("Matter action workspace")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Morgan tenancy dispute" })).toBeVisible();
+    await expect(page.getByLabel("Billing")).toBeVisible();
+    await expect(page.getByText(/redacted/i).first()).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(/tokenHash|storageKey|checkoutUrl/i);
+    await expect(page.locator("body")).not.toContainText(/externalSessionId|private-checkout/i);
   });
 });
