@@ -17,6 +17,96 @@ sibling worktrees into a branch-first mainline closeout lane:
 No client, matter, credential, payment, private deployment, or private provider-account data was
 added. Runtime proof artifacts under `/tmp` remain local-only evidence.
 
+## OP-SEC And OP-T155 Closeout Addendum
+
+This addendum records the user-requested closeout of the two dirty worktrees that remained after
+the earlier mainline proof:
+
+- Current integration branch: `codex/op-t155-intake-widget-registry-ready`.
+- Starting point: clean `main` / `origin/main` at `4a005ad9`.
+- Sibling worktree branch:
+  `codex/op-sec-001-production-setup-gate-2026-06-12`.
+- Remote inventory before final push/prune: `origin` advertised only `main`.
+
+Preserved commits:
+
+| Lane                              | Commit     | Scope                                                                                                                                                                               |
+| --------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Production setup gate hardening   | `e250298e` | Blocks remote/proxy production setup status, WebAuthn options, and setup completion while allowing empty-production setup only from operator-local loopback host/origin context.    |
+| Focused E2E validation lanes      | `7bd0b6f7` | Adds `pnpm e2e:matterless`, `pnpm e2e:client-portal`, explicit `scripts/run-e2e.mjs` modes, and routes specialized Playwright projects out of the default host suite.               |
+| Sibling branch merge              | `46059e3d` | Merges the OP-SEC lane into the current branch; keeps the fuller first-run Email and Security step assertions while preserving the OP-SEC remediation proof narrative.              |
+| Esbuild audit remediation cleanup | `d35b7e3`  | Adds a workspace override for `esbuild@0.28.1`, updates the existing `@esbuild-kit/core-utils>esbuild` override to `0.28.1`, and refreshes `pnpm-lock.yaml` after audit validation. |
+
+Conflict and proof reconciliation choices:
+
+- `e2e/first-run.spec.ts` keeps the current Email heading assertion, the SMTP helper text
+  assertion, the Email-step navigation, and the Security heading assertion.
+- `docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md` retains the OSS policy follow-up,
+  OP-SEC remediation follow-up, and original review-diff reconciliation sections.
+- The setup route remains keyless for empty production setup, but only for operator-local loopback
+  requests without proxy client headers.
+
+Dependency-audit follow-up:
+
+- `pnpm deps:audit` initially failed on vulnerable transitive `esbuild` versions below `0.28.1`
+  through the existing `tsx` / `drizzle-kit` toolchain.
+- Before changing dependency policy, `pnpm view` confirmed the relevant packages remain MIT:
+  `esbuild@0.28.1`, `tsx@4.22.4`, and `drizzle-kit@0.31.10`.
+- `pnpm-workspace.yaml` now overrides both direct `esbuild` resolution and
+  `@esbuild-kit/core-utils>esbuild` to `0.28.1`; `pnpm-lock.yaml` was refreshed with
+  `pnpm install --lockfile-only` and formatted.
+
+Final selector path set:
+
+```text
+apps/api/src/routes/setup.ts
+apps/api/src/server.test.ts
+docs/api-and-state-machines.md
+docs/deployment-hardening.md
+docs/development/getting-started.md
+docs/planning-and-progress.md
+docs/testing/TESTING.md
+docs/validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-12.md
+docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md
+docs/validation/README.md
+e2e/first-run.spec.ts
+e2e/helpers/e2e-fixtures.ts
+e2e/host.spec.ts
+e2e/ui-ux.spec.ts
+package.json
+playwright.config.ts
+pnpm-lock.yaml
+pnpm-workspace.yaml
+scripts/run-e2e.mjs
+scripts/select-validation.mjs
+scripts/select-validation.test.mjs
+```
+
+Selector-chosen validation for the combined lane:
+
+| Command                                      | Result                                                                                                      |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `pnpm verify:select -- --files ...`          | Pass; selected broad local CI, dependency, E2E, docs, policy, test, API test, and API typecheck.            |
+| `pnpm ci:local`                              | Pass after the esbuild override and refreshed lockfile.                                                     |
+| `pnpm deps:audit`                            | Initial fail on transitive `esbuild`; pass after overriding to `0.28.1`.                                    |
+| `pnpm deps:licenses`                         | Pass; existing review-required groups remained reported without blocking.                                   |
+| `pnpm e2e:host`                              | Pass.                                                                                                       |
+| `pnpm e2e:docker`                            | First attempt hit a stale local Next dev server from host E2E; Docker project was cleaned and retry passed. |
+| `node scripts/run-e2e.mjs first-run`         | Pass; 1 first-run Chromium test.                                                                            |
+| `pnpm e2e:matterless`                        | Pass; 1 matterless Chromium test.                                                                           |
+| `pnpm e2e:client-portal`                     | Pass; 1 client-portal Chromium test.                                                                        |
+| `pnpm format:check`                          | Pass.                                                                                                       |
+| `pnpm docs:check`                            | Pass.                                                                                                       |
+| `pnpm policy:check`                          | Pass.                                                                                                       |
+| `pnpm test`                                  | Pass; Turbo package tests and 63 script tests completed successfully.                                       |
+| `pnpm --filter @open-practice/api test`      | Pass; 504 API tests.                                                                                        |
+| `pnpm --filter @open-practice/api typecheck` | Pass.                                                                                                       |
+| `git diff --check`                           | Pass.                                                                                                       |
+
+After this addendum and the dependency-audit cleanup commit, local `main` can fast-forward to
+`codex/op-t155-intake-widget-registry-ready`, push to `origin/main`, and prune only branches and
+worktrees whose tips are ancestors of the pushed `main`.
+
 ## Integrated Branches And Worktrees
 
 Dirty sibling worktree deltas were validated before commit, then merged into the integration

@@ -8,17 +8,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                |
-| --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Mainline merge/prune closeout is validated for final push and prune. |
-| Next recommended pick | Start OP-T155 intake widget registry planning slice.                 |
-| Ready rows            | 1                                                                    |
-| Candidate rows        | 0                                                                    |
-| In progress rows      | 0                                                                    |
-| Review rows           | 0                                                                    |
-| Blocked rows          | 0                                                                    |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
+| Snapshot              | Value                                                                         |
+| --------------------- | ----------------------------------------------------------------------------- |
+| Current focus         | OP-SEC/OP-T155 mainline closeout is validated for final push and prune.       |
+| Next recommended pick | Start OP-T155 intake widget registry planning slice after push/prune cleanup. |
+| Ready rows            | 1                                                                             |
+| Candidate rows        | 0                                                                             |
+| In progress rows      | 0                                                                             |
+| Review rows           | 0                                                                             |
+| Blocked rows          | 0                                                                             |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).          |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`              |
 
 ## Current Handoff Notes
 
@@ -27,6 +27,9 @@ validation-index cleanup, whole-app review, and test-suite pruning worktrees; me
 system V2 and SMTP/IMAP provider settings; and passed the selected host, Docker, dependency, policy,
 and build gates before final `main` push/prune. Proof is recorded in
 [OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-12.md).
+A follow-up closeout in the same proof records the OP-SEC production setup gate hardening branch,
+the OP-T155 focused E2E validation-lane branch, esbuild audit remediation, selected broad
+validation, and push/prune readiness.
 
 Recent proof context is indexed in [Validation Proof Index](validation/README.md). Historical
 completed-work summaries live in [Archive](archive/README.md). Keep new status, owner, blocker, and
