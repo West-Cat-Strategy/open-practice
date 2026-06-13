@@ -145,6 +145,15 @@ enabled.
   check passed. The blocker is the same OSS reference lock drift listed above; the standalone build
   gate was run separately and passed.
 
+## Current OSS Policy Follow-Up
+
+The OSS reference-lock failure above remains accurate for the original pruning branch run. On
+2026-06-12, the current project tree was rechecked against the central reference index and no lockfile
+edit was required: `pnpm refs:clone -- --check` matched 28 Open Practice index entries and
+`node scripts/validate-oss-reuse.mjs` passed. The docs-only follow-up selector
+`pnpm verify:select -- --files <current proof/index doc paths>` selected format, docs, and policy
+checks; `pnpm policy:check` and `pnpm ci:local` now pass without the old OSS reference-lock blocker.
+
 ## Synthetic Data
 
 All new tests and browser proof use synthetic fixture data only, including `Ada Morgan`,

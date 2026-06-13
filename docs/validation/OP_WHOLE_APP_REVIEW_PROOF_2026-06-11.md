@@ -155,6 +155,21 @@ The OSS reuse drift named by `policy:check` and hot-path rescan covered:
 `paperless-ngx__paperless-ngx`, `temporalio__temporal`, `unstructured-io__unstructured`, and
 `zulip__zulip`.
 
+## Current OSS Policy Follow-Up
+
+The OSS reference-lock blocker recorded above was branch-local historical evidence. On 2026-06-12,
+the current project lock already matched the central reference index at
+`/Users/bryan/projects/reference-repos/docs/index.json`; no `docs/oss-references.lock.json` edit was
+needed for this follow-up.
+
+| Command                                                         | Result                                                                                                                                    |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm refs:clone -- --check`                                    | Passed; `docs/oss-references.lock.json` matched 28 Open Practice index entries.                                                           |
+| `node scripts/validate-oss-reuse.mjs`                           | Passed.                                                                                                                                   |
+| `pnpm verify:select -- --files <current proof/index doc paths>` | Passed; selected `pnpm format:check`, `pnpm docs:check`, and `pnpm policy:check`.                                                         |
+| `pnpm policy:check`                                             | Passed after the current lock/index parity check, validating secret scan, package manifests, migrations, OSS reuse, docs, and boundaries. |
+| `pnpm ci:local`                                                 | Passed; the broad local CI gate is no longer blocked by OSS reference-lock drift.                                                         |
+
 ## Diff And Proof Reconciliation
 
 The intended tracked branch delta is limited to this proof note and the validation index entry:
@@ -177,5 +192,6 @@ restored so the review branch remains documentation-only.
   request flows.
 - Add UI/UX assertions for dashboard fallback notices, live-region status updates, and public
   intake field-level error mapping.
-- Refresh `docs/oss-references.lock.json` or the central reference index so `policy:check`,
-  `security-hot-path-rescan`, and `ci:local` can pass on `origin/main`.
+- Keep `docs/oss-references.lock.json` aligned with the central reference index during future
+  reference-corpus refreshes; the 2026-06-12 parity follow-up shows `policy:check` and `ci:local`
+  unblocked on the current project tree.

@@ -23,6 +23,9 @@ The 2026-06-12 mainline merge/push/prune proof is recorded in
 It covers the branch-first integration lane, dirty sibling worktree commits, OP-T153 task-system
 merge, SMTP/IMAP provider-settings merge, conflict-resolution choices, selected broad validation,
 Docker app-smoke retry evidence, and final push/prune handoff.
+The 2026-06-12 OSS policy parity follow-up keeps the older whole-app and test-pruning drift notes
+historical while confirming the current reference lock matches the central index and both
+`policy:check` and `ci:local` are unblocked.
 
 The 2026-06-11 conservative dependency refresh proof is recorded in
 [OP_DEPENDENCY_REFRESH_PROOF_2026-06-11.md](OP_DEPENDENCY_REFRESH_PROOF_2026-06-11.md).
@@ -38,7 +41,7 @@ The 2026-06-11 whole-application review branch is recorded in
 [OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md](OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md).
 It covers the repository-wide Codex Security scan artifact at
 `/tmp/codex-security-scans/open-practice/30a26a17_20260611T230554Z/`, code-review findings,
-UI/UX review findings, validation pass/fail evidence, and the current OSS reference-lock drift and
+UI/UX review findings, validation pass/fail evidence, and the then-open OSS reference-lock drift and
 host Playwright readiness blockers.
 
 The test-suite pruning branch is recorded in
