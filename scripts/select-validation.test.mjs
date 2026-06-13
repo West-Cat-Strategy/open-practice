@@ -68,11 +68,14 @@ describe("select-validation contract", () => {
     ]);
   });
 
-  it("routes Playwright and e2e harness changes through both browser tiers", () => {
+  it("routes Playwright and e2e harness changes through every browser lane", () => {
     assert.deepEqual(selectCommands(["playwright.config.ts", "e2e/host.spec.ts"]), [
       COMMANDS.ciLocal,
       COMMANDS.e2eHost,
       COMMANDS.e2eDocker,
+      COMMANDS.e2eFirstRun,
+      COMMANDS.e2eMatterless,
+      COMMANDS.e2eClientPortal,
     ]);
   });
 

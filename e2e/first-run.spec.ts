@@ -32,6 +32,11 @@ test.describe("first-run setup @first-run", () => {
     await page.getByLabel("Confirm password").fill("correct horse battery staple");
     await page.getByRole("button", { name: /Next Step/i }).click();
 
+    await expect(page.getByRole("heading", { name: "Email" })).toBeVisible();
+    await expect(page.getByText(/Optionally configure SMTP delivery/i)).toBeVisible();
+    await page.getByRole("button", { name: /Next Step/i }).click();
+
+    await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
     await page.getByLabel(/trust\/funds workflows are operational records/i).check();
     await page.getByRole("button", { name: /Next Step/i }).click();
     await expect(page.getByText("Opening consult")).toBeVisible();

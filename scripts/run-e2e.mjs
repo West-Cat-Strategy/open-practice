@@ -241,19 +241,30 @@ function runtimeEnv(input) {
     DEV_AUTH_USER_ID: process.env.DEV_AUTH_USER_ID ?? "user-admin",
     WEBRTC_MEETING_PROVIDER_KEY: `${input.mode}-meeting-provider`,
     WEBRTC_MEETING_BASE_URL: `${input.webBaseUrl}/meeting`,
-    E2E_MODE: input.mode,
+    E2E_MODE: input.e2eMode ?? input.mode,
     E2E_API_BASE_URL: input.apiBaseUrl,
     E2E_WEB_BASE_URL: input.webBaseUrl,
   };
 }
 
-async function startHostRuntime() {
-  const apiPort = Number(process.env.E2E_HOST_API_PORT ?? 34110);
-  const webPort = Number(process.env.E2E_HOST_WEB_PORT ?? 33110);
+async function startHostRuntime(options = {}) {
+  const apiPort = Number(
+    process.env[options.apiPortEnv ?? "E2E_HOST_API_PORT"] ?? options.defaultApiPort ?? 34110,
+  );
+  const webPort = Number(
+    process.env[options.webPortEnv ?? "E2E_HOST_WEB_PORT"] ?? options.defaultWebPort ?? 33110,
+  );
   const apiBaseUrl = `http://localhost:${apiPort}`;
   const webBaseUrl = `http://localhost:${webPort}`;
   const env = {
-    ...runtimeEnv({ mode: "host", apiPort, webPort, apiBaseUrl, webBaseUrl }),
+    ...runtimeEnv({
+      mode: options.mode ?? "host",
+      e2eMode: options.e2eMode,
+      apiPort,
+      webPort,
+      apiBaseUrl,
+      webBaseUrl,
+    }),
     DATABASE_URL: "",
     REDIS_URL: "",
     S3_ENDPOINT: "",
@@ -261,6 +272,7 @@ async function startHostRuntime() {
     S3_SECRET_KEY: "",
     OPEN_PRACTICE_USE_MEMORY_REPO: "true",
     OPEN_PRACTICE_DEV_SEED: "true",
+    ...(options.env ?? {}),
   };
 
   startApi(env);
@@ -384,8 +396,10 @@ async function startDockerRuntime() {
 }
 
 async function main() {
-  if (!["host", "docker", "first-run"].includes(mode)) {
-    throw new Error("Usage: node scripts/run-e2e.mjs <host|docker|first-run> [playwright args...]");
+  if (!["host", "docker", "first-run", "matterless", "client-portal"].includes(mode)) {
+    throw new Error(
+      "Usage: node scripts/run-e2e.mjs <host|docker|first-run|matterless|client-portal> [playwright args...]",
+    );
   }
 
   process.once("SIGINT", () => {
@@ -402,13 +416,42 @@ async function main() {
       ? await startDockerRuntime()
       : mode === "first-run"
         ? await startFirstRunRuntime()
-        : await startHostRuntime();
+        : mode === "matterless"
+          ? await startHostRuntime({
+              mode: "matterless",
+              e2eMode: "host",
+              apiPortEnv: "E2E_MATTERLESS_API_PORT",
+              webPortEnv: "E2E_MATTERLESS_WEB_PORT",
+              defaultApiPort: 34140,
+              defaultWebPort: 33140,
+              env: {
+                DEV_AUTH_FIRM_ID: "firm-matterless-e2e",
+                DEV_AUTH_USER_ID: "user-matterless-admin",
+              },
+            })
+          : mode === "client-portal"
+            ? await startHostRuntime({
+                mode: "client-portal",
+                e2eMode: "host",
+                apiPortEnv: "E2E_CLIENT_PORTAL_API_PORT",
+                webPortEnv: "E2E_CLIENT_PORTAL_WEB_PORT",
+                defaultApiPort: 34150,
+                defaultWebPort: 33150,
+                env: {
+                  DEV_AUTH_USER_ID: "user-client-external",
+                },
+              })
+            : await startHostRuntime();
   const projects =
     mode === "docker"
       ? ["docker-chromium"]
       : mode === "first-run"
         ? ["first-run-chromium"]
-        : ["host-chromium", "host-mobile-chromium", "host-firefox", "host-webkit"];
+        : mode === "matterless"
+          ? ["matterless-chromium"]
+          : mode === "client-portal"
+            ? ["client-portal-chromium"]
+            : ["host-chromium", "host-mobile-chromium", "host-firefox", "host-webkit"];
   await runPlaywright(env, projects);
 }
 

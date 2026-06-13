@@ -19,6 +19,8 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Tests                  | `pnpm test`                                      | Runs package test suites.                                                                                                                                                         |
 | Host browser E2E       | `pnpm e2e:host`                                  | Runs Playwright against a synthetic memory-backed API plus Next.js web runtime across Chromium desktop/mobile, Firefox, and WebKit.                                               |
 | Docker browser E2E     | `pnpm e2e:docker`                                | Runs Playwright against a disposable PostgreSQL-backed runtime with Redis, MinIO, and Mailpit infrastructure.                                                                     |
+| Matterless browser E2E | `pnpm e2e:matterless`                            | Runs the dedicated Chromium matterless-auth coverage against the host memory runtime.                                                                                             |
+| Client portal E2E      | `pnpm e2e:client-portal`                         | Runs the dedicated Chromium client-portal auth coverage against the host memory runtime.                                                                                          |
 | Docker app image smoke | `pnpm docker:app-smoke`                          | Pulls Redis, builds wrapped local service images plus API/Web/Worker images, starts the local Compose stack, migrates the default Compose database, and checks API/web readiness. |
 | Database schema check  | `pnpm --filter @open-practice/database db:check` | Required for schema or migration changes.                                                                                                                                         |
 | Migration parity       | `pnpm migrations:check`                          | Verifies SQL migration files and Drizzle journal entries stay in lockstep.                                                                                                        |
@@ -65,7 +67,7 @@ Selection rules:
 | `packages/database/**` or any `migrations/` path | `pnpm --filter @open-practice/database test`, `pnpm --filter @open-practice/database db:check`, `pnpm migrations:check`, `pnpm --filter @open-practice/database typecheck`, `pnpm --filter @open-practice/database build`, `pnpm --filter @open-practice/api test` |
 | `packages/providers/**`                          | `pnpm --filter @open-practice/providers test`, `pnpm --filter @open-practice/providers typecheck`, `pnpm --filter @open-practice/providers build`, `pnpm --filter @open-practice/api test`, worker test and typecheck                                              |
 | `apps/web/**`                                    | `pnpm --filter @open-practice/web test`, `pnpm --filter @open-practice/web typecheck`, `pnpm build`                                                                                                                                                                |
-| `e2e/**` or `playwright.config.*`                | `pnpm e2e:host`, `pnpm e2e:docker`                                                                                                                                                                                                                                 |
+| `e2e/**` or `playwright.config.*`                | `pnpm e2e:host`, `pnpm e2e:docker`, `node scripts/run-e2e.mjs first-run`, `pnpm e2e:matterless`, `pnpm e2e:client-portal`                                                                                                                                          |
 | `docs/**`                                        | `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`                                                                                                                                                                                                        |
 | `scripts/**`                                     | `pnpm policy:check`, `pnpm test`                                                                                                                                                                                                                                   |
 | Runtime config, Dockerfiles, or Compose          | `pnpm docker:residual-watch`, `pnpm e2e:docker`, `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm build`; add `pnpm docker:app-smoke` when app images, commands, or Compose runtime behavior change                                              |
@@ -151,19 +153,36 @@ Use the committed Playwright lanes for browser-rendered workflow proof:
 ```bash
 pnpm e2e:host
 pnpm e2e:docker
+node scripts/run-e2e.mjs first-run
+pnpm e2e:matterless
+pnpm e2e:client-portal
 pnpm docker:app-smoke
 ```
 
 `pnpm e2e`, `pnpm playwright`, and `pnpm e2e:host` all run the fast host suite. The host suite starts
 a synthetic in-memory API and the Next.js web app on isolated local ports, then covers dashboard
 smoke/navigation, secure-share verification, public intake draft/incomplete behavior, and hosted
-guest-session check-in/admission states.
+guest-session check-in/admission states across the committed host browser projects. It excludes
+specialized auth-context and Chromium-only dense-breakpoint variants through Playwright project
+routing so those variants remain runnable without appearing as normal host-suite skips.
 
 `pnpm e2e:docker` starts Compose infrastructure for PostgreSQL, Redis, MinIO, and Mailpit, creates a
 disposable e2e database, runs migrations, prepares the MinIO bucket, starts host API/web/worker
 processes against those services, and cleans up the disposable database after Playwright exits. Use
 this tier for external upload, object-storage, queue, and release-readiness browser proof. If Docker
 or a required local port is unavailable, report the skipped Docker check with the blocker.
+
+`node scripts/run-e2e.mjs first-run` starts an unseeded host memory runtime and runs the first-run
+setup wizard project. Use it when setup gating, owner bootstrap, optional email configuration, or
+review-step behavior changes.
+
+`pnpm e2e:matterless` starts the host memory runtime with `DEV_AUTH_FIRM_ID=firm-matterless-e2e` and
+`DEV_AUTH_USER_ID=user-matterless-admin`, then runs the `matterless-chromium` project. Use it for
+matterless dashboard routing and first-matter fallback coverage.
+
+`pnpm e2e:client-portal` starts the host memory runtime with
+`DEV_AUTH_USER_ID=user-client-external`, then runs the `client-portal-chromium` project. Use it for
+client-portal workspace, redaction, and private-field leakage coverage.
 
 `pnpm docker:app-smoke` proves the built API, Web, and Worker images directly. By default it uses a
 disposable Compose project, alternate loopback ports, and disposable volumes so it does not disturb a

@@ -1,8 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const hostExcluded = /@docker|@first-run/;
+const hostExcluded = /@docker|@first-run|@matterless|@client-portal/;
+const nonChromiumHostExcluded = /@docker|@first-run|@matterless|@client-portal|@host-chromium-only/;
 const dockerOnly = /@docker/;
 const firstRunOnly = /@first-run/;
+const matterlessOnly = /@matterless/;
+const clientPortalOnly = /@client-portal/;
 
 export default defineConfig({
   testDir: "e2e",
@@ -29,17 +32,17 @@ export default defineConfig({
     },
     {
       name: "host-mobile-chromium",
-      grepInvert: hostExcluded,
+      grepInvert: nonChromiumHostExcluded,
       use: { ...devices["Pixel 7"] },
     },
     {
       name: "host-firefox",
-      grepInvert: hostExcluded,
+      grepInvert: nonChromiumHostExcluded,
       use: { ...devices["Desktop Firefox"] },
     },
     {
       name: "host-webkit",
-      grepInvert: hostExcluded,
+      grepInvert: nonChromiumHostExcluded,
       use: { ...devices["Desktop Safari"] },
     },
     {
@@ -50,6 +53,16 @@ export default defineConfig({
     {
       name: "first-run-chromium",
       grep: firstRunOnly,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "matterless-chromium",
+      grep: matterlessOnly,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "client-portal-chromium",
+      grep: clientPortalOnly,
       use: { ...devices["Desktop Chrome"] },
     },
   ],

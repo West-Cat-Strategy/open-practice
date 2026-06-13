@@ -20,8 +20,11 @@ export const COMMANDS = {
   docsCheck: "pnpm docs:check",
   domainTest: "pnpm --filter @open-practice/domain test",
   domainTypecheck: "pnpm --filter @open-practice/domain typecheck",
+  e2eClientPortal: "pnpm e2e:client-portal",
   e2eDocker: "pnpm e2e:docker",
+  e2eFirstRun: "node scripts/run-e2e.mjs first-run",
   e2eHost: "pnpm e2e:host",
+  e2eMatterless: "pnpm e2e:matterless",
   formatCheck: "pnpm format:check",
   migrationsCheck: "pnpm migrations:check",
   policyCheck: "pnpm policy:check",
@@ -44,6 +47,9 @@ export const COMMAND_ORDER = [
   COMMANDS.dockerAppSmoke,
   COMMANDS.e2eHost,
   COMMANDS.e2eDocker,
+  COMMANDS.e2eFirstRun,
+  COMMANDS.e2eMatterless,
+  COMMANDS.e2eClientPortal,
   COMMANDS.formatCheck,
   COMMANDS.docsCheck,
   COMMANDS.policyCheck,
@@ -302,6 +308,9 @@ export function classifyPath(path) {
   if (isE2EPath(path)) {
     commands.add(COMMANDS.e2eHost);
     commands.add(COMMANDS.e2eDocker);
+    commands.add(COMMANDS.e2eFirstRun);
+    commands.add(COMMANDS.e2eMatterless);
+    commands.add(COMMANDS.e2eClientPortal);
   }
 
   if (path.startsWith("docs/")) {

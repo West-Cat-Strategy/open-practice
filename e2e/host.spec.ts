@@ -77,10 +77,7 @@ test.describe("host Playwright suite", () => {
     app,
     page,
   }, testInfo) => {
-    test.skip(
-      process.env.DEV_AUTH_USER_ID !== "user-client-external",
-      "run with DEV_AUTH_USER_ID=user-client-external",
-    );
+    expect(process.env.DEV_AUTH_USER_ID).toBe("user-client-external");
     testInfo.setTimeout(90_000);
 
     await app.ensureClientPortalAccount();

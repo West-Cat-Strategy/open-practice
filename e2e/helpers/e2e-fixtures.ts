@@ -32,12 +32,20 @@ const ignoredConsoleErrorPatterns = [
   /Download the React DevTools/i,
 ];
 
+const ignoredPageErrorPatterns = [
+  /^ChunkLoadError: Failed to load chunk \/_next\/static\/chunks\/%5Bturbopack%5D_browser_dev_hmr-client_hmr-client_ts_[^ ]+\.js from module \[turbopack\]\/browser\/dev\/hmr-client\/hmr-client\.ts \[app-client\]/i,
+];
+
 function futureIso(days = 7): string {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function shouldIgnoreConsoleError(message: string): boolean {
   return ignoredConsoleErrorPatterns.some((pattern) => pattern.test(message));
+}
+
+function shouldIgnorePageError(message: string): boolean {
+  return ignoredPageErrorPatterns.some((pattern) => pattern.test(message));
 }
 
 async function waitForWebReady(timeoutMs = 30_000): Promise<void> {
@@ -206,7 +214,9 @@ export const test = base.extend<{ app: OpenPracticeE2EClient }>({
         consoleErrors.push(message.text());
       }
     });
-    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("pageerror", (error) => {
+      if (!shouldIgnorePageError(error.message)) pageErrors.push(error.message);
+    });
     await use(page);
     expect(consoleErrors, "browser console errors").toEqual([]);
     expect(pageErrors, "uncaught page errors").toEqual([]);

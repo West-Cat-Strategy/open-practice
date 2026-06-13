@@ -187,12 +187,8 @@ test.describe("UI/UX screenshot QA", () => {
     app,
     page,
   }, testInfo) => {
-    test.skip(testInfo.project.name !== "host-chromium", "covered once with the matterless user");
-    test.skip(
-      process.env.DEV_AUTH_FIRM_ID !== "firm-matterless-e2e" ||
-        process.env.DEV_AUTH_USER_ID !== "user-matterless-admin",
-      "run with DEV_AUTH_FIRM_ID=firm-matterless-e2e DEV_AUTH_USER_ID=user-matterless-admin",
-    );
+    expect(process.env.DEV_AUTH_FIRM_ID).toBe("firm-matterless-e2e");
+    expect(process.env.DEV_AUTH_USER_ID).toBe("user-matterless-admin");
 
     for (const sectionId of matterlessDeepLinkSections) {
       const section = routeCatalog.find((entry) => entry.id === sectionId)!;
@@ -257,12 +253,10 @@ test.describe("UI/UX screenshot QA", () => {
     await attachUiScreenshot(page, testInfo, "dashboard-sidebar-restored");
   });
 
-  test("keeps dense dashboard panels readable at review breakpoints", async ({
+  test("keeps dense dashboard panels readable at review breakpoints @host-chromium-only", async ({
     app,
     page,
   }, testInfo) => {
-    test.skip(testInfo.project.name !== "host-chromium", "covered once with explicit viewports");
-
     for (const width of [1100, 720, 520]) {
       await page.setViewportSize({ width, height: 900 });
       for (const section of ["billing", "documents", "calendar", "intake", "admin"] as const) {
