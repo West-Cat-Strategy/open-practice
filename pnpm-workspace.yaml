@@ -41,6 +41,7 @@ minimumReleaseAgeExclude:
   - typescript-eslint@8.61.0
 
 overrides:
+  esbuild: 0.28.1
   next>postcss: 8.5.10
-  "@esbuild-kit/core-utils>esbuild": 0.25.12
+  "@esbuild-kit/core-utils>esbuild": 0.28.1
   fast-uri: 3.1.2
