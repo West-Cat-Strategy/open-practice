@@ -274,7 +274,7 @@ describe("API auth and persistence boundaries", () => {
     });
   });
 
-  it("allows production first-run setup completion without a setup key", async () => {
+  it("allows operator-local production first-run setup completion without a setup key", async () => {
     const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
     const response = await testServer({
       repository,
@@ -283,6 +283,8 @@ describe("API auth and persistence boundaries", () => {
     }).inject({
       method: "POST",
       url: "/api/setup/complete",
+      remoteAddress: "127.0.0.1",
+      headers: { host: "localhost:4000", origin: "http://localhost:3000" },
       payload: setupPayload(),
     });
 
@@ -290,18 +292,112 @@ describe("API auth and persistence boundaries", () => {
     await expect(repository.getSetupStatus()).resolves.toEqual({ required: false, blocked: false });
   });
 
-  it("reports production first-run setup status without requiring a setup key", async () => {
+  it("reports operator-local production first-run setup status without requiring a setup key", async () => {
     const response = await testServer({
       repository: new InMemoryOpenPracticeRepository({ seedSampleData: false }),
       nodeEnv: "production",
       jwtSecret: "production-test-secret-at-least-32-characters",
-    }).inject({ method: "GET", url: "/api/setup/status" });
+    }).inject({
+      method: "GET",
+      url: "/api/setup/status",
+      remoteAddress: "127.0.0.1",
+      headers: { host: "localhost:4000" },
+    });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       required: true,
       blocked: false,
     });
+  });
+
+  it("blocks remote production first-run setup while the database remains empty", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const server = testServer({
+      repository,
+      nodeEnv: "production",
+      jwtSecret: "production-test-secret-at-least-32-characters",
+    });
+    const headers = { host: "practice.example.test", origin: "https://practice.example.test" };
+
+    const status = await server.inject({
+      method: "GET",
+      url: "/api/setup/status",
+      remoteAddress: "203.0.113.10",
+      headers,
+    });
+    const webAuthn = await server.inject({
+      method: "POST",
+      url: "/api/setup/webauthn-options",
+      remoteAddress: "203.0.113.10",
+      headers,
+      payload: { email: "avery@example.test" },
+    });
+    const complete = await server.inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      remoteAddress: "203.0.113.10",
+      headers,
+      payload: setupPayload(),
+    });
+
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toMatchObject({
+      required: false,
+      blocked: true,
+      reason: expect.stringContaining("operator-local loopback"),
+    });
+    expect(webAuthn.statusCode).toBe(403);
+    expect(webAuthn.json()).toMatchObject({
+      message: expect.stringContaining("operator-local loopback"),
+    });
+    expect(complete.statusCode).toBe(403);
+    expect(complete.json()).toMatchObject({
+      message: expect.stringContaining("operator-local loopback"),
+    });
+    await expect(
+      repository.getWebAuthnChallenge("registration-challenge"),
+    ).resolves.toBeUndefined();
+    await expect(repository.getSetupStatus()).resolves.toEqual({ required: true, blocked: false });
+  });
+
+  it("blocks proxy-looking production setup even when the socket is loopback", async () => {
+    const repository = new InMemoryOpenPracticeRepository({ seedSampleData: false });
+    const server = testServer({
+      repository,
+      nodeEnv: "production",
+      jwtSecret: "production-test-secret-at-least-32-characters",
+    });
+
+    const forwardedStatus = await server.inject({
+      method: "GET",
+      url: "/api/setup/status",
+      remoteAddress: "127.0.0.1",
+      headers: { host: "localhost:4000", "x-forwarded-for": "203.0.113.10" },
+    });
+    const publicHostComplete = await server.inject({
+      method: "POST",
+      url: "/api/setup/complete",
+      remoteAddress: "127.0.0.1",
+      headers: { host: "practice.example.test" },
+      payload: setupPayload(),
+    });
+    const publicOriginOptions = await server.inject({
+      method: "POST",
+      url: "/api/setup/webauthn-options",
+      remoteAddress: "127.0.0.1",
+      headers: { host: "localhost:4000", origin: "https://practice.example.test" },
+      payload: { email: "avery@example.test" },
+    });
+
+    expect(forwardedStatus.json()).toMatchObject({
+      required: false,
+      blocked: true,
+      reason: expect.stringContaining("operator-local loopback"),
+    });
+    expect(publicHostComplete.statusCode).toBe(403);
+    expect(publicOriginOptions.statusCode).toBe(403);
+    await expect(repository.getSetupStatus()).resolves.toEqual({ required: true, blocked: false });
   });
 
   it("returns first-run passkey registration options without a setup key", async () => {

@@ -7,8 +7,9 @@
   stricter `Content-Security-Policy-Report-Only` directives enabled while nonce-compatible
   script/style enforcement is prepared.
 - Configure embedded session auth with strong password setup/invitation flows for practice users and portal users.
-- Complete production first-run setup only over the intended TLS deployment surface, while the firm
-  and user tables are empty, then rely on embedded owner-admin authentication for subsequent access.
+- Complete production first-run setup only from an operator-local loopback request before the
+  deployment is exposed publicly, while the firm and user tables are empty, then rely on embedded
+  owner-admin authentication for subsequent access.
 - Keep S3 buckets private; serve files only through expiring signed URLs after server-side authorization.
 - Verify upload-completion callbacks against expected storage keys, object existence, checksums, size policy, and server-controlled scan state before documents can be shared.
 - Run malware scanning before a document can be shared through the portal.
@@ -70,9 +71,12 @@ Environment variables must be treated as deployment inputs, not application defa
 - `SESSION_TTL_HOURS` controls embedded session expiry and should be set intentionally per
   deployment.
 - First-run setup proceeds only while both firm and user tables are empty; partial bootstrap state is
-  blocked for operator review. The web setup flow creates editable operational defaults, OP-authored
-  starter templates, an optional first matter, and the first owner-admin session without relying on
-  development seed data.
+  blocked for operator review. Production first-run setup stays keyless but is available only from a
+  direct operator-local loopback request with loopback host/origin context and no proxy client
+  headers; public or proxy-forwarded production requests see a blocked setup status and cannot
+  create setup passkey challenges or owner-admin records. The web setup flow creates editable
+  operational defaults, OP-authored starter templates, an optional first matter, and the first
+  owner-admin session without relying on development seed data.
 - `OPEN_PRACTICE_CONFIG_ENCRYPTION_KEY` must decode to exactly 32 bytes as base64, base64url, or
   hex. PostgreSQL-backed API and worker startup fails without it, while synthetic memory-mode tests
   can omit it. Rotate it through the secret manager; do not bake it into images or checked-in env
