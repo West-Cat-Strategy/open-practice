@@ -170,7 +170,50 @@ needed for this follow-up.
 | `pnpm policy:check`                                             | Passed after the current lock/index parity check, validating secret scan, package manifests, migrations, OSS reuse, docs, and boundaries. |
 | `pnpm ci:local`                                                 | Passed; the broad local CI gate is no longer blocked by OSS reference-lock drift.                                                         |
 
-## Diff And Proof Reconciliation
+## OP-SEC-001 Remediation Follow-Up - 2026-06-12
+
+This branch remediates the high-severity finding "Production first-run setup can be remotely
+claimed while the database is empty" without reintroducing a setup key. First-run setup remains
+unauthenticated and keyless, but production setup availability is now operator-local only. Remote or
+proxy-forwarded production requests against an empty database receive a blocked setup status, and
+`POST /api/setup/webauthn-options` plus `POST /api/setup/complete` return `403` before challenge
+creation or owner-admin persistence.
+
+The production setup gate now requires loopback socket IP, loopback `Host`, loopback `Origin` when
+present, and no proxy client headers such as `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`.
+Non-production loopback behavior and the explicit local Docker bridge setup allowance are unchanged.
+
+Remediation branch delta:
+
+```text
+apps/api/src/routes/setup.ts
+apps/api/src/server.test.ts
+docs/api-and-state-machines.md
+docs/deployment-hardening.md
+docs/development/getting-started.md
+docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md
+e2e/first-run.spec.ts
+```
+
+Validation evidence:
+
+| Command                                                                                                                                                                                                                                                                | Result                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm verify:select -- --files apps/api/src/routes/setup.ts apps/api/src/server.test.ts docs/api-and-state-machines.md docs/deployment-hardening.md docs/development/getting-started.md docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md e2e/first-run.spec.ts` | Passed; selected `pnpm e2e:host`, `pnpm e2e:docker`, `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm --filter @open-practice/api test`, and `pnpm --filter @open-practice/api typecheck`.                                                  |
+| `pnpm format:check`                                                                                                                                                                                                                                                    | Passed: all matched files use Prettier code style.                                                                                                                                                                                                            |
+| `pnpm docs:check`                                                                                                                                                                                                                                                      | Passed: documentation link validation passed.                                                                                                                                                                                                                 |
+| `pnpm policy:check`                                                                                                                                                                                                                                                    | Passed: secret scan, package manifest dependency policy, migration parity for 54 SQL files and 54 journal entries, OSS reuse policy, documentation links, validation proof index, local-evidence Docker ignore, and Open Practice boundary policy all passed. |
+| `pnpm --filter @open-practice/api test`                                                                                                                                                                                                                                | Passed: 41 test files and 504 tests passed.                                                                                                                                                                                                                   |
+| `pnpm --filter @open-practice/api typecheck`                                                                                                                                                                                                                           | Passed: `tsc -p tsconfig.json --noEmit`.                                                                                                                                                                                                                      |
+| `node scripts/run-e2e.mjs first-run`                                                                                                                                                                                                                                   | Passed: 1 first-run Playwright test passed and setup completed without a setup key over loopback.                                                                                                                                                             |
+| `pnpm e2e:host`                                                                                                                                                                                                                                                        | Passed: 29 Playwright tests passed and 11 suite-managed tests were skipped.                                                                                                                                                                                   |
+| `pnpm e2e:docker`                                                                                                                                                                                                                                                      | Passed: 3 Docker-backed Playwright tests passed; Docker was available, migrations ran, and compose cleanup removed the temporary PostgreSQL, Redis, MinIO, Mailpit, network, and volumes.                                                                     |
+| `git diff --check`                                                                                                                                                                                                                                                     | Passed after the proof refresh.                                                                                                                                                                                                                               |
+
+No validation command was manually skipped. `pnpm e2e:host` reported 11 expected
+suite-managed skips, and `pnpm e2e:docker` was available for this closeout.
+
+## Original Review Diff And Proof Reconciliation
 
 The intended tracked branch delta is limited to this proof note and the validation index entry:
 
@@ -184,10 +227,11 @@ restored so the review branch remains documentation-only.
 
 ## Follow-Up Queue
 
-- Remediate or explicitly risk-accept the six Codex Security findings in a separate source branch.
-- Add focused tests for production setup gating, submitted-token expiry, legal-clinic metadata DTOs,
-  memory invoice cross-firm duplicate ids, draft-export response redaction, and Mailgun altered-body
-  replay idempotency.
+- Remediate or explicitly risk-accept the remaining Codex Security findings in separate source
+  branches. OP-SEC-001 production setup gating is remediated by the 2026-06-12 follow-up above.
+- Add focused tests for submitted-token expiry, legal-clinic metadata DTOs, memory invoice
+  cross-firm duplicate ids, draft-export response redaction, and Mailgun altered-body replay
+  idempotency.
 - Triage the two code-review export idempotency issues before adding more long-running export
   request flows.
 - Add UI/UX assertions for dashboard fallback notices, live-region status updates, and public

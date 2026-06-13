@@ -167,8 +167,15 @@ export interface SetupRouteDependencies {
   origin: string;
 }
 
+const PRODUCTION_OPERATOR_LOCAL_SETUP_REASON =
+  "Production first-run setup is limited to operator-local loopback access before public exposure.";
+
 function isLoopbackAddress(address: string): boolean {
-  const normalized = address.replace(/^::ffff:/, "");
+  const normalized = address
+    .replace(/^::ffff:/, "")
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "")
+    .toLowerCase();
   if (normalized === "::1" || normalized === "127.0.0.1" || normalized === "localhost") {
     return true;
   }
@@ -180,16 +187,83 @@ function isDockerBridgeGateway(address: string): boolean {
   return /^172\.(1[6-9]|2\d|3[01])\.0\.1$/.test(normalized);
 }
 
-function assertSetupGate(request: FastifyRequest, options: SetupRouteDependencies): void {
-  if (options.nodeEnv === "production") return;
+function singleHeaderValue(
+  request: FastifyRequest,
+  headerName: "host" | "origin",
+): string | undefined {
+  const value = request.headers[headerName];
+  if (Array.isArray(value)) return value.length === 1 ? value[0] : undefined;
+  return typeof value === "string" ? value : undefined;
+}
+
+function authorityHostname(value: string | undefined): string | undefined {
+  if (!value?.trim()) return undefined;
+  try {
+    return new URL(`http://${value}`).hostname;
+  } catch {
+    return value.split(":")[0];
+  }
+}
+
+function hasProxyClientHeaders(request: FastifyRequest): boolean {
+  return Object.keys(request.headers).some((headerName) => {
+    const normalized = headerName.toLowerCase();
+    return (
+      normalized === "forwarded" ||
+      normalized === "x-real-ip" ||
+      normalized.startsWith("x-forwarded-")
+    );
+  });
+}
+
+function hasLoopbackHostHeader(request: FastifyRequest): boolean {
+  const hostname = authorityHostname(singleHeaderValue(request, "host"));
+  return Boolean(hostname && isLoopbackAddress(hostname));
+}
+
+function hasLoopbackOriginHeader(request: FastifyRequest): boolean {
+  const header = request.headers.origin;
+  if (header === undefined) return true;
+  if (Array.isArray(header) && header.length !== 1) return false;
+  const origin = Array.isArray(header) ? header[0] : header;
+  if (typeof origin !== "string" || !origin.trim()) return false;
+  try {
+    return isLoopbackAddress(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isProductionOperatorLocalRequest(request: FastifyRequest): boolean {
+  return (
+    isLoopbackAddress(request.ip) &&
+    hasLoopbackHostHeader(request) &&
+    hasLoopbackOriginHeader(request) &&
+    !hasProxyClientHeaders(request)
+  );
+}
+
+function setupGateFailureReason(
+  request: FastifyRequest,
+  options: SetupRouteDependencies,
+): string | undefined {
+  if (options.nodeEnv === "production") {
+    return isProductionOperatorLocalRequest(request)
+      ? undefined
+      : PRODUCTION_OPERATOR_LOCAL_SETUP_REASON;
+  }
   if (
     !isLoopbackAddress(request.ip) &&
     !(options.allowDockerBridgeSetup && isDockerBridgeGateway(request.ip))
   ) {
-    throw Object.assign(new Error("First-run setup is limited to loopback access"), {
-      statusCode: 403,
-    });
+    return "First-run setup is limited to loopback access";
   }
+  return undefined;
+}
+
+function assertSetupGate(request: FastifyRequest, options: SetupRouteDependencies): void {
+  const reason = setupGateFailureReason(request, options);
+  if (reason) throw Object.assign(new Error(reason), { statusCode: 403 });
 }
 
 function slugify(value: string): string {
@@ -283,8 +357,14 @@ export function registerSetupRoutes(
   server: FastifyInstance,
   options: SetupRouteDependencies,
 ): void {
-  server.get("/api/setup/status", async () => {
-    return options.repository.getSetupStatus();
+  server.get("/api/setup/status", async (request) => {
+    const status = await options.repository.getSetupStatus();
+    const gateReason =
+      options.nodeEnv === "production" ? setupGateFailureReason(request, options) : undefined;
+    if (status.required && !status.blocked && gateReason) {
+      return { required: false, blocked: true, reason: gateReason };
+    }
+    return status;
   });
 
   // codeql[js/missing-rate-limiting] The Fastify rate-limit plugin is registered before API routes, and this setup route has a tighter per-route cap.

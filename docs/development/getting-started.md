@@ -63,8 +63,8 @@ pnpm --filter @open-practice/web dev
 - In-memory persistence is available through `OPEN_PRACTICE_USE_MEMORY_REPO=true` or when no database URL is provided.
 - Development seed data is enabled with `OPEN_PRACTICE_DEV_SEED=true`.
 - Empty firm/user state exposes first-run setup. Non-production setup requests are limited to
-  loopback or the explicit local Docker bridge allowance; production setup should be completed only
-  over the intended TLS deployment surface.
+  loopback or the explicit local Docker bridge allowance; production setup is keyless but should be
+  completed from an operator-local loopback request before public exposure.
 - Background workers are scaffolded through `@open-practice/worker`. The local `pnpm dev` lane can run
   the worker against Redis, but provider processors return skipped/not-configured results until setup
   or owner-admin settings enable SMTP, IMAP inbound email, Mailgun inbound email, AI, OCR,
