@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-13
+**Last Updated:** 2026-06-14
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Six 2026-06-13 lanes are in mainline merge validation.               |
-| Next recommended pick | Refresh the live backlog after the merge/push/prune proof closes.   |
+| Current focus         | Six 2026-06-13 lanes are validated for mainline merge/push/prune.    |
+| Next recommended pick | Refresh the live backlog after the merge/push/prune proof closes.    |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,12 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-14 mainline merge proof for the six 2026-06-13 lanes is recorded in
+[OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-14.md).
+It covers the dependency-refresh, dead-code, duplicate-id parity, dashboard deeplink, OP-T155, and
+OP-T156 lane commits, overlap reconciliation, broad local CI, dependency checks, host/Docker/
+first-run/matterless/client-portal E2E, and the final push/prune gate.
 
 The 2026-06-13 OP-T156 client portal permissioned workspace branch adds logged-in client matter
 details, per-file document visibility, embedded signer actions, and client-portal browser UI/UX

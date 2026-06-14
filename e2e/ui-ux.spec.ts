@@ -240,15 +240,16 @@ test.describe("UI/UX screenshot QA", () => {
     await sweepDashboardSections({ app, disabledSections: new Set(), page, testInfo });
   });
 
-  test("surfaces unavailable dashboard deep links before falling back", async ({ app, page }) => {
+  test("surfaces unavailable dashboard deep links without echoing raw query values", async ({
+    app,
+    page,
+  }) => {
     await page.goto(app.url("/?section=not-a-section"));
     await expectPageHealthy(page);
 
-    await expect(
-      page.getByText('Dashboard section "not-a-section" is not available. Showing Matters.'),
-    ).toBeVisible();
-    await expect(page.locator("#matter-detail-title")).toContainText("Morgan tenancy dispute");
-    await expectDashboardSectionHealthy(page, "unknown section fallback");
+    await expectUnavailableDashboardSection(page, "Dashboard section unavailable", "unknown route");
+    await expect(page.locator("#matter-workspace")).not.toContainText("not-a-section");
+    await expect(page.getByRole("button", { name: labelPattern("Open Matters") })).toBeVisible();
   });
 
   test("renders matterless deep links without falling back to First Matter @matterless", async ({
