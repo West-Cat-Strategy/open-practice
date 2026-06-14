@@ -57,7 +57,8 @@ The 2026-06-11 whole-application review branch is recorded in
 It covers the repository-wide Codex Security scan artifact at
 `/tmp/codex-security-scans/open-practice/30a26a17_20260611T230554Z/`, code-review findings,
 UI/UX review findings, validation pass/fail evidence, and the then-open OSS reference-lock drift and
-host Playwright readiness blockers.
+host Playwright readiness blockers. A 2026-06-13 follow-up in the same proof closes the
+memory-backed matter-workspace duplicate-id parity candidate with focused database coverage.
 
 The test-suite pruning branch is recorded in
 [OP_TEST_SUITE_PRUNING_PROOF_2026-06-11.md](OP_TEST_SUITE_PRUNING_PROOF_2026-06-11.md).

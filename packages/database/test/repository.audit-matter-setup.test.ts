@@ -1,3 +1,4 @@
+import { type LedgerAccount } from "@open-practice/domain";
 import { describe, expect, it } from "vitest";
 import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
 
@@ -379,6 +380,330 @@ describe("repository operations activity redaction", () => {
 });
 
 describe("repository matter setup projection", () => {
+  it("keeps memory matter activity lookup maps scoped when child ids collide across firms", async () => {
+    const repository = new InMemoryOpenPracticeRepository({
+      seedSampleData: false,
+      firms: [
+        { id: "firm-west-collision", name: "West Collision Firm", defaultProvince: "BC" },
+        { id: "firm-east-collision", name: "East Collision Firm", defaultProvince: "ON" },
+      ],
+      users: [
+        {
+          id: "user-west-collision",
+          firmId: "firm-west-collision",
+          displayName: "West Synthetic Owner",
+          email: "west-collision@example.test",
+          role: "owner_admin",
+          assignedMatterIds: [],
+          mfaEnabled: false,
+        },
+        {
+          id: "user-east-collision",
+          firmId: "firm-east-collision",
+          displayName: "East Synthetic Owner",
+          email: "east-collision@example.test",
+          role: "owner_admin",
+          assignedMatterIds: [],
+          mfaEnabled: false,
+        },
+      ],
+    });
+    const contactId = "contact-collision-client";
+    const westMatterId = "matter-west-collision";
+    const eastMatterId = "matter-east-collision";
+
+    await repository.createMatterWithClient({
+      firmId: "firm-west-collision",
+      actorUserId: "user-west-collision",
+      matterId: westMatterId,
+      contactId,
+      partyId: "party-west-collision",
+      title: "West synthetic collision matter",
+      practiceArea: "Residential tenancy",
+      jurisdiction: "BC",
+      openedOn: "2026-04-25",
+      occurredAt: "2026-04-25T12:00:00.000Z",
+      auditEventId: "audit-west-collision",
+      client: {
+        kind: "person",
+        displayName: "West Synthetic Client",
+        identifiers: [{ type: "email", value: "west-client@example.test" }],
+      },
+    });
+    await repository.createMatterWithClient({
+      firmId: "firm-east-collision",
+      actorUserId: "user-east-collision",
+      matterId: eastMatterId,
+      contactId,
+      partyId: "party-east-collision",
+      title: "East synthetic collision matter",
+      practiceArea: "Civil litigation",
+      jurisdiction: "ON",
+      openedOn: "2026-04-25",
+      occurredAt: "2026-04-25T12:05:00.000Z",
+      auditEventId: "audit-east-collision",
+      client: {
+        kind: "person",
+        displayName: "East Synthetic Client",
+        identifiers: [{ type: "email", value: "east-client@example.test" }],
+      },
+    });
+
+    await repository.createDocumentUploadIntent({
+      id: "doc-west-collision",
+      firmId: "firm-west-collision",
+      matterId: westMatterId,
+      title: "West synthetic document",
+      storageKey: "synthetic/west/collision.pdf",
+      checksumSha256: "west-collision-checksum",
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.createDocumentUploadIntent({
+      id: "doc-east-collision",
+      firmId: "firm-east-collision",
+      matterId: eastMatterId,
+      title: "East synthetic document",
+      storageKey: "synthetic/east/collision.pdf",
+      checksumSha256: "east-collision-checksum",
+      classification: "general",
+      legalHold: false,
+    });
+    await repository.createTimeEntry({
+      id: "time-west-collision",
+      firmId: "firm-west-collision",
+      matterId: westMatterId,
+      userId: "user-west-collision",
+      performedAt: "2026-04-25T13:00:00.000Z",
+      minutes: 30,
+      rateCents: 10000,
+      narrative: "Synthetic west work",
+      billable: true,
+      billingStatus: "draft",
+    });
+    await repository.createTimeEntry({
+      id: "time-east-collision",
+      firmId: "firm-east-collision",
+      matterId: eastMatterId,
+      userId: "user-east-collision",
+      performedAt: "2026-04-25T13:05:00.000Z",
+      minutes: 45,
+      rateCents: 10000,
+      narrative: "Synthetic east work",
+      billable: true,
+      billingStatus: "draft",
+    });
+    await repository.createExpenseEntry({
+      id: "expense-west-collision",
+      firmId: "firm-west-collision",
+      matterId: westMatterId,
+      incurredAt: "2026-04-25",
+      amountCents: 1200,
+      category: "filing",
+      description: "Synthetic west expense",
+      reimbursable: true,
+      billingStatus: "draft",
+    });
+    await repository.createExpenseEntry({
+      id: "expense-east-collision",
+      firmId: "firm-east-collision",
+      matterId: eastMatterId,
+      incurredAt: "2026-04-25",
+      amountCents: 1800,
+      category: "filing",
+      description: "Synthetic east expense",
+      reimbursable: true,
+      billingStatus: "draft",
+    });
+    await repository.createShareLink({
+      id: "share-collision",
+      firmId: "firm-west-collision",
+      matterId: westMatterId,
+      tokenHash: "share-token-west-collision",
+      grantedByUserId: "user-west-collision",
+      permissions: ["view_documents"],
+      requireEmailVerification: false,
+      createdAt: "2026-04-25T14:00:00.000Z",
+    });
+    await repository.createShareLink({
+      id: "share-collision",
+      firmId: "firm-east-collision",
+      matterId: eastMatterId,
+      tokenHash: "share-token-east-collision",
+      grantedByUserId: "user-east-collision",
+      permissions: ["view_documents"],
+      requireEmailVerification: false,
+      createdAt: "2026-04-25T14:05:00.000Z",
+    });
+    await repository.createExternalUploadLink({
+      id: "upload-collision",
+      firmId: "firm-west-collision",
+      matterId: westMatterId,
+      tokenHash: "upload-token-west-collision",
+      requestedByUserId: "user-west-collision",
+      expiresAt: "2026-05-01T00:00:00.000Z",
+      maxUploads: 2,
+      usedUploads: 0,
+      createdAt: "2026-04-25T14:10:00.000Z",
+    });
+    await repository.createExternalUploadLink({
+      id: "upload-collision",
+      firmId: "firm-east-collision",
+      matterId: eastMatterId,
+      tokenHash: "upload-token-east-collision",
+      requestedByUserId: "user-east-collision",
+      expiresAt: "2026-05-01T00:00:00.000Z",
+      maxUploads: 2,
+      usedUploads: 0,
+      createdAt: "2026-04-25T14:15:00.000Z",
+    });
+    await repository.createAccessLog({
+      id: "access-share-west-collision",
+      firmId: "firm-west-collision",
+      shareLinkId: "share-collision",
+      resourceType: "document",
+      resourceId: "doc-west-collision",
+      action: "view",
+      occurredAt: "2026-04-25T14:20:00.000Z",
+      metadata: {},
+    });
+    await repository.createAccessLog({
+      id: "access-upload-west-collision",
+      firmId: "firm-west-collision",
+      externalUploadLinkId: "upload-collision",
+      resourceType: "document",
+      resourceId: "doc-west-collision",
+      action: "upload",
+      occurredAt: "2026-04-25T14:25:00.000Z",
+      metadata: {},
+    });
+    (
+      repository as unknown as {
+        ledgerAccounts: LedgerAccount[];
+      }
+    ).ledgerAccounts = [
+      {
+        id: "acct-collision",
+        firmId: "firm-west-collision",
+        name: "West collision expense",
+        type: "expense",
+      },
+      {
+        id: "acct-west-offset",
+        firmId: "firm-west-collision",
+        name: "West collision revenue",
+        type: "operating_revenue",
+      },
+      {
+        id: "acct-collision",
+        firmId: "firm-east-collision",
+        name: "East collision trust",
+        type: "trust_asset",
+      },
+    ];
+    await repository.postLedgerTransaction({
+      id: "ledger-west-collision",
+      firmId: "firm-west-collision",
+      idempotencyKey: "ledger-west-collision",
+      postedByUserId: "user-west-collision",
+      postedAt: "2026-04-25T14:30:00.000Z",
+      entries: [
+        {
+          firmId: "firm-west-collision",
+          matterId: westMatterId,
+          clientId: contactId,
+          accountId: "acct-collision",
+          debitCents: 500,
+          creditCents: 0,
+          memo: "Synthetic west collision debit",
+        },
+        {
+          firmId: "firm-west-collision",
+          matterId: westMatterId,
+          clientId: contactId,
+          accountId: "acct-west-offset",
+          debitCents: 0,
+          creditCents: 500,
+          memo: "Synthetic west collision credit",
+        },
+      ],
+    });
+
+    const westUser = (await repository.getUser("firm-west-collision", "user-west-collision"))!;
+    const eastUser = (await repository.getUser("firm-east-collision", "user-east-collision"))!;
+    const [westMatter] = await repository.listMattersForUser(westUser);
+    const [eastMatter] = await repository.listMattersForUser(eastUser);
+    const entriesById = new Map(westMatter?.activity.map((entry) => [entry.id, entry]));
+
+    expect(westMatter).toMatchObject({
+      id: westMatterId,
+      firmId: "firm-west-collision",
+      title: "West synthetic collision matter",
+    });
+    expect(entriesById.get("party:party-west-collision")).toMatchObject({
+      title: "Matter party: West Synthetic Client",
+    });
+    expect(entriesById.get("access:access-share-west-collision")).toMatchObject({
+      kind: "share",
+      matterId: westMatterId,
+    });
+    expect(entriesById.get("access:access-upload-west-collision")).toMatchObject({
+      kind: "upload",
+      matterId: westMatterId,
+    });
+    expect(
+      entriesById.get("ledger:ledger-west-collision:matter-west-collision:2026-04-25T14:30:00.000Z")
+        ?.metadata,
+    ).toMatchObject({
+      accountTypes: ["expense", "operating_revenue"],
+    });
+    expect(westMatter?.activity.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining([
+        "audit-west-collision",
+        "share:share-collision",
+        "upload-link:upload-collision",
+        "time:time-west-collision",
+        "expense:expense-west-collision",
+      ]),
+    );
+    expect(westMatter?.activity.map((entry) => entry.id)).not.toEqual(
+      expect.arrayContaining([
+        "audit-east-collision",
+        "time:time-east-collision",
+        "expense:expense-east-collision",
+      ]),
+    );
+    expect(JSON.stringify(westMatter?.activity)).not.toContain("East Synthetic Client");
+    expect(JSON.stringify(westMatter?.activity)).not.toContain(eastMatterId);
+    expect(
+      JSON.stringify(
+        entriesById.get(
+          "ledger:ledger-west-collision:matter-west-collision:2026-04-25T14:30:00.000Z",
+        ),
+      ),
+    ).not.toContain("trust_asset");
+    expect(westMatter?.setupProfile.financialSnapshot).toMatchObject({
+      unbilledTimeEntryCount: 1,
+      unbilledMinutes: 30,
+      unbilledExpenseCount: 1,
+      unbilledExpenseCents: 1200,
+    });
+
+    expect(eastMatter).toMatchObject({
+      id: eastMatterId,
+      firmId: "firm-east-collision",
+      title: "East synthetic collision matter",
+    });
+    expect(eastMatter?.activity.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining([
+        "audit-east-collision",
+        "party:party-east-collision",
+        "time:time-east-collision",
+        "expense:expense-east-collision",
+      ]),
+    );
+  });
+
   it("returns setup profiles only for authorized matter summaries", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const user = (await repository.getUser("firm-west-legal", "user-licensee"))!;

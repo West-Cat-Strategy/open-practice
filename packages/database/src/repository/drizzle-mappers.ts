@@ -1746,13 +1746,28 @@ export function buildActivityTimeline(input: {
 }): ActivityTimelineEntry[] {
   const matterId = input.matter.id;
   const matterOpenedAt = matterDateToOccurredAt(input.matter.openedOn);
-  const contactsById = new Map(input.contacts.map((contact) => [contact.id, contact]));
-  const shareMatterIds = new Map(input.shareLinks.map((link) => [link.id, link.matterId]));
+  const contactsById = new Map(
+    input.contacts
+      .filter((contact) => contact.firmId === input.firmId)
+      .map((contact) => [contact.id, contact]),
+  );
+  const portalGrants = input.portalGrants.filter(
+    (grant) => grant.firmId === input.firmId && grant.matterId === matterId,
+  );
+  const shareMatterIds = new Map(
+    input.shareLinks
+      .filter((link) => link.firmId === input.firmId)
+      .map((link) => [link.id, link.matterId]),
+  );
   const uploadMatterIds = new Map(
-    input.externalUploadLinks.map((link) => [link.id, link.matterId]),
+    input.externalUploadLinks
+      .filter((link) => link.firmId === input.firmId)
+      .map((link) => [link.id, link.matterId]),
   );
   const accountTypesById = new Map(
-    input.ledgerAccounts.map((account) => [account.id, account.type]),
+    input.ledgerAccounts
+      .filter((account) => account.firmId === input.firmId)
+      .map((account) => [account.id, account.type]),
   );
   const ledgerGroups = new Map<string, LedgerEntry[]>();
   for (const entry of input.ledgerEntries.filter(
@@ -1813,7 +1828,7 @@ export function buildActivityTimeline(input: {
         metadata: {
           checksumStatus: document.checksumStatus,
           scanStatus: document.scanStatus,
-          portalShareable: input.portalGrants.some((grant) =>
+          portalShareable: portalGrants.some((grant) =>
             canShareDocumentThroughPortal({ document, grant }),
           ),
         },
