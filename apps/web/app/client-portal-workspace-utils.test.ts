@@ -3,10 +3,13 @@ import {
   clientPortalAccessLabel,
   clientPortalActionFamilyLabel,
   clientPortalAttentionCount,
+  clientPortalDocumentsForMatter,
+  clientPortalMatterDetails,
   clientPortalMatterActionGroups,
   clientPortalMatterActionLabel,
   clientPortalMatterBillingGroups,
   clientPortalMoneyLabel,
+  clientPortalSignaturesForMatter,
 } from "./client-portal-workspace-utils";
 import type { ClientPortalWorkspaceResponse } from "./types";
 
@@ -31,6 +34,47 @@ const workspace: ClientPortalWorkspaceResponse = {
       status: "open",
       permissions: ["view_documents"],
       actionCount: 2,
+    },
+  ],
+  matterDetails: [
+    {
+      id: "matter-001",
+      number: "2026-0001",
+      title: "Synthetic matter",
+      status: "open",
+      practiceArea: "Residential tenancy",
+      jurisdiction: "BC",
+      openedOn: "2026-01-10",
+      permissions: ["view_documents", "sign"],
+      documentCount: 1,
+      signatureCount: 1,
+      actionCount: 3,
+    },
+  ],
+  documents: [
+    {
+      id: "doc-001",
+      matterId: "matter-001",
+      title: "Client visible disclosure.pdf",
+      classification: "general",
+      version: 1,
+      uploadedAt: "2026-06-10T10:00:00.000Z",
+      verifiedAt: "2026-06-10T10:10:00.000Z",
+      accessId: "portal-document-access-001",
+      accessStatus: "active",
+    },
+  ],
+  signatures: [
+    {
+      id: "signature-001",
+      matterId: "matter-001",
+      documentId: "doc-001",
+      documentTitle: "Client visible disclosure.pdf",
+      title: "Disclosure acknowledgment",
+      status: "sent",
+      signerStatus: "sent",
+      createdAt: "2026-06-11T10:00:00.000Z",
+      actionState: "ready_to_sign",
     },
   ],
   actions: [
@@ -62,6 +106,7 @@ describe("client portal workspace helpers", () => {
     expect(clientPortalActionFamilyLabel("client_update")).toBe("Client update");
     expect(clientPortalActionFamilyLabel("client_action")).toBe("Client action");
     expect(clientPortalActionFamilyLabel("payment_request")).toBe("Payment request");
+    expect(clientPortalActionFamilyLabel("signature")).toBe("Signature");
   });
 
   it("summarizes attention and matter action counts", () => {
@@ -169,6 +214,62 @@ describe("client portal workspace helpers", () => {
 
     expect(clientPortalMatterBillingGroups(enriched)).toEqual([
       expect.objectContaining({ matterId: "matter-001", balanceDueCents: 13230 }),
+    ]);
+  });
+
+  it("groups safe matter details, shared files, and signatures by visible matter", () => {
+    const enriched: ClientPortalWorkspaceResponse = {
+      ...workspace,
+      matterDetails: [
+        ...(workspace.matterDetails ?? []),
+        {
+          id: "matter-hidden",
+          number: "2026-HIDDEN",
+          title: "Hidden matter",
+          status: "open",
+          practiceArea: "Hidden",
+          jurisdiction: "OTHER",
+          permissions: ["view_documents"],
+          documentCount: 1,
+          signatureCount: 1,
+          actionCount: 0,
+        },
+      ],
+      documents: [
+        ...(workspace.documents ?? []),
+        {
+          id: "doc-hidden",
+          matterId: "matter-hidden",
+          title: "Hidden.pdf",
+          classification: "general",
+          version: 1,
+          accessId: "portal-document-access-hidden",
+          accessStatus: "active",
+        },
+      ],
+      signatures: [
+        ...(workspace.signatures ?? []),
+        {
+          id: "signature-hidden",
+          matterId: "matter-hidden",
+          documentId: "doc-hidden",
+          title: "Hidden signature",
+          status: "sent",
+          signerStatus: "sent",
+          createdAt: "2026-06-11T10:00:00.000Z",
+          actionState: "ready_to_sign",
+        },
+      ],
+    };
+
+    expect(clientPortalMatterDetails(enriched)).toEqual([
+      expect.objectContaining({ id: "matter-001", documentCount: 1, signatureCount: 1 }),
+    ]);
+    expect(clientPortalDocumentsForMatter(enriched, "matter-001")).toEqual([
+      expect.objectContaining({ id: "doc-001", accessStatus: "active" }),
+    ]);
+    expect(clientPortalSignaturesForMatter(enriched, "matter-001")).toEqual([
+      expect.objectContaining({ id: "signature-001", actionState: "ready_to_sign" }),
     ]);
   });
 });

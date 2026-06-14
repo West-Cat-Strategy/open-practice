@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { contacts } from "./contacts.js";
 import { firms, users } from "./core.js";
+import { documents } from "./documents.js";
 import { matters } from "./matters.js";
 
 export const portalGrants = pgTable("portal_grants", {
@@ -23,6 +24,7 @@ export const portalGrants = pgTable("portal_grants", {
   contactId: text("contact_id")
     .notNull()
     .references(() => contacts.id),
+  accountUserId: text("account_user_id").references(() => users.id),
   grantedByUserId: text("granted_by_user_id")
     .notNull()
     .references(() => users.id),
@@ -30,6 +32,40 @@ export const portalGrants = pgTable("portal_grants", {
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
 });
+
+export const portalDocumentAccess = pgTable(
+  "portal_document_access",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => documents.id),
+    portalGrantId: text("portal_grant_id")
+      .notNull()
+      .references(() => portalGrants.id),
+    permission: text("permission").notNull(),
+    grantedByUserId: text("granted_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => ({
+    firmMatterDocument: index("portal_document_access_firm_matter_document_idx").on(
+      table.firmId,
+      table.matterId,
+      table.documentId,
+    ),
+    firmGrant: index("portal_document_access_firm_grant_idx").on(table.firmId, table.portalGrantId),
+  }),
+);
 
 export const shareLinks = pgTable(
   "share_links",

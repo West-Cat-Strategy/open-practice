@@ -3,6 +3,7 @@ import type {
   ExternalUploadLinkRecord,
   Matter,
   PortalGrant,
+  PortalDocumentAccess,
   ShareLinkRecord,
   User,
 } from "@open-practice/domain";
@@ -10,11 +11,13 @@ import { IdempotencyKeyConflictError, canonicalizeForIdempotency, clone } from "
 import type {
   AccessLogListOptions,
   ExternalUploadLinkListOptions,
+  PortalDocumentAccessListOptions,
   ShareLinkListOptions,
 } from "../portal-access-contracts.js";
 
 export interface MemoryPortalAccessStore {
   portalGrants: PortalGrant[];
+  portalDocumentAccess: PortalDocumentAccess[];
   shareLinks: ShareLinkRecord[];
   externalUploadLinks: ExternalUploadLinkRecord[];
   accessLogs: AccessLogRecord[];
@@ -35,6 +38,66 @@ export function createMemoryPortalGrant(
 ): PortalGrant {
   store.portalGrants.push(clone(grant));
   return clone(grant);
+}
+
+export function listMemoryPortalDocumentAccess(
+  store: MemoryPortalAccessStore,
+  firmId: string,
+  options: PortalDocumentAccessListOptions = {},
+): PortalDocumentAccess[] {
+  return clone(
+    store.portalDocumentAccess
+      .filter(
+        (access) =>
+          access.firmId === firmId &&
+          (!options.matterId || access.matterId === options.matterId) &&
+          (!options.documentId || access.documentId === options.documentId) &&
+          (!options.portalGrantId || access.portalGrantId === options.portalGrantId),
+      )
+      .sort(
+        (left, right) =>
+          right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id),
+      ),
+  );
+}
+
+export function createMemoryPortalDocumentAccess(
+  store: MemoryPortalAccessStore,
+  access: PortalDocumentAccess,
+): PortalDocumentAccess {
+  const grant = store.portalGrants.find(
+    (candidate) => candidate.firmId === access.firmId && candidate.id === access.portalGrantId,
+  );
+  if (!grant) throw new Error(`Unknown portal grant ${access.portalGrantId}`);
+  if (grant.matterId !== access.matterId) {
+    throw new Error(`Portal document access matter does not match grant ${access.portalGrantId}`);
+  }
+  const matter = store.matters.find(
+    (candidate) => candidate.firmId === access.firmId && candidate.id === access.matterId,
+  );
+  if (!matter) throw new Error(`Unknown portal document access matter ${access.matterId}`);
+  const user = store.users.find(
+    (candidate) => candidate.firmId === access.firmId && candidate.id === access.grantedByUserId,
+  );
+  if (!user) throw new Error(`Unknown portal document access grantor ${access.grantedByUserId}`);
+  store.portalDocumentAccess.push(clone(access));
+  return clone(access);
+}
+
+export function revokeMemoryPortalDocumentAccess(
+  store: MemoryPortalAccessStore,
+  input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  },
+): PortalDocumentAccess | undefined {
+  const access = store.portalDocumentAccess.find(
+    (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+  );
+  if (!access) return undefined;
+  access.revokedAt = input.revokedAt;
+  return clone(access);
 }
 
 export function listMemoryShareLinks(

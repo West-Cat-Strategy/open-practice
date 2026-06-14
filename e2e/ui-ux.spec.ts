@@ -7,6 +7,7 @@ import {
   expectDashboardSectionHealthy,
   expectNavigationLabelsReadable,
   expectNoUnexpectedHorizontalOverflow,
+  expectNoVisibleUiCollisions,
 } from "./helpers/ui-ux-assertions";
 
 const hostDisabledSections = new Set<OpenPracticeRouteId>(["externalUploads"]);
@@ -239,6 +240,17 @@ test.describe("UI/UX screenshot QA", () => {
     await sweepDashboardSections({ app, disabledSections: new Set(), page, testInfo });
   });
 
+  test("surfaces unavailable dashboard deep links before falling back", async ({ app, page }) => {
+    await page.goto(app.url("/?section=not-a-section"));
+    await expectPageHealthy(page);
+
+    await expect(
+      page.getByText('Dashboard section "not-a-section" is not available. Showing Matters.'),
+    ).toBeVisible();
+    await expect(page.locator("#matter-detail-title")).toContainText("Morgan tenancy dispute");
+    await expectDashboardSectionHealthy(page, "unknown section fallback");
+  });
+
   test("renders matterless deep links without falling back to First Matter @matterless", async ({
     app,
     page,
@@ -265,6 +277,41 @@ test.describe("UI/UX screenshot QA", () => {
       await expectNavigationLabelsReadable(page, `${sectionId} matterless deep link`);
       await expectNoUnexpectedHorizontalOverflow(page, `${sectionId} matterless deep link`);
       await attachUiScreenshot(page, testInfo, `dashboard-matterless-${sectionId}`);
+    }
+  });
+
+  test("keeps the client portal workspace readable at desktop and mobile widths @client-portal", async ({
+    app,
+    page,
+  }, testInfo) => {
+    expect(process.env.DEV_AUTH_USER_ID).toBe("user-client-external");
+    await app.ensureClientPortalAccount();
+
+    for (const width of [1100, 720, 520]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(app.url("/"));
+      await expectPageHealthy(page);
+
+      await expect(page.getByRole("heading", { name: "Ada Morgan" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Matter details" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Shared files" })).toBeVisible();
+      await expect(
+        page.getByLabel("Shared files").getByText("Client portal E2E disclosure.pdf"),
+      ).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Signatures" })).toBeVisible();
+      await expect(
+        page.getByLabel("Signatures").getByText("Client portal E2E signature"),
+      ).toBeVisible();
+      await expect(
+        page.getByLabel("Signatures").getByText("Client portal E2E view acknowledgement"),
+      ).toBeVisible();
+      await expect(
+        page.getByLabel("Signatures").getByText("Client portal E2E decline option"),
+      ).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Billing" })).toBeVisible();
+      await expectNoUnexpectedHorizontalOverflow(page, `client portal ${width}px`);
+      await expectNoVisibleUiCollisions(page, `client portal ${width}px`);
+      await attachUiScreenshot(page, testInfo, `client-portal-${width}px`, { fullPage: true });
     }
   });
 

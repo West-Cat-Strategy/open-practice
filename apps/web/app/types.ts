@@ -813,7 +813,8 @@ export type ClientPortalActionFamily =
   | "receipt"
   | "client_update"
   | "client_action"
-  | "payment_request";
+  | "payment_request"
+  | "signature";
 
 export interface ClientPortalActionDetail {
   label: string;
@@ -889,6 +890,54 @@ export interface ClientPortalBillingWorkspace {
   matterBills: ClientPortalMatterBillingGroup[];
 }
 
+export interface ClientPortalMatterDetail {
+  id: string;
+  number: string;
+  title: string;
+  status: Matter["status"];
+  practiceArea: string;
+  jurisdiction: Matter["jurisdiction"];
+  openedOn?: string;
+  closedOn?: string;
+  permissions: ClientPortalPermission[];
+  documentCount: number;
+  signatureCount: number;
+  actionCount: number;
+}
+
+export interface ClientPortalDocumentSummary {
+  id: string;
+  matterId: string;
+  title: string;
+  classification: DocumentRecord["classification"];
+  version: number;
+  uploadedAt?: string;
+  verifiedAt?: string;
+  accessId: string;
+  accessStatus: "active";
+  expiresAt?: string;
+}
+
+export type ClientPortalSignatureActionState =
+  | "ready_to_sign"
+  | "viewed"
+  | "completed"
+  | "declined";
+
+export interface ClientPortalSignatureSummary {
+  id: string;
+  matterId: string;
+  documentId: string;
+  documentTitle?: string;
+  title: string;
+  status: string;
+  signerStatus: string;
+  createdAt: string;
+  completedAt?: string;
+  declinedAt?: string;
+  actionState: ClientPortalSignatureActionState;
+}
+
 export interface ClientPortalWorkspaceResponse {
   account: Pick<User, "id" | "displayName" | "email" | "role">;
   access: {
@@ -906,8 +955,32 @@ export interface ClientPortalWorkspaceResponse {
     actionCount: number;
   }>;
   billing?: ClientPortalBillingWorkspace;
+  matterDetails?: ClientPortalMatterDetail[];
+  documents?: ClientPortalDocumentSummary[];
+  signatures?: ClientPortalSignatureSummary[];
   matterActions?: ClientPortalMatterActionGroup[];
   actions: ClientPortalActionSummary[];
+}
+
+export interface PortalDocumentAccessSummary {
+  id: string;
+  firmId: string;
+  matterId: string;
+  documentId: string;
+  portalGrantId: string;
+  permission: "view_document";
+  grantedByUserId: string;
+  createdAt: string;
+  expiresAt?: string;
+  revokedAt?: string;
+}
+
+export interface PortalDocumentAccessListResponse {
+  access: PortalDocumentAccessSummary[];
+}
+
+export interface PortalDocumentAccessMutationResponse {
+  access?: PortalDocumentAccessSummary;
 }
 
 export interface ClientPortalAccountSetupResponse {

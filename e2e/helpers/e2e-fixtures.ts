@@ -16,6 +16,16 @@ type ShareLinkFixture = {
   verificationCode: string;
 };
 
+type ClientPortalAccountFixture = {
+  fixtures?: {
+    documentId?: string;
+    staffGrantableDocumentId?: string;
+    portalDocumentAccessId?: string;
+    signatureRequestId?: string;
+    signatureRequestIds?: string[];
+  };
+};
+
 export const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://localhost:34110";
 export const webBaseUrl = process.env.E2E_WEB_BASE_URL ?? "http://localhost:33110";
 
@@ -190,8 +200,10 @@ export class OpenPracticeE2EClient {
     return response.token;
   }
 
-  async ensureClientPortalAccount(userId = "user-client-external"): Promise<void> {
-    await this.apiJson("/api/e2e/client-portal-account", {
+  async ensureClientPortalAccount(
+    userId = "user-client-external",
+  ): Promise<ClientPortalAccountFixture> {
+    return await this.apiJson<ClientPortalAccountFixture>("/api/e2e/client-portal-account", {
       body: {
         matterId: "matter-001",
         contactId: "contact-ada",

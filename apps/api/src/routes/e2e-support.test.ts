@@ -155,12 +155,93 @@ describe("e2e support routes", () => {
         status: "active",
         permissions: ["view_documents", "upload_documents", "message", "sign"],
       },
+      fixtures: {
+        documentId: "doc-e2e-client-portal-matter-001",
+        staffGrantableDocumentId: "doc-e2e-client-portal-grantable-matter-001",
+        portalDocumentAccessId: "portal-document-access-e2e-user-client-external",
+        signatureRequestId: "signature-e2e-client-portal-matter-001",
+        signatureRequestIds: [
+          "signature-e2e-client-portal-matter-001",
+          "signature-e2e-client-portal-viewed-matter-001",
+          "signature-e2e-client-portal-declined-matter-001",
+        ],
+      },
     });
     await expect(
       repository.getUser("firm-west-legal", "user-client-external"),
     ).resolves.toMatchObject({
       role: "client_external",
     });
+    expect(
+      (await repository.listPortalGrants("firm-west-legal")).some(
+        (grant) =>
+          grant.matterId === "matter-001" &&
+          grant.contactId === "contact-ada" &&
+          grant.accountUserId === "user-client-external",
+      ),
+    ).toBe(true);
+    await expect(
+      repository.getDocument("firm-west-legal", "doc-e2e-client-portal-matter-001"),
+    ).resolves.toMatchObject({
+      title: "Client portal E2E disclosure.pdf",
+      classification: "general",
+      uploadStatus: "verified",
+      checksumStatus: "verified",
+      scanStatus: "passed",
+    });
+    await expect(
+      repository.getDocument("firm-west-legal", "doc-e2e-client-portal-grantable-matter-001"),
+    ).resolves.toMatchObject({
+      title: "Client portal E2E staff grant.pdf",
+      classification: "general",
+      uploadStatus: "verified",
+      checksumStatus: "verified",
+      scanStatus: "passed",
+    });
+    await expect(
+      repository.listPortalDocumentAccess("firm-west-legal", {
+        matterId: "matter-001",
+        documentId: "doc-e2e-client-portal-matter-001",
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "portal-document-access-e2e-user-client-external",
+        permission: "view_document",
+      }),
+    ]);
+    await expect(repository.listSignatureRequests("firm-west-legal")).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "signature-e2e-client-portal-matter-001",
+          documentId: "doc-e2e-client-portal-matter-001",
+          status: "sent",
+        }),
+        expect.objectContaining({
+          id: "signature-e2e-client-portal-viewed-matter-001",
+          documentId: "doc-e2e-client-portal-matter-001",
+          status: "sent",
+        }),
+        expect.objectContaining({
+          id: "signature-e2e-client-portal-declined-matter-001",
+          documentId: "doc-e2e-client-portal-matter-001",
+          status: "sent",
+        }),
+      ]),
+    );
+    for (const signatureRequestId of [
+      "signature-e2e-client-portal-matter-001",
+      "signature-e2e-client-portal-viewed-matter-001",
+      "signature-e2e-client-portal-declined-matter-001",
+    ]) {
+      await expect(
+        repository.listSignatureRequestSigners("firm-west-legal", signatureRequestId),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          email: "ada@example.test",
+          status: "sent",
+        }),
+      ]);
+    }
     await expect(
       repository.getConversationThread("firm-west-legal", "conversation-thread-e2e-matter-001"),
     ).resolves.toMatchObject({

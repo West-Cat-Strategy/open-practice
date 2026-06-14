@@ -1,7 +1,10 @@
 import type {
   ClientPortalActionFamily,
+  ClientPortalDocumentSummary,
   ClientPortalMatterBillingGroup,
+  ClientPortalMatterDetail,
   ClientPortalMatterActionGroup,
+  ClientPortalSignatureSummary,
   ClientPortalWorkspaceResponse,
 } from "./types";
 
@@ -15,6 +18,7 @@ export function clientPortalActionFamilyLabel(family: ClientPortalActionFamily):
     client_update: "Client update",
     client_action: "Client action",
     payment_request: "Payment request",
+    signature: "Signature",
   };
   return labels[family];
 }
@@ -58,6 +62,41 @@ export function clientPortalMatterActionGroups(
       actions,
     };
   });
+}
+
+export function clientPortalMatterDetails(
+  workspace: ClientPortalWorkspaceResponse,
+): ClientPortalMatterDetail[] {
+  const visibleMatterIds = new Set(workspace.matters.map((matter) => matter.id));
+  if (workspace.matterDetails && workspace.matterDetails.length > 0) {
+    return workspace.matterDetails.filter((detail) => visibleMatterIds.has(detail.id));
+  }
+  return workspace.matters.map((matter) => ({
+    id: matter.id,
+    number: matter.number,
+    title: matter.title,
+    status: matter.status,
+    practiceArea: "Matter",
+    jurisdiction: "OTHER",
+    permissions: matter.permissions,
+    documentCount: 0,
+    signatureCount: 0,
+    actionCount: matter.actionCount,
+  }));
+}
+
+export function clientPortalDocumentsForMatter(
+  workspace: ClientPortalWorkspaceResponse,
+  matterId: string,
+): ClientPortalDocumentSummary[] {
+  return (workspace.documents ?? []).filter((document) => document.matterId === matterId);
+}
+
+export function clientPortalSignaturesForMatter(
+  workspace: ClientPortalWorkspaceResponse,
+  matterId: string,
+): ClientPortalSignatureSummary[] {
+  return (workspace.signatures ?? []).filter((signature) => signature.matterId === matterId);
 }
 
 export function clientPortalMatterBillingGroups(

@@ -4,6 +4,52 @@ import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
 import { now } from "./repository.fixtures.js";
 
 describe("repository portal links and access logs", () => {
+  it("manages per-document portal access in memory", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const grant = await repository.createPortalGrant({
+      id: "portal-grant-document-access",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      contactId: "contact-ada",
+      accountUserId: "user-client-external",
+      grantedByUserId: "user-admin",
+      permissions: ["view_documents"],
+    });
+
+    const access = await repository.createPortalDocumentAccess({
+      id: "portal-document-access-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      documentId: "doc-001",
+      portalGrantId: grant.id,
+      permission: "view_document",
+      grantedByUserId: "user-admin",
+      createdAt: now,
+      expiresAt: "2026-05-01T00:00:00.000Z",
+    });
+
+    await expect(
+      repository.listPortalDocumentAccess("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toMatchObject([
+      {
+        id: access.id,
+        documentId: "doc-001",
+        portalGrantId: grant.id,
+        permission: "view_document",
+      },
+    ]);
+    await expect(
+      repository.listPortalDocumentAccess("firm-west-legal", { portalGrantId: grant.id }),
+    ).resolves.toMatchObject([{ id: access.id }]);
+    await expect(
+      repository.revokePortalDocumentAccess({
+        firmId: "firm-west-legal",
+        id: access.id,
+        revokedAt: "2026-04-25T13:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({ revokedAt: "2026-04-25T13:00:00.000Z" });
+  });
+
   it("persists share links and access logs in memory", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const share = await repository.createShareLink({

@@ -184,10 +184,24 @@ export interface PortalGrant {
   firmId: string;
   matterId: string;
   contactId: string;
+  accountUserId?: string;
   grantedByUserId: string;
   expiresAt?: string;
   revokedAt?: string;
   permissions: Array<"view_documents" | "upload_documents" | "message" | "sign">;
+}
+
+export interface PortalDocumentAccess {
+  id: string;
+  firmId: string;
+  matterId: string;
+  documentId: string;
+  portalGrantId: string;
+  permission: "view_document";
+  grantedByUserId: string;
+  createdAt: string;
+  expiresAt?: string;
+  revokedAt?: string;
 }
 
 export interface TimeEntry {

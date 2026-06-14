@@ -75,6 +75,7 @@ import {
   type MatterParty,
   type PaymentAllocationRecord,
   type PortalGrant,
+  type PortalDocumentAccess,
   type PostedLedgerTransaction,
   type ProviderSettingRecord,
   type PublicConsultationIntakeRecord,
@@ -429,6 +430,7 @@ import {
   claimMemoryExternalUploadUse,
   createMemoryAccessLog,
   createMemoryExternalUploadLink,
+  createMemoryPortalDocumentAccess,
   createMemoryPortalGrant,
   createMemoryShareLink,
   getMemoryExternalUploadLinkByTokenHash,
@@ -436,8 +438,10 @@ import {
   getMemoryShareLinkByTokenHash,
   listMemoryAccessLogs,
   listMemoryExternalUploadLinks,
+  listMemoryPortalDocumentAccess,
   listMemoryPortalGrants,
   listMemoryShareLinks,
+  revokeMemoryPortalDocumentAccess,
   revokeMemoryExternalUploadLink,
   revokeMemoryShareLink,
   type MemoryPortalAccessStore,
@@ -530,6 +534,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private calendarGuestLinks: CalendarGuestLinkRecord[] = [];
   private taskDeadlines: TaskDeadlineRecord[];
   private portalGrants: PortalGrant[];
+  private portalDocumentAccess: PortalDocumentAccess[] = [];
   private externalUploadLinks: ExternalUploadLinkRecord[] = [];
   private savedOperationalViewDefinitions: SavedOperationalViewDefinition[] = [];
   private timeEntries: TimeEntry[];
@@ -777,6 +782,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       timeEntries: this.timeEntries,
       expenseEntries: this.expenseEntries,
       portalGrants: this.portalGrants,
+      portalDocumentAccess: this.portalDocumentAccess,
       shareLinks: this.shareLinks,
       externalUploadLinks: this.externalUploadLinks,
       accessLogs: this.accessLogs,
@@ -1291,6 +1297,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private get portalAccessStore(): MemoryPortalAccessStore {
     return {
       portalGrants: this.portalGrants,
+      portalDocumentAccess: this.portalDocumentAccess,
       shareLinks: this.shareLinks,
       externalUploadLinks: this.externalUploadLinks,
       accessLogs: this.accessLogs,
@@ -1325,6 +1332,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     this.calendarSchedulingRequests = seeded ? clone(sampleCalendarSchedulingRequests) : [];
     this.taskDeadlines = seeded ? clone(sampleTaskDeadlines) : [];
     this.portalGrants = seeded ? clone(samplePortalGrants) : [];
+    this.portalDocumentAccess = [];
     this.timeEntries = seeded ? clone(sampleTimeEntries) : [];
     this.expenseEntries = seeded ? clone(sampleExpenseEntries) : [];
     this.invoices = seeded ? clone(sampleInvoices) : [];
@@ -1933,6 +1941,25 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async createPortalGrant(grant: Parameters<OpenPracticeRepository["createPortalGrant"]>[0]) {
     return createMemoryPortalGrant(this.portalAccessStore, grant);
+  }
+
+  async listPortalDocumentAccess(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listPortalDocumentAccess"]>[1] = {},
+  ) {
+    return listMemoryPortalDocumentAccess(this.portalAccessStore, firmId, options);
+  }
+
+  async createPortalDocumentAccess(
+    access: Parameters<OpenPracticeRepository["createPortalDocumentAccess"]>[0],
+  ) {
+    return createMemoryPortalDocumentAccess(this.portalAccessStore, access);
+  }
+
+  async revokePortalDocumentAccess(
+    input: Parameters<OpenPracticeRepository["revokePortalDocumentAccess"]>[0],
+  ) {
+    return revokeMemoryPortalDocumentAccess(this.portalAccessStore, input);
   }
 
   async listShareLinks(

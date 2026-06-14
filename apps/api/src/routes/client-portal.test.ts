@@ -54,9 +54,106 @@ function testServer(input: {
   return server;
 }
 
+async function createClientShareableDocument(
+  repository: InMemoryOpenPracticeRepository,
+  input: { id: string; title?: string },
+): Promise<void> {
+  const checksumSha256 = "a".repeat(64);
+  await repository.createDocumentUploadIntent({
+    id: input.id,
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    title: input.title ?? "Client visible disclosure.pdf",
+    storageKey: `matters/matter-001/private-${input.id}.pdf`,
+    checksumSha256,
+    classification: "general",
+    legalHold: false,
+  });
+  await repository.completeDocumentUpload({
+    firmId: "firm-west-legal",
+    documentId: input.id,
+    checksumSha256,
+    scanStatus: "passed",
+  });
+}
+
 async function addClientPortalRecords(repository: InMemoryOpenPracticeRepository): Promise<void> {
   const durableLinkExpiry = futureIso(30 * dayMs);
   const actionExpiry = futureIso();
+  const grant = (await repository.listPortalGrants("firm-west-legal")).find(
+    (candidate) =>
+      candidate.matterId === "matter-001" &&
+      candidate.contactId === "contact-ada" &&
+      candidate.accountUserId &&
+      candidate.permissions.includes("view_documents"),
+  );
+  if (!grant) throw new Error("Client portal grant missing from test setup");
+
+  await createClientShareableDocument(repository, {
+    id: "doc-portal-visible-001",
+    title: "Client visible disclosure.pdf",
+  });
+  await repository.createPortalDocumentAccess({
+    id: "portal-document-access-client-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    documentId: "doc-portal-visible-001",
+    portalGrantId: grant.id,
+    permission: "view_document",
+    grantedByUserId: "user-admin",
+    createdAt: "2026-05-20T11:00:00.000Z",
+    expiresAt: durableLinkExpiry,
+  });
+
+  await repository.createSignatureRequest({
+    request: {
+      id: "signature-client-portal-001",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      documentId: "doc-portal-visible-001",
+      title: "Client portal retainer signature",
+      requestedByUserId: "user-admin",
+      provider: "embedded",
+      externalId: "embedded:private-client-portal-signature",
+      status: "sent",
+      signingUrl: "https://sign.example.test/private-signing-url",
+      consentText: "PRIVATE signature consent text",
+      evidence: { privateProviderEvidence: "do not expose" },
+      createdAt: "2026-05-20T11:05:00.000Z",
+    },
+    signers: [
+      {
+        id: "signature-client-portal-signer-001",
+        firmId: "firm-west-legal",
+        signatureRequestId: "signature-client-portal-001",
+        name: "Ada Morgan",
+        email: "ada@example.test",
+        role: "client",
+        status: "sent",
+        signingUrl: "https://sign.example.test/private-signer-url",
+      },
+      {
+        id: "signature-client-portal-signer-002",
+        firmId: "firm-west-legal",
+        signatureRequestId: "signature-client-portal-001",
+        name: "Synthetic Witness",
+        email: "witness@example.test",
+        role: "witness",
+        status: "sent",
+        signingUrl: "https://sign.example.test/private-witness-url",
+      },
+    ],
+    event: {
+      id: "signature-client-portal-event-001",
+      firmId: "firm-west-legal",
+      signatureRequestId: "signature-client-portal-001",
+      provider: "embedded",
+      externalId: "embedded:private-client-portal-signature",
+      status: "sent",
+      occurredAt: "2026-05-20T11:05:00.000Z",
+      evidence: { privateProviderEvidence: "do not expose" },
+    },
+  });
 
   await repository.createShareLink({
     id: "share-client-001",
@@ -458,6 +555,16 @@ describe("client portal routes", () => {
     expect(body.setup.status).toBe("token_created");
     expect(body.setup.token).toBeTruthy();
     expect(JSON.stringify(body)).not.toContain("tokenHash");
+    const grants = await repository.listPortalGrants("firm-west-legal");
+    expect(grants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountUserId: body.account.id,
+          matterId: "matter-001",
+          contactId: "contact-ada",
+        }),
+      ]),
+    );
 
     const token = await repository.consumePasswordSetupToken(
       hashToken(body.setup.token!, jwtSecret),
@@ -476,6 +583,107 @@ describe("client portal routes", () => {
     });
     expect(JSON.stringify(audit.events.at(-1))).not.toContain("ada@example.test");
     expect(JSON.stringify(audit.events.at(-1))).not.toContain(body.setup.token);
+  });
+
+  it("requires account-bound grants before granting confidential client file visibility", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    await createClientShareableDocument(repository, {
+      id: "doc-route-visible-001",
+      title: "Client visible route disclosure.pdf",
+    });
+
+    const legacyGrantResponse = await server.inject({
+      method: "POST",
+      url: "/api/client-portal/document-access",
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        documentId: "doc-route-visible-001",
+      },
+    });
+
+    expect(legacyGrantResponse.statusCode).toBe(409);
+    expect(legacyGrantResponse.json()).toMatchObject({
+      code: "PORTAL_DOCUMENT_ACCOUNT_GRANT_REQUIRED",
+    });
+
+    await server.inject({
+      method: "POST",
+      url: "/api/client-portal/accounts",
+      payload: { matterId: "matter-001", contactId: "contact-ada" },
+    });
+    const grantResponse = await server.inject({
+      method: "POST",
+      url: "/api/client-portal/document-access",
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        documentId: "doc-route-visible-001",
+      },
+    });
+
+    expect(grantResponse.statusCode).toBe(201);
+    expect(grantResponse.json()).toMatchObject({
+      access: {
+        matterId: "matter-001",
+        documentId: "doc-route-visible-001",
+        permission: "view_document",
+      },
+    });
+    const access = grantResponse.json<{ access: { portalGrantId: string } }>().access;
+    const accountBoundGrant = (await repository.listPortalGrants("firm-west-legal")).find(
+      (grant) => grant.id === access.portalGrantId,
+    );
+    expect(accountBoundGrant?.accountUserId).toBeTruthy();
+
+    const listResponse = await server.inject({
+      method: "GET",
+      url: "/api/client-portal/document-access?matterId=matter-001&contactId=contact-ada",
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      access: [expect.objectContaining({ documentId: "doc-route-visible-001" })],
+    });
+  });
+
+  it("keeps adverse contacts and unsafe documents blocked from portal file visibility", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository });
+    await createClientShareableDocument(repository, { id: "doc-route-safe-001" });
+    await server.inject({
+      method: "POST",
+      url: "/api/client-portal/accounts",
+      payload: { matterId: "matter-001", contactId: "contact-ada" },
+    });
+
+    const adverseResponse = await server.inject({
+      method: "POST",
+      url: "/api/client-portal/document-access",
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-river",
+        documentId: "doc-route-safe-001",
+      },
+    });
+    expect(adverseResponse.statusCode).toBe(409);
+    expect(adverseResponse.json()).toMatchObject({
+      code: "PORTAL_DOCUMENT_CONTACT_NOT_ELIGIBLE",
+    });
+
+    const unsafeDocumentResponse = await server.inject({
+      method: "POST",
+      url: "/api/client-portal/document-access",
+      payload: {
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        documentId: "doc-001",
+      },
+    });
+    expect(unsafeDocumentResponse.statusCode).toBe(422);
+    expect(unsafeDocumentResponse.json()).toMatchObject({
+      code: "PORTAL_DOCUMENT_NOT_SHAREABLE",
+    });
   });
 
   it("returns a redacted logged-in workspace over existing client action records", async () => {
@@ -547,6 +755,27 @@ describe("client portal routes", () => {
         attentionCount: number;
         actions: Array<{ id: string; family: string; status: string; detail: string }>;
       }>;
+      matterDetails: Array<{
+        number: string;
+        practiceArea: string;
+        jurisdiction: string;
+        documentCount: number;
+        signatureCount: number;
+      }>;
+      documents: Array<{
+        id: string;
+        title: string;
+        classification: string;
+        accessStatus: string;
+        accessId: string;
+      }>;
+      signatures: Array<{
+        id: string;
+        title: string;
+        documentTitle?: string;
+        signerStatus: string;
+        actionState: string;
+      }>;
       actions: Array<{
         id: string;
         family: string;
@@ -560,6 +789,35 @@ describe("client portal routes", () => {
     expect(body.matters).toEqual([
       expect.objectContaining({ number: "2026-0001", actionCount: expect.any(Number) }),
     ]);
+    expect(body.matterDetails).toEqual([
+      expect.objectContaining({
+        number: "2026-0001",
+        practiceArea: "Residential tenancy",
+        jurisdiction: "BC",
+        documentCount: 1,
+        signatureCount: 2,
+      }),
+    ]);
+    expect(body.documents).toEqual([
+      expect.objectContaining({
+        id: "doc-portal-visible-001",
+        title: "Client visible disclosure.pdf",
+        classification: "general",
+        accessStatus: "active",
+        accessId: "portal-document-access-client-001",
+      }),
+    ]);
+    expect(body.signatures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "signature-client-portal-001",
+          title: "Client portal retainer signature",
+          documentTitle: "Client visible disclosure.pdf",
+          signerStatus: "sent",
+          actionState: "ready_to_sign",
+        }),
+      ]),
+    );
     expect(body.billing).toMatchObject({
       billCount: 2,
       totalBalanceDueCents: 13230,
@@ -640,6 +898,7 @@ describe("client portal routes", () => {
         "client_update",
         "client_action",
         "payment_request",
+        "signature",
       ]),
     );
     expect(body.matterActions).toEqual([
@@ -693,6 +952,12 @@ describe("client portal routes", () => {
     expect(serialized).not.toContain("private-checkout");
     expect(serialized).not.toContain("privatePaymentEvidence");
     expect(serialized).not.toContain("privateOtherClientEvidence");
+    expect(serialized).not.toContain("private-client-visible-disclosure");
+    expect(serialized).not.toContain("private-signing-url");
+    expect(serialized).not.toContain("private-signer-url");
+    expect(serialized).not.toContain("PRIVATE signature consent text");
+    expect(serialized).not.toContain("privateProviderEvidence");
+    expect(serialized).not.toContain("embedded:private-client-portal-signature");
     expect(serialized).not.toContain("payment-request-other-client-001");
     expect(serialized).not.toContain("Initial tenancy dispute invoice");
     expect(serialized).not.toContain("Reviewed tenancy branch materials");
@@ -712,6 +977,115 @@ describe("client portal routes", () => {
     expect(await repository.getLedger("firm-west-legal", { matterId: "matter-001" })).toEqual(
       ledgerBefore,
     );
+
+    const documentResponse = await server.inject({
+      method: "GET",
+      url: "/api/client-portal/documents/doc-portal-visible-001",
+    });
+    expect(documentResponse.statusCode).toBe(200);
+    expect(documentResponse.json()).toMatchObject({
+      document: {
+        id: "doc-portal-visible-001",
+        title: "Client visible disclosure.pdf",
+        accessStatus: "active",
+      },
+    });
+    expect(JSON.stringify(documentResponse.json())).not.toContain("storageKey");
+
+    const signatureResponse = await server.inject({
+      method: "POST",
+      url: "/api/client-portal/signatures/signature-client-portal-001/events",
+      payload: {
+        status: "completed",
+        consentText: "PRIVATE portal signature consent",
+        evidence: {
+          tokenHash: "private-token-hash",
+          publicEventId: "portal-signature-event-001",
+        },
+      },
+    });
+    expect(signatureResponse.statusCode).toBe(200);
+    expect(signatureResponse.json()).toMatchObject({
+      status: "processed",
+      signature: {
+        id: "signature-client-portal-001",
+        signerStatus: "completed",
+        actionState: "completed",
+      },
+    });
+    expect(JSON.stringify(signatureResponse.json())).not.toContain(
+      "PRIVATE portal signature consent",
+    );
+    expect(JSON.stringify(signatureResponse.json())).not.toContain("private-token-hash");
+    const clientPortalSignature = (await repository.listSignatureRequests("firm-west-legal")).find(
+      (request) => request.id === "signature-client-portal-001",
+    );
+    expect(clientPortalSignature?.status).toBe("sent");
+    await expect(
+      repository.listSignatureRequestSigners("firm-west-legal", "signature-client-portal-001"),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "signature-client-portal-signer-001",
+          status: "completed",
+          completedAt: expect.any(String),
+        }),
+        expect.objectContaining({
+          id: "signature-client-portal-signer-002",
+          status: "sent",
+        }),
+      ]),
+    );
+    const signatureAudit = await repository.listAuditEvents("firm-west-legal");
+    expect(signatureAudit.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "signature_client_portal_event.recorded",
+          resourceType: "signature_request",
+          resourceId: "signature-client-portal-001",
+        }),
+      ]),
+    );
+  });
+
+  it("hides revoked per-file document access from the client workspace", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const setupServer = testServer({ repository });
+    const setup = await setupServer.inject({
+      method: "POST",
+      url: "/api/client-portal/accounts",
+      payload: { matterId: "matter-001", contactId: "contact-ada" },
+    });
+    const setupBody = setup.json<{ account: { email: string } }>();
+    const clientAccount = await repository.getUserByEmail(
+      "firm-west-legal",
+      setupBody.account.email,
+    );
+    expect(clientAccount).toBeTruthy();
+    await addClientPortalRecords(repository);
+    await repository.revokePortalDocumentAccess({
+      firmId: "firm-west-legal",
+      id: "portal-document-access-client-001",
+      revokedAt: "2026-05-21T10:00:00.000Z",
+    });
+
+    const server = testServer({ repository, authUser: clientAccount! });
+    const documentResponse = await server.inject({
+      method: "GET",
+      url: "/api/client-portal/documents/doc-portal-visible-001",
+    });
+    expect(documentResponse.statusCode).toBe(404);
+
+    const workspaceResponse = await server.inject({
+      method: "GET",
+      url: "/api/client-portal/workspace",
+    });
+    expect(workspaceResponse.statusCode).toBe(200);
+    expect(
+      workspaceResponse
+        .json<{ documents: Array<{ id: string }> }>()
+        .documents.some((document) => document.id === "doc-portal-visible-001"),
+    ).toBe(false);
   });
 
   it("rejects non-client users from the client workspace", async () => {

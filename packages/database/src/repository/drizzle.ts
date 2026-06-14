@@ -286,6 +286,7 @@ import {
   claimDrizzleExternalUploadUse,
   createDrizzleAccessLog,
   createDrizzleExternalUploadLink,
+  createDrizzlePortalDocumentAccess,
   createDrizzlePortalGrant,
   createDrizzleShareLink,
   getDrizzleExternalUploadLinkByTokenHash,
@@ -293,8 +294,10 @@ import {
   getDrizzleShareLinkByTokenHash,
   listDrizzleAccessLogs,
   listDrizzleExternalUploadLinks,
+  listDrizzlePortalDocumentAccess,
   listDrizzlePortalGrants,
   listDrizzleShareLinks,
+  revokeDrizzlePortalDocumentAccess,
   revokeDrizzleExternalUploadLink,
   revokeDrizzleShareLink,
 } from "./portal-access/drizzle.js";
@@ -917,6 +920,25 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
 
   async createPortalGrant(grant: Parameters<OpenPracticeRepository["createPortalGrant"]>[0]) {
     return createDrizzlePortalGrant(this.db, grant);
+  }
+
+  async listPortalDocumentAccess(
+    firmId: string,
+    options: Parameters<OpenPracticeRepository["listPortalDocumentAccess"]>[1] = {},
+  ) {
+    return listDrizzlePortalDocumentAccess(this.db, firmId, options);
+  }
+
+  async createPortalDocumentAccess(
+    access: Parameters<OpenPracticeRepository["createPortalDocumentAccess"]>[0],
+  ) {
+    return createDrizzlePortalDocumentAccess(this.db, access);
+  }
+
+  async revokePortalDocumentAccess(
+    input: Parameters<OpenPracticeRepository["revokePortalDocumentAccess"]>[0],
+  ) {
+    return revokeDrizzlePortalDocumentAccess(this.db, input);
   }
 
   async listShareLinks(

@@ -342,6 +342,18 @@ const portalPermissionByResourceAction: Partial<
 function hasActivePortalGrant(request: AccessRequest): boolean {
   if (!request.matterId || !request.contactId) return false;
 
+  if (request.resource === "client_portal" && request.action === "read") {
+    const now = Date.parse(request.now ?? new Date().toISOString());
+    return (request.portalGrants ?? []).some((grant) => {
+      if (grant.firmId !== request.firmId) return false;
+      if (grant.matterId !== request.matterId) return false;
+      if (grant.contactId !== request.contactId) return false;
+      if (grant.revokedAt) return false;
+      if (grant.expiresAt && Date.parse(grant.expiresAt) <= now) return false;
+      return true;
+    });
+  }
+
   const requiredPermission = portalPermissionByResourceAction[request.resource]?.[request.action];
   if (!requiredPermission) return false;
 

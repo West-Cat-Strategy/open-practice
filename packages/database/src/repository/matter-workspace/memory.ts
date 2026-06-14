@@ -17,6 +17,7 @@ import {
   type ManualPaymentRecord,
   type Matter,
   type MatterParty,
+  type PortalDocumentAccess,
   type PaymentAllocationRecord,
   type PortalGrant,
   type PostedLedgerTransaction,
@@ -42,6 +43,7 @@ export interface MemoryMatterWorkspaceStore {
   timeEntries: TimeEntry[];
   expenseEntries: ExpenseEntry[];
   portalGrants: PortalGrant[];
+  portalDocumentAccess: PortalDocumentAccess[];
   shareLinks: ShareLinkRecord[];
   externalUploadLinks: ExternalUploadLinkRecord[];
   accessLogs: AccessLogRecord[];

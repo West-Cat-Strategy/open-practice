@@ -2,6 +2,7 @@ import type {
   AccessLogRecord,
   ExternalUploadLinkRecord,
   PortalGrant,
+  PortalDocumentAccess,
   ShareLinkRecord,
 } from "@open-practice/domain";
 
@@ -21,9 +22,25 @@ export interface AccessLogListOptions {
   resourceId?: string;
 }
 
+export interface PortalDocumentAccessListOptions {
+  matterId?: string;
+  documentId?: string;
+  portalGrantId?: string;
+}
+
 export interface PortalAccessRepository {
   listPortalGrants(firmId: string): Promise<PortalGrant[]>;
   createPortalGrant(grant: PortalGrant): Promise<PortalGrant>;
+  listPortalDocumentAccess(
+    firmId: string,
+    options?: PortalDocumentAccessListOptions,
+  ): Promise<PortalDocumentAccess[]>;
+  createPortalDocumentAccess(access: PortalDocumentAccess): Promise<PortalDocumentAccess>;
+  revokePortalDocumentAccess(input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  }): Promise<PortalDocumentAccess | undefined>;
   listShareLinks(firmId: string, options?: ShareLinkListOptions): Promise<ShareLinkRecord[]>;
   createShareLink(link: ShareLinkRecord): Promise<ShareLinkRecord>;
   getShareLink(firmId: string, id: string): Promise<ShareLinkRecord | undefined>;

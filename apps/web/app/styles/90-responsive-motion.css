@@ -239,6 +239,7 @@
 
   .client-portal-action,
   .client-portal-bill,
+  .client-portal-file,
   .client-portal-matter {
     grid-template-columns: 1fr;
   }
@@ -252,8 +253,18 @@
     text-align: left;
   }
 
+  .client-portal-file em,
   .client-portal-payment-requests {
+    text-align: left;
+  }
+
+  .client-portal-payment-requests,
+  .client-portal-signature-actions {
     justify-content: flex-start;
+  }
+
+  .client-portal-signature-actions .compact-button {
+    width: 100%;
   }
 
   .client-portal-payment-requests span {

@@ -87,9 +87,99 @@ test.describe("host Playwright suite", () => {
     await expect(page.getByRole("heading", { name: "Ada Morgan" })).toBeVisible();
     await expect(page.getByLabel("Matter action workspace")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Morgan tenancy dispute" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Shared files" })).toBeVisible();
+    await expect(
+      page.getByLabel("Shared files").getByText("Client portal E2E disclosure.pdf"),
+    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Signatures" })).toBeVisible();
+    await expect(
+      page.getByLabel("Signatures").getByText("Client portal E2E signature"),
+    ).toBeVisible();
+    await expect(
+      page.getByLabel("Signatures").getByText("Client portal E2E view acknowledgement"),
+    ).toBeVisible();
+    await expect(
+      page.getByLabel("Signatures").getByText("Client portal E2E decline option"),
+    ).toBeVisible();
     await expect(page.getByLabel("Billing")).toBeVisible();
     await expect(page.getByText(/redacted/i).first()).toBeVisible();
+
+    const viewedRow = page
+      .locator(".client-portal-file")
+      .filter({ hasText: "Client portal E2E view acknowledgement" });
+    await viewedRow.getByRole("button", { name: "Mark viewed" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Signature marked viewed." }),
+    ).toBeVisible();
+    await expect(viewedRow.locator("span").filter({ hasText: "Viewed" })).toBeVisible();
+    await expect(viewedRow.getByRole("button", { name: "Mark viewed" })).toHaveCount(0);
+    await expect(viewedRow.getByRole("button", { name: "Confirm signed" })).toBeVisible();
+    await expect(viewedRow.getByRole("button", { name: "Decline signing" })).toBeVisible();
+
+    const declinedRow = page
+      .locator(".client-portal-file")
+      .filter({ hasText: "Client portal E2E decline option" });
+    await declinedRow.getByRole("button", { name: "Decline signing" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Signature decline recorded." }),
+    ).toBeVisible();
+    await expect(declinedRow.locator("em").filter({ hasText: "Declined" })).toBeVisible();
+    await expect(declinedRow.getByRole("button", { name: "Decline signing" })).toHaveCount(0);
+    await expect(declinedRow.getByRole("button", { name: "Confirm signed" })).toHaveCount(0);
+
+    const signatureRow = page
+      .locator(".client-portal-file")
+      .filter({ hasText: "Client portal E2E signature" });
+    await signatureRow.getByRole("button", { name: "Confirm signed" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Signature completion recorded." }),
+    ).toBeVisible();
+    await expect(signatureRow.locator("em").filter({ hasText: "Completed" })).toBeVisible();
+    await expect(signatureRow.getByRole("button", { name: "Confirm signed" })).toHaveCount(0);
+
     await expect(page.locator("body")).not.toContainText(/tokenHash|storageKey|checkoutUrl/i);
     await expect(page.locator("body")).not.toContainText(/externalSessionId|private-checkout/i);
+    await expect(page.locator("body")).not.toContainText(/signingUrl|providerEvidence/i);
+  });
+
+  test("grants and revokes staff portal document visibility @host-chromium-only", async ({
+    app,
+    page,
+  }, testInfo) => {
+    expect(process.env.DEV_AUTH_USER_ID ?? "user-admin").toBe("user-admin");
+    testInfo.setTimeout(90_000);
+
+    await app.ensureClientPortalAccount();
+    await page.goto(app.url("/?section=documents"));
+    await expectPageHealthy(page);
+
+    await expect(
+      page.getByRole("heading", { name: "Document processing workbench" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Portal visibility for Ada Morgan" }),
+    ).toBeVisible();
+
+    const grantableDocumentRow = page
+      .locator(".upload-review-row")
+      .filter({ hasText: "Client portal E2E staff grant.pdf" });
+    await grantableDocumentRow.scrollIntoViewIfNeeded();
+    await expect(grantableDocumentRow.getByRole("button", { name: "Grant portal" })).toBeVisible();
+
+    await grantableDocumentRow.getByRole("button", { name: "Grant portal" }).click();
+    await expect(
+      page
+        .getByRole("status")
+        .filter({ hasText: "Portal file visibility granted for Ada Morgan." }),
+    ).toBeVisible();
+    await expect(grantableDocumentRow.getByRole("button", { name: "Revoke portal" })).toBeVisible();
+
+    await grantableDocumentRow.getByRole("button", { name: "Revoke portal" }).click();
+    await expect(
+      page
+        .getByRole("status")
+        .filter({ hasText: "Portal file visibility revoked for Ada Morgan." }),
+    ).toBeVisible();
+    await expect(grantableDocumentRow.getByRole("button", { name: "Grant portal" })).toBeVisible();
   });
 });

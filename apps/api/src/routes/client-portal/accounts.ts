@@ -120,6 +120,7 @@ export function registerClientPortalAccountRoutes(
       (grant) =>
         grant.matterId === body.matterId &&
         grant.contactId === body.contactId &&
+        grant.accountUserId === account.id &&
         activePortalGrant(grant, now.toISOString()) &&
         requestedPermissions.every((permission) => grant.permissions.includes(permission)),
     );
@@ -130,6 +131,7 @@ export function registerClientPortalAccountRoutes(
         firmId: request.auth.firmId,
         matterId: body.matterId,
         contactId: body.contactId,
+        accountUserId: account.id,
         grantedByUserId: request.auth.user.id,
         permissions: requestedPermissions,
         expiresAt: body.expiresAt,

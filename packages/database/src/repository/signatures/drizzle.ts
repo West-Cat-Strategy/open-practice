@@ -17,6 +17,13 @@ import {
 } from "../drizzle-mappers.js";
 import type { SignatureRequestCreateInput } from "../signatures-contracts.js";
 
+function clientPortalEmbeddedSignerId(event: SignatureProviderEventRecord): string | undefined {
+  return event.evidence.mode === "client_portal_embedded" &&
+    typeof event.evidence.signerId === "string"
+    ? event.evidence.signerId
+    : undefined;
+}
+
 export async function listDrizzleSignatureRequests(
   db: OpenPracticeDatabase,
   firmId: string,
@@ -92,6 +99,19 @@ export async function recordDrizzleSignatureProviderEvent(
         eq(schema.signatureRequests.id, event.signatureRequestId),
       ),
     );
+  const signerId = clientPortalEmbeddedSignerId(event);
+  const [currentSigner] = signerId
+    ? await db
+        .select()
+        .from(schema.signatureRequestSigners)
+        .where(
+          and(
+            eq(schema.signatureRequestSigners.firmId, event.firmId),
+            eq(schema.signatureRequestSigners.id, signerId),
+            eq(schema.signatureRequestSigners.signatureRequestId, event.signatureRequestId),
+          ),
+        )
+    : [];
   await db.transaction(async (tx) => {
     await tx.insert(schema.signatureProviderEvents).values({
       ...event,
@@ -103,6 +123,28 @@ export async function recordDrizzleSignatureProviderEvent(
         receivedAt: new Date(webhookAttempt.receivedAt),
         processedAt: webhookAttempt.processedAt ? new Date(webhookAttempt.processedAt) : null,
       });
+    }
+    if (
+      signerId &&
+      currentSigner &&
+      shouldUpdateSignatureRequestStatus(currentSigner.status as SignatureProviderStatus, event)
+    ) {
+      await tx
+        .update(schema.signatureRequestSigners)
+        .set({
+          status: event.status,
+          completedAt: event.status === "completed" ? new Date(event.occurredAt) : undefined,
+        })
+        .where(
+          and(
+            eq(schema.signatureRequestSigners.firmId, event.firmId),
+            eq(schema.signatureRequestSigners.id, signerId),
+            eq(schema.signatureRequestSigners.signatureRequestId, event.signatureRequestId),
+          ),
+        );
+    }
+    if (event.evidence.mode === "client_portal_embedded") {
+      return;
     }
     if (
       current &&

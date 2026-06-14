@@ -314,7 +314,8 @@
 }
 
 .client-portal-bill-groups,
-.client-portal-bills {
+.client-portal-bills,
+.client-portal-files {
   display: grid;
   gap: 10px;
 }
@@ -337,9 +338,39 @@
 }
 
 .client-portal-matter p,
-.client-portal-action p {
+.client-portal-action p,
+.client-portal-file p {
   margin: 0;
   color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.client-portal-detail-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+}
+
+.client-portal-detail-list div {
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 4px 6px;
+}
+
+.client-portal-detail-list dt,
+.client-portal-detail-list dd {
+  margin: 0;
+  font-size: 12px;
+}
+
+.client-portal-detail-list dt {
+  color: var(--muted);
+}
+
+.client-portal-detail-list dd {
+  margin-top: 2px;
+  font-weight: 700;
 }
 
 .client-portal-matter > span {
@@ -358,6 +389,52 @@
   border-radius: 8px;
   background: rgba(21, 24, 22, 0.62);
   padding: 12px;
+}
+
+.client-portal-file {
+  min-height: 84px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(156px, auto);
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(21, 24, 22, 0.62);
+  padding: 12px;
+}
+
+.client-portal-file > div {
+  min-width: 0;
+}
+
+.client-portal-file > div > span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.client-portal-file strong {
+  display: block;
+  margin: 3px 0;
+  overflow-wrap: anywhere;
+}
+
+.client-portal-file em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  text-align: right;
+}
+
+.client-portal-signature-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.client-portal-signature-actions .compact-button {
+  min-width: 128px;
 }
 
 .client-portal-bill {

@@ -2,6 +2,7 @@ import type {
   AccessLogRecord,
   ExternalUploadLinkRecord,
   PortalGrant,
+  PortalDocumentAccess,
   ShareLinkRecord,
 } from "@open-practice/domain";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
@@ -12,6 +13,7 @@ import {
   externalUploadLinkInsert,
   mapAccessLogRow,
   mapExternalUploadLinkRow,
+  mapPortalDocumentAccessRow,
   mapShareLinkRow,
 } from "../drizzle-mappers.js";
 import {
@@ -24,6 +26,7 @@ import {
 import type {
   AccessLogListOptions,
   ExternalUploadLinkListOptions,
+  PortalDocumentAccessListOptions,
   ShareLinkListOptions,
 } from "../portal-access-contracts.js";
 
@@ -40,6 +43,7 @@ export async function listDrizzlePortalGrants(
     firmId: row.firmId,
     matterId: row.matterId,
     contactId: row.contactId,
+    accountUserId: row.accountUserId ?? undefined,
     grantedByUserId: row.grantedByUserId,
     permissions: row.permissions as PortalGrant["permissions"],
     expiresAt: dateToIso(row.expiresAt),
@@ -58,6 +62,7 @@ export async function createDrizzlePortalGrant(
       firmId: grant.firmId,
       matterId: grant.matterId,
       contactId: grant.contactId,
+      accountUserId: grant.accountUserId ?? null,
       grantedByUserId: grant.grantedByUserId,
       permissions: grant.permissions,
       expiresAt: grant.expiresAt ? new Date(grant.expiresAt) : null,
@@ -69,11 +74,76 @@ export async function createDrizzlePortalGrant(
     firmId: row.firmId,
     matterId: row.matterId,
     contactId: row.contactId,
+    accountUserId: row.accountUserId ?? undefined,
     grantedByUserId: row.grantedByUserId,
     permissions: row.permissions as PortalGrant["permissions"],
     expiresAt: dateToIso(row.expiresAt),
     revokedAt: dateToIso(row.revokedAt),
   };
+}
+
+export async function listDrizzlePortalDocumentAccess(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  options: PortalDocumentAccessListOptions = {},
+): Promise<PortalDocumentAccess[]> {
+  const filters = [eq(schema.portalDocumentAccess.firmId, firmId)];
+  if (options.matterId) filters.push(eq(schema.portalDocumentAccess.matterId, options.matterId));
+  if (options.documentId) {
+    filters.push(eq(schema.portalDocumentAccess.documentId, options.documentId));
+  }
+  if (options.portalGrantId) {
+    filters.push(eq(schema.portalDocumentAccess.portalGrantId, options.portalGrantId));
+  }
+  const rows = await db
+    .select()
+    .from(schema.portalDocumentAccess)
+    .where(and(...filters))
+    .orderBy(desc(schema.portalDocumentAccess.createdAt));
+  return rows.map(mapPortalDocumentAccessRow);
+}
+
+export async function createDrizzlePortalDocumentAccess(
+  db: OpenPracticeDatabase,
+  access: PortalDocumentAccess,
+): Promise<PortalDocumentAccess> {
+  const [row] = await db
+    .insert(schema.portalDocumentAccess)
+    .values({
+      id: access.id,
+      firmId: access.firmId,
+      matterId: access.matterId,
+      documentId: access.documentId,
+      portalGrantId: access.portalGrantId,
+      permission: access.permission,
+      grantedByUserId: access.grantedByUserId,
+      createdAt: new Date(access.createdAt),
+      expiresAt: access.expiresAt ? new Date(access.expiresAt) : null,
+      revokedAt: access.revokedAt ? new Date(access.revokedAt) : null,
+    })
+    .returning();
+  return mapPortalDocumentAccessRow(row);
+}
+
+export async function revokeDrizzlePortalDocumentAccess(
+  db: OpenPracticeDatabase,
+  input: {
+    firmId: string;
+    id: string;
+    revokedAt: string;
+  },
+): Promise<PortalDocumentAccess | undefined> {
+  const [row] = await db
+    .update(schema.portalDocumentAccess)
+    .set({ revokedAt: new Date(input.revokedAt) })
+    .where(
+      and(
+        eq(schema.portalDocumentAccess.firmId, input.firmId),
+        eq(schema.portalDocumentAccess.id, input.id),
+      ),
+    )
+    .returning();
+  return row ? mapPortalDocumentAccessRow(row) : undefined;
 }
 
 export async function listDrizzleShareLinks(

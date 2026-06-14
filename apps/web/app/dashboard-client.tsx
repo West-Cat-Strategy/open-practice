@@ -256,7 +256,7 @@ import {
   type MatterActivityKindFilter,
   type MatterActivityStatusFilter,
 } from "./matter-command-center";
-import { dashboardApiStatus, requestDashboardJson } from "./api-client";
+import { DashboardApiError, dashboardApiStatus, requestDashboardJson } from "./api-client";
 import { requestConnectorOperationsForDashboard } from "./_features/connectors/client-resources";
 import {
   cents,
@@ -374,6 +374,9 @@ import type {
   IntakeTemplateSavePayload,
   LegalClinicDashboardResponse,
   MatterSummary,
+  PortalDocumentAccessListResponse,
+  PortalDocumentAccessMutationResponse,
+  PortalDocumentAccessSummary,
   SavedOperationalViewDefinition,
   OperationalViewsResponse,
   PracticeOverview,
@@ -451,6 +454,46 @@ type DashboardCalendarScope = NonNullable<DashboardCalendarEvent["scope"]>;
 type DashboardTaskListResponse = { tasks: TaskDeadlineWorkbenchResponse["tasks"] };
 
 const dashboardLaneStaleAfterMs = 5 * 60 * 1000;
+
+function portalDocumentAccessKey(matterId: string, contactId: string): string {
+  return `${matterId}:${contactId}`;
+}
+
+function upsertPortalDocumentAccess(
+  rows: PortalDocumentAccessSummary[],
+  next: PortalDocumentAccessSummary,
+): PortalDocumentAccessSummary[] {
+  return [next, ...rows.filter((row) => row.id !== next.id)];
+}
+
+function dashboardApiErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof DashboardApiError)) return undefined;
+  const payload = error.payload as { code?: unknown; error?: { code?: unknown } } | undefined;
+  const code = payload?.code ?? payload?.error?.code;
+  return typeof code === "string" ? code : undefined;
+}
+
+export function formatPortalDocumentAccessFailure(
+  action: "load" | "grant" | "revoke",
+  error: unknown,
+): string {
+  const code = dashboardApiErrorCode(error);
+  if (code === "PORTAL_DOCUMENT_ACCOUNT_GRANT_REQUIRED") {
+    return "Create the client portal account before sharing confidential client files.";
+  }
+  if (code === "PORTAL_DOCUMENT_GRANT_REQUIRED") {
+    return "Create the client portal account before sharing files with this contact.";
+  }
+  if (code === "PORTAL_DOCUMENT_NOT_SHAREABLE") {
+    return "This document is not shareable until review, scan, checksum, and classification are safe.";
+  }
+  if (code === "PORTAL_DOCUMENT_CONTACT_NOT_ELIGIBLE") {
+    return "This contact is not eligible for portal file access.";
+  }
+  const actionLabel =
+    action === "load" ? "failed to load" : action === "grant" ? "grant failed" : "revoke failed";
+  return `Portal file visibility ${actionLabel}: ${dashboardApiStatus(error)}`;
+}
 
 const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   matters: Gavel,
@@ -798,6 +841,13 @@ export default function DashboardClient({
     "No client portal account setup run in this session.",
   );
   const [creatingClientPortalAccount, setCreatingClientPortalAccount] = useState(false);
+  const [portalDocumentAccessByMatterContact, setPortalDocumentAccessByMatterContact] = useState<
+    Record<string, PortalDocumentAccessSummary[]>
+  >({});
+  const [portalDocumentAccessStatus, setPortalDocumentAccessStatus] = useState(
+    "Select a client portal contact to load file visibility.",
+  );
+  const [portalDocumentAccessBusyId, setPortalDocumentAccessBusyId] = useState("");
   const [externalUploadsByMatterId, setExternalUploadsByMatterId] = useState(
     externalUploads.uploadsByMatterId,
   );
@@ -1156,6 +1206,17 @@ export default function DashboardClient({
   )
     ? clientPortalContactId
     : activeClientPortalContacts[0]?.contactId || "";
+  const selectedClientPortalContact = activeClientPortalContacts.find(
+    (party) => party.contactId === selectedClientPortalContactId,
+  );
+  const selectedClientPortalContactLabel = selectedClientPortalContact?.contact.displayName ?? "";
+  const activePortalDocumentAccessKey =
+    activeMatter && selectedClientPortalContactId
+      ? portalDocumentAccessKey(activeMatter.id, selectedClientPortalContactId)
+      : "";
+  const activePortalDocumentAccess = activePortalDocumentAccessKey
+    ? (portalDocumentAccessByMatterContact[activePortalDocumentAccessKey] ?? [])
+    : [];
   const activeDrafts = activeMatter ? (draftsByMatterId[activeMatter.id] ?? []) : [];
   const activeExternalUploads = activeMatter
     ? (externalUploadsByMatterId[activeMatter.id] ?? [])
@@ -1556,6 +1617,52 @@ export default function DashboardClient({
       cancelled = true;
     };
   }, [activeMatter, apiBaseUrl, devHeaders]);
+
+  useEffect(() => {
+    if (!activeMatter) return;
+    if (!selectedClientPortalContactId) {
+      setPortalDocumentAccessStatus("No eligible client portal contact is selected.");
+      return;
+    }
+    const matterId = activeMatter.id;
+    const contactId = selectedClientPortalContactId;
+    const cacheKey = portalDocumentAccessKey(matterId, contactId);
+    let cancelled = false;
+
+    async function loadPortalDocumentAccess(): Promise<void> {
+      setPortalDocumentAccessStatus("Loading portal file visibility...");
+      try {
+        const payload = await requestDashboardJson<PortalDocumentAccessListResponse>(
+          apiBaseUrl,
+          `/api/client-portal/document-access?matterId=${encodeURIComponent(
+            matterId,
+          )}&contactId=${encodeURIComponent(contactId)}`,
+          { headers: devHeaders },
+        );
+        if (cancelled) return;
+        setPortalDocumentAccessByMatterContact((current) => ({
+          ...current,
+          [cacheKey]: payload.access,
+        }));
+        setPortalDocumentAccessStatus(
+          payload.access.length === 0
+            ? "No files are visible to this portal contact."
+            : `${payload.access.length} file visibility row${
+                payload.access.length === 1 ? "" : "s"
+              } loaded.`,
+        );
+      } catch (error) {
+        if (!cancelled) {
+          setPortalDocumentAccessStatus(formatPortalDocumentAccessFailure("load", error));
+        }
+      }
+    }
+
+    void loadPortalDocumentAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMatter, apiBaseUrl, devHeaders, selectedClientPortalContactId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -4419,6 +4526,80 @@ export default function DashboardClient({
     }
   }
 
+  async function grantPortalDocumentAccess(documentId: string): Promise<void> {
+    if (!activeMatter || !selectedClientPortalContactId) {
+      setPortalDocumentAccessStatus("Select a client portal contact before granting file access.");
+      return;
+    }
+    const cacheKey = portalDocumentAccessKey(activeMatter.id, selectedClientPortalContactId);
+    setPortalDocumentAccessBusyId(`grant:${documentId}`);
+    setPortalDocumentAccessStatus("Granting portal file visibility...");
+    try {
+      const payload = await requestDashboardJson<PortalDocumentAccessMutationResponse>(
+        apiBaseUrl,
+        "/api/client-portal/document-access",
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: {
+            matterId: activeMatter.id,
+            contactId: selectedClientPortalContactId,
+            documentId,
+          },
+        },
+      );
+      if (payload.access) {
+        setPortalDocumentAccessByMatterContact((current) => ({
+          ...current,
+          [cacheKey]: upsertPortalDocumentAccess(current[cacheKey] ?? [], payload.access!),
+        }));
+      }
+      setPortalDocumentAccessStatus(
+        `Portal file visibility granted for ${selectedClientPortalContactLabel || "client"}.`,
+      );
+    } catch (error) {
+      setPortalDocumentAccessStatus(formatPortalDocumentAccessFailure("grant", error));
+    } finally {
+      setPortalDocumentAccessBusyId("");
+    }
+  }
+
+  async function revokePortalDocumentAccess(accessId: string): Promise<void> {
+    if (!activeMatter || !selectedClientPortalContactId) {
+      setPortalDocumentAccessStatus("Select a client portal contact before revoking file access.");
+      return;
+    }
+    const cacheKey = portalDocumentAccessKey(activeMatter.id, selectedClientPortalContactId);
+    setPortalDocumentAccessBusyId(`revoke:${accessId}`);
+    setPortalDocumentAccessStatus("Revoking portal file visibility...");
+    try {
+      const payload = await requestDashboardJson<PortalDocumentAccessMutationResponse>(
+        apiBaseUrl,
+        `/api/client-portal/document-access/${encodeURIComponent(accessId)}/revoke`,
+        {
+          method: "POST",
+          headers: devHeaders,
+        },
+      );
+      setPortalDocumentAccessByMatterContact((current) => {
+        const rows = current[cacheKey] ?? [];
+        return {
+          ...current,
+          [cacheKey]: payload.access
+            ? upsertPortalDocumentAccess(rows, payload.access)
+            : rows.filter((row) => row.id !== accessId),
+        };
+      });
+      setPortalDocumentAccessStatus(
+        `Portal file visibility revoked for ${selectedClientPortalContactLabel || "client"}.`,
+      );
+    } catch (error) {
+      setPortalDocumentAccessStatus(formatPortalDocumentAccessFailure("revoke", error));
+    } finally {
+      setPortalDocumentAccessBusyId("");
+    }
+  }
+
   async function revokeShareLink(share: ShareLinkRecord): Promise<void> {
     setRevokingShareId(share.id);
     setShareStatus("Revoking share link...");
@@ -5414,7 +5595,12 @@ export default function DashboardClient({
                   documentProcessingStatus={documentProcessingStatus}
                   documentProcessingSummary={documentProcessingSummary}
                   documentReviewSuggestionsSummary={documentReviewSuggestionsSummary}
+                  portalDocumentAccess={activePortalDocumentAccess}
+                  portalDocumentAccessBusyId={portalDocumentAccessBusyId}
+                  portalDocumentAccessStatus={portalDocumentAccessStatus}
                   queueingDocumentId={queueingDocumentId}
+                  selectedClientPortalContactId={selectedClientPortalContactId}
+                  selectedClientPortalContactLabel={selectedClientPortalContactLabel}
                   onClearDocumentMetadataSearch={() => void clearDocumentMetadataSearch()}
                   onDocumentMetadataClassificationFilterChange={
                     setDocumentMetadataClassificationFilter
@@ -5424,8 +5610,14 @@ export default function DashboardClient({
                   onDocumentMetadataQueryChange={setDocumentMetadataQuery}
                   onDocumentMetadataReviewStatusFilterChange={setDocumentMetadataReviewStatusFilter}
                   onDocumentMetadataScanStatusFilterChange={setDocumentMetadataScanStatusFilter}
+                  onGrantPortalDocumentAccess={(documentId) =>
+                    void grantPortalDocumentAccess(documentId)
+                  }
                   onQueueDocumentOcr={(documentId) => void queueDocumentOcr(documentId)}
                   onRefreshDocumentMetadataSearch={() => void refreshDocumentMetadataSearch()}
+                  onRevokePortalDocumentAccess={(accessId) =>
+                    void revokePortalDocumentAccess(accessId)
+                  }
                   onSelectDocumentMetadataTag={(tag) => void selectDocumentMetadataTag(tag)}
                 />
               ) : null}

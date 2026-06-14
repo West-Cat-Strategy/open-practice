@@ -3,7 +3,6 @@ import {
   type CalendarEventRecord,
   type CalendarGuestLinkRecord,
   canShareDocumentThroughPortal,
-  type Contact,
   type ConversationThreadRecord,
   type DocumentRecord,
   type EmailOutboxRecord,
@@ -13,17 +12,23 @@ import {
   type IntakeFormItemActionRecord,
   type IntakeFormLinkRecord,
   type Matter,
+  type PortalDocumentAccess,
   type PortalGrant,
+  type SignatureProviderEventRecord,
+  type SignatureProviderStatus,
+  type SignatureRequestRecord,
+  type SignatureRequestSignerRecord,
   type ShareLinkRecord,
   type User,
 } from "@open-practice/domain";
 import { ApiHttpError } from "../../http/response.js";
 import type { ApiRouteDependencies } from "../types.js";
 import {
-  activePortalGrant,
-  contactMatchesUser,
+  clientContactGrantPairs,
   hasPortalPermission,
   normalizedEmail,
+  portalDocumentAccessVisible,
+  portalGrantVisibleOnMatter,
   sanitizedUser,
   uniquePermissions,
 } from "./shared.js";
@@ -38,7 +43,8 @@ type ClientPortalActionFamily =
   | "receipt"
   | "client_update"
   | "client_action"
-  | "payment_request";
+  | "payment_request"
+  | "signature";
 
 interface ClientPortalActionDetail {
   label: string;
@@ -65,6 +71,50 @@ interface ClientPortalMatterActionGroup {
   actionCount: number;
   attentionCount: number;
   actions: ClientPortalActionSummary[];
+}
+
+interface ClientPortalMatterDetail {
+  id: string;
+  number: string;
+  title: string;
+  status: Matter["status"];
+  practiceArea: string;
+  jurisdiction: Matter["jurisdiction"];
+  openedOn?: string;
+  closedOn?: string;
+  permissions: PortalGrant["permissions"];
+  documentCount: number;
+  signatureCount: number;
+  actionCount: number;
+}
+
+interface ClientPortalDocumentSummary {
+  id: string;
+  matterId: string;
+  title: string;
+  classification: DocumentRecord["classification"];
+  version: number;
+  uploadedAt?: string;
+  verifiedAt?: string;
+  accessId: string;
+  accessStatus: "active";
+  expiresAt?: string;
+}
+
+type ClientPortalSignatureActionState = "ready_to_sign" | "viewed" | "completed" | "declined";
+
+interface ClientPortalSignatureSummary {
+  id: string;
+  matterId: string;
+  documentId: string;
+  documentTitle?: string;
+  title: string;
+  status: SignatureProviderStatus;
+  signerStatus: SignatureProviderStatus;
+  createdAt: string;
+  completedAt?: string;
+  declinedAt?: string;
+  actionState: ClientPortalSignatureActionState;
 }
 
 type ClientPortalInvoiceRecord = Awaited<
@@ -612,21 +662,121 @@ function billingWorkspace(groups: ClientPortalMatterBillingGroup[]): ClientPorta
   };
 }
 
-async function clientContactGrants(
-  repository: ApiRouteDependencies["repository"],
-  user: User,
-  now: string,
-): Promise<Array<{ grant: PortalGrant; contact: Contact }>> {
-  const grants = await repository.listPortalGrants(user.firmId);
-  const pairs = await Promise.all(
-    grants
-      .filter((grant) => activePortalGrant(grant, now))
-      .map(async (grant) => {
-        const contact = await repository.getContact(grant.firmId, grant.contactId);
-        return contact && contactMatchesUser(contact, user) ? { grant, contact } : undefined;
-      }),
-  );
-  return pairs.filter((pair): pair is { grant: PortalGrant; contact: Contact } => Boolean(pair));
+function documentSummary(
+  document: DocumentRecord,
+  access: PortalDocumentAccess,
+): ClientPortalDocumentSummary {
+  return {
+    id: document.id,
+    matterId: document.matterId,
+    title: document.title,
+    classification: document.classification,
+    version: document.version,
+    uploadedAt: document.uploadedAt,
+    verifiedAt: document.verifiedAt,
+    accessId: access.id,
+    accessStatus: "active",
+    expiresAt: access.expiresAt,
+  };
+}
+
+function latestSignerEvent(
+  events: SignatureProviderEventRecord[],
+  signerId: string,
+): SignatureProviderEventRecord | undefined {
+  return events
+    .filter((event) => event.evidence.signerId === signerId)
+    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))[0];
+}
+
+function signatureActionState(status: SignatureProviderStatus): ClientPortalSignatureActionState {
+  if (status === "completed") return "completed";
+  if (status === "declined") return "declined";
+  if (status === "viewed") return "viewed";
+  return "ready_to_sign";
+}
+
+function signatureSummary(input: {
+  request: SignatureRequestRecord;
+  signer: SignatureRequestSignerRecord;
+  signerStatus: SignatureProviderStatus;
+  documentTitle?: string;
+}): ClientPortalSignatureSummary {
+  return {
+    id: input.request.id,
+    matterId: input.request.matterId,
+    documentId: input.request.documentId,
+    documentTitle: input.documentTitle,
+    title: input.request.title,
+    status: input.request.status,
+    signerStatus: input.signerStatus,
+    createdAt: input.request.createdAt,
+    completedAt: input.request.completedAt,
+    declinedAt: input.request.declinedAt,
+    actionState: signatureActionState(input.signerStatus),
+  };
+}
+
+function signatureActions(signatures: ClientPortalSignatureSummary[]): ClientPortalActionSummary[] {
+  return signatures.map((signature) => ({
+    id: `signature:${signature.id}`,
+    family: "signature",
+    matterId: signature.matterId,
+    title:
+      signature.actionState === "ready_to_sign" || signature.actionState === "viewed"
+        ? "Signature requested"
+        : "Signature status",
+    detail: `${signature.title} is ${signature.signerStatus.replaceAll("_", " ")}.`,
+    status: signature.signerStatus,
+    tone:
+      signature.actionState === "completed"
+        ? "ready"
+        : signature.actionState === "declined"
+          ? "neutral"
+          : "risk",
+    updatedAt: signature.completedAt ?? signature.declinedAt ?? signature.createdAt,
+    details: [
+      { label: "Document", value: signature.documentTitle ?? signature.documentId },
+      { label: "Signer", value: signature.signerStatus },
+    ],
+  }));
+}
+
+function matterDetail(input: {
+  matter: Matter;
+  grants: PortalGrant[];
+  documentCount: number;
+  signatureCount: number;
+  actionCount: number;
+}): ClientPortalMatterDetail {
+  return {
+    id: input.matter.id,
+    number: input.matter.number,
+    title: input.matter.title,
+    status: input.matter.status,
+    practiceArea: input.matter.practiceArea,
+    jurisdiction: input.matter.jurisdiction,
+    openedOn: input.matter.openedOn,
+    closedOn: input.matter.closedOn,
+    permissions: uniquePermissions(input.grants),
+    documentCount: input.documentCount,
+    signatureCount: input.signatureCount,
+    actionCount: input.actionCount,
+  };
+}
+
+function grantCoverageKey(grant: PortalGrant): string {
+  return [
+    grant.firmId,
+    grant.matterId,
+    grant.contactId,
+    [...grant.permissions].sort().join(","),
+    grant.expiresAt ?? "",
+  ].join(":");
+}
+
+function uniqueGrantCoverageCount(grants: PortalGrant[]): number {
+  return new Set(grants.map(grantCoverageKey)).size;
 }
 
 async function buildWorkspace(
@@ -634,18 +784,25 @@ async function buildWorkspace(
   user: User,
   now: string,
 ) {
-  const grantPairs = await clientContactGrants(repository, user, now);
+  const grantPairs = await clientContactGrantPairs(repository, user, now);
   const grants = grantPairs.map((pair) => pair.grant);
   const matterIds = Array.from(new Set(grants.map((grant) => grant.matterId)));
   const matterSummaries =
     matterIds.length > 0
       ? await repository.listMattersForUser({ ...user, assignedMatterIds: matterIds })
       : [];
+  const visibleMatterSummaries = matterSummaries.filter((matter) =>
+    grants.some((grant) => portalGrantVisibleOnMatter(grant, matter)),
+  );
 
   const actionsByMatterId = new Map<string, ClientPortalActionSummary[]>();
   const billingByMatterId = new Map<string, ClientPortalBillSummary[]>();
-  for (const matter of matterSummaries) {
-    const matterGrants = grants.filter((grant) => grant.matterId === matter.id);
+  const documentsByMatterId = new Map<string, ClientPortalDocumentSummary[]>();
+  const signaturesByMatterId = new Map<string, ClientPortalSignatureSummary[]>();
+  for (const matter of visibleMatterSummaries) {
+    const matterGrants = grants
+      .filter((grant) => grant.matterId === matter.id)
+      .filter((grant) => portalGrantVisibleOnMatter(grant, matter));
     const contactIds = new Set(matterGrants.map((grant) => grant.contactId));
     const [
       intakeLinks,
@@ -660,6 +817,8 @@ async function buildWorkspace(
       conversationThreads,
       invoices,
       paymentRequests,
+      portalDocumentAccess,
+      signatureRequests,
     ] = await Promise.all([
       repository.listIntakeFormLinks(user.firmId, { matterId: matter.id }),
       repository.listIntakeFormItemActions(user.firmId, {}),
@@ -673,7 +832,54 @@ async function buildWorkspace(
       repository.listConversationThreads(user.firmId, { matterId: matter.id }),
       repository.listInvoices(user.firmId, { matterId: matter.id }),
       repository.listHostedPaymentRequests(user.firmId, { matterId: matter.id }),
+      repository.listPortalDocumentAccess(user.firmId, { matterId: matter.id }),
+      repository.listSignatureRequests(user.firmId, { matterId: matter.id }),
     ]);
+    const grantsById = new Map(matterGrants.map((grant) => [grant.id, grant]));
+    const documentsById = new Map(documents.map((document) => [document.id, document]));
+    const clientDocuments = portalDocumentAccess.flatMap((access) => {
+      const grant = grantsById.get(access.portalGrantId);
+      const document = documentsById.get(access.documentId);
+      if (!grant || !document) return [];
+      if (!portalDocumentAccessVisible({ access, document, grant, now })) return [];
+      return [documentSummary(document, access)];
+    });
+    const dedupedClientDocuments = Array.from(
+      new Map(clientDocuments.map((document) => [document.id, document])).values(),
+    );
+    documentsByMatterId.set(matter.id, dedupedClientDocuments);
+
+    const clientSignatures = hasPortalPermission(matterGrants, "sign")
+      ? (
+          await Promise.all(
+            signatureRequests.map(async (signature) => {
+              const [signers, events] = await Promise.all([
+                repository.listSignatureRequestSigners(user.firmId, signature.id),
+                repository.listSignatureProviderEvents(user.firmId, {
+                  signatureRequestId: signature.id,
+                }),
+              ]);
+              return signers
+                .filter((signer) => normalizedEmail(signer.email) === normalizedEmail(user.email))
+                .map((signer) => {
+                  const signerEvent = latestSignerEvent(events, signer.id);
+                  const signerStatus = signerEvent?.status ?? signer.status;
+                  const document = dedupedClientDocuments.find(
+                    (candidate) => candidate.id === signature.documentId,
+                  );
+                  return signatureSummary({
+                    request: signature,
+                    signer,
+                    signerStatus,
+                    documentTitle: document?.title,
+                  });
+                });
+            }),
+          )
+        ).flat()
+      : [];
+    signaturesByMatterId.set(matter.id, clientSignatures);
+
     const matterActions = sortActions([
       ...(hasPortalPermission(matterGrants, "view_documents")
         ? secureShareActions({ shares: shareLinks, documents, grants: matterGrants, now })
@@ -693,33 +899,45 @@ async function buildWorkspace(
       ...clientUpdateActions({ emails, userEmail: user.email }),
       ...receiptActions({ tokens: receiptTokens, emails, userEmail: user.email, now }),
       ...paymentRequestActions({ requests: paymentRequests, invoices, contactIds, now }),
+      ...signatureActions(clientSignatures),
     ]);
     actionsByMatterId.set(matter.id, matterActions);
     billingByMatterId.set(matter.id, billSummaries({ invoices, paymentRequests, contactIds, now }));
   }
 
   const actions = sortActions([...actionsByMatterId.values()].flat());
-  const matterActions = matterSummaries.map((matter) =>
+  const matterActions = visibleMatterSummaries.map((matter) =>
     matterActionGroup(matter, actionsByMatterId.get(matter.id) ?? []),
   );
-  const matterBills = matterSummaries.map((matter) =>
+  const matterBills = visibleMatterSummaries.map((matter) =>
     matterBillingGroup(matter, billingByMatterId.get(matter.id) ?? []),
   );
   return {
     account: sanitizedUser(user),
     access: {
       posture: grants.length > 0 ? "active" : "no_active_grants",
-      activeGrantCount: grants.length,
-      matterCount: matterIds.length,
+      activeGrantCount: uniqueGrantCoverageCount(grants),
+      matterCount: visibleMatterSummaries.length,
       permissions: uniquePermissions(grants),
     },
-    matters: matterSummaries.map((matter) =>
+    matters: visibleMatterSummaries.map((matter) =>
       sanitizedMatter(
         matter,
         grants.filter((grant) => grant.matterId === matter.id),
         actionsByMatterId.get(matter.id)?.length ?? 0,
       ),
     ),
+    matterDetails: visibleMatterSummaries.map((matter) =>
+      matterDetail({
+        matter,
+        grants: grants.filter((grant) => grant.matterId === matter.id),
+        documentCount: documentsByMatterId.get(matter.id)?.length ?? 0,
+        signatureCount: signaturesByMatterId.get(matter.id)?.length ?? 0,
+        actionCount: actionsByMatterId.get(matter.id)?.length ?? 0,
+      }),
+    ),
+    documents: [...documentsByMatterId.values()].flat(),
+    signatures: [...signaturesByMatterId.values()].flat(),
     billing: billingWorkspace(matterBills),
     matterActions,
     actions,

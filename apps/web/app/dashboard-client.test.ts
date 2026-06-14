@@ -18,7 +18,11 @@ import {
 } from "@open-practice/domain";
 import { sampleResidentialTenancyIntakeDefinition } from "@open-practice/domain/sample-data";
 import { buildSidebarNavigationSections, getRouteCatalogEntry } from "../routes/routeCatalog";
-import { dashboardUnavailableSectionCopy } from "./dashboard-client";
+import { DashboardApiError } from "./api-client";
+import {
+  dashboardUnavailableSectionCopy,
+  formatPortalDocumentAccessFailure,
+} from "./dashboard-client";
 import {
   applyMatterAvailabilityToNavigation,
   applySavedMatterFocus,
@@ -1199,6 +1203,34 @@ describe("dashboard client behavior", () => {
     expect(disabledCopy.title).toBe("External Uploads unavailable");
     expect(disabledCopy.detail).toBe(
       "External uploads require S3 storage, token signing, and upload access.",
+    );
+  });
+
+  it("formats staff portal document visibility failures as actionable copy", () => {
+    expect(
+      formatPortalDocumentAccessFailure(
+        "grant",
+        new DashboardApiError(409, { code: "PORTAL_DOCUMENT_ACCOUNT_GRANT_REQUIRED" }),
+      ),
+    ).toBe("Create the client portal account before sharing confidential client files.");
+    expect(
+      formatPortalDocumentAccessFailure(
+        "grant",
+        new DashboardApiError(422, { code: "PORTAL_DOCUMENT_NOT_SHAREABLE" }),
+      ),
+    ).toBe(
+      "This document is not shareable until review, scan, checksum, and classification are safe.",
+    );
+    expect(
+      formatPortalDocumentAccessFailure(
+        "grant",
+        new DashboardApiError(409, {
+          error: { code: "PORTAL_DOCUMENT_CONTACT_NOT_ELIGIBLE" },
+        }),
+      ),
+    ).toBe("This contact is not eligible for portal file access.");
+    expect(formatPortalDocumentAccessFailure("revoke", new Error("offline"))).toBe(
+      "Portal file visibility revoke failed: network",
     );
   });
 

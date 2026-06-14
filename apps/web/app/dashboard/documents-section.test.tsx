@@ -193,41 +193,75 @@ const syntheticAssemblyWorkbench: DocumentAssemblyWorkbenchResponse = {
   },
 };
 
+type DocumentsSectionRenderProps = Parameters<typeof DocumentsSection>[0];
+
+function buildDocumentsSectionProps(
+  overrides: Partial<DocumentsSectionRenderProps> = {},
+): DocumentsSectionRenderProps {
+  const workbench = buildSyntheticDocumentProcessingWorkbench();
+  return {
+    activeDocumentAssembly: syntheticAssemblyWorkbench,
+    activeDocumentMetadataFilterCount: documentMetadataSearchFilterCount(
+      workbench.metadataSearch?.filters,
+    ),
+    activeDocumentMetadataTags: workbench.metadataSearch?.tags ?? [],
+    activeDocumentProcessing: workbench,
+    activeDocumentProcessingRows: workbench.documents,
+    activeMatterNumber: "OP-SYN-001",
+    documentMetadataClassificationFilter: "general",
+    documentMetadataCueGroupFilter: "",
+    documentMetadataOcrStatusFilter: "",
+    documentMetadataQuery: "synthetic",
+    documentMetadataReviewStatusFilter: "",
+    documentMetadataScanStatusFilter: "",
+    documentMetadataSearchSummary: summarizeDocumentMetadataSearch(workbench.metadataSearch),
+    documentProcessingStatus: "Document processing loaded.",
+    documentProcessingSummary: summarizeDocumentProcessingWorkbench(workbench),
+    documentReviewSuggestionsSummary: summarizeDocumentReviewSuggestions(workbench.documents),
+    portalDocumentAccess: [],
+    portalDocumentAccessBusyId: "",
+    portalDocumentAccessStatus: "No files are visible to this portal contact.",
+    queueingDocumentId: "",
+    selectedClientPortalContactId: "contact_synthetic",
+    selectedClientPortalContactLabel: "Ada Morgan",
+    onClearDocumentMetadataSearch: noop,
+    onDocumentMetadataClassificationFilterChange: noop,
+    onDocumentMetadataCueGroupFilterChange: noop,
+    onDocumentMetadataOcrStatusFilterChange: noop,
+    onDocumentMetadataQueryChange: noop,
+    onDocumentMetadataReviewStatusFilterChange: noop,
+    onDocumentMetadataScanStatusFilterChange: noop,
+    onGrantPortalDocumentAccess: noop,
+    onQueueDocumentOcr: noop,
+    onRefreshDocumentMetadataSearch: noop,
+    onRevokePortalDocumentAccess: noop,
+    onSelectDocumentMetadataTag: noop,
+    ...overrides,
+  };
+}
+
 describe("DocumentsSection", () => {
   it("renders the document-processing workbench without changing copy or classes", () => {
-    const workbench = buildSyntheticDocumentProcessingWorkbench();
     const html = renderToStaticMarkup(
-      createElement(DocumentsSection, {
-        activeDocumentAssembly: syntheticAssemblyWorkbench,
-        activeDocumentMetadataFilterCount: documentMetadataSearchFilterCount(
-          workbench.metadataSearch?.filters,
-        ),
-        activeDocumentMetadataTags: workbench.metadataSearch?.tags ?? [],
-        activeDocumentProcessing: workbench,
-        activeDocumentProcessingRows: workbench.documents,
-        activeMatterNumber: "OP-SYN-001",
-        documentMetadataClassificationFilter: "general",
-        documentMetadataCueGroupFilter: "",
-        documentMetadataOcrStatusFilter: "",
-        documentMetadataQuery: "synthetic",
-        documentMetadataReviewStatusFilter: "",
-        documentMetadataScanStatusFilter: "",
-        documentMetadataSearchSummary: summarizeDocumentMetadataSearch(workbench.metadataSearch),
-        documentProcessingStatus: "Document processing loaded.",
-        documentProcessingSummary: summarizeDocumentProcessingWorkbench(workbench),
-        documentReviewSuggestionsSummary: summarizeDocumentReviewSuggestions(workbench.documents),
-        queueingDocumentId: "",
-        onClearDocumentMetadataSearch: noop,
-        onDocumentMetadataClassificationFilterChange: noop,
-        onDocumentMetadataCueGroupFilterChange: noop,
-        onDocumentMetadataOcrStatusFilterChange: noop,
-        onDocumentMetadataQueryChange: noop,
-        onDocumentMetadataReviewStatusFilterChange: noop,
-        onDocumentMetadataScanStatusFilterChange: noop,
-        onQueueDocumentOcr: noop,
-        onRefreshDocumentMetadataSearch: noop,
-        onSelectDocumentMetadataTag: noop,
-      }),
+      createElement(
+        DocumentsSection,
+        buildDocumentsSectionProps({
+          portalDocumentAccess: [
+            {
+              id: "portal-document-access-synthetic",
+              firmId: "firm_synthetic",
+              matterId: "matter_synthetic",
+              documentId: "doc_synthetic",
+              portalGrantId: "portal-grant-synthetic",
+              permission: "view_document",
+              grantedByUserId: "user_synthetic",
+              createdAt: "2026-06-13T10:00:00.000Z",
+              expiresAt: "2099-01-01T00:00:00.000Z",
+            },
+          ],
+          portalDocumentAccessStatus: "1 file visibility row loaded.",
+        }),
+      ),
     );
 
     expect(html).toContain('class="detail-grid"');
@@ -247,10 +281,24 @@ describe("DocumentsSection", () => {
     expect(html).toContain("Providers and workers");
     expect(html).toContain("OP-SYN-001");
     expect(html).toContain("Document processing workbench");
+    expect(html).toContain("1 portal-visible");
+    expect(html).toContain("Portal visibility for Ada Morgan");
+    expect(html).toContain("Revoke portal");
     expect(html).toContain("Ready to process");
     expect(html).toContain("Reviewer suggestions");
     expect(html).toContain("Extraction suggests financial");
     expect(html).toContain("Queue OCR");
     expect(html).toContain("No document assembly packages are linked to this matter.");
+  });
+
+  it("renders a portal grant action when the selected client has no file visibility", () => {
+    const html = renderToStaticMarkup(
+      createElement(DocumentsSection, buildDocumentsSectionProps()),
+    );
+
+    expect(html).toContain("Portal visibility for Ada Morgan");
+    expect(html).toContain("No files are visible to this portal contact.");
+    expect(html).toContain("Grant portal");
+    expect(html).not.toContain("Revoke portal");
   });
 });

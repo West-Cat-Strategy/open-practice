@@ -15,6 +15,13 @@ export interface MemorySignatureStore {
   signatureWebhookAttempts: SignatureWebhookAttemptRecord[];
 }
 
+function clientPortalEmbeddedSignerId(event: SignatureProviderEventRecord): string | undefined {
+  return event.evidence.mode === "client_portal_embedded" &&
+    typeof event.evidence.signerId === "string"
+    ? event.evidence.signerId
+    : undefined;
+}
+
 export function listMemorySignatureRequests(
   store: MemorySignatureStore,
   firmId: string,
@@ -58,6 +65,25 @@ export function recordMemorySignatureProviderEvent(
   store.signatureProviderEvents = [...store.signatureProviderEvents, clone(event)];
   if (webhookAttempt) {
     store.signatureWebhookAttempts = [...store.signatureWebhookAttempts, clone(webhookAttempt)];
+  }
+  const signerId = clientPortalEmbeddedSignerId(event);
+  if (signerId) {
+    store.signatureRequestSigners = store.signatureRequestSigners.map((signer) => {
+      if (signer.firmId !== event.firmId || signer.id !== signerId) {
+        return signer;
+      }
+      if (!shouldUpdateSignatureRequestStatus(signer.status, event)) {
+        return signer;
+      }
+      return {
+        ...signer,
+        status: event.status,
+        completedAt: event.status === "completed" ? event.occurredAt : signer.completedAt,
+      };
+    });
+  }
+  if (event.evidence.mode === "client_portal_embedded") {
+    return clone(event);
   }
   store.signatureRequests = store.signatureRequests.map((request) => {
     if (request.firmId !== event.firmId || request.id !== event.signatureRequestId) {

@@ -214,6 +214,47 @@ describe("matter creation permissions", () => {
     ).toBe(false);
   });
 
+  it("allows client portal reads for any active grant while keeping files permissioned", () => {
+    const externalUser: User = {
+      id: "user-client",
+      firmId: sampleFirm.id,
+      displayName: "Ada Morgan",
+      email: "ada@example.test",
+      role: "client_external",
+      assignedMatterIds: [],
+      mfaEnabled: true,
+    };
+    const signOnlyGrant: PortalGrant = {
+      ...samplePortalGrants[0]!,
+      permissions: ["sign"],
+    };
+
+    expect(
+      canAccess({
+        user: externalUser,
+        firmId: sampleFirm.id,
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        portalGrants: [signOnlyGrant],
+        resource: "client_portal",
+        action: "read",
+        now: "2026-04-10T12:00:00.000Z",
+      }),
+    ).toBe(true);
+    expect(
+      canAccess({
+        user: externalUser,
+        firmId: sampleFirm.id,
+        matterId: "matter-001",
+        contactId: "contact-ada",
+        portalGrants: [signOnlyGrant],
+        resource: "document",
+        action: "read",
+        now: "2026-04-10T12:00:00.000Z",
+      }),
+    ).toBe(false);
+  });
+
   it("keeps AI proposal review matter-scoped and staff-only", () => {
     expect(
       canAccess({

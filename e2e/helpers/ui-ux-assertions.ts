@@ -41,6 +41,20 @@ const layoutSelectors = [
   ".billing-capture-panel",
   ".billing-action-row",
   ".billing-toggle-field",
+  ".client-portal-shell",
+  ".client-portal-header",
+  ".client-portal-band",
+  ".client-portal-status",
+  ".client-portal-matter",
+  ".client-portal-action-group",
+  ".client-portal-action-group-header",
+  ".client-portal-file",
+  ".client-portal-signature-actions",
+  ".client-portal-bill",
+  ".client-portal-payment-requests",
+  ".client-portal-action",
+  ".client-portal-detail-list",
+  ".client-portal-action-details",
 ].join(",");
 
 const collisionParentSelectors = [
@@ -58,6 +72,15 @@ const collisionParentSelectors = [
   ".section-title",
   ".matter-strip",
   ".nav-group-items",
+  ".client-portal-header",
+  ".client-portal-matter-grid",
+  ".client-portal-billing-summary",
+  ".client-portal-action-group",
+  ".client-portal-action-group-header",
+  ".client-portal-files",
+  ".client-portal-signature-actions",
+  ".client-portal-bills",
+  ".client-portal-actions",
 ].join(",");
 
 function screenshotName(input: string): string {

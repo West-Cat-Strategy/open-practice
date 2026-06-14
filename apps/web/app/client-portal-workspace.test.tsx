@@ -27,6 +27,48 @@ const workspace: ClientPortalWorkspaceResponse = {
       actionCount: 2,
     },
   ],
+  matterDetails: [
+    {
+      id: "matter-001",
+      number: "2026-0001",
+      title: "Synthetic matter",
+      status: "open",
+      practiceArea: "Residential tenancy",
+      jurisdiction: "BC",
+      openedOn: "2026-01-10",
+      permissions: ["view_documents", "upload_documents", "message", "sign"],
+      documentCount: 1,
+      signatureCount: 1,
+      actionCount: 3,
+    },
+  ],
+  documents: [
+    {
+      id: "doc-001",
+      matterId: "matter-001",
+      title: "Client visible disclosure.pdf",
+      classification: "general",
+      version: 2,
+      uploadedAt: "2026-06-10T10:00:00.000Z",
+      verifiedAt: "2026-06-10T10:10:00.000Z",
+      accessId: "portal-document-access-001",
+      accessStatus: "active",
+      expiresAt: "2026-07-01T00:00:00.000Z",
+    },
+  ],
+  signatures: [
+    {
+      id: "signature-001",
+      matterId: "matter-001",
+      documentId: "doc-001",
+      documentTitle: "Client visible disclosure.pdf",
+      title: "Disclosure acknowledgment",
+      status: "sent",
+      signerStatus: "sent",
+      createdAt: "2026-06-11T10:00:00.000Z",
+      actionState: "ready_to_sign",
+    },
+  ],
   billing: {
     currency: "CAD",
     billCount: 1,
@@ -114,6 +156,16 @@ describe("ClientPortalWorkspace", () => {
     const html = renderToStaticMarkup(createElement(ClientPortalWorkspace, { workspace }));
 
     expect(html).toContain("Matter action workspace");
+    expect(html).toContain("Matter details");
+    expect(html).toContain("Residential tenancy");
+    expect(html).toContain("Shared files");
+    expect(html).toContain("Client visible disclosure.pdf");
+    expect(html).toContain("Signatures");
+    expect(html).toContain("Disclosure acknowledgment");
+    expect(html).toContain("Ready to sign");
+    expect(html).toContain("Mark viewed");
+    expect(html).toContain("Confirm signed");
+    expect(html).toContain("Decline signing");
     expect(html).toContain("Billing");
     expect(html).toContain("2026-0001");
     expect(html).toContain("INV-2026-0001");
@@ -124,6 +176,9 @@ describe("ClientPortalWorkspace", () => {
     expect(html).toContain("redacted");
     expect(html).not.toContain("tokenHash");
     expect(html).not.toContain("storageKey");
+    expect(html).not.toContain("signingUrl");
+    expect(html).not.toContain("providerEvidence");
+    expect(html).not.toContain("rawConsentEvidence");
     expect(html).not.toContain("PRIVATE HTML BODY");
     expect(html).not.toContain("private-checkout");
     expect(html).not.toContain("/payments/private-client-path");

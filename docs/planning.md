@@ -68,9 +68,11 @@ Next operational scale priorities:
     first review-first intake follow-up/source-attribution slice, OP-T148 has shipped the first
     scheduled-reporting/report-builder posture slice, OP-T149 has shipped the first payment
     settlement/reconciliation review slice, OP-T150 has shipped the first bank-feed reconciliation
-    review slice, OP-T151 has shipped the first legal-research provider job boundary slice, and
-    OP-T152 has shipped the scoped developer API enforcement/webhook replay boundary. No active
-    candidate remains in this core-suite parity pass.
+    review slice, OP-T151 has shipped the first legal-research provider job boundary slice, OP-T152
+    has shipped the scoped developer API enforcement/webhook replay boundary, and OP-T156 has
+    shipped a follow-up client portal permissioned workspace slice over safe matter details,
+    account-bound per-file document visibility, embedded signer actions, and browser UI/UX proof.
+    No active candidate remains in this core-suite parity pass.
 
 ### Phase 4: Clio-Informed Functional Parity (Active Candidate Refresh)
 
@@ -79,12 +81,16 @@ Practice planning. Clio remains proprietary reference research: no Clio assets, 
 schemas, templates, API examples, or UI structure should be copied into Open Practice. Candidate
 rows live in `docs/planning-and-progress.md`; this section holds the durable product direction.
 
-1.  **Completed Parity Slices**: OP-T127 through OP-T152 are shipped in the live workboard. OP-T144
-    adds the first grouped logged-in client action workspace over existing portal grants, document
-    exchange records, redacted conversation cues, calendar guest-session cues, and contact-bound
-    payment-request summaries. OP-T145 adds a read-only client billing projection over
-    contact-matched visible invoices and hosted payment-request shell records without checkout,
-    settlement, processor, trust-posting, or invoice-balance mutation behavior. OP-T146 adds a
+1.  **Completed Parity Slices**: OP-T127 through OP-T152 plus the OP-T156 follow-up are shipped in
+    the live workboard. OP-T144 adds the first grouped logged-in client action workspace over
+    existing portal grants, document exchange records, redacted conversation cues, calendar
+    guest-session cues, and contact-bound payment-request summaries. OP-T145 adds a read-only
+    client billing projection over contact-matched visible invoices and hosted payment-request
+    shell records without checkout, settlement, processor, trust-posting, or invoice-balance
+    mutation behavior. OP-T156 follows those completed rows with account-bound portal grants,
+    explicit per-file document visibility, safe matter metadata, and embedded signer actions while
+    leaving raw document delivery, previews, storage keys, signing URLs, provider evidence, live
+    chat, SMS, and public-token rewrites out of scope. OP-T146 adds a
     staff-only task/deadline review projection and Queues dashboard surface with priority,
     assignment, matter labels, privacy visibility, and scheduling-review cues while leaving
     automation and client-visible deadline views out of scope. OP-T147 adds a review-first intake

@@ -23,6 +23,10 @@ const clientPortalAccountBodySchema = z.object({
 });
 
 const defaultPortalPermissions = ["view_documents", "upload_documents", "message", "sign"] as const;
+const clientPortalDocumentChecksum =
+  "cb77d67f2ec9bf447a4e8e6a2a6c93fcb7b60e6a7773bc5f3703f8a7e8a1884f";
+const clientPortalGrantableDocumentChecksum =
+  "a4cf9af447ac73a1f99c876bb5bd8f6b762b8cdab3b1f9e822c5416c8200f255";
 
 function sanitizeFilename(filename: string): string {
   return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -195,6 +199,7 @@ export function registerE2ESupportRoutes(
       (grant) =>
         grant.matterId === body.matterId &&
         grant.contactId === body.contactId &&
+        grant.accountUserId === user.id &&
         !grant.revokedAt &&
         (!grant.expiresAt || Date.parse(grant.expiresAt) > Date.parse(now)) &&
         defaultPortalPermissions.every((permission) => grant.permissions.includes(permission)),
@@ -206,9 +211,147 @@ export function registerE2ESupportRoutes(
         firmId: request.auth.firmId,
         matterId: body.matterId,
         contactId: body.contactId,
+        accountUserId: user.id,
         grantedByUserId: request.auth.user.id,
         permissions: [...defaultPortalPermissions],
       }));
+
+    async function ensureClientPortalDocument(
+      documentId: string,
+      documentTitle: string,
+      checksumSha256: string,
+    ) {
+      const existingDocument = await repository.getDocument(request.auth.firmId, documentId);
+      return (
+        existingDocument ??
+        (await repository
+          .createDocumentUploadIntent({
+            id: documentId,
+            firmId: request.auth.firmId,
+            matterId: body.matterId,
+            title: documentTitle,
+            storageKey: `e2e/${body.matterId}/${documentId}-${sanitizeFilename(documentTitle)}`,
+            checksumSha256,
+            classification: "general",
+            legalHold: false,
+          })
+          .then((created) =>
+            repository.completeDocumentUpload({
+              firmId: request.auth.firmId,
+              documentId: created.id,
+              checksumSha256,
+              scanStatus: "passed",
+            }),
+          ))
+      );
+    }
+
+    const documentId = `doc-e2e-client-portal-${body.matterId}`;
+    const documentTitle = "Client portal E2E disclosure.pdf";
+    const document = await ensureClientPortalDocument(
+      documentId,
+      documentTitle,
+      clientPortalDocumentChecksum,
+    );
+    const staffGrantableDocumentId = `doc-e2e-client-portal-grantable-${body.matterId}`;
+    const staffGrantableDocument = await ensureClientPortalDocument(
+      staffGrantableDocumentId,
+      "Client portal E2E staff grant.pdf",
+      clientPortalGrantableDocumentChecksum,
+    );
+    if (!document) {
+      throw new Error("Unable to create client portal E2E document fixture");
+    }
+    if (!staffGrantableDocument) {
+      throw new Error("Unable to create client portal E2E staff document fixture");
+    }
+    const existingDocumentAccess = (
+      await repository.listPortalDocumentAccess(request.auth.firmId, {
+        matterId: body.matterId,
+        documentId: document.id,
+        portalGrantId: grant.id,
+      })
+    ).find((access) => !access.revokedAt);
+    const documentAccess =
+      existingDocumentAccess ??
+      (await repository.createPortalDocumentAccess({
+        id: `portal-document-access-e2e-${body.userId}`,
+        firmId: request.auth.firmId,
+        matterId: body.matterId,
+        documentId: document.id,
+        portalGrantId: grant.id,
+        permission: "view_document",
+        grantedByUserId: request.auth.user.id,
+        createdAt: now,
+      }));
+
+    const signatureFixtures = [
+      {
+        id: `signature-e2e-client-portal-${body.matterId}`,
+        title: "Client portal E2E signature",
+        externalSuffix: "client-portal-signature",
+        signerId: `signature-signer-e2e-client-portal-${body.userId}`,
+        eventId: `signature-event-e2e-client-portal-${body.matterId}`,
+      },
+      {
+        id: `signature-e2e-client-portal-viewed-${body.matterId}`,
+        title: "Client portal E2E view acknowledgement",
+        externalSuffix: "client-portal-signature-viewed",
+        signerId: `signature-signer-e2e-client-portal-viewed-${body.userId}`,
+        eventId: `signature-event-e2e-client-portal-viewed-${body.matterId}`,
+      },
+      {
+        id: `signature-e2e-client-portal-declined-${body.matterId}`,
+        title: "Client portal E2E decline option",
+        externalSuffix: "client-portal-signature-declined",
+        signerId: `signature-signer-e2e-client-portal-declined-${body.userId}`,
+        eventId: `signature-event-e2e-client-portal-declined-${body.matterId}`,
+      },
+    ] as const;
+    const existingSignatureIds = new Set(
+      (await repository.listSignatureRequests(request.auth.firmId)).map((request) => request.id),
+    );
+    for (const signatureFixture of signatureFixtures) {
+      if (existingSignatureIds.has(signatureFixture.id)) continue;
+      await repository.createSignatureRequest({
+        request: {
+          id: signatureFixture.id,
+          firmId: request.auth.firmId,
+          matterId: body.matterId,
+          documentId: document.id,
+          title: signatureFixture.title,
+          requestedByUserId: request.auth.user.id,
+          provider: "embedded",
+          externalId: `embedded:e2e:${body.matterId}:${signatureFixture.externalSuffix}`,
+          status: "sent",
+          consentText: "Synthetic E2E portal signature consent.",
+          evidence: { source: "e2e_support" },
+          createdAt: now,
+        },
+        signers: [
+          {
+            id: signatureFixture.signerId,
+            firmId: request.auth.firmId,
+            signatureRequestId: signatureFixture.id,
+            name: contact.displayName,
+            email,
+            role: "client",
+            status: "sent",
+          },
+        ],
+        event: {
+          id: signatureFixture.eventId,
+          firmId: request.auth.firmId,
+          signatureRequestId: signatureFixture.id,
+          provider: "embedded",
+          externalId: `embedded:e2e:${body.matterId}:${signatureFixture.externalSuffix}`,
+          status: "sent",
+          occurredAt: now,
+          evidence: { source: "e2e_support" },
+        },
+      });
+    }
+    const signatureRequestId = signatureFixtures[0].id;
 
     const conversationThreadId = `conversation-thread-e2e-${body.matterId}`;
     const existingThread = await repository.getConversationThread(
@@ -255,6 +398,13 @@ export function registerE2ESupportRoutes(
         id: grant.id,
         status: "active",
         permissions: grant.permissions,
+      },
+      fixtures: {
+        documentId: document.id,
+        staffGrantableDocumentId: staffGrantableDocument.id,
+        portalDocumentAccessId: documentAccess.id,
+        signatureRequestId,
+        signatureRequestIds: signatureFixtures.map((signatureFixture) => signatureFixture.id),
       },
     };
   });

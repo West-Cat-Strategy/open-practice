@@ -104,7 +104,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       "/api/client-portal/workspace",
       headers,
     );
-    return <ClientPortalWorkspace workspace={workspace} />;
+    return <ClientPortalWorkspace apiBaseUrl={browserApiBaseUrl} workspace={workspace} />;
   }
 
   let coreResources: Awaited<ReturnType<typeof loadDashboardCoreResources>>;

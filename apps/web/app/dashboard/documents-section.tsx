@@ -1,4 +1,4 @@
-import { Search, X } from "lucide-react";
+import { Eye, EyeOff, Search, X } from "lucide-react";
 
 import type { DocumentAssemblyWorkbenchResponse } from "../_features/document-assembly/models";
 import {
@@ -27,6 +27,7 @@ import {
   emptyDocumentReviewSuggestions,
 } from "../document-processing-dashboard";
 import { DocumentAssemblyDashboardBlock } from "./document-assembly-dashboard-block";
+import type { PortalDocumentAccessSummary } from "../types";
 
 interface DocumentsSectionProps {
   activeDocumentAssembly: DocumentAssemblyWorkbenchResponse;
@@ -45,7 +46,12 @@ interface DocumentsSectionProps {
   documentProcessingStatus: string;
   documentProcessingSummary: string;
   documentReviewSuggestionsSummary: string;
+  portalDocumentAccess: PortalDocumentAccessSummary[];
+  portalDocumentAccessBusyId: string;
+  portalDocumentAccessStatus: string;
   queueingDocumentId: string;
+  selectedClientPortalContactId: string;
+  selectedClientPortalContactLabel: string;
   onClearDocumentMetadataSearch: () => Promise<void> | void;
   onDocumentMetadataClassificationFilterChange: (value: string) => void;
   onDocumentMetadataCueGroupFilterChange: (value: string) => void;
@@ -54,8 +60,14 @@ interface DocumentsSectionProps {
   onDocumentMetadataReviewStatusFilterChange: (value: string) => void;
   onDocumentMetadataScanStatusFilterChange: (value: string) => void;
   onQueueDocumentOcr: (documentId: string) => Promise<void> | void;
+  onGrantPortalDocumentAccess: (documentId: string) => Promise<void> | void;
   onRefreshDocumentMetadataSearch: () => Promise<void> | void;
+  onRevokePortalDocumentAccess: (accessId: string) => Promise<void> | void;
   onSelectDocumentMetadataTag: (tag: string) => Promise<void> | void;
+}
+
+function portalDocumentAccessActive(access: PortalDocumentAccessSummary, nowMs: number): boolean {
+  return !access.revokedAt && (!access.expiresAt || Date.parse(access.expiresAt) > nowMs);
 }
 
 export function DocumentsSection({
@@ -75,7 +87,12 @@ export function DocumentsSection({
   documentProcessingStatus,
   documentProcessingSummary,
   documentReviewSuggestionsSummary,
+  portalDocumentAccess,
+  portalDocumentAccessBusyId,
+  portalDocumentAccessStatus,
   queueingDocumentId,
+  selectedClientPortalContactId,
+  selectedClientPortalContactLabel,
   onClearDocumentMetadataSearch,
   onDocumentMetadataClassificationFilterChange,
   onDocumentMetadataCueGroupFilterChange,
@@ -84,9 +101,15 @@ export function DocumentsSection({
   onDocumentMetadataReviewStatusFilterChange,
   onDocumentMetadataScanStatusFilterChange,
   onQueueDocumentOcr,
+  onGrantPortalDocumentAccess,
   onRefreshDocumentMetadataSearch,
+  onRevokePortalDocumentAccess,
   onSelectDocumentMetadataTag,
 }: DocumentsSectionProps) {
+  const nowMs = Date.now();
+  const activePortalDocumentAccess = portalDocumentAccess.filter((access) =>
+    portalDocumentAccessActive(access, nowMs),
+  );
   return (
     <>
       <div className="detail-grid">
@@ -318,8 +341,15 @@ export function DocumentsSection({
 
       <div className="section-title">
         <h3>Document processing workbench</h3>
-        <span>{activeDocumentProcessingRows.length} documents</span>
+        <span>
+          {activeDocumentProcessingRows.length} documents · {activePortalDocumentAccess.length}{" "}
+          portal-visible
+        </span>
       </div>
+      <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+        Portal visibility for {selectedClientPortalContactLabel || "no selected client contact"}:{" "}
+        {portalDocumentAccessStatus}
+      </p>
       <div className="party-list queue-section-list">
         {documentProcessingGroupOrder.map((group) => {
           const groupRows = activeDocumentProcessingRows.filter((item) => item.group === group);
@@ -335,6 +365,9 @@ export function DocumentsSection({
                 const job = describeLatestDocumentJob(item.latestJob);
                 const reviewSuggestions =
                   item.reviewSuggestions ?? emptyDocumentReviewSuggestions();
+                const activeAccess = activePortalDocumentAccess.find(
+                  (access) => access.documentId === item.document.id,
+                );
                 return (
                   <div className="party-row upload-review-row" key={item.document.id}>
                     <span>
@@ -405,6 +438,35 @@ export function DocumentsSection({
                       >
                         {queueingDocumentId === item.document.id ? "Queueing..." : action.label}
                       </button>
+                      {selectedClientPortalContactId ? (
+                        activeAccess ? (
+                          <button
+                            className="secondary-button compact-button row-button"
+                            disabled={portalDocumentAccessBusyId.length > 0}
+                            onClick={() => void onRevokePortalDocumentAccess(activeAccess.id)}
+                            type="button"
+                          >
+                            <EyeOff aria-hidden="true" size={16} />
+                            {portalDocumentAccessBusyId === `revoke:${activeAccess.id}`
+                              ? "Revoking..."
+                              : "Revoke portal"}
+                          </button>
+                        ) : (
+                          <button
+                            className="secondary-button compact-button row-button"
+                            disabled={portalDocumentAccessBusyId.length > 0}
+                            onClick={() => void onGrantPortalDocumentAccess(item.document.id)}
+                            type="button"
+                          >
+                            <Eye aria-hidden="true" size={16} />
+                            {portalDocumentAccessBusyId === `grant:${item.document.id}`
+                              ? "Granting..."
+                              : "Grant portal"}
+                          </button>
+                        )
+                      ) : (
+                        <em>Select portal contact</em>
+                      )}
                     </div>
                   </div>
                 );

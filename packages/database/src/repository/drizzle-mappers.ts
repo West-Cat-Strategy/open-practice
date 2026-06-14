@@ -81,6 +81,7 @@ import {
   type MatterParty,
   type PaymentAllocationRecord,
   type PortalGrant,
+  type PortalDocumentAccess,
   type ProviderSettingRecord,
   type RecoveryCodeRecord,
   type SavedOperationalViewDefinition,
@@ -147,6 +148,23 @@ export function mapShareLinkRow(row: typeof schema.shareLinks.$inferSelect): Sha
     expiresAt: dateToIso(row.expiresAt),
     revokedAt: dateToIso(row.revokedAt),
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function mapPortalDocumentAccessRow(
+  row: typeof schema.portalDocumentAccess.$inferSelect,
+): PortalDocumentAccess {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    documentId: row.documentId,
+    portalGrantId: row.portalGrantId,
+    permission: row.permission as PortalDocumentAccess["permission"],
+    grantedByUserId: row.grantedByUserId,
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: dateToIso(row.expiresAt),
+    revokedAt: dateToIso(row.revokedAt),
   };
 }
 
