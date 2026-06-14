@@ -44,19 +44,10 @@ central reference corpus at `/Users/bryan/projects/reference-repos`. OP-T108 thr
 treated as shipped work and are not re-proposed here. No third-party code, schemas, UI, tests,
 assets, or distinctive prose are copied into this repo by this catalogue.
 
-#### Intake, Documents, And Signing
+OP-T155 shipped the first intake widget registry and validator adapter slice, so the former intake
+widget registry candidate is no longer re-proposed here.
 
-- **Intake widget registry and validator adapter**
-  - **First slice:** Add an original domain/web registry that maps OP intake item kinds to renderer,
-    validation, and preview adapters while preserving the existing public runner behavior.
-  - **Local gap / shipped boundary:** Intake item types and rendering are still directly switched in
-    `packages/domain/src/intake.ts` and the intake form renderer; OP-T92 diagnostics shipped, but
-    not a pluggable widget boundary.
-  - **References:** `rjsf-team__react-jsonschema-form`,
-    `surveyjs__survey-library`, and `formio__formio.js` source indexes.
-  - **Reuse and snippets:** SurveyJS runtime is permissive enough for tiny attributed snippets after
-    a reuse decision, but this candidate should stay behavior-level unless implementation scope
-    explicitly opens provenance review. RJSF/Form.io stay reference-only in the current corpus.
+#### Intake, Documents, And Signing
 
 - **Visual branch-rule authoring**
   - **First slice:** Add a structured branch-rule editor with preview path summaries; keep public

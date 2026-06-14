@@ -8,6 +8,7 @@ import {
   intakeLifecycleMessage,
   visibleSections,
 } from "./runner-utils";
+import { intakeFormWidgetKinds, intakeFormWidgetRegistry } from "./widget-registry";
 
 const definition: Extract<EmbeddedIntakeTemplateDefinition, { schemaVersion: 2 }> = {
   schemaVersion: 2,
@@ -44,6 +45,17 @@ const definition: Extract<EmbeddedIntakeTemplateDefinition, { schemaVersion: 2 }
 };
 
 describe("shared intake renderer inputs", () => {
+  it("registers renderer adapters for the current public intake item kinds", () => {
+    expect(intakeFormWidgetKinds).toEqual(["display", "question", "upload", "signature"]);
+    expect(Object.keys(intakeFormWidgetRegistry)).toEqual(intakeFormWidgetKinds);
+    for (const kind of intakeFormWidgetKinds) {
+      expect(intakeFormWidgetRegistry[kind]).toMatchObject({
+        kind,
+        render: expect.any(Function),
+      });
+    }
+  });
+
   it("keeps public runner and staff preview on the same schema-v2 item set", () => {
     const publicRunnerSections = visibleSections(
       {

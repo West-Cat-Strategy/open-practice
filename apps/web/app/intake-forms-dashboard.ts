@@ -6,6 +6,7 @@ import {
 import type {
   AnswerSnapshotRecord,
   EmbeddedIntakeFormItem,
+  EmbeddedIntakeFormItemKind,
   EmbeddedIntakeTemplateDefinitionV2,
   IntakeTemplatePreviewCheckSeverity,
   IntakeFormItemActionRecord,
@@ -33,7 +34,56 @@ export type IntakePreviewAnswers = Record<string, string | boolean>;
 export const clientVariableFields = ["displayName", "notes"] as const;
 export const matterVariableFields = ["title", "practiceArea", "jurisdiction"] as const;
 export const questionTypes = ["text", "textarea", "select", "boolean", "date"] as const;
-export const itemKinds = ["display", "question", "upload", "signature"] as const;
+export const itemKinds = [
+  "display",
+  "question",
+  "upload",
+  "signature",
+] as const satisfies readonly EmbeddedIntakeFormItemKind[];
+
+export interface IntakeBuilderItemAdapter {
+  kind: EmbeddedIntakeFormItemKind;
+  makeItem: (index: number) => EmbeddedIntakeFormItem;
+}
+
+export const intakeBuilderItemRegistry = {
+  display: {
+    kind: "display",
+    makeItem: (index) => ({
+      id: `display-${index + 1}`,
+      kind: "display",
+      body: "Client-facing text.",
+    }),
+  },
+  question: {
+    kind: "question",
+    makeItem: (index) => ({
+      id: `question-${index + 1}`,
+      kind: "question",
+      questionId: "client_display_name",
+    }),
+  },
+  upload: {
+    kind: "upload",
+    makeItem: (index) => ({
+      id: `upload-${index + 1}`,
+      kind: "upload",
+      label: "Supporting document",
+      required: false,
+      acceptedFileTypes: ["application/pdf", "image/png", "image/jpeg"],
+    }),
+  },
+  signature: {
+    kind: "signature",
+    makeItem: (index) => ({
+      id: `signature-${index + 1}`,
+      kind: "signature",
+      label: "Client attestation",
+      required: true,
+      consentText: "I confirm these intake answers are accurate.",
+    }),
+  },
+} satisfies Record<EmbeddedIntakeFormItemKind, IntakeBuilderItemAdapter>;
 
 export interface IntakeBuilderDiagnostic {
   id: string;
@@ -659,28 +709,10 @@ export function currentProposalValue(
 }
 
 export function makeIntakeItem(
-  kind: (typeof itemKinds)[number],
+  kind: EmbeddedIntakeFormItemKind,
   index: number,
 ): EmbeddedIntakeFormItem {
-  const suffix = `${kind}-${index + 1}`;
-  if (kind === "display") return { id: suffix, kind, body: "Client-facing text." };
-  if (kind === "question") return { id: suffix, kind, questionId: "client_display_name" };
-  if (kind === "upload") {
-    return {
-      id: suffix,
-      kind,
-      label: "Supporting document",
-      required: false,
-      acceptedFileTypes: ["application/pdf", "image/png", "image/jpeg"],
-    };
-  }
-  return {
-    id: suffix,
-    kind,
-    label: "Client attestation",
-    required: true,
-    consentText: "I confirm these intake answers are accurate.",
-  };
+  return intakeBuilderItemRegistry[kind].makeItem(index);
 }
 
 export async function loadIntakeFormsDashboardData(input: {

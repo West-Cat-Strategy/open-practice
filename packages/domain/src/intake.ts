@@ -276,6 +276,230 @@ export interface IntakeTemplateQaReport {
   previews: IntakeTemplateQaPreview[];
 }
 
+export type EmbeddedIntakeFormItemKind = EmbeddedIntakeFormItem["kind"];
+
+export const embeddedIntakeFormItemKinds = [
+  "display",
+  "question",
+  "upload",
+  "signature",
+] as const satisfies readonly EmbeddedIntakeFormItemKind[];
+
+export interface IntakeFormItemValidationContext {
+  questionIds: ReadonlySet<string>;
+}
+
+export interface IntakeFormItemVisibilityContext {
+  visibleQuestionIds: ReadonlySet<string>;
+}
+
+export interface IntakeFormItemCompletionContext {
+  definition: Extract<EmbeddedIntakeTemplateDefinition, { schemaVersion: 2 }>;
+  answers: Record<string, unknown>;
+  completedItemIds: ReadonlySet<string>;
+}
+
+export interface IntakeFormItemPreviewContext {
+  checks: IntakeTemplatePreviewCheck[];
+  definition: Extract<EmbeddedIntakeTemplateDefinition, { schemaVersion: 2 }>;
+  referencedQuestionIds: Set<string>;
+  sectionId: string;
+  visibleFormItemIds: readonly string[];
+  visibleQuestionIds: ReadonlySet<string>;
+}
+
+export interface IntakeFormItemQaContext {
+  issues: IntakeTemplateQaIssue[];
+  packageDocumentIds: ReadonlySet<string>;
+}
+
+export interface EmbeddedIntakeFormItemAdapter {
+  kind: EmbeddedIntakeFormItemKind;
+  label: string;
+  validate: (item: EmbeddedIntakeFormItem, context: IntakeFormItemValidationContext) => void;
+  isVisible: (item: EmbeddedIntakeFormItem, context: IntakeFormItemVisibilityContext) => boolean;
+  isRequiredIncomplete: (
+    item: EmbeddedIntakeFormItem,
+    context: IntakeFormItemCompletionContext,
+  ) => boolean;
+  referencedQuestionId?: (item: EmbeddedIntakeFormItem) => string | undefined;
+  collectPreviewChecks: (
+    item: EmbeddedIntakeFormItem,
+    context: IntakeFormItemPreviewContext,
+  ) => void;
+  collectQaIssues: (item: EmbeddedIntakeFormItem, context: IntakeFormItemQaContext) => void;
+}
+
+export const embeddedIntakeFormItemRegistry = {
+  display: {
+    kind: "display",
+    label: "Display",
+    validate: () => undefined,
+    isVisible: () => true,
+    isRequiredIncomplete: () => false,
+    collectPreviewChecks: () => undefined,
+    collectQaIssues: () => undefined,
+  },
+  question: {
+    kind: "question",
+    label: "Question",
+    validate: (item, context) => {
+      if (item.kind !== "question") return;
+      if (!context.questionIds.has(item.questionId)) {
+        throw new Error(`Form item ${item.id} references unknown question ${item.questionId}`);
+      }
+    },
+    isVisible: (item, context) =>
+      item.kind !== "question" || context.visibleQuestionIds.has(item.questionId),
+    isRequiredIncomplete: (item, context) => {
+      if (item.kind !== "question") return false;
+      const question = context.definition.questions.find(
+        (candidate) => candidate.id === item.questionId,
+      );
+      return Boolean(question?.required) && !answerIsPresent(context.answers[item.questionId]);
+    },
+    referencedQuestionId: (item) => (item.kind === "question" ? item.questionId : undefined),
+    collectPreviewChecks: (item, context) => {
+      if (item.kind !== "question") return;
+      context.referencedQuestionIds.add(item.questionId);
+      const question = context.definition.questions.find(
+        (candidate) => candidate.id === item.questionId,
+      );
+      if (question?.required && !context.visibleQuestionIds.has(item.questionId)) {
+        context.checks.push({
+          code: "required_question_hidden",
+          severity: "warning",
+          message: "A required question is hidden by the current preview answers.",
+          sectionId: context.sectionId,
+          itemId: item.id,
+          questionId: item.questionId,
+        });
+      }
+    },
+    collectQaIssues: () => undefined,
+  },
+  upload: {
+    kind: "upload",
+    label: "Upload",
+    validate: (item) => {
+      if (item.kind !== "upload") return;
+      for (const acceptedFileType of item.acceptedFileTypes ?? []) {
+        if (acceptedFileType.trim().length === 0) {
+          throw new Error(`Upload item ${item.id} has an empty accepted file type`);
+        }
+      }
+    },
+    isVisible: () => true,
+    isRequiredIncomplete: (item, context) => {
+      if (item.kind !== "upload" || !item.required) return false;
+      return !context.completedItemIds.has(item.id);
+    },
+    collectPreviewChecks: (item, context) => {
+      if (item.kind !== "upload") return;
+      if (item.required && !context.visibleFormItemIds.includes(item.id)) {
+        context.checks.push({
+          code: "required_upload_hidden",
+          severity: "warning",
+          message: "A required upload item is hidden by the current preview answers.",
+          sectionId: context.sectionId,
+          itemId: item.id,
+        });
+      }
+    },
+    collectQaIssues: (item, context) => {
+      if (item.kind !== "upload" || item.required !== true) return;
+      context.issues.push({
+        kind: "missing_required_item",
+        severity: "info",
+        message: `Required ${item.kind} item ${item.id} is included in completion coverage`,
+        formItemId: item.id,
+      });
+    },
+  },
+  signature: {
+    kind: "signature",
+    label: "Signature",
+    validate: (item) => {
+      if (item.kind === "signature" && item.required && item.consentText.trim().length === 0) {
+        throw new Error(`Signature item ${item.id} requires consent text`);
+      }
+    },
+    isVisible: () => true,
+    isRequiredIncomplete: (item, context) => {
+      if (item.kind !== "signature" || !item.required) return false;
+      return !context.completedItemIds.has(item.id);
+    },
+    collectPreviewChecks: (item, context) => {
+      if (item.kind !== "signature") return;
+      if (item.required && !context.visibleFormItemIds.includes(item.id)) {
+        context.checks.push({
+          code: "required_signature_hidden",
+          severity: "warning",
+          message: "A required signature item is hidden by the current preview answers.",
+          sectionId: context.sectionId,
+          itemId: item.id,
+        });
+      }
+      if (item.documentId) {
+        context.checks.push({
+          code: "signature_document_unverified",
+          severity: "warning",
+          message: "Signature document availability needs matter-scoped verification.",
+          sectionId: context.sectionId,
+          itemId: item.id,
+        });
+      }
+    },
+    collectQaIssues: (item, context) => {
+      if (item.kind !== "signature") return;
+      if (item.documentId && !context.packageDocumentIds.has(item.documentId)) {
+        context.issues.push({
+          kind: "broken_signature_document_reference",
+          severity: "blocker",
+          message: `Signature item ${item.id} references unknown package document ${item.documentId}`,
+          formItemId: item.id,
+          documentId: item.documentId,
+        });
+      }
+      if (item.required === true) {
+        context.issues.push({
+          kind: "missing_required_item",
+          severity: "info",
+          message: `Required ${item.kind} item ${item.id} is included in completion coverage`,
+          formItemId: item.id,
+        });
+      }
+    },
+  },
+} satisfies Record<EmbeddedIntakeFormItemKind, EmbeddedIntakeFormItemAdapter>;
+
+export function embeddedIntakeFormItemAdapter(
+  kind: string,
+): EmbeddedIntakeFormItemAdapter | undefined {
+  return (embeddedIntakeFormItemRegistry as Partial<Record<string, EmbeddedIntakeFormItemAdapter>>)[
+    kind
+  ];
+}
+
+const legacyIntakeFormItemAdapter = {
+  isVisible: (item: EmbeddedIntakeFormItem, context: IntakeFormItemVisibilityContext): boolean =>
+    item.kind !== "question" || context.visibleQuestionIds.has(item.questionId),
+  isRequiredIncomplete: (
+    item: EmbeddedIntakeFormItem,
+    context: IntakeFormItemCompletionContext,
+  ): boolean => {
+    if (item.kind === "question") {
+      const question = context.definition.questions.find(
+        (candidate) => candidate.id === item.questionId,
+      );
+      return Boolean(question?.required) && !answerIsPresent(context.answers[item.questionId]);
+    }
+    if (item.kind === "display") return false;
+    if (!item.required) return false;
+    return !context.completedItemIds.has(item.id);
+  },
+};
+
 export function validateEmbeddedIntakeTemplateDefinition(
   definition: EmbeddedIntakeTemplateDefinition,
 ): EmbeddedIntakeTemplateDefinition {
@@ -355,19 +579,11 @@ export function validateEmbeddedIntakeTemplateDefinition(
         if (!formItemIds.has(item.id)) {
           throw new Error(`Form item ${item.id} is not registered`);
         }
-        if (item.kind === "question" && !questionIds.has(item.questionId)) {
-          throw new Error(`Form item ${item.id} references unknown question ${item.questionId}`);
+        const adapter = embeddedIntakeFormItemAdapter(item.kind);
+        if (!adapter) {
+          throw new Error(`Unsupported form item kind ${String(item.kind)}`);
         }
-        if (item.kind === "upload") {
-          for (const acceptedFileType of item.acceptedFileTypes ?? []) {
-            if (acceptedFileType.trim().length === 0) {
-              throw new Error(`Upload item ${item.id} has an empty accepted file type`);
-            }
-          }
-        }
-        if (item.kind === "signature" && item.required && item.consentText.trim().length === 0) {
-          throw new Error(`Signature item ${item.id} requires consent text`);
-        }
+        adapter.validate(item, { questionIds });
       }
     }
   }
@@ -447,55 +663,14 @@ export function previewEmbeddedIntakeTemplate(input: {
       section.items.map((item) => ({ sectionId: section.id, item })),
     );
     for (const { sectionId, item } of allItems) {
-      if (item.kind === "question") {
-        referencedQuestionIds.add(item.questionId);
-        const question = definition.questions.find((candidate) => candidate.id === item.questionId);
-        if (question?.required && !visibleQuestionIds.has(item.questionId)) {
-          checks.push({
-            code: "required_question_hidden",
-            severity: "warning",
-            message: "A required question is hidden by the current preview answers.",
-            sectionId,
-            itemId: item.id,
-            questionId: item.questionId,
-          });
-        }
-      }
-      if (
-        item.kind === "upload" &&
-        item.required &&
-        !preview.visibleFormItemIds?.includes(item.id)
-      ) {
-        checks.push({
-          code: "required_upload_hidden",
-          severity: "warning",
-          message: "A required upload item is hidden by the current preview answers.",
-          sectionId,
-          itemId: item.id,
-        });
-      }
-      if (
-        item.kind === "signature" &&
-        item.required &&
-        !preview.visibleFormItemIds?.includes(item.id)
-      ) {
-        checks.push({
-          code: "required_signature_hidden",
-          severity: "warning",
-          message: "A required signature item is hidden by the current preview answers.",
-          sectionId,
-          itemId: item.id,
-        });
-      }
-      if (item.kind === "signature" && item.documentId) {
-        checks.push({
-          code: "signature_document_unverified",
-          severity: "warning",
-          message: "Signature document availability needs matter-scoped verification.",
-          sectionId,
-          itemId: item.id,
-        });
-      }
+      embeddedIntakeFormItemAdapter(item.kind)?.collectPreviewChecks(item, {
+        checks,
+        definition,
+        referencedQuestionIds,
+        sectionId,
+        visibleFormItemIds: preview.visibleFormItemIds ?? [],
+        visibleQuestionIds,
+      });
     }
   }
 
@@ -598,26 +773,27 @@ export function resolveEmbeddedIntakeAnswers(input: {
     definition.schemaVersion === 2
       ? definition.sections
           .flatMap((section) => section.items)
-          .filter((item) => item.kind !== "question" || visibleQuestionIds.has(item.questionId))
+          .filter((item) =>
+            (embeddedIntakeFormItemAdapter(item.kind) ?? legacyIntakeFormItemAdapter).isVisible(
+              item,
+              { visibleQuestionIds },
+            ),
+          )
       : undefined;
   const visibleFormItemIds = visibleFormItems?.map((item) => item.id);
   const completedItemIds = new Set(input.completedItemIds ?? []);
   const requiredIncompleteItemIds =
     definition.schemaVersion === 2
       ? (visibleFormItems ?? [])
-          .filter((item) => {
-            if (item.kind === "question") {
-              const question = definition.questions.find(
-                (candidate) => candidate.id === item.questionId,
-              );
-              return (
-                Boolean(question?.required) && !answerIsPresent(input.answers[item.questionId])
-              );
-            }
-            if (item.kind === "display") return false;
-            if (!item.required) return false;
-            return !completedItemIds.has(item.id);
-          })
+          .filter((item) =>
+            (
+              embeddedIntakeFormItemAdapter(item.kind) ?? legacyIntakeFormItemAdapter
+            ).isRequiredIncomplete(item, {
+              answers: input.answers,
+              completedItemIds,
+              definition,
+            }),
+          )
           .map((item) => item.id)
       : undefined;
 
@@ -644,9 +820,11 @@ export function buildEmbeddedIntakeTemplateQaReport(input: {
   const issues: IntakeTemplateQaIssue[] = [];
   const formItems =
     definition.schemaVersion === 2 ? definition.sections.flatMap((section) => section.items) : [];
-  const formQuestionIds = new Set(
-    formItems.filter((item) => item.kind === "question").map((item) => item.questionId),
-  );
+  const formQuestionIds = new Set<string>();
+  for (const item of formItems) {
+    const questionId = embeddedIntakeFormItemAdapter(item.kind)?.referencedQuestionId?.(item);
+    if (questionId) formQuestionIds.add(questionId);
+  }
   const branchShownQuestionIds = new Set(
     definition.branchRules.flatMap((rule) => rule.showQuestionIds ?? []),
   );
@@ -680,27 +858,10 @@ export function buildEmbeddedIntakeTemplateQaReport(input: {
     }
 
     for (const item of formItems) {
-      if (
-        item.kind === "signature" &&
-        item.documentId &&
-        !packageDocumentIds.has(item.documentId)
-      ) {
-        issues.push({
-          kind: "broken_signature_document_reference",
-          severity: "blocker",
-          message: `Signature item ${item.id} references unknown package document ${item.documentId}`,
-          formItemId: item.id,
-          documentId: item.documentId,
-        });
-      }
-      if ((item.kind === "upload" || item.kind === "signature") && item.required === true) {
-        issues.push({
-          kind: "missing_required_item",
-          severity: "info",
-          message: `Required ${item.kind} item ${item.id} is included in completion coverage`,
-          formItemId: item.id,
-        });
-      }
+      embeddedIntakeFormItemAdapter(item.kind)?.collectQaIssues(item, {
+        issues,
+        packageDocumentIds,
+      });
     }
   }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EmbeddedIntakeTemplateDefinitionV2 } from "@open-practice/domain";
+import { intakeBuilderItemRegistry, itemKinds, makeIntakeItem } from "../intake-forms-dashboard";
 import { structuredIntakeDiagnostics } from "./structured-builder-diagnostics";
 
 const validDefinition: EmbeddedIntakeTemplateDefinitionV2 = {
@@ -23,6 +24,29 @@ const validDefinition: EmbeddedIntakeTemplateDefinitionV2 = {
 };
 
 describe("structured intake builder diagnostics", () => {
+  it("uses the builder registry for the current intake item defaults", () => {
+    expect(itemKinds).toEqual(["display", "question", "upload", "signature"]);
+    expect(Object.keys(intakeBuilderItemRegistry)).toEqual(itemKinds);
+    expect(itemKinds.map((kind) => makeIntakeItem(kind, 0))).toEqual([
+      { id: "display-1", kind: "display", body: "Client-facing text." },
+      { id: "question-1", kind: "question", questionId: "client_display_name" },
+      {
+        id: "upload-1",
+        kind: "upload",
+        label: "Supporting document",
+        required: false,
+        acceptedFileTypes: ["application/pdf", "image/png", "image/jpeg"],
+      },
+      {
+        id: "signature-1",
+        kind: "signature",
+        label: "Client attestation",
+        required: true,
+        consentText: "I confirm these intake answers are accurate.",
+      },
+    ]);
+  });
+
   it("blocks duplicate definition ids before staff save", () => {
     const diagnostics = structuredIntakeDiagnostics({
       ...validDefinition,

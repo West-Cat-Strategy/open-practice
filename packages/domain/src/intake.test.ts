@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildEmbeddedIntakeTemplateQaReport,
   createIntakeVariableProposals,
+  embeddedIntakeFormItemKinds,
+  embeddedIntakeFormItemRegistry,
   previewEmbeddedIntakeTemplate,
   resolveEmbeddedIntakeAnswers,
   validateEmbeddedIntakeTemplateDefinition,
@@ -10,6 +12,22 @@ import {
 import { sampleResidentialTenancyIntakeDefinition } from "./sample-data.js";
 
 describe("embedded intake templates", () => {
+  it("exposes registry adapters for the current V2 form item kinds", () => {
+    expect(embeddedIntakeFormItemKinds).toEqual(["display", "question", "upload", "signature"]);
+    expect(Object.keys(embeddedIntakeFormItemRegistry)).toEqual(embeddedIntakeFormItemKinds);
+    for (const kind of embeddedIntakeFormItemKinds) {
+      expect(embeddedIntakeFormItemRegistry[kind]).toMatchObject({
+        kind,
+        label: expect.any(String),
+        validate: expect.any(Function),
+        isVisible: expect.any(Function),
+        isRequiredIncomplete: expect.any(Function),
+        collectPreviewChecks: expect.any(Function),
+        collectQaIssues: expect.any(Function),
+      });
+    }
+  });
+
   it("validates the seeded residential tenancy definition", () => {
     expect(validateEmbeddedIntakeTemplateDefinition(sampleResidentialTenancyIntakeDefinition)).toBe(
       sampleResidentialTenancyIntakeDefinition,
@@ -45,6 +63,26 @@ describe("embedded intake templates", () => {
     );
     expect(() => validateEmbeddedIntakeTemplateDefinition(unknownPackage)).toThrow(
       "Branch rule unknown-package references unknown package missing",
+    );
+  });
+
+  it("rejects form item kinds outside the embedded registry", () => {
+    const unknownItemKind = {
+      schemaVersion: 2,
+      questions: [],
+      branchRules: [],
+      packages: [{ id: "base", title: "Base", documents: [{ id: "doc", title: "Doc" }] }],
+      sections: [
+        {
+          id: "custom-section",
+          title: "Custom section",
+          items: [{ id: "custom-item", kind: "custom", label: "Custom" }],
+        },
+      ],
+    } as unknown as EmbeddedIntakeTemplateDefinition;
+
+    expect(() => validateEmbeddedIntakeTemplateDefinition(unknownItemKind)).toThrow(
+      "Unsupported form item kind custom",
     );
   });
 
