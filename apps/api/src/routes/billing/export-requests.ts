@@ -109,7 +109,7 @@ async function serializeBillingExport(
 
 type BillingExportRouteDependencies = Pick<ApiRouteDependencies, "repository" | "reportJobQueue">;
 
-export function createBillingExportRouteHandlers({
+function createBillingExportRouteHandlers({
   repository,
   reportJobQueue,
 }: BillingExportRouteDependencies) {

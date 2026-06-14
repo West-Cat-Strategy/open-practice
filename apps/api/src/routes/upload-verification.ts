@@ -5,10 +5,10 @@ import { z } from "zod";
 import { ApiHttpError } from "../http/response.js";
 import type { ApiRouteDependencies } from "./types.js";
 
-export const checksumSha256HexSchema = /^[a-fA-F0-9]{64}$/;
+const checksumSha256HexSchema = /^[a-fA-F0-9]{64}$/;
 export const MAX_UPLOAD_FILE_SIZE_BYTES = 25 * 1024 * 1024;
-export const MAX_UPLOAD_FILENAME_LENGTH = 255;
-export const MAX_UPLOAD_CONTENT_TYPE_LENGTH = 120;
+const MAX_UPLOAD_FILENAME_LENGTH = 255;
+const MAX_UPLOAD_CONTENT_TYPE_LENGTH = 120;
 
 const visibleAsciiPattern = /^[\x20-\x7E]+$/;
 const contentTypePattern =

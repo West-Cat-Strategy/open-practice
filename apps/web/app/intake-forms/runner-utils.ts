@@ -204,14 +204,6 @@ export function canSubmitPublicIntakeForm(payload: PublicIntakeFormPayload | nul
   );
 }
 
-export async function readApiError(response: Response): Promise<ApiErrorBody | null> {
-  return response.json().catch(() => null) as Promise<ApiErrorBody | null>;
-}
-
-export function errorMessage(body: ApiErrorBody | null, fallback: string): string {
-  return body?.message ?? body?.error?.message ?? fallback;
-}
-
 export function requiredIncompleteItemIds(body: ApiErrorBody | null): string[] | undefined {
   return (
     body?.details?.requiredIncompleteItemIds ?? body?.error?.details?.requiredIncompleteItemIds

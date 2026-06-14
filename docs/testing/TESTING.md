@@ -11,6 +11,7 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Release readiness      | `pnpm release:local`                             | Creates a local release proof artifact with dependency audit, license JSON, SBOM, full local gate, migration replay, artifact secret scan, and diff whitespace evidence.          |
 | Dependency audit       | `pnpm deps:audit`                                | Runs local production and development dependency audits.                                                                                                                          |
 | License evidence       | `pnpm deps:licenses`                             | Summarizes dependency license groups and fails only on unknown or unlicensed groups. Use `-- --json-output <path>` for package-level JSON evidence.                               |
+| Dead-code gate         | `pnpm deadcode:check`                            | Runs Knip against unused files, dependencies, unlisted dependencies, unresolved imports, and binaries.                                                                            |
 | Selective validation   | `pnpm verify:select -- --base <git-ref>`         | Prints recommended commands for changed files without running them.                                                                                                               |
 | Dirty-tree selection   | `pnpm verify:select -- --dirty`                  | Prints recommended commands for staged, unstaged, and untracked working-tree files.                                                                                               |
 | Formatting             | `pnpm format:check`                              | Required before handoff.                                                                                                                                                          |
@@ -25,7 +26,7 @@ API contracts, database schema changes, auth changes, or release handoff.
 | Database schema check  | `pnpm --filter @open-practice/database db:check` | Required for schema or migration changes.                                                                                                                                         |
 | Migration parity       | `pnpm migrations:check`                          | Verifies SQL migration files and Drizzle journal entries stay in lockstep.                                                                                                        |
 | Migration replay       | `pnpm migrations:replay`                         | Applies migrations to a disposable local PostgreSQL database and cleans it up.                                                                                                    |
-| Policy and docs checks | `pnpm policy:check`                              | Runs tracked-secret, package manifest, migration parity, OSS reuse, docs link, validation-proof index, local-evidence, and architecture-boundary policy checks.                   |
+| Policy and docs checks | `pnpm policy:check`                              | Runs tracked-secret, package manifest, dead-code, migration parity, OSS reuse, docs link, validation-proof index, local-evidence, and architecture-boundary policy checks.        |
 | Build                  | `pnpm build`                                     | Required for release or app shell changes.                                                                                                                                        |
 
 ## Selective Validation
@@ -79,9 +80,9 @@ Output is deterministic, de-duplicated, and one command per line after a short h
 `pnpm policy:check` includes `scripts/validate-package-manifests.mjs`, which blocks dependency,
 development dependency, optional dependency, or peer dependency ranges set to `latest` in repo
 package manifests. Use pinned or semver-bounded ranges so local validation stays repeatable.
-It also runs migration parity, OSS reuse, docs link, validation-proof index, local-evidence
-`.dockerignore`, and architecture-boundary checks; keep command-specific proof in the relevant
-validation note when one of those subchecks drives a change.
+It also runs the dead-code gate, migration parity, OSS reuse, docs link, validation-proof index,
+local-evidence `.dockerignore`, and architecture-boundary checks; keep command-specific proof in
+the relevant validation note when one of those subchecks drives a change.
 Use `pnpm deps:licenses` when adding or upgrading dependencies to keep a reviewable license-group
 summary. The command highlights copyleft, public-license, and unusual groups for review but only
 fails the local run when a dependency reports an unknown, unlicensed, or empty license group. Use
@@ -204,9 +205,12 @@ running on web `33000` and API `34000`.
 
 ## Current Gaps
 
-Dead-code review is not yet part of the default selector. Package graph and export consistency are
-covered by `pnpm policy:check`. The disposable migration replay lane exists, but it requires a local
-PostgreSQL service reachable through `DATABASE_URL` or
+Dead-code file/dependency review now runs through `pnpm deadcode:check` and `pnpm policy:check`.
+Knip is scoped to unused files, dependencies, unlisted dependencies, unresolved imports, and
+binaries; public export/facade cleanup remains a manual review lane because repository facades and
+API response types intentionally expose broad compatibility surfaces. Package graph and export
+consistency are covered by `pnpm policy:check`. The disposable migration replay lane exists, but it
+requires a local PostgreSQL service reachable through `DATABASE_URL` or
 `MIGRATION_REPLAY_DATABASE_URL`.
 
 ## Local Release Proof

@@ -122,10 +122,8 @@
 }
 
 .matter-context-panel,
-.matter-list,
 .conflict-panel,
-.queue-panel,
-.controls-panel {
+.queue-panel {
   display: grid;
   gap: 10px;
 }
@@ -280,7 +278,6 @@
 
 .matter-row span,
 .party-row span,
-.permission-row span,
 .conflict-row span {
   display: grid;
   gap: 3px;
@@ -306,8 +303,7 @@
 .matter-row em,
 .active-matter-card em,
 .status-chip,
-.party-row em,
-.permission-row em {
+.party-row em {
   border-radius: 999px;
   background: rgba(63, 185, 173, 0.11);
   color: var(--accent);
@@ -562,7 +558,6 @@
 }
 
 .party-row,
-.permission-row,
 .conflict-row {
   justify-content: space-between;
   align-items: flex-start;
@@ -582,7 +577,6 @@
 }
 
 .party-row small,
-.permission-row small,
 .conflict-row small,
 .queue-item-row small,
 .context-rail-panel small {
@@ -604,7 +598,6 @@
 }
 
 .party-row:last-child,
-.permission-row:last-child,
 .conflict-row:last-child {
   border-bottom: 0;
 }

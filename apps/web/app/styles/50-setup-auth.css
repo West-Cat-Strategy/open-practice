@@ -123,45 +123,10 @@
   color: var(--accent-strong);
 }
 
-.preset-section {
-  display: grid;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.preset-title {
-  margin: 0;
-}
-
 .preset-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-}
-
-.preset-card {
-  display: grid;
-  gap: 5px;
-  min-height: 78px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-muted);
-  color: var(--ink);
-  padding: 12px;
-  text-align: left;
-  min-width: 0;
-}
-
-.preset-card span {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.preset-card.selected,
-.preset-card:hover {
-  border-color: rgba(63, 185, 173, 0.45);
-  background: rgba(63, 185, 173, 0.1);
 }
 
 .setup-panel,
@@ -403,11 +368,6 @@
   background: rgba(35, 38, 35, 0.58);
   color: rgba(247, 243, 232, 0.62);
   border-color: rgba(233, 226, 214, 0.1);
-}
-
-.review-list {
-  display: grid;
-  gap: 10px;
 }
 
 .review-row {

@@ -6,7 +6,6 @@ import type {
   SavedOperationalViewDefinition,
 } from "./types";
 
-export type DashboardRefreshLane = "queues" | "providers" | "audit";
 export type DashboardLaneFreshnessTone = "neutral" | "ready" | "risk";
 type FirstMatterClientKind = "person" | "organization";
 type FirstMatterJurisdiction = MatterSummary["jurisdiction"];

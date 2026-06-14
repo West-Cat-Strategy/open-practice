@@ -37,13 +37,6 @@ export async function loadDocumentAssemblyDashboardData(input: {
   return { workbenchesByMatterId: Object.fromEntries(entries) };
 }
 
-export function replaceDocumentAssemblyWorkbench(
-  current: Record<string, DocumentAssemblyWorkbenchResponse>,
-  workbench: DocumentAssemblyWorkbenchResponse,
-): Record<string, DocumentAssemblyWorkbenchResponse> {
-  return { ...current, [workbench.matterId]: workbench };
-}
-
 export function summarizeDocumentAssemblyWorkbench(
   workbench: DocumentAssemblyWorkbenchResponse,
 ): string {

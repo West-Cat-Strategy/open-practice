@@ -95,12 +95,6 @@
   line-height: 1.35;
 }
 
-.nested-grid {
-  margin-top: 16px;
-  padding-left: 20px;
-  border-left: 2px solid var(--line);
-}
-
 .setup-fieldset {
   display: grid;
   gap: 12px;

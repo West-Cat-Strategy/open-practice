@@ -173,7 +173,7 @@ export function sanitizeDocument(document: DocumentRecord) {
   };
 }
 
-export function latestByTimestamp<T>(
+function latestByTimestamp<T>(
   records: T[],
   timestamp: (record: T) => string | undefined,
 ): T | undefined {

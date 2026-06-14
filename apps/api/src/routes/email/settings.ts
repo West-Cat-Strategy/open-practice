@@ -26,7 +26,7 @@ const optionalPassword = z.preprocess((value) => {
   return value.trim();
 }, z.string().max(2048).optional());
 
-export const smtpSettingsBodySchema = z.object({
+const smtpSettingsBodySchema = z.object({
   enabled: z.boolean().default(false),
   host: optionalTrimmedString,
   port: z.coerce.number().int().min(1).max(65_535).optional(),

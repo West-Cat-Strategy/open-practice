@@ -278,7 +278,6 @@ import {
 import {
   actionComplete,
   coerceAnswer,
-  errorMessage,
   itemAction,
   requiredIncompleteItemIds,
   visibleSections,
@@ -6189,9 +6188,6 @@ describe("dashboard client behavior", () => {
         details: { requiredIncompleteItemIds: ["client-attestation"] },
       }),
     ).toEqual(["client-attestation"]);
-    expect(errorMessage({ message: "Upload type is not accepted" }, "fallback")).toBe(
-      "Upload type is not accepted",
-    );
   });
 
   it("loads optional legal clinic programs and matter profiles for dashboard summaries", async () => {

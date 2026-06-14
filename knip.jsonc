@@ -1,0 +1,59 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreDependencies": [
+    "@cyclonedx/cyclonedx-npm",
+    "prosemirror-commands",
+    "prosemirror-dropcursor",
+    "prosemirror-gapcursor",
+    "prosemirror-history",
+    "prosemirror-keymap",
+    "prosemirror-model",
+    "prosemirror-schema-list",
+    "prosemirror-state",
+    "prosemirror-tables",
+    "prosemirror-transform",
+    "prosemirror-view",
+  ],
+  "workspaces": {
+    ".": {
+      "project": ["scripts/**/*.mjs", "e2e/**/*.ts"],
+      "playwright": true,
+    },
+    "apps/api": {
+      "entry": ["src/**/*.test.ts"],
+      "project": ["src/**/*.ts", "*.config.{js,ts}"],
+    },
+    "apps/web": {
+      "entry": [
+        "app/**/{page,layout,loading,error,not-found,route}.tsx",
+        "app/**/*.{test,spec}.{ts,tsx}",
+      ],
+      "project": ["app/**/*.{ts,tsx}", "routes/**/*.ts", "*.config.{js,mjs,ts}"],
+    },
+    "apps/worker": {
+      "entry": ["src/**/*.test.ts"],
+      "project": ["src/**/*.ts", "*.config.js"],
+    },
+    "packages/database": {
+      "entry": ["src/index.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts", "*.config.{js,ts}"],
+    },
+    "packages/domain": {
+      "entry": [
+        "src/index.ts",
+        "src/calendar-models.ts",
+        "src/contact-models.ts",
+        "src/operational-actions.ts",
+        "src/participant-roles.ts",
+        "src/practice-presets.ts",
+        "src/sample-data.ts",
+        "src/**/*.test.ts",
+      ],
+      "project": ["src/**/*.ts", "*.config.js"],
+    },
+    "packages/providers": {
+      "entry": ["src/index.ts", "src/**/*.test.ts"],
+      "project": ["src/**/*.ts", "*.config.js"],
+    },
+  },
+}

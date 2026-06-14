@@ -25,7 +25,6 @@
 .panel-header,
 .matter-row,
 .party-row,
-.permission-row,
 .conflict-row {
   display: flex;
   align-items: center;
