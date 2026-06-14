@@ -17,7 +17,8 @@ import {
   type TimeEntry,
 } from "@open-practice/domain";
 import { sampleResidentialTenancyIntakeDefinition } from "@open-practice/domain/sample-data";
-import { buildSidebarNavigationSections } from "../routes/routeCatalog";
+import { buildSidebarNavigationSections, getRouteCatalogEntry } from "../routes/routeCatalog";
+import { dashboardUnavailableSectionCopy } from "./dashboard-client";
 import {
   applyMatterAvailabilityToNavigation,
   applySavedMatterFocus,
@@ -1164,6 +1165,43 @@ function publicRunnerPayload(
 }
 
 describe("dashboard client behavior", () => {
+  it("describes unavailable dashboard deep links without echoing unknown query values", () => {
+    const navigationSections = buildSidebarNavigationSections({
+      billingCanView: true,
+      shareLinksEnabled: true,
+      externalUploadsEnabled: false,
+      capabilitySections: [
+        { key: "matters", enabled: true },
+        { key: "externalUploads", enabled: true },
+      ],
+    });
+    const unknownCopy = dashboardUnavailableSectionCopy({
+      navigationSections,
+      routeSelection: {
+        sectionKey: "matters",
+        status: "unknown",
+        requestedSection: "not-a-section",
+        entry: null,
+      },
+    });
+    const disabledCopy = dashboardUnavailableSectionCopy({
+      navigationSections,
+      routeSelection: {
+        sectionKey: "matters",
+        status: "disabled",
+        requestedSection: "externalUploads",
+        entry: getRouteCatalogEntry("externalUploads"),
+      },
+    });
+
+    expect(unknownCopy.title).toBe("Dashboard section unavailable");
+    expect(unknownCopy.detail).not.toContain("not-a-section");
+    expect(disabledCopy.title).toBe("External Uploads unavailable");
+    expect(disabledCopy.detail).toBe(
+      "External uploads require S3 storage, token signing, and upload access.",
+    );
+  });
+
   it("summarizes audit projection issues without exposing metadata values", () => {
     const summary = summarizeAuditProjectionIssues({
       total: 4,

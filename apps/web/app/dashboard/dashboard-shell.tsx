@@ -71,7 +71,7 @@ export function DashboardSidebar({
   navIcons,
   onSelectSection,
 }: {
-  activeSection: LocalDashboardSectionKey;
+  activeSection: LocalDashboardSectionKey | null;
   matterState?: "empty" | "populated";
   navigationSections: OpenPracticeSidebarNavigationSection[];
   navIcons: Record<LocalDashboardSectionKey, LucideIcon>;
@@ -162,11 +162,11 @@ export function DashboardSidebar({
                     const disabledReasonId = `nav-disabled-${key}`;
                     return (
                       <button
-                        aria-current={key === activeSection ? "page" : undefined}
+                        aria-current={activeSection === key ? "page" : undefined}
                         aria-describedby={resolvedDisabledReason ? disabledReasonId : undefined}
                         className={[
                           "nav-item",
-                          key === activeSection ? "active" : "",
+                          activeSection === key ? "active" : "",
                           enabled ? "" : "disabled",
                         ]
                           .filter(Boolean)

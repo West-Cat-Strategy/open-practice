@@ -6,6 +6,7 @@ import {
   getRouteCatalogEntry,
   getRoutesByArea,
   getSidebarRouteCatalogEntries,
+  isUnavailableDashboardRouteSelection,
   matchRouteCatalogEntry,
   resolveDashboardRouteSelection,
   routeCatalog,
@@ -149,17 +150,18 @@ describe("Open Practice route catalog", () => {
     });
   });
 
-  it("falls back to matters for unknown dashboard sections", () => {
-    expect(
-      resolveDashboardRouteSelection({
-        requestedSection: "not-a-section",
-        navigationSections: enabledSidebarNavigation(),
-      }),
-    ).toMatchObject({
+  it("marks unknown dashboard sections unavailable while preserving a fallback target", () => {
+    const selection = resolveDashboardRouteSelection({
+      requestedSection: "not-a-section",
+      navigationSections: enabledSidebarNavigation(),
+    });
+
+    expect(selection).toMatchObject({
       sectionKey: "matters",
       status: "unknown",
       entry: null,
     });
+    expect(isUnavailableDashboardRouteSelection(selection)).toBe(true);
   });
 
   it("keeps the default entry aligned with the first enabled fallback section", () => {
@@ -178,21 +180,22 @@ describe("Open Practice route catalog", () => {
     });
   });
 
-  it("does not hydrate disabled sidebar entries", () => {
+  it("marks disabled sidebar entries unavailable without hydrating them", () => {
     const navigationSections = enabledSidebarNavigation().map((section) =>
       section.key === "billing" ? { ...section, enabled: false } : section,
     );
 
-    expect(
-      resolveDashboardRouteSelection({
-        requestedSection: "billing",
-        navigationSections,
-      }),
-    ).toMatchObject({
+    const selection = resolveDashboardRouteSelection({
+      requestedSection: "billing",
+      navigationSections,
+    });
+
+    expect(selection).toMatchObject({
       sectionKey: "matters",
       status: "disabled",
       entry: expect.objectContaining({ id: "billing" }),
     });
+    expect(isUnavailableDashboardRouteSelection(selection)).toBe(true);
   });
 
   it("hydrates queue dashboard links as a real section", () => {
@@ -212,6 +215,31 @@ describe("Open Practice route catalog", () => {
     const nonSidebarEntries = routeCatalog.filter((entry) => !entry.showInSidebar);
 
     expect(nonSidebarEntries).toEqual([]);
+  });
+
+  it("classifies only blocked dashboard route selections as unavailable", () => {
+    const navigationSections = enabledSidebarNavigation();
+    const defaultSelection = resolveDashboardRouteSelection({ navigationSections });
+    const matchedSelection = resolveDashboardRouteSelection({
+      requestedSection: "queues",
+      navigationSections,
+    });
+    const unknownSelection = resolveDashboardRouteSelection({
+      requestedSection: "not-a-section",
+      navigationSections,
+    });
+    const disabledSelection = resolveDashboardRouteSelection({
+      requestedSection: "queues",
+      navigationSections: navigationSections.map((section) =>
+        section.key === "queues" ? { ...section, enabled: false } : section,
+      ),
+    });
+
+    expect(isUnavailableDashboardRouteSelection(defaultSelection)).toBe(false);
+    expect(isUnavailableDashboardRouteSelection(matchedSelection)).toBe(false);
+    expect(isUnavailableDashboardRouteSelection(unknownSelection)).toBe(true);
+    expect(isUnavailableDashboardRouteSelection(disabledSelection)).toBe(true);
+    expect(isUnavailableDashboardRouteSelection({ status: "non_sidebar" })).toBe(true);
   });
 
   it("locks first-touch dashboard expectations for legal workflow roles", () => {

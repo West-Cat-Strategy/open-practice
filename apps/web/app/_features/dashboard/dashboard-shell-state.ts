@@ -5,6 +5,7 @@ import {
   buildDashboardSectionUrl,
   resolveDashboardRouteSelection,
   type DashboardNavigationSectionKey,
+  type DashboardRouteSelection,
   type OpenPracticeSidebarNavigationSection,
 } from "../../../routes/routeCatalog";
 
@@ -29,10 +30,10 @@ export function buildDashboardHistoryEntry(
 }
 
 export function useDashboardShellState({
-  initialSection,
+  initialRouteSelection,
   navigationSections,
 }: {
-  initialSection: DashboardNavigationSectionKey;
+  initialRouteSelection: DashboardRouteSelection;
   navigationSections: OpenPracticeSidebarNavigationSection[];
 }) {
   const detailPanelRef = useRef<HTMLElement>(null);
@@ -43,7 +44,9 @@ export function useDashboardShellState({
   const hasAppliedUrlSectionRef = useRef(false);
   const [isContextRailCollapsed, setIsContextRailCollapsed] = useState(false);
   const [hasLoadedContextRailPreference, setHasLoadedContextRailPreference] = useState(false);
-  const [activeSection, setActiveSection] = useState<DashboardNavigationSectionKey>(initialSection);
+  const [routeSelection, setRouteSelection] =
+    useState<DashboardRouteSelection>(initialRouteSelection);
+  const activeSection = routeSelection.sectionKey;
 
   useEffect(() => {
     function applySectionFromUrl() {
@@ -53,7 +56,7 @@ export function useDashboardShellState({
       });
       if (hasAppliedUrlSectionRef.current) shouldFocusDetailRef.current = true;
       hasAppliedUrlSectionRef.current = true;
-      setActiveSection(selection.sectionKey);
+      setRouteSelection(selection);
     }
 
     applySectionFromUrl();
@@ -99,7 +102,12 @@ export function useDashboardShellState({
 
   function selectDashboardSection(sectionKey: DashboardNavigationSectionKey): void {
     shouldFocusDetailRef.current = true;
-    setActiveSection(sectionKey);
+    setRouteSelection(
+      resolveDashboardRouteSelection({
+        requestedSection: sectionKey,
+        navigationSections,
+      }),
+    );
     const historyEntry = buildDashboardHistoryEntry(window.location.href, sectionKey);
     window.history.pushState(historyEntry.state, "", historyEntry.url);
   }
@@ -124,6 +132,7 @@ export function useDashboardShellState({
     isContextRailCollapsed,
     reviewRailExpandHandleRef,
     reviewRailToggleRef,
+    routeSelection,
     selectDashboardSection,
     toggleContextRail,
   };

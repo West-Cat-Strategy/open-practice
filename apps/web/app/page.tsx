@@ -255,10 +255,10 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
     matters.length > 0,
     canCreateMatter,
   );
-  const initialSection = resolveDashboardRouteSelection({
+  const initialRouteSelection = resolveDashboardRouteSelection({
     requestedSection,
     navigationSections,
-  }).sectionKey;
+  });
 
   return (
     <DashboardClient
@@ -280,7 +280,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       emailDeliveryHistory={emailDeliveryHistory}
       emailSettings={emailSettings.settings}
       externalUploads={externalUploads}
-      initialSection={initialSection}
+      initialRouteSelection={initialRouteSelection}
       intake={intake}
       intakeForms={intakeForms}
       intakePipeline={intakePipeline}

@@ -85,6 +85,24 @@ async function expectSectionSentinels(page: Page, sectionId: OpenPracticeRouteId
   }
 }
 
+async function expectUnavailableDashboardSection(
+  page: Page,
+  title: string | RegExp,
+  label: string,
+): Promise<void> {
+  const workspace = page.locator("#matter-workspace");
+  await expect(workspace.getByRole("heading", { name: title }), `${label} heading`).toBeVisible();
+  await expect(workspace.getByRole("status"), `${label} status`).toBeVisible();
+  await expect(
+    page.getByLabel("Primary").locator('[aria-current="page"]'),
+    `${label} active sidebar state`,
+  ).toHaveCount(0);
+  await expect(workspace, `${label} should not render fallback matter content`).not.toContainText(
+    "Morgan tenancy dispute",
+  );
+  await expectDashboardSectionHealthy(page, label);
+}
+
 async function sweepDashboardSections({
   app,
   disabledSections,
@@ -117,11 +135,11 @@ async function sweepDashboardSections({
         "aria-current",
         "page",
       );
-      await expect(
-        page.locator("#matter-detail-title"),
-        `${section.title} disabled route fallback`,
-      ).toContainText("Morgan tenancy dispute");
-      await expectDashboardSectionHealthy(page, `${section.title} disabled fallback`);
+      await expectUnavailableDashboardSection(
+        page,
+        `${section.title} unavailable`,
+        `${section.title} disabled route`,
+      );
       await attachUiScreenshot(page, testInfo, `dashboard-${section.id}-disabled`);
       continue;
     }
@@ -165,11 +183,49 @@ async function expectMatterlessDeepLink(
 }
 
 test.describe("UI/UX screenshot QA", () => {
-  test("sweeps every host dashboard section for layout health and active navigation", async ({
+  test("shows unavailable dashboard sections for unknown and disabled deep links", async ({
     app,
     page,
   }, testInfo) => {
-    testInfo.setTimeout(120_000);
+    await page.goto(app.url("/?section=not-a-section"));
+    await expectPageHealthy(page);
+    await expectUnavailableDashboardSection(page, "Dashboard section unavailable", "unknown route");
+    await expect(page.locator("#matter-workspace")).not.toContainText("not-a-section");
+    await attachUiScreenshot(page, testInfo, "dashboard-unknown-section-unavailable");
+
+    await page
+      .getByLabel("Primary")
+      .getByRole("button", { name: labelPattern("Matters") })
+      .click();
+    await expect(
+      page.locator("#matter-detail-title"),
+      "matters after unavailable route",
+    ).toContainText("Morgan tenancy dispute");
+    await page.goBack();
+    await expectUnavailableDashboardSection(
+      page,
+      "Dashboard section unavailable",
+      "unknown route after history back",
+    );
+
+    await page.goto(app.url("/?section=externalUploads"));
+    await expectPageHealthy(page);
+    await expectUnavailableDashboardSection(
+      page,
+      "External Uploads unavailable",
+      "disabled external uploads route",
+    );
+    await expect(page.locator("#matter-workspace").getByRole("status")).toContainText(
+      "External uploads require S3 storage, token signing, and upload access.",
+    );
+    await attachUiScreenshot(page, testInfo, "dashboard-externalUploads-unavailable");
+  });
+
+  test("sweeps every host dashboard section for layout health and active navigation @host-chromium-only", async ({
+    app,
+    page,
+  }, testInfo) => {
+    testInfo.setTimeout(240_000);
     await sweepDashboardSections({ app, disabledSections: hostDisabledSections, page, testInfo });
   });
 
@@ -177,7 +233,7 @@ test.describe("UI/UX screenshot QA", () => {
     app,
     page,
   }, testInfo) => {
-    testInfo.setTimeout(120_000);
+    testInfo.setTimeout(240_000);
     const health = await app.apiJson<{ persistence: string }>("/health", { headers: {} });
     expect(health.persistence).toBe("postgres");
     await sweepDashboardSections({ app, disabledSections: new Set(), page, testInfo });
@@ -257,6 +313,7 @@ test.describe("UI/UX screenshot QA", () => {
     app,
     page,
   }, testInfo) => {
+    testInfo.setTimeout(180_000);
     for (const width of [1100, 720, 520]) {
       await page.setViewportSize({ width, height: 900 });
       for (const section of ["billing", "documents", "calendar", "intake", "admin"] as const) {

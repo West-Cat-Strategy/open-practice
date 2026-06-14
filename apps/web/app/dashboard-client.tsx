@@ -21,7 +21,7 @@ import {
   Upload,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type RefObject, useEffect, useMemo, useState } from "react";
 import type {
   AiOperationalProposalRecord,
   ConflictCandidate,
@@ -33,7 +33,12 @@ import type {
   StaffReportGroupingKey,
 } from "@open-practice/domain";
 import type { CalendarMeetingLinkMode } from "@open-practice/domain/calendar-models";
-import { type DashboardNavigationSectionKey } from "../routes/routeCatalog";
+import {
+  isUnavailableDashboardRouteSelection,
+  type DashboardNavigationSectionKey,
+  type DashboardRouteSelection,
+  type OpenPracticeSidebarNavigationSection,
+} from "../routes/routeCatalog";
 import {
   buildCreateShareLinkPayload,
   describeCreateShareLinkResult,
@@ -97,6 +102,7 @@ import {
   buildCreateMatterPayload,
   canSubmitFirstMatter,
   dashboardLaneFreshnessCue,
+  describeDisabledNavigationReason,
   describeSavedMatterFocus,
   describeSavedQueueFocus,
   filterMatters,
@@ -417,7 +423,7 @@ interface DashboardClientProps {
   jurisdictionalTrustReport: JurisdictionalTrustReportResponse;
   legalClinic: LegalClinicDashboardResponse;
   legalResearch: LegalResearchDashboardResponse;
-  initialSection: DashboardNavigationSectionKey;
+  initialRouteSelection: DashboardRouteSelection;
   overview: PracticeOverview;
   operationalViewDefinitions?: SavedOperationalViewDefinition[];
   operationalViews: OperationalViewsResponse;
@@ -466,6 +472,99 @@ const navIcons: Record<LocalDashboardSectionKey, LucideIcon> = {
   tasks: ClipboardCheck,
 };
 
+export interface DashboardUnavailableSectionCopy {
+  title: string;
+  detail: string;
+  statusLabel: string;
+}
+
+export function dashboardUnavailableSectionCopy({
+  navigationSections,
+  routeSelection,
+}: {
+  navigationSections: OpenPracticeSidebarNavigationSection[];
+  routeSelection: DashboardRouteSelection;
+}): DashboardUnavailableSectionCopy {
+  if (routeSelection.status === "unknown") {
+    return {
+      title: "Dashboard section unavailable",
+      detail:
+        "This dashboard link does not match an available workspace section. Choose an enabled section from the dashboard navigation.",
+      statusLabel: "Unavailable",
+    };
+  }
+
+  const navigationSection = routeSelection.entry?.sectionKey
+    ? navigationSections.find((section) => section.key === routeSelection.entry?.sectionKey)
+    : undefined;
+  const title = routeSelection.entry
+    ? `${routeSelection.entry.title} unavailable`
+    : "Dashboard section unavailable";
+  const disabledReason = navigationSection
+    ? describeDisabledNavigationReason(navigationSection)
+    : null;
+  const detail =
+    routeSelection.status === "disabled"
+      ? (disabledReason ?? "This section is unavailable for your current permissions.")
+      : "This dashboard link is not available from the primary dashboard navigation.";
+
+  return {
+    title,
+    detail,
+    statusLabel: routeSelection.status === "disabled" ? "Disabled" : "Unavailable",
+  };
+}
+
+function DashboardUnavailableSection({
+  detailPanelRef,
+  navigationSections,
+  onSelectSection,
+  routeSelection,
+}: {
+  detailPanelRef: RefObject<HTMLElement | null>;
+  navigationSections: OpenPracticeSidebarNavigationSection[];
+  onSelectSection: (section: LocalDashboardSectionKey) => void;
+  routeSelection: DashboardRouteSelection;
+}) {
+  const copy = dashboardUnavailableSectionCopy({ navigationSections, routeSelection });
+  const fallbackSection = navigationSections.find(
+    (section) => section.key === routeSelection.sectionKey,
+  );
+  const FallbackIcon = navIcons[routeSelection.sectionKey];
+  const fallbackLabel = fallbackSection?.label ?? "dashboard";
+
+  return (
+    <article
+      aria-labelledby="matter-detail-title"
+      className="panel matter-detail matter-detail-panel"
+      id="matter-workspace"
+      ref={detailPanelRef}
+      tabIndex={-1}
+    >
+      <div className="panel-header matter-detail-header">
+        <div>
+          <p className="eyebrow">Dashboard navigation</p>
+          <h2 id="matter-detail-title">{copy.title}</h2>
+        </div>
+        <span className="status-chip">{copy.statusLabel}</span>
+      </div>
+      <p aria-live="polite" className="detail-note" role="status">
+        {copy.detail}
+      </p>
+      <div className="row-actions">
+        <button
+          className="secondary-button compact-button"
+          onClick={() => onSelectSection(routeSelection.sectionKey)}
+          type="button"
+        >
+          <FallbackIcon size={16} />
+          Open {fallbackLabel}
+        </button>
+      </div>
+    </article>
+  );
+}
+
 export default function DashboardClient({
   apiBaseUrl,
   auditProjection: initialAuditProjection,
@@ -492,7 +591,7 @@ export default function DashboardClient({
   jurisdictionalTrustReport,
   legalClinic,
   legalResearch,
-  initialSection,
+  initialRouteSelection,
   overview,
   operationalViewDefinitions = [],
   operationalViews: initialOperationalViews,
@@ -1256,12 +1355,15 @@ export default function DashboardClient({
     isContextRailCollapsed,
     reviewRailExpandHandleRef,
     reviewRailToggleRef,
+    routeSelection,
     selectDashboardSection,
     toggleContextRail,
   } = useDashboardShellState({
-    initialSection,
+    initialRouteSelection,
     navigationSections,
   });
+  const routeSelectionUnavailable = isUnavailableDashboardRouteSelection(routeSelection);
+  const sidebarActiveSection = routeSelectionUnavailable ? null : activeSection;
   const activeSectionLabel = dashboardActiveSectionLabel({
     activeMatterTitle: activeMatter?.title,
     activeSection,
@@ -4543,7 +4645,7 @@ export default function DashboardClient({
           Skip to workspace
         </a>
         <DashboardSidebar
-          activeSection={activeSection}
+          activeSection={sidebarActiveSection}
           matterState="empty"
           navigationSections={navigationSections}
           navIcons={navIcons}
@@ -4573,7 +4675,16 @@ export default function DashboardClient({
           <section
             className={`main-grid matter-workspace-grid zero-matter-workspace-grid ${isContextRailCollapsed ? "context-rail-collapsed" : ""}`}
           >
-            {activeSection === "contacts" ? (
+            {routeSelectionUnavailable ? (
+              <DashboardUnavailableSection
+                detailPanelRef={detailPanelRef}
+                navigationSections={navigationSections}
+                onSelectSection={selectDashboardSection}
+                routeSelection={routeSelection}
+              />
+            ) : null}
+
+            {!routeSelectionUnavailable && activeSection === "contacts" ? (
               <article
                 aria-labelledby="zero-contacts-title"
                 className="panel matter-detail matter-detail-panel"
@@ -4624,7 +4735,7 @@ export default function DashboardClient({
               </article>
             ) : null}
 
-            {activeSection === "calendar" ? (
+            {!routeSelectionUnavailable && activeSection === "calendar" ? (
               <article
                 aria-labelledby="zero-calendar-title"
                 className="panel matter-detail matter-detail-panel"
@@ -4757,7 +4868,7 @@ export default function DashboardClient({
               </article>
             ) : null}
 
-            {activeSection === "audit" ? (
+            {!routeSelectionUnavailable && activeSection === "audit" ? (
               <article
                 aria-labelledby="zero-audit-title"
                 className="panel matter-detail matter-detail-panel"
@@ -4784,7 +4895,7 @@ export default function DashboardClient({
               </article>
             ) : null}
 
-            {activeSection === "queues" ? (
+            {!routeSelectionUnavailable && activeSection === "queues" ? (
               <article
                 aria-labelledby="zero-queues-title"
                 className="panel matter-detail matter-detail-panel"
@@ -4865,7 +4976,7 @@ export default function DashboardClient({
               </article>
             ) : null}
 
-            {activeSection === "tasks" ? (
+            {!routeSelectionUnavailable && activeSection === "tasks" ? (
               <article
                 aria-labelledby="zero-tasks-title"
                 className="panel matter-detail matter-detail-panel"
@@ -4904,7 +5015,7 @@ export default function DashboardClient({
               </article>
             ) : null}
 
-            {activeSection === "reports" ? (
+            {!routeSelectionUnavailable && activeSection === "reports" ? (
               <article
                 aria-labelledby="zero-reports-title"
                 className="panel matter-detail matter-detail-panel"
@@ -4933,7 +5044,7 @@ export default function DashboardClient({
               </article>
             ) : null}
 
-            {activeSection === "admin" ? (
+            {!routeSelectionUnavailable && activeSection === "admin" ? (
               <article
                 aria-labelledby="zero-admin-title"
                 className="panel matter-detail matter-detail-panel"
@@ -4964,7 +5075,7 @@ export default function DashboardClient({
               </article>
             ) : null}
 
-            {activeSection === "matters" ? (
+            {!routeSelectionUnavailable && activeSection === "matters" ? (
               <FirstMatterWorkspace
                 canCreateMatter={canCreateMatter}
                 creating={creatingFirstMatter}
@@ -4975,7 +5086,8 @@ export default function DashboardClient({
               />
             ) : null}
 
-            {activeSection !== "matters" &&
+            {!routeSelectionUnavailable &&
+            activeSection !== "matters" &&
             activeSection !== "contacts" &&
             activeSection !== "calendar" &&
             activeSection !== "audit" &&
@@ -5077,7 +5189,7 @@ export default function DashboardClient({
         Skip to matter workspace
       </a>
       <DashboardSidebar
-        activeSection={activeSection}
+        activeSection={sidebarActiveSection}
         navigationSections={navigationSections}
         navIcons={navIcons}
         onSelectSection={selectDashboardSection}
@@ -5126,656 +5238,665 @@ export default function DashboardClient({
         <section
           className={`main-grid matter-workspace-grid ${isContextRailCollapsed ? "context-rail-collapsed" : ""}`}
         >
-          <MatterDetailShell
-            activeMatter={activeMatter}
-            activeSection={activeSection}
-            activeSectionLabel={activeSectionLabel}
-            detailPanelRef={detailPanelRef}
-            matterActionSections={matterActionSections}
-            onSelectSection={selectDashboardSection}
-          >
-            {activeSection === "matters" ? (
-              <MatterOverviewSection
-                activeActivitySummary={activeActivitySummary}
-                activeCommunicationsInbox={activeCommunicationsInbox}
-                activeEmailDeliveries={activeEmailDeliveries}
-                activeLegalClinicProfile={activeLegalClinicProfile}
-                activeLegalClinicProgram={activeLegalClinicProgram}
-                activeMatter={activeMatter}
-                activeMatterCommandCenter={activeMatterCommandCenter}
-                activityKindFilter={activityKindFilter}
-                activityStatusFilter={activityStatusFilter}
-                filteredMatterActivity={filteredMatterActivity}
-                navigationSections={navigationSections}
-                overview={overview}
-                compactDate={compactDate}
-                compactStatus={compactStatus}
-                formatCurrency={cents}
-                formatMinutes={minutes}
-                onActivityKindFilterChange={setActivityKindFilter}
-                onActivityStatusFilterChange={setActivityStatusFilter}
-                onSelectSection={selectDashboardSection}
-              />
-            ) : null}
-
-            {activeSection === "contacts" ? (
-              <ContactsSection
-                activeContactDossier={activeContactDossier}
-                canRecordContactDataQualityResolution={canRecordContactDataQualityResolution}
-                canCreateContact={canCreateContact}
-                canCreateMatter={canCreateMatter}
-                compactStatus={compactStatus}
-                contactCreateDisplayName={contactCreateDisplayName}
-                contactCreateEmail={contactCreateEmail}
-                contactCreateKind={contactCreateKind}
-                contactCreatePhone={contactCreatePhone}
-                contactCreateStatus={contactCreateStatus}
-                contactDossiers={contactDossierRecords}
-                contactDataQualityResolutions={activeContactDataQualityResolutions}
-                contactDataQualityStatus={contactDataQualityStatus}
-                contactReviewQueue={contactReviewQueue}
-                contactSearch={contactSearch}
-                creatingContact={creatingContact}
-                creatingMatterFromContactId={creatingMatterFromContactId}
-                filteredContactDossiers={filteredContactDossiers}
-                onContactCreateDisplayNameChange={setContactCreateDisplayName}
-                onContactCreateEmailChange={setContactCreateEmail}
-                onContactCreateKindChange={setContactCreateKind}
-                onContactCreatePhoneChange={setContactCreatePhone}
-                onCreateContact={() => void createContact()}
-                onCreateMatterFromContact={(dossier) => void createMatterFromContact(dossier)}
-                onNewAppointmentForContact={prepareAppointmentForContact}
-                onRecordContactDataQualityResolution={recordContactDataQualityResolution}
-                onContactSearchChange={setContactSearch}
-                onPrepareConflictCheckFromContact={prepareConflictCheckFromContact}
-                onSelectContact={setActiveContactId}
-                onSelectMatter={selectMatter}
-                recordingContactResolutionKey={recordingContactResolutionKey}
-              />
-            ) : null}
-
-            {activeSection === "funds" ? (
-              <TrustControlsSection
-                activeJurisdictionTrustSummary={activeJurisdictionTrustSummary}
-                activeTrustBalanceCents={activeTrustBalanceCents}
-                activeTrustControls={activeTrustControls}
-                activeTrustPostings={activeTrustPostings}
-                compactDate={compactDate}
-                compactStatus={compactStatus}
-                formatCurrency={cents}
-                trustControlsStatus={trustControlsStatus}
-                trustReviewSummary={trustReviewSummary}
-              />
-            ) : null}
-
-            {activeSection === "billing" ? (
-              billingDashboard.canView ? (
-                <BillingSection
-                  activeBalanceDueCents={activeBalanceDueCents}
-                  activeCaptureReviewCount={activeCaptureReviewCount}
-                  activeCaptureReviewExpenses={activeCaptureReviewExpenses}
-                  activeCaptureReviewTime={activeCaptureReviewTime}
-                  activeInvoices={activeInvoices}
-                  activeManualPayments={activeManualPayments}
+          {routeSelectionUnavailable ? (
+            <DashboardUnavailableSection
+              detailPanelRef={detailPanelRef}
+              navigationSections={navigationSections}
+              onSelectSection={selectDashboardSection}
+              routeSelection={routeSelection}
+            />
+          ) : (
+            <MatterDetailShell
+              activeMatter={activeMatter}
+              activeSection={activeSection}
+              activeSectionLabel={activeSectionLabel}
+              detailPanelRef={detailPanelRef}
+              matterActionSections={matterActionSections}
+              onSelectSection={selectDashboardSection}
+            >
+              {activeSection === "matters" ? (
+                <MatterOverviewSection
+                  activeActivitySummary={activeActivitySummary}
+                  activeCommunicationsInbox={activeCommunicationsInbox}
+                  activeEmailDeliveries={activeEmailDeliveries}
+                  activeLegalClinicProfile={activeLegalClinicProfile}
+                  activeLegalClinicProgram={activeLegalClinicProgram}
                   activeMatter={activeMatter}
-                  activePaymentRequests={activePaymentRequests}
-                  activeSettlementReviewSummary={activeSettlementReviewSummary}
-                  activeUnbilledExpenseCents={activeUnbilledExpenseCents}
-                  activeUnbilledExpenses={activeUnbilledExpenses}
-                  activeUnbilledTime={activeUnbilledTime}
-                  activeUnbilledTimeCents={activeUnbilledTimeCents}
-                  billingDashboard={billingDashboard}
-                  canCreateDraftInvoice={canCreateDraftInvoice}
-                  cents={cents}
-                  createDraftInvoice={createDraftInvoice}
-                  createExpenseDraft={createExpenseDraft}
-                  createTimerDraft={createTimerDraft}
-                  creatingDraftInvoice={creatingDraftInvoice}
-                  creatingExpenseDraft={creatingExpenseDraft}
-                  creatingTimerDraft={creatingTimerDraft}
-                  draftInvoiceDueAt={draftInvoiceDueAt}
-                  draftInvoiceStatus={draftInvoiceStatus}
-                  draftInvoiceTaxName={draftInvoiceTaxName}
-                  draftInvoiceTaxRate={draftInvoiceTaxRate}
-                  expenseDraftAmount={expenseDraftAmount}
-                  expenseDraftCategory={expenseDraftCategory}
-                  expenseDraftDate={expenseDraftDate}
-                  expenseDraftDescription={expenseDraftDescription}
-                  expenseDraftProfileKey={expenseDraftProfileKey}
-                  expenseDraftReimbursable={expenseDraftReimbursable}
-                  expenseDraftStatus={expenseDraftStatus}
-                  minutes={minutes}
-                  setDraftInvoiceDueAt={setDraftInvoiceDueAt}
-                  setDraftInvoiceTaxName={setDraftInvoiceTaxName}
-                  setDraftInvoiceTaxRate={setDraftInvoiceTaxRate}
-                  setExpenseDraftAmount={setExpenseDraftAmount}
-                  setExpenseDraftCategory={setExpenseDraftCategory}
-                  setExpenseDraftDate={setExpenseDraftDate}
-                  setExpenseDraftDescription={setExpenseDraftDescription}
-                  setExpenseDraftProfileKey={setExpenseDraftProfileKey}
-                  setExpenseDraftReimbursable={setExpenseDraftReimbursable}
-                  setTimerDraftBillable={setTimerDraftBillable}
-                  setTimerDraftNarrative={setTimerDraftNarrative}
-                  setTimerDraftRate={setTimerDraftRate}
-                  setTimerDraftStartedAt={setTimerDraftStartedAt}
-                  setTimerDraftStoppedAt={setTimerDraftStoppedAt}
-                  startTimerDraft={startTimerDraft}
-                  stopTimerDraft={stopTimerDraft}
-                  timerDraftBillable={timerDraftBillable}
-                  timerDraftNarrative={timerDraftNarrative}
-                  timerDraftRate={timerDraftRate}
-                  timerDraftStartedAt={timerDraftStartedAt}
-                  timerDraftStatus={timerDraftStatus}
-                  timerDraftStoppedAt={timerDraftStoppedAt}
+                  activeMatterCommandCenter={activeMatterCommandCenter}
+                  activityKindFilter={activityKindFilter}
+                  activityStatusFilter={activityStatusFilter}
+                  filteredMatterActivity={filteredMatterActivity}
+                  navigationSections={navigationSections}
+                  overview={overview}
+                  compactDate={compactDate}
+                  compactStatus={compactStatus}
+                  formatCurrency={cents}
+                  formatMinutes={minutes}
+                  onActivityKindFilterChange={setActivityKindFilter}
+                  onActivityStatusFilterChange={setActivityStatusFilter}
+                  onSelectSection={selectDashboardSection}
                 />
-              ) : (
-                <p className="inline-empty">
-                  Billing details are hidden for {formatProfessionalRoleLabel(session.user.role)}{" "}
-                  users.
-                </p>
-              )
-            ) : null}
+              ) : null}
 
-            {activeSection === "documents" ? (
-              <DocumentsSection
-                activeDocumentAssembly={activeDocumentAssembly}
-                activeDocumentMetadataFilterCount={activeDocumentMetadataFilterCount}
-                activeDocumentMetadataTags={activeDocumentMetadataTags}
-                activeDocumentProcessing={activeDocumentProcessing}
-                activeDocumentProcessingRows={activeDocumentProcessingRows}
-                activeMatterNumber={activeMatter.number}
-                documentMetadataClassificationFilter={documentMetadataClassificationFilter}
-                documentMetadataCueGroupFilter={documentMetadataCueGroupFilter}
-                documentMetadataOcrStatusFilter={documentMetadataOcrStatusFilter}
-                documentMetadataQuery={documentMetadataQuery}
-                documentMetadataReviewStatusFilter={documentMetadataReviewStatusFilter}
-                documentMetadataScanStatusFilter={documentMetadataScanStatusFilter}
-                documentMetadataSearchSummary={documentMetadataSearchSummary}
-                documentProcessingStatus={documentProcessingStatus}
-                documentProcessingSummary={documentProcessingSummary}
-                documentReviewSuggestionsSummary={documentReviewSuggestionsSummary}
-                queueingDocumentId={queueingDocumentId}
-                onClearDocumentMetadataSearch={() => void clearDocumentMetadataSearch()}
-                onDocumentMetadataClassificationFilterChange={
-                  setDocumentMetadataClassificationFilter
-                }
-                onDocumentMetadataCueGroupFilterChange={setDocumentMetadataCueGroupFilter}
-                onDocumentMetadataOcrStatusFilterChange={setDocumentMetadataOcrStatusFilter}
-                onDocumentMetadataQueryChange={setDocumentMetadataQuery}
-                onDocumentMetadataReviewStatusFilterChange={setDocumentMetadataReviewStatusFilter}
-                onDocumentMetadataScanStatusFilterChange={setDocumentMetadataScanStatusFilter}
-                onQueueDocumentOcr={(documentId) => void queueDocumentOcr(documentId)}
-                onRefreshDocumentMetadataSearch={() => void refreshDocumentMetadataSearch()}
-                onSelectDocumentMetadataTag={(tag) => void selectDocumentMetadataTag(tag)}
-              />
-            ) : null}
+              {activeSection === "contacts" ? (
+                <ContactsSection
+                  activeContactDossier={activeContactDossier}
+                  canRecordContactDataQualityResolution={canRecordContactDataQualityResolution}
+                  canCreateContact={canCreateContact}
+                  canCreateMatter={canCreateMatter}
+                  compactStatus={compactStatus}
+                  contactCreateDisplayName={contactCreateDisplayName}
+                  contactCreateEmail={contactCreateEmail}
+                  contactCreateKind={contactCreateKind}
+                  contactCreatePhone={contactCreatePhone}
+                  contactCreateStatus={contactCreateStatus}
+                  contactDossiers={contactDossierRecords}
+                  contactDataQualityResolutions={activeContactDataQualityResolutions}
+                  contactDataQualityStatus={contactDataQualityStatus}
+                  contactReviewQueue={contactReviewQueue}
+                  contactSearch={contactSearch}
+                  creatingContact={creatingContact}
+                  creatingMatterFromContactId={creatingMatterFromContactId}
+                  filteredContactDossiers={filteredContactDossiers}
+                  onContactCreateDisplayNameChange={setContactCreateDisplayName}
+                  onContactCreateEmailChange={setContactCreateEmail}
+                  onContactCreateKindChange={setContactCreateKind}
+                  onContactCreatePhoneChange={setContactCreatePhone}
+                  onCreateContact={() => void createContact()}
+                  onCreateMatterFromContact={(dossier) => void createMatterFromContact(dossier)}
+                  onNewAppointmentForContact={prepareAppointmentForContact}
+                  onRecordContactDataQualityResolution={recordContactDataQualityResolution}
+                  onContactSearchChange={setContactSearch}
+                  onPrepareConflictCheckFromContact={prepareConflictCheckFromContact}
+                  onSelectContact={setActiveContactId}
+                  onSelectMatter={selectMatter}
+                  recordingContactResolutionKey={recordingContactResolutionKey}
+                />
+              ) : null}
 
-            {activeSection === "research" ? (
-              <ResearchSection
-                canReview={canReviewLegalResearchArtifacts}
-                compactDate={compactDate}
-                onReviewArtifact={(artifact, decision) =>
-                  void reviewLegalResearchArtifact(artifact, decision)
-                }
-                reviewBusyId={legalResearchReviewBusyId}
-                reviewStatus={legalResearchStatus}
-                workspace={activeLegalResearch}
-              />
-            ) : null}
+              {activeSection === "funds" ? (
+                <TrustControlsSection
+                  activeJurisdictionTrustSummary={activeJurisdictionTrustSummary}
+                  activeTrustBalanceCents={activeTrustBalanceCents}
+                  activeTrustControls={activeTrustControls}
+                  activeTrustPostings={activeTrustPostings}
+                  compactDate={compactDate}
+                  compactStatus={compactStatus}
+                  formatCurrency={cents}
+                  trustControlsStatus={trustControlsStatus}
+                  trustReviewSummary={trustReviewSummary}
+                />
+              ) : null}
 
-            {activeSection === "shares" ? (
-              <ShareLinksSection
-                activeClientPortalContacts={activeClientPortalContacts}
-                activeShares={activeShares}
-                clientPortalSetupToken={clientPortalSetupToken}
-                clientPortalStatus={clientPortalStatus}
-                creatingClientPortalAccount={creatingClientPortalAccount}
-                creatingShare={creatingShare}
-                requireEmailVerification={requireEmailVerification}
-                revokingShareId={revokingShareId}
-                selectedClientPortalContactId={selectedClientPortalContactId}
-                shareExpiresAt={shareExpiresAt}
-                shareLinksCreateAvailable={shareLinksCreateAvailable}
-                shareLinksStatus={shareLinksStatus}
-                shareNotificationEmail={shareNotificationEmail}
-                shareOneTimeToken={shareOneTimeToken}
-                sharePermissions={sharePermissions}
-                shareStatus={shareStatus}
-                onCreateClientPortalAccount={() => void createClientPortalAccount()}
-                onCreateShareLink={() => void createShareLink()}
-                onRevokeShareLink={(share) => void revokeShareLink(share)}
-                onSetClientPortalContactId={setClientPortalContactId}
-                onSetRequireEmailVerification={setRequireEmailVerification}
-                onSetShareExpiresAt={setShareExpiresAt}
-                onSetShareNotificationEmail={setShareNotificationEmail}
-                onToggleSharePermission={toggleSharePermission}
-              />
-            ) : null}
+              {activeSection === "billing" ? (
+                billingDashboard.canView ? (
+                  <BillingSection
+                    activeBalanceDueCents={activeBalanceDueCents}
+                    activeCaptureReviewCount={activeCaptureReviewCount}
+                    activeCaptureReviewExpenses={activeCaptureReviewExpenses}
+                    activeCaptureReviewTime={activeCaptureReviewTime}
+                    activeInvoices={activeInvoices}
+                    activeManualPayments={activeManualPayments}
+                    activeMatter={activeMatter}
+                    activePaymentRequests={activePaymentRequests}
+                    activeSettlementReviewSummary={activeSettlementReviewSummary}
+                    activeUnbilledExpenseCents={activeUnbilledExpenseCents}
+                    activeUnbilledExpenses={activeUnbilledExpenses}
+                    activeUnbilledTime={activeUnbilledTime}
+                    activeUnbilledTimeCents={activeUnbilledTimeCents}
+                    billingDashboard={billingDashboard}
+                    canCreateDraftInvoice={canCreateDraftInvoice}
+                    cents={cents}
+                    createDraftInvoice={createDraftInvoice}
+                    createExpenseDraft={createExpenseDraft}
+                    createTimerDraft={createTimerDraft}
+                    creatingDraftInvoice={creatingDraftInvoice}
+                    creatingExpenseDraft={creatingExpenseDraft}
+                    creatingTimerDraft={creatingTimerDraft}
+                    draftInvoiceDueAt={draftInvoiceDueAt}
+                    draftInvoiceStatus={draftInvoiceStatus}
+                    draftInvoiceTaxName={draftInvoiceTaxName}
+                    draftInvoiceTaxRate={draftInvoiceTaxRate}
+                    expenseDraftAmount={expenseDraftAmount}
+                    expenseDraftCategory={expenseDraftCategory}
+                    expenseDraftDate={expenseDraftDate}
+                    expenseDraftDescription={expenseDraftDescription}
+                    expenseDraftProfileKey={expenseDraftProfileKey}
+                    expenseDraftReimbursable={expenseDraftReimbursable}
+                    expenseDraftStatus={expenseDraftStatus}
+                    minutes={minutes}
+                    setDraftInvoiceDueAt={setDraftInvoiceDueAt}
+                    setDraftInvoiceTaxName={setDraftInvoiceTaxName}
+                    setDraftInvoiceTaxRate={setDraftInvoiceTaxRate}
+                    setExpenseDraftAmount={setExpenseDraftAmount}
+                    setExpenseDraftCategory={setExpenseDraftCategory}
+                    setExpenseDraftDate={setExpenseDraftDate}
+                    setExpenseDraftDescription={setExpenseDraftDescription}
+                    setExpenseDraftProfileKey={setExpenseDraftProfileKey}
+                    setExpenseDraftReimbursable={setExpenseDraftReimbursable}
+                    setTimerDraftBillable={setTimerDraftBillable}
+                    setTimerDraftNarrative={setTimerDraftNarrative}
+                    setTimerDraftRate={setTimerDraftRate}
+                    setTimerDraftStartedAt={setTimerDraftStartedAt}
+                    setTimerDraftStoppedAt={setTimerDraftStoppedAt}
+                    startTimerDraft={startTimerDraft}
+                    stopTimerDraft={stopTimerDraft}
+                    timerDraftBillable={timerDraftBillable}
+                    timerDraftNarrative={timerDraftNarrative}
+                    timerDraftRate={timerDraftRate}
+                    timerDraftStartedAt={timerDraftStartedAt}
+                    timerDraftStatus={timerDraftStatus}
+                    timerDraftStoppedAt={timerDraftStoppedAt}
+                  />
+                ) : (
+                  <p className="inline-empty">
+                    Billing details are hidden for {formatProfessionalRoleLabel(session.user.role)}{" "}
+                    users.
+                  </p>
+                )
+              ) : null}
 
-            {activeSection === "externalUploads" ? (
-              <ExternalUploadsSection
-                activeExternalUploadDocuments={activeExternalUploadDocuments}
-                activeExternalUploads={activeExternalUploads}
-                activeMatterNumber={activeMatter.number}
-                creatingExternalUpload={creatingExternalUpload}
-                externalUploadCreateDisabled={externalUploadCreateDisabled}
-                externalUploadExpiresAt={externalUploadExpiresAt}
-                externalUploadMaxUploads={externalUploadMaxUploads}
-                externalUploadReviewNotesByDocumentId={externalUploadReviewNotesByDocumentId}
-                externalUploadReviewReasonsByDocumentId={externalUploadReviewReasonsByDocumentId}
-                externalUploadStatus={externalUploadStatus}
-                externalUploadStatusResponse={externalUploads.status}
-                externalUploadToken={externalUploadToken}
-                reviewingExternalUploadDocumentId={reviewingExternalUploadDocumentId}
-                revokingExternalUploadId={revokingExternalUploadId}
-                onCreateExternalUploadLink={() => void createExternalUploadLink()}
-                onReviewExternalUploadDocument={(document, decision) =>
-                  void reviewExternalUploadDocument(document, decision)
-                }
-                onRevokeExternalUploadLink={(uploadId) => void revokeExternalUploadLink(uploadId)}
-                onSetExternalUploadExpiresAt={setExternalUploadExpiresAt}
-                onSetExternalUploadMaxUploads={setExternalUploadMaxUploads}
-                onSetExternalUploadReviewNote={(documentId, value) =>
-                  setExternalUploadReviewNotesByDocumentId((current) => ({
-                    ...current,
-                    [documentId]: value,
-                  }))
-                }
-                onSetExternalUploadReviewReason={(documentId, value) =>
-                  setExternalUploadReviewReasonsByDocumentId((current) => ({
-                    ...current,
-                    [documentId]: value,
-                  }))
-                }
-              />
-            ) : null}
+              {activeSection === "documents" ? (
+                <DocumentsSection
+                  activeDocumentAssembly={activeDocumentAssembly}
+                  activeDocumentMetadataFilterCount={activeDocumentMetadataFilterCount}
+                  activeDocumentMetadataTags={activeDocumentMetadataTags}
+                  activeDocumentProcessing={activeDocumentProcessing}
+                  activeDocumentProcessingRows={activeDocumentProcessingRows}
+                  activeMatterNumber={activeMatter.number}
+                  documentMetadataClassificationFilter={documentMetadataClassificationFilter}
+                  documentMetadataCueGroupFilter={documentMetadataCueGroupFilter}
+                  documentMetadataOcrStatusFilter={documentMetadataOcrStatusFilter}
+                  documentMetadataQuery={documentMetadataQuery}
+                  documentMetadataReviewStatusFilter={documentMetadataReviewStatusFilter}
+                  documentMetadataScanStatusFilter={documentMetadataScanStatusFilter}
+                  documentMetadataSearchSummary={documentMetadataSearchSummary}
+                  documentProcessingStatus={documentProcessingStatus}
+                  documentProcessingSummary={documentProcessingSummary}
+                  documentReviewSuggestionsSummary={documentReviewSuggestionsSummary}
+                  queueingDocumentId={queueingDocumentId}
+                  onClearDocumentMetadataSearch={() => void clearDocumentMetadataSearch()}
+                  onDocumentMetadataClassificationFilterChange={
+                    setDocumentMetadataClassificationFilter
+                  }
+                  onDocumentMetadataCueGroupFilterChange={setDocumentMetadataCueGroupFilter}
+                  onDocumentMetadataOcrStatusFilterChange={setDocumentMetadataOcrStatusFilter}
+                  onDocumentMetadataQueryChange={setDocumentMetadataQuery}
+                  onDocumentMetadataReviewStatusFilterChange={setDocumentMetadataReviewStatusFilter}
+                  onDocumentMetadataScanStatusFilterChange={setDocumentMetadataScanStatusFilter}
+                  onQueueDocumentOcr={(documentId) => void queueDocumentOcr(documentId)}
+                  onRefreshDocumentMetadataSearch={() => void refreshDocumentMetadataSearch()}
+                  onSelectDocumentMetadataTag={(tag) => void selectDocumentMetadataTag(tag)}
+                />
+              ) : null}
 
-            {activeSection === "calendar" ? (
-              <CalendarSection
-                activeCalendarBuckets={activeCalendarBuckets}
-                activeCalendarEvents={activeCalendarEvents}
-                activeCalendarLinks={activeCalendarLinks}
-                activeCalendarSchedulingRequests={activeCalendarSchedulingRequests}
-                activeCalendarScope={activeCalendarScope}
-                activeMatterNumber={activeCalendarLabel}
-                addingCalendarAttendee={addingCalendarAttendee}
-                addingCalendarReminder={addingCalendarReminder}
-                calendarAttendeeEmail={calendarAttendeeEmail}
-                calendarAttendeeName={calendarAttendeeName}
-                calendarAttendeeRole={calendarAttendeeRole}
-                calendarCredentialLabel={calendarCredentialLabel}
-                calendarCredentialStatus={calendarCredentialStatus}
-                calendarCredentials={calendarCredentials}
-                calendarEventDescription={calendarEventDescription}
-                calendarEventEndsAt={calendarEventEndsAt}
-                calendarEventLifecycleStatus={calendarEventLifecycleStatus}
-                calendarEventLocation={calendarEventLocation}
-                calendarEventStartsAt={calendarEventStartsAt}
-                calendarEventStatusValue={calendarEventStatusValue}
-                calendarEventTitle={calendarEventTitle}
-                calendarGuestSessionSecret={calendarGuestSessionSecret}
-                calendarGuestSessionStatus={calendarGuestSessionStatus}
-                calendarGuestSessionsByEventId={calendarGuestSessionsByEventId}
-                calendarMeetingLinkModesByEventId={calendarMeetingLinkModesByEventId}
-                calendarMeetingLinkUrlsByEventId={calendarMeetingLinkUrlsByEventId}
-                calendarMeetingStatus={calendarMeetingStatus}
-                calendarOneTimeSecret={calendarOneTimeSecret}
-                calendarReminderAt={calendarReminderAt}
-                calendarReminderNote={calendarReminderNote}
-                calendarReminderStatus={calendarReminderStatus}
-                calendarReminderStatusValue={calendarReminderStatusValue}
-                calendarClientContactId={selectedCalendarClientContactId}
-                calendarClientOptions={calendarClientOptions}
-                cancelingCalendarEventId={cancelingCalendarEventId}
-                creatingCalendarCredential={creatingCalendarCredential}
-                creatingCalendarEvent={creatingCalendarEvent}
-                creatingCalendarGuestSessionEventId={creatingCalendarGuestSessionEventId}
-                pendingDeliveryConfirmation={pendingDeliveryConfirmation}
-                removingCalendarAttendeeId={removingCalendarAttendeeId}
-                removingCalendarReminderId={removingCalendarReminderId}
-                revokingCalendarCredentialId={revokingCalendarCredentialId}
-                selectedCalendarMeetingEvent={selectedCalendarMeetingEvent}
-                selectedCalendarReminderEvent={selectedCalendarReminderEvent}
-                sendingCalendarInvitationsEventId={sendingCalendarInvitationsEventId}
-                matterCalendarControlsEnabled={matterCalendarControlsEnabled}
-                updatingCalendarEventId={updatingCalendarEventId}
-                updatingCalendarGuestSessionKey={updatingCalendarGuestSessionKey}
-                updatingCalendarMeetingLinkEventId={updatingCalendarMeetingLinkEventId}
-                updatingCalendarReminderId={updatingCalendarReminderId}
-                onAddCalendarAttendee={() => void addCalendarAttendee()}
-                onAddCalendarReminder={() => void addCalendarReminder()}
-                onCancelCalendarEvent={(event) => void cancelCalendarEvent(event)}
-                onCancelPendingDeliveryConfirmation={() => setPendingDeliveryConfirmation(null)}
-                onConfirmPendingDelivery={confirmPendingDelivery}
-                onControlCalendarGuestSession={(event, session, action) =>
-                  void controlCalendarGuestSession(event, session, action)
-                }
-                onCreateCalendarCredential={() => void createCalendarCredential()}
-                onCreateCalendarEvent={() => void createCalendarEvent()}
-                onCreateCalendarGuestSession={(event) => void createCalendarGuestSession(event)}
-                onIssueCalendarGuestLink={(event, session) =>
-                  void issueCalendarGuestLink(event, session)
-                }
-                onOpenCalendarInvitationConfirmation={openCalendarInvitationConfirmation}
-                onRemoveCalendarAttendee={(eventId, attendeeId) =>
-                  void removeCalendarAttendee(eventId, attendeeId)
-                }
-                onRemoveCalendarReminder={(eventId, reminderId) =>
-                  void removeCalendarReminder(eventId, reminderId)
-                }
-                onRescheduleCalendarEvent={(event) => void rescheduleCalendarEvent(event)}
-                onRevokeCalendarCredential={(credentialId) =>
-                  void revokeCalendarCredential(credentialId)
-                }
-                onSetCalendarAttendeeEmail={setCalendarAttendeeEmail}
-                onSetCalendarAttendeeName={setCalendarAttendeeName}
-                onSetCalendarAttendeeRole={setCalendarAttendeeRole}
-                onSetCalendarScope={(scope) => setCalendarScope(scope)}
-                onSetCalendarClientContactId={setCalendarClientContactId}
-                onSetCalendarCredentialLabel={setCalendarCredentialLabel}
-                onSetCalendarEventDescription={setCalendarEventDescription}
-                onSetCalendarEventEndsAt={setCalendarEventEndsAt}
-                onSetCalendarEventLocation={setCalendarEventLocation}
-                onSetCalendarEventStartsAt={setCalendarEventStartsAt}
-                onSetCalendarEventStatusValue={setCalendarEventStatusValue}
-                onSetCalendarEventTitle={setCalendarEventTitle}
-                onSetCalendarMeetingEventId={setCalendarMeetingEventId}
-                onSetCalendarMeetingLinkMode={(eventId, mode) =>
-                  setCalendarMeetingLinkModesByEventId((current) => ({
-                    ...current,
-                    [eventId]: mode,
-                  }))
-                }
-                onSetCalendarMeetingLinkUrl={(eventId, url) =>
-                  setCalendarMeetingLinkUrlsByEventId((current) => ({
-                    ...current,
-                    [eventId]: url,
-                  }))
-                }
-                onSetCalendarReminderAt={setCalendarReminderAt}
-                onSetCalendarReminderEventId={setCalendarReminderEventId}
-                onSetCalendarReminderNote={setCalendarReminderNote}
-                onSetCalendarReminderStatusValue={setCalendarReminderStatusValue}
-                onUpdateCalendarGuestLink={(event, session, guestId, action) =>
-                  void updateCalendarGuestLink(event, session, guestId, action)
-                }
-                onUpdateCalendarMeetingLink={(event, mode, externalUrl) =>
-                  void updateCalendarMeetingLink(event, mode, externalUrl)
-                }
-                onUpdateCalendarReminder={(eventId, reminderId, status) =>
-                  void updateCalendarReminder(eventId, reminderId, status)
-                }
-              />
-            ) : null}
+              {activeSection === "research" ? (
+                <ResearchSection
+                  canReview={canReviewLegalResearchArtifacts}
+                  compactDate={compactDate}
+                  onReviewArtifact={(artifact, decision) =>
+                    void reviewLegalResearchArtifact(artifact, decision)
+                  }
+                  reviewBusyId={legalResearchReviewBusyId}
+                  reviewStatus={legalResearchStatus}
+                  workspace={activeLegalResearch}
+                />
+              ) : null}
 
-            {activeSection === "drafting" ? (
-              <DraftingSection
-                activeDraftAssistRecords={activeDraftAssistRecords}
-                activeDraftExports={activeDraftExports}
-                activeDrafts={activeDrafts}
-                aiOperationalProposals={aiOperationalProposals}
-                aiOperationalProposalStatus={aiOperationalProposalStatus}
-                creatingTemplateId={creatingTemplateId}
-                drafting={drafting}
-                draftAssistInstruction={draftAssistInstruction}
-                draftAssistMessage={draftAssistMessage}
-                draftAssistStatus={draftAssistStatus}
-                draftAssistTask={draftAssistTask}
-                draftEditorJson={draftEditorJson}
-                draftExportFormat={draftExportFormat}
-                draftExportTitle={draftExportTitle}
-                draftHasChanges={draftHasChanges}
-                draftMergeField={draftMergeField}
-                draftStatus={draftStatus}
-                exportingDraftFormat={exportingDraftFormat}
-                queueingAiOperationalProposals={queueingAiOperationalProposals}
-                runningDraftAssist={runningDraftAssist}
-                savingDraft={savingDraft}
-                selectedDraft={selectedDraft}
-                onCloseDraftEditor={closeDraftEditor}
-                onCreateBlankDraft={() => void createBlankDraft()}
-                onCreateDraftFromTemplate={(template) => void createDraftFromTemplate(template)}
-                onDraftAssistInstructionChange={setDraftAssistInstruction}
-                onDraftAssistTaskChange={setDraftAssistTask}
-                onDraftEditorJsonChange={setDraftEditorJson}
-                onDraftExportFormatChange={setDraftExportFormat}
-                onDraftExportTitleChange={setDraftExportTitle}
-                onDraftMergeFieldChange={setDraftMergeField}
-                onExportDraft={() => void exportDraft()}
-                onInsertDraftAssistRecord={insertDraftAssistRecord}
-                onInsertMergeField={insertMergeField}
-                onOpenDraft={openDraft}
-                onQueueDraftOperationalProposals={() => void queueDraftOperationalProposals()}
-                onReviewDraftAssistRecord={(record, decision) =>
-                  void reviewDraftAssistRecord(record, decision)
-                }
-                onRunDraftAssist={() => void runDraftAssist()}
-                onSaveDraft={() => void saveDraft()}
-              />
-            ) : null}
+              {activeSection === "shares" ? (
+                <ShareLinksSection
+                  activeClientPortalContacts={activeClientPortalContacts}
+                  activeShares={activeShares}
+                  clientPortalSetupToken={clientPortalSetupToken}
+                  clientPortalStatus={clientPortalStatus}
+                  creatingClientPortalAccount={creatingClientPortalAccount}
+                  creatingShare={creatingShare}
+                  requireEmailVerification={requireEmailVerification}
+                  revokingShareId={revokingShareId}
+                  selectedClientPortalContactId={selectedClientPortalContactId}
+                  shareExpiresAt={shareExpiresAt}
+                  shareLinksCreateAvailable={shareLinksCreateAvailable}
+                  shareLinksStatus={shareLinksStatus}
+                  shareNotificationEmail={shareNotificationEmail}
+                  shareOneTimeToken={shareOneTimeToken}
+                  sharePermissions={sharePermissions}
+                  shareStatus={shareStatus}
+                  onCreateClientPortalAccount={() => void createClientPortalAccount()}
+                  onCreateShareLink={() => void createShareLink()}
+                  onRevokeShareLink={(share) => void revokeShareLink(share)}
+                  onSetClientPortalContactId={setClientPortalContactId}
+                  onSetRequireEmailVerification={setRequireEmailVerification}
+                  onSetShareExpiresAt={setShareExpiresAt}
+                  onSetShareNotificationEmail={setShareNotificationEmail}
+                  onToggleSharePermission={toggleSharePermission}
+                />
+              ) : null}
 
-            {activeSection === "signatures" ? (
-              <SignaturesSection activeSignatures={activeSignatures} />
-            ) : null}
+              {activeSection === "externalUploads" ? (
+                <ExternalUploadsSection
+                  activeExternalUploadDocuments={activeExternalUploadDocuments}
+                  activeExternalUploads={activeExternalUploads}
+                  activeMatterNumber={activeMatter.number}
+                  creatingExternalUpload={creatingExternalUpload}
+                  externalUploadCreateDisabled={externalUploadCreateDisabled}
+                  externalUploadExpiresAt={externalUploadExpiresAt}
+                  externalUploadMaxUploads={externalUploadMaxUploads}
+                  externalUploadReviewNotesByDocumentId={externalUploadReviewNotesByDocumentId}
+                  externalUploadReviewReasonsByDocumentId={externalUploadReviewReasonsByDocumentId}
+                  externalUploadStatus={externalUploadStatus}
+                  externalUploadStatusResponse={externalUploads.status}
+                  externalUploadToken={externalUploadToken}
+                  reviewingExternalUploadDocumentId={reviewingExternalUploadDocumentId}
+                  revokingExternalUploadId={revokingExternalUploadId}
+                  onCreateExternalUploadLink={() => void createExternalUploadLink()}
+                  onReviewExternalUploadDocument={(document, decision) =>
+                    void reviewExternalUploadDocument(document, decision)
+                  }
+                  onRevokeExternalUploadLink={(uploadId) => void revokeExternalUploadLink(uploadId)}
+                  onSetExternalUploadExpiresAt={setExternalUploadExpiresAt}
+                  onSetExternalUploadMaxUploads={setExternalUploadMaxUploads}
+                  onSetExternalUploadReviewNote={(documentId, value) =>
+                    setExternalUploadReviewNotesByDocumentId((current) => ({
+                      ...current,
+                      [documentId]: value,
+                    }))
+                  }
+                  onSetExternalUploadReviewReason={(documentId, value) =>
+                    setExternalUploadReviewReasonsByDocumentId((current) => ({
+                      ...current,
+                      [documentId]: value,
+                    }))
+                  }
+                />
+              ) : null}
 
-            {activeSection === "intake" ? (
-              <IntakeSection
-                activeFiscalHostMetadata={activeFiscalHostMetadata}
-                activeIntakeFormLinks={activeIntakeFormLinks}
-                activeIntakeSessions={activeIntakeSessions}
-                activeIntakeVariableProposals={activeIntakeVariableProposals}
-                activeLegalClinicProfile={activeLegalClinicProfile}
-                activeLegalClinicProgram={activeLegalClinicProgram}
-                activeMatter={activeMatter}
-                activeMatterPipelineLeads={activeMatterPipelineLeads}
-                activePendingIntakeReviewLinks={activePendingIntakeReviewLinks}
-                activePendingIntakeVariableProposals={activePendingIntakeVariableProposals}
-                confirmPendingDelivery={confirmPendingDelivery}
-                convertPublicConsultationIntake={convertPublicConsultationIntake}
-                createIntakeFormLink={createIntakeFormLink}
-                creatingIntakeFormLink={creatingIntakeFormLink}
-                decideSubmittedIntakeReview={decideSubmittedIntakeReview}
-                dismissPublicConsultationIntake={dismissPublicConsultationIntake}
-                intakeFormActionsByLinkId={intakeFormActionsByLinkId}
-                intakeFormExpiresAt={intakeFormExpiresAt}
-                intakeFormPortalUrl={intakeFormPortalUrl}
-                intakeFormStatus={intakeFormStatus}
-                intakeFormToken={intakeFormToken}
-                intakePipeline={intakePipeline}
-                intakePreviewAnswers={intakePreviewAnswers}
-                intakePreviewResult={intakePreviewResult}
-                intakePreviewStatus={intakePreviewStatus}
-                intakeReviewDetailsByLinkId={intakeReviewDetailsByLinkId}
-                intakeReviewReasons={intakeReviewReasons}
-                intakeTemplateDefinition={intakeTemplateDefinition}
-                intakeTemplateName={intakeTemplateName}
-                intakeTemplateStatus={intakeTemplateStatus}
-                intakeTemplates={intakeTemplates}
-                loadSubmittedIntakeReview={loadSubmittedIntakeReview}
-                loadingIntakeReviewLinkId={loadingIntakeReviewLinkId}
-                openIntakeSessionConfirmation={openIntakeSessionConfirmation}
-                pendingDeliveryConfirmation={pendingDeliveryConfirmation}
-                pendingPublicConsultationIntakes={pendingPublicConsultationIntakes}
-                previewingIntakeTemplate={previewingIntakeTemplate}
-                previewIntakeTemplate={previewIntakeTemplate}
-                proposalRejectionReasons={proposalRejectionReasons}
-                publicConsultation={publicConsultation}
-                publicConsultationBusyIntakeId={publicConsultationBusyIntakeId}
-                publicConsultationDismissReasons={publicConsultationDismissReasons}
-                publicConsultationEnabled={publicConsultationEnabled}
-                publicConsultationOrigins={publicConsultationOrigins}
-                publicConsultationRecipients={publicConsultationRecipients}
-                publicConsultationReviewOwner={publicConsultationReviewOwner}
-                publicConsultationSender={publicConsultationSender}
-                publicConsultationSettings={publicConsultationSettings}
-                publicConsultationSettingsDisabled={publicConsultationSettingsDisabled}
-                publicConsultationStatus={publicConsultationStatus}
-                recentIntakePipelineLeads={recentIntakePipelineLeads}
-                refreshPublicConsultationIntakes={refreshPublicConsultationIntakes}
-                refreshingPublicConsultationIntakes={refreshingPublicConsultationIntakes}
-                reviewIntakeVariableProposal={reviewIntakeVariableProposal}
-                reviewingIntakeFormLinkId={reviewingIntakeFormLinkId}
-                reviewingIntakeProposalId={reviewingIntakeProposalId}
-                revokeIntakeFormLink={revokeIntakeFormLink}
-                revokingIntakeFormLinkId={revokingIntakeFormLinkId}
-                runPublicConsultationConflictCheck={runPublicConsultationConflictCheck}
-                saveIntakeTemplate={saveIntakeTemplate}
-                savePublicConsultationSettings={savePublicConsultationSettings}
-                savingIntakeTemplate={savingIntakeTemplate}
-                savingPublicConsultationSettings={savingPublicConsultationSettings}
-                selectIntakeTemplate={selectIntakeTemplate}
-                selectedIntakeTemplate={selectedIntakeTemplate}
-                selectedIntakeTemplateId={selectedIntakeTemplateId}
-                session={session}
-                setIntakeFormExpiresAt={setIntakeFormExpiresAt}
-                setIntakeReviewReasons={setIntakeReviewReasons}
-                setIntakeTemplateDefinition={setIntakeTemplateDefinition}
-                setIntakeTemplateName={setIntakeTemplateName}
-                setPendingDeliveryConfirmation={setPendingDeliveryConfirmation}
-                setProposalRejectionReasons={setProposalRejectionReasons}
-                setPublicConsultationDismissReasons={setPublicConsultationDismissReasons}
-                setPublicConsultationEnabled={setPublicConsultationEnabled}
-                setPublicConsultationOrigins={setPublicConsultationOrigins}
-                setPublicConsultationRecipients={setPublicConsultationRecipients}
-                setPublicConsultationReviewOwner={setPublicConsultationReviewOwner}
-                setPublicConsultationSender={setPublicConsultationSender}
-                startNewIntakeTemplate={startNewIntakeTemplate}
-                startingIntakeSession={startingIntakeSession}
-                updateIntakePreviewAnswer={updateIntakePreviewAnswer}
-              />
-            ) : null}
+              {activeSection === "calendar" ? (
+                <CalendarSection
+                  activeCalendarBuckets={activeCalendarBuckets}
+                  activeCalendarEvents={activeCalendarEvents}
+                  activeCalendarLinks={activeCalendarLinks}
+                  activeCalendarSchedulingRequests={activeCalendarSchedulingRequests}
+                  activeCalendarScope={activeCalendarScope}
+                  activeMatterNumber={activeCalendarLabel}
+                  addingCalendarAttendee={addingCalendarAttendee}
+                  addingCalendarReminder={addingCalendarReminder}
+                  calendarAttendeeEmail={calendarAttendeeEmail}
+                  calendarAttendeeName={calendarAttendeeName}
+                  calendarAttendeeRole={calendarAttendeeRole}
+                  calendarCredentialLabel={calendarCredentialLabel}
+                  calendarCredentialStatus={calendarCredentialStatus}
+                  calendarCredentials={calendarCredentials}
+                  calendarEventDescription={calendarEventDescription}
+                  calendarEventEndsAt={calendarEventEndsAt}
+                  calendarEventLifecycleStatus={calendarEventLifecycleStatus}
+                  calendarEventLocation={calendarEventLocation}
+                  calendarEventStartsAt={calendarEventStartsAt}
+                  calendarEventStatusValue={calendarEventStatusValue}
+                  calendarEventTitle={calendarEventTitle}
+                  calendarGuestSessionSecret={calendarGuestSessionSecret}
+                  calendarGuestSessionStatus={calendarGuestSessionStatus}
+                  calendarGuestSessionsByEventId={calendarGuestSessionsByEventId}
+                  calendarMeetingLinkModesByEventId={calendarMeetingLinkModesByEventId}
+                  calendarMeetingLinkUrlsByEventId={calendarMeetingLinkUrlsByEventId}
+                  calendarMeetingStatus={calendarMeetingStatus}
+                  calendarOneTimeSecret={calendarOneTimeSecret}
+                  calendarReminderAt={calendarReminderAt}
+                  calendarReminderNote={calendarReminderNote}
+                  calendarReminderStatus={calendarReminderStatus}
+                  calendarReminderStatusValue={calendarReminderStatusValue}
+                  calendarClientContactId={selectedCalendarClientContactId}
+                  calendarClientOptions={calendarClientOptions}
+                  cancelingCalendarEventId={cancelingCalendarEventId}
+                  creatingCalendarCredential={creatingCalendarCredential}
+                  creatingCalendarEvent={creatingCalendarEvent}
+                  creatingCalendarGuestSessionEventId={creatingCalendarGuestSessionEventId}
+                  pendingDeliveryConfirmation={pendingDeliveryConfirmation}
+                  removingCalendarAttendeeId={removingCalendarAttendeeId}
+                  removingCalendarReminderId={removingCalendarReminderId}
+                  revokingCalendarCredentialId={revokingCalendarCredentialId}
+                  selectedCalendarMeetingEvent={selectedCalendarMeetingEvent}
+                  selectedCalendarReminderEvent={selectedCalendarReminderEvent}
+                  sendingCalendarInvitationsEventId={sendingCalendarInvitationsEventId}
+                  matterCalendarControlsEnabled={matterCalendarControlsEnabled}
+                  updatingCalendarEventId={updatingCalendarEventId}
+                  updatingCalendarGuestSessionKey={updatingCalendarGuestSessionKey}
+                  updatingCalendarMeetingLinkEventId={updatingCalendarMeetingLinkEventId}
+                  updatingCalendarReminderId={updatingCalendarReminderId}
+                  onAddCalendarAttendee={() => void addCalendarAttendee()}
+                  onAddCalendarReminder={() => void addCalendarReminder()}
+                  onCancelCalendarEvent={(event) => void cancelCalendarEvent(event)}
+                  onCancelPendingDeliveryConfirmation={() => setPendingDeliveryConfirmation(null)}
+                  onConfirmPendingDelivery={confirmPendingDelivery}
+                  onControlCalendarGuestSession={(event, session, action) =>
+                    void controlCalendarGuestSession(event, session, action)
+                  }
+                  onCreateCalendarCredential={() => void createCalendarCredential()}
+                  onCreateCalendarEvent={() => void createCalendarEvent()}
+                  onCreateCalendarGuestSession={(event) => void createCalendarGuestSession(event)}
+                  onIssueCalendarGuestLink={(event, session) =>
+                    void issueCalendarGuestLink(event, session)
+                  }
+                  onOpenCalendarInvitationConfirmation={openCalendarInvitationConfirmation}
+                  onRemoveCalendarAttendee={(eventId, attendeeId) =>
+                    void removeCalendarAttendee(eventId, attendeeId)
+                  }
+                  onRemoveCalendarReminder={(eventId, reminderId) =>
+                    void removeCalendarReminder(eventId, reminderId)
+                  }
+                  onRescheduleCalendarEvent={(event) => void rescheduleCalendarEvent(event)}
+                  onRevokeCalendarCredential={(credentialId) =>
+                    void revokeCalendarCredential(credentialId)
+                  }
+                  onSetCalendarAttendeeEmail={setCalendarAttendeeEmail}
+                  onSetCalendarAttendeeName={setCalendarAttendeeName}
+                  onSetCalendarAttendeeRole={setCalendarAttendeeRole}
+                  onSetCalendarScope={(scope) => setCalendarScope(scope)}
+                  onSetCalendarClientContactId={setCalendarClientContactId}
+                  onSetCalendarCredentialLabel={setCalendarCredentialLabel}
+                  onSetCalendarEventDescription={setCalendarEventDescription}
+                  onSetCalendarEventEndsAt={setCalendarEventEndsAt}
+                  onSetCalendarEventLocation={setCalendarEventLocation}
+                  onSetCalendarEventStartsAt={setCalendarEventStartsAt}
+                  onSetCalendarEventStatusValue={setCalendarEventStatusValue}
+                  onSetCalendarEventTitle={setCalendarEventTitle}
+                  onSetCalendarMeetingEventId={setCalendarMeetingEventId}
+                  onSetCalendarMeetingLinkMode={(eventId, mode) =>
+                    setCalendarMeetingLinkModesByEventId((current) => ({
+                      ...current,
+                      [eventId]: mode,
+                    }))
+                  }
+                  onSetCalendarMeetingLinkUrl={(eventId, url) =>
+                    setCalendarMeetingLinkUrlsByEventId((current) => ({
+                      ...current,
+                      [eventId]: url,
+                    }))
+                  }
+                  onSetCalendarReminderAt={setCalendarReminderAt}
+                  onSetCalendarReminderEventId={setCalendarReminderEventId}
+                  onSetCalendarReminderNote={setCalendarReminderNote}
+                  onSetCalendarReminderStatusValue={setCalendarReminderStatusValue}
+                  onUpdateCalendarGuestLink={(event, session, guestId, action) =>
+                    void updateCalendarGuestLink(event, session, guestId, action)
+                  }
+                  onUpdateCalendarMeetingLink={(event, mode, externalUrl) =>
+                    void updateCalendarMeetingLink(event, mode, externalUrl)
+                  }
+                  onUpdateCalendarReminder={(eventId, reminderId, status) =>
+                    void updateCalendarReminder(eventId, reminderId, status)
+                  }
+                />
+              ) : null}
 
-            {activeSection === "reports" ? (
-              <ReportsSection
-                compactDate={compactDate}
-                cents={cents}
-                exportingReportKey={exportingReportKey}
-                exportStatus={reportExportStatus}
-                minutes={minutes}
-                onRequestReportExport={(definitionKey, exportProfileId, groupingKey) =>
-                  void requestReportExport(definitionKey, exportProfileId, groupingKey)
-                }
-                reportingWorkspace={reportingWorkspace}
-              />
-            ) : null}
+              {activeSection === "drafting" ? (
+                <DraftingSection
+                  activeDraftAssistRecords={activeDraftAssistRecords}
+                  activeDraftExports={activeDraftExports}
+                  activeDrafts={activeDrafts}
+                  aiOperationalProposals={aiOperationalProposals}
+                  aiOperationalProposalStatus={aiOperationalProposalStatus}
+                  creatingTemplateId={creatingTemplateId}
+                  drafting={drafting}
+                  draftAssistInstruction={draftAssistInstruction}
+                  draftAssistMessage={draftAssistMessage}
+                  draftAssistStatus={draftAssistStatus}
+                  draftAssistTask={draftAssistTask}
+                  draftEditorJson={draftEditorJson}
+                  draftExportFormat={draftExportFormat}
+                  draftExportTitle={draftExportTitle}
+                  draftHasChanges={draftHasChanges}
+                  draftMergeField={draftMergeField}
+                  draftStatus={draftStatus}
+                  exportingDraftFormat={exportingDraftFormat}
+                  queueingAiOperationalProposals={queueingAiOperationalProposals}
+                  runningDraftAssist={runningDraftAssist}
+                  savingDraft={savingDraft}
+                  selectedDraft={selectedDraft}
+                  onCloseDraftEditor={closeDraftEditor}
+                  onCreateBlankDraft={() => void createBlankDraft()}
+                  onCreateDraftFromTemplate={(template) => void createDraftFromTemplate(template)}
+                  onDraftAssistInstructionChange={setDraftAssistInstruction}
+                  onDraftAssistTaskChange={setDraftAssistTask}
+                  onDraftEditorJsonChange={setDraftEditorJson}
+                  onDraftExportFormatChange={setDraftExportFormat}
+                  onDraftExportTitleChange={setDraftExportTitle}
+                  onDraftMergeFieldChange={setDraftMergeField}
+                  onExportDraft={() => void exportDraft()}
+                  onInsertDraftAssistRecord={insertDraftAssistRecord}
+                  onInsertMergeField={insertMergeField}
+                  onOpenDraft={openDraft}
+                  onQueueDraftOperationalProposals={() => void queueDraftOperationalProposals()}
+                  onReviewDraftAssistRecord={(record, decision) =>
+                    void reviewDraftAssistRecord(record, decision)
+                  }
+                  onRunDraftAssist={() => void runDraftAssist()}
+                  onSaveDraft={() => void saveDraft()}
+                />
+              ) : null}
 
-            {activeSection === "admin" ? (
-              <AdminReadinessSection
-                apiBaseUrl={apiBaseUrl}
-                capabilities={capabilities}
-                devHeaders={devHeaders}
-                emailSettings={emailSettings}
-                imapSettings={imapSettings}
-                matters={matters}
-                overview={overview}
-                reportingWorkspace={reportingWorkspace}
-                session={session}
-                setupStatus={setupStatus}
-                workerHealth={workerHealth}
-              />
-            ) : null}
+              {activeSection === "signatures" ? (
+                <SignaturesSection activeSignatures={activeSignatures} />
+              ) : null}
 
-            {activeSection === "audit" ? (
-              <AuditSection
-                activity={activeMatter.activity}
-                auditFreshnessCue={auditFreshnessCue}
-                auditProjection={auditProjection}
-                auditRefreshState={auditRefreshState}
-                compactDate={compactDate}
-                onRefreshAudit={() => void refreshAuditLane()}
-              />
-            ) : null}
+              {activeSection === "intake" ? (
+                <IntakeSection
+                  activeFiscalHostMetadata={activeFiscalHostMetadata}
+                  activeIntakeFormLinks={activeIntakeFormLinks}
+                  activeIntakeSessions={activeIntakeSessions}
+                  activeIntakeVariableProposals={activeIntakeVariableProposals}
+                  activeLegalClinicProfile={activeLegalClinicProfile}
+                  activeLegalClinicProgram={activeLegalClinicProgram}
+                  activeMatter={activeMatter}
+                  activeMatterPipelineLeads={activeMatterPipelineLeads}
+                  activePendingIntakeReviewLinks={activePendingIntakeReviewLinks}
+                  activePendingIntakeVariableProposals={activePendingIntakeVariableProposals}
+                  confirmPendingDelivery={confirmPendingDelivery}
+                  convertPublicConsultationIntake={convertPublicConsultationIntake}
+                  createIntakeFormLink={createIntakeFormLink}
+                  creatingIntakeFormLink={creatingIntakeFormLink}
+                  decideSubmittedIntakeReview={decideSubmittedIntakeReview}
+                  dismissPublicConsultationIntake={dismissPublicConsultationIntake}
+                  intakeFormActionsByLinkId={intakeFormActionsByLinkId}
+                  intakeFormExpiresAt={intakeFormExpiresAt}
+                  intakeFormPortalUrl={intakeFormPortalUrl}
+                  intakeFormStatus={intakeFormStatus}
+                  intakeFormToken={intakeFormToken}
+                  intakePipeline={intakePipeline}
+                  intakePreviewAnswers={intakePreviewAnswers}
+                  intakePreviewResult={intakePreviewResult}
+                  intakePreviewStatus={intakePreviewStatus}
+                  intakeReviewDetailsByLinkId={intakeReviewDetailsByLinkId}
+                  intakeReviewReasons={intakeReviewReasons}
+                  intakeTemplateDefinition={intakeTemplateDefinition}
+                  intakeTemplateName={intakeTemplateName}
+                  intakeTemplateStatus={intakeTemplateStatus}
+                  intakeTemplates={intakeTemplates}
+                  loadSubmittedIntakeReview={loadSubmittedIntakeReview}
+                  loadingIntakeReviewLinkId={loadingIntakeReviewLinkId}
+                  openIntakeSessionConfirmation={openIntakeSessionConfirmation}
+                  pendingDeliveryConfirmation={pendingDeliveryConfirmation}
+                  pendingPublicConsultationIntakes={pendingPublicConsultationIntakes}
+                  previewingIntakeTemplate={previewingIntakeTemplate}
+                  previewIntakeTemplate={previewIntakeTemplate}
+                  proposalRejectionReasons={proposalRejectionReasons}
+                  publicConsultation={publicConsultation}
+                  publicConsultationBusyIntakeId={publicConsultationBusyIntakeId}
+                  publicConsultationDismissReasons={publicConsultationDismissReasons}
+                  publicConsultationEnabled={publicConsultationEnabled}
+                  publicConsultationOrigins={publicConsultationOrigins}
+                  publicConsultationRecipients={publicConsultationRecipients}
+                  publicConsultationReviewOwner={publicConsultationReviewOwner}
+                  publicConsultationSender={publicConsultationSender}
+                  publicConsultationSettings={publicConsultationSettings}
+                  publicConsultationSettingsDisabled={publicConsultationSettingsDisabled}
+                  publicConsultationStatus={publicConsultationStatus}
+                  recentIntakePipelineLeads={recentIntakePipelineLeads}
+                  refreshPublicConsultationIntakes={refreshPublicConsultationIntakes}
+                  refreshingPublicConsultationIntakes={refreshingPublicConsultationIntakes}
+                  reviewIntakeVariableProposal={reviewIntakeVariableProposal}
+                  reviewingIntakeFormLinkId={reviewingIntakeFormLinkId}
+                  reviewingIntakeProposalId={reviewingIntakeProposalId}
+                  revokeIntakeFormLink={revokeIntakeFormLink}
+                  revokingIntakeFormLinkId={revokingIntakeFormLinkId}
+                  runPublicConsultationConflictCheck={runPublicConsultationConflictCheck}
+                  saveIntakeTemplate={saveIntakeTemplate}
+                  savePublicConsultationSettings={savePublicConsultationSettings}
+                  savingIntakeTemplate={savingIntakeTemplate}
+                  savingPublicConsultationSettings={savingPublicConsultationSettings}
+                  selectIntakeTemplate={selectIntakeTemplate}
+                  selectedIntakeTemplate={selectedIntakeTemplate}
+                  selectedIntakeTemplateId={selectedIntakeTemplateId}
+                  session={session}
+                  setIntakeFormExpiresAt={setIntakeFormExpiresAt}
+                  setIntakeReviewReasons={setIntakeReviewReasons}
+                  setIntakeTemplateDefinition={setIntakeTemplateDefinition}
+                  setIntakeTemplateName={setIntakeTemplateName}
+                  setPendingDeliveryConfirmation={setPendingDeliveryConfirmation}
+                  setProposalRejectionReasons={setProposalRejectionReasons}
+                  setPublicConsultationDismissReasons={setPublicConsultationDismissReasons}
+                  setPublicConsultationEnabled={setPublicConsultationEnabled}
+                  setPublicConsultationOrigins={setPublicConsultationOrigins}
+                  setPublicConsultationRecipients={setPublicConsultationRecipients}
+                  setPublicConsultationReviewOwner={setPublicConsultationReviewOwner}
+                  setPublicConsultationSender={setPublicConsultationSender}
+                  startNewIntakeTemplate={startNewIntakeTemplate}
+                  startingIntakeSession={startingIntakeSession}
+                  updateIntakePreviewAnswer={updateIntakePreviewAnswer}
+                />
+              ) : null}
 
-            {activeSection === "queues" ? (
-              <QueuesSection
-                activeSavedOperationalViewDefinition={activeSavedOperationalViewDefinition}
-                activeSavedOperationalViewId={activeSavedOperationalViewId}
-                aiOperationalProposals={aiOperationalProposals}
-                aiOperationalProposalStatus={aiOperationalProposalStatus}
-                aiOperationalProposalReviewBusyId={reviewingAiOperationalProposalId}
-                activeWorkerRuns={activeWorkerRuns}
-                archivingOperationalViewId={archivingOperationalViewId}
-                compactDate={compactDate}
-                compactProviderStatus={compactProviderStatus}
-                compactStatus={compactStatus}
-                connectorOperations={connectorOperations}
-                connectorRecoveryBusyKey={connectorRecoveryBusyKey}
-                connectorRecoveryNow={freshnessNow}
-                connectorRecoveryStatus={connectorRecoveryStatus}
-                connectorOperationsSummary={connectorOperationsSummary}
-                canReviewAiOperationalProposals={canReviewAiProposalRecords}
-                displayedQueues={displayedQueues}
-                formatSavedOperationalViewDefinition={formatSavedOperationalViewDefinition}
-                formatWorkerRunAttempts={formatWorkerRunAttempts}
-                formatWorkerRunTiming={formatWorkerRunTiming}
-                onApplyQueueOperationalViewDefinition={applyQueueOperationalViewDefinition}
-                onArchiveQueueOperationalViewDefinition={archiveQueueOperationalViewDefinition}
-                onCancelConnectorRecovery={cancelConnectorRecovery}
-                onClearQueueOperationalViewDefinition={clearQueueOperationalViewDefinition}
-                onConfirmConnectorRecovery={() => void confirmConnectorRecovery()}
-                onRefreshProviders={() => void refreshProviderLane()}
-                onRefreshQueues={() => void refreshQueueLane()}
-                onRequestConnectorRecovery={requestConnectorRecovery}
-                onReviewAiOperationalProposal={(record, decision) =>
-                  void reviewAiOperationalProposal(record, decision)
-                }
-                onSaveQueueOperationalViewDefinition={saveQueueOperationalViewDefinition}
-                onSelectMatter={selectMatter}
-                onSetOcrProviderEnabled={(enabled) => void setOcrProviderEnabled(enabled)}
-                onWorkerRunFilterChange={setWorkerRunFilter}
-                canManageDocumentProcessingProvider={canManageDocumentProcessingProvider}
-                canManageConnectorRecovery={canManageConnectorRecovery}
-                ocrProviderUpdateStatus={ocrProviderUpdateStatus}
-                ocrProviderUpdating={ocrProviderUpdating}
-                pendingConnectorRecovery={pendingConnectorRecovery}
-                providerFreshnessCue={providerFreshnessCue}
-                providerRows={providerRows}
-                providerStatus={providerStatus}
-                providerStatusSummary={providerStatusSummary}
-                providerRefreshing={providerRefreshState.refreshing}
-                queueFreshnessCue={queueFreshnessCue}
-                queueSummary={queueSummary}
-                queueRefreshing={queueRefreshState.refreshing}
-                savedOperationalViewDefinitions={queueOperationalViewDefinitions}
-                savedOperationalViewStatus={savedOperationalViewStatus}
-                savingOperationalView={savingOperationalView}
-                taskDeadlineSummary={taskDeadlineSummary}
-                taskWorkbench={taskWorkbench}
-                workerHealth={workerHealth}
-                workerHealthStateTone={workerHealthStateTone}
-                workerHealthSummary={workerHealthSummary}
-                workerRunFilter={workerRunFilter}
-                workerRunFilterOptions={workerRunFilters}
-                workerRunSafeContext={workerRunSafeContext}
-                workerRunStatus={describeWorkerRunStatus}
-                workerRunSummary={workerRunSummary}
-              />
-            ) : null}
+              {activeSection === "reports" ? (
+                <ReportsSection
+                  compactDate={compactDate}
+                  cents={cents}
+                  exportingReportKey={exportingReportKey}
+                  exportStatus={reportExportStatus}
+                  minutes={minutes}
+                  onRequestReportExport={(definitionKey, exportProfileId, groupingKey) =>
+                    void requestReportExport(definitionKey, exportProfileId, groupingKey)
+                  }
+                  reportingWorkspace={reportingWorkspace}
+                />
+              ) : null}
 
-            {activeSection === "tasks" ? (
-              <TasksSection
-                activeMatterId={activeMatter.id}
-                busyKey={taskActionBusyKey}
-                compactDate={compactDate}
-                currentUserId={session.user.id}
-                includeArchived={taskIncludeArchived}
-                matters={matters}
-                onArchiveTask={(taskId) => void archiveTask(taskId)}
-                onCompleteTask={(taskId) => void completeTask(taskId)}
-                onCreateTask={(payload) => void createTask(payload)}
-                onIncludeArchivedChange={(includeArchived) =>
-                  void updateTaskArchivedVisibility(includeArchived)
-                }
-                onReopenTask={(taskId) => void reopenTask(taskId)}
-                onSelectMatter={selectMatter}
-                onUpdateTask={(taskId, payload) => void updateTask(taskId, payload)}
-                status={taskActionStatus}
-                taskWorkbench={taskWorkbench}
-                tasks={taskRows}
-                users={overview.users}
-              />
-            ) : null}
-          </MatterDetailShell>
+              {activeSection === "admin" ? (
+                <AdminReadinessSection
+                  apiBaseUrl={apiBaseUrl}
+                  capabilities={capabilities}
+                  devHeaders={devHeaders}
+                  emailSettings={emailSettings}
+                  imapSettings={imapSettings}
+                  matters={matters}
+                  overview={overview}
+                  reportingWorkspace={reportingWorkspace}
+                  session={session}
+                  setupStatus={setupStatus}
+                  workerHealth={workerHealth}
+                />
+              ) : null}
+
+              {activeSection === "audit" ? (
+                <AuditSection
+                  activity={activeMatter.activity}
+                  auditFreshnessCue={auditFreshnessCue}
+                  auditProjection={auditProjection}
+                  auditRefreshState={auditRefreshState}
+                  compactDate={compactDate}
+                  onRefreshAudit={() => void refreshAuditLane()}
+                />
+              ) : null}
+
+              {activeSection === "queues" ? (
+                <QueuesSection
+                  activeSavedOperationalViewDefinition={activeSavedOperationalViewDefinition}
+                  activeSavedOperationalViewId={activeSavedOperationalViewId}
+                  aiOperationalProposals={aiOperationalProposals}
+                  aiOperationalProposalStatus={aiOperationalProposalStatus}
+                  aiOperationalProposalReviewBusyId={reviewingAiOperationalProposalId}
+                  activeWorkerRuns={activeWorkerRuns}
+                  archivingOperationalViewId={archivingOperationalViewId}
+                  compactDate={compactDate}
+                  compactProviderStatus={compactProviderStatus}
+                  compactStatus={compactStatus}
+                  connectorOperations={connectorOperations}
+                  connectorRecoveryBusyKey={connectorRecoveryBusyKey}
+                  connectorRecoveryNow={freshnessNow}
+                  connectorRecoveryStatus={connectorRecoveryStatus}
+                  connectorOperationsSummary={connectorOperationsSummary}
+                  canReviewAiOperationalProposals={canReviewAiProposalRecords}
+                  displayedQueues={displayedQueues}
+                  formatSavedOperationalViewDefinition={formatSavedOperationalViewDefinition}
+                  formatWorkerRunAttempts={formatWorkerRunAttempts}
+                  formatWorkerRunTiming={formatWorkerRunTiming}
+                  onApplyQueueOperationalViewDefinition={applyQueueOperationalViewDefinition}
+                  onArchiveQueueOperationalViewDefinition={archiveQueueOperationalViewDefinition}
+                  onCancelConnectorRecovery={cancelConnectorRecovery}
+                  onClearQueueOperationalViewDefinition={clearQueueOperationalViewDefinition}
+                  onConfirmConnectorRecovery={() => void confirmConnectorRecovery()}
+                  onRefreshProviders={() => void refreshProviderLane()}
+                  onRefreshQueues={() => void refreshQueueLane()}
+                  onRequestConnectorRecovery={requestConnectorRecovery}
+                  onReviewAiOperationalProposal={(record, decision) =>
+                    void reviewAiOperationalProposal(record, decision)
+                  }
+                  onSaveQueueOperationalViewDefinition={saveQueueOperationalViewDefinition}
+                  onSelectMatter={selectMatter}
+                  onSetOcrProviderEnabled={(enabled) => void setOcrProviderEnabled(enabled)}
+                  onWorkerRunFilterChange={setWorkerRunFilter}
+                  canManageDocumentProcessingProvider={canManageDocumentProcessingProvider}
+                  canManageConnectorRecovery={canManageConnectorRecovery}
+                  ocrProviderUpdateStatus={ocrProviderUpdateStatus}
+                  ocrProviderUpdating={ocrProviderUpdating}
+                  pendingConnectorRecovery={pendingConnectorRecovery}
+                  providerFreshnessCue={providerFreshnessCue}
+                  providerRows={providerRows}
+                  providerStatus={providerStatus}
+                  providerStatusSummary={providerStatusSummary}
+                  providerRefreshing={providerRefreshState.refreshing}
+                  queueFreshnessCue={queueFreshnessCue}
+                  queueSummary={queueSummary}
+                  queueRefreshing={queueRefreshState.refreshing}
+                  savedOperationalViewDefinitions={queueOperationalViewDefinitions}
+                  savedOperationalViewStatus={savedOperationalViewStatus}
+                  savingOperationalView={savingOperationalView}
+                  taskDeadlineSummary={taskDeadlineSummary}
+                  taskWorkbench={taskWorkbench}
+                  workerHealth={workerHealth}
+                  workerHealthStateTone={workerHealthStateTone}
+                  workerHealthSummary={workerHealthSummary}
+                  workerRunFilter={workerRunFilter}
+                  workerRunFilterOptions={workerRunFilters}
+                  workerRunSafeContext={workerRunSafeContext}
+                  workerRunStatus={describeWorkerRunStatus}
+                  workerRunSummary={workerRunSummary}
+                />
+              ) : null}
+
+              {activeSection === "tasks" ? (
+                <TasksSection
+                  activeMatterId={activeMatter.id}
+                  busyKey={taskActionBusyKey}
+                  compactDate={compactDate}
+                  currentUserId={session.user.id}
+                  includeArchived={taskIncludeArchived}
+                  matters={matters}
+                  onArchiveTask={(taskId) => void archiveTask(taskId)}
+                  onCompleteTask={(taskId) => void completeTask(taskId)}
+                  onCreateTask={(payload) => void createTask(payload)}
+                  onIncludeArchivedChange={(includeArchived) =>
+                    void updateTaskArchivedVisibility(includeArchived)
+                  }
+                  onReopenTask={(taskId) => void reopenTask(taskId)}
+                  onSelectMatter={selectMatter}
+                  onUpdateTask={(taskId, payload) => void updateTask(taskId, payload)}
+                  status={taskActionStatus}
+                  taskWorkbench={taskWorkbench}
+                  tasks={taskRows}
+                  users={overview.users}
+                />
+              ) : null}
+            </MatterDetailShell>
+          )}
 
           {!isContextRailCollapsed ? (
             <ContextRail

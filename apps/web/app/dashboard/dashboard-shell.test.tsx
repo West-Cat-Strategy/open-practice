@@ -206,6 +206,29 @@ describe("dashboard shell review rail controls", () => {
     expect(html.indexOf(">Operations<")).toBeLessThan(html.indexOf(">Review<"));
   });
 
+  it("allows unavailable route states without marking a sidebar section active", () => {
+    const navigationSections = buildSidebarNavigationSections({
+      billingCanView: true,
+      shareLinksEnabled: true,
+      externalUploadsEnabled: true,
+      capabilitySections: [
+        { key: "matters", enabled: true },
+        { key: "contacts", enabled: true },
+      ],
+    });
+    const html = renderToStaticMarkup(
+      createElement(DashboardSidebar, {
+        activeSection: null,
+        navigationSections,
+        navIcons,
+        onSelectSection: () => {},
+      }),
+    );
+
+    expect(html).not.toContain('aria-current="page"');
+    expect(html).not.toContain("nav-item active");
+  });
+
   it("marks the zero-matter sidebar for compact mobile navigation", () => {
     const navigationSections = applyMatterAvailabilityToNavigation(
       buildSidebarNavigationSections({

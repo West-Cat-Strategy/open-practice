@@ -75,6 +75,16 @@ export interface DashboardRouteSelection {
   entry: OpenPracticeRouteCatalogEntry | null;
 }
 
+export function isUnavailableDashboardRouteSelection(
+  selection: Pick<DashboardRouteSelection, "status">,
+): boolean {
+  return (
+    selection.status === "unknown" ||
+    selection.status === "disabled" ||
+    selection.status === "non_sidebar"
+  );
+}
+
 export const routeCatalog: readonly OpenPracticeRouteCatalogEntry[] = [
   {
     id: "matters",
