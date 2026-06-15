@@ -10,6 +10,7 @@ import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
 import type { ApiAuthContext } from "../../server.js";
 import { appendRouteAuditEvent } from "../audit-events.js";
+import { rethrowIdempotencyConflict } from "../idempotency.js";
 import type { ApiRouteDependencies } from "../types.js";
 import { assertConversationThreadAccess, conversationThreadParamsSchema } from "./shared.js";
 
@@ -131,24 +132,30 @@ export function registerConversationThreadExportRequestRoutes(
       idempotencyFingerprint: conversationExportRequestFingerprint(request.auth, thread),
     });
 
-    const job = await repository.createJobLifecycleRecord({
-      id: jobId,
-      firmId: request.auth.firmId,
-      queueName: "reports",
-      jobName: "conversation_thread_export",
-      bullJobId: queueConfigured ? jobId : undefined,
-      idempotencyKey,
-      status: queueConfigured ? "queued" : "completed",
-      targetResourceType: "conversation_thread_export",
-      targetResourceId: jobId,
-      attemptsMade: 0,
-      maxAttempts: queueConfigured ? 2 : 1,
-      queuedAt: now,
-      finishedAt: queueConfigured ? undefined : now,
-      metadata,
-    });
+    let job: JobLifecycleRecord;
+    try {
+      job = await repository.createJobLifecycleRecord({
+        id: jobId,
+        firmId: request.auth.firmId,
+        queueName: "reports",
+        jobName: "conversation_thread_export",
+        bullJobId: queueConfigured ? jobId : undefined,
+        idempotencyKey,
+        status: queueConfigured ? "queued" : "completed",
+        targetResourceType: "conversation_thread_export",
+        targetResourceId: jobId,
+        attemptsMade: 0,
+        maxAttempts: queueConfigured ? 2 : 1,
+        queuedAt: now,
+        finishedAt: queueConfigured ? undefined : now,
+        metadata,
+      });
+    } catch (error) {
+      rethrowIdempotencyConflict(error);
+    }
+    const created = job.id === jobId;
 
-    if (reportJobQueue && job.id === jobId) {
+    if (reportJobQueue && created) {
       try {
         await reportJobQueue.add(
           "conversation_thread_export",
@@ -176,20 +183,22 @@ export function registerConversationThreadExportRequestRoutes(
       }
     }
 
-    await appendRouteAuditEvent(repository, request.auth, {
-      action: "conversation_thread.export_artifact_requested",
-      resourceType: "conversation_thread",
-      resourceId: thread.id,
-      metadata: compactMetadata({
-        ...conversationThreadAuditMetadata(thread),
-        jobId: job.id,
-        reportType: "conversation_thread",
-        reportScope: "matter",
-        messageCount: messages.length,
-        idempotencyKeyPresent: Boolean(body.idempotencyKey),
-        enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
-      }),
-    });
+    if (created) {
+      await appendRouteAuditEvent(repository, request.auth, {
+        action: "conversation_thread.export_artifact_requested",
+        resourceType: "conversation_thread",
+        resourceId: thread.id,
+        metadata: compactMetadata({
+          ...conversationThreadAuditMetadata(thread),
+          jobId: job.id,
+          reportType: "conversation_thread",
+          reportScope: "matter",
+          messageCount: messages.length,
+          idempotencyKeyPresent: Boolean(body.idempotencyKey),
+          enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
+        }),
+      });
+    }
 
     reply.status(202);
     return { exportRequest: serializeConversationExportRequest(job, thread.id) };

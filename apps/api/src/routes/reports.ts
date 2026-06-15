@@ -19,6 +19,7 @@ import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
 import { appendRouteAuditEvent } from "./audit-events.js";
+import { rethrowIdempotencyConflict } from "./idempotency.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const reportDefinitionKeySchema = z.enum([
@@ -205,7 +206,7 @@ export function registerReportRoutes(
     const now = new Date().toISOString();
     const idempotencyKey =
       body.idempotencyKey ??
-      `staff-report-export:${request.auth.user.id}:${body.reportDefinitionKey}:${body.exportProfileId}:${now.slice(
+      `staff-report-export:${request.auth.user.id}:${body.reportDefinitionKey}:${body.exportProfileId}:${groupingKey}:${now.slice(
         0,
         10,
       )}`;
@@ -224,24 +225,30 @@ export function registerReportRoutes(
       }),
     });
 
-    const job = await repository.createJobLifecycleRecord({
-      id: jobId,
-      firmId: request.auth.firmId,
-      queueName: "reports",
-      jobName: "staff_report_export",
-      bullJobId: queueConfigured ? jobId : undefined,
-      idempotencyKey,
-      status: queueConfigured ? "queued" : "completed",
-      targetResourceType: "staff_report_export",
-      targetResourceId: jobId,
-      attemptsMade: 0,
-      maxAttempts: queueConfigured ? 2 : 1,
-      queuedAt: now,
-      finishedAt: queueConfigured ? undefined : now,
-      metadata,
-    });
+    let job: JobLifecycleRecord;
+    try {
+      job = await repository.createJobLifecycleRecord({
+        id: jobId,
+        firmId: request.auth.firmId,
+        queueName: "reports",
+        jobName: "staff_report_export",
+        bullJobId: queueConfigured ? jobId : undefined,
+        idempotencyKey,
+        status: queueConfigured ? "queued" : "completed",
+        targetResourceType: "staff_report_export",
+        targetResourceId: jobId,
+        attemptsMade: 0,
+        maxAttempts: queueConfigured ? 2 : 1,
+        queuedAt: now,
+        finishedAt: queueConfigured ? undefined : now,
+        metadata,
+      });
+    } catch (error) {
+      rethrowIdempotencyConflict(error);
+    }
+    const created = job.id === jobId;
 
-    if (reportJobQueue && job.id === jobId) {
+    if (reportJobQueue && created) {
       try {
         await reportJobQueue.add(
           "staff_report_export",
@@ -269,20 +276,22 @@ export function registerReportRoutes(
       }
     }
 
-    await appendRouteAuditEvent(repository, request.auth, {
-      action: "staff_report_export.requested",
-      resourceType: "staff_report_export",
-      resourceId: job.id,
-      metadata: compactMetadata({
-        jobId: job.id,
-        reportType: "staff_reporting",
-        reportDefinitionKey: body.reportDefinitionKey,
-        exportProfileId: body.exportProfileId,
-        groupingKey,
-        idempotencyKeyPresent: Boolean(body.idempotencyKey),
-        enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
-      }),
-    });
+    if (created) {
+      await appendRouteAuditEvent(repository, request.auth, {
+        action: "staff_report_export.requested",
+        resourceType: "staff_report_export",
+        resourceId: job.id,
+        metadata: compactMetadata({
+          jobId: job.id,
+          reportType: "staff_reporting",
+          reportDefinitionKey: body.reportDefinitionKey,
+          exportProfileId: body.exportProfileId,
+          groupingKey,
+          idempotencyKeyPresent: Boolean(body.idempotencyKey),
+          enqueueStatus: queueConfigured ? "queued_for_local_report_worker" : "completed_inline",
+        }),
+      });
+    }
 
     reply.status(202);
     return { exportRequest: serializeReportExportRequest(job) };

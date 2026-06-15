@@ -81,7 +81,10 @@ host Playwright readiness blockers. The 2026-06-13 follow-ups in the same proof 
 memory-backed matter-workspace duplicate-id parity candidate with focused database coverage and
 record the UIUX-01 unavailable-section state for unknown or disabled dashboard deep links, focused
 route-selection tests, and completed host/Docker browser follow-through for the isolated sibling
-worktree.
+worktree. The 2026-06-15 follow-up in the same proof closes the report and conversation export
+idempotency code-review item with stable `409 IDEMPOTENCY_KEY_CONFLICT` responses, replay-safe
+queue/audit behavior, staff report default-key grouping scope, focused route tests, and
+selector-driven API/static validation.
 
 The test-suite pruning branch is recorded in
 [OP_TEST_SUITE_PRUNING_PROOF_2026-06-11.md](OP_TEST_SUITE_PRUNING_PROOF_2026-06-11.md).

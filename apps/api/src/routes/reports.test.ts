@@ -254,6 +254,110 @@ describe("staff reporting routes", () => {
     expect(serializedAuditAndJobs).not.toContain("Synthetic private productivity");
   });
 
+  it("replays matching report export idempotency keys without duplicate queue or audit work", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const queuedReports: QueuedReportJob[] = [];
+    const server = testServer({
+      repository,
+      reportJobQueue: fakeReportQueue(queuedReports),
+    });
+    const payload = {
+      reportDefinitionKey: "productivity",
+      exportProfileId: "summary_json",
+      groupingKey: "staff_member",
+      idempotencyKey: "staff-report-export-replay-key",
+    };
+
+    const first = await server.inject({
+      method: "POST",
+      url: "/api/reports/export-requests",
+      payload,
+    });
+    const replay = await server.inject({
+      method: "POST",
+      url: "/api/reports/export-requests",
+      payload,
+    });
+
+    expect(first.statusCode).toBe(202);
+    expect(replay.statusCode).toBe(202);
+    expect(replay.json().exportRequest.jobId).toBe(first.json().exportRequest.jobId);
+    expect(queuedReports).toHaveLength(1);
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "reports" }),
+    ).resolves.toHaveLength(1);
+    expect(
+      (await auditEvents(repository)).filter(
+        (event) => event.action === "staff_report_export.requested",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("rejects report export idempotency key reuse with a different grouping", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const queuedReports: QueuedReportJob[] = [];
+    const server = testServer({
+      repository,
+      reportJobQueue: fakeReportQueue(queuedReports),
+    });
+    const payload = {
+      reportDefinitionKey: "productivity",
+      exportProfileId: "summary_json",
+      groupingKey: "staff_member",
+      idempotencyKey: "staff-report-export-conflict-key",
+    };
+
+    await server.inject({ method: "POST", url: "/api/reports/export-requests", payload });
+    const conflict = await server.inject({
+      method: "POST",
+      url: "/api/reports/export-requests",
+      payload: { ...payload, groupingKey: "matter" },
+    });
+
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({ code: "IDEMPOTENCY_KEY_CONFLICT" });
+    expect(queuedReports).toHaveLength(1);
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "reports" }),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("keeps default report export idempotency keys distinct by grouping", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const queuedReports: QueuedReportJob[] = [];
+    const server = testServer({
+      repository,
+      reportJobQueue: fakeReportQueue(queuedReports),
+    });
+
+    const staffMember = await server.inject({
+      method: "POST",
+      url: "/api/reports/export-requests",
+      payload: {
+        reportDefinitionKey: "productivity",
+        exportProfileId: "summary_json",
+        groupingKey: "staff_member",
+      },
+    });
+    const matter = await server.inject({
+      method: "POST",
+      url: "/api/reports/export-requests",
+      payload: {
+        reportDefinitionKey: "productivity",
+        exportProfileId: "summary_json",
+        groupingKey: "matter",
+      },
+    });
+
+    expect(staffMember.statusCode).toBe(202);
+    expect(matter.statusCode).toBe(202);
+    expect(matter.json().exportRequest.jobId).not.toBe(staffMember.json().exportRequest.jobId);
+    expect(queuedReports).toHaveLength(2);
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "reports" }),
+    ).resolves.toHaveLength(2);
+  });
+
   it("denies staff reports to users without firm reporting access", async () => {
     const response = await testServer().inject({
       method: "GET",

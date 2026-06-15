@@ -309,6 +309,45 @@ Validation evidence:
 | `pnpm build`                                                                                                                                                                                                                                                                                                                                                                                                                                                | Passed: 6 workspace build tasks succeeded.                                                                                                                                                                                                         |
 | `git diff --check`                                                                                                                                                                                                                                                                                                                                                                                                                                          | Passed.                                                                                                                                                                                                                                            |
 
+## Export Idempotency Follow-Up - 2026-06-15
+
+This branch closes the code-review follow-up for staff report and conversation-thread export
+idempotency. Both route families now translate repository idempotency fingerprint mismatches into
+the existing stable `409 IDEMPOTENCY_KEY_CONFLICT` response instead of letting the repository error
+fall through as a 500-class failure. Matching replays still return the existing export request, but
+they no longer enqueue a second reports job or append a duplicate request audit event.
+
+Staff report default idempotency keys now include the resolved grouping key, so semantically
+different same-day report exports for the same definition/profile no longer collide when the client
+does not provide an explicit key. Conversation export default keys remain scoped to firm/user/thread.
+
+Follow-up branch delta:
+
+```text
+apps/api/src/routes/conversation-threads.test.ts
+apps/api/src/routes/conversation-threads/export-requests.ts
+apps/api/src/routes/reports.test.ts
+apps/api/src/routes/reports.ts
+docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md
+docs/validation/README.md
+```
+
+Validation evidence:
+
+| Command                                                                                                                                                                                                                                                                                           | Result                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm --filter @open-practice/domain build`                                                                                                                                                                                                                                                       | Passed: rebuilt the upstream domain package in the fresh sibling worktree before route tests.                                                                                        |
+| `pnpm --filter @open-practice/database build`                                                                                                                                                                                                                                                     | Passed after the domain package build was present.                                                                                                                                   |
+| `pnpm --filter @open-practice/providers build`                                                                                                                                                                                                                                                    | Passed after the domain package build was present.                                                                                                                                   |
+| `pnpm --filter @open-practice/api exec vitest run src/routes/reports.test.ts src/routes/conversation-threads.test.ts`                                                                                                                                                                             | Passed: 2 route test files and 23 tests, including report export replay/conflict/default-key grouping coverage and conversation export replay/conflict coverage.                     |
+| `pnpm verify:select -- --files apps/api/src/routes/conversation-threads.test.ts apps/api/src/routes/conversation-threads/export-requests.ts apps/api/src/routes/reports.test.ts apps/api/src/routes/reports.ts docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md docs/validation/README.md` | Passed; selected `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm --filter @open-practice/api test`, and `pnpm --filter @open-practice/api typecheck`.             |
+| `pnpm format:check`                                                                                                                                                                                                                                                                               | Passed: all matched files use Prettier code style.                                                                                                                                   |
+| `pnpm docs:check`                                                                                                                                                                                                                                                                                 | Passed: documentation link validation passed.                                                                                                                                        |
+| `pnpm policy:check`                                                                                                                                                                                                                                                                               | Passed: secret scan, package manifests, migration parity, OSS reuse, docs links, validation proof index, local-evidence Docker ignore, and Open Practice boundary policy all passed. |
+| `pnpm --filter @open-practice/api test`                                                                                                                                                                                                                                                           | Passed: 41 API test files and 512 tests completed after the focused route preflight.                                                                                                 |
+| `pnpm --filter @open-practice/api typecheck`                                                                                                                                                                                                                                                      | Passed: `tsc -p tsconfig.json --noEmit`.                                                                                                                                             |
+| `git diff --check`                                                                                                                                                                                                                                                                                | Passed.                                                                                                                                                                              |
+
 ## Original Review Diff And Proof Reconciliation
 
 The intended tracked branch delta is limited to this proof note and the validation index entry:
@@ -328,8 +367,7 @@ restored so the review branch remains documentation-only.
 - Add focused tests for submitted-token expiry, legal-clinic metadata DTOs, memory invoice
   cross-firm duplicate ids, draft-export response redaction, and Mailgun altered-body replay
   idempotency.
-- Triage the two code-review export idempotency issues before adding more long-running export
-  request flows.
+- Export idempotency triage is closed by the 2026-06-15 follow-up above.
 - Add UI/UX assertions for live-region status updates and public intake field-level error mapping.
 - Keep `docs/oss-references.lock.json` aligned with the central reference index during future
   reference-corpus refreshes; the 2026-06-12 parity follow-up shows `policy:check` and `ci:local`
