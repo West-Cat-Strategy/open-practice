@@ -381,6 +381,9 @@ describe("IntakeSection", () => {
     expect(html).toContain("Client form links");
     expect(html).toContain("One-time token");
     expect(html).toContain("Client form URL");
+    expect(html).toContain(
+      '<p class="inline-empty" role="status" aria-live="polite" aria-atomic="true">Synthetic form link ready.</p>',
+    );
     expect(html).toContain("Submitted review");
     expect(html).toContain("Load the staff review payload before recording a decision.");
     expect(html).toContain("Variable proposals");

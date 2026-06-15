@@ -24,7 +24,7 @@ import {
 } from "../../http/auth-helpers.js";
 import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
-import { ensureIntakeReviewTask, getTemplate, linkStatus } from "./shared.js";
+import { ensureIntakeReviewTask, getTemplate, linkExpired, linkStatus } from "./shared.js";
 import type { IntakeFormRouteDependencies } from "./shared.js";
 import { trustedEvidence } from "../trusted-evidence.js";
 import { publicTokenPolicyOptions } from "../public-token-rate-limits.js";
@@ -329,14 +329,18 @@ async function resolvePublicLink(
   );
   if (!link) throw denied();
   const status = linkStatus(link);
-  if (status !== "active" && !(input.allowSubmitted && status === "submitted")) {
+  const expired = linkExpired(link);
+  if (status !== "active" && !(input.allowSubmitted && status === "submitted" && !expired)) {
     await recordAccessLog(repository, {
       link,
       request: input.request,
       action: "view",
       resourceType: "intake_form_link",
       resourceId: link.id,
-      metadata: { outcome: "denied", reason: status },
+      metadata: {
+        outcome: "denied",
+        reason: expired && status === "submitted" ? "expired" : status,
+      },
     });
     throw denied();
   }

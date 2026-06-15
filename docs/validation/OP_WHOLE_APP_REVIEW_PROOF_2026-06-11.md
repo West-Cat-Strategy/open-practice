@@ -384,6 +384,81 @@ Validation evidence:
 | `pnpm --filter @open-practice/api typecheck`                                                                                                                                                                                                                                                      | Passed: `tsc -p tsconfig.json --noEmit`.                                                                                                                                             |
 | `git diff --check`                                                                                                                                                                                                                                                                                | Passed.                                                                                                                                                                              |
 
+## Submitted Public Intake Token Expiry Follow-Up - 2026-06-15
+
+This branch remediates the medium-severity finding "Submitted public intake-form tokens remain
+usable after expiry." Public intake form link status still reports already-submitted links as
+`submitted` for staff and non-expired public replay semantics, but public token resolution now checks
+`expiresAt` before granting the submitted-token read or idempotent submit replay exception. Expired
+submitted tokens return the existing unavailable public-token response across view, draft, submit,
+upload, upload-completion, and signature actions, and record denied access logs with
+`reason: "expired"`.
+
+Active-token draft, upload, signature, and first submission behavior is unchanged. Non-expired
+submitted links still allow the existing idempotent browser submit replay path. No repository,
+schema, migration, dependency, or public response-shape contract changed.
+
+Remediation branch delta:
+
+```text
+apps/api/src/routes/intake-forms/shared.ts
+apps/api/src/routes/intake-forms/public.ts
+apps/api/src/routes/intake-forms.test.ts
+docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md
+docs/validation/README.md
+```
+
+Validation evidence:
+
+| Command                                                                                                                                                                                                                                          | Result                                                                                                                                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm --filter @open-practice/api exec vitest run src/routes/intake-forms.test.ts --testTimeout=30000`                                                                                                                                           | Passed: 1 API route test file and 15 tests passed, including the expired submitted-token view, draft, submit, upload, upload-completion, and signature regression.                                                            |
+| `pnpm verify:select -- --files apps/api/src/routes/intake-forms/shared.ts apps/api/src/routes/intake-forms/public.ts apps/api/src/routes/intake-forms.test.ts docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md docs/validation/README.md` | Passed; selected `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm --filter @open-practice/api test`, and `pnpm --filter @open-practice/api typecheck`.                                                      |
+| `pnpm format:check`                                                                                                                                                                                                                              | Passed: all matched files use Prettier code style.                                                                                                                                                                            |
+| `pnpm docs:check`                                                                                                                                                                                                                                | Passed: documentation link validation passed.                                                                                                                                                                                 |
+| `pnpm policy:check`                                                                                                                                                                                                                              | Passed: secret scan, package manifest dependency policy, dead-code check, migration parity, OSS reuse policy, docs links, validation proof index, local-evidence Docker ignore, and Open Practice boundary policy all passed. |
+| `pnpm --filter @open-practice/api test`                                                                                                                                                                                                          | Passed: 41 API test files and 508 tests passed.                                                                                                                                                                               |
+| `pnpm --filter @open-practice/api typecheck`                                                                                                                                                                                                     | Passed: `tsc -p tsconfig.json --noEmit`.                                                                                                                                                                                      |
+| `git diff --check`                                                                                                                                                                                                                               | Passed: no whitespace errors.                                                                                                                                                                                                 |
+
+## UIUX-02/UIUX-03 Remediation Follow-Up - 2026-06-15
+
+This branch remediates `UIUX-02` and `UIUX-03` by exposing the existing dashboard status strings
+through polite atomic live regions. Conflict-check result updates continue to use the existing
+`conflictStatus` state in the review rail, and intake form link create/revoke actions continue to
+use the existing `intakeFormStatus` state in the Intake workspace.
+
+No API payloads, dashboard mutation flows, state transitions, response shapes, dependencies, or
+authorization boundaries changed. The update is limited to semantic announcement markup, focused
+static-render assertions, and this proof/index wording.
+
+Remediation branch delta:
+
+```text
+apps/web/app/dashboard/dashboard-shell.tsx
+apps/web/app/dashboard/dashboard-shell.test.tsx
+apps/web/app/dashboard/intake-section.tsx
+apps/web/app/dashboard/intake-section.test.tsx
+docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md
+docs/validation/README.md
+```
+
+Validation evidence:
+
+| Command                                                                                                                                                                                                                                                                                               | Result                                                                                                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm --filter @open-practice/web exec vitest run app/dashboard/dashboard-shell.test.tsx app/dashboard/intake-section.test.tsx`                                                                                                                                                                       | Passed: 2 focused web component test files and 10 tests passed.                                                                                                                                       |
+| `pnpm verify:select -- --files apps/web/app/dashboard/dashboard-shell.tsx apps/web/app/dashboard/dashboard-shell.test.tsx apps/web/app/dashboard/intake-section.tsx apps/web/app/dashboard/intake-section.test.tsx docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md docs/validation/README.md` | Passed; selected `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm --filter @open-practice/web test`, web typecheck, and `pnpm build`.                                               |
+| `pnpm exec prettier --write docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md`                                                                                                                                                                                                                  | Passed after the first `pnpm format:check` found Markdown wrapping in this proof note.                                                                                                                |
+| `pnpm format:check`                                                                                                                                                                                                                                                                                   | Passed after targeted Prettier wrapping.                                                                                                                                                              |
+| `pnpm docs:check`                                                                                                                                                                                                                                                                                     | Passed: documentation link validation passed.                                                                                                                                                         |
+| `pnpm policy:check`                                                                                                                                                                                                                                                                                   | Passed: secret scan, package manifests, dead-code check, migration parity, OSS reuse, docs links, validation proof index, local-evidence Docker ignore, and Open Practice boundary policy all passed. |
+| `pnpm --filter @open-practice/web test`                                                                                                                                                                                                                                                               | Passed: 35 web test files and 187 tests passed.                                                                                                                                                       |
+| `pnpm --filter @open-practice/domain build`                                                                                                                                                                                                                                                           | Passed: refreshed local domain package output before rerunning web typecheck.                                                                                                                         |
+| `pnpm --filter @open-practice/web typecheck`                                                                                                                                                                                                                                                          | Passed after the local domain package output refresh.                                                                                                                                                 |
+| `pnpm build`                                                                                                                                                                                                                                                                                          | Passed: 6 workspace build tasks succeeded.                                                                                                                                                            |
+| `git diff --check`                                                                                                                                                                                                                                                                                    | Passed: no whitespace errors.                                                                                                                                                                         |
+
 ## Original Review Diff And Proof Reconciliation
 
 The intended tracked branch delta is limited to this proof note and the validation index entry:
@@ -400,11 +475,13 @@ restored so the review branch remains documentation-only.
 
 - Remediate or explicitly risk-accept the remaining Codex Security findings in separate source
   branches. OP-SEC-001 production setup gating is remediated by the 2026-06-12 follow-up above, and
-  legal-clinic metadata DTO redaction is remediated by the 2026-06-15 follow-up above.
-- Add focused tests for submitted-token expiry, memory invoice cross-firm duplicate ids,
-  draft-export response redaction, and Mailgun altered-body replay idempotency.
+  legal-clinic metadata DTO redaction and submitted public intake token expiry are remediated by
+  2026-06-15 follow-ups above.
+- Add focused tests for memory invoice cross-firm duplicate ids, draft-export response redaction,
+  and Mailgun altered-body replay idempotency.
 - Export idempotency triage is closed by the 2026-06-15 follow-up above.
-- Add UI/UX assertions for live-region status updates and public intake field-level error mapping.
+- UIUX-02/UIUX-03 live-region status updates are closed by the 2026-06-15 follow-up above; add
+  UI/UX assertions for public intake field-level error mapping.
 - Keep `docs/oss-references.lock.json` aligned with the central reference index during future
   reference-corpus refreshes; the 2026-06-12 parity follow-up shows `policy:check` and `ci:local`
   unblocked on the current project tree.

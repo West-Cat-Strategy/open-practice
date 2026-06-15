@@ -759,7 +759,9 @@ export function ContextRail({
           Run conflict check
         </button>
         <div className="conflict-results">
-          <p>{conflictStatus}</p>
+          <p role="status" aria-live="polite" aria-atomic="true">
+            {conflictStatus}
+          </p>
           {conflictResults.length > 0
             ? conflictResults.map((result, index) => (
                 <div className="conflict-row" key={`${result.contactId}-${index}`}>
