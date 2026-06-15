@@ -74,9 +74,9 @@ It covers the safe patch/minor npm/pnpm dependency refresh, `pnpm@11.5.3`, relea
 alignment, central reference-lock commit alignment needed for local policy validation, held major
 candidates for `@fastify/rate-limit` and `pdfkit`, dependency audit/license evidence, Docker image
 inventory, and Docker residual-watch posture without Docker image pin changes. The follow-up review
-split the held majors into OP-T153 for the API rate-limit major and OP-T154 for the provider
-PDF-rendering major, with exact compatibility risks and validation gates recorded while dependency
-versions remain unchanged in this lane.
+kept the API rate-limit and provider PDF-rendering majors as held compatibility-review candidates,
+with exact risks and validation gates recorded while dependency versions remain unchanged in this
+lane.
 
 The 2026-06-11 whole-application review branch is recorded in
 [OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md](OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md).
