@@ -1,4 +1,11 @@
-import type { Contact, Matter, MatterParty, PortalGrant } from "./models.js";
+import type {
+  Contact,
+  ContactRoleCategory,
+  ContactStatus,
+  Matter,
+  MatterParty,
+  PortalGrant,
+} from "./models.js";
 import type { IntakeVariableProposal } from "./intake.js";
 import {
   normalizeConflictToken,
@@ -6,9 +13,13 @@ import {
   type ConflictSeverity,
 } from "./conflicts.js";
 
-export type ContactDossierContactSummary = Omit<Contact, "notes" | "createdByUserId">;
+export type ContactDossierContactSummary = Omit<
+  Contact,
+  "notes" | "privateNotes" | "createdByUserId" | "updatedByUserId"
+>;
 
 export interface ContactDossierMatterLink {
+  associationId?: string;
   matterId: string;
   matterNumber: string;
   matterTitle: string;
@@ -17,6 +28,11 @@ export interface ContactDossierMatterLink {
   role: MatterParty["role"];
   adverse: boolean;
   confidential: boolean;
+  status?: MatterParty["status"];
+  side?: MatterParty["side"];
+  startedOn?: string;
+  endedOn?: string;
+  conflictCheckIncluded?: boolean;
   portalActive: boolean;
   portalPermissions: PortalGrant["permissions"];
 }
@@ -29,17 +45,57 @@ export interface ContactDossierConflictCue {
 
 export type ContactRelationshipKind =
   | "authorized_representative"
+  | "director_of"
   | "employee_of"
+  | "employer_of"
+  | "expert_for"
   | "family_contact"
+  | "family_member"
+  | "guardian_of"
+  | "insurer_for"
+  | "lawyer_for"
+  | "officer_of"
+  | "owned_by"
+  | "owner_of"
+  | "parent_of"
+  | "paralegal_for"
+  | "partner_of"
+  | "subsidiary_of"
+  | "agent_for"
+  | "opposing_counsel_for"
   | "opposing_party_for"
-  | "referral_source";
+  | "referral_source"
+  | "spouse_partner"
+  | "witness_against"
+  | "witness_for"
+  | "custom";
 
 export const contactRelationshipKinds = [
   "authorized_representative",
+  "director_of",
   "employee_of",
+  "employer_of",
+  "expert_for",
   "family_contact",
+  "family_member",
+  "guardian_of",
+  "insurer_for",
+  "lawyer_for",
+  "officer_of",
+  "owned_by",
+  "owner_of",
+  "parent_of",
+  "paralegal_for",
+  "partner_of",
+  "subsidiary_of",
+  "agent_for",
+  "opposing_counsel_for",
   "opposing_party_for",
   "referral_source",
+  "spouse_partner",
+  "witness_against",
+  "witness_for",
+  "custom",
 ] as const satisfies ContactRelationshipKind[];
 
 export type ContactRelationshipSource = "manual" | "matter_party" | "intake";
@@ -65,9 +121,17 @@ export interface ContactRelationshipRecord {
   relatedContactId: string;
   relationshipKind: ContactRelationshipKind;
   label: string;
+  reciprocalLabel?: string;
   matterId?: string;
   source: ContactRelationshipSource;
   status: ContactRelationshipStatus;
+  effectiveOn?: string;
+  endedOn?: string;
+  notes?: string;
+  privateNotes?: string;
+  includeInConflictCheck?: boolean;
+  createdByUserId?: string;
+  updatedByUserId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -77,15 +141,21 @@ export interface ContactDossierRelationshipSummary {
   direction: "outbound" | "inbound";
   relationshipKind: ContactRelationshipKind;
   label: string;
+  reciprocalLabel?: string;
   conflictSafeLabel: string;
   status: ContactRelationshipStatus;
   source: ContactRelationshipSource;
+  effectiveOn?: string;
+  endedOn?: string;
+  includeInConflictCheck?: boolean;
   relatedContact: Pick<ContactDossierContactSummary, "kind" | "displayName">;
   visibleMatterIds: string[];
 }
 
 export interface ContactDossierCrmTaxonomy {
   entityType: "person" | "organization";
+  status?: ContactStatus;
+  roleCategories?: ContactRoleCategory[];
   labels: Array<{ key: string; label: string; severity: "info" | "review" | "blocker" }>;
   relatedMatterSummary: {
     total: number;
@@ -101,6 +171,36 @@ export interface ContactDossierCrmTaxonomy {
     personCount: number;
   };
 }
+
+export const contactStatuses = [
+  "prospective",
+  "active",
+  "inactive",
+  "archived",
+  "former",
+  "restricted",
+] as const satisfies ContactStatus[];
+
+export const contactRoleCategories = [
+  "prospective_client",
+  "client",
+  "former_client",
+  "opposing_party",
+  "related_party",
+  "witness",
+  "lawyer",
+  "paralegal",
+  "authorized_non_lawyer_provider",
+  "legal_representative",
+  "court_tribunal",
+  "insurer",
+  "expert",
+  "vendor",
+  "referral_source",
+  "internal_team_member",
+  "organization",
+  "other",
+] as const satisfies ContactRoleCategory[];
 
 export type ContactDossierQualitySignalKind =
   | "duplicate_candidate"
@@ -232,13 +332,60 @@ export interface BuildContactDossiersInput {
 }
 
 function isActiveGrant(grant: PortalGrant, now: string): boolean {
+  if (["suspended", "revoked", "expired"].includes(grant.status ?? "active")) return false;
   if (grant.revokedAt) return false;
+  if (grant.suspendedAt) return false;
   if (!grant.expiresAt) return true;
   return Date.parse(grant.expiresAt) > Date.parse(now);
 }
 
 function uniquePermissions(grants: PortalGrant[]): PortalGrant["permissions"] {
   return Array.from(new Set(grants.flatMap((grant) => grant.permissions))).sort();
+}
+
+export function validateContactRecord(contact: Contact): void {
+  if (!contact.firmId.trim()) throw new Error("Contact requires a firm id");
+  if (!contact.displayName.trim()) throw new Error("Contact display name is required");
+  if (!["person", "organization"].includes(contact.kind)) {
+    throw new Error("Contact kind is invalid");
+  }
+  if (contact.status && !contactStatuses.includes(contact.status)) {
+    throw new Error("Contact status is invalid");
+  }
+  for (const category of contact.roleCategories ?? []) {
+    if (!contactRoleCategories.includes(category)) {
+      throw new Error("Contact role category is invalid");
+    }
+  }
+  if (
+    contact.kind === "person" &&
+    contact.organizationLegalName &&
+    !contact.organizationOperatingName
+  ) {
+    throw new Error("Person contacts cannot use organization-only legal name fields");
+  }
+  if (
+    contact.kind === "organization" &&
+    (contact.givenName || contact.familyName) &&
+    !contact.organizationLegalName
+  ) {
+    throw new Error("Organization contacts require organization naming when person names are set");
+  }
+  const methodIds = new Set<string>();
+  for (const method of contact.contactMethods ?? []) {
+    if (!method.id.trim()) throw new Error("Contact method requires an id");
+    if (methodIds.has(method.id)) throw new Error("Contact method ids must be unique");
+    methodIds.add(method.id);
+    if (method.type !== "address" && !method.value?.trim()) {
+      throw new Error("Contact method value is required");
+    }
+    if (method.type === "address" && !method.address?.line1?.trim()) {
+      throw new Error("Contact address requires a first address line");
+    }
+  }
+  if (contact.preferredContactMethodId && !methodIds.has(contact.preferredContactMethodId)) {
+    throw new Error("Preferred contact method must reference an existing method");
+  }
 }
 
 function buildConflictCues(links: ContactDossierMatterLink[]): ContactDossierConflictCue[] {
@@ -287,6 +434,19 @@ export function validateContactRelationshipRecord(relationship: ContactRelations
   if (!contactRelationshipStatuses.includes(relationship.status)) {
     throw new Error("Contact relationship status is invalid");
   }
+  if (relationship.effectiveOn && Number.isNaN(Date.parse(relationship.effectiveOn))) {
+    throw new Error("Contact relationship effective date is invalid");
+  }
+  if (relationship.endedOn && Number.isNaN(Date.parse(relationship.endedOn))) {
+    throw new Error("Contact relationship end date is invalid");
+  }
+  if (
+    relationship.effectiveOn &&
+    relationship.endedOn &&
+    Date.parse(relationship.endedOn) < Date.parse(relationship.effectiveOn)
+  ) {
+    throw new Error("Contact relationship end date cannot be before effective date");
+  }
   if (Number.isNaN(Date.parse(relationship.createdAt))) {
     throw new Error("Contact relationship created timestamp is invalid");
   }
@@ -295,36 +455,118 @@ export function validateContactRelationshipRecord(relationship: ContactRelations
   }
 }
 
+function summarizeContactMethod(method: NonNullable<Contact["contactMethods"]>[number]) {
+  return {
+    id: method.id,
+    type: method.type,
+    label: method.label,
+    value: method.value,
+    address: method.address,
+    preferred: method.preferred,
+    doNotContact: method.doNotContact,
+    verificationStatus: method.verificationStatus,
+    conflictCheckIncluded: method.conflictCheckIncluded,
+  };
+}
+
 function summarizeContact(contact: Contact): ContactDossierContactSummary {
   return {
     id: contact.id,
     firmId: contact.firmId,
     kind: contact.kind,
+    status: contact.status ?? "active",
+    roleCategories: contact.roleCategories ?? [],
+    canonicalName: contact.canonicalName,
     displayName: contact.displayName,
+    givenName: contact.givenName,
+    middleName: contact.middleName,
+    familyName: contact.familyName,
+    title: contact.title,
+    pronouns: contact.pronouns,
+    organizationLegalName: contact.organizationLegalName,
+    organizationOperatingName: contact.organizationOperatingName,
+    organizationRegisteredName: contact.organizationRegisteredName,
+    organizationType: contact.organizationType,
+    website: contact.website,
     aliases: contact.aliases,
+    formerNames: contact.formerNames ?? [],
     identifiers: contact.identifiers,
+    contactMethods: (contact.contactMethods ?? []).map(summarizeContactMethod),
+    preferredContactMethodId: contact.preferredContactMethodId,
+    preferredLanguage: contact.preferredLanguage,
+    timezone: contact.timezone,
+    communicationNotes: contact.communicationNotes,
+    accessibilityNotes: contact.accessibilityNotes,
+    riskFlags: contact.riskFlags ?? [],
+    conflictSensitive: contact.conflictSensitive ?? false,
+    adverse: contact.adverse ?? false,
+    confidentialityMarker: contact.confidentialityMarker ?? "standard",
+    doNotContact: contact.doNotContact ?? false,
+    createdAt: contact.createdAt,
+    updatedAt: contact.updatedAt,
   };
 }
 
 const clientLikeRoles = new Set<MatterParty["role"]>([
   "client",
   "prospective_client",
+  "former_client",
   "notary_client",
   "paralegal_client",
 ]);
 
 function relationshipKindLabel(kind: ContactRelationshipKind): string {
   switch (kind) {
+    case "agent_for":
+      return "agent for";
     case "authorized_representative":
       return "authorized representative";
+    case "custom":
+      return "custom relationship";
+    case "director_of":
+      return "director of";
     case "employee_of":
       return "employee of";
+    case "employer_of":
+      return "employer of";
+    case "expert_for":
+      return "expert for";
     case "family_contact":
       return "family contact";
+    case "family_member":
+      return "family member";
+    case "guardian_of":
+      return "guardian of";
+    case "insurer_for":
+      return "insurer for";
+    case "lawyer_for":
+      return "lawyer for";
+    case "officer_of":
+      return "officer of";
+    case "opposing_counsel_for":
+      return "opposing counsel";
     case "opposing_party_for":
       return "matter counterparty";
+    case "owned_by":
+      return "owned by";
+    case "owner_of":
+      return "owner of";
+    case "parent_of":
+      return "parent organization";
+    case "paralegal_for":
+      return "paralegal for";
+    case "partner_of":
+      return "partner of";
     case "referral_source":
       return "referral source";
+    case "spouse_partner":
+      return "spouse or partner";
+    case "subsidiary_of":
+      return "subsidiary of";
+    case "witness_against":
+      return "witness against";
+    case "witness_for":
+      return "witness for";
   }
 }
 
@@ -349,6 +591,7 @@ function buildRelationshipSummaries(input: {
 
       const label =
         relationship.label.trim() || relationshipKindLabel(relationship.relationshipKind);
+      const reciprocalLabel = relationship.reciprocalLabel?.trim();
       const conflictSafeLabel =
         relationship.status === "review_needed" ? `${label} needs review` : label;
 
@@ -357,10 +600,14 @@ function buildRelationshipSummaries(input: {
           id: relationship.id,
           direction: outbound ? "outbound" : "inbound",
           relationshipKind: relationship.relationshipKind,
-          label,
+          label: inbound && reciprocalLabel ? reciprocalLabel : label,
+          reciprocalLabel: reciprocalLabel || undefined,
           conflictSafeLabel,
           status: relationship.status,
           source: relationship.source,
+          effectiveOn: relationship.effectiveOn,
+          endedOn: relationship.endedOn,
+          includeInConflictCheck: relationship.includeInConflictCheck ?? true,
           relatedContact: {
             kind: relatedContact.kind,
             displayName: relatedContact.displayName,
@@ -381,15 +628,44 @@ function buildCrmTaxonomy(input: {
   links: ContactDossierMatterLink[];
   relationships: ContactDossierRelationshipSummary[];
 }): ContactDossierCrmTaxonomy {
+  const status = input.contact.status ?? "active";
+  const roleCategories = input.contact.roleCategories ?? [];
   const labels: ContactDossierCrmTaxonomy["labels"] = [
     {
       key: input.contact.kind,
       label: input.contact.kind === "organization" ? "organization" : "person",
       severity: "info",
     },
+    {
+      key: `status_${status}`,
+      label: status,
+      severity: status === "restricted" ? "blocker" : status === "archived" ? "review" : "info",
+    },
   ];
+  for (const category of roleCategories) {
+    labels.push({
+      key: `role_${category}`,
+      label: category.replaceAll("_", " "),
+      severity: category === "opposing_party" || category === "former_client" ? "review" : "info",
+    });
+  }
   if (input.links.some((link) => clientLikeRoles.has(link.role))) {
     labels.push({ key: "client_contact", label: "client contact", severity: "info" });
+  }
+  if (input.contact.conflictSensitive) {
+    labels.push({
+      key: "conflict_sensitive",
+      label: "conflict-sensitive",
+      severity: "review",
+    });
+  }
+  if (input.contact.confidentialityMarker === "restricted") {
+    labels.push({ key: "restricted_contact", label: "restricted", severity: "blocker" });
+  } else if (input.contact.confidentialityMarker === "confidential") {
+    labels.push({ key: "confidential_contact", label: "confidential", severity: "review" });
+  }
+  if (input.contact.doNotContact) {
+    labels.push({ key: "do_not_contact", label: "do not contact", severity: "review" });
   }
   if (input.links.some((link) => link.adverse)) {
     labels.push({ key: "adverse_party", label: "adverse party", severity: "blocker" });
@@ -410,6 +686,8 @@ function buildCrmTaxonomy(input: {
 
   return {
     entityType: input.contact.kind,
+    status,
+    roleCategories,
     labels,
     relatedMatterSummary: {
       total: input.links.length,
@@ -439,7 +717,23 @@ function normalizedContactNames(
 ): Array<{ matchedOn: "name" | "alias"; matchedValue: string; normalizedValue: string }> {
   return [
     { matchedOn: "name" as const, matchedValue: contact.displayName },
+    ...(contact.canonicalName
+      ? [{ matchedOn: "name" as const, matchedValue: contact.canonicalName }]
+      : []),
+    ...(contact.organizationLegalName
+      ? [{ matchedOn: "name" as const, matchedValue: contact.organizationLegalName }]
+      : []),
+    ...(contact.organizationOperatingName
+      ? [{ matchedOn: "name" as const, matchedValue: contact.organizationOperatingName }]
+      : []),
+    ...(contact.organizationRegisteredName
+      ? [{ matchedOn: "name" as const, matchedValue: contact.organizationRegisteredName }]
+      : []),
     ...contact.aliases.map((alias) => ({ matchedOn: "alias" as const, matchedValue: alias })),
+    ...(contact.formerNames ?? []).map((formerName) => ({
+      matchedOn: "alias" as const,
+      matchedValue: formerName,
+    })),
   ]
     .map((entry) => ({ ...entry, normalizedValue: normalizeConflictToken(entry.matchedValue) }))
     .filter((entry) => entry.normalizedValue.length > 0);
@@ -448,7 +742,13 @@ function normalizedContactNames(
 function normalizedContactIdentifiers(
   contact: Contact,
 ): Array<{ matchedValue: string; normalizedValue: string }> {
-  return contact.identifiers
+  const identifiers = [
+    ...contact.identifiers,
+    ...(contact.contactMethods ?? [])
+      .filter((method) => method.conflictCheckIncluded !== false)
+      .flatMap((method) => (method.value ? [{ type: method.type, value: method.value }] : [])),
+  ];
+  return identifiers
     .map((identifier) => ({
       matchedValue: `${identifier.type}:${identifier.value}`,
       normalizedValue: `${identifier.type}:${normalizeConflictToken(identifier.value)}`,
@@ -515,36 +815,55 @@ function buildDuplicateSignals(
 }
 
 function buildSensitivePartySignals(
+  contact: Contact,
   links: ContactDossierMatterLink[],
 ): ContactDossierQualitySignal[] {
-  return links.flatMap((link) => {
-    const signals: ContactDossierQualitySignal[] = [];
-    if (link.adverse) {
-      signals.push({
-        kind: "protected_party_cue",
-        severity: "blocker",
-        reason: "Adverse party link requires sensitive-party caution",
-        matterId: link.matterId,
-      });
-    }
-    if (link.confidential) {
-      signals.push({
-        kind: "protected_party_cue",
-        severity: "review",
-        reason: "Confidential party link requires scoped handling",
-        matterId: link.matterId,
-      });
-    }
-    if (link.portalActive) {
-      signals.push({
-        kind: "protected_party_cue",
-        severity: "review",
-        reason: "Active portal access protects contact-matter communications",
-        matterId: link.matterId,
-      });
-    }
-    return signals;
-  });
+  const contactSignals: ContactDossierQualitySignal[] = [];
+  if (contact.conflictSensitive || contact.confidentialityMarker === "restricted") {
+    contactSignals.push({
+      kind: "protected_party_cue",
+      severity: contact.confidentialityMarker === "restricted" ? "blocker" : "review",
+      reason: "Contact carries conflict-sensitive or restricted handling flags",
+    });
+  }
+  if (contact.doNotContact) {
+    contactSignals.push({
+      kind: "protected_party_cue",
+      severity: "review",
+      reason: "Contact has a do-not-contact flag",
+    });
+  }
+  return [
+    ...contactSignals,
+    ...links.flatMap((link) => {
+      const signals: ContactDossierQualitySignal[] = [];
+      if (link.adverse) {
+        signals.push({
+          kind: "protected_party_cue",
+          severity: "blocker",
+          reason: "Adverse party link requires sensitive-party caution",
+          matterId: link.matterId,
+        });
+      }
+      if (link.confidential) {
+        signals.push({
+          kind: "protected_party_cue",
+          severity: "review",
+          reason: "Confidential party link requires scoped handling",
+          matterId: link.matterId,
+        });
+      }
+      if (link.portalActive) {
+        signals.push({
+          kind: "protected_party_cue",
+          severity: "review",
+          reason: "Active portal access protects contact-matter communications",
+          matterId: link.matterId,
+        });
+      }
+      return signals;
+    }),
+  ];
 }
 
 function buildRevalidationSignals(
@@ -627,7 +946,7 @@ function buildQualityReview(input: {
   visibleMatterIds: Set<string>;
 }): ContactDossierQualityReview {
   const duplicateSignals = buildDuplicateSignals(input.contact, input.contacts);
-  const sensitivePartySignals = buildSensitivePartySignals(input.links);
+  const sensitivePartySignals = buildSensitivePartySignals(input.contact, input.links);
   const revalidationSignals = buildRevalidationSignals(
     input.contact,
     input.intakeVariableProposals,
@@ -680,6 +999,7 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
     );
     const links = linksByContactId.get(party.contactId) ?? [];
     links.push({
+      associationId: party.id,
       matterId: matter.id,
       matterNumber: matter.number,
       matterTitle: matter.title,
@@ -688,6 +1008,11 @@ export function buildContactDossiers(input: BuildContactDossiersInput): ContactD
       role: party.role,
       adverse: party.adverse,
       confidential: party.confidential,
+      status: party.status ?? "active",
+      side: party.side,
+      startedOn: party.startedOn,
+      endedOn: party.endedOn,
+      conflictCheckIncluded: party.conflictCheckIncluded ?? true,
       portalActive: grants.length > 0,
       portalPermissions: uniquePermissions(grants),
     });

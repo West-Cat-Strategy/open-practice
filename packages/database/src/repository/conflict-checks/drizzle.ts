@@ -2,6 +2,7 @@ import {
   runConflictCheck,
   type AuditEvent,
   type Contact,
+  type ContactRelationshipRecord,
   type MatterParty,
   type NewAuditEvent,
 } from "@open-practice/domain";
@@ -17,6 +18,7 @@ import { mapMatter } from "../drizzle-mappers.js";
 export interface DrizzleConflictCheckDependencies {
   listContacts(firmId: string): Promise<Contact[]>;
   listMatterParties(firmId: string): Promise<MatterParty[]>;
+  listContactRelationships(firmId: string): Promise<ContactRelationshipRecord[]>;
   appendAuditEvent(event: NewAuditEvent): Promise<AuditEvent>;
   listAuditEvents(firmId: string): Promise<{ events: AuditEvent[]; valid: boolean }>;
 }
@@ -31,7 +33,14 @@ export async function runDrizzleConflictCheck(
     await db.select().from(schema.matters).where(eq(schema.matters.firmId, input.firmId))
   ).map(mapMatter);
   const matterParties = await dependencies.listMatterParties(input.firmId);
-  const results = runConflictCheck({ ...input, contacts, matters, matterParties });
+  const contactRelationships = await dependencies.listContactRelationships(input.firmId);
+  const results = runConflictCheck({
+    ...input,
+    contacts,
+    matters,
+    matterParties,
+    contactRelationships,
+  });
   const checkId = crypto.randomUUID();
   const createdAt = new Date().toISOString();
   await db.insert(schema.conflictChecks).values({

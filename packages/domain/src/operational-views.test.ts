@@ -199,6 +199,8 @@ describe("built-in operational views", () => {
           portal: { activeGrantCount: 0, permissionLabels: [] },
           crmTaxonomy: {
             entityType: "person",
+            status: "active",
+            roleCategories: [],
             labels: [],
             relatedMatterSummary: {
               total: 0,

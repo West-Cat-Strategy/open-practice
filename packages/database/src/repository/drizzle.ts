@@ -81,9 +81,16 @@ import {
   createDrizzleContact,
   createDrizzleContactDataQualityResolution,
   createDrizzleContactRelationship,
+  createDrizzleMatterContactAssociation,
   getDrizzleContact,
   listDrizzleContactDataQualityResolutions,
   listDrizzleContactDossiersForUser,
+  listDrizzleContactPortalGrantsForUser,
+  listDrizzleContactsForUser,
+  listDrizzleContactTimelineForUser,
+  updateDrizzleContact,
+  updateDrizzleContactRelationship,
+  updateDrizzleMatterContactAssociation,
 } from "./contacts/drizzle.js";
 import {
   createDrizzleIntakeTemplate,
@@ -188,7 +195,12 @@ import {
   resolveDrizzleConfiguredFirm,
 } from "./setup/drizzle.js";
 
-import { mapContactRow, mapDocumentRow } from "./drizzle-mappers.js";
+import {
+  mapContactRelationshipRow,
+  mapContactRow,
+  mapDocumentRow,
+  mapMatterPartyRow,
+} from "./drizzle-mappers.js";
 import { createDrizzleProviderSettingsRepository } from "./provider-settings/drizzle.js";
 import {
   createDrizzlePublicConsultationIntake,
@@ -300,6 +312,7 @@ import {
   revokeDrizzlePortalDocumentAccess,
   revokeDrizzleExternalUploadLink,
   revokeDrizzleShareLink,
+  updateDrizzlePortalGrant,
 } from "./portal-access/drizzle.js";
 
 export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
@@ -486,10 +499,33 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     });
   }
 
+  async listContactsForUser(
+    user: User,
+    options: Parameters<OpenPracticeRepository["listContactsForUser"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listContactsForUser"]> {
+    return listDrizzleContactsForUser(
+      this.db,
+      user,
+      {
+        listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+        listPortalGrants: (firmId) => this.listPortalGrants(firmId),
+        listIntakeVariableProposals: (firmId, proposalOptions) =>
+          this.listIntakeVariableProposals(firmId, proposalOptions),
+      },
+      options,
+    );
+  }
+
   async createContact(
     contact: Parameters<OpenPracticeRepository["createContact"]>[0],
   ): ReturnType<OpenPracticeRepository["createContact"]> {
     return createDrizzleContact(this.db, contact);
+  }
+
+  async updateContact(
+    input: Parameters<OpenPracticeRepository["updateContact"]>[0],
+  ): ReturnType<OpenPracticeRepository["updateContact"]> {
+    return updateDrizzleContact(this.db, input);
   }
 
   async createContactRelationship(
@@ -498,11 +534,53 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return createDrizzleContactRelationship(this.db, relationship);
   }
 
+  async updateContactRelationship(
+    input: Parameters<OpenPracticeRepository["updateContactRelationship"]>[0],
+  ): ReturnType<OpenPracticeRepository["updateContactRelationship"]> {
+    return updateDrizzleContactRelationship(this.db, input);
+  }
+
+  async createMatterContactAssociation(
+    party: Parameters<OpenPracticeRepository["createMatterContactAssociation"]>[0],
+  ): ReturnType<OpenPracticeRepository["createMatterContactAssociation"]> {
+    return createDrizzleMatterContactAssociation(this.db, party);
+  }
+
+  async updateMatterContactAssociation(
+    input: Parameters<OpenPracticeRepository["updateMatterContactAssociation"]>[0],
+  ): ReturnType<OpenPracticeRepository["updateMatterContactAssociation"]> {
+    return updateDrizzleMatterContactAssociation(this.db, input);
+  }
+
   async getContact(
     firmId: string,
     contactId: string,
   ): ReturnType<OpenPracticeRepository["getContact"]> {
     return getDrizzleContact(this.db, firmId, contactId);
+  }
+
+  async listContactPortalGrantsForUser(
+    user: User,
+    contactId: string,
+  ): ReturnType<OpenPracticeRepository["listContactPortalGrantsForUser"]> {
+    return listDrizzleContactPortalGrantsForUser(this.db, user, contactId, {
+      listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+      listPortalGrants: (firmId) => this.listPortalGrants(firmId),
+      listIntakeVariableProposals: (firmId, options) =>
+        this.listIntakeVariableProposals(firmId, options),
+    });
+  }
+
+  async listContactTimelineForUser(
+    user: User,
+    contactId: string,
+  ): ReturnType<OpenPracticeRepository["listContactTimelineForUser"]> {
+    return listDrizzleContactTimelineForUser(this.db, user, contactId, {
+      listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+      listPortalGrants: (firmId) => this.listPortalGrants(firmId),
+      listIntakeVariableProposals: (firmId, options) =>
+        this.listIntakeVariableProposals(firmId, options),
+    });
   }
 
   async createContactDataQualityResolution(
@@ -874,6 +952,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return runDrizzleConflictCheck(this.db, input, {
       listContacts: (firmId) => this.listContacts(firmId),
       listMatterParties: (firmId) => this.listMatterParties(firmId),
+      listContactRelationships: (firmId) => this.listContactRelationships(firmId),
       appendAuditEvent: (event) => this.appendAuditEvent(event),
       listAuditEvents: (firmId) => this.listAuditEvents(firmId),
     });
@@ -920,6 +999,10 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
 
   async createPortalGrant(grant: Parameters<OpenPracticeRepository["createPortalGrant"]>[0]) {
     return createDrizzlePortalGrant(this.db, grant);
+  }
+
+  async updatePortalGrant(input: Parameters<OpenPracticeRepository["updatePortalGrant"]>[0]) {
+    return updateDrizzlePortalGrant(this.db, input);
   }
 
   async listPortalDocumentAccess(
@@ -1395,10 +1478,19 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   }
 
   private async listMatterParties(firmId: string): Promise<MatterParty[]> {
-    return this.db
+    const rows = await this.db
       .select()
       .from(schema.matterParties)
       .where(eq(schema.matterParties.firmId, firmId));
+    return rows.map(mapMatterPartyRow);
+  }
+
+  private async listContactRelationships(firmId: string) {
+    const rows = await this.db
+      .select()
+      .from(schema.contactRelationships)
+      .where(eq(schema.contactRelationships.firmId, firmId));
+    return rows.map(mapContactRelationshipRow);
   }
 
   private async listDocuments(firmId: string): Promise<DocumentRecord[]> {

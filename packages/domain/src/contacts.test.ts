@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildContactDossiers,
+  validateContactRecord,
   validateContactDataQualityResolutionRecord,
   validateContactRelationshipRecord,
 } from "./contacts.js";
@@ -13,6 +14,50 @@ import {
 } from "./sample-data.js";
 
 describe("contact dossiers", () => {
+  it("validates legal CRM contact invariants for people, organizations, and methods", () => {
+    expect(() =>
+      validateContactRecord({
+        id: "contact-org",
+        firmId: "firm-west-legal",
+        kind: "organization",
+        status: "prospective",
+        roleCategories: ["organization", "prospective_client"],
+        displayName: "Synthetic Society",
+        organizationLegalName: "Synthetic Society",
+        aliases: ["Synthetic Society operating name"],
+        formerNames: ["Synthetic Association"],
+        identifiers: [{ type: "business_number", value: "BN-900" }],
+        contactMethods: [
+          {
+            id: "method-service",
+            type: "address",
+            label: "service",
+            address: { line1: "1 Synthetic Way", city: "Vancouver", province: "BC" },
+            conflictCheckIncluded: true,
+          },
+        ],
+        preferredContactMethodId: "method-service",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateContactRecord({
+        id: "contact-bad",
+        firmId: "firm-west-legal",
+        kind: "person",
+        displayName: "Synthetic Person",
+        aliases: [],
+        identifiers: [],
+        contactMethods: [
+          {
+            id: "method-email",
+            type: "email",
+            label: "work",
+          },
+        ],
+      }),
+    ).toThrow("Contact method value is required");
+  });
+
   it("groups contacts by accessible matter links and active portal grants", () => {
     const dossiers = buildContactDossiers({
       firmId: "firm-west-legal",
@@ -135,7 +180,7 @@ describe("contact dossiers", () => {
       ]),
     );
     expect(ada.relationships).toEqual([
-      {
+      expect.objectContaining({
         id: "contact-relationship-ada-river-counterparty",
         direction: "outbound",
         relationshipKind: "opposing_party_for",
@@ -148,7 +193,7 @@ describe("contact dossiers", () => {
           displayName: "River City Rentals Inc.",
         },
         visibleMatterIds: ["matter-001"],
-      },
+      }),
     ]);
     expect(JSON.stringify(ada.relationships)).not.toContain("contact-river");
   });

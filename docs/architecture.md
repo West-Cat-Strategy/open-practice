@@ -5,8 +5,8 @@ Open Practice is a TypeScript monorepo with a matter-centered legal domain core.
 ## Workspaces
 
 - `apps/web`: Next.js API-backed operational UI for firm members.
-- `apps/api`: Fastify API exposing session, capability, overview, matter, conflict, document, ledger, audit, signature, intake, billing, and generated-document endpoints.
-- `packages/domain`: Pure TypeScript domain logic for permissions, conflict checks, audit hash chains, signature-provider boundaries, and trust/funds ledger validation.
+- `apps/api`: Fastify API exposing session, capability, overview, matter, contact CRM, conflict, document, ledger, audit, signature, intake, billing, and generated-document endpoints.
+- `packages/domain`: Pure TypeScript domain logic for permissions, contact CRM validation, conflict checks, audit hash chains, signature-provider boundaries, and trust/funds ledger validation.
 - `packages/database`: Drizzle schema, migrations, runtime setup, seed support, and in-memory/PostgreSQL repository implementations for the system of record.
 - `packages/providers`: Embedded signature and document-automation adapters that avoid SaaS or provider-specific runtime dependencies.
 
@@ -16,6 +16,12 @@ Open Practice is a TypeScript monorepo with a matter-centered legal domain core.
 - S3-compatible object storage holds document binaries; the database stores metadata, checksums, versions, scan state, legal hold, and access grants.
 - Redis and BullMQ are accepted for optional background job delivery, retries, and worker concurrency only. Queue state must not become the legal source of truth.
 - Matter-scoped RBAC is implemented in core first, with a boundary that can later move to OpenFGA.
+- Contacts are first-class legal CRM records. Natural persons and organizations share the `Contact`
+  root; organizations are represented as `Contact.kind = "organization"` so matters, relationships,
+  conflict checks, portal grants, audit events, and timelines use one firm-scoped contact boundary.
+- `matter_parties` is the matter-contact association surface. Matter-specific roles, side/alignment,
+  confidentiality, adverse/protected-party flags, lifecycle status, active dates, and conflict-check
+  inclusion are server-side authorization inputs, not UI-only state.
 - Audit events are append-only and hash chained to detect tampering.
 - Trust/funds entries are balanced double-entry transactions with idempotency and no matter-level overdrafts.
 - E-signing and document automation are embedded local workflows. Open Practice owns signature events, consent evidence, intake answers, and generated-document metadata.
@@ -49,6 +55,9 @@ Planned worker groups:
 ## Reference-Informed Boundaries
 
 - **Legal practice workflows** stay native. j-lawyer.org and ArkCase may inform vocabulary and workflow comparison, but their code remains reference-only.
+- **Contact CRM workflows** stay native. CiviCRM, EspoCRM, SuiteCRM, and Twenty may inform clean-room
+  vocabulary for relationship panels, activity timelines, and portal roles, but contact schema,
+  migrations, API routes, tests, and UI are original Open Practice code.
 - **Signature workflows** are embedded. Open Practice owns signature request records, access checks, audit events, provider events, consent evidence, and final document metadata. Legacy `docuseal` provider values are historical only.
 - **Guided intake and document automation** are embedded. Open Practice owns matter records, session metadata, answer snapshots, generated-document metadata, and final document records. Legacy `docassemble` provider values are rejected for new work.
 - **Document OCR/search** stays replaceable. paperless-ngx may inform scan/OCR/tagging concepts, but any OCR service must be optional and external.

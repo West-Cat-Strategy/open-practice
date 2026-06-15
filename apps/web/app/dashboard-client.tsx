@@ -745,6 +745,8 @@ export default function DashboardClient({
   const [activeContactId, setActiveContactId] = useState(contactDossiers[0]?.contact.id ?? "");
   const [contactCreateKind, setContactCreateKind] = useState<"person" | "organization">("person");
   const [contactCreateDisplayName, setContactCreateDisplayName] = useState("");
+  const [contactCreateLifecycleStatus, setContactCreateLifecycleStatus] = useState("prospective");
+  const [contactCreateRoleCategory, setContactCreateRoleCategory] = useState("prospective_client");
   const [contactCreateEmail, setContactCreateEmail] = useState("");
   const [contactCreatePhone, setContactCreatePhone] = useState("");
   const [creatingContact, setCreatingContact] = useState(false);
@@ -2388,8 +2390,44 @@ export default function DashboardClient({
         headers: devHeaders,
         payload: {
           kind: contactCreateKind,
+          status: contactCreateLifecycleStatus,
+          roleCategories: [contactCreateRoleCategory],
           displayName,
           identifiers,
+          contactMethods: [
+            ...(contactCreateEmail.trim()
+              ? [
+                  {
+                    type: "email",
+                    label: "work",
+                    value: contactCreateEmail.trim(),
+                    preferred: true,
+                    verificationStatus: "unverified",
+                    conflictCheckIncluded: true,
+                  },
+                ]
+              : []),
+            ...(contactCreatePhone.trim()
+              ? [
+                  {
+                    type: "phone",
+                    label: "mobile",
+                    value: contactCreatePhone.trim(),
+                    verificationStatus: "unverified",
+                    conflictCheckIncluded: true,
+                  },
+                ]
+              : []),
+          ],
+          ...(contactCreateKind === "organization"
+            ? {
+                organizationLegalName: displayName,
+                roleCategories:
+                  contactCreateRoleCategory === "prospective_client"
+                    ? ["organization"]
+                    : [contactCreateRoleCategory],
+              }
+            : {}),
         },
       });
       await refreshContactDossiers(payload.contact.id);
@@ -4889,7 +4927,9 @@ export default function DashboardClient({
                   contactCreateDisplayName={contactCreateDisplayName}
                   contactCreateEmail={contactCreateEmail}
                   contactCreateKind={contactCreateKind}
+                  contactCreateLifecycleStatus={contactCreateLifecycleStatus}
                   contactCreatePhone={contactCreatePhone}
+                  contactCreateRoleCategory={contactCreateRoleCategory}
                   contactCreateStatus={contactCreateStatus}
                   contactDossiers={contactDossierRecords}
                   contactDataQualityResolutions={activeContactDataQualityResolutions}
@@ -4902,7 +4942,9 @@ export default function DashboardClient({
                   onContactCreateDisplayNameChange={setContactCreateDisplayName}
                   onContactCreateEmailChange={setContactCreateEmail}
                   onContactCreateKindChange={setContactCreateKind}
+                  onContactCreateLifecycleStatusChange={setContactCreateLifecycleStatus}
                   onContactCreatePhoneChange={setContactCreatePhone}
+                  onContactCreateRoleCategoryChange={setContactCreateRoleCategory}
                   onCreateContact={() => void createContact()}
                   onCreateMatterFromContact={(dossier) => void createMatterFromContact(dossier)}
                   onNewAppointmentForContact={prepareAppointmentForContact}
@@ -5469,7 +5511,9 @@ export default function DashboardClient({
                   contactCreateDisplayName={contactCreateDisplayName}
                   contactCreateEmail={contactCreateEmail}
                   contactCreateKind={contactCreateKind}
+                  contactCreateLifecycleStatus={contactCreateLifecycleStatus}
                   contactCreatePhone={contactCreatePhone}
+                  contactCreateRoleCategory={contactCreateRoleCategory}
                   contactCreateStatus={contactCreateStatus}
                   contactDossiers={contactDossierRecords}
                   contactDataQualityResolutions={activeContactDataQualityResolutions}
@@ -5482,7 +5526,9 @@ export default function DashboardClient({
                   onContactCreateDisplayNameChange={setContactCreateDisplayName}
                   onContactCreateEmailChange={setContactCreateEmail}
                   onContactCreateKindChange={setContactCreateKind}
+                  onContactCreateLifecycleStatusChange={setContactCreateLifecycleStatus}
                   onContactCreatePhoneChange={setContactCreatePhone}
+                  onContactCreateRoleCategoryChange={setContactCreateRoleCategory}
                   onCreateContact={() => void createContact()}
                   onCreateMatterFromContact={(dossier) => void createMatterFromContact(dossier)}
                   onNewAppointmentForContact={prepareAppointmentForContact}

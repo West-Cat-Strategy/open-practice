@@ -13,25 +13,49 @@ import { firms, users } from "./core.js";
 import { documents } from "./documents.js";
 import { matters } from "./matters.js";
 
-export const portalGrants = pgTable("portal_grants", {
-  id: text("id").primaryKey(),
-  firmId: text("firm_id")
-    .notNull()
-    .references(() => firms.id),
-  matterId: text("matter_id")
-    .notNull()
-    .references(() => matters.id),
-  contactId: text("contact_id")
-    .notNull()
-    .references(() => contacts.id),
-  accountUserId: text("account_user_id").references(() => users.id),
-  grantedByUserId: text("granted_by_user_id")
-    .notNull()
-    .references(() => users.id),
-  permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
-  expiresAt: timestamp("expires_at", { withTimezone: true }),
-  revokedAt: timestamp("revoked_at", { withTimezone: true }),
-});
+export const portalGrants = pgTable(
+  "portal_grants",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    matterId: text("matter_id")
+      .notNull()
+      .references(() => matters.id),
+    contactId: text("contact_id")
+      .notNull()
+      .references(() => contacts.id),
+    accountUserId: text("account_user_id").references(() => users.id),
+    grantedByUserId: text("granted_by_user_id")
+      .notNull()
+      .references(() => users.id),
+    permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
+    status: text("status").notNull().default("active"),
+    invitedAt: timestamp("invited_at", { withTimezone: true }),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedByUserId: text("revoked_by_user_id").references(() => users.id),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    firmMatterContactStatus: index("portal_grants_firm_matter_contact_status_idx").on(
+      table.firmId,
+      table.matterId,
+      table.contactId,
+      table.status,
+    ),
+    firmAccountStatus: index("portal_grants_firm_account_status_idx").on(
+      table.firmId,
+      table.accountUserId,
+      table.status,
+    ),
+  }),
+);
 
 export const portalDocumentAccess = pgTable(
   "portal_document_access",

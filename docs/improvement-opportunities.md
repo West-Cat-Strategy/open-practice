@@ -178,12 +178,16 @@ widget registry candidate is no longer re-proposed here.
   - **Reuse and snippets:** AGPL/reference-only; no direct snippets.
 
 - **Contact relationship graph expansion**
-  - **Shipped first slice:** OP-T130 added the first contact relationship graph and CRM taxonomy
-    surface.
-  - **Remaining gap:** Future work should stay read-only and focus on relationship maintenance,
-    filtering, and review cues that are separate from duplicate/conflict/data-quality controls.
-  - **References:** `civicrm__civicrm-core`, `espocrm__espocrm`.
-  - **Reuse and snippets:** AGPL/high-risk architecture-only; no direct snippets.
+  - **Shipped slices:** OP-T130 added the first contact relationship graph and CRM taxonomy surface.
+    The 2026-06-15 Full CRM Contacts branch adds contact maintenance APIs, organization contacts,
+    matter-contact association state, portal-access state, relationship editing, conflict matching,
+    and authorization-filtered CRM UI panels.
+  - **Remaining gap:** Future work should focus on task/follow-up integration, richer activity
+    filtering, duplicate-review assistance without automatic merges, and jurisdiction-reviewed
+    retention/privacy policies for contact-history exports.
+  - **References:** `civicrm__civicrm-core`, `espocrm__espocrm`, `suitecrm__suitecrm`,
+    `twenty__twenty`, `jlawyerorg__j-lawyer-org`, and `arkcase__arkcase`.
+  - **Reuse and snippets:** AGPL/LGPL/high-risk reference-only; no direct snippets.
 
 - **Document retention and hold review**
   - **Shipped first slice:** OP-T120 surfaces read-only retention-review hints based on legal hold,

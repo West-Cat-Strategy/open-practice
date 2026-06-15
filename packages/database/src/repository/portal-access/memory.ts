@@ -40,6 +40,36 @@ export function createMemoryPortalGrant(
   return clone(grant);
 }
 
+export function updateMemoryPortalGrant(
+  store: MemoryPortalAccessStore,
+  input: {
+    firmId: string;
+    id: string;
+    updates: Partial<
+      Pick<
+        PortalGrant,
+        | "accountUserId"
+        | "permissions"
+        | "status"
+        | "expiresAt"
+        | "revokedAt"
+        | "suspendedAt"
+        | "invitedAt"
+        | "activatedAt"
+        | "revokedByUserId"
+        | "updatedByUserId"
+      >
+    >;
+  },
+): PortalGrant | undefined {
+  const grant = store.portalGrants.find(
+    (candidate) => candidate.firmId === input.firmId && candidate.id === input.id,
+  );
+  if (!grant) return undefined;
+  Object.assign(grant, input.updates, { updatedAt: new Date().toISOString() });
+  return clone(grant);
+}
+
 export function listMemoryPortalDocumentAccess(
   store: MemoryPortalAccessStore,
   firmId: string,

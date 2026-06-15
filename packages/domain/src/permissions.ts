@@ -323,8 +323,8 @@ const portalPermissionByResourceAction: Partial<
     read: "view_documents",
   },
   portal_message: {
-    create: "message",
-    read: "message",
+    create: "send_messages",
+    read: "view_messages",
   },
   external_upload: {
     create: "upload_documents",
@@ -335,9 +335,32 @@ const portalPermissionByResourceAction: Partial<
     approve: "sign",
   },
   client_portal: {
-    read: "view_documents",
+    read: "view_matter_summary",
   },
 };
+
+function portalGrantIsActive(grant: PortalGrant, now: number): boolean {
+  if (grant.status === "suspended" || grant.status === "revoked" || grant.status === "expired") {
+    return false;
+  }
+  if (grant.revokedAt) return false;
+  if (grant.suspendedAt) return false;
+  if (grant.expiresAt && Date.parse(grant.expiresAt) <= now) return false;
+  return true;
+}
+
+function grantHasPermission(
+  grant: PortalGrant,
+  permission: PortalGrant["permissions"][number],
+): boolean {
+  if (grant.permissions.includes(permission)) return true;
+  if (permission === "view_messages" || permission === "send_messages") {
+    return grant.permissions.includes("message");
+  }
+  if (permission === "view_signature_requests") return grant.permissions.includes("sign");
+  if (permission === "view_matter_summary") return grant.permissions.includes("view_documents");
+  return false;
+}
 
 function hasActivePortalGrant(request: AccessRequest): boolean {
   if (!request.matterId || !request.contactId) return false;
@@ -348,8 +371,7 @@ function hasActivePortalGrant(request: AccessRequest): boolean {
       if (grant.firmId !== request.firmId) return false;
       if (grant.matterId !== request.matterId) return false;
       if (grant.contactId !== request.contactId) return false;
-      if (grant.revokedAt) return false;
-      if (grant.expiresAt && Date.parse(grant.expiresAt) <= now) return false;
+      if (!portalGrantIsActive(grant, now)) return false;
       return true;
     });
   }
@@ -362,9 +384,8 @@ function hasActivePortalGrant(request: AccessRequest): boolean {
     if (grant.firmId !== request.firmId) return false;
     if (grant.matterId !== request.matterId) return false;
     if (grant.contactId !== request.contactId) return false;
-    if (grant.revokedAt) return false;
-    if (grant.expiresAt && Date.parse(grant.expiresAt) <= now) return false;
-    return grant.permissions.includes(requiredPermission);
+    if (!portalGrantIsActive(grant, now)) return false;
+    return grantHasPermission(grant, requiredPermission);
   });
 }
 
@@ -587,9 +608,8 @@ export function canShareDocumentThroughPortal(input: {
 
   if (input.document.firmId !== input.grant.firmId) return false;
   if (input.document.matterId !== input.grant.matterId) return false;
-  if (!input.grant.permissions.includes("view_documents")) return false;
-  if (input.grant.revokedAt) return false;
-  if (input.grant.expiresAt && Date.parse(input.grant.expiresAt) <= now) return false;
+  if (!grantHasPermission(input.grant, "view_documents")) return false;
+  if (!portalGrantIsActive(input.grant, now)) return false;
   if (input.document.legalHold) return false;
   if (input.document.supersededAt) return false;
   if (!allowedClassifications.has(input.document.classification)) return false;

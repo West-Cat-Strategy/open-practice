@@ -13,7 +13,7 @@ import {
   type FirstRunSetupResult,
   type FirstRunSetupStatus,
 } from "../setup-contracts.js";
-import { setupStatusFromCounts } from "../drizzle-mappers.js";
+import { contactInsert, matterPartyInsert, setupStatusFromCounts } from "../drizzle-mappers.js";
 import { encryptProviderSetting } from "../provider-settings/encryption.js";
 
 export async function getDrizzleSetupStatus(
@@ -103,7 +103,7 @@ export async function completeDrizzleFirstRunSetup(
     });
 
     if (input.firstContact) {
-      await tx.insert(schema.contacts).values(input.firstContact);
+      await tx.insert(schema.contacts).values(contactInsert(input.firstContact));
     }
     if (input.firstMatter) {
       await tx.insert(schema.matters).values({
@@ -117,7 +117,7 @@ export async function completeDrizzleFirstRunSetup(
       });
     }
     if (input.firstMatterParty) {
-      await tx.insert(schema.matterParties).values(input.firstMatterParty);
+      await tx.insert(schema.matterParties).values(matterPartyInsert(input.firstMatterParty));
     }
     if (input.webAuthnCredential) {
       await tx.insert(schema.webAuthnCredentials).values({

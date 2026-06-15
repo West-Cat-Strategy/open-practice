@@ -15,6 +15,7 @@ import {
   mapExternalUploadLinkRow,
   mapPortalDocumentAccessRow,
   mapShareLinkRow,
+  portalGrantInsert,
 } from "../drizzle-mappers.js";
 import {
   IdempotencyKeyConflictError,
@@ -30,45 +31,7 @@ import type {
   ShareLinkListOptions,
 } from "../portal-access-contracts.js";
 
-export async function listDrizzlePortalGrants(
-  db: OpenPracticeDatabase,
-  firmId: string,
-): Promise<PortalGrant[]> {
-  const rows = await db
-    .select()
-    .from(schema.portalGrants)
-    .where(eq(schema.portalGrants.firmId, firmId));
-  return rows.map((row) => ({
-    id: row.id,
-    firmId: row.firmId,
-    matterId: row.matterId,
-    contactId: row.contactId,
-    accountUserId: row.accountUserId ?? undefined,
-    grantedByUserId: row.grantedByUserId,
-    permissions: row.permissions as PortalGrant["permissions"],
-    expiresAt: dateToIso(row.expiresAt),
-    revokedAt: dateToIso(row.revokedAt),
-  }));
-}
-
-export async function createDrizzlePortalGrant(
-  db: OpenPracticeDatabase,
-  grant: PortalGrant,
-): Promise<PortalGrant> {
-  const [row] = await db
-    .insert(schema.portalGrants)
-    .values({
-      id: grant.id,
-      firmId: grant.firmId,
-      matterId: grant.matterId,
-      contactId: grant.contactId,
-      accountUserId: grant.accountUserId ?? null,
-      grantedByUserId: grant.grantedByUserId,
-      permissions: grant.permissions,
-      expiresAt: grant.expiresAt ? new Date(grant.expiresAt) : null,
-      revokedAt: grant.revokedAt ? new Date(grant.revokedAt) : null,
-    })
-    .returning();
+function mapPortalGrantRow(row: typeof schema.portalGrants.$inferSelect): PortalGrant {
   return {
     id: row.id,
     firmId: row.firmId,
@@ -77,9 +40,92 @@ export async function createDrizzlePortalGrant(
     accountUserId: row.accountUserId ?? undefined,
     grantedByUserId: row.grantedByUserId,
     permissions: row.permissions as PortalGrant["permissions"],
+    status: row.status as PortalGrant["status"],
+    invitedAt: dateToIso(row.invitedAt),
+    activatedAt: dateToIso(row.activatedAt),
+    suspendedAt: dateToIso(row.suspendedAt),
     expiresAt: dateToIso(row.expiresAt),
     revokedAt: dateToIso(row.revokedAt),
+    revokedByUserId: row.revokedByUserId ?? undefined,
+    updatedByUserId: row.updatedByUserId ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+export async function listDrizzlePortalGrants(
+  db: OpenPracticeDatabase,
+  firmId: string,
+): Promise<PortalGrant[]> {
+  const rows = await db
+    .select()
+    .from(schema.portalGrants)
+    .where(eq(schema.portalGrants.firmId, firmId));
+  return rows.map(mapPortalGrantRow);
+}
+
+export async function createDrizzlePortalGrant(
+  db: OpenPracticeDatabase,
+  grant: PortalGrant,
+): Promise<PortalGrant> {
+  const [row] = await db.insert(schema.portalGrants).values(portalGrantInsert(grant)).returning();
+  return mapPortalGrantRow(row!);
+}
+
+export async function updateDrizzlePortalGrant(
+  db: OpenPracticeDatabase,
+  input: {
+    firmId: string;
+    id: string;
+    updates: Partial<
+      Pick<
+        PortalGrant,
+        | "accountUserId"
+        | "permissions"
+        | "status"
+        | "expiresAt"
+        | "revokedAt"
+        | "suspendedAt"
+        | "invitedAt"
+        | "activatedAt"
+        | "revokedByUserId"
+        | "updatedByUserId"
+      >
+    >;
+  },
+): Promise<PortalGrant | undefined> {
+  const updates = input.updates;
+  const set: Partial<typeof schema.portalGrants.$inferInsert> = { updatedAt: new Date() };
+  if (updates.accountUserId !== undefined) set.accountUserId = updates.accountUserId ?? null;
+  if (updates.permissions !== undefined) set.permissions = updates.permissions;
+  if (updates.status !== undefined) set.status = updates.status;
+  if (updates.invitedAt !== undefined) {
+    set.invitedAt = updates.invitedAt ? new Date(updates.invitedAt) : null;
+  }
+  if (updates.activatedAt !== undefined) {
+    set.activatedAt = updates.activatedAt ? new Date(updates.activatedAt) : null;
+  }
+  if (updates.suspendedAt !== undefined) {
+    set.suspendedAt = updates.suspendedAt ? new Date(updates.suspendedAt) : null;
+  }
+  if (updates.expiresAt !== undefined) {
+    set.expiresAt = updates.expiresAt ? new Date(updates.expiresAt) : null;
+  }
+  if (updates.revokedAt !== undefined) {
+    set.revokedAt = updates.revokedAt ? new Date(updates.revokedAt) : null;
+  }
+  if (updates.revokedByUserId !== undefined) {
+    set.revokedByUserId = updates.revokedByUserId ?? null;
+  }
+  if (updates.updatedByUserId !== undefined) {
+    set.updatedByUserId = updates.updatedByUserId ?? null;
+  }
+  const [row] = await db
+    .update(schema.portalGrants)
+    .set(set)
+    .where(and(eq(schema.portalGrants.firmId, input.firmId), eq(schema.portalGrants.id, input.id)))
+    .returning();
+  return row ? mapPortalGrantRow(row) : undefined;
 }
 
 export async function listDrizzlePortalDocumentAccess(

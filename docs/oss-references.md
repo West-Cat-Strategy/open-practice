@@ -61,6 +61,10 @@ This matrix decides how each researched or cloned project may influence the prod
 
 ## Product-Area Recommendations
 
+- **Contact CRM**: keep native. The 2026-06-15 Full CRM Contacts branch used CiviCRM,
+  j-lawyer.org, and ArkCase as clean-room vocabulary/workflow context only. EspoCRM, SuiteCRM, and
+  Twenty remain policy-documented CRM references, but no CRM source, schema, migration, UI, tests,
+  copy, assets, or dependencies were reused.
 - **Matter/case core**: keep native. Study j-lawyer.org, ArkCase, EspoCRM, SuiteCRM,
   Twenty, and OpenLawOffice for vocabulary and workflow comparison only.
 - **Guided intake/document automation**: keep embedded. Use docassemble and Formbricks

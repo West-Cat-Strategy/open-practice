@@ -168,6 +168,29 @@ export function mapPortalDocumentAccessRow(
   };
 }
 
+export function portalGrantInsert(grant: PortalGrant): typeof schema.portalGrants.$inferInsert {
+  const now = new Date();
+  return {
+    id: grant.id,
+    firmId: grant.firmId,
+    matterId: grant.matterId,
+    contactId: grant.contactId,
+    accountUserId: grant.accountUserId ?? null,
+    grantedByUserId: grant.grantedByUserId,
+    permissions: grant.permissions,
+    status: grant.status ?? "active",
+    invitedAt: grant.invitedAt ? new Date(grant.invitedAt) : null,
+    activatedAt: grant.activatedAt ? new Date(grant.activatedAt) : null,
+    suspendedAt: grant.suspendedAt ? new Date(grant.suspendedAt) : null,
+    expiresAt: grant.expiresAt ? new Date(grant.expiresAt) : null,
+    revokedAt: grant.revokedAt ? new Date(grant.revokedAt) : null,
+    revokedByUserId: grant.revokedByUserId ?? null,
+    updatedByUserId: grant.updatedByUserId ?? null,
+    createdAt: grant.createdAt ? new Date(grant.createdAt) : now,
+    updatedAt: grant.updatedAt ? new Date(grant.updatedAt) : now,
+  };
+}
+
 export function mapWebAuthnCredentialRow(
   row: typeof schema.webAuthnCredentials.$inferSelect,
 ): WebAuthnCredentialRecord {
@@ -904,11 +927,83 @@ export function mapContactRow(row: typeof schema.contacts.$inferSelect): Contact
     id: row.id,
     firmId: row.firmId,
     kind: row.kind,
+    status: row.status as Contact["status"],
+    roleCategories: row.roleCategories as Contact["roleCategories"],
+    canonicalName: row.canonicalName ?? undefined,
     displayName: row.displayName,
+    givenName: row.givenName ?? undefined,
+    middleName: row.middleName ?? undefined,
+    familyName: row.familyName ?? undefined,
+    title: row.title ?? undefined,
+    pronouns: row.pronouns ?? undefined,
+    organizationLegalName: row.organizationLegalName ?? undefined,
+    organizationOperatingName: row.organizationOperatingName ?? undefined,
+    organizationRegisteredName: row.organizationRegisteredName ?? undefined,
+    organizationType: row.organizationType ?? undefined,
+    website: row.website ?? undefined,
     aliases: row.aliases,
+    formerNames: row.formerNames,
     identifiers: row.identifiers as Contact["identifiers"],
+    contactMethods: row.contactMethods as Contact["contactMethods"],
+    preferredContactMethodId: row.preferredContactMethodId ?? undefined,
+    preferredLanguage: row.preferredLanguage ?? undefined,
+    timezone: row.timezone ?? undefined,
+    communicationNotes: row.communicationNotes ?? undefined,
+    accessibilityNotes: row.accessibilityNotes ?? undefined,
+    privateNotes: row.privateNotes ?? undefined,
     notes: row.notes ?? undefined,
+    riskFlags: row.riskFlags,
+    conflictSensitive: row.conflictSensitive,
+    adverse: row.adverse,
+    confidentialityMarker: row.confidentialityMarker as Contact["confidentialityMarker"],
+    doNotContact: row.doNotContact,
     createdByUserId: row.createdByUserId ?? undefined,
+    updatedByUserId: row.updatedByUserId ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function contactInsert(contact: Contact): typeof schema.contacts.$inferInsert {
+  const now = new Date();
+  return {
+    id: contact.id,
+    firmId: contact.firmId,
+    kind: contact.kind,
+    status: contact.status ?? "active",
+    roleCategories: contact.roleCategories ?? [],
+    canonicalName: contact.canonicalName ?? null,
+    displayName: contact.displayName,
+    givenName: contact.givenName ?? null,
+    middleName: contact.middleName ?? null,
+    familyName: contact.familyName ?? null,
+    title: contact.title ?? null,
+    pronouns: contact.pronouns ?? null,
+    organizationLegalName: contact.organizationLegalName ?? null,
+    organizationOperatingName: contact.organizationOperatingName ?? null,
+    organizationRegisteredName: contact.organizationRegisteredName ?? null,
+    organizationType: contact.organizationType ?? null,
+    website: contact.website ?? null,
+    aliases: contact.aliases,
+    formerNames: contact.formerNames ?? [],
+    identifiers: contact.identifiers,
+    contactMethods: contact.contactMethods ?? [],
+    preferredContactMethodId: contact.preferredContactMethodId ?? null,
+    preferredLanguage: contact.preferredLanguage ?? null,
+    timezone: contact.timezone ?? null,
+    communicationNotes: contact.communicationNotes ?? null,
+    accessibilityNotes: contact.accessibilityNotes ?? null,
+    privateNotes: contact.privateNotes ?? null,
+    notes: contact.notes ?? null,
+    riskFlags: contact.riskFlags ?? [],
+    conflictSensitive: contact.conflictSensitive ?? false,
+    adverse: contact.adverse ?? false,
+    confidentialityMarker: contact.confidentialityMarker ?? "standard",
+    doNotContact: contact.doNotContact ?? false,
+    createdByUserId: contact.createdByUserId ?? null,
+    updatedByUserId: contact.updatedByUserId ?? null,
+    createdAt: contact.createdAt ? new Date(contact.createdAt) : now,
+    updatedAt: contact.updatedAt ? new Date(contact.updatedAt) : now,
   };
 }
 
@@ -922,11 +1017,92 @@ export function mapContactRelationshipRow(
     relatedContactId: row.relatedContactId,
     relationshipKind: row.relationshipKind as ContactRelationshipRecord["relationshipKind"],
     label: row.label,
+    reciprocalLabel: row.reciprocalLabel ?? undefined,
     matterId: row.matterId ?? undefined,
     source: row.source as ContactRelationshipRecord["source"],
     status: row.status as ContactRelationshipRecord["status"],
+    effectiveOn: dateToIso(row.effectiveOn),
+    endedOn: dateToIso(row.endedOn),
+    notes: row.notes ?? undefined,
+    privateNotes: row.privateNotes ?? undefined,
+    includeInConflictCheck: row.includeInConflictCheck,
+    createdByUserId: row.createdByUserId ?? undefined,
+    updatedByUserId: row.updatedByUserId ?? undefined,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function contactRelationshipInsert(
+  relationship: ContactRelationshipRecord,
+): typeof schema.contactRelationships.$inferInsert {
+  return {
+    id: relationship.id,
+    firmId: relationship.firmId,
+    contactId: relationship.contactId,
+    relatedContactId: relationship.relatedContactId,
+    relationshipKind: relationship.relationshipKind,
+    label: relationship.label,
+    reciprocalLabel: relationship.reciprocalLabel ?? null,
+    matterId: relationship.matterId ?? null,
+    source: relationship.source,
+    status: relationship.status,
+    effectiveOn: relationship.effectiveOn ? new Date(relationship.effectiveOn) : null,
+    endedOn: relationship.endedOn ? new Date(relationship.endedOn) : null,
+    notes: relationship.notes ?? null,
+    privateNotes: relationship.privateNotes ?? null,
+    includeInConflictCheck: relationship.includeInConflictCheck ?? true,
+    createdByUserId: relationship.createdByUserId ?? null,
+    updatedByUserId: relationship.updatedByUserId ?? null,
+    createdAt: new Date(relationship.createdAt),
+    updatedAt: new Date(relationship.updatedAt),
+  };
+}
+
+export function mapMatterPartyRow(row: typeof schema.matterParties.$inferSelect): MatterParty {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    contactId: row.contactId,
+    role: row.role,
+    adverse: row.adverse,
+    confidential: row.confidential,
+    status: row.status as MatterParty["status"],
+    side: (row.side as MatterParty["side"] | null) ?? undefined,
+    startedOn: dateToIso(row.startedOn),
+    endedOn: dateToIso(row.endedOn),
+    notes: row.notes ?? undefined,
+    privateNotes: row.privateNotes ?? undefined,
+    conflictCheckIncluded: row.conflictCheckIncluded,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    createdByUserId: row.createdByUserId ?? undefined,
+    updatedByUserId: row.updatedByUserId ?? undefined,
+  };
+}
+
+export function matterPartyInsert(party: MatterParty): typeof schema.matterParties.$inferInsert {
+  const now = new Date();
+  return {
+    id: party.id,
+    firmId: party.firmId,
+    matterId: party.matterId,
+    contactId: party.contactId,
+    role: party.role,
+    adverse: party.adverse,
+    confidential: party.confidential,
+    status: party.status ?? "active",
+    side: party.side ?? null,
+    startedOn: party.startedOn ? new Date(party.startedOn) : null,
+    endedOn: party.endedOn ? new Date(party.endedOn) : null,
+    notes: party.notes ?? null,
+    privateNotes: party.privateNotes ?? null,
+    conflictCheckIncluded: party.conflictCheckIncluded ?? true,
+    createdAt: party.createdAt ? new Date(party.createdAt) : now,
+    updatedAt: party.updatedAt ? new Date(party.updatedAt) : now,
+    createdByUserId: party.createdByUserId ?? null,
+    updatedByUserId: party.updatedByUserId ?? null,
   };
 }
 

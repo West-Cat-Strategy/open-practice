@@ -407,7 +407,26 @@ export function MatterOverviewSection({
           <div className="party-row" key={party.id}>
             <span>
               <strong>{party.contact.displayName}</strong>
-              <small>{formatMatterPartyRoleLabel(party.role)}</small>
+              <small>
+                {[
+                  formatMatterPartyRoleLabel(party.role),
+                  party.contact.kind,
+                  party.status ?? "active",
+                  party.side,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </small>
+              <small>
+                {[
+                  party.startedOn ? `from ${party.startedOn}` : null,
+                  party.endedOn ? `ended ${party.endedOn}` : null,
+                  party.confidential ? "confidential" : null,
+                  party.conflictCheckIncluded === false ? "conflict excluded" : "conflict included",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </small>
             </span>
             {party.adverse ? <em className="risk">Adverse</em> : <em>Client-side</em>}
           </div>

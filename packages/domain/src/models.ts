@@ -14,6 +14,56 @@ export type MatterStatus = "intake" | "open" | "paused" | "closed" | "archived";
 
 export type ContactKind = "person" | "organization";
 
+export type ContactStatus =
+  | "prospective"
+  | "active"
+  | "inactive"
+  | "archived"
+  | "former"
+  | "restricted";
+
+export type ContactRoleCategory =
+  | "prospective_client"
+  | "client"
+  | "former_client"
+  | "opposing_party"
+  | "related_party"
+  | "witness"
+  | "lawyer"
+  | "paralegal"
+  | "authorized_non_lawyer_provider"
+  | "legal_representative"
+  | "court_tribunal"
+  | "insurer"
+  | "expert"
+  | "vendor"
+  | "referral_source"
+  | "internal_team_member"
+  | "organization"
+  | "other";
+
+export type ContactIdentifierType =
+  | "email"
+  | "phone"
+  | "tax_id"
+  | "registry_id"
+  | "business_number"
+  | "court_file"
+  | "custom";
+
+export type ContactMethodType = "email" | "phone" | "address" | "website";
+
+export type ContactMethodLabel =
+  | "work"
+  | "home"
+  | "mobile"
+  | "billing"
+  | "service"
+  | "registered_office"
+  | "other";
+
+export type ContactMethodVerificationStatus = "unverified" | "verified" | "review_needed";
+
 export type DocumentClassification =
   | "general"
   | "privileged"
@@ -53,13 +103,26 @@ export type DocumentUploadReviewReason =
 export type PartyRole =
   | "client"
   | "prospective_client"
+  | "former_client"
   | "opposing_party"
   | "opposing_counsel"
+  | "related_party"
   | "witness"
   | "court"
+  | "court_tribunal"
+  | "lawyer"
+  | "paralegal"
+  | "authorized_non_lawyer_provider"
+  | "legal_representative"
+  | "insurer"
+  | "expert"
+  | "vendor"
+  | "referral_source"
+  | "internal_team_member"
   | "third_party"
   | "notary_client"
-  | "paralegal_client";
+  | "paralegal_client"
+  | "other";
 
 export interface Firm {
   id: string;
@@ -112,19 +175,73 @@ export interface User {
 }
 
 export interface ContactIdentifier {
-  type: "email" | "phone" | "tax_id" | "registry_id";
+  type: ContactIdentifierType;
   value: string;
+  label?: string;
+  conflictCheckIncluded?: boolean;
+  verified?: boolean;
+}
+
+export interface ContactMethodAddress {
+  line1?: string;
+  line2?: string;
+  city?: string;
+  province?: Province;
+  postalCode?: string;
+  country?: string;
+}
+
+export interface ContactMethod {
+  id: string;
+  type: ContactMethodType;
+  label: ContactMethodLabel;
+  value?: string;
+  address?: ContactMethodAddress;
+  preferred?: boolean;
+  doNotContact?: boolean;
+  verificationStatus?: ContactMethodVerificationStatus;
+  conflictCheckIncluded?: boolean;
+  notes?: string;
 }
 
 export interface Contact {
   id: string;
   firmId: string;
   kind: ContactKind;
+  status?: ContactStatus;
+  roleCategories?: ContactRoleCategory[];
+  canonicalName?: string;
   displayName: string;
+  givenName?: string;
+  middleName?: string;
+  familyName?: string;
+  title?: string;
+  pronouns?: string;
+  organizationLegalName?: string;
+  organizationOperatingName?: string;
+  organizationRegisteredName?: string;
+  organizationType?: string;
+  website?: string;
   aliases: string[];
+  formerNames?: string[];
   identifiers: ContactIdentifier[];
+  contactMethods?: ContactMethod[];
+  preferredContactMethodId?: string;
+  preferredLanguage?: string;
+  timezone?: string;
+  communicationNotes?: string;
+  accessibilityNotes?: string;
+  privateNotes?: string;
   notes?: string;
+  riskFlags?: string[];
+  conflictSensitive?: boolean;
+  adverse?: boolean;
+  confidentialityMarker?: "standard" | "confidential" | "restricted";
+  doNotContact?: boolean;
   createdByUserId?: string;
+  updatedByUserId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Matter {
@@ -148,6 +265,17 @@ export interface MatterParty {
   role: PartyRole;
   adverse: boolean;
   confidential: boolean;
+  status?: "active" | "inactive";
+  side?: "client" | "opposing" | "neutral" | "internal" | "court" | "other";
+  startedOn?: string;
+  endedOn?: string;
+  notes?: string;
+  privateNotes?: string;
+  conflictCheckIncluded?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  createdByUserId?: string;
+  updatedByUserId?: string;
 }
 
 export interface DocumentRecord {
@@ -186,9 +314,30 @@ export interface PortalGrant {
   contactId: string;
   accountUserId?: string;
   grantedByUserId: string;
+  status?: "not_invited" | "invited" | "active" | "suspended" | "revoked" | "expired";
   expiresAt?: string;
   revokedAt?: string;
-  permissions: Array<"view_documents" | "upload_documents" | "message" | "sign">;
+  suspendedAt?: string;
+  invitedAt?: string;
+  activatedAt?: string;
+  revokedByUserId?: string;
+  updatedByUserId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  permissions: Array<
+    | "view_matter_summary"
+    | "view_documents"
+    | "upload_documents"
+    | "message"
+    | "view_messages"
+    | "send_messages"
+    | "view_invoices"
+    | "view_appointments_tasks"
+    | "view_signature_requests"
+    | "complete_intake"
+    | "manage_organization_users"
+    | "sign"
+  >;
 }
 
 export interface PortalDocumentAccess {

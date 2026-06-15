@@ -4,13 +4,21 @@ import { z } from "zod";
 import type { OpenPracticeRepository } from "@open-practice/database";
 import type {
   ContactIdentifier,
+  ContactMethod,
   ContactDataQualityResolutionRecord,
   ContactDossier,
   ContactDossierQualitySignal,
+  MatterParty,
+  PortalGrant,
 } from "@open-practice/domain";
 import {
   contactDataQualityResolutionDecisions,
   contactDossierQualitySignalKinds,
+  contactRelationshipKinds,
+  contactRelationshipSources,
+  contactRelationshipStatuses,
+  contactRoleCategories,
+  contactStatuses,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
@@ -20,6 +28,136 @@ import { appendRouteAuditEvent } from "./audit-events.js";
 const contactDataQualityResolutionsQuerySchema = z.object({
   contactId: z.string().min(1).optional(),
   matterId: z.string().min(1).optional(),
+});
+
+const contactKindSchema = z.enum(["person", "organization"]);
+const contactStatusSchema = z.enum(contactStatuses);
+const contactRoleCategorySchema = z.enum(contactRoleCategories);
+const contactIdentifierTypeSchema = z.enum([
+  "email",
+  "phone",
+  "tax_id",
+  "registry_id",
+  "business_number",
+  "court_file",
+  "custom",
+]);
+const contactMethodTypeSchema = z.enum(["email", "phone", "address", "website"]);
+const contactMethodLabelSchema = z.enum([
+  "work",
+  "home",
+  "mobile",
+  "billing",
+  "service",
+  "registered_office",
+  "other",
+]);
+const portalGrantStatusSchema = z.enum([
+  "not_invited",
+  "invited",
+  "active",
+  "suspended",
+  "revoked",
+  "expired",
+]);
+const portalPermissionSchema = z.enum([
+  "view_matter_summary",
+  "view_documents",
+  "upload_documents",
+  "message",
+  "view_messages",
+  "send_messages",
+  "view_invoices",
+  "view_appointments_tasks",
+  "view_signature_requests",
+  "complete_intake",
+  "manage_organization_users",
+  "sign",
+]);
+const matterPartyRoleSchema = z.enum([
+  "client",
+  "prospective_client",
+  "former_client",
+  "opposing_party",
+  "opposing_counsel",
+  "related_party",
+  "witness",
+  "court",
+  "court_tribunal",
+  "lawyer",
+  "paralegal",
+  "authorized_non_lawyer_provider",
+  "legal_representative",
+  "insurer",
+  "expert",
+  "vendor",
+  "referral_source",
+  "internal_team_member",
+  "third_party",
+  "notary_client",
+  "paralegal_client",
+  "other",
+]);
+
+const contactIdentifierSchema = z.object({
+  type: contactIdentifierTypeSchema,
+  value: z.string().trim().min(1).max(320),
+  label: z.string().trim().min(1).max(80).optional(),
+  conflictCheckIncluded: z.boolean().optional(),
+  verified: z.boolean().optional(),
+});
+
+const contactMethodSchema = z.object({
+  id: z.string().trim().min(1).max(80).optional(),
+  type: contactMethodTypeSchema,
+  label: contactMethodLabelSchema,
+  value: z.string().trim().min(1).max(500).optional(),
+  address: z
+    .object({
+      line1: z.string().trim().max(160).optional(),
+      line2: z.string().trim().max(160).optional(),
+      city: z.string().trim().max(120).optional(),
+      province: z.enum(["BC", "ON", "CANADA", "OTHER"]).optional(),
+      postalCode: z.string().trim().max(32).optional(),
+      country: z.string().trim().max(80).optional(),
+    })
+    .optional(),
+  preferred: z.boolean().optional(),
+  doNotContact: z.boolean().optional(),
+  verificationStatus: z.enum(["unverified", "verified", "review_needed"]).optional(),
+  conflictCheckIncluded: z.boolean().optional(),
+  notes: z.string().trim().max(500).optional(),
+});
+
+const contactMethodUpdateBodySchema = contactMethodSchema.partial();
+
+const contactListQuerySchema = z.object({
+  search: z.string().trim().min(1).max(160).optional(),
+  kind: contactKindSchema.optional(),
+  status: contactStatusSchema.optional(),
+  roleCategory: contactRoleCategorySchema.optional(),
+  limit: z.coerce.number().int().positive().max(200).default(100),
+  offset: z.coerce.number().int().nonnegative().default(0),
+});
+
+const contactParamsSchema = z.object({
+  contactId: z.string().min(1),
+});
+
+const contactMethodParamsSchema = contactParamsSchema.extend({
+  methodId: z.string().min(1),
+});
+
+const relationshipParamsSchema = contactParamsSchema.extend({
+  relationshipId: z.string().min(1),
+});
+
+const matterAssociationParamsSchema = contactParamsSchema.extend({
+  associationId: z.string().min(1),
+});
+
+const portalGrantParamsSchema = contactParamsSchema.extend({
+  grantId: z.string().min(1),
 });
 
 const contactDataQualityResolutionBodySchema = z.object({
@@ -33,18 +171,103 @@ const contactDataQualityResolutionBodySchema = z.object({
 });
 
 const createContactBodySchema = z.object({
-  kind: z.enum(["person", "organization"]),
+  kind: contactKindSchema,
+  status: contactStatusSchema.default("active"),
+  roleCategories: z.array(contactRoleCategorySchema).default([]),
+  canonicalName: z.string().trim().min(1).max(160).optional(),
   displayName: z.string().trim().min(1).max(160),
+  givenName: z.string().trim().min(1).max(80).optional(),
+  middleName: z.string().trim().min(1).max(80).optional(),
+  familyName: z.string().trim().min(1).max(80).optional(),
+  title: z.string().trim().min(1).max(80).optional(),
+  pronouns: z.string().trim().min(1).max(80).optional(),
+  organizationLegalName: z.string().trim().min(1).max(160).optional(),
+  organizationOperatingName: z.string().trim().min(1).max(160).optional(),
+  organizationRegisteredName: z.string().trim().min(1).max(160).optional(),
+  organizationType: z.string().trim().min(1).max(80).optional(),
+  website: z.string().trim().url().max(2048).optional(),
   aliases: z.array(z.string().trim().min(1).max(160)).default([]),
-  identifiers: z
-    .array(
-      z.object({
-        type: z.enum(["email", "phone", "tax_id", "registry_id"]),
-        value: z.string().trim().min(1).max(320),
-      }),
-    )
-    .default([]),
+  formerNames: z.array(z.string().trim().min(1).max(160)).default([]),
+  identifiers: z.array(contactIdentifierSchema).default([]),
+  contactMethods: z.array(contactMethodSchema).default([]),
+  preferredContactMethodId: z.string().trim().min(1).max(80).optional(),
+  preferredLanguage: z.string().trim().min(1).max(80).optional(),
+  timezone: z.string().trim().min(1).max(80).optional(),
+  communicationNotes: z.string().trim().max(1000).optional(),
+  accessibilityNotes: z.string().trim().max(1000).optional(),
+  privateNotes: z.string().trim().max(2000).optional(),
+  notes: z.string().trim().max(2000).optional(),
+  riskFlags: z.array(z.string().trim().min(1).max(80)).default([]),
+  conflictSensitive: z.boolean().default(false),
+  adverse: z.boolean().default(false),
+  confidentialityMarker: z.enum(["standard", "confidential", "restricted"]).default("standard"),
+  doNotContact: z.boolean().default(false),
 });
+
+const updateContactBodySchema = createContactBodySchema.partial().extend({
+  archived: z.boolean().optional(),
+});
+
+const namesIdentifiersBodySchema = z.object({
+  aliases: z.array(z.string().trim().min(1).max(160)).optional(),
+  formerNames: z.array(z.string().trim().min(1).max(160)).optional(),
+  identifiers: z.array(contactIdentifierSchema).optional(),
+});
+
+const relationshipCreateBodySchema = z.object({
+  relatedContactId: z.string().trim().min(1),
+  relationshipKind: z.enum(contactRelationshipKinds),
+  label: z.string().trim().min(1).max(160),
+  reciprocalLabel: z.string().trim().min(1).max(160).optional(),
+  matterId: z.string().trim().min(1).optional(),
+  source: z.enum(contactRelationshipSources).default("manual"),
+  status: z.enum(contactRelationshipStatuses).default("active"),
+  effectiveOn: z.string().datetime().optional(),
+  endedOn: z.string().datetime().optional(),
+  notes: z.string().trim().max(1000).optional(),
+  privateNotes: z.string().trim().max(1000).optional(),
+  includeInConflictCheck: z.boolean().default(true),
+});
+
+const relationshipUpdateBodySchema = relationshipCreateBodySchema
+  .omit({ relatedContactId: true })
+  .partial();
+
+const matterAssociationCreateBodySchema = z.object({
+  matterId: z.string().trim().min(1),
+  role: matterPartyRoleSchema,
+  adverse: z.boolean().default(false),
+  confidential: z.boolean().default(false),
+  status: z.enum(["active", "inactive"]).default("active"),
+  side: z.enum(["client", "opposing", "neutral", "internal", "court", "other"]).optional(),
+  startedOn: z.string().datetime().optional(),
+  endedOn: z.string().datetime().optional(),
+  notes: z.string().trim().max(1000).optional(),
+  privateNotes: z.string().trim().max(1000).optional(),
+  conflictCheckIncluded: z.boolean().default(true),
+});
+
+const matterAssociationUpdateBodySchema = matterAssociationCreateBodySchema
+  .omit({ matterId: true })
+  .partial();
+
+const portalGrantCreateBodySchema = z.object({
+  matterId: z.string().trim().min(1),
+  accountUserId: z.string().trim().min(1).optional(),
+  status: portalGrantStatusSchema.default("invited"),
+  permissions: z.array(portalPermissionSchema).default(["view_matter_summary", "view_documents"]),
+  expiresAt: z.string().datetime().optional(),
+});
+
+const portalGrantUpdateBodySchema = portalGrantCreateBodySchema
+  .omit({ matterId: true })
+  .partial()
+  .extend({
+    revokedAt: z.string().datetime().optional(),
+    suspendedAt: z.string().datetime().optional(),
+    invitedAt: z.string().datetime().optional(),
+    activatedAt: z.string().datetime().optional(),
+  });
 
 const contactDataQualityResolutionDecisionsByKind: Record<
   ContactDossierQualitySignal["kind"],
@@ -95,6 +318,75 @@ function serializeContactReviewQueueItem(dossier: ContactDossier) {
   };
 }
 
+function serializeContactSummary(contact: ContactDossier["contact"]) {
+  return {
+    id: contact.id,
+    firmId: contact.firmId,
+    kind: contact.kind,
+    status: contact.status ?? "active",
+    roleCategories: contact.roleCategories ?? [],
+    canonicalName: contact.canonicalName,
+    displayName: contact.displayName,
+    givenName: contact.givenName,
+    middleName: contact.middleName,
+    familyName: contact.familyName,
+    title: contact.title,
+    pronouns: contact.pronouns,
+    organizationLegalName: contact.organizationLegalName,
+    organizationOperatingName: contact.organizationOperatingName,
+    organizationRegisteredName: contact.organizationRegisteredName,
+    organizationType: contact.organizationType,
+    website: contact.website,
+    aliases: contact.aliases,
+    formerNames: contact.formerNames ?? [],
+    identifiers: contact.identifiers,
+    contactMethods: contact.contactMethods ?? [],
+    preferredContactMethodId: contact.preferredContactMethodId,
+    preferredLanguage: contact.preferredLanguage,
+    timezone: contact.timezone,
+    communicationNotes: contact.communicationNotes,
+    accessibilityNotes: contact.accessibilityNotes,
+    riskFlags: contact.riskFlags ?? [],
+    conflictSensitive: contact.conflictSensitive ?? false,
+    adverse: contact.adverse ?? false,
+    confidentialityMarker: contact.confidentialityMarker ?? "standard",
+    doNotContact: contact.doNotContact ?? false,
+    createdAt: contact.createdAt,
+    updatedAt: contact.updatedAt,
+  };
+}
+
+function serializeContactDetail(dossier: ContactDossier, portalGrants: PortalGrant[] = []) {
+  return {
+    contact: serializeContactSummary(dossier.contact),
+    matters: dossier.matters,
+    relationships: dossier.relationships,
+    portal: {
+      ...dossier.portal,
+      grants: portalGrants.map((grant) => ({
+        id: grant.id,
+        matterId: grant.matterId,
+        contactId: grant.contactId,
+        accountUserId: grant.accountUserId,
+        grantedByUserId: grant.grantedByUserId,
+        status: grant.status ?? "active",
+        permissions: grant.permissions,
+        expiresAt: grant.expiresAt,
+        revokedAt: grant.revokedAt,
+        suspendedAt: grant.suspendedAt,
+        invitedAt: grant.invitedAt,
+        activatedAt: grant.activatedAt,
+        createdAt: grant.createdAt,
+        updatedAt: grant.updatedAt,
+      })),
+    },
+    crmTaxonomy: dossier.crmTaxonomy,
+    conflictCues: dossier.conflictCues,
+    qualityReview: dossier.qualityReview,
+    conflictHistory: dossier.conflictHistory,
+  };
+}
+
 function visibleMatterIds(dossiers: ContactDossier[]): Set<string> {
   return new Set(dossiers.flatMap((dossier) => dossier.matters.map((matter) => matter.matterId)));
 }
@@ -113,6 +405,31 @@ function findVisibleDossier(dossiers: ContactDossier[], contactId: string): Cont
     );
   }
   return dossier;
+}
+
+function assertVisibleMatter(dossiers: ContactDossier[], matterId: string): void {
+  if (!visibleMatterIds(dossiers).has(matterId)) {
+    throw new ApiHttpError(403, "CONTACT_MATTER_NOT_VISIBLE", "Matter is not visible");
+  }
+}
+
+function assertVisibleRelatedContact(dossiers: ContactDossier[], contactId: string): void {
+  if (!visibleContactIds(dossiers).has(contactId)) {
+    throw new ApiHttpError(403, "RELATED_CONTACT_NOT_VISIBLE", "Related contact is not visible");
+  }
+}
+
+function dedupeStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function normalizedContactMethod(method: z.infer<typeof contactMethodSchema>): ContactMethod {
+  return {
+    ...method,
+    id: method.id ?? `contact-method-${randomUUID()}`,
+    verificationStatus: method.verificationStatus ?? "unverified",
+    conflictCheckIncluded: method.conflictCheckIncluded ?? true,
+  };
 }
 
 function assertResolutionScopeVisible(
@@ -212,6 +529,21 @@ export function registerContactRoutes(
     return dossiers.map(serializeContactDossier);
   });
 
+  server.get("/api/contacts", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "read" });
+    if (!access.ok) throw access.error;
+    const query = parseRequestPart(contactListQuerySchema, request.query, "query");
+    const contacts = await options.repository.listContactsForUser(request.auth.user, query);
+    return {
+      contacts: contacts.map(serializeContactSummary),
+      pagination: {
+        limit: query.limit,
+        offset: query.offset,
+        returned: contacts.length,
+      },
+    };
+  });
+
   server.post("/api/contacts", async (request, reply) => {
     const access = requireAccess(request.auth, { resource: "contact", action: "create" });
     if (!access.ok) throw access.error;
@@ -220,10 +552,40 @@ export function registerContactRoutes(
       id: `contact-${randomUUID()}`,
       firmId: request.auth.firmId,
       kind: body.kind,
+      status: body.status,
+      roleCategories: Array.from(new Set(body.roleCategories)),
+      canonicalName: body.canonicalName,
       displayName: body.displayName,
-      aliases: Array.from(new Set(body.aliases)),
+      givenName: body.givenName,
+      middleName: body.middleName,
+      familyName: body.familyName,
+      title: body.title,
+      pronouns: body.pronouns,
+      organizationLegalName: body.organizationLegalName,
+      organizationOperatingName: body.organizationOperatingName,
+      organizationRegisteredName: body.organizationRegisteredName,
+      organizationType: body.organizationType,
+      website: body.website,
+      aliases: dedupeStrings(body.aliases),
+      formerNames: dedupeStrings(body.formerNames),
       identifiers: body.identifiers as ContactIdentifier[],
+      contactMethods: body.contactMethods.map(normalizedContactMethod),
+      preferredContactMethodId: body.preferredContactMethodId,
+      preferredLanguage: body.preferredLanguage,
+      timezone: body.timezone,
+      communicationNotes: body.communicationNotes,
+      accessibilityNotes: body.accessibilityNotes,
+      privateNotes: body.privateNotes,
+      notes: body.notes,
+      riskFlags: dedupeStrings(body.riskFlags),
+      conflictSensitive: body.conflictSensitive,
+      adverse: body.adverse,
+      confidentialityMarker: body.confidentialityMarker,
+      doNotContact: body.doNotContact,
       createdByUserId: request.auth.user.id,
+      updatedByUserId: request.auth.user.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
     await appendRouteAuditEvent(options.repository, request.auth, {
       action: "contact.created",
@@ -236,17 +598,13 @@ export function registerContactRoutes(
         identifierTypes: Array.from(
           new Set(contact.identifiers.map((identifier) => identifier.type)),
         ),
+        status: contact.status ?? "active",
+        roleCategories: contact.roleCategories ?? [],
+        contactMethodCount: contact.contactMethods?.length ?? 0,
       },
     });
     return reply.code(201).send({
-      contact: {
-        id: contact.id,
-        firmId: contact.firmId,
-        kind: contact.kind,
-        displayName: contact.displayName,
-        aliases: contact.aliases,
-        identifiers: contact.identifiers,
-      },
+      contact: serializeContactSummary(contact),
     });
   });
 
@@ -357,5 +715,449 @@ export function registerContactRoutes(
       },
     });
     return created;
+  });
+
+  server.get("/api/contacts/:contactId", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "read" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    const dossier = findVisibleDossier(dossiers, params.contactId);
+    const portalGrants = await options.repository.listContactPortalGrantsForUser(
+      request.auth.user,
+      params.contactId,
+    );
+    return serializeContactDetail(dossier, portalGrants);
+  });
+
+  server.patch("/api/contacts/:contactId", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "update" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const body = parseRequestPart(updateContactBodySchema, request.body, "body");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    findVisibleDossier(dossiers, params.contactId);
+    const { archived, aliases, formerNames, riskFlags, contactMethods, ...contactUpdates } = body;
+    const updated = await options.repository.updateContact({
+      firmId: request.auth.firmId,
+      contactId: params.contactId,
+      updates: {
+        ...contactUpdates,
+        ...(aliases ? { aliases: dedupeStrings(aliases) } : {}),
+        ...(formerNames ? { formerNames: dedupeStrings(formerNames) } : {}),
+        ...(riskFlags ? { riskFlags: dedupeStrings(riskFlags) } : {}),
+        ...(contactMethods ? { contactMethods: contactMethods.map(normalizedContactMethod) } : {}),
+        ...(archived ? { status: "archived" as const } : {}),
+        updatedByUserId: request.auth.user.id,
+      },
+    });
+    if (!updated) {
+      throw new ApiHttpError(404, "CONTACT_NOT_FOUND", "Contact was not found");
+    }
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: archived ? "contact.archived" : "contact.updated",
+      resourceType: "contact",
+      resourceId: updated.id,
+      metadata: {
+        contactId: updated.id,
+        status: updated.status ?? "active",
+        changedFields: Object.keys(body).sort(),
+      },
+    });
+    return { contact: serializeContactSummary(updated) };
+  });
+
+  server.patch("/api/contacts/:contactId/names-identifiers", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "update" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const body = parseRequestPart(namesIdentifiersBodySchema, request.body, "body");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    findVisibleDossier(dossiers, params.contactId);
+    const updated = await options.repository.updateContact({
+      firmId: request.auth.firmId,
+      contactId: params.contactId,
+      updates: {
+        ...(body.aliases ? { aliases: dedupeStrings(body.aliases) } : {}),
+        ...(body.formerNames ? { formerNames: dedupeStrings(body.formerNames) } : {}),
+        ...(body.identifiers ? { identifiers: body.identifiers as ContactIdentifier[] } : {}),
+        updatedByUserId: request.auth.user.id,
+      },
+    });
+    if (!updated) throw new ApiHttpError(404, "CONTACT_NOT_FOUND", "Contact was not found");
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: "contact.updated",
+      resourceType: "contact",
+      resourceId: updated.id,
+      metadata: {
+        contactId: updated.id,
+        aliasCount: updated.aliases.length,
+        formerNameCount: updated.formerNames?.length ?? 0,
+        identifierTypes: Array.from(
+          new Set(updated.identifiers.map((identifier) => identifier.type)),
+        ),
+      },
+    });
+    return { contact: serializeContactSummary(updated) };
+  });
+
+  server.post("/api/contacts/:contactId/contact-methods", async (request, reply) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "update" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const body = parseRequestPart(contactMethodSchema, request.body, "body");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    const dossier = findVisibleDossier(dossiers, params.contactId);
+    const method = normalizedContactMethod(body);
+    const contactMethods = [...(dossier.contact.contactMethods ?? []), method];
+    const updated = await options.repository.updateContact({
+      firmId: request.auth.firmId,
+      contactId: params.contactId,
+      updates: { contactMethods, updatedByUserId: request.auth.user.id },
+    });
+    if (!updated) throw new ApiHttpError(404, "CONTACT_NOT_FOUND", "Contact was not found");
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: "contact.updated",
+      resourceType: "contact",
+      resourceId: updated.id,
+      metadata: { contactId: updated.id, contactMethodAdded: method.type },
+    });
+    return reply
+      .code(201)
+      .send({ contactMethod: method, contact: serializeContactSummary(updated) });
+  });
+
+  server.patch("/api/contacts/:contactId/contact-methods/:methodId", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "update" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactMethodParamsSchema, request.params, "params");
+    const body = parseRequestPart(contactMethodUpdateBodySchema, request.body, "body");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    const dossier = findVisibleDossier(dossiers, params.contactId);
+    const existing = dossier.contact.contactMethods ?? [];
+    if (!existing.some((method) => method.id === params.methodId)) {
+      throw new ApiHttpError(404, "CONTACT_METHOD_NOT_FOUND", "Contact method was not found");
+    }
+    const contactMethods = existing.map((method) =>
+      method.id === params.methodId
+        ? normalizedContactMethod({ ...method, ...body, id: params.methodId })
+        : method,
+    );
+    const updated = await options.repository.updateContact({
+      firmId: request.auth.firmId,
+      contactId: params.contactId,
+      updates: { contactMethods, updatedByUserId: request.auth.user.id },
+    });
+    if (!updated) throw new ApiHttpError(404, "CONTACT_NOT_FOUND", "Contact was not found");
+    return { contact: serializeContactSummary(updated) };
+  });
+
+  server.delete("/api/contacts/:contactId/contact-methods/:methodId", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "update" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactMethodParamsSchema, request.params, "params");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    const dossier = findVisibleDossier(dossiers, params.contactId);
+    const existing = dossier.contact.contactMethods ?? [];
+    const contactMethods = existing.filter((method) => method.id !== params.methodId);
+    if (contactMethods.length === existing.length) {
+      throw new ApiHttpError(404, "CONTACT_METHOD_NOT_FOUND", "Contact method was not found");
+    }
+    const updated = await options.repository.updateContact({
+      firmId: request.auth.firmId,
+      contactId: params.contactId,
+      updates: { contactMethods, updatedByUserId: request.auth.user.id },
+    });
+    if (!updated) throw new ApiHttpError(404, "CONTACT_NOT_FOUND", "Contact was not found");
+    return { contact: serializeContactSummary(updated) };
+  });
+
+  server.post("/api/contacts/:contactId/relationships", async (request, reply) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "update" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const body = parseRequestPart(relationshipCreateBodySchema, request.body, "body");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    findVisibleDossier(dossiers, params.contactId);
+    assertVisibleRelatedContact(dossiers, body.relatedContactId);
+    if (body.matterId) assertVisibleMatter(dossiers, body.matterId);
+    const now = new Date().toISOString();
+    const relationship = await options.repository.createContactRelationship({
+      id: `contact-relationship-${randomUUID()}`,
+      firmId: request.auth.firmId,
+      contactId: params.contactId,
+      relatedContactId: body.relatedContactId,
+      relationshipKind: body.relationshipKind,
+      label: body.label,
+      reciprocalLabel: body.reciprocalLabel,
+      matterId: body.matterId,
+      source: body.source,
+      status: body.status,
+      effectiveOn: body.effectiveOn,
+      endedOn: body.endedOn,
+      notes: body.notes,
+      privateNotes: body.privateNotes,
+      includeInConflictCheck: body.includeInConflictCheck,
+      createdByUserId: request.auth.user.id,
+      updatedByUserId: request.auth.user.id,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: "contact.relationship.created",
+      resourceType: "contact_relationship",
+      resourceId: relationship.id,
+      metadata: {
+        contactId: relationship.contactId,
+        relatedContactId: relationship.relatedContactId,
+        matterId: relationship.matterId,
+        relationshipKind: relationship.relationshipKind,
+      },
+    });
+    return reply.code(201).send({ relationship });
+  });
+
+  server.patch("/api/contacts/:contactId/relationships/:relationshipId", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "update" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(relationshipParamsSchema, request.params, "params");
+    const body = parseRequestPart(relationshipUpdateBodySchema, request.body, "body");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    findVisibleDossier(dossiers, params.contactId);
+    if (body.matterId) assertVisibleMatter(dossiers, body.matterId);
+    const relationship = await options.repository.updateContactRelationship({
+      firmId: request.auth.firmId,
+      relationshipId: params.relationshipId,
+      updates: { ...body, updatedByUserId: request.auth.user.id },
+    });
+    if (!relationship || relationship.contactId !== params.contactId) {
+      throw new ApiHttpError(404, "CONTACT_RELATIONSHIP_NOT_FOUND", "Relationship was not found");
+    }
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: "contact.relationship.updated",
+      resourceType: "contact_relationship",
+      resourceId: relationship.id,
+      metadata: {
+        contactId: relationship.contactId,
+        relatedContactId: relationship.relatedContactId,
+        matterId: relationship.matterId,
+        status: relationship.status,
+      },
+    });
+    return { relationship };
+  });
+
+  server.post("/api/contacts/:contactId/matter-associations", async (request, reply) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "update" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const body = parseRequestPart(matterAssociationCreateBodySchema, request.body, "body");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    findVisibleDossier(dossiers, params.contactId);
+    assertVisibleMatter(dossiers, body.matterId);
+    const now = new Date().toISOString();
+    const association: MatterParty = await options.repository.createMatterContactAssociation({
+      id: `matter-party-${randomUUID()}`,
+      firmId: request.auth.firmId,
+      matterId: body.matterId,
+      contactId: params.contactId,
+      role: body.role,
+      adverse: body.adverse,
+      confidential: body.confidential,
+      status: body.status,
+      side: body.side,
+      startedOn: body.startedOn,
+      endedOn: body.endedOn,
+      notes: body.notes,
+      privateNotes: body.privateNotes,
+      conflictCheckIncluded: body.conflictCheckIncluded,
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: request.auth.user.id,
+      updatedByUserId: request.auth.user.id,
+    });
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: "contact.matter_association.created",
+      resourceType: "matter_party",
+      resourceId: association.id,
+      metadata: {
+        contactId: association.contactId,
+        matterId: association.matterId,
+        role: association.role,
+        adverse: association.adverse,
+        confidential: association.confidential,
+      },
+    });
+    return reply.code(201).send({ association });
+  });
+
+  server.patch("/api/contacts/:contactId/matter-associations/:associationId", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "update" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(matterAssociationParamsSchema, request.params, "params");
+    const body = parseRequestPart(matterAssociationUpdateBodySchema, request.body, "body");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    const dossier = findVisibleDossier(dossiers, params.contactId);
+    const visibleAssociation = dossier.matters.find(
+      (matter) => matter.associationId === params.associationId,
+    );
+    if (!visibleAssociation) {
+      throw new ApiHttpError(
+        403,
+        "CONTACT_MATTER_NOT_VISIBLE",
+        "Matter association is not visible",
+      );
+    }
+    const association = await options.repository.updateMatterContactAssociation({
+      firmId: request.auth.firmId,
+      associationId: params.associationId,
+      updates: { ...body, updatedByUserId: request.auth.user.id },
+    });
+    if (!association || association.contactId !== params.contactId) {
+      throw new ApiHttpError(
+        404,
+        "MATTER_CONTACT_ASSOCIATION_NOT_FOUND",
+        "Association was not found",
+      );
+    }
+    assertVisibleMatter(dossiers, association.matterId);
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: "contact.matter_association.updated",
+      resourceType: "matter_party",
+      resourceId: association.id,
+      metadata: {
+        contactId: association.contactId,
+        matterId: association.matterId,
+        role: association.role,
+        status: association.status ?? "active",
+      },
+    });
+    return { association };
+  });
+
+  server.get("/api/contacts/:contactId/portal-access", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "read" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    findVisibleDossier(dossiers, params.contactId);
+    const grants = await options.repository.listContactPortalGrantsForUser(
+      request.auth.user,
+      params.contactId,
+    );
+    return { grants };
+  });
+
+  server.post("/api/contacts/:contactId/portal-access", async (request, reply) => {
+    const access = requireAccess(request.auth, { resource: "client_portal", action: "create" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const body = parseRequestPart(portalGrantCreateBodySchema, request.body, "body");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    findVisibleDossier(dossiers, params.contactId);
+    assertVisibleMatter(dossiers, body.matterId);
+    const now = new Date().toISOString();
+    const grant = await options.repository.createPortalGrant({
+      id: `portal-grant-${randomUUID()}`,
+      firmId: request.auth.firmId,
+      matterId: body.matterId,
+      contactId: params.contactId,
+      accountUserId: body.accountUserId,
+      grantedByUserId: request.auth.user.id,
+      status: body.status,
+      permissions: Array.from(new Set(body.permissions)) as PortalGrant["permissions"],
+      expiresAt: body.expiresAt,
+      invitedAt: body.status === "invited" ? now : undefined,
+      activatedAt: body.status === "active" ? now : undefined,
+      createdAt: now,
+      updatedAt: now,
+      updatedByUserId: request.auth.user.id,
+    });
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: "portal.grant.invited",
+      resourceType: "portal_grant",
+      resourceId: grant.id,
+      metadata: {
+        contactId: grant.contactId,
+        matterId: grant.matterId,
+        status: grant.status ?? "active",
+        permissions: grant.permissions,
+        invitationLinkAvailable: true,
+        outboundEmailSent: false,
+      },
+    });
+    return reply.code(201).send({ grant, invitationLink: `/portal/invitations/${grant.id}` });
+  });
+
+  server.patch("/api/contacts/:contactId/portal-access/:grantId", async (request) => {
+    const access = requireAccess(request.auth, { resource: "client_portal", action: "update" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(portalGrantParamsSchema, request.params, "params");
+    const body = parseRequestPart(portalGrantUpdateBodySchema, request.body, "body");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    findVisibleDossier(dossiers, params.contactId);
+    const currentGrants = await options.repository.listContactPortalGrantsForUser(
+      request.auth.user,
+      params.contactId,
+    );
+    const currentGrant = currentGrants.find((grant) => grant.id === params.grantId);
+    if (!currentGrant) {
+      throw new ApiHttpError(404, "PORTAL_GRANT_NOT_FOUND", "Portal grant was not found");
+    }
+    const now = new Date().toISOString();
+    const grant = await options.repository.updatePortalGrant({
+      firmId: request.auth.firmId,
+      id: params.grantId,
+      updates: {
+        ...body,
+        ...(body.permissions
+          ? { permissions: Array.from(new Set(body.permissions)) as PortalGrant["permissions"] }
+          : {}),
+        ...(body.status === "active" && !body.activatedAt ? { activatedAt: now } : {}),
+        ...(body.status === "invited" && !body.invitedAt ? { invitedAt: now } : {}),
+        ...(body.status === "suspended" && !body.suspendedAt ? { suspendedAt: now } : {}),
+        ...(body.status === "revoked" && !body.revokedAt ? { revokedAt: now } : {}),
+        revokedByUserId:
+          body.status === "revoked"
+            ? request.auth.user.id
+            : body.revokedAt
+              ? request.auth.user.id
+              : undefined,
+        updatedByUserId: request.auth.user.id,
+      },
+    });
+    if (!grant || grant.contactId !== params.contactId) {
+      throw new ApiHttpError(404, "PORTAL_GRANT_NOT_FOUND", "Portal grant was not found");
+    }
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action:
+        grant.status === "suspended"
+          ? "portal.grant.suspended"
+          : grant.status === "revoked"
+            ? "portal.grant.revoked"
+            : "portal.grant.updated",
+      resourceType: "portal_grant",
+      resourceId: grant.id,
+      metadata: {
+        contactId: grant.contactId,
+        matterId: grant.matterId,
+        status: grant.status ?? "active",
+        permissions: grant.permissions,
+      },
+    });
+    return { grant };
+  });
+
+  server.get("/api/contacts/:contactId/timeline", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "read" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    findVisibleDossier(dossiers, params.contactId);
+    const timeline = await options.repository.listContactTimelineForUser(
+      request.auth.user,
+      params.contactId,
+    );
+    return { timeline };
   });
 }

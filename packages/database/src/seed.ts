@@ -44,6 +44,12 @@ import {
 import { eq } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "./runtime.js";
 import * as schema from "./schema.js";
+import {
+  contactInsert,
+  contactRelationshipInsert,
+  matterPartyInsert,
+  portalGrantInsert,
+} from "./repository/drizzle-mappers.js";
 
 function userRow(user: (typeof sampleUsers)[number]): typeof schema.users.$inferInsert {
   return {
@@ -59,7 +65,7 @@ function userRow(user: (typeof sampleUsers)[number]): typeof schema.users.$infer
 export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
   await db.insert(schema.firms).values([sampleFirm, sampleMatterlessFirm]).onConflictDoNothing();
   await db.insert(schema.users).values(sampleUsers.map(userRow)).onConflictDoNothing();
-  await db.insert(schema.contacts).values(sampleContacts).onConflictDoNothing();
+  await db.insert(schema.contacts).values(sampleContacts.map(contactInsert)).onConflictDoNothing();
   await db
     .insert(schema.matters)
     .values(
@@ -78,17 +84,13 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
       ),
     )
     .onConflictDoNothing();
-  await db.insert(schema.matterParties).values(sampleMatterParties).onConflictDoNothing();
+  await db
+    .insert(schema.matterParties)
+    .values(sampleMatterParties.map(matterPartyInsert))
+    .onConflictDoNothing();
   await db
     .insert(schema.contactRelationships)
-    .values(
-      sampleContactRelationships.map((relationship) => ({
-        ...relationship,
-        matterId: relationship.matterId ?? null,
-        createdAt: new Date(relationship.createdAt),
-        updatedAt: new Date(relationship.updatedAt),
-      })),
-    )
+    .values(sampleContactRelationships.map(contactRelationshipInsert))
     .onConflictDoNothing();
   await db
     .insert(schema.legalClinicPrograms)
@@ -206,13 +208,7 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
     .onConflictDoNothing();
   await db
     .insert(schema.portalGrants)
-    .values(
-      samplePortalGrants.map((grant) => ({
-        ...grant,
-        expiresAt: grant.expiresAt ? new Date(grant.expiresAt) : null,
-        revokedAt: grant.revokedAt ? new Date(grant.revokedAt) : null,
-      })),
-    )
+    .values(samplePortalGrants.map(portalGrantInsert))
     .onConflictDoNothing();
   await db.insert(schema.ledgerAccounts).values(sampleLedgerAccounts).onConflictDoNothing();
   await db

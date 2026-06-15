@@ -8,7 +8,6 @@ export type AuditEventCategory =
   | "communications"
   | "contacts"
   | "conflicts"
-  | "contacts"
   | "documents"
   | "drafting"
   | "intake"
@@ -102,6 +101,10 @@ const RESOURCE_ID_KEYS = [
   "billingPeriodLockId",
   "transactionId",
   "uploadId",
+  "contactId",
+  "relationshipId",
+  "matterAssociationId",
+  "portalGrantId",
 ] as const;
 
 const MATTER_KEYS = ["matterId"] as const;
@@ -176,6 +179,62 @@ export const auditEventTaxonomyDefinitions = [
     resourceMetadataKeys: ["resultCount", "includeClosedMatters", "partyRole"],
   }),
   define({
+    action: "contact.created",
+    category: "contacts",
+    resourceType: "contact",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "kind", "status", "aliasCount", "identifierTypes"],
+  }),
+  define({
+    action: "contact.updated",
+    category: "contacts",
+    resourceType: "contact",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "changedFields", "status"],
+  }),
+  define({
+    action: "contact.archived",
+    category: "contacts",
+    resourceType: "contact",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "changedFields", "status"],
+  }),
+  define({
+    action: "contact.relationship.created",
+    category: "contacts",
+    resourceType: "contact_relationship",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "relatedContactId", "relationshipKind", "status"],
+  }),
+  define({
+    action: "contact.relationship.updated",
+    category: "contacts",
+    resourceType: "contact_relationship",
+    matterScope: "optional_matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "relatedContactId", "relationshipKind", "status"],
+  }),
+  define({
+    action: "contact.matter_association.created",
+    category: "contacts",
+    resourceType: "matter_party",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "matterAssociationId", "partyRole", "status"],
+  }),
+  define({
+    action: "contact.matter_association.updated",
+    category: "contacts",
+    resourceType: "matter_party",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "matterAssociationId", "partyRole", "status"],
+  }),
+  define({
     action: "contact_quality_decision.recorded",
     category: "contacts",
     resourceType: "contact_quality_review_decision",
@@ -214,6 +273,54 @@ export const auditEventTaxonomyDefinitions = [
       "permissions",
       "expiresAt",
     ],
+  }),
+  define({
+    action: "portal.grant.updated",
+    category: "portal",
+    resourceType: "portal_grant",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "portalGrantId", "grantStatus", "permissions"],
+  }),
+  define({
+    action: "portal.grant.invited",
+    category: "portal",
+    resourceType: "portal_grant",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "portalGrantId", "grantStatus", "permissions", "expiresAt"],
+  }),
+  define({
+    action: "portal.grant.activated",
+    category: "portal",
+    resourceType: "portal_grant",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "portalGrantId", "grantStatus"],
+  }),
+  define({
+    action: "portal.grant.suspended",
+    category: "portal",
+    resourceType: "portal_grant",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "portalGrantId", "grantStatus"],
+  }),
+  define({
+    action: "portal.grant.expired",
+    category: "portal",
+    resourceType: "portal_grant",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "portalGrantId", "grantStatus"],
+  }),
+  define({
+    action: "portal.grant.revoked",
+    category: "portal",
+    resourceType: "portal_grant",
+    matterScope: "matter",
+    actorHint: "authenticated_user",
+    resourceMetadataKeys: ["contactId", "portalGrantId", "grantStatus"],
   }),
   define({
     action: "share_link.created",

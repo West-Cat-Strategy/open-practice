@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-14
+**Last Updated:** 2026-06-15
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Six 2026-06-13 lanes are validated for mainline merge/push/prune.    |
-| Next recommended pick | Refresh the live backlog after the merge/push/prune proof closes.    |
+| Current focus         | Full CRM Contacts is implemented and validated in branch.            |
+| Next recommended pick | Merge handoff for `feature/full-crm-contacts`.                       |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,14 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-15 Full CRM Contacts branch expands Contacts into a legal-practice CRM while preserving
+the existing dossier, review queue, data-quality, conflict-check, matter-party, and client-portal
+grant foundations. It keeps organizations as `Contact.kind = "organization"`, uses
+`matter_parties` as the matter-contact association surface, adds reviewable contact methods,
+relationships, portal-access state, and timeline APIs, and documents clean-room reference use in
+[Full CRM contacts proof](validation/OP_FULL_CRM_CONTACTS_PROOF_2026-06-15.md). Broad validation is
+recorded in the proof for `feature/full-crm-contacts`.
 
 The 2026-06-14 mainline merge proof for the six 2026-06-13 lanes is recorded in
 [OP mainline merge push prune proof](validation/OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-14.md).

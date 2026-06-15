@@ -203,9 +203,16 @@ import {
   createMemoryContact,
   createMemoryContactDataQualityResolution,
   createMemoryContactRelationship,
+  createMemoryMatterContactAssociation,
   getMemoryContact,
   listMemoryContactDataQualityResolutions,
   listMemoryContactDossiersForUser,
+  listMemoryContactPortalGrantsForUser,
+  listMemoryContactsForUser,
+  listMemoryContactTimelineForUser,
+  updateMemoryContact,
+  updateMemoryContactRelationship,
+  updateMemoryMatterContactAssociation,
   type MemoryContactStore,
 } from "./contacts/memory.js";
 import {
@@ -444,6 +451,7 @@ import {
   revokeMemoryPortalDocumentAccess,
   revokeMemoryExternalUploadLink,
   revokeMemoryShareLink,
+  updateMemoryPortalGrant,
   type MemoryPortalAccessStore,
 } from "./portal-access/memory.js";
 
@@ -988,6 +996,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       contacts: this.contacts,
       matters: this.matters,
       matterParties: this.matterParties,
+      contactRelationships: this.contactRelationships,
       get conflictChecks() {
         return repository.conflictChecks;
       },
@@ -1478,10 +1487,30 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     });
   }
 
+  async listContactsForUser(
+    user: User,
+    options: Parameters<OpenPracticeRepository["listContactsForUser"]>[1] = {},
+  ): ReturnType<OpenPracticeRepository["listContactsForUser"]> {
+    return listMemoryContactsForUser(
+      this.contactStore,
+      user,
+      {
+        listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+      },
+      options,
+    );
+  }
+
   async createContact(
     contact: Parameters<OpenPracticeRepository["createContact"]>[0],
   ): ReturnType<OpenPracticeRepository["createContact"]> {
     return Promise.resolve(createMemoryContact(this.contactStore, contact));
+  }
+
+  async updateContact(
+    input: Parameters<OpenPracticeRepository["updateContact"]>[0],
+  ): ReturnType<OpenPracticeRepository["updateContact"]> {
+    return Promise.resolve(updateMemoryContact(this.contactStore, input));
   }
 
   async createContactRelationship(
@@ -1490,11 +1519,47 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     return createMemoryContactRelationship(this.contactStore, relationship);
   }
 
+  async updateContactRelationship(
+    input: Parameters<OpenPracticeRepository["updateContactRelationship"]>[0],
+  ): ReturnType<OpenPracticeRepository["updateContactRelationship"]> {
+    return updateMemoryContactRelationship(this.contactStore, input);
+  }
+
+  async createMatterContactAssociation(
+    party: Parameters<OpenPracticeRepository["createMatterContactAssociation"]>[0],
+  ): ReturnType<OpenPracticeRepository["createMatterContactAssociation"]> {
+    return createMemoryMatterContactAssociation(this.contactStore, party);
+  }
+
+  async updateMatterContactAssociation(
+    input: Parameters<OpenPracticeRepository["updateMatterContactAssociation"]>[0],
+  ): ReturnType<OpenPracticeRepository["updateMatterContactAssociation"]> {
+    return updateMemoryMatterContactAssociation(this.contactStore, input);
+  }
+
   async getContact(
     firmId: string,
     contactId: string,
   ): ReturnType<OpenPracticeRepository["getContact"]> {
     return getMemoryContact(this.contactStore, firmId, contactId);
+  }
+
+  async listContactPortalGrantsForUser(
+    user: User,
+    contactId: string,
+  ): ReturnType<OpenPracticeRepository["listContactPortalGrantsForUser"]> {
+    return listMemoryContactPortalGrantsForUser(this.contactStore, user, contactId, {
+      listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+    });
+  }
+
+  async listContactTimelineForUser(
+    user: User,
+    contactId: string,
+  ): ReturnType<OpenPracticeRepository["listContactTimelineForUser"]> {
+    return listMemoryContactTimelineForUser(this.contactStore, user, contactId, {
+      listMattersForUser: (candidate) => this.listMattersForUser(candidate),
+    });
   }
 
   async createContactDataQualityResolution(
@@ -1941,6 +2006,10 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
 
   async createPortalGrant(grant: Parameters<OpenPracticeRepository["createPortalGrant"]>[0]) {
     return createMemoryPortalGrant(this.portalAccessStore, grant);
+  }
+
+  async updatePortalGrant(input: Parameters<OpenPracticeRepository["updatePortalGrant"]>[0]) {
+    return updateMemoryPortalGrant(this.portalAccessStore, input);
   }
 
   async listPortalDocumentAccess(

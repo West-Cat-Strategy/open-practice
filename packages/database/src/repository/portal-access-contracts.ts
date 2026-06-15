@@ -31,6 +31,25 @@ export interface PortalDocumentAccessListOptions {
 export interface PortalAccessRepository {
   listPortalGrants(firmId: string): Promise<PortalGrant[]>;
   createPortalGrant(grant: PortalGrant): Promise<PortalGrant>;
+  updatePortalGrant(input: {
+    firmId: string;
+    id: string;
+    updates: Partial<
+      Pick<
+        PortalGrant,
+        | "accountUserId"
+        | "permissions"
+        | "status"
+        | "expiresAt"
+        | "revokedAt"
+        | "suspendedAt"
+        | "invitedAt"
+        | "activatedAt"
+        | "revokedByUserId"
+        | "updatedByUserId"
+      >
+    >;
+  }): Promise<PortalGrant | undefined>;
   listPortalDocumentAccess(
     firmId: string,
     options?: PortalDocumentAccessListOptions,

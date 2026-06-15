@@ -27,7 +27,9 @@ export function ContactsSection({
   contactCreateDisplayName,
   contactCreateEmail,
   contactCreateKind,
+  contactCreateLifecycleStatus = "prospective",
   contactCreatePhone,
+  contactCreateRoleCategory = "prospective_client",
   contactCreateStatus,
   contactDataQualityResolutions,
   contactDataQualityStatus,
@@ -40,7 +42,9 @@ export function ContactsSection({
   onContactCreateDisplayNameChange,
   onContactCreateEmailChange,
   onContactCreateKindChange,
+  onContactCreateLifecycleStatusChange = () => undefined,
   onContactCreatePhoneChange,
+  onContactCreateRoleCategoryChange = () => undefined,
   onCreateContact,
   onCreateMatterFromContact,
   onNewAppointmentForContact,
@@ -59,7 +63,9 @@ export function ContactsSection({
   contactCreateDisplayName: string;
   contactCreateEmail: string;
   contactCreateKind: "person" | "organization";
+  contactCreateLifecycleStatus?: string;
   contactCreatePhone: string;
+  contactCreateRoleCategory?: string;
   contactCreateStatus: string;
   contactDataQualityResolutions: ContactDataQualityResolutionRecord[];
   contactDataQualityStatus: string;
@@ -72,7 +78,9 @@ export function ContactsSection({
   onContactCreateDisplayNameChange: (value: string) => void;
   onContactCreateEmailChange: (value: string) => void;
   onContactCreateKindChange: (value: "person" | "organization") => void;
+  onContactCreateLifecycleStatusChange?: (value: string) => void;
   onContactCreatePhoneChange: (value: string) => void;
+  onContactCreateRoleCategoryChange?: (value: string) => void;
   onCreateContact: () => void;
   onCreateMatterFromContact: (dossier: ContactDossier) => void;
   onNewAppointmentForContact: (dossier: ContactDossier) => void;
@@ -149,6 +157,44 @@ export function ContactsSection({
               onChange={(event) => onContactCreateDisplayNameChange(event.currentTarget.value)}
               value={contactCreateDisplayName}
             />
+          </label>
+          <label className="search-field">
+            <span>Status</span>
+            <select
+              onChange={(event) => onContactCreateLifecycleStatusChange(event.currentTarget.value)}
+              value={contactCreateLifecycleStatus}
+            >
+              <option value="prospective">Prospective</option>
+              <option value="active">Active</option>
+              <option value="former">Former</option>
+              <option value="inactive">Inactive</option>
+              <option value="restricted">Restricted</option>
+            </select>
+          </label>
+          <label className="search-field">
+            <span>Legal role</span>
+            <select
+              onChange={(event) => onContactCreateRoleCategoryChange(event.currentTarget.value)}
+              value={contactCreateRoleCategory}
+            >
+              <option value="prospective_client">Prospective client</option>
+              <option value="client">Client</option>
+              <option value="former_client">Former client</option>
+              <option value="opposing_party">Opposing party</option>
+              <option value="witness">Witness</option>
+              <option value="lawyer">Lawyer</option>
+              <option value="paralegal">Paralegal</option>
+              <option value="authorized_non_lawyer_provider">Authorized provider</option>
+              <option value="legal_representative">Legal representative</option>
+              <option value="court_tribunal">Court or tribunal</option>
+              <option value="insurer">Insurer</option>
+              <option value="expert">Expert</option>
+              <option value="vendor">Vendor</option>
+              <option value="referral_source">Referral source</option>
+              <option value="internal_team_member">Internal team</option>
+              <option value="organization">Organization</option>
+              <option value="other">Other</option>
+            </select>
           </label>
           <label className="search-field">
             <span>Email</span>
@@ -338,16 +384,48 @@ export function ContactsSection({
                 </span>
               </div>
               <p className="detail-note">
-                {activeContactDossier.contact.kind} · {activeContactDossier.conflictHistory.length}{" "}
-                conflict history{" "}
+                {activeContactDossier.contact.kind} ·{" "}
+                {compactStatus(activeContactDossier.contact.status ?? "active")} ·{" "}
+                {(activeContactDossier.contact.roleCategories ?? [])
+                  .map(compactStatus)
+                  .join(", ") || "no role category"}{" "}
+                · {activeContactDossier.conflictHistory.length} conflict history{" "}
                 {activeContactDossier.conflictHistory.length === 1 ? "entry" : "entries"}
               </p>
               <div className="detail-grid compact-detail-grid">
+                <div>
+                  <span className="field-label">Structured name</span>
+                  <strong>
+                    {activeContactDossier.contact.kind === "organization"
+                      ? [
+                          activeContactDossier.contact.organizationLegalName,
+                          activeContactDossier.contact.organizationOperatingName,
+                          activeContactDossier.contact.organizationRegisteredName,
+                        ]
+                          .filter(Boolean)
+                          .join(" / ") || activeContactDossier.contact.displayName
+                      : [
+                          activeContactDossier.contact.givenName,
+                          activeContactDossier.contact.middleName,
+                          activeContactDossier.contact.familyName,
+                        ]
+                          .filter(Boolean)
+                          .join(" ") || activeContactDossier.contact.displayName}
+                  </strong>
+                </div>
                 <div>
                   <span className="field-label">Aliases</span>
                   <strong>
                     {activeContactDossier.contact.aliases.length > 0
                       ? activeContactDossier.contact.aliases.join(", ")
+                      : "none"}
+                  </strong>
+                </div>
+                <div>
+                  <span className="field-label">Former names</span>
+                  <strong>
+                    {(activeContactDossier.contact.formerNames ?? []).length > 0
+                      ? activeContactDossier.contact.formerNames?.join(", ")
                       : "none"}
                   </strong>
                 </div>
@@ -359,6 +437,30 @@ export function ContactsSection({
                           .map((identifier) => identifier.type)
                           .join(", ")
                       : "none"}
+                  </strong>
+                </div>
+                <div>
+                  <span className="field-label">Preferred language</span>
+                  <strong>{activeContactDossier.contact.preferredLanguage ?? "not set"}</strong>
+                </div>
+                <div>
+                  <span className="field-label">Confidentiality</span>
+                  <strong>
+                    {compactStatus(
+                      activeContactDossier.contact.confidentialityMarker ?? "standard",
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <span className="field-label">Risk flags</span>
+                  <strong>
+                    {(activeContactDossier.contact.riskFlags ?? []).length > 0
+                      ? activeContactDossier.contact.riskFlags?.join(", ")
+                      : activeContactDossier.contact.conflictSensitive
+                        ? "conflict-sensitive"
+                        : activeContactDossier.contact.doNotContact
+                          ? "do not contact"
+                          : "none"}
                   </strong>
                 </div>
                 <div>
@@ -394,6 +496,42 @@ export function ContactsSection({
               </div>
 
               <div className="section-title">
+                <h3>Contact methods</h3>
+                <span>{activeContactDossier.contact.contactMethods?.length ?? 0}</span>
+              </div>
+              <div className="party-list">
+                {(activeContactDossier.contact.contactMethods ?? []).map((method) => (
+                  <div className="party-row" key={method.id}>
+                    <span>
+                      <strong>
+                        {method.type === "address"
+                          ? [
+                              method.address?.line1,
+                              method.address?.city,
+                              method.address?.postalCode,
+                            ]
+                              .filter(Boolean)
+                              .join(", ")
+                          : method.value}
+                      </strong>
+                      <small>
+                        {[method.type, method.label, method.verificationStatus ?? "unverified"]
+                          .filter(Boolean)
+                          .map(compactStatus)
+                          .join(" · ")}
+                      </small>
+                    </span>
+                    <em className={method.doNotContact ? "risk" : undefined}>
+                      {method.preferred ? "preferred" : method.doNotContact ? "do not contact" : ""}
+                    </em>
+                  </div>
+                ))}
+                {(activeContactDossier.contact.contactMethods ?? []).length === 0 ? (
+                  <p className="inline-empty">No structured contact methods recorded.</p>
+                ) : null}
+              </div>
+
+              <div className="section-title">
                 <h3>Relationship graph</h3>
                 <span>{activeContactDossier.relationships.length}</span>
               </div>
@@ -416,6 +554,15 @@ export function ContactsSection({
                         {relationship.visibleMatterIds.length > 0
                           ? relationship.visibleMatterIds.join(" · ")
                           : "contact-level"}
+                      </small>
+                      <small>
+                        {[
+                          relationship.effectiveOn ? `from ${relationship.effectiveOn}` : null,
+                          relationship.endedOn ? `ended ${relationship.endedOn}` : null,
+                          relationship.includeInConflictCheck ? "conflict included" : "excluded",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </small>
                     </span>
                     <em className={relationship.status === "review_needed" ? "risk" : undefined}>
@@ -473,6 +620,20 @@ export function ContactsSection({
                       <small>
                         {link.matterNumber} · {link.practiceArea} ·{" "}
                         {formatMatterPartyRoleLabel(link.role)}
+                      </small>
+                      <small>
+                        {[
+                          link.status ?? "active",
+                          link.side,
+                          link.startedOn ? `from ${link.startedOn}` : null,
+                          link.endedOn ? `ended ${link.endedOn}` : null,
+                          link.conflictCheckIncluded === false
+                            ? "conflict excluded"
+                            : "conflict included",
+                        ]
+                          .filter(Boolean)
+                          .map(String)
+                          .join(" · ")}
                       </small>
                     </span>
                     <em className={link.adverse ? "risk" : undefined}>

@@ -35,10 +35,13 @@ export function buildContactDossierConflictCheckPrefill(
     dossier.matters.find((matter) => matter.matterId === preferredMatterId) ?? dossier.matters[0];
   return {
     prospectiveName: dossier.contact.displayName,
-    aliasesText: dossier.contact.aliases.join("\n"),
-    identifiersText: dossier.contact.identifiers
-      .map((identifier) => `${identifier.type}: ${identifier.value}`)
-      .join("\n"),
+    aliasesText: [...dossier.contact.aliases, ...(dossier.contact.formerNames ?? [])].join("\n"),
+    identifiersText: [
+      ...dossier.contact.identifiers.map((identifier) => `${identifier.type}: ${identifier.value}`),
+      ...(dossier.contact.contactMethods ?? [])
+        .filter((method) => method.conflictCheckIncluded !== false && method.value)
+        .map((method) => `${method.type}: ${method.value}`),
+    ].join("\n"),
     prospectiveRole: inferProspectiveRole(matterLink?.role),
     matterId: matterLink?.matterId,
   };
@@ -55,8 +58,28 @@ export function filterContactDossiers(
     const tokens = [
       dossier.contact.displayName,
       dossier.contact.kind,
+      dossier.contact.status ?? "",
+      dossier.contact.canonicalName ?? "",
+      dossier.contact.givenName ?? "",
+      dossier.contact.middleName ?? "",
+      dossier.contact.familyName ?? "",
+      dossier.contact.organizationLegalName ?? "",
+      dossier.contact.organizationOperatingName ?? "",
+      dossier.contact.organizationRegisteredName ?? "",
+      dossier.contact.organizationType ?? "",
+      dossier.contact.website ?? "",
+      ...(dossier.contact.roleCategories ?? []),
       ...dossier.contact.aliases,
+      ...(dossier.contact.formerNames ?? []),
       ...dossier.contact.identifiers.map((identifier) => identifier.value),
+      ...(dossier.contact.contactMethods ?? []).flatMap((method) => [
+        method.type,
+        method.label,
+        method.value ?? "",
+        method.address?.line1 ?? "",
+        method.address?.city ?? "",
+        method.address?.postalCode ?? "",
+      ]),
       ...dossier.matters.flatMap((matter) => [
         matter.matterNumber,
         matter.matterTitle,

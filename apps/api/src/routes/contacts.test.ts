@@ -138,7 +138,14 @@ describe("contact routes", () => {
           }),
         ],
       },
-      conflictHistory: [],
+      conflictHistory: [
+        expect.objectContaining({
+          matchedContactId: "contact-ada",
+          visibleMatchedMatterIds: ["matter-001"],
+          matchCount: 1,
+          maxSeverity: "info",
+        }),
+      ],
     });
     const ada = payload.find((dossier) => dossier.contact.id === "contact-ada")!;
     expect(ada.crmTaxonomy.labels.map((label) => label.key)).toEqual(
@@ -237,6 +244,162 @@ describe("contact routes", () => {
     const serializedAudit = JSON.stringify(createdEvent);
     expect(serializedAudit).not.toContain("Synthetic Intake Client");
     expect(serializedAudit).not.toContain("synthetic.client@example.test");
+  });
+
+  it("manages CRM detail, methods, relationships, matter associations, portal grants, and timeline", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const server = testServer({ repository, user: user("owner_admin") });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/contacts",
+      payload: {
+        kind: "organization",
+        status: "prospective",
+        roleCategories: ["organization", "expert"],
+        displayName: "Synthetic Expert Services Inc.",
+        organizationLegalName: "Synthetic Expert Services Inc.",
+        aliases: ["Synthetic Experts"],
+        formerNames: ["Synthetic Expert Co."],
+        identifiers: [{ type: "business_number", value: "BN-EXPERT-1" }],
+        contactMethods: [
+          {
+            type: "email",
+            label: "work",
+            value: "experts@example.test",
+            preferred: true,
+            conflictCheckIncluded: true,
+          },
+        ],
+        conflictSensitive: true,
+      },
+    });
+
+    expect(created.statusCode).toBe(201);
+    const contactId = created.json<{ contact: { id: string } }>().contact.id;
+
+    const method = await server.inject({
+      method: "POST",
+      url: `/api/contacts/${contactId}/contact-methods`,
+      payload: {
+        type: "address",
+        label: "service",
+        address: { line1: "10 Synthetic Plaza", city: "Vancouver", province: "BC" },
+        conflictCheckIncluded: true,
+      },
+    });
+    expect(method.statusCode).toBe(201);
+
+    const names = await server.inject({
+      method: "PATCH",
+      url: `/api/contacts/${contactId}/names-identifiers`,
+      payload: {
+        aliases: ["Synthetic Experts", "SE Services"],
+        formerNames: ["Synthetic Expert Co."],
+        identifiers: [
+          { type: "business_number", value: "BN-EXPERT-1" },
+          { type: "registry_id", value: "BC9999999" },
+        ],
+      },
+    });
+    expect(names.statusCode).toBe(200);
+
+    const relationship = await server.inject({
+      method: "POST",
+      url: `/api/contacts/${contactId}/relationships`,
+      payload: {
+        relatedContactId: "contact-ada",
+        relationshipKind: "expert_for",
+        label: "Expert for",
+        reciprocalLabel: "Uses expert",
+        matterId: "matter-001",
+        includeInConflictCheck: true,
+      },
+    });
+    expect(relationship.statusCode).toBe(201);
+
+    const association = await server.inject({
+      method: "POST",
+      url: `/api/contacts/${contactId}/matter-associations`,
+      payload: {
+        matterId: "matter-001",
+        role: "expert",
+        side: "neutral",
+        notes: "Synthetic expert association.",
+        conflictCheckIncluded: true,
+      },
+    });
+    expect(association.statusCode).toBe(201);
+    const associationId = association.json<{ association: { id: string } }>().association.id;
+
+    const associationUpdate = await server.inject({
+      method: "PATCH",
+      url: `/api/contacts/${contactId}/matter-associations/${associationId}`,
+      payload: { status: "inactive", conflictCheckIncluded: false },
+    });
+    expect(associationUpdate.statusCode).toBe(200);
+
+    const portal = await server.inject({
+      method: "POST",
+      url: `/api/contacts/${contactId}/portal-access`,
+      payload: {
+        matterId: "matter-001",
+        status: "invited",
+        permissions: ["view_matter_summary", "view_documents", "upload_documents"],
+      },
+    });
+    expect(portal.statusCode).toBe(201);
+    const portalGrantId = portal.json<{ grant: { id: string } }>().grant.id;
+
+    const suspended = await server.inject({
+      method: "PATCH",
+      url: `/api/contacts/${contactId}/portal-access/${portalGrantId}`,
+      payload: { status: "suspended" },
+    });
+    expect(suspended.statusCode).toBe(200);
+    expect(suspended.json()).toMatchObject({ grant: { status: "suspended" } });
+
+    const detail = await server.inject({ method: "GET", url: `/api/contacts/${contactId}` });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      contact: {
+        kind: "organization",
+        status: "prospective",
+        roleCategories: ["organization", "expert"],
+        formerNames: ["Synthetic Expert Co."],
+        conflictSensitive: true,
+      },
+      matters: [expect.objectContaining({ matterId: "matter-001", status: "inactive" })],
+      relationships: [expect.objectContaining({ relationshipKind: "expert_for" })],
+      portal: { grants: [expect.objectContaining({ status: "suspended" })] },
+    });
+    expect(JSON.stringify(detail.json())).not.toContain("Synthetic expert association.");
+
+    const timeline = await server.inject({
+      method: "GET",
+      url: `/api/contacts/${contactId}/timeline`,
+    });
+    expect(timeline.statusCode).toBe(200);
+    expect(timeline.json()).toMatchObject({
+      timeline: expect.arrayContaining([
+        expect.objectContaining({ kind: "contact" }),
+        expect.objectContaining({
+          kind: "portal",
+          metadata: expect.objectContaining({ portalGrantId }),
+        }),
+      ]),
+    });
+
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    expect(audit.events.map((event) => event.action)).toEqual(
+      expect.arrayContaining([
+        "contact.relationship.created",
+        "contact.matter_association.created",
+        "contact.matter_association.updated",
+        "portal.grant.invited",
+        "portal.grant.suspended",
+      ]),
+    );
   });
 
   it("returns an audit-safe contact review queue without widening matter visibility", async () => {

@@ -3,6 +3,7 @@ import {
   type AuditEvent,
   type ConflictCheckRecord,
   type Contact,
+  type ContactRelationshipRecord,
   type Matter,
   type MatterParty,
 } from "@open-practice/domain";
@@ -17,6 +18,7 @@ export interface MemoryConflictCheckStore {
   contacts: Contact[];
   matters: Matter[];
   matterParties: MatterParty[];
+  contactRelationships: ContactRelationshipRecord[];
   conflictChecks: ConflictCheckRecord[];
   auditEvents: AuditEvent[];
 }
@@ -30,6 +32,7 @@ export function runMemoryConflictCheck(
     contacts: store.contacts,
     matters: store.matters,
     matterParties: store.matterParties,
+    contactRelationships: store.contactRelationships,
   });
   const checkId = `conflict-check-${String(store.conflictChecks.length + 1).padStart(3, "0")}`;
   const createdAt = new Date().toISOString();

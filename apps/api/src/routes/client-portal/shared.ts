@@ -28,7 +28,9 @@ export function portalGrantMatchesUser(grant: PortalGrant, contact: Contact, use
 }
 
 export function activePortalGrant(grant: PortalGrant, now: string): boolean {
+  if (["suspended", "revoked", "expired"].includes(grant.status ?? "active")) return false;
   if (grant.revokedAt) return false;
+  if (grant.suspendedAt) return false;
   if (grant.expiresAt && Date.parse(grant.expiresAt) <= Date.parse(now)) return false;
   return true;
 }
@@ -98,7 +100,15 @@ export function hasPortalPermission(
   grants: PortalGrant[],
   permission: PortalGrant["permissions"][number],
 ): boolean {
-  return grants.some((grant) => grant.permissions.includes(permission));
+  return grants.some((grant) => {
+    if (grant.permissions.includes(permission)) return true;
+    if (permission === "view_matter_summary") return grant.permissions.includes("view_documents");
+    if (permission === "view_messages" || permission === "send_messages") {
+      return grant.permissions.includes("message");
+    }
+    if (permission === "view_signature_requests") return grant.permissions.includes("sign");
+    return false;
+  });
 }
 
 export function sanitizedUser(user: User) {
