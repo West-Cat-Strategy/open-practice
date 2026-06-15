@@ -79,9 +79,11 @@ It covers the repository-wide Codex Security scan artifact at
 UI/UX review findings, validation pass/fail evidence, and the then-open OSS reference-lock drift and
 host Playwright readiness blockers. The 2026-06-13 follow-ups in the same proof close the
 memory-backed matter-workspace duplicate-id parity candidate with focused database coverage and
-record the UIUX-01 unavailable-section state for unknown or disabled dashboard deep links, focused
-route-selection tests, and completed host/Docker browser follow-through for the isolated sibling
-worktree.
+record the UIUX-01 unavailable-section state for unknown or disabled dashboard deep links. The
+2026-06-15 follow-ups close the submitted public intake token expiry finding with route-layer
+enforcement and focused intake-form route coverage, and close the dashboard conflict-check plus
+intake-link create/revoke status-announcement gaps with polite atomic live regions and focused web
+component coverage.
 
 The test-suite pruning branch is recorded in
 [OP_TEST_SUITE_PRUNING_PROOF_2026-06-11.md](OP_TEST_SUITE_PRUNING_PROOF_2026-06-11.md).

@@ -714,6 +714,146 @@ describe("intake form builder routes", () => {
     );
   });
 
+  it("denies expired submitted public intake tokens from public actions", async () => {
+    const { repository, server } = testServer({ s3: s3Config() });
+    const token = "expired-submitted-intake-token";
+    const formLinkId = "intake-form-link-expired-submitted";
+    const snapshot = await repository.createAnswerSnapshot({
+      id: "answer-snapshot-expired-submitted",
+      firmId: "firm-west-legal",
+      intakeSessionId: "intake-session-001",
+      capturedAt: "2026-05-01T12:05:00.000Z",
+      answers: {
+        issue_type: "repair",
+        client_display_name: "Ada M.",
+      },
+      resolution: {
+        templateId: "intake-template-001",
+        templateVersion: 2,
+        visibleQuestionIds: ["issue_type", "client_display_name"],
+        matchedBranchRuleIds: [],
+        eligiblePackageIds: [],
+        selectedPackageIds: [],
+        packageSummaries: [],
+        packageDocuments: [],
+      },
+    });
+    await repository.createIntakeFormLink({
+      id: formLinkId,
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      intakeSessionId: "intake-session-001",
+      tokenHash: hashToken(token, jwtSecret),
+      requestedByUserId: "user-admin",
+      clientContactId: "contact-ada",
+      expiresAt: "2000-01-01T00:00:00.000Z",
+      createdAt: "2026-05-01T12:00:00.000Z",
+    });
+    await repository.reserveIntakeFormLinkSubmission({
+      firmId: "firm-west-legal",
+      id: formLinkId,
+      clientSubmissionId: "expired-submit-001",
+      submissionFingerprint: "stored-submission-fingerprint",
+    });
+    await repository.markIntakeFormLinkSubmitted({
+      firmId: "firm-west-legal",
+      id: formLinkId,
+      submittedAt: "2026-05-01T12:06:00.000Z",
+      answerSnapshotId: snapshot.id,
+    });
+    const snapshotsBefore = await repository.listAnswerSnapshots("firm-west-legal", {
+      intakeSessionId: "intake-session-001",
+    });
+    const proposalsBefore = await repository.listIntakeVariableProposals("firm-west-legal", {
+      matterId: "matter-001",
+    });
+    const actionsBefore = await repository.listIntakeFormItemActions("firm-west-legal", {
+      formLinkId,
+    });
+    const reviewTaskBefore = await repository.getTaskDeadline(
+      "firm-west-legal",
+      `intake-review:${formLinkId}`,
+    );
+
+    const load = await server.inject({
+      method: "GET",
+      url: `/api/portal/intake-forms/${token}`,
+    });
+    const draft = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${token}/draft`,
+      payload: { answers: { issue_type: "repair" } },
+    });
+    const replay = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${token}/submit`,
+      payload: {
+        clientSubmissionId: "expired-submit-001",
+        answers: {
+          issue_type: "repair",
+          client_display_name: "Ada M.",
+        },
+      },
+    });
+    const uploadIntent = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${token}/items/evidence-upload/uploads`,
+      payload: {
+        filename: "repair photos.pdf",
+        checksumSha256: checksum,
+        fileSizeBytes,
+        contentType: "application/pdf",
+      },
+    });
+    const uploadCompletion = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${token}/items/evidence-upload/documents/expired-document/complete`,
+      payload: { checksumSha256: checksum },
+    });
+    const signature = await server.inject({
+      method: "POST",
+      url: `/api/portal/intake-forms/${token}/items/client-attestation/signature`,
+      payload: {
+        status: "completed",
+        consentText: "I confirm these synthetic intake answers are accurate.",
+      },
+    });
+
+    for (const response of [load, draft, replay, uploadIntent, uploadCompletion, signature]) {
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({
+        code: "INTAKE_FORM_LINK_UNAVAILABLE",
+        message: "Intake form link is not available",
+      });
+    }
+    await expect(
+      repository.listAnswerSnapshots("firm-west-legal", { intakeSessionId: "intake-session-001" }),
+    ).resolves.toHaveLength(snapshotsBefore.length);
+    await expect(
+      repository.listIntakeVariableProposals("firm-west-legal", { matterId: "matter-001" }),
+    ).resolves.toHaveLength(proposalsBefore.length);
+    await expect(
+      repository.listIntakeFormItemActions("firm-west-legal", { formLinkId }),
+    ).resolves.toEqual(actionsBefore);
+    await expect(
+      repository.getTaskDeadline("firm-west-legal", `intake-review:${formLinkId}`),
+    ).resolves.toEqual(reviewTaskBefore);
+    const accessLogs = await repository.listAccessLogs("firm-west-legal", {
+      intakeFormLinkId: formLinkId,
+    });
+    expect(accessLogs).toHaveLength(6);
+    for (const log of accessLogs) {
+      expect(log).toEqual(
+        expect.objectContaining({
+          action: "view",
+          resourceType: "intake_form_link",
+          resourceId: formLinkId,
+          metadata: { outcome: "denied", reason: "expired" },
+        }),
+      );
+    }
+  });
+
   it("rejects public intake upload completion when storage size differs from the intent", async () => {
     const { repository, server } = testServer({ s3: s3Config(checksum, fileSizeBytes + 1) });
     await restrictEvidenceUpload(repository);

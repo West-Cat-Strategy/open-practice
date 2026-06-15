@@ -18,10 +18,14 @@ export type IntakeFormRouteDependencies = ApiRouteDependencies & {
 
 export const intakeTemplateParamsSchema = z.object({ id: z.string().min(1) });
 
+export function linkExpired(link: IntakeFormLinkRecord, now = new Date()): boolean {
+  return Date.parse(link.expiresAt) <= now.getTime();
+}
+
 export function linkStatus(link: IntakeFormLinkRecord, now = new Date()): string {
   if (link.revokedAt) return "revoked";
   if (link.submittedAt) return "submitted";
-  if (Date.parse(link.expiresAt) <= now.getTime()) return "expired";
+  if (linkExpired(link, now)) return "expired";
   return "active";
 }
 

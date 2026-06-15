@@ -798,7 +798,9 @@ export function IntakeSection({
       {intakeFormPortalUrl ? (
         <OneTimeSecretPanel items={[{ label: "Client form URL", value: intakeFormPortalUrl }]} />
       ) : null}
-      <p className="inline-empty">{intakeFormStatus}</p>
+      <p className="inline-empty" role="status" aria-live="polite" aria-atomic="true">
+        {intakeFormStatus}
+      </p>
       <div className="party-list">
         {activeIntakeFormLinks.map((link) => {
           const linkState = getIntakeFormLinkState(link);
