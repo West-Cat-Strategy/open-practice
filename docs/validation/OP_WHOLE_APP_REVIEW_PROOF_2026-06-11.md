@@ -213,6 +213,42 @@ Validation evidence:
 No validation command was manually skipped. `pnpm e2e:host` reported 11 expected
 suite-managed skips, and `pnpm e2e:docker` was available for this closeout.
 
+## Legal Clinic Metadata DTO Remediation Follow-Up - 2026-06-15
+
+This branch remediates the medium-severity finding "Legal clinic program endpoints expose raw
+arbitrary metadata to firm-wide readers" with a route-layer DTO change only. Legal-clinic program
+and matter-profile records may still store internal metadata for review-first fiscal-host workflows,
+but `GET/POST /api/legal-clinic/programs` and
+`GET/PUT /api/legal-clinic/profiles` now preserve the `metadata` response property while exposing
+only allowlisted fiscal-host program fields or restricted-fund matter fields. Malformed metadata and
+extra arbitrary keys are dropped from response DTOs instead of being echoed to firm-wide readers.
+
+Remediation branch delta:
+
+```text
+apps/api/src/routes/legal-clinics.ts
+apps/api/src/routes/legal-clinics.test.ts
+docs/api-and-state-machines.md
+docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md
+docs/validation/README.md
+```
+
+Validation evidence:
+
+| Command                                                                                                                                                                                                                         | Result                                                                                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm --filter @open-practice/domain build && pnpm --filter @open-practice/database build && pnpm --filter @open-practice/providers build`                                                                                      | Passed in the fresh sibling worktree to hydrate workspace package `dist` entrypoints before API tests.                                               |
+| `pnpm --filter @open-practice/api test -- legal-clinics`                                                                                                                                                                        | Passed: 41 API test files and 507 tests passed, including focused legal-clinic DTO redaction assertions.                                             |
+| `pnpm verify:select -- --files apps/api/src/routes/legal-clinics.ts apps/api/src/routes/legal-clinics.test.ts docs/api-and-state-machines.md docs/validation/OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md docs/validation/README.md` | Passed; selected `pnpm format:check`, `pnpm docs:check`, `pnpm policy:check`, `pnpm --filter @open-practice/api test`, and API typecheck.            |
+| `pnpm format:check`                                                                                                                                                                                                             | Passed: all matched files use Prettier code style.                                                                                                   |
+| `pnpm docs:check`                                                                                                                                                                                                               | Passed: documentation link validation passed.                                                                                                        |
+| `pnpm policy:check`                                                                                                                                                                                                             | Passed: secret scan, package manifests, migration parity, OSS reuse, docs links, validation proof index, local-evidence, and boundary policy passed. |
+| `pnpm --filter @open-practice/api test`                                                                                                                                                                                         | Passed: 41 API test files and 507 tests passed.                                                                                                      |
+| `pnpm --filter @open-practice/api typecheck`                                                                                                                                                                                    | Passed: `tsc -p tsconfig.json --noEmit`.                                                                                                             |
+| `git diff --check`                                                                                                                                                                                                              | Passed.                                                                                                                                              |
+
+No validation command was manually skipped.
+
 ## Matter Workspace Duplicate-ID Parity Follow-Up - 2026-06-13
 
 This branch closes the code-review follow-up candidate for memory-backed matter-workspace
@@ -324,10 +360,10 @@ restored so the review branch remains documentation-only.
 ## Follow-Up Queue
 
 - Remediate or explicitly risk-accept the remaining Codex Security findings in separate source
-  branches. OP-SEC-001 production setup gating is remediated by the 2026-06-12 follow-up above.
-- Add focused tests for submitted-token expiry, legal-clinic metadata DTOs, memory invoice
-  cross-firm duplicate ids, draft-export response redaction, and Mailgun altered-body replay
-  idempotency.
+  branches. OP-SEC-001 production setup gating is remediated by the 2026-06-12 follow-up above, and
+  legal-clinic metadata DTO redaction is remediated by the 2026-06-15 follow-up above.
+- Add focused tests for submitted-token expiry, memory invoice cross-firm duplicate ids,
+  draft-export response redaction, and Mailgun altered-body replay idempotency.
 - Triage the two code-review export idempotency issues before adding more long-running export
   request flows.
 - Add UI/UX assertions for live-region status updates and public intake field-level error mapping.

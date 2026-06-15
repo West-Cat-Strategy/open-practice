@@ -18,6 +18,12 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-15 legal-clinic metadata DTO remediation follow-up is recorded in the
+[2026-06-11 whole-application review proof](OP_WHOLE_APP_REVIEW_PROOF_2026-06-11.md).
+It closes the raw arbitrary metadata exposure finding for legal-clinic program/profile responses by
+keeping compatible `metadata` DTOs but returning only allowlisted fiscal-host and restricted-fund
+summary fields, with focused API tests and selector-driven validation.
+
 The 2026-06-14 six-lane mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-14.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-14.md).
 It covers the dependency-refresh, dead-code, duplicate-id parity, dashboard deeplink, OP-T155, and

@@ -439,11 +439,13 @@ Legal clinic workflow data is modeled as firm-scoped clinic programs plus at mos
 profile per matter. Program records carry operational status, service area, eligibility summary,
 and default referral source/status metadata. Matter profiles carry program linkage,
 eligibility/referral statuses, referral source/date, next review date, clinic relationship role,
-notes, and redaction-safe metadata. The dashboard treats those records as read-only context: the
-Matters section may show a `Clinic workflow` summary and the Intake section may show
-`Eligibility and referral` when a profile is returned for the active matter. Mutation UI,
-navigation, provider claims, and automatic intake/referral actions remain out of scope for this
-foundation slice.
+notes, and redaction-safe metadata. Program and profile route responses keep the `metadata` field
+for compatibility, but expose only allowlisted fiscal-host program fields or restricted-fund matter
+fields; arbitrary stored metadata is not echoed to firm-wide readers. The dashboard treats those
+records as read-only context: the Matters section may show a `Clinic workflow` summary and the
+Intake section may show `Eligibility and referral` when a profile is returned for the active
+matter. Mutation UI, navigation, provider claims, and automatic intake/referral actions remain out
+of scope for this foundation slice.
 
 The first fiscal-host workflow slice reuses that legal-clinic context through
 `GET /api/legal-clinic/fiscal-host-workflow?matterId=`. The selector is intentionally narrow: it

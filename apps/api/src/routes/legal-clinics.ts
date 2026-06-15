@@ -63,6 +63,27 @@ const matterProfileBodySchema = z.object({
   metadata: z.record(z.string(), z.unknown()).default({}),
 });
 
+type LegalClinicProgramResponse = Omit<LegalClinicProgram, "metadata"> & {
+  metadata: {
+    fiscalHost?: {
+      hostName?: string;
+      programCode?: string;
+      reportingCadence?: string;
+    };
+  };
+};
+
+type LegalClinicMatterProfileResponse = Omit<LegalClinicMatterProfile, "metadata"> & {
+  metadata: {
+    restrictedFund?: {
+      fundCode?: string;
+      purpose?: string;
+      reviewStatus?: string;
+      nextReviewDate?: string;
+    };
+  };
+};
+
 function assertLegalClinicAccess(
   context: ApiAuthContext,
   action: "create" | "read" | "update",
@@ -78,6 +99,54 @@ function referralSourceKey(value: string | undefined): string | undefined {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
+}
+
+function toLegalClinicProgramResponse(program: LegalClinicProgram): LegalClinicProgramResponse {
+  const fiscalHost = compactStringMetadata({
+    hostName: stringMetadata(objectMetadata(program.metadata.fiscalHost).hostName),
+    programCode: stringMetadata(objectMetadata(program.metadata.fiscalHost).programCode),
+    reportingCadence: stringMetadata(objectMetadata(program.metadata.fiscalHost).reportingCadence),
+  });
+  return {
+    ...program,
+    metadata: Object.keys(fiscalHost).length > 0 ? { fiscalHost } : {},
+  };
+}
+
+function toLegalClinicMatterProfileResponse(
+  profile: LegalClinicMatterProfile,
+): LegalClinicMatterProfileResponse {
+  const restrictedFund = compactStringMetadata({
+    fundCode: stringMetadata(objectMetadata(profile.metadata.restrictedFund).fundCode),
+    purpose: stringMetadata(objectMetadata(profile.metadata.restrictedFund).purpose),
+    reviewStatus: stringMetadata(objectMetadata(profile.metadata.restrictedFund).reviewStatus),
+    nextReviewDate: stringMetadata(objectMetadata(profile.metadata.restrictedFund).nextReviewDate),
+  });
+  return {
+    ...profile,
+    metadata: Object.keys(restrictedFund).length > 0 ? { restrictedFund } : {},
+  };
+}
+
+function objectMetadata(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function stringMetadata(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function compactStringMetadata<T extends Record<string, string | undefined>>(
+  metadata: T,
+): {
+  [K in keyof T]?: string;
+} {
+  return Object.fromEntries(
+    Object.entries(metadata).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  ) as { [K in keyof T]?: string };
 }
 
 async function ensureProgramExists(
@@ -105,7 +174,8 @@ export function registerLegalClinicRoutes(
 ): void {
   server.get("/api/legal-clinic/programs", async (request) => {
     assertLegalClinicAccess(request.auth, "read");
-    return { programs: await repository.listLegalClinicPrograms(request.auth.firmId) };
+    const programs = await repository.listLegalClinicPrograms(request.auth.firmId);
+    return { programs: programs.map(toLegalClinicProgramResponse) };
   });
 
   server.get("/api/legal-clinic/fiscal-host-workflow", async (request) => {
@@ -163,7 +233,7 @@ export function registerLegalClinicRoutes(
     });
 
     reply.code(201);
-    return { program: created };
+    return { program: toLegalClinicProgramResponse(created) };
   });
 
   server.get("/api/legal-clinic/profiles", async (request) => {
@@ -173,7 +243,7 @@ export function registerLegalClinicRoutes(
       request.auth.firmId,
       query.matterId,
     );
-    return { profiles: profile ? [profile] : [] };
+    return { profiles: profile ? [toLegalClinicMatterProfileResponse(profile)] : [] };
   });
 
   server.put("/api/legal-clinic/profiles/:matterId", async (request) => {
@@ -218,6 +288,6 @@ export function registerLegalClinicRoutes(
       },
     });
 
-    return { profile: updated };
+    return { profile: toLegalClinicMatterProfileResponse(updated) };
   });
 }

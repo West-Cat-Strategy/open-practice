@@ -64,24 +64,59 @@ describe("legal clinic routes", () => {
         eligibilitySummary: "Synthetic public-screening summary only.",
         defaultReferralSource: "community_desk",
         defaultReferralStatus: "referral_needed",
-        metadata: { internalNarrative: "do not audit me" },
+        metadata: {
+          internalNarrative: "do not audit me",
+          fiscalHost: {
+            hostName: "Synthetic Community Host",
+            programCode: "FAM-ADV",
+            reportingCadence: "quarterly",
+            bankAccount: "Private program account details",
+          },
+        },
       },
     });
     const after = await server.inject({ method: "GET", url: "/api/legal-clinic/programs" });
 
     expect(before.statusCode).toBe(200);
     expect(before.json<{ programs: unknown[] }>().programs.length).toBeGreaterThan(0);
+    expect(JSON.stringify(before.json())).not.toContain("open-practice-sample");
+    expect(JSON.stringify(before.json())).not.toContain("providerNeutral");
     expect(created.statusCode).toBe(201);
     expect(created.json()).toMatchObject({
       program: {
         name: "Synthetic Family Advice Clinic",
         serviceArea: "Family law",
         defaultReferralStatus: "referral_needed",
+        metadata: {
+          fiscalHost: {
+            hostName: "Synthetic Community Host",
+            programCode: "FAM-ADV",
+            reportingCadence: "quarterly",
+          },
+        },
       },
     });
-    expect(after.json<{ programs: Array<{ name: string }> }>().programs).toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: "Synthetic Family Advice Clinic" })]),
+    expect(JSON.stringify(created.json())).not.toContain("do not audit me");
+    expect(JSON.stringify(created.json())).not.toContain("Private program account details");
+    expect(
+      after.json<{ programs: Array<{ name: string; metadata: Record<string, unknown> }> }>()
+        .programs,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Synthetic Family Advice Clinic",
+          metadata: {
+            fiscalHost: {
+              hostName: "Synthetic Community Host",
+              programCode: "FAM-ADV",
+              reportingCadence: "quarterly",
+            },
+          },
+        }),
+      ]),
     );
+    expect(JSON.stringify(after.json())).not.toContain("do not audit me");
+    expect(JSON.stringify(after.json())).not.toContain("Private program account details");
 
     const audit = await repository.listAuditEvents("firm-west-legal");
     const event = audit.events.find(
@@ -116,7 +151,16 @@ describe("legal clinic routes", () => {
         nextReviewDate: "2026-05-09T12:00:00.000Z",
         clinicRelationshipRole: "clinic client",
         notes: "Private notes should not appear in audit metadata.",
-        metadata: { rawIntakeAnswer: "raw private facts" },
+        metadata: {
+          rawIntakeAnswer: "raw private facts",
+          restrictedFund: {
+            fundCode: "RF-FAMILY-01",
+            purpose: "Synthetic family law clinic fund",
+            reviewStatus: "staff_review_ready",
+            nextReviewDate: "2026-05-16",
+            privateReviewerNote: "Private reviewer note",
+          },
+        },
       },
     });
     const getAfter = await server.inject({
@@ -135,11 +179,36 @@ describe("legal clinic routes", () => {
         referralStatus: "referral_needed",
         clinicRelationshipRole: "clinic client",
         updatedByUserId: "user-staff",
+        metadata: {
+          restrictedFund: {
+            fundCode: "RF-FAMILY-01",
+            purpose: "Synthetic family law clinic fund",
+            reviewStatus: "staff_review_ready",
+            nextReviewDate: "2026-05-16",
+          },
+        },
       },
     });
+    expect(JSON.stringify(updated.json())).not.toContain("raw private facts");
+    expect(JSON.stringify(updated.json())).not.toContain("Private reviewer note");
     expect(getAfter.json()).toMatchObject({
-      profiles: [{ matterId: "matter-001", eligibilityStatus: "needs_review" }],
+      profiles: [
+        {
+          matterId: "matter-001",
+          eligibilityStatus: "needs_review",
+          metadata: {
+            restrictedFund: {
+              fundCode: "RF-FAMILY-01",
+              purpose: "Synthetic family law clinic fund",
+              reviewStatus: "staff_review_ready",
+              nextReviewDate: "2026-05-16",
+            },
+          },
+        },
+      ],
     });
+    expect(JSON.stringify(getAfter.json())).not.toContain("raw private facts");
+    expect(JSON.stringify(getAfter.json())).not.toContain("Private reviewer note");
 
     const audit = await repository.listAuditEvents("firm-west-legal");
     const event = audit.events.find(
