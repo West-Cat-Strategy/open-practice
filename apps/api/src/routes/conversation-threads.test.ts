@@ -651,6 +651,91 @@ describe("conversation thread routes", () => {
     );
   });
 
+  it("replays matching conversation export idempotency keys without duplicate queue or audit work", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const queuedReports: QueuedReportJob[] = [];
+    const server = testServer({
+      repository,
+      authUser: user("licensee", ["matter-001", "matter-002"]),
+      reportJobQueue: fakeReportQueue(queuedReports),
+    });
+    const createdThread = await server.inject({
+      method: "POST",
+      url: "/api/conversation-threads",
+      payload: { matterId: "matter-001", topic: "Synthetic idempotent export replay" },
+    });
+    await server.inject({
+      method: "POST",
+      url: `/api/conversation-threads/${createdThread.json().thread.id}/messages`,
+      payload: { bodyText: "Synthetic replay body." },
+    });
+    const payload = { idempotencyKey: "conversation-export-replay-key" };
+
+    const first = await server.inject({
+      method: "POST",
+      url: `/api/conversation-threads/${createdThread.json().thread.id}/export-requests`,
+      payload,
+    });
+    const replay = await server.inject({
+      method: "POST",
+      url: `/api/conversation-threads/${createdThread.json().thread.id}/export-requests`,
+      payload,
+    });
+
+    expect(first.statusCode).toBe(202);
+    expect(replay.statusCode).toBe(202);
+    expect(replay.json().exportRequest.jobId).toBe(first.json().exportRequest.jobId);
+    expect(queuedReports).toHaveLength(1);
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "reports" }),
+    ).resolves.toHaveLength(1);
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    expect(
+      audit.events.filter(
+        (event) => event.action === "conversation_thread.export_artifact_requested",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("rejects conversation export idempotency key reuse for a different thread", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const queuedReports: QueuedReportJob[] = [];
+    const server = testServer({
+      repository,
+      authUser: user("licensee", ["matter-001", "matter-002"]),
+      reportJobQueue: fakeReportQueue(queuedReports),
+    });
+    const firstThread = await server.inject({
+      method: "POST",
+      url: "/api/conversation-threads",
+      payload: { matterId: "matter-001", topic: "Synthetic first export conflict thread" },
+    });
+    const secondThread = await server.inject({
+      method: "POST",
+      url: "/api/conversation-threads",
+      payload: { matterId: "matter-002", topic: "Synthetic second export conflict thread" },
+    });
+    const payload = { idempotencyKey: "conversation-export-conflict-key" };
+
+    await server.inject({
+      method: "POST",
+      url: `/api/conversation-threads/${firstThread.json().thread.id}/export-requests`,
+      payload,
+    });
+    const conflict = await server.inject({
+      method: "POST",
+      url: `/api/conversation-threads/${secondThread.json().thread.id}/export-requests`,
+      payload,
+    });
+
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({ code: "IDEMPOTENCY_KEY_CONFLICT" });
+    expect(queuedReports).toHaveLength(1);
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "reports" }),
+    ).resolves.toHaveLength(1);
+  });
+
   it("completes inline exports when the reports queue is not configured", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const server = testServer({ repository, authUser: user("licensee", ["matter-001"]) });
