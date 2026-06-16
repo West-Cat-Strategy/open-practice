@@ -4,7 +4,7 @@ import type {
   EmailReceiptTokenRecord,
   JobLifecycleRecord,
 } from "@open-practice/domain";
-import { and, asc, desc, eq, isNull, lt } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../../runtime.js";
 import * as schema from "../../schema.js";
 import type { EmailJobsRepository } from "../jobs-email-contracts.js";
@@ -495,6 +495,142 @@ export async function retryDrizzleEmailOutbox(
   });
 }
 
+function isMatchingCalendarReminderEmail(
+  email: EmailOutboxRecord,
+  input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    reminderId: string;
+  },
+): boolean {
+  return (
+    email.firmId === input.firmId &&
+    email.matterId === input.matterId &&
+    email.status === "queued" &&
+    email.templateKey === "calendar.reminder" &&
+    email.relatedResourceType === "calendar_event" &&
+    email.relatedResourceId === input.eventId &&
+    email.metadata.source === "calendar.reminder" &&
+    email.metadata.eventId === input.eventId &&
+    email.metadata.reminderId === input.reminderId &&
+    email.metadata.matterId === input.matterId
+  );
+}
+
+export async function reconcileDrizzleCalendarReminderDelivery(
+  db: OpenPracticeDatabase,
+  input: {
+    firmId: string;
+    matterId: string;
+    eventId: string;
+    reminderId: string;
+    occurredAt: string;
+    requestedByUserId: string;
+    reason: string;
+  },
+): Promise<{ cancelledEmails: EmailOutboxRecord[]; skippedJobs: JobLifecycleRecord[] }> {
+  return db.transaction(async (tx) => {
+    const candidates = await tx
+      .select()
+      .from(schema.emailOutbox)
+      .where(
+        and(
+          eq(schema.emailOutbox.firmId, input.firmId),
+          eq(schema.emailOutbox.matterId, input.matterId),
+          eq(schema.emailOutbox.status, "queued"),
+          eq(schema.emailOutbox.templateKey, "calendar.reminder"),
+          eq(schema.emailOutbox.relatedResourceType, "calendar_event"),
+          eq(schema.emailOutbox.relatedResourceId, input.eventId),
+        ),
+      );
+    const matchingEmails = candidates
+      .map(mapEmailOutboxRow)
+      .filter((email) => isMatchingCalendarReminderEmail(email, input));
+    if (matchingEmails.length === 0) return { cancelledEmails: [], skippedJobs: [] };
+
+    const reconciliationMetadata = {
+      reconciledBy: "calendar.reminder",
+      reconciliationReason: input.reason,
+      reconciledAt: input.occurredAt,
+      requestedByUserId: input.requestedByUserId,
+    };
+    const cancelledEmails: EmailOutboxRecord[] = [];
+    for (const email of matchingEmails) {
+      const [row] = await tx
+        .update(schema.emailOutbox)
+        .set({
+          status: "cancelled",
+          metadata: {
+            ...email.metadata,
+            deliveryState: reconciliationMetadata,
+          },
+        })
+        .where(
+          and(
+            eq(schema.emailOutbox.firmId, input.firmId),
+            eq(schema.emailOutbox.id, email.id),
+            eq(schema.emailOutbox.status, "queued"),
+          ),
+        )
+        .returning();
+      if (row) cancelledEmails.push(mapEmailOutboxRow(row));
+    }
+    const emailIds = cancelledEmails.map((email) => email.id);
+    if (emailIds.length === 0) return { cancelledEmails: [], skippedJobs: [] };
+
+    for (const email of cancelledEmails) {
+      await tx.insert(schema.emailEvents).values(
+        emailEventInsert({
+          id: crypto.randomUUID(),
+          firmId: input.firmId,
+          emailId: email.id,
+          eventType: "cancelled",
+          occurredAt: input.occurredAt,
+          source: "api",
+          metadata: {
+            matterId: input.matterId,
+            eventId: input.eventId,
+            reminderId: input.reminderId,
+            reconciledBy: "calendar.reminder",
+            reconciliationReason: input.reason,
+          },
+        }),
+      );
+    }
+
+    const skippedRows = await tx
+      .update(schema.jobLifecycleRecords)
+      .set({
+        status: "skipped",
+        finishedAt: new Date(input.occurredAt),
+        metadata: {
+          ...reconciliationMetadata,
+          relatedResourceType: "calendar_event",
+          relatedResourceId: input.eventId,
+          reminderId: input.reminderId,
+          matterId: input.matterId,
+        },
+      })
+      .where(
+        and(
+          eq(schema.jobLifecycleRecords.firmId, input.firmId),
+          eq(schema.jobLifecycleRecords.queueName, "email"),
+          eq(schema.jobLifecycleRecords.jobName, "send_email"),
+          eq(schema.jobLifecycleRecords.status, "queued"),
+          eq(schema.jobLifecycleRecords.targetResourceType, "email_outbox"),
+          inArray(schema.jobLifecycleRecords.targetResourceId, emailIds),
+        ),
+      )
+      .returning();
+
+    return {
+      cancelledEmails,
+      skippedJobs: skippedRows.map(mapJobLifecycleRow),
+    };
+  });
+}
+
 export async function listDrizzleEmailEvents(
   db: OpenPracticeDatabase,
   firmId: string,
@@ -586,6 +722,8 @@ export function createDrizzleEmailJobsRepository(db: OpenPracticeDatabase): Emai
     listEmailReceiptTokens: (firmId, options) => listDrizzleEmailReceiptTokens(db, firmId, options),
     recordEmailDeliveryResult: (input) => recordDrizzleEmailDeliveryResult(db, input),
     retryEmailOutbox: (input) => retryDrizzleEmailOutbox(db, input),
+    reconcileCalendarReminderDelivery: (input) =>
+      reconcileDrizzleCalendarReminderDelivery(db, input),
     listEmailEvents: (firmId, options) => listDrizzleEmailEvents(db, firmId, options),
     updateJobLifecycleRecord: (firmId, id, updates) =>
       updateDrizzleJobLifecycleRecord(db, firmId, id, updates),

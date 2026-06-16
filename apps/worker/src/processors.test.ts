@@ -226,6 +226,97 @@ describe("worker processors", () => {
     );
   });
 
+  it("skips stale delayed email jobs after the outbox is cancelled", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const sentMessages: unknown[] = [];
+    const mailSender: MailSender = {
+      async send(message) {
+        sentMessages.push(message);
+        return { providerMessageId: "mailpit-message-cancelled" };
+      },
+    };
+    await repository.createQueuedEmailOutbox({
+      email: {
+        id: "email-outbox-cancelled-worker-test",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        templateKey: "calendar.reminder",
+        status: "cancelled",
+        to: ["licensee@example.test"],
+        cc: [],
+        bcc: [],
+        from: "Open Practice <no-reply@open-practice.local>",
+        subject: "Calendar reminder",
+        htmlBody: "",
+        textBody: "Synthetic cancelled reminder.",
+        relatedResourceType: "calendar_event",
+        relatedResourceId: "calendar-event-001",
+        queuedAt: "2026-05-01T00:00:00.000Z",
+        attemptCount: 0,
+        metadata: {
+          matterId: "matter-001",
+          source: "calendar.reminder",
+          reminderId: "calendar-reminder-001",
+        },
+      },
+      event: {
+        id: "email-event-cancelled-worker-test",
+        firmId: "firm-west-legal",
+        emailId: "email-outbox-cancelled-worker-test",
+        eventType: "cancelled",
+        occurredAt: "2026-05-01T00:01:00.000Z",
+        jobId: "job-cancelled-worker-test",
+        source: "api",
+        metadata: { source: "calendar.reminder" },
+      },
+      job: {
+        id: "job-cancelled-worker-test",
+        firmId: "firm-west-legal",
+        queueName: "email",
+        jobName: "send_email",
+        status: "queued",
+        targetResourceType: "email_outbox",
+        targetResourceId: "email-outbox-cancelled-worker-test",
+        attemptsMade: 0,
+        maxAttempts: 3,
+        queuedAt: "2026-05-01T00:00:00.000Z",
+        metadata: {
+          emailId: "email-outbox-cancelled-worker-test",
+          matterId: "matter-001",
+          templateKey: "calendar.reminder",
+        },
+      },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "email",
+      jobName: "send_email",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "email_outbox",
+        resourceId: "email-outbox-cancelled-worker-test",
+        metadata: { emailId: "email-outbox-cancelled-worker-test" },
+      },
+      jobLifecycleId: "job-cancelled-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 3,
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      mailSender,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "skipped",
+      reason: "Email outbox is already cancelled",
+    });
+    expect(sentMessages).toEqual([]);
+    await expect(
+      repository.getEmailOutbox("firm-west-legal", "email-outbox-cancelled-worker-test"),
+    ).resolves.toMatchObject({ status: "cancelled", attemptCount: 0 });
+  });
+
   it("marks outbound email and job lifecycle failed when delivery throws", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const mailSender: MailSender = {

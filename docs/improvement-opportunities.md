@@ -115,15 +115,6 @@ widget registry candidate is no longer re-proposed here.
   - **Reuse and snippets:** MIT/adapt-with-attribution; a dependency or tiny attributed excerpt may
     be allowable after `docs/reuse-decision-policy.md` review.
 
-- **Reminder cancellation and pending-job refresh**
-  - **First slice:** Reconcile queued reminder notification jobs when a staff user cancels,
-    reschedules, or refreshes a pending reminder record, keeping dashboard reminders as the source
-    of truth.
-  - **Local gap / shipped boundary:** OP-T121 shipped delayed email reminder delivery; cancellation,
-    pending-job refresh, non-email delivery, and user preference routing remain future work.
-  - **References:** `calcom__cal.diy`.
-  - **Reuse and snippets:** MIT/adapt-with-attribution; behavior-level reuse should be enough.
-
 - **Inbound provider webhook intake boundary**
   - **Shipped slice:** The first Mailgun raw-MIME provider webhook validates the provider
     signature, stores raw MIME in object storage, and queues the existing inbound parser.

@@ -372,6 +372,7 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
   declare recordEmailDeliveryReceipt: EmailJobsRepository["recordEmailDeliveryReceipt"];
   declare recordEmailDeliveryResult: EmailJobsRepository["recordEmailDeliveryResult"];
   declare retryEmailOutbox: EmailJobsRepository["retryEmailOutbox"];
+  declare reconcileCalendarReminderDelivery: EmailJobsRepository["reconcileCalendarReminderDelivery"];
   declare listEmailEvents: EmailJobsRepository["listEmailEvents"];
   declare createEmailReceiptToken: EmailJobsRepository["createEmailReceiptToken"];
   declare getEmailReceiptTokenByHash: EmailJobsRepository["getEmailReceiptTokenByHash"];

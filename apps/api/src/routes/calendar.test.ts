@@ -821,6 +821,230 @@ describe("calendar routes", () => {
     ]);
   });
 
+  it("reconciles queued reminder delivery when staff cancel a pending reminder", async () => {
+    const repository = new AuditRecordingRepository();
+    await enableSmtp(repository);
+    const server = testServer(user("licensee", ["matter-001"]), repository, {
+      add: async (_name, _data, options) => ({ id: options?.jobId ?? "bull-reminder-cancel" }),
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-001/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+    const reminderId = created.json().reminder.id;
+    const [queuedJob] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "email",
+    });
+
+    const cancelled = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/events/calendar-event-001/reminders/${reminderId}`,
+      payload: {
+        matterId: "matter-001",
+        status: "cancelled",
+      },
+    });
+
+    expect(cancelled.statusCode).toBe(200);
+    expect(cancelled.json().reminder).toMatchObject({ id: reminderId, status: "cancelled" });
+    await expect(
+      repository.getEmailOutbox("firm-west-legal", queuedJob!.targetResourceId!),
+    ).resolves.toMatchObject({ status: "cancelled" });
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "email" }),
+    ).resolves.toEqual([expect.objectContaining({ id: queuedJob!.id, status: "skipped" })]);
+    expect(repository.recordedAuditEvents.map((event) => event.action)).toEqual(
+      expect.arrayContaining(["calendar.reminder.reconciled"]),
+    );
+  });
+
+  it("reconciles queued reminder delivery when staff delete a pending reminder", async () => {
+    const repository = new AuditRecordingRepository();
+    await enableSmtp(repository);
+    const server = testServer(user("licensee", ["matter-001"]), repository, {
+      add: async (_name, _data, options) => ({ id: options?.jobId ?? "bull-reminder-delete" }),
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-001/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+    const reminderId = created.json().reminder.id;
+    const [queuedJob] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "email",
+    });
+
+    const deleted = await server.inject({
+      method: "DELETE",
+      url: `/api/calendar/events/calendar-event-001/reminders/${reminderId}?matterId=matter-001`,
+    });
+
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json().reminder.deletedAt).toEqual(expect.any(String));
+    await expect(
+      repository.getEmailOutbox("firm-west-legal", queuedJob!.targetResourceId!),
+    ).resolves.toMatchObject({ status: "cancelled" });
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "email" }),
+    ).resolves.toEqual([expect.objectContaining({ id: queuedJob!.id, status: "skipped" })]);
+  });
+
+  it("replaces queued reminder delivery when staff reschedule with confirmation", async () => {
+    const repository = new AuditRecordingRepository();
+    await enableSmtp(repository);
+    const addCalls: Array<unknown> = [];
+    const server = testServer(user("licensee", ["matter-001"]), repository, {
+      add: async (...args: unknown[]) => {
+        addCalls.push(args);
+        return { id: `bull-reminder-reschedule-${addCalls.length}` };
+      },
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-001/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+    const reminderId = created.json().reminder.id;
+    const firstJob = (
+      await repository.listJobLifecycleRecords("firm-west-legal", {
+        queueName: "email",
+      })
+    )[0]!;
+
+    const updated = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/events/calendar-event-001/reminders/${reminderId}`,
+      payload: {
+        matterId: "matter-001",
+        remindAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+
+    expect(updated.statusCode).toBe(200);
+    expect(addCalls).toHaveLength(2);
+    await expect(
+      repository.getEmailOutbox("firm-west-legal", firstJob.targetResourceId!),
+    ).resolves.toMatchObject({ status: "cancelled" });
+    const jobs = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "email",
+    });
+    expect(jobs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: firstJob.id, status: "skipped" }),
+        expect.objectContaining({ status: "queued" }),
+      ]),
+    );
+    const emails = await repository.listEmailOutbox("firm-west-legal", { matterId: "matter-001" });
+    expect(emails.filter((email) => email.templateKey === "calendar.reminder")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: "cancelled" }),
+        expect.objectContaining({ status: "queued" }),
+      ]),
+    );
+  });
+
+  it("refreshes queued reminder delivery with one active replacement", async () => {
+    const repository = new AuditRecordingRepository();
+    await enableSmtp(repository);
+    const addCalls: Array<unknown> = [];
+    const server = testServer(user("licensee", ["matter-001"]), repository, {
+      add: async (...args: unknown[]) => {
+        addCalls.push(args);
+        return { id: `bull-reminder-refresh-${addCalls.length}` };
+      },
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-001/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+    const reminderId = created.json().reminder.id;
+
+    const refreshed = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/events/calendar-event-001/reminders/${reminderId}`,
+      payload: {
+        matterId: "matter-001",
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+
+    expect(refreshed.statusCode).toBe(200);
+    expect(addCalls).toHaveLength(2);
+    const emails = await repository.listEmailOutbox("firm-west-legal", { matterId: "matter-001" });
+    expect(
+      emails.filter(
+        (email) => email.templateKey === "calendar.reminder" && email.status === "queued",
+      ),
+    ).toHaveLength(1);
+    expect(
+      emails.filter(
+        (email) => email.templateKey === "calendar.reminder" && email.status === "cancelled",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("reschedules dashboard reminders without confirmation by cancelling stale delivery only", async () => {
+    const repository = new AuditRecordingRepository();
+    await enableSmtp(repository);
+    const addCalls: Array<unknown> = [];
+    const server = testServer(user("licensee", ["matter-001"]), repository, {
+      add: async (...args: unknown[]) => {
+        addCalls.push(args);
+        return { id: "bull-reminder-dashboard-reschedule" };
+      },
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/calendar/events/calendar-event-001/reminders",
+      payload: {
+        matterId: "matter-001",
+        remindAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        deliveryConfirmation: deliveryConfirmation(),
+      },
+    });
+    const reminderId = created.json().reminder.id;
+
+    const updated = await server.inject({
+      method: "PATCH",
+      url: `/api/calendar/events/calendar-event-001/reminders/${reminderId}`,
+      payload: {
+        matterId: "matter-001",
+        remindAt: new Date(Date.now() + 8 * 60 * 1000).toISOString(),
+      },
+    });
+
+    expect(updated.statusCode).toBe(200);
+    expect(addCalls).toHaveLength(1);
+    const emails = await repository.listEmailOutbox("firm-west-legal", { matterId: "matter-001" });
+    expect(emails.filter((email) => email.templateKey === "calendar.reminder")).toEqual([
+      expect.objectContaining({ status: "cancelled" }),
+    ]);
+  });
+
   it("creates, lists, and revokes current-user calendar app passwords without echoing secrets", async () => {
     const repository = new AuditRecordingRepository();
     const server = testServer(user("licensee", ["matter-001"]), repository);

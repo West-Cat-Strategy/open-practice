@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { ProviderSettingRecord } from "@open-practice/domain";
+import type {
+  EmailOutboxRecord,
+  JobLifecycleRecord,
+  ProviderSettingRecord,
+} from "@open-practice/domain";
 import {
   createProviderConfigCipherFromKey,
   providerConfigEnvelopePrefix,
@@ -10,6 +14,57 @@ import { now } from "./repository.fixtures.js";
 
 const providerConfigKey = "base64:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
 type DrizzleDb = ConstructorParameters<typeof DrizzleOpenPracticeRepository>[0];
+
+function calendarReminderEmail(overrides: Partial<EmailOutboxRecord> = {}): EmailOutboxRecord {
+  return {
+    id: "email-calendar-reminder-001",
+    firmId: "firm-west-legal",
+    matterId: "matter-001",
+    templateKey: "calendar.reminder",
+    status: "queued",
+    to: ["licensee@example.test"],
+    cc: [],
+    bcc: [],
+    from: "Open Practice <no-reply@open-practice.local>",
+    subject: "Synthetic calendar reminder",
+    htmlBody: "",
+    textBody: "Synthetic calendar reminder body.",
+    relatedResourceType: "calendar_event",
+    relatedResourceId: "calendar-event-001",
+    queuedAt: now,
+    attemptCount: 0,
+    metadata: {
+      matterId: "matter-001",
+      source: "calendar.reminder",
+      eventId: "calendar-event-001",
+      reminderId: "calendar-reminder-001",
+      reminderStatus: "pending",
+    },
+    ...overrides,
+  };
+}
+
+function calendarReminderJob(overrides: Partial<JobLifecycleRecord> = {}): JobLifecycleRecord {
+  return {
+    id: "job-calendar-reminder-001",
+    firmId: "firm-west-legal",
+    queueName: "email",
+    jobName: "send_email",
+    status: "queued",
+    targetResourceType: "email_outbox",
+    targetResourceId: "email-calendar-reminder-001",
+    attemptsMade: 0,
+    maxAttempts: 5,
+    queuedAt: now,
+    metadata: {
+      emailId: "email-calendar-reminder-001",
+      matterId: "matter-001",
+      source: "calendar.reminder",
+      templateKey: "calendar.reminder",
+    },
+    ...overrides,
+  };
+}
 
 function drizzleProviderSettingsRepositoryWithRows(rows: Record<string, unknown>[] = []) {
   const db = {
@@ -286,6 +341,130 @@ describe("repository providers, jobs, and email delivery", () => {
       email: { id: "email-idempotent-1" },
       job: { id: "job-email-idempotent-1" },
     });
+  });
+
+  it("reconciles only queued calendar reminder delivery records", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createQueuedEmailOutbox({
+      email: calendarReminderEmail(),
+      event: {
+        id: "email-event-calendar-reminder-queued",
+        firmId: "firm-west-legal",
+        emailId: "email-calendar-reminder-001",
+        eventType: "queued",
+        occurredAt: now,
+        jobId: "job-calendar-reminder-001",
+        source: "api",
+        metadata: { source: "calendar.reminder" },
+      },
+      job: calendarReminderJob(),
+    });
+    await repository.createQueuedEmailOutbox({
+      email: calendarReminderEmail({
+        id: "email-calendar-reminder-other",
+        metadata: {
+          matterId: "matter-001",
+          source: "calendar.reminder",
+          eventId: "calendar-event-001",
+          reminderId: "calendar-reminder-other",
+        },
+      }),
+      event: {
+        id: "email-event-calendar-reminder-other",
+        firmId: "firm-west-legal",
+        emailId: "email-calendar-reminder-other",
+        eventType: "queued",
+        occurredAt: now,
+        jobId: "job-calendar-reminder-other",
+        source: "api",
+        metadata: { source: "calendar.reminder" },
+      },
+      job: calendarReminderJob({
+        id: "job-calendar-reminder-other",
+        targetResourceId: "email-calendar-reminder-other",
+      }),
+    });
+    await repository.createQueuedEmailOutbox({
+      email: calendarReminderEmail({
+        id: "email-calendar-reminder-sent",
+        status: "sent",
+        sentAt: "2026-04-25T12:10:00.000Z",
+      }),
+      event: {
+        id: "email-event-calendar-reminder-sent",
+        firmId: "firm-west-legal",
+        emailId: "email-calendar-reminder-sent",
+        eventType: "sent",
+        occurredAt: "2026-04-25T12:10:00.000Z",
+        jobId: "job-calendar-reminder-sent",
+        source: "worker",
+        metadata: { source: "calendar.reminder" },
+      },
+      job: calendarReminderJob({
+        id: "job-calendar-reminder-sent",
+        targetResourceId: "email-calendar-reminder-sent",
+        status: "completed",
+        finishedAt: "2026-04-25T12:10:00.000Z",
+      }),
+    });
+
+    const reconciled = await repository.reconcileCalendarReminderDelivery({
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      eventId: "calendar-event-001",
+      reminderId: "calendar-reminder-001",
+      occurredAt: "2026-04-25T12:15:00.000Z",
+      requestedByUserId: "user-licensee",
+      reason: "rescheduled",
+    });
+
+    expect(reconciled.cancelledEmails).toMatchObject([
+      {
+        id: "email-calendar-reminder-001",
+        status: "cancelled",
+        metadata: {
+          deliveryState: {
+            reconciledBy: "calendar.reminder",
+            reconciliationReason: "rescheduled",
+          },
+        },
+      },
+    ]);
+    expect(reconciled.skippedJobs).toMatchObject([
+      {
+        id: "job-calendar-reminder-001",
+        status: "skipped",
+        finishedAt: "2026-04-25T12:15:00.000Z",
+      },
+    ]);
+    await expect(
+      repository.getEmailOutbox("firm-west-legal", "email-calendar-reminder-other"),
+    ).resolves.toMatchObject({ status: "queued" });
+    await expect(
+      repository.getEmailOutbox("firm-west-legal", "email-calendar-reminder-sent"),
+    ).resolves.toMatchObject({ status: "sent" });
+    await expect(
+      repository.listJobLifecycleRecords("firm-west-legal", { queueName: "email" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "job-calendar-reminder-other", status: "queued" }),
+        expect.objectContaining({ id: "job-calendar-reminder-sent", status: "completed" }),
+      ]),
+    );
+    await expect(
+      repository.listEmailEvents("firm-west-legal", { emailId: "email-calendar-reminder-001" }),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventType: "cancelled",
+          metadata: expect.objectContaining({
+            eventId: "calendar-event-001",
+            reminderId: "calendar-reminder-001",
+            reconciliationReason: "rescheduled",
+          }),
+        }),
+      ]),
+    );
   });
 
   it("records matter-scoped email delivery history in memory", async () => {
