@@ -48,6 +48,9 @@ OP-T155 shipped the first intake widget registry and validator adapter slice, an
 the first staff visual branch-rule authoring slice, so those former intake candidates are no longer
 re-proposed here.
 
+OP-T157 shipped the first staff-only intake submissions operations surface, so the former
+staff-only intake submissions operations queue candidate is no longer re-proposed here.
+
 #### Intake, Documents, And Signing
 
 - **Advanced intake rule simulation matrix**
@@ -68,14 +71,6 @@ re-proposed here.
     diagnostics lane.
   - **References:** `heyform__heyform` and `jhumanj__opnform`.
   - **Reuse and snippets:** Reference-only because of license posture; no direct snippets.
-
-- **Staff-only intake submissions operations queue**
-  - **First slice:** Add a redacted submissions operations surface with status, counts, assigned
-    review posture, and export-safe summaries.
-  - **Local gap / shipped boundary:** OP has answer snapshots, review decisions, follow-up links,
-    and proposal decisions, but no dedicated submissions table for staff triage.
-  - **References:** `heyform__heyform`, `jhumanj__opnform`, and `kobotoolbox__kpi`.
-  - **Reuse and snippets:** Reference-only; no direct snippets.
 
 - **Interview-to-document assembly queue**
   - **First slice:** Queue generated package assembly from existing OP snapshots and draft export

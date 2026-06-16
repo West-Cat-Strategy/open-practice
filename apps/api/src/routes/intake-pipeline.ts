@@ -4,6 +4,7 @@ import { buildIntakePipelineSnapshot, type IntakeSessionRecord } from "@open-pra
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
 import type { ApiAuthContext } from "../server.js";
+import { loadNotificationSettings } from "./public-consultation-intakes/shared.js";
 import type { ApiRouteDependencies } from "./types.js";
 
 const listQuerySchema = z.object({
@@ -57,6 +58,10 @@ export function registerIntakePipelineRoutes(
       request.auth.firmId,
       { limit: query.limit },
     );
+    const publicConsultationSettings = await loadNotificationSettings(
+      repository,
+      request.auth.firmId,
+    );
     const intakeSessions = (await listVisibleIntakeSessions(request.auth, repository)).slice(
       0,
       query.limit,
@@ -97,6 +102,8 @@ export function registerIntakePipelineRoutes(
       intakeFormLinks,
       intakeFormReviews,
       calendarEvents,
+      publicConsultationReviewOwnerUserId: publicConsultationSettings.reviewOwnerUserId,
+      assignedMatterIds: request.auth.user.assignedMatterIds,
     });
   });
 }

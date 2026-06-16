@@ -26,6 +26,7 @@ import type {
   IntakeFormReviewRecord,
   IntakeSessionRecord,
   IntakePipelineLeadRecord,
+  IntakePipelineSubmissionsOperations,
   IntakePipelineSummary,
   IntakeTemplateRecord,
   IntakeVariableProposal,
@@ -148,7 +149,11 @@ export type {
 
 export { canRecordContactDataQualityResolutions } from "./_features/contacts/models";
 
-export type { IntakePipelineLeadRecord, IntakePipelineSummary };
+export type {
+  IntakePipelineLeadRecord,
+  IntakePipelineSubmissionsOperations,
+  IntakePipelineSummary,
+};
 
 export interface MatterSummary extends Matter {
   parties: Array<MatterParty & { contact: Contact }>;
@@ -293,6 +298,7 @@ export interface IntakeFormsDashboardResponse {
 export interface IntakePipelineResponse {
   leads: IntakePipelineLeadRecord[];
   summary: IntakePipelineSummary;
+  submissionsOperations: IntakePipelineSubmissionsOperations;
 }
 
 export interface IntakePipelineDashboardResponse extends IntakePipelineResponse {

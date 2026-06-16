@@ -17,10 +17,13 @@ import {
   type IntakePreviewAnswers,
 } from "../intake-forms-dashboard";
 import {
+  intakePipelineAssignmentPostureLabel,
   intakePipelineFollowUpActionLabel,
   intakePipelineSourceLabel,
   intakePipelineSourceQualityLabel,
   intakePipelineStatusLabel,
+  intakePipelineSubmissionsStatusLabel,
+  intakePipelineSubmissionsSummaryLine,
   intakePipelineSummaryLine,
 } from "../intake-pipeline-dashboard";
 import StructuredIntakeBuilder from "../intake-forms/StructuredIntakeBuilder";
@@ -343,6 +346,79 @@ export function IntakeSection({
             .join(", ")}
         </div>
       ) : null}
+
+      <div className="section-title">
+        <h3>Submissions operations</h3>
+        <span>{intakePipelineSubmissionsSummaryLine(intakePipeline.submissionsOperations)}</span>
+      </div>
+      <div className="detail-grid">
+        <div>
+          <span className="field-label">Submissions</span>
+          <strong>{intakePipeline.submissionsOperations.summary.totalSubmissions}</strong>
+        </div>
+        <div>
+          <span className="field-label">Staff review</span>
+          <strong>
+            {intakePipeline.submissionsOperations.summary.pendingStaffReviewCount +
+              intakePipeline.submissionsOperations.summary.conflictReviewCount}
+          </strong>
+        </div>
+        <div>
+          <span className="field-label">Waiting</span>
+          <strong>{intakePipeline.submissionsOperations.summary.waitingOnClientCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Scheduled</span>
+          <strong>{intakePipeline.submissionsOperations.summary.scheduledConsultationCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Converted</span>
+          <strong>{intakePipeline.submissionsOperations.summary.convertedCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Closed</span>
+          <strong>{intakePipeline.submissionsOperations.summary.closedCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Assigned</span>
+          <strong>{intakePipeline.submissionsOperations.summary.assignedCount}</strong>
+        </div>
+        <div>
+          <span className="field-label">Unassigned</span>
+          <strong>{intakePipeline.submissionsOperations.summary.unassignedCount}</strong>
+        </div>
+      </div>
+      <div className="party-list">
+        {intakePipeline.submissionsOperations.rows.slice(0, 8).map((row) => (
+          <div className="party-row upload-link-row" key={row.id}>
+            <span>
+              <strong>{row.displayName}</strong>
+              <small>
+                {intakePipelineSubmissionsStatusLabel(row.status)} ·{" "}
+                {intakePipelineAssignmentPostureLabel(row.assignmentPosture)} ·{" "}
+                {intakePipelineSourceLabel(row.sourceType)} · {row.sourceLabel}
+              </small>
+              <small>
+                {intakePipelineFollowUpActionLabel(row.followUpAction)} ·{" "}
+                {intakePipelineStatusLabel(row.followUpPosture)} · {row.followUpPriority} priority
+              </small>
+              <small>
+                {row.requestLinkCount} request links · {row.appointmentCount} appointment links ·{" "}
+                {row.conversionCount} conversions · activity {compactDate(row.lastActivityAt)}
+              </small>
+              <small>{row.exportSafeSummary}</small>
+            </span>
+            <em>{intakePipelineSourceQualityLabel(row.sourceQuality)}</em>
+          </div>
+        ))}
+        {intakePipeline.submissionsOperations.rows.length === 0 ? (
+          <p className="inline-empty">
+            {intakePipeline.status === "access_denied"
+              ? "Submissions operations are unavailable for this role."
+              : "No submissions operations rows are available."}
+          </p>
+        ) : null}
+      </div>
 
       <div className="section-title">
         <h3>Public consultation requests</h3>
