@@ -1452,7 +1452,7 @@ describe("inbound email routes", () => {
           jurisdiction: "BC",
           client: {
             kind: "person",
-            displayName: "Synthetic Inbound Client",
+            displayName: "Ada Morgan",
           },
         },
       },
@@ -1480,12 +1480,67 @@ describe("inbound email routes", () => {
             jurisdiction: "BC",
             client: {
               kind: "person",
-              displayName: "Synthetic Inbound Client",
+              displayName: "Ada Morgan",
             },
           },
           automaticMatterCreation: false,
           bodyRedacted: true,
           metadataRedacted: true,
+          reviewCues: {
+            duplicateCandidates: [
+              {
+                contactId: "contact-ada",
+                displayName: "Ada Morgan",
+                kind: "person",
+                status: "active",
+                matchedFields: ["name"],
+                matchCount: 1,
+                visibleSharedMatterCount: 1,
+                severity: "review",
+              },
+            ],
+            existingMatterCandidates: [
+              {
+                matterId: "matter-001",
+                number: "2026-0001",
+                title: "Morgan tenancy dispute",
+                status: "open",
+                practiceArea: "Residential tenancy",
+                jurisdiction: "BC",
+                matchReasons: expect.arrayContaining([
+                  "jurisdiction",
+                  "practice area",
+                  "visible client name",
+                ]),
+              },
+            ],
+            checklist: expect.arrayContaining([
+              expect.objectContaining({
+                key: "source_attachment_review",
+                label: "Attachment review",
+                state: "review",
+                count: 1,
+                source: "draft",
+              }),
+              expect.objectContaining({
+                key: "body_redaction",
+                label: "Body redaction",
+                state: "complete",
+                source: "draft",
+              }),
+              expect.objectContaining({
+                label: "Parties",
+                source: "existing_matter",
+                matterId: "matter-001",
+              }),
+            ]),
+            boundary: {
+              automaticMatterCreation: false,
+              bodyRedacted: true,
+              metadataRedacted: true,
+              matterPermissionsExpanded: false,
+            },
+          },
         },
       },
     });
@@ -1505,6 +1560,7 @@ describe("inbound email routes", () => {
       expect(body).not.toContain("inbound/message-unscoped/body.html");
       expect(body).not.toContain("inbound/message-unscoped/private-filing.pdf");
       expect(body).not.toContain("provider-private-id");
+      expect(body).not.toContain("matchedValue");
     }
     const audit = await repository.listAuditEvents(firmId);
     const event = audit.events.find(
@@ -1524,10 +1580,14 @@ describe("inbound email routes", () => {
         proposedPracticeArea: "Residential tenancy",
         proposedJurisdiction: "BC",
         clientKind: "person",
+        duplicateCandidateCount: 1,
+        existingMatterCandidateCount: 1,
+        checklistCueCount: 10,
         automaticMatterCreation: false,
+        matterPermissionsExpanded: false,
       },
     });
-    expect(JSON.stringify(event?.metadata)).not.toContain("Synthetic Inbound Client");
+    expect(JSON.stringify(event?.metadata)).not.toContain("Ada Morgan");
     expect(JSON.stringify(event?.metadata)).not.toContain("Private client body");
   });
 
