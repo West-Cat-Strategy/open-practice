@@ -127,6 +127,7 @@ export interface IntegrationWebhookSubscriptionRecord {
 export type OpenPracticeQueueName =
   | "email"
   | "connectors"
+  | "document_assembly"
   | "inbound_email"
   | "reports"
   | "ai_triage"

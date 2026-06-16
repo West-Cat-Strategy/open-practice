@@ -49,6 +49,7 @@ function testServer(
     authUser?: User;
     emailJobQueue?: ApiJobQueue;
     connectorJobQueue?: ApiJobQueue;
+    documentAssemblyJobQueue?: ApiJobQueue;
     inboundEmailJobQueue?: ApiJobQueue;
     aiAssistJobQueue?: ApiJobQueue;
     ocrJobQueue?: ApiJobQueue;
@@ -67,6 +68,7 @@ function testServer(
     repository: input.repository ?? new InMemoryOpenPracticeRepository({ seedSampleData: false }),
     emailJobQueue: input.emailJobQueue,
     connectorJobQueue: input.connectorJobQueue,
+    documentAssemblyJobQueue: input.documentAssemblyJobQueue,
     inboundEmailJobQueue: input.inboundEmailJobQueue,
     aiAssistJobQueue: input.aiAssistJobQueue,
     ocrJobQueue: input.ocrJobQueue,
@@ -168,6 +170,11 @@ describe("provider status route", () => {
         producerQueues: [
           { queueName: "email", status: "not_configured", reason: "queue_not_configured" },
           { queueName: "connectors", status: "not_configured", reason: "queue_not_configured" },
+          {
+            queueName: "document_assembly",
+            status: "not_configured",
+            reason: "queue_not_configured",
+          },
           {
             queueName: "inbound_email",
             status: "not_configured",
@@ -281,6 +288,7 @@ describe("provider status route", () => {
       authUser,
       emailJobQueue: fakeQueue,
       connectorJobQueue: fakeQueue,
+      documentAssemblyJobQueue: fakeQueue,
       inboundEmailJobQueue: fakeQueue,
       aiAssistJobQueue: fakeQueue,
       ocrJobQueue: fakeQueue,
@@ -344,6 +352,7 @@ describe("provider status route", () => {
         producerQueues: [
           { queueName: "email", status: "configured" },
           { queueName: "connectors", status: "configured" },
+          { queueName: "document_assembly", status: "configured" },
           { queueName: "inbound_email", status: "configured" },
           { queueName: "ai_triage", status: "configured" },
           { queueName: "ocr", status: "configured" },
@@ -351,6 +360,7 @@ describe("provider status route", () => {
         workerQueues: expect.arrayContaining([
           { queueName: "email", status: "configured" },
           { queueName: "connectors", status: "configured" },
+          { queueName: "document_assembly", status: "configured" },
           { queueName: "inbound_email", status: "configured" },
           { queueName: "ai_triage", status: "configured" },
           { queueName: "ocr", status: "configured" },

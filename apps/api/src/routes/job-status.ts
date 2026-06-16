@@ -11,6 +11,7 @@ import type { ApiJobQueue } from "./types.js";
 export const openPracticeQueueNames = [
   "email",
   "connectors",
+  "document_assembly",
   "inbound_email",
   "reports",
   "ai_triage",

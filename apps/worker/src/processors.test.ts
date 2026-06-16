@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { InMemoryOpenPracticeRepository } from "@open-practice/database";
 import type { MailSender, OcrProvider } from "@open-practice/domain";
-import { FakeDraftAssistProvider } from "@open-practice/providers";
+import { EmbeddedAutomationProvider, FakeDraftAssistProvider } from "@open-practice/providers";
 import { processOpenPracticeJob, type ConnectorDeliveryRequest } from "./processors.js";
 
 describe("worker processors", () => {
@@ -1230,6 +1230,166 @@ describe("worker processors", () => {
     });
     expect(JSON.stringify(job.metadata)).not.toContain("Synthetic audit body");
     expect(job.metadata).not.toHaveProperty("rawBody");
+  });
+
+  it("assembles generated intake packages from snapshot IDs without raw job metadata", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createAnswerSnapshot({
+      id: "answer-snapshot-worker-package",
+      firmId: "firm-west-legal",
+      intakeSessionId: "intake-session-001",
+      capturedAt: "2026-04-25T12:10:00.000Z",
+      answers: { issue_type: "repair", repair_details: "Synthetic raw client answer" },
+      resolution: {
+        templateId: "intake-template-001",
+        templateVersion: 2,
+        visibleQuestionIds: ["issue_type", "repair_details"],
+        visibleFormItemIds: ["issue-type-item", "repair-details-item"],
+        requiredIncompleteItemIds: [],
+        matchedBranchRuleIds: ["repair-package"],
+        eligiblePackageIds: ["repair_notice_package"],
+        selectedPackageIds: ["repair_notice_package"],
+        packageSummaries: [
+          {
+            packageId: "repair_notice_package",
+            title: "Repair notice package",
+            documentCount: 2,
+            documentIds: ["repair_notice_letter", "client_instruction_summary"],
+          },
+        ],
+        packageDocuments: [
+          {
+            packageId: "repair_notice_package",
+            packageDocumentId: "repair_notice_letter",
+            title: "Repair notice letter",
+          },
+          {
+            packageId: "repair_notice_package",
+            packageDocumentId: "client_instruction_summary",
+            title: "Client instruction summary",
+          },
+        ],
+      },
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-document-assembly-worker-test",
+      firmId: "firm-west-legal",
+      queueName: "document_assembly",
+      jobName: "assemble_intake_generated_package",
+      status: "queued",
+      targetResourceType: "intake_generated_package",
+      targetResourceId: "job-document-assembly-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      queuedAt: "2026-05-29T12:00:00.000Z",
+      metadata: {
+        matterId: "matter-001",
+        intakeSessionId: "intake-session-001",
+        answerSnapshotId: "answer-snapshot-worker-package",
+        templateId: "intake-template-001",
+        templateVersion: 2,
+        packageId: "repair_notice_package",
+        packageDocumentCount: 2,
+        requestedByUserId: "user-admin",
+        answers: { raw: "Synthetic raw client answer" },
+      },
+    });
+
+    const result = await processOpenPracticeJob({
+      queueName: "document_assembly",
+      jobName: "assemble_intake_generated_package",
+      data: {
+        firmId: "firm-west-legal",
+        resourceType: "intake_generated_package",
+        resourceId: "job-document-assembly-worker-test",
+        metadata: {
+          matterId: "matter-001",
+          intakeSessionId: "intake-session-001",
+          answerSnapshotId: "answer-snapshot-worker-package",
+          templateId: "intake-template-001",
+          templateVersion: 2,
+          packageId: "repair_notice_package",
+          packageDocumentCount: 2,
+          requestedByUserId: "user-admin",
+          answers: { raw: "Synthetic raw client answer" },
+          storageKey: "matters/matter-001/private.pdf",
+        },
+      },
+      jobLifecycleId: "job-document-assembly-worker-test",
+      attemptsMade: 0,
+      maxAttempts: 2,
+      repository,
+      s3: {} as never,
+      ocrProvider: {} as never,
+      automationProvider: new EmbeddedAutomationProvider(),
+      mailSender: {} as never,
+      inboundEmailParser: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      status: "completed",
+      metadata: {
+        resourceType: "intake_generated_package",
+        matterId: "matter-001",
+        intakeSessionId: "intake-session-001",
+        answerSnapshotId: "answer-snapshot-worker-package",
+        packageId: "repair_notice_package",
+        documentCount: 2,
+        generatedDocumentCount: 2,
+        providerConfigured: true,
+        providerStatus: "completed",
+      },
+    });
+    const generatedDocuments = (
+      await repository.listGeneratedDocuments("firm-west-legal", {
+        matterId: "matter-001",
+      })
+    ).filter(
+      (document) =>
+        document.intakeSessionId === "intake-session-001" &&
+        document.packageId === "repair_notice_package",
+    );
+    expect(generatedDocuments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          intakeSessionId: "intake-session-001",
+          provider: "embedded",
+          packageId: "repair_notice_package",
+          packageDocumentId: "repair_notice_letter",
+          title: "Repair notice letter",
+        }),
+        expect.objectContaining({
+          packageDocumentId: "client_instruction_summary",
+          title: "Client instruction summary",
+        }),
+      ]),
+    );
+    const generatedDocumentIds = generatedDocuments.map((document) => document.id);
+    const [job] = await repository.listJobLifecycleRecords("firm-west-legal", {
+      queueName: "document_assembly",
+    });
+    expect(job).toMatchObject({
+      status: "completed",
+      metadata: expect.objectContaining({
+        packageId: "repair_notice_package",
+        documentCount: 2,
+        generatedDocumentIds,
+        providerStatus: "completed",
+      }),
+    });
+    expect(JSON.stringify(job.metadata)).not.toContain("Synthetic raw client answer");
+    expect(JSON.stringify(job.metadata)).not.toContain("storageKey");
+    const audit = await repository.listAuditEvents("firm-west-legal");
+    const packageAudit = audit.events.find((event) => event.action === "intake.package.generated");
+    expect(packageAudit?.metadata).toMatchObject({
+      intakeSessionId: "intake-session-001",
+      answerSnapshotId: "answer-snapshot-worker-package",
+      packageId: "repair_notice_package",
+      documentCount: 2,
+      generatedDocumentIds,
+      providerCount: 1,
+    });
+    expect(JSON.stringify(packageAudit?.metadata)).not.toContain("Synthetic raw client answer");
   });
 
   it("completes billing and jurisdictional trust report jobs with bounded metadata only", async () => {

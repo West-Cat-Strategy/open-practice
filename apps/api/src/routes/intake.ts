@@ -60,7 +60,7 @@ async function getEmbeddedTemplate(
 
 export function registerIntakeRoutes(
   server: FastifyInstance,
-  { repository, automationProvider, emailJobQueue }: ApiRouteDependencies,
+  { repository, automationProvider, emailJobQueue, documentAssemblyJobQueue }: ApiRouteDependencies,
 ): void {
   server.get("/api/intake-sessions", async (request) => {
     const query = parseRequestPart(intakeSessionQuerySchema, request.query, "query");
@@ -228,5 +228,10 @@ export function registerIntakeRoutes(
     return created;
   });
 
-  registerIntakeGeneratedDocumentRoutes(server, { repository, automationProvider, emailJobQueue });
+  registerIntakeGeneratedDocumentRoutes(server, {
+    repository,
+    automationProvider,
+    emailJobQueue,
+    documentAssemblyJobQueue,
+  });
 }

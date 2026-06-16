@@ -2460,6 +2460,15 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "create",
     "derived",
   ),
+  authRoute(
+    "registerIntakeRoutes",
+    "apps/api/src/routes/intake.test.ts",
+    "GET",
+    "/api/intake-sessions/:id/generated-packages/:jobId",
+    "intake_session",
+    "read",
+    "derived",
+  ),
 
   authRoute(
     "registerIntakePipelineRoutes",

@@ -33,6 +33,7 @@ const providerSettingKinds = [
 const bullMqProducerQueueNames = [
   "email",
   "connectors",
+  "document_assembly",
   "inbound_email",
   "ai_triage",
   "ocr",
@@ -52,6 +53,7 @@ function queueForName(
     RegisterProviderStatusRouteOptions,
     | "emailJobQueue"
     | "connectorJobQueue"
+    | "documentAssemblyJobQueue"
     | "inboundEmailJobQueue"
     | "aiAssistJobQueue"
     | "ocrJobQueue"
@@ -59,6 +61,7 @@ function queueForName(
 ): ApiJobQueue | undefined {
   if (queueName === "email") return queues.emailJobQueue;
   if (queueName === "connectors") return queues.connectorJobQueue;
+  if (queueName === "document_assembly") return queues.documentAssemblyJobQueue;
   if (queueName === "inbound_email") return queues.inboundEmailJobQueue;
   if (queueName === "ai_triage") return queues.aiAssistJobQueue;
   if (queueName === "ocr") return queues.ocrJobQueue;

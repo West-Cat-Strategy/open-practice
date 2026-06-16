@@ -3,6 +3,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 import { z } from "zod";
 import type {
   AiOperationalProposalProvider,
+  DocumentAutomationProvider,
   DraftAssistProvider,
   MailSender,
   OpenPracticeQueueName,
@@ -16,6 +17,7 @@ import {
   type OpenPracticeRepository,
 } from "@open-practice/database";
 import {
+  EmbeddedAutomationProvider,
   TesseractOcrProvider,
   ImapMailboxPoller,
   MailParserProvider,
@@ -171,6 +173,7 @@ export function createWorkers(input: {
   repository: OpenPracticeRepository;
   s3: { client: S3Client; bucket: string; serverSideEncryption?: "AES256" };
   ocrProvider: TesseractOcrProvider;
+  automationProvider?: DocumentAutomationProvider;
   aiOperationalProposalProvider?: AiOperationalProposalProvider;
   draftAssistProvider?: DraftAssistProvider;
   mailSender: MailSender;
@@ -199,6 +202,7 @@ export function createWorkers(input: {
             repository: input.repository,
             s3: input.s3,
             ocrProvider: input.ocrProvider,
+            automationProvider: input.automationProvider,
             aiOperationalProposalProvider: input.aiOperationalProposalProvider,
             draftAssistProvider: input.draftAssistProvider,
             mailSender: input.mailSender,
@@ -239,6 +243,9 @@ if (process.env.NODE_ENV !== "test") {
   const connectorJobQueue = queues.includes("connectors")
     ? createOpenPracticeQueue("connectors", env.REDIS_URL)
     : undefined;
+  const documentAssemblyJobQueue = queues.includes("document_assembly")
+    ? createOpenPracticeQueue("document_assembly", env.REDIS_URL)
+    : undefined;
   const inboundEmailJobQueue = queues.includes("inbound_email")
     ? createOpenPracticeQueue("inbound_email", env.REDIS_URL)
     : undefined;
@@ -254,6 +261,7 @@ if (process.env.NODE_ENV !== "test") {
       serverSideEncryption: env.S3_SERVER_SIDE_ENCRYPTION,
     },
     ocrProvider,
+    automationProvider: new EmbeddedAutomationProvider(),
     mailSender,
     inboundEmailParser: new MailParserProvider(),
     imapMailboxPoller: new ImapMailboxPoller(),
@@ -278,6 +286,7 @@ if (process.env.NODE_ENV !== "test") {
     void Promise.all([
       ...workers.map((worker) => worker.close()),
       connectorJobQueue?.close(),
+      documentAssemblyJobQueue?.close(),
       inboundEmailJobQueue?.close(),
       close?.(),
     ]).then(() => process.exit(0));
