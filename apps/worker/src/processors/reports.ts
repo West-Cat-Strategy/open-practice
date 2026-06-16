@@ -1,6 +1,7 @@
 import type { OpenPracticeRepository } from "@open-practice/database";
 import {
   buildStaffReportProjection,
+  canAccess,
   getStaffSavedReportDefinition,
   isStaffReportDefinitionKey,
   isStaffReportExportProfileId,
@@ -29,6 +30,18 @@ function metadataStaffReportExportProfileId(metadata: Record<string, unknown>) {
 function metadataStaffReportGroupingKey(metadata: Record<string, unknown>) {
   const value = metadataString(metadata, "groupingKey");
   return value && isStaffReportGroupingKey(value) ? value : undefined;
+}
+
+function visibleMatterIds(
+  dossiers: Awaited<ReturnType<OpenPracticeRepository["listContactDossiersForUser"]>>,
+): Set<string> {
+  return new Set(dossiers.flatMap((dossier) => dossier.matters.map((matter) => matter.matterId)));
+}
+
+function visibleContactIds(
+  dossiers: Awaited<ReturnType<OpenPracticeRepository["listContactDossiersForUser"]>>,
+): Set<string> {
+  return new Set(dossiers.map((dossier) => dossier.contact.id));
 }
 
 export async function processReportJob(input: {
@@ -207,6 +220,119 @@ export async function processReportJob(input: {
         matterId: thread.matterId,
         threadId: thread.id,
         messageCount: messages.length,
+        generatedAt: new Date().toISOString(),
+      }),
+    };
+  }
+
+  if (
+    input.jobName === "contact_history_export" &&
+    data.resourceType === "contact_history_export"
+  ) {
+    const metadata = data.metadata ?? {};
+    const contactId = metadataString(metadata, "contactId");
+    const requestedByUserId = metadataString(metadata, "requestedByUserId");
+    if (!contactId || !requestedByUserId) {
+      return {
+        status: "skipped",
+        reason: "Contact-history export metadata was incomplete",
+        metadata: compactMetadata({
+          firmId: data.firmId,
+          resourceType: "contact_history_export",
+          resourceId: data.resourceId,
+          reportType: "contact_history_export",
+          reportScope: "contact",
+          contactId,
+          contactExportStatus: "invalid_metadata",
+        }),
+      };
+    }
+    const requester = await repository.getUser(data.firmId, requestedByUserId);
+    if (
+      !requester ||
+      !canAccess({
+        user: requester,
+        firmId: data.firmId,
+        resource: "contact",
+        action: "export",
+      })
+    ) {
+      return {
+        status: "skipped",
+        reason: "Contact-history export requester is no longer authorized",
+        metadata: compactMetadata({
+          firmId: data.firmId,
+          resourceType: "contact_history_export",
+          resourceId: data.resourceId,
+          reportType: "contact_history_export",
+          reportScope: "contact",
+          contactId,
+          requestedByUserId,
+          contactExportStatus: "requester_not_authorized",
+        }),
+      };
+    }
+    const dossiers = await repository.listContactDossiersForUser(requester);
+    const dossier = dossiers.find((candidate) => candidate.contact.id === contactId);
+    if (!dossier) {
+      return {
+        status: "skipped",
+        reason: "Contact-history export target is no longer visible",
+        metadata: compactMetadata({
+          firmId: data.firmId,
+          resourceType: "contact_history_export",
+          resourceId: data.resourceId,
+          reportType: "contact_history_export",
+          reportScope: "contact",
+          contactId,
+          requestedByUserId,
+          contactExportStatus: "contact_not_visible",
+        }),
+      };
+    }
+    const [portalGrants, timeline, resolutions] = await Promise.all([
+      repository.listContactPortalGrantsForUser(requester, contactId),
+      repository.listContactTimelineForUser(requester, contactId),
+      repository.listContactDataQualityResolutions(data.firmId, { contactId }),
+    ]);
+    const matterIds = visibleMatterIds(dossiers);
+    const contactIds = visibleContactIds(dossiers);
+    const visibleResolutionCount = resolutions.filter(
+      (resolution) =>
+        resolution.contactId === contactId &&
+        (!resolution.matterId || matterIds.has(resolution.matterId)) &&
+        (!resolution.relatedContactId || contactIds.has(resolution.relatedContactId)),
+    ).length;
+    return {
+      status: "completed",
+      metadata: compactMetadata({
+        firmId: data.firmId,
+        resourceType: "contact_history_export",
+        resourceId: data.resourceId,
+        reportType: "contact_history_export",
+        reportScope: "contact",
+        contactId,
+        requestedByUserId,
+        purpose: "staff_review",
+        reviewReasonPresent: true,
+        downloadExpiresAt: metadataString(metadata, "downloadExpiresAt"),
+        generatedCategoryCount: 9,
+        timelineEntryCount: timeline.length,
+        matterAssociationCount: dossier.matters.length,
+        portalGrantCount: portalGrants.length,
+        conflictSummaryCount: dossier.conflictHistory.length + dossier.conflictCues.length,
+        recordCount: visibleResolutionCount,
+        retentionPosture: "queued_regenerated_download_no_retained_export_body",
+        legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
+        privacyPosture: "redacted_authorized_projection_only",
+        storedBody: false,
+        retainedExportArtifact: false,
+        deletionAutomation: false,
+        retentionDeadline: false,
+        legalHoldOverride: false,
+        redactedAuthorizedProjection: true,
+        exportBodyStoredInJobMetadata: false,
+        contactExportStatus: "completed",
         generatedAt: new Date().toISOString(),
       }),
     };

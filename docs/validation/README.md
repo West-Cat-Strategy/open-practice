@@ -40,12 +40,19 @@ It covers append-only, review-only pause/close/archive/reopen readiness records;
 status snapshots; concise reason/blocker evidence; matter-scoped API and dashboard authorization;
 safe audit metadata; and the no-automation/no-destructive-closure boundary.
 
+The 2026-06-16 queued CRM contact-history export links proof is recorded in
+[OP_CONTACT_HISTORY_EXPORT_QUEUE_LINKS_PROOF_2026-06-16.md](OP_CONTACT_HISTORY_EXPORT_QUEUE_LINKS_PROOF_2026-06-16.md).
+It covers the additive request/poll/download route family under existing `contact:export`,
+metadata-only `reports` queue job lifecycle records, 24-hour authenticated link expiry,
+download-time regeneration from current visibility, dashboard queued status/download behavior, and
+the no-retained-body/no-object-storage/no-retention-deadline/no-legal-hold-override boundary.
+
 The 2026-06-16 CRM contact-history export runtime proof is recorded in
 [OP_CONTACT_HISTORY_EXPORT_RUNTIME_PROOF_2026-06-16.md](OP_CONTACT_HISTORY_EXPORT_RUNTIME_PROOF_2026-06-16.md).
-It covers the selected single-contact `staff_review` runtime, existing `contact:export`
-authorization, redacted/transient JSON response, posture-only audit metadata, dashboard client-side
-download action, and explicit no-schema/no-queue/no-provider/no-retained-body/no-retention-claim
-boundary.
+It covers the selected single-contact synchronous `staff_review` runtime, existing
+`contact:export` authorization, redacted/transient JSON response, posture-only audit metadata,
+dashboard client-side download action, and explicit no-schema/no-provider/no-retained-body/
+no-retention-claim boundary for that synchronous route.
 
 The 2026-06-15 contact-history export, retention, and privacy decision packet is recorded in
 [OP_CONTACT_HISTORY_EXPORT_RETENTION_PRIVACY_DECISION_PACKET_PROOF_2026-06-15.md](OP_CONTACT_HISTORY_EXPORT_RETENTION_PRIVACY_DECISION_PACKET_PROOF_2026-06-15.md).
@@ -274,6 +281,7 @@ use [Planning and Progress](../planning-and-progress.md) for current row status.
 | [OP_INTAKE_TEMPLATE_VERSIONS_PROOF_2026-06-16.md](OP_INTAKE_TEMPLATE_VERSIONS_PROOF_2026-06-16.md)                                                                 | Row-local proof note | Proof for mutable staff intake-template drafts, immutable published versions, session-pinned public link behavior, redacted publish audit metadata, migration backfill, and selector-driven validation for the schema/API/domain/docs/policy change set.                                                                                                                                                             |
 | [OP_SIGNATURE_REQUEST_ENVELOPE_METADATA_PROOF_2026-06-16.md](OP_SIGNATURE_REQUEST_ENVELOPE_METADATA_PROOF_2026-06-16.md)                                           | Row-local proof note | Proof for OP-authored signer-order and field-placement metadata on existing signature requests, covering provider-neutral validation, persistence defaults, no-side-effect rejection, redacted evidence-packet summaries, dashboard posture, and selector-driven validation.                                                                                                                                         |
 | [OP_WORKFLOW_STEP_HISTORY_PROJECTION_PROOF_2026-06-16.md](OP_WORKFLOW_STEP_HISTORY_PROJECTION_PROOF_2026-06-16.md)                                                 | Row-local proof note | Proof for the workflow-step history projection branch, covering domain grouping/redaction, `GET /api/jobs/workflows`, matter-scoped authorization, dashboard Operations/Queues rendering, route manifest coverage, docs reconciliation, and selector-driven validation.                                                                                                                                              |
+| [OP_CONTACT_HISTORY_EXPORT_QUEUE_LINKS_PROOF_2026-06-16.md](OP_CONTACT_HISTORY_EXPORT_QUEUE_LINKS_PROOF_2026-06-16.md)                                             | Row-local proof note | Proof for the queued single-contact CRM contact-history export link follow-up, covering request/poll/download routes under existing `contact:export`, metadata-only reports queue lifecycle records, authenticated 24-hour link expiry, regenerated downloads, dashboard queued status/download behavior, redaction allowlists, and no retained export body or broad retention/legal-hold claim.                     |
 | [OP_CONTACT_HISTORY_EXPORT_RUNTIME_PROOF_2026-06-16.md](OP_CONTACT_HISTORY_EXPORT_RUNTIME_PROOF_2026-06-16.md)                                                     | Row-local proof note | Proof for the single-contact CRM contact-history export runtime, covering existing `contact:export` authorization, transient `staff_review` JSON generation from authorized projections, redaction/audit metadata boundaries, dashboard JSON download behavior, docs reconciliation, and selector-driven validation.                                                                                                 |
 | [OP-T121_REMINDER_JOB_RECONCILIATION_PROOF_2026-06-16.md](OP-T121_REMINDER_JOB_RECONCILIATION_PROOF_2026-06-16.md)                                                 | Row-local proof note | Done proof for durable reconciliation of queued opt-in calendar reminder email jobs when staff cancel, delete, reschedule, or refresh pending dashboard reminder records.                                                                                                                                                                                                                                            |
 | [OP_CONTACT_DUPLICATE_REVIEW_ASSISTANCE_PROOF_2026-06-16.md](OP_CONTACT_DUPLICATE_REVIEW_ASSISTANCE_PROOF_2026-06-16.md)                                           | Row-local proof note | Proof for review-only contact duplicate assistance, covering derived safe duplicate candidate metadata in dossiers/review queues, API matched-value redaction, Contacts dashboard review context, append-only reviewer decisions, and no merge, migration, contact rewrite, conflict mutation, or matter-scope widening.                                                                                             |

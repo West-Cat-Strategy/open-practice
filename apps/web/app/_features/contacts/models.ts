@@ -64,6 +64,40 @@ export interface ContactTimelineResponse {
   timeline: ActivityTimelineEntry[];
 }
 
+export interface ContactHistoryExportRequest {
+  id: string;
+  jobId: string;
+  contactId: string;
+  purpose: "staff_review";
+  status: "queued" | "active" | "completed" | "failed" | "dead_letter" | "skipped";
+  queuedAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  failedAt?: string;
+  pollUrl: string;
+  downloadUrl: string;
+  downloadExpiresAt?: string;
+  reviewReasonPresent: boolean;
+  generatedCategoryCount?: number;
+  timelineEntryCount?: number;
+  matterAssociationCount?: number;
+  portalGrantCount?: number;
+  conflictSummaryCount?: number;
+  retentionPosture: string;
+  legalHoldPosture: string;
+  privacyPosture: string;
+  storedBody: false;
+  retainedExportArtifact: false;
+  deletionAutomation: false;
+  retentionDeadline: false;
+  legalHoldOverride: false;
+  redactedAuthorizedProjection: true;
+}
+
+export interface ContactHistoryExportRequestResponse {
+  exportRequest: ContactHistoryExportRequest;
+}
+
 export interface ContactHistoryExportResponse {
   exportRequest: {
     purpose: "staff_review";
@@ -75,7 +109,7 @@ export interface ContactHistoryExportResponse {
     legalHoldPosture: string;
     privacyPosture: string;
     storedBody: false;
-  };
+  } & Partial<ContactHistoryExportRequest>;
   export: {
     generatedAt: string;
     generatedByUserId: string;

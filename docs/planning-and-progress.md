@@ -8,17 +8,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                    |
-| --------------------- | ------------------------------------------------------------------------ |
-| Current focus         | Three validated 2026-06-16 follow-up lanes are being merged to mainline. |
-| Next recommended pick | Pick the next candidate from the durable roadmap/backlog.                |
-| Ready rows            | 0                                                                        |
-| Candidate rows        | 0                                                                        |
-| In progress rows      | 0                                                                        |
-| Review rows           | 0                                                                        |
-| Blocked rows          | 0                                                                        |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).     |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`         |
+| Snapshot              | Value                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| Current focus         | Contact-history export queued/download-link slice validation.        |
+| Next recommended pick | Pick the next candidate from the durable roadmap/backlog.            |
+| Ready rows            | 0                                                                    |
+| Candidate rows        | 0                                                                    |
+| In progress rows      | 0                                                                    |
+| Review rows           | 0                                                                    |
+| Blocked rows          | 0                                                                    |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
 
@@ -31,14 +31,25 @@ QA responses, and the slice adds no approval automation, public scenario UI, sch
 worker, provider, dependency, or public runner behavior change. Proof is recorded in
 [Staff intake QA scenario matrix proof](validation/OP_INTAKE_QA_SCENARIO_MATRIX_PROOF_2026-06-16.md).
 
-The 2026-06-16 single-contact CRM contact-history export runtime adds
-`POST /api/contacts/:contactId/history-export` for authenticated staff/admin users with the
-existing `contact:export` permission. It returns a transient `staff_review` JSON export for one
-visible contact from the existing authorized dossier/detail/timeline projections, requires a short
-review reason, records only posture/count audit metadata, and adds a Contacts dashboard action for a
-client-side JSON download. It does not add a schema, migration, worker, provider, queue, object
-storage artifact, persistent download link, retained export body, retention deadline, deletion
-workflow, legal-hold override, or compliance claim. Proof is recorded in
+The 2026-06-16 queued CRM contact-history export link follow-up adds authenticated
+`POST /api/contacts/:contactId/history-export-requests`, poll, and short-lived download routes on
+the existing reports queue for the same `staff_review` purpose and `contact:export` permission. It
+stores only bounded request/link metadata in job lifecycle records, regenerates the export JSON on
+authenticated download from current requester visibility, and keeps review reasons, raw contact
+history, export bodies, storage keys, provider payloads, private notes, raw matched values, and task
+text out of queue/audit metadata. It does not add a schema, migration, provider, object-storage
+artifact, retained export body, retention deadline, deletion automation, legal-hold override, broad
+CRM permission, or compliance claim. Proof is recorded in
+[queued contact-history export links proof](validation/OP_CONTACT_HISTORY_EXPORT_QUEUE_LINKS_PROOF_2026-06-16.md).
+
+The 2026-06-16 single-contact CRM contact-history export runtime keeps the synchronous
+`POST /api/contacts/:contactId/history-export` path available for authenticated staff/admin users
+with the existing `contact:export` permission. It returns a transient `staff_review` JSON export for
+one visible contact from the existing authorized dossier/detail/timeline projections, requires a
+short review reason, records only posture/count audit metadata, and supports a browser-side JSON
+download. The synchronous route itself does not add a schema, migration, worker, provider, queue,
+object-storage artifact, retained export body, retention deadline, deletion workflow, legal-hold
+override, or compliance claim. Proof is recorded in
 [CRM contact-history export runtime proof](validation/OP_CONTACT_HISTORY_EXPORT_RUNTIME_PROOF_2026-06-16.md).
 
 The 2026-06-16 inbound email matter draft branch adds a staff-confirmed, review-only matter-draft

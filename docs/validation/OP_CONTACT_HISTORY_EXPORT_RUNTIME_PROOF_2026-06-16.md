@@ -4,7 +4,7 @@ Date: 2026-06-16 PDT
 
 ## Scope
 
-This lane implements the smallest selected contact-history export runtime:
+This lane implemented the smallest selected synchronous contact-history export runtime:
 
 - `POST /api/contacts/:contactId/history-export`;
 - existing `contact:export` permission only, with no broadened CRM roles;
@@ -16,9 +16,15 @@ This lane implements the smallest selected contact-history export runtime:
   short review reason before calling the API and generating a browser-side JSON download from the
   response.
 
+Current follow-up: the queued/download-link slice is recorded separately in
+[OP_CONTACT_HISTORY_EXPORT_QUEUE_LINKS_PROOF_2026-06-16.md](OP_CONTACT_HISTORY_EXPORT_QUEUE_LINKS_PROOF_2026-06-16.md).
+This proof's no-queue/no-link statements describe the synchronous route above, which remains
+available unchanged.
+
 ## Privacy And Retention Boundaries
 
-The runtime preserves the contact-history export decision packet's selected first-slice posture:
+The synchronous runtime preserves the contact-history export decision packet's selected first-slice
+posture:
 
 - no schema, migration, queue, worker, provider, object-storage artifact, persistent download link,
   retained export body, or raw body in audit/job metadata;

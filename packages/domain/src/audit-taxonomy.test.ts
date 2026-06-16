@@ -295,6 +295,7 @@ describe("audit event taxonomy", () => {
         resourceId: "contact-ada",
         metadata: {
           contactId: "contact-ada",
+          jobId: "contact-history-export-job",
           purpose: "staff_review",
           reviewReasonPresent: true,
           generatedCategoryCount: 9,
@@ -302,9 +303,17 @@ describe("audit event taxonomy", () => {
           matterAssociationCount: 1,
           portalGrantCount: 1,
           conflictSummaryCount: 2,
-          retentionPosture: "transient_regenerated_no_retained_export_body",
+          downloadExpiresAt: "2026-06-17T12:00:00.000Z",
+          enqueueStatus: "queued_for_local_report_worker",
+          idempotencyKeyPresent: true,
+          retentionPosture: "queued_regenerated_download_no_retained_export_body",
           legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
           privacyPosture: "redacted_authorized_projection_only",
+          storedBody: false,
+          retainedExportArtifact: false,
+          deletionAutomation: false,
+          retentionDeadline: false,
+          legalHoldOverride: false,
         },
       }),
     );
@@ -318,6 +327,7 @@ describe("audit event taxonomy", () => {
     expect(classification.metadataHints.resource).toEqual(
       expect.arrayContaining([
         "contactId",
+        "jobId",
         "purpose",
         "reviewReasonPresent",
         "generatedCategoryCount",
@@ -325,13 +335,78 @@ describe("audit event taxonomy", () => {
         "matterAssociationCount",
         "portalGrantCount",
         "conflictSummaryCount",
+        "downloadExpiresAt",
+        "enqueueStatus",
+        "idempotencyKeyPresent",
         "retentionPosture",
         "legalHoldPosture",
         "privacyPosture",
+        "storedBody",
+        "retainedExportArtifact",
+        "deletionAutomation",
+        "retentionDeadline",
+        "legalHoldOverride",
       ]),
     );
     expect(classification.metadataHints.resource).not.toEqual(
-      expect.arrayContaining(["displayName", "email", "phone", "address", "export"]),
+      expect.arrayContaining([
+        "displayName",
+        "email",
+        "phone",
+        "address",
+        "export",
+        "reviewReason",
+      ]),
+    );
+  });
+
+  it("classifies contact-history export downloads with link-only metadata", () => {
+    const classification = classifyAuditEvent(
+      auditEvent({
+        action: "contact_history_export.downloaded",
+        resourceType: "contact_history_export",
+        resourceId: "contact-ada",
+        metadata: {
+          contactId: "contact-ada",
+          jobId: "contact-history-export-job",
+          purpose: "staff_review",
+          downloadExpiresAt: "2026-06-17T12:00:00.000Z",
+          retentionPosture: "queued_regenerated_download_no_retained_export_body",
+          legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
+          privacyPosture: "redacted_authorized_projection_only",
+          storedBody: false,
+          retainedExportArtifact: false,
+          deletionAutomation: false,
+          retentionDeadline: false,
+          legalHoldOverride: false,
+        },
+      }),
+    );
+
+    expect(classification).toMatchObject({
+      category: "contacts",
+      known: true,
+      matterScope: "optional_matter",
+      resourceTypeMatches: true,
+    });
+    expect(classification.metadataHints.resource).toEqual(
+      expect.arrayContaining([
+        "contactId",
+        "jobId",
+        "purpose",
+        "downloadExpiresAt",
+        "retentionPosture",
+        "legalHoldPosture",
+        "privacyPosture",
+        "storedBody",
+        "retainedExportArtifact",
+        "deletionAutomation",
+        "retentionDeadline",
+        "legalHoldOverride",
+      ]),
+    );
+    expect(classification.metadataHints.resource).not.toEqual(
+      expect.arrayContaining(["displayName", "email", "phone", "address", "exportBody"]),
     );
   });
 
