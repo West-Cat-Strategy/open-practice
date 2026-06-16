@@ -287,6 +287,7 @@ const safeJobMetadataKeys = new Set([
   "requestType",
   "reportScope",
   "reportType",
+  "requestId",
   "resourceId",
   "resourceType",
   "retryScheduleFailedCount",

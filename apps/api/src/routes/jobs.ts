@@ -1,5 +1,11 @@
 import type { FastifyInstance } from "fastify";
-import { canReadJobLifecycleRecord, type User } from "@open-practice/domain";
+import {
+  buildWorkflowHistoryProjection,
+  buildWorkflowAuditMetadata,
+  canReadJobLifecycleRecord,
+  type AuditEvent,
+  type User,
+} from "@open-practice/domain";
 import { z } from "zod";
 import { requireAccess } from "../http/auth-guards.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -21,6 +27,12 @@ const jobQuerySchema = z.object({
     (value) => (typeof value === "string" ? decodeURIComponent(value) : value),
     z.string().datetime().optional(),
   ),
+});
+const workflowHistoryQuerySchema = z.object({
+  matterId: z.string().min(1).optional(),
+  queueName: z.enum(openPracticeQueueNames).optional(),
+  status: z.enum(["queued", "active", "succeeded", "failed", "skipped"]).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(25),
 });
 
 async function visibleJobPage(input: {
@@ -61,6 +73,37 @@ async function visibleJobPage(input: {
   }
 
   return visible;
+}
+
+function metadataContainsMatterId(value: unknown, matterId: string): boolean {
+  if (value === matterId) return true;
+  return Array.isArray(value) && value.includes(matterId);
+}
+
+function workflowAuditMatterIds(event: AuditEvent): string[] {
+  const metadata = buildWorkflowAuditMetadata(event.metadata);
+  const matterIds = [
+    ...(Array.isArray(metadata.matterIds) ? metadata.matterIds : []),
+    metadata.matterId,
+  ].filter(
+    (matterId): matterId is string => typeof matterId === "string" && matterId.trim() !== "",
+  );
+  return [...new Set(matterIds)];
+}
+
+function canReadWorkflowAuditEvent(input: { user: User; event: AuditEvent }): boolean {
+  if (input.user.role === "owner_admin" || input.user.role === "auditor") return true;
+  const matterIds = workflowAuditMatterIds(input.event);
+  return matterIds.some((matterId) => input.user.assignedMatterIds.includes(matterId));
+}
+
+function workflowAuditTouchesMatter(event: AuditEvent, matterId: string): boolean {
+  const metadata = buildWorkflowAuditMetadata(event.metadata);
+  return (
+    (event.resourceType === "matter" && event.resourceId === matterId) ||
+    metadataContainsMatterId(metadata.matterId, matterId) ||
+    metadataContainsMatterId(metadata.matterIds, matterId)
+  );
 }
 
 export function registerJobsRoutes(
@@ -144,6 +187,41 @@ export function registerJobsRoutes(
     return summarizeWorkerHealth({
       records: visibleJobs,
       workerQueues: workerQueues(),
+    });
+  });
+
+  server.get("/api/jobs/workflows", async (request) => {
+    const access = requireAccess(request.auth, { resource: "job", action: "read" });
+    if (!access.ok) throw access.error;
+    const query = parseRequestPart(workflowHistoryQuerySchema, request.query, "query");
+
+    const [jobs, audit] = await Promise.all([
+      repository.listJobLifecycleRecords(request.auth.firmId, {
+        queueName: query.queueName,
+        limit: 100,
+      }),
+      repository.listAuditEvents(request.auth.firmId),
+    ]);
+    const visibleJobs = jobs.filter((record) =>
+      canReadJobLifecycleRecord({
+        user: request.auth.user,
+        firmId: request.auth.firmId,
+        record,
+      }),
+    );
+    const visibleWorkflowAuditEvents = audit.events.filter((event) => {
+      if (!buildWorkflowAuditMetadata(event.metadata).workflowStatus) return false;
+      if (query.matterId && !workflowAuditTouchesMatter(event, query.matterId)) return false;
+      return canReadWorkflowAuditEvent({ user: request.auth.user, event });
+    });
+
+    return buildWorkflowHistoryProjection({
+      jobs: visibleJobs,
+      auditEvents: visibleWorkflowAuditEvents,
+      matterId: query.matterId,
+      queueName: query.queueName,
+      status: query.status,
+      limit: query.limit,
     });
   });
 

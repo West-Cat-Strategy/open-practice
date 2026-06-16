@@ -10,8 +10,10 @@ import { emptyStaffReportingWorkspace } from "../../reporting-dashboard";
 import {
   buildWorkerHealthPath,
   buildWorkerRunsPath,
+  buildWorkflowHistoryPath,
   emptyWorkerHealthResponse,
   emptyWorkerRunsResponse,
+  emptyWorkflowHistoryResponse,
 } from "../../worker-runs-dashboard";
 import { apiGetOptional } from "../../_shared/server-api";
 import type {
@@ -24,6 +26,7 @@ import type {
   WorkerHealthResponse,
   WorkerRunsDashboardResponse,
   WorkerRunsResponse,
+  WorkflowHistoryResponse,
 } from "../../types";
 
 export interface OperationsDashboardResources {
@@ -34,6 +37,7 @@ export interface OperationsDashboardResources {
   reportingWorkspace: StaffReportingWorkspaceResponse;
   taskWorkbench: TaskDeadlineWorkbenchResponse;
   workerHealth: WorkerHealthResponse;
+  workflowHistory: WorkflowHistoryResponse;
   workerRuns: WorkerRunsDashboardResponse;
 }
 
@@ -106,6 +110,12 @@ export async function loadOperationsDashboardResources(
     headers,
     emptyWorkerHealthResponse(),
   );
+  const workflowHistory = await apiGetOptional<WorkflowHistoryResponse>(
+    buildWorkflowHistoryPath(),
+    emptyWorkflowHistoryResponse(),
+    headers,
+    emptyWorkflowHistoryResponse("access_denied"),
+  );
   const providerStatus = await apiGetOptional<ProvidersStatusResponse>(
     buildProvidersStatusPath(),
     emptyProvidersStatusResponse(),
@@ -145,6 +155,7 @@ export async function loadOperationsDashboardResources(
     reportingWorkspace,
     taskWorkbench,
     workerHealth,
+    workflowHistory,
     workerRuns,
   };
 }

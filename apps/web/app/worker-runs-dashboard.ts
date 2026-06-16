@@ -4,6 +4,9 @@ import type {
   WorkerRunSummaryItem,
   WorkerRunsDashboardResponse,
   WorkerRunsResponse,
+  WorkflowHistoryItem,
+  WorkflowHistoryResponse,
+  WorkflowHistoryStatus,
 } from "./types";
 
 export const workerRunFilters: Array<{ key: WorkerRunQueueFilter; label: string }> = [
@@ -44,6 +47,10 @@ export function buildWorkerHealthPath(): string {
   return "/api/jobs/health";
 }
 
+export function buildWorkflowHistoryPath(): string {
+  return "/api/jobs/workflows";
+}
+
 export function emptyWorkerRunsResponse(status = "default"): WorkerRunsResponse {
   return {
     status,
@@ -80,6 +87,15 @@ export function emptyWorkerHealthResponse(status: WorkerHealthResponse["status"]
   } satisfies WorkerHealthResponse;
 }
 
+export function emptyWorkflowHistoryResponse(status = "default"): WorkflowHistoryResponse {
+  return {
+    status,
+    generatedAt: "",
+    summary: { total: 0, active: 0, failed: 0, terminal: 0 },
+    workflows: [],
+  };
+}
+
 export function workerRunsForFilter(
   dashboard: WorkerRunsDashboardResponse,
   filter: WorkerRunQueueFilter,
@@ -99,6 +115,10 @@ export function summarizeWorkerHealth(response: WorkerHealthResponse): string {
   return `${response.configuredQueues} configured queues, ${response.reservedQueues} reserved, ${response.notConfiguredQueues} not configured. ${response.failed} failed and ${response.stalled} stalled.${observed}`;
 }
 
+export function summarizeWorkflowHistory(response: WorkflowHistoryResponse): string {
+  return `${response.summary.total} workflow histories. ${response.summary.active} active or queued. ${response.summary.failed} failed. ${response.summary.terminal} terminal.`;
+}
+
 export function workerHealthTone(
   status: WorkerHealthResponse["status"],
 ): "neutral" | "ready" | "risk" {
@@ -116,6 +136,29 @@ export function describeWorkerRunStatus(job: WorkerRunSummaryItem): {
     return { label: job.status.replaceAll("_", " "), tone: "ready" };
   }
   return { label: job.status.replaceAll("_", " "), tone: "neutral" };
+}
+
+export function describeWorkflowHistoryStatus(status: WorkflowHistoryStatus): {
+  label: string;
+  tone: "neutral" | "ready" | "risk";
+} {
+  if (status === "failed") return { label: "failed", tone: "risk" };
+  if (status === "succeeded" || status === "skipped") {
+    return { label: status, tone: "ready" };
+  }
+  return { label: status, tone: "neutral" };
+}
+
+export function workflowHistorySafeContext(workflow: WorkflowHistoryItem): string {
+  const parts = [
+    workflow.resourceType && workflow.resourceId
+      ? `target ${workflow.resourceType}:${workflow.resourceId}`
+      : undefined,
+    workflow.matterIds.length > 0 ? `matters ${workflow.matterIds.join(", ")}` : undefined,
+    workflow.queueNames.length > 0 ? `queues ${workflow.queueNames.join(", ")}` : undefined,
+    workflow.jobIds.length > 0 ? `${workflow.jobIds.length} job refs` : undefined,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "No redacted context available.";
 }
 
 export function formatWorkerRunAttempts(job: WorkerRunSummaryItem): string {

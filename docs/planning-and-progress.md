@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-15
+**Last Updated:** 2026-06-16
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -8,19 +8,28 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                |
-| --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Full CRM Contacts is implemented and validated in branch.            |
-| Next recommended pick | Merge handoff for `feature/full-crm-contacts`.                       |
-| Ready rows            | 0                                                                    |
-| Candidate rows        | 0                                                                    |
-| In progress rows      | 0                                                                    |
-| Review rows           | 0                                                                    |
-| Blocked rows          | 0                                                                    |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
+| Snapshot              | Value                                                                 |
+| --------------------- | --------------------------------------------------------------------- |
+| Current focus         | Workflow-step history projection is implemented and under validation. |
+| Next recommended pick | Merge handoff for `feature/workflow-step-history`.                    |
+| Ready rows            | 0                                                                     |
+| Candidate rows        | 0                                                                     |
+| In progress rows      | 0                                                                     |
+| Review rows           | 0                                                                     |
+| Blocked rows          | 0                                                                     |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).  |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`      |
 
 ## Current Handoff Notes
+
+The 2026-06-16 workflow-step history projection branch adds a read-only history view over existing
+job lifecycle records and workflow-shaped audit events. It keeps the implementation additive: no
+Temporal service, no new workflow engine, no worker orchestration changes, no workflow table, and
+no sensitive job payload or raw audit metadata values in serialized output. The API route is
+`GET /api/jobs/workflows`; the dashboard Operations/Queues surface shows compact workflow history
+rows near worker runs; route authorization manifest coverage remains `job:read`; and validation is
+recorded in
+[workflow-step history projection proof](validation/OP_WORKFLOW_STEP_HISTORY_PROJECTION_PROOF_2026-06-16.md).
 
 The 2026-06-15 Full CRM Contacts branch expands Contacts into a legal-practice CRM while preserving
 the existing dossier, review queue, data-quality, conflict-check, matter-party, and client-portal

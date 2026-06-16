@@ -8,6 +8,9 @@ import type {
   SavedOperationalViewDefinition,
   TaskDeadlineWorkbenchResponse,
   WorkerHealthResponse,
+  WorkflowHistoryItem,
+  WorkflowHistoryResponse,
+  WorkflowHistoryStatus,
   WorkerRunQueueFilter,
   WorkerRunSummaryItem,
 } from "../types";
@@ -103,6 +106,10 @@ export interface QueuesSectionProps {
   workerHealth: WorkerHealthResponse;
   workerHealthStateTone: "neutral" | "ready" | "risk";
   workerHealthSummary: string;
+  workflowHistory: WorkflowHistoryResponse;
+  workflowHistorySafeContext: (workflow: WorkflowHistoryItem) => string;
+  workflowHistoryStatus: (status: WorkflowHistoryStatus) => WorkerRunStatusSummary;
+  workflowHistorySummary: string;
   workerRunFilter: WorkerRunQueueFilter;
   workerRunFilterOptions: Array<{ key: WorkerRunQueueFilter; label: string }>;
   workerRunSafeContext: (job: WorkerRunSummaryItem) => string;
@@ -165,6 +172,10 @@ export function QueuesSection({
   workerHealth,
   workerHealthStateTone,
   workerHealthSummary,
+  workflowHistory,
+  workflowHistorySafeContext,
+  workflowHistoryStatus,
+  workflowHistorySummary,
   workerRunFilter,
   workerRunFilterOptions,
   workerRunSafeContext,
@@ -286,6 +297,14 @@ export function QueuesSection({
         workerRunSafeContext={workerRunSafeContext}
         workerRunStatus={workerRunStatus}
         workerRunSummary={workerRunSummary}
+      />
+
+      <WorkflowHistoryBlock
+        compactDate={compactDate}
+        workflowHistory={workflowHistory}
+        workflowHistorySafeContext={workflowHistorySafeContext}
+        workflowHistoryStatus={workflowHistoryStatus}
+        workflowHistorySummary={workflowHistorySummary}
       />
 
       <QueueRowsBlock displayedQueues={displayedQueues} onSelectMatter={onSelectMatter} />
@@ -1063,6 +1082,57 @@ function WorkerRunsBlock({
         })}
         {activeWorkerRuns.jobs.length === 0 ? (
           <p className="inline-empty">No worker runs match this filter.</p>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function WorkflowHistoryBlock({
+  compactDate,
+  workflowHistory,
+  workflowHistorySafeContext,
+  workflowHistoryStatus,
+  workflowHistorySummary,
+}: Pick<
+  QueuesSectionProps,
+  | "compactDate"
+  | "workflowHistory"
+  | "workflowHistorySafeContext"
+  | "workflowHistoryStatus"
+  | "workflowHistorySummary"
+>) {
+  return (
+    <>
+      <div className="section-title">
+        <h3>Workflow history</h3>
+        <span>{workflowHistory.workflows.length} histories</span>
+      </div>
+      <p className="inline-empty">{workflowHistorySummary}</p>
+      <div className="party-list queue-section-list">
+        {workflowHistory.workflows.slice(0, 6).map((workflow) => {
+          const state = workflowHistoryStatus(workflow.status);
+          return (
+            <div className="party-row" key={workflow.id}>
+              <span>
+                <strong>{workflow.title}</strong>
+                <small>
+                  {workflow.stepCount} steps · last {compactDate(workflow.lastObservedAt)} ·{" "}
+                  {workflowHistorySafeContext(workflow)}
+                </small>
+                <small>
+                  {workflow.steps
+                    .slice(0, 3)
+                    .map((step) => `${step.source}: ${step.label}`)
+                    .join(" · ")}
+                </small>
+              </span>
+              <em className={state.tone === "risk" ? "risk" : undefined}>{state.label}</em>
+            </div>
+          );
+        })}
+        {workflowHistory.workflows.length === 0 ? (
+          <p className="inline-empty">No workflow-step history is available yet.</p>
         ) : null}
       </div>
     </>
