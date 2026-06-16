@@ -158,10 +158,12 @@ signature request metadata proof before proposing another envelope slice.
   - **Reuse and snippets:** AGPL/LGPL/reference-only; no direct snippets.
 
 - **Inbound email to matter draft**
-  - **First slice:** Create a staff-confirmed matter draft from safe inbound email headers and a
-    redacted body summary; do not auto-create matters.
-  - **Local gap / shipped boundary:** Inbound email triage exists, but there is no create/draft matter
-    flow from an inbound message.
+  - **Shipped slice:** 2026-06-16 staff-confirmed review-only matter drafts can be prepared from
+    unscoped inbound email using safe source cues, proposed matter fields, and a staff-authored
+    redacted body summary.
+  - **Shipped boundary:** The slice does not auto-create matters, change provider ingestion, persist
+    raw client text in job metadata, expose raw body/object-storage/provider metadata, or widen
+    matter permissions.
   - **References:** `jlawyerorg__j-lawyer-org`.
   - **Reuse and snippets:** AGPL/reference-only; no direct snippets.
 

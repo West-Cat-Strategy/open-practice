@@ -20,6 +20,10 @@ export interface FirstMatterFormState {
   clientPhone: string;
 }
 
+export interface InboundEmailMatterDraftFormState extends FirstMatterFormState {
+  redactedBodySummary: string;
+}
+
 export interface CreateMatterPayload {
   title: string;
   practiceArea: string;
@@ -32,6 +36,19 @@ export interface CreateMatterPayload {
   };
 }
 
+export interface InboundEmailMatterDraftPayload {
+  redactedBodySummary: string;
+  proposedMatter: {
+    title: string;
+    practiceArea: string;
+    jurisdiction: FirstMatterJurisdiction;
+    client: {
+      kind: FirstMatterClientKind;
+      displayName: string;
+    };
+  };
+}
+
 export const initialFirstMatterFormState: FirstMatterFormState = {
   title: "",
   practiceArea: "Residential tenancy",
@@ -40,6 +57,11 @@ export const initialFirstMatterFormState: FirstMatterFormState = {
   clientDisplayName: "",
   clientEmail: "",
   clientPhone: "",
+};
+
+export const initialInboundEmailMatterDraftFormState: InboundEmailMatterDraftFormState = {
+  ...initialFirstMatterFormState,
+  redactedBodySummary: "",
 };
 
 export const firstMatterJurisdictionOptions: FirstMatterJurisdiction[] = [
@@ -128,6 +150,10 @@ export function canSubmitFirstMatter(form: FirstMatterFormState): boolean {
   return Boolean(form.title.trim() && form.practiceArea.trim() && form.clientDisplayName.trim());
 }
 
+export function canSubmitInboundEmailMatterDraft(form: InboundEmailMatterDraftFormState): boolean {
+  return Boolean(form.redactedBodySummary.trim() && canSubmitFirstMatter(form));
+}
+
 export function buildCreateMatterPayload(form: FirstMatterFormState): CreateMatterPayload {
   const payload: CreateMatterPayload = {
     title: form.title.trim(),
@@ -143,6 +169,23 @@ export function buildCreateMatterPayload(form: FirstMatterFormState): CreateMatt
   if (email) payload.client.email = email;
   if (phone) payload.client.phone = phone;
   return payload;
+}
+
+export function buildInboundEmailMatterDraftPayload(
+  form: InboundEmailMatterDraftFormState,
+): InboundEmailMatterDraftPayload {
+  return {
+    redactedBodySummary: form.redactedBodySummary.trim(),
+    proposedMatter: {
+      title: form.title.trim(),
+      practiceArea: form.practiceArea.trim(),
+      jurisdiction: form.jurisdiction,
+      client: {
+        kind: form.clientKind,
+        displayName: form.clientDisplayName.trim(),
+      },
+    },
+  };
 }
 
 export function describeDisabledNavigationReason(

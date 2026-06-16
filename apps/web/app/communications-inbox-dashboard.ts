@@ -40,5 +40,5 @@ export async function loadCommunicationsInboxDashboardData(input: {
       inboxByMatterId[matter.id] = await input.getInboxForMatter(matter.id);
     }),
   );
-  return { inboxByMatterId };
+  return { inboxByMatterId, unscopedInboundEmail: { status: "unavailable", messages: [] } };
 }

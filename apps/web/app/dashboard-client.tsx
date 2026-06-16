@@ -100,6 +100,8 @@ import {
   applySavedQueueFocus,
   applySavedMatterFocus,
   buildCreateMatterPayload,
+  buildInboundEmailMatterDraftPayload,
+  canSubmitInboundEmailMatterDraft,
   canSubmitFirstMatter,
   dashboardLaneFreshnessCue,
   describeDisabledNavigationReason,
@@ -107,11 +109,14 @@ import {
   describeSavedQueueFocus,
   filterMatters,
   getSavedMatterPresetDefinition,
+  firstMatterJurisdictionOptions,
   initialFirstMatterFormState,
+  initialInboundEmailMatterDraftFormState,
   savedMatterPresetOptions,
   summarizeQueues,
   type DashboardLaneRefreshState,
   type FirstMatterFormState,
+  type InboundEmailMatterDraftFormState,
   type SavedMatterPresetFamily,
 } from "./dashboard-utils";
 import {
@@ -404,11 +409,13 @@ import type {
   StaffReportingWorkspaceResponse,
   TaskDeadlineWorkbenchResponse,
   IntakeVariableProposalsResponse,
+  InboundEmailMatterDraft,
   LegalResearchDashboardResponse,
   WorkerHealthResponse,
   WorkerRunQueueFilter,
   WorkerRunsDashboardResponse,
   WorkflowHistoryResponse,
+  UnscopedInboundEmailReviewMessage,
 } from "./types";
 
 interface DashboardClientProps {
@@ -464,6 +471,13 @@ type DashboardIntakeVariableProposal = IntakeVariableProposalsResponse["proposal
 type DashboardCalendarEvent = CalendarDashboardResponse["eventsByMatterId"][string][number];
 type DashboardCalendarScope = NonNullable<DashboardCalendarEvent["scope"]>;
 type DashboardTaskListResponse = { tasks: TaskDeadlineWorkbenchResponse["tasks"] };
+type InboundMatterDraftResponse = {
+  status: "drafted";
+  message: {
+    id: string;
+    matterDraft?: InboundEmailMatterDraft;
+  };
+};
 
 const dashboardLaneStaleAfterMs = 5 * 60 * 1000;
 
@@ -620,6 +634,150 @@ function DashboardUnavailableSection({
   );
 }
 
+function UnscopedInboundEmailMatterDraftPanel({
+  canCreateMatter,
+  confirmingMessageId,
+  formatDate,
+  formForMessage,
+  messages,
+  onChange,
+  onConfirm,
+}: {
+  canCreateMatter: boolean;
+  confirmingMessageId: string;
+  formatDate: (value?: string) => string;
+  formForMessage: (message: UnscopedInboundEmailReviewMessage) => InboundEmailMatterDraftFormState;
+  messages: UnscopedInboundEmailReviewMessage[];
+  onChange: <Field extends keyof InboundEmailMatterDraftFormState>(
+    messageId: string,
+    field: Field,
+    value: InboundEmailMatterDraftFormState[Field],
+  ) => void;
+  onConfirm: (message: UnscopedInboundEmailReviewMessage) => void;
+}) {
+  return (
+    <article className="panel matter-detail matter-detail-panel">
+      <div className="panel-header matter-detail-header">
+        <div>
+          <p className="eyebrow">Inbound review</p>
+          <h2>Unscoped inbound email</h2>
+        </div>
+        <span className="status-chip">{messages.length} pending</span>
+      </div>
+      <div className="party-list">
+        {messages.slice(0, 4).map((message) => {
+          const form = formForMessage(message);
+          const canSubmit =
+            canCreateMatter &&
+            canSubmitInboundEmailMatterDraft(form) &&
+            confirmingMessageId !== message.id;
+          return (
+            <div className="party-row stacked-row" key={message.id}>
+              <span>
+                <strong>{message.matterDraft ? "Draft prepared" : "Ready for review"}</strong>
+                <small>
+                  {message.senderSummary} · {message.recipientCount} recipient
+                  {message.recipientCount === 1 ? "" : "s"} · {formatDate(message.receivedAt)}
+                </small>
+                <small>
+                  {message.providerMessageIdPresent ? "provider id present" : "no provider id"} ·{" "}
+                  {message.subjectPresent ? "subject present" : "no subject"} · body redacted
+                </small>
+              </span>
+              <div className="detail-grid compact-detail-grid">
+                <label>
+                  <span className="field-label">Matter title</span>
+                  <input
+                    onChange={(event) => onChange(message.id, "title", event.currentTarget.value)}
+                    value={form.title}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Practice area</span>
+                  <input
+                    onChange={(event) =>
+                      onChange(message.id, "practiceArea", event.currentTarget.value)
+                    }
+                    value={form.practiceArea}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Jurisdiction</span>
+                  <select
+                    onChange={(event) =>
+                      onChange(
+                        message.id,
+                        "jurisdiction",
+                        event.currentTarget
+                          .value as InboundEmailMatterDraftFormState["jurisdiction"],
+                      )
+                    }
+                    value={form.jurisdiction}
+                  >
+                    {firstMatterJurisdictionOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">Client kind</span>
+                  <select
+                    onChange={(event) =>
+                      onChange(
+                        message.id,
+                        "clientKind",
+                        event.currentTarget.value as InboundEmailMatterDraftFormState["clientKind"],
+                      )
+                    }
+                    value={form.clientKind}
+                  >
+                    <option value="person">person</option>
+                    <option value="organization">organization</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">Client display name</span>
+                  <input
+                    onChange={(event) =>
+                      onChange(message.id, "clientDisplayName", event.currentTarget.value)
+                    }
+                    value={form.clientDisplayName}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Redacted body summary</span>
+                  <textarea
+                    onChange={(event) =>
+                      onChange(message.id, "redactedBodySummary", event.currentTarget.value)
+                    }
+                    rows={3}
+                    value={form.redactedBodySummary}
+                  />
+                </label>
+              </div>
+              <div className="row-actions">
+                <button
+                  className="primary-action compact-button"
+                  disabled={!canSubmit}
+                  onClick={() => onConfirm(message)}
+                  type="button"
+                >
+                  {confirmingMessageId === message.id ? "Preparing..." : "Prepare draft"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {messages.length === 0 ? (
+          <p className="inline-empty">No unscoped inbound email is waiting for matter review.</p>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 export default function DashboardClient({
   apiBaseUrl,
   auditProjection: initialAuditProjection,
@@ -684,6 +842,7 @@ export default function DashboardClient({
   const [auditProjection, setAuditProjection] = useState(initialAuditProjection);
   const [providerStatus, setProviderStatus] = useState(initialProviderStatus);
   const [connectorOperations, setConnectorOperations] = useState(initialConnectorOperations);
+  const [communicationsInboxState, setCommunicationsInboxState] = useState(communicationsInbox);
   const [operationalViews, setOperationalViews] = useState(initialOperationalViews);
   const [reportingWorkspace, setReportingWorkspace] = useState(initialReportingWorkspace);
   const [freshnessNow, setFreshnessNow] = useState(() => new Date());
@@ -757,10 +916,14 @@ export default function DashboardClient({
   const [firstMatterForm, setFirstMatterForm] = useState<FirstMatterFormState>(
     initialFirstMatterFormState,
   );
+  const [inboundMatterDraftForms, setInboundMatterDraftForms] = useState<
+    Record<string, InboundEmailMatterDraftFormState>
+  >({});
   const [firstMatterStatus, setFirstMatterStatus] = useState(
     "No matter has been created in this session.",
   );
   const [creatingFirstMatter, setCreatingFirstMatter] = useState(false);
+  const [confirmingInboundDraftId, setConfirmingInboundDraftId] = useState("");
   const [activityKindFilter, setActivityKindFilter] = useState<MatterActivityKindFilter>("all");
   const [activityStatusFilter, setActivityStatusFilter] =
     useState<MatterActivityStatusFilter>("all");
@@ -1221,13 +1384,13 @@ export default function DashboardClient({
             documentRows: activeDocumentProcessingRows,
             shares: sharesByMatterId[activeMatter.id] ?? [],
             externalUploadDocuments: externalUploadDocumentsByMatterId[activeMatter.id] ?? [],
-            communicationsInbox: communicationsInbox.inboxByMatterId[activeMatter.id],
+            communicationsInbox: communicationsInboxState.inboxByMatterId[activeMatter.id],
           })
         : undefined,
     [
       activeDocumentProcessingRows,
       activeMatter,
-      communicationsInbox.inboxByMatterId,
+      communicationsInboxState.inboxByMatterId,
       externalUploadDocumentsByMatterId,
       sharesByMatterId,
     ],
@@ -1381,7 +1544,7 @@ export default function DashboardClient({
     ? (emailDeliveryHistory.emailsByMatterId[activeMatter.id] ?? [])
     : [];
   const activeCommunicationsInbox = activeMatter
-    ? communicationsInbox.inboxByMatterId[activeMatter.id]
+    ? communicationsInboxState.inboxByMatterId[activeMatter.id]
     : undefined;
   const activePendingIntakeVariableProposals = activeIntakeVariableProposals.filter(
     (proposal) => proposal.status === "pending",
@@ -4559,6 +4722,83 @@ export default function DashboardClient({
     setFirstMatterForm((current) => ({ ...current, [field]: value }));
   }
 
+  function inboundDraftFormForMessage(
+    message: UnscopedInboundEmailReviewMessage,
+  ): InboundEmailMatterDraftFormState {
+    return (
+      inboundMatterDraftForms[message.id] ?? {
+        ...initialInboundEmailMatterDraftFormState,
+        redactedBodySummary: message.matterDraft?.redactedBodySummary ?? "",
+        title: message.matterDraft?.proposedMatter.title ?? "",
+        practiceArea: message.matterDraft?.proposedMatter.practiceArea ?? "Residential tenancy",
+        jurisdiction: message.matterDraft?.proposedMatter.jurisdiction ?? "BC",
+        clientKind: message.matterDraft?.proposedMatter.client.kind ?? "person",
+        clientDisplayName: message.matterDraft?.proposedMatter.client.displayName ?? "",
+      }
+    );
+  }
+
+  function updateInboundDraftForm<Field extends keyof InboundEmailMatterDraftFormState>(
+    messageId: string,
+    field: Field,
+    value: InboundEmailMatterDraftFormState[Field],
+  ): void {
+    setInboundMatterDraftForms((current) => ({
+      ...current,
+      [messageId]: {
+        ...(current[messageId] ?? initialInboundEmailMatterDraftFormState),
+        [field]: value,
+      },
+    }));
+  }
+
+  async function confirmInboundMatterDraft(
+    message: UnscopedInboundEmailReviewMessage,
+  ): Promise<void> {
+    const form = inboundDraftFormForMessage(message);
+    if (!canCreateMatter || !canSubmitInboundEmailMatterDraft(form)) return;
+
+    setConfirmingInboundDraftId(message.id);
+    setFirstMatterStatus("Preparing matter draft from inbound email...");
+    try {
+      const payload = await requestDashboardJson<InboundMatterDraftResponse>(
+        apiBaseUrl,
+        `/api/inbound-email/messages/${encodeURIComponent(message.id)}/matter-draft`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: buildInboundEmailMatterDraftPayload(form),
+        },
+      );
+      setCommunicationsInboxState((current) => ({
+        ...current,
+        unscopedInboundEmail: {
+          ...current.unscopedInboundEmail,
+          messages: current.unscopedInboundEmail.messages.map((candidate) =>
+            candidate.id === message.id
+              ? { ...candidate, matterDraft: payload.message.matterDraft }
+              : candidate,
+          ),
+        },
+      }));
+      setFirstMatterForm({
+        title: form.title.trim(),
+        practiceArea: form.practiceArea.trim(),
+        jurisdiction: form.jurisdiction,
+        clientKind: form.clientKind,
+        clientDisplayName: form.clientDisplayName.trim(),
+        clientEmail: "",
+        clientPhone: "",
+      });
+      setFirstMatterStatus("Inbound email matter draft prepared. Review before creating.");
+      selectDashboardSection("matters");
+    } catch (error) {
+      setFirstMatterStatus(`Inbound draft failed: ${dashboardApiStatus(error)}`);
+    } finally {
+      setConfirmingInboundDraftId("");
+    }
+  }
+
   async function createFirstMatter(): Promise<void> {
     if (!canCreateMatter || !canSubmitFirstMatter(firstMatterForm)) return;
 
@@ -5476,14 +5716,25 @@ export default function DashboardClient({
             ) : null}
 
             {!routeSelectionUnavailable && activeSection === "matters" ? (
-              <FirstMatterWorkspace
-                canCreateMatter={canCreateMatter}
-                creating={creatingFirstMatter}
-                form={firstMatterForm}
-                onChange={updateFirstMatterForm}
-                onCreate={() => void createFirstMatter()}
-                status={firstMatterStatus}
-              />
+              <>
+                <UnscopedInboundEmailMatterDraftPanel
+                  canCreateMatter={canCreateMatter}
+                  confirmingMessageId={confirmingInboundDraftId}
+                  formatDate={compactDate}
+                  formForMessage={inboundDraftFormForMessage}
+                  messages={communicationsInboxState.unscopedInboundEmail.messages}
+                  onChange={updateInboundDraftForm}
+                  onConfirm={(message) => void confirmInboundMatterDraft(message)}
+                />
+                <FirstMatterWorkspace
+                  canCreateMatter={canCreateMatter}
+                  creating={creatingFirstMatter}
+                  form={firstMatterForm}
+                  onChange={updateFirstMatterForm}
+                  onCreate={() => void createFirstMatter()}
+                  status={firstMatterStatus}
+                />
+              </>
             ) : null}
 
             {!routeSelectionUnavailable &&

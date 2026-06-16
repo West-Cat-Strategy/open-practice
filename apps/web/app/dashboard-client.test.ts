@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
@@ -28,6 +28,8 @@ import {
   applySavedMatterFocus,
   applySavedQueueFocus,
   buildCreateMatterPayload,
+  buildInboundEmailMatterDraftPayload,
+  canSubmitInboundEmailMatterDraft,
   canSubmitFirstMatter,
   dashboardLaneFreshnessCue,
   describeSavedMatterFocus,
@@ -36,6 +38,7 @@ import {
   enableMatterScopedCapabilitiesForLocalMatter,
   filterMatters,
   initialFirstMatterFormState,
+  initialInboundEmailMatterDraftFormState,
   summarizeQueues,
 } from "./dashboard-utils";
 import { DocumentAssemblyDashboardBlock } from "./dashboard/document-assembly-dashboard-block";
@@ -265,6 +268,7 @@ import {
   describeCommunicationsHistoryState,
   loadCommunicationsInboxDashboardData,
 } from "./communications-inbox-dashboard";
+import { loadCommunicationsInboxResources } from "./_features/communications/server-resources";
 import {
   buildPublicConsultationSettingsPayload,
   compactPublicConsultationReviewActionReason,
@@ -1416,6 +1420,122 @@ describe("dashboard client behavior", () => {
       matterId: "matter-001",
       inboundEmail: [expect.objectContaining({ id: "inbound-message-001" })],
     });
+    expect(dashboard.unscopedInboundEmail).toEqual({ status: "unavailable", messages: [] });
+  });
+
+  it("loads unscoped inbound email review rows without raw message fields", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async (url: URL | RequestInfo) => {
+      const path = new URL(String(url)).pathname + new URL(String(url)).search;
+      if (path === "/api/communications/inbox?matterId=matter-001") {
+        return new Response(
+          JSON.stringify({
+            status: "available",
+            matterId: "matter-001",
+            channelState: {
+              inboundEmailStatus: "configured",
+              outboundEmailStatus: "disabled",
+              inboundEmailAddressCount: 1,
+              enabledInboundEmailAddressCount: 1,
+            },
+            inboundEmail: [],
+            outboundDeliveryHistory: [],
+            conversations: [],
+            channelHistory: [],
+            clientUpdateDraftRequests: [],
+            contactCues: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (path === "/api/inbound-email/messages") {
+        return new Response(
+          JSON.stringify({
+            status: "available",
+            messages: [
+              {
+                id: "inbound-message-unscoped",
+                fromAddress: "client.private@example.test",
+                toAddresses: ["general@open-practice.test"],
+                subject: "Private subject should stay server-side",
+                receivedAt: "2026-05-05T12:00:00.000Z",
+                status: "triage_pending",
+                labels: ["client"],
+                parsedText: "Private body should stay server-side.",
+                rawStorageKey: "inbound/raw/private.eml",
+                metadata: {
+                  providerId: "provider-private-id",
+                  matterDraft: {
+                    status: "drafted",
+                    createdAt: "2026-05-05T12:15:00.000Z",
+                    createdByUserId: "user-admin",
+                    source: {
+                      inboundMessageId: "inbound-message-unscoped",
+                      providerMessageIdPresent: true,
+                      receivedAt: "2026-05-05T12:00:00.000Z",
+                      recipientCount: 1,
+                      subjectPresent: true,
+                      senderSummary: "redacted sender at example.test",
+                      attachmentCount: 0,
+                    },
+                    redactedBodySummary: "Potential intake; private facts removed.",
+                    proposedMatter: {
+                      title: "Synthetic inbound matter",
+                      practiceArea: "Residential tenancy",
+                      jurisdiction: "BC",
+                      client: {
+                        kind: "person",
+                        displayName: "Synthetic Client",
+                      },
+                    },
+                    automaticMatterCreation: false,
+                    bodyRedacted: true,
+                    metadataRedacted: true,
+                  },
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const dashboard = await loadCommunicationsInboxResources({
+        headers: {},
+        matters: [matter({ id: "matter-001" })],
+      });
+
+      expect(dashboard.unscopedInboundEmail).toMatchObject({
+        status: "available",
+        messages: [
+          {
+            id: "inbound-message-unscoped",
+            senderSummary: "redacted sender at example.test",
+            providerMessageIdPresent: false,
+            subjectPresent: true,
+            bodyRedacted: true,
+            metadataRedacted: true,
+            matterDraft: {
+              automaticMatterCreation: false,
+              bodyRedacted: true,
+              metadataRedacted: true,
+            },
+          },
+        ],
+      });
+      const serialized = JSON.stringify(dashboard.unscopedInboundEmail);
+      expect(serialized).not.toContain("client.private@example.test");
+      expect(serialized).not.toContain("Private subject");
+      expect(serialized).not.toContain("Private body");
+      expect(serialized).not.toContain("rawStorageKey");
+      expect(serialized).not.toContain("provider-private-id");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("summarizes unified provider status posture for the queues surface", () => {
@@ -3599,6 +3719,41 @@ describe("dashboard client behavior", () => {
         ...initialFirstMatterFormState,
         title: "Synthetic starter intake",
         clientDisplayName: "",
+      }),
+    ).toBe(false);
+  });
+
+  it("builds staff-confirmed inbound email matter draft payloads without contact identifiers", () => {
+    const form = {
+      ...initialInboundEmailMatterDraftFormState,
+      redactedBodySummary: "  Potential tenancy intake; private facts removed.  ",
+      title: "  Synthetic inbound matter  ",
+      practiceArea: "  Residential tenancy  ",
+      clientDisplayName: "  Synthetic Client  ",
+      clientEmail: "private@example.test",
+      clientPhone: "+1-555-0199",
+    };
+
+    expect(canSubmitInboundEmailMatterDraft(form)).toBe(true);
+    expect(buildInboundEmailMatterDraftPayload(form)).toEqual({
+      redactedBodySummary: "Potential tenancy intake; private facts removed.",
+      proposedMatter: {
+        title: "Synthetic inbound matter",
+        practiceArea: "Residential tenancy",
+        jurisdiction: "BC",
+        client: {
+          kind: "person",
+          displayName: "Synthetic Client",
+        },
+      },
+    });
+    expect(JSON.stringify(buildInboundEmailMatterDraftPayload(form))).not.toContain(
+      "private@example.test",
+    );
+    expect(
+      canSubmitInboundEmailMatterDraft({
+        ...form,
+        redactedBodySummary: "",
       }),
     ).toBe(false);
   });

@@ -1414,6 +1414,183 @@ describe("inbound email routes", () => {
     expect(promote.statusCode).toBe(403);
   });
 
+  it("creates a staff-confirmed matter draft from unscoped inbound email without creating a matter", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(
+      message({
+        id: "inbound-message-unscoped",
+        matterId: undefined,
+        addressId: undefined,
+        status: "triage_pending",
+        subject: "Sensitive subject should not drive the draft",
+        parsedText: "Private client body must not enter draft metadata.",
+        parsedHtmlStorageKey: "inbound/message-unscoped/body.html",
+        metadata: {
+          providerId: "provider-private-id",
+          rawBody: "Private client body must not leak.",
+        },
+      }),
+    );
+    await repository.createInboundEmailAttachment(
+      attachment({
+        id: "inbound-attachment-draft",
+        inboundMessageId: "inbound-message-unscoped",
+        filename: "private-filing.pdf",
+        storageKey: "inbound/message-unscoped/private-filing.pdf",
+      }),
+    );
+    const beforeMatters = await repository.listMattersForUser(user("owner_admin", []));
+
+    const response = await testServer(repository, user("owner_admin", [])).inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-unscoped/matter-draft",
+      payload: {
+        redactedBodySummary: "Potential new residential tenancy intake; private details removed.",
+        proposedMatter: {
+          title: "Synthetic inbound tenancy intake",
+          practiceArea: "Residential tenancy",
+          jurisdiction: "BC",
+          client: {
+            kind: "person",
+            displayName: "Synthetic Inbound Client",
+          },
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "drafted",
+      message: {
+        id: "inbound-message-unscoped",
+        matterDraft: {
+          status: "drafted",
+          source: {
+            inboundMessageId: "inbound-message-unscoped",
+            providerMessageIdPresent: true,
+            recipientCount: 1,
+            subjectPresent: true,
+            senderSummary: "redacted sender at example.test",
+            attachmentCount: 1,
+          },
+          redactedBodySummary: "Potential new residential tenancy intake; private details removed.",
+          proposedMatter: {
+            title: "Synthetic inbound tenancy intake",
+            practiceArea: "Residential tenancy",
+            jurisdiction: "BC",
+            client: {
+              kind: "person",
+              displayName: "Synthetic Inbound Client",
+            },
+          },
+          automaticMatterCreation: false,
+          bodyRedacted: true,
+          metadataRedacted: true,
+        },
+      },
+    });
+    const updated = await repository.getInboundEmailMessage(firmId, "inbound-message-unscoped");
+    expect(updated?.metadata.matterDraft).toMatchObject({
+      automaticMatterCreation: false,
+      redactedBodySummary: "Potential new residential tenancy intake; private details removed.",
+    });
+    expect(await repository.listMattersForUser(user("owner_admin", []))).toHaveLength(
+      beforeMatters.length,
+    );
+
+    for (const body of [response.body, JSON.stringify(updated?.metadata.matterDraft)]) {
+      expect(body).not.toContain("Private client body");
+      expect(body).not.toContain("rawStorageKey");
+      expect(body).not.toContain("parsedHtmlStorageKey");
+      expect(body).not.toContain("inbound/message-unscoped/body.html");
+      expect(body).not.toContain("inbound/message-unscoped/private-filing.pdf");
+      expect(body).not.toContain("provider-private-id");
+    }
+    const audit = await repository.listAuditEvents(firmId);
+    const event = audit.events.find(
+      (candidate) => candidate.action === "inbound_email.matter_draft.confirmed",
+    );
+    expect(event).toMatchObject({
+      resourceType: "inbound_email",
+      resourceId: "inbound-message-unscoped",
+      metadata: {
+        sourceMessageId: "inbound-message-unscoped",
+        providerMessageIdPresent: true,
+        recipientCount: 1,
+        attachmentCount: 1,
+        subjectPresent: true,
+        redactedSummaryLength: 66,
+        proposedTitleLength: 32,
+        proposedPracticeArea: "Residential tenancy",
+        proposedJurisdiction: "BC",
+        clientKind: "person",
+        automaticMatterCreation: false,
+      },
+    });
+    expect(JSON.stringify(event?.metadata)).not.toContain("Synthetic Inbound Client");
+    expect(JSON.stringify(event?.metadata)).not.toContain("Private client body");
+  });
+
+  it("denies inbound matter drafts without unscoped update and matter-create access", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(
+      message({
+        id: "inbound-message-unscoped",
+        matterId: undefined,
+        addressId: undefined,
+        status: "triage_pending",
+      }),
+    );
+    const payload = {
+      redactedBodySummary: "Synthetic redacted summary.",
+      proposedMatter: {
+        title: "Synthetic inbound intake",
+        practiceArea: "Residential tenancy",
+        jurisdiction: "BC",
+        client: {
+          kind: "person",
+          displayName: "Synthetic Client",
+        },
+      },
+    };
+
+    for (const role of ["auditor", "client_external", "firm_member", "licensee"] as const) {
+      const denied = await testServer(repository, user(role, [])).inject({
+        method: "POST",
+        url: "/api/inbound-email/messages/inbound-message-unscoped/matter-draft",
+        payload,
+      });
+      expect(denied.statusCode).toBe(403);
+    }
+  });
+
+  it("rejects matter drafts for already matter-scoped inbound email", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createInboundEmailMessage(message());
+
+    const response = await testServer(repository, user("owner_admin", [])).inject({
+      method: "POST",
+      url: "/api/inbound-email/messages/inbound-message-001/matter-draft",
+      payload: {
+        redactedBodySummary: "Synthetic redacted summary.",
+        proposedMatter: {
+          title: "Synthetic inbound intake",
+          practiceArea: "Residential tenancy",
+          jurisdiction: "BC",
+          client: {
+            kind: "person",
+            displayName: "Synthetic Client",
+          },
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      message: "Matter draft requires an unscoped inbound email",
+    });
+  });
+
   it("allows authorized staff to triage-route unscoped inbound email to an accessible matter", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createInboundEmailMessage(

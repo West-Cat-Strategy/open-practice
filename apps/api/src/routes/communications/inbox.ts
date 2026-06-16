@@ -14,6 +14,7 @@ import { requireAccess } from "../../http/auth-guards.js";
 import { parseRequestPart } from "../../http/validation.js";
 import type { ApiAuthContext } from "../../server.js";
 import { emailDeliveryReceiptStatus } from "../outbound-email.js";
+import { serializeInboundEmailMatterDraft } from "../inbound-email/shared.js";
 import type { ApiRouteDependencies } from "../types.js";
 
 const inboxQuerySchema = z.object({
@@ -107,6 +108,7 @@ function serializeInboundEmail(message: InboundEmailMessageRecord, attachmentCou
     receivedAt: message.receivedAt,
     attachmentCount,
     triage: sanitizeStaffTriage(message.metadata.staffTriage),
+    matterDraft: serializeInboundEmailMatterDraft(message.metadata.matterDraft),
   };
 }
 

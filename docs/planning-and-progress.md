@@ -10,7 +10,7 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Single-contact CRM contact-history export runtime is in validation.  |
+| Current focus         | Three validated 2026-06-16 follow-up lanes are being merged to mainline. |
 | Next recommended pick | Pick the next candidate from the durable roadmap/backlog.            |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
@@ -31,6 +31,16 @@ client-side JSON download. It does not add a schema, migration, worker, provider
 storage artifact, persistent download link, retained export body, retention deadline, deletion
 workflow, legal-hold override, or compliance claim. Proof is recorded in
 [CRM contact-history export runtime proof](validation/OP_CONTACT_HISTORY_EXPORT_RUNTIME_PROOF_2026-06-16.md).
+
+The 2026-06-16 inbound email matter draft branch adds a staff-confirmed, review-only matter-draft
+workflow for unscoped inbound email. Owner/admin users with existing unscoped inbound-email update
+and `matter:create` access can prepare sanitized draft metadata from safe source cues, proposed
+matter fields, and a staff-authored redacted body summary; the dashboard then pre-fills the normal
+first-matter form without submitting it. The branch preserves provider ingestion, parser jobs,
+matter permissions, and `POST /api/matters`; raw client body text, raw MIME/object keys, provider
+metadata, and private notes stay out of draft responses, job metadata, and audit metadata. Proof is
+recorded in
+[Inbound email matter draft proof](validation/OP_INBOUND_EMAIL_MATTER_DRAFT_PROOF_2026-06-16.md).
 
 The 2026-06-16 manual-payment reconciliation gate branch records manual payments as
 `pending_reconciliation` evidence until staff reviewer evidence creates the effective allocation and

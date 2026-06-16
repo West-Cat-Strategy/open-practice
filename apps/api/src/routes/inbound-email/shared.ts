@@ -28,6 +28,34 @@ export type StaffTriagePrivateNote = {
   text: string;
 };
 
+type InboundEmailMatterDraft = {
+  status: "drafted";
+  createdAt: string;
+  createdByUserId: string;
+  source: {
+    inboundMessageId: string;
+    providerMessageIdPresent: boolean;
+    receivedAt: string;
+    recipientCount: number;
+    subjectPresent: boolean;
+    senderSummary: string;
+    attachmentCount: number;
+  };
+  redactedBodySummary: string;
+  proposedMatter: {
+    title: string;
+    practiceArea: string;
+    jurisdiction: "BC" | "ON" | "CANADA" | "OTHER";
+    client: {
+      kind: "person" | "organization";
+      displayName: string;
+    };
+  };
+  automaticMatterCreation: false;
+  bodyRedacted: true;
+  metadataRedacted: true;
+};
+
 export function assertInboundEmailAccess(
   context: ApiAuthContext,
   request: Omit<AccessRequest, "firmId" | "user">,
@@ -99,6 +127,73 @@ export function serializeStaffTriageDetail(value: unknown): Record<string, unkno
   return Object.keys(output).length > 0 ? output : undefined;
 }
 
+export function serializeInboundEmailMatterDraft(
+  value: unknown,
+): InboundEmailMatterDraft | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  const source =
+    input.source && typeof input.source === "object" && !Array.isArray(input.source)
+      ? (input.source as Record<string, unknown>)
+      : {};
+  const proposedMatter =
+    input.proposedMatter &&
+    typeof input.proposedMatter === "object" &&
+    !Array.isArray(input.proposedMatter)
+      ? (input.proposedMatter as Record<string, unknown>)
+      : {};
+  const client =
+    proposedMatter.client &&
+    typeof proposedMatter.client === "object" &&
+    !Array.isArray(proposedMatter.client)
+      ? (proposedMatter.client as Record<string, unknown>)
+      : {};
+  if (
+    input.status !== "drafted" ||
+    typeof input.createdAt !== "string" ||
+    typeof input.createdByUserId !== "string" ||
+    typeof source.inboundMessageId !== "string" ||
+    typeof source.receivedAt !== "string" ||
+    typeof source.senderSummary !== "string" ||
+    typeof input.redactedBodySummary !== "string" ||
+    typeof proposedMatter.title !== "string" ||
+    typeof proposedMatter.practiceArea !== "string" ||
+    !["BC", "ON", "CANADA", "OTHER"].includes(String(proposedMatter.jurisdiction)) ||
+    !["person", "organization"].includes(String(client.kind)) ||
+    typeof client.displayName !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    status: "drafted",
+    createdAt: input.createdAt,
+    createdByUserId: input.createdByUserId,
+    source: {
+      inboundMessageId: source.inboundMessageId,
+      providerMessageIdPresent: source.providerMessageIdPresent === true,
+      receivedAt: source.receivedAt,
+      recipientCount: typeof source.recipientCount === "number" ? source.recipientCount : 0,
+      subjectPresent: source.subjectPresent === true,
+      senderSummary: source.senderSummary,
+      attachmentCount: typeof source.attachmentCount === "number" ? source.attachmentCount : 0,
+    },
+    redactedBodySummary: input.redactedBodySummary,
+    proposedMatter: {
+      title: proposedMatter.title,
+      practiceArea: proposedMatter.practiceArea,
+      jurisdiction:
+        proposedMatter.jurisdiction as InboundEmailMatterDraft["proposedMatter"]["jurisdiction"],
+      client: {
+        kind: client.kind as InboundEmailMatterDraft["proposedMatter"]["client"]["kind"],
+        displayName: client.displayName,
+      },
+    },
+    automaticMatterCreation: false,
+    bodyRedacted: true,
+    metadataRedacted: true,
+  };
+}
+
 export function serializeInboundEmailMessage(message: InboundEmailMessageRecord) {
   const safe = { ...message } as Omit<
     InboundEmailMessageRecord,
@@ -109,11 +204,12 @@ export function serializeInboundEmailMessage(message: InboundEmailMessageRecord)
   delete safe.parsedHtmlStorageKey;
   const { metadata } = safe;
   const staffTriage = serializeStaffTriageDetail(metadata.staffTriage);
+  const matterDraft = serializeInboundEmailMatterDraft(metadata.matterDraft);
   return {
     ...safe,
     metadata: {
-      ...metadata,
       ...(staffTriage ? { staffTriage } : { staffTriage: undefined }),
+      ...(matterDraft ? { matterDraft } : { matterDraft: undefined }),
     },
   };
 }

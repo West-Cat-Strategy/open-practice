@@ -2121,6 +2121,17 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
     "read",
     "derived",
   ),
+  multiGuardAuthRoute(
+    "registerInboundEmailRoutes",
+    "apps/api/src/routes/inbound-email.test.ts",
+    "POST",
+    "/api/inbound-email/messages/:id/matter-draft",
+    [
+      { resource: "inbound_email", action: "read", matterScope: "none" },
+      { resource: "inbound_email", action: "update", matterScope: "none" },
+      { resource: "matter", action: "create", matterScope: "none" },
+    ],
+  ),
   authRoute(
     "registerInboundEmailRoutes",
     "apps/api/src/routes/inbound-email.test.ts",

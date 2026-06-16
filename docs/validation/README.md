@@ -18,6 +18,13 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-16 inbound email matter draft proof is recorded in
+[OP_INBOUND_EMAIL_MATTER_DRAFT_PROOF_2026-06-16.md](OP_INBOUND_EMAIL_MATTER_DRAFT_PROOF_2026-06-16.md).
+It covers the review-only `POST /api/inbound-email/messages/:id/matter-draft` endpoint, sanitized
+metadata serialization, unscoped dashboard review/prefill behavior, safe audit metadata, focused
+API/domain/web tests, and the preserved no-provider-ingestion/no-automatic-matter-creation/no-raw
+body or object-key exposure boundary.
+
 The 2026-06-16 16-lane mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).
 It covers the dirty-lane commits, shared proof/workboard/API doc reconciliation, dependency
