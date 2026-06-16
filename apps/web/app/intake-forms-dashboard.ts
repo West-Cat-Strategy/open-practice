@@ -5,6 +5,8 @@ import {
 } from "@open-practice/domain/operational-actions";
 import type {
   AnswerSnapshotRecord,
+  EmbeddedIntakeBranchOperator,
+  EmbeddedIntakeBranchRule,
   EmbeddedIntakeFormItem,
   EmbeddedIntakeFormItemKind,
   EmbeddedIntakeTemplateDefinitionV2,
@@ -34,6 +36,12 @@ export type IntakePreviewAnswers = Record<string, string | boolean>;
 export const clientVariableFields = ["displayName", "notes"] as const;
 export const matterVariableFields = ["title", "practiceArea", "jurisdiction"] as const;
 export const questionTypes = ["text", "textarea", "select", "boolean", "date"] as const;
+export const branchRuleOperators = [
+  "equals",
+  "not_equals",
+  "includes",
+  "present",
+] as const satisfies readonly EmbeddedIntakeBranchOperator[];
 export const itemKinds = [
   "display",
   "question",
@@ -446,6 +454,152 @@ export function buildVariableMapping(
   if (field.length === 0) return undefined;
   if (!variableTargetFields(scope).includes(field)) return undefined;
   return { targetScope: scope, targetField: field as IntakeVariableMapping["targetField"] };
+}
+
+export interface IntakeBranchRulePathSummary {
+  ruleId: string;
+  trigger: string;
+  path: string;
+  visibleQuestionIds: string[];
+  visibleFormItemIds: string[];
+  requiredIncompleteItemIds: string[];
+  matchedBranchRuleIds: string[];
+  eligiblePackageIds: string[];
+  packageDocumentCount: number;
+}
+
+export function makeIntakeBranchRule(
+  definition: EmbeddedIntakeTemplateDefinitionV2,
+): EmbeddedIntakeBranchRule {
+  return {
+    id: uniqueDefinitionId(
+      "branch",
+      definition.branchRules.map((rule) => rule.id),
+    ),
+    questionId: definition.questions[0]?.id ?? "",
+    operator: "present",
+    showQuestionIds: [],
+    eligiblePackageIds: [],
+  };
+}
+
+export function summarizeIntakeBranchRuleTrigger(
+  rule: EmbeddedIntakeBranchRule,
+  definition: EmbeddedIntakeTemplateDefinitionV2,
+): string {
+  const question = definition.questions.find((candidate) => candidate.id === rule.questionId);
+  const questionLabel = (question?.label ?? rule.questionId) || "missing question";
+  if (rule.operator === "present") return `${questionLabel} is present`;
+  const value = summarizeAnswerValue(rule.value);
+  if (rule.operator === "equals") return `${questionLabel} equals ${value}`;
+  if (rule.operator === "not_equals") return `${questionLabel} is not ${value}`;
+  return `${questionLabel} includes ${value}`;
+}
+
+export function summarizeIntakeBranchPathCounts(summary: {
+  visibleQuestionIds: readonly string[];
+  visibleFormItemIds: readonly string[];
+  requiredIncompleteItemIds: readonly string[];
+  eligiblePackageIds: readonly string[];
+  packageDocumentCount: number;
+}): string {
+  return [
+    `${summary.visibleQuestionIds.length} visible question${summary.visibleQuestionIds.length === 1 ? "" : "s"}`,
+    `${summary.visibleFormItemIds.length} visible item${summary.visibleFormItemIds.length === 1 ? "" : "s"}`,
+    `${summary.requiredIncompleteItemIds.length} required incomplete`,
+    `${summary.eligiblePackageIds.length} package${summary.eligiblePackageIds.length === 1 ? "" : "s"}`,
+    `${summary.packageDocumentCount} document${summary.packageDocumentCount === 1 ? "" : "s"}`,
+  ].join(" · ");
+}
+
+export function summarizeIntakeBranchRulePath(
+  rule: EmbeddedIntakeBranchRule,
+  definition: EmbeddedIntakeTemplateDefinitionV2,
+): IntakeBranchRulePathSummary {
+  const answers = { [rule.questionId]: sampleBranchRuleAnswer(rule) };
+  const conditionalQuestionIds = new Set(
+    definition.branchRules.flatMap((candidate) => candidate.showQuestionIds ?? []),
+  );
+  const visibleQuestionIds = new Set(
+    definition.questions
+      .filter((question) => !conditionalQuestionIds.has(question.id))
+      .map((question) => question.id),
+  );
+  const eligiblePackageIds = new Set(
+    definition.packages.filter((intakePackage) => intakePackage.default).map((item) => item.id),
+  );
+  const matchedBranchRuleIds: string[] = [];
+
+  for (const candidate of definition.branchRules) {
+    if (!branchRuleMatches(candidate, answers[candidate.questionId])) continue;
+    matchedBranchRuleIds.push(candidate.id);
+    for (const questionId of candidate.showQuestionIds ?? []) visibleQuestionIds.add(questionId);
+    for (const packageId of candidate.eligiblePackageIds ?? []) eligiblePackageIds.add(packageId);
+  }
+
+  const selectedPackageIds = [...eligiblePackageIds];
+  const packageDocumentCount = definition.packages
+    .filter((intakePackage) => selectedPackageIds.includes(intakePackage.id))
+    .reduce((total, intakePackage) => total + intakePackage.documents.length, 0);
+  const visibleFormItems = definition.sections
+    .flatMap((section) => section.items)
+    .filter((item) => item.kind !== "question" || visibleQuestionIds.has(item.questionId));
+  const visibleFormItemIds = visibleFormItems.map((item) => item.id);
+  const requiredIncompleteItemIds = visibleFormItems
+    .filter((item) => {
+      if (item.kind === "question") {
+        const question = definition.questions.find((candidate) => candidate.id === item.questionId);
+        return Boolean(question?.required) && !answerIsPresent(answers[item.questionId]);
+      }
+      if (item.kind === "display") return false;
+      return Boolean(item.required);
+    })
+    .map((item) => item.id);
+  const summary = {
+    visibleQuestionIds: [...visibleQuestionIds],
+    visibleFormItemIds,
+    requiredIncompleteItemIds,
+    matchedBranchRuleIds,
+    eligiblePackageIds: [...eligiblePackageIds],
+    packageDocumentCount,
+  };
+
+  return {
+    ruleId: rule.id,
+    trigger: summarizeIntakeBranchRuleTrigger(rule, definition),
+    path: summarizeIntakeBranchPathCounts(summary),
+    ...summary,
+  };
+}
+
+function uniqueDefinitionId(prefix: string, existing: string[]): string {
+  let index = existing.length + 1;
+  let id = `${prefix}-${index}`;
+  while (existing.includes(id)) {
+    index += 1;
+    id = `${prefix}-${index}`;
+  }
+  return id;
+}
+
+function sampleBranchRuleAnswer(rule: EmbeddedIntakeBranchRule): unknown {
+  if (rule.operator === "present") return "synthetic-preview-value";
+  if (rule.operator === "not_equals") return `not-${String(rule.value ?? "empty")}`;
+  if (rule.operator === "includes") return [rule.value ?? "synthetic-preview-value"];
+  return rule.value ?? "synthetic-preview-value";
+}
+
+function branchRuleMatches(rule: EmbeddedIntakeBranchRule, answer: unknown): boolean {
+  if (rule.operator === "present") return answerIsPresent(answer);
+  if (rule.operator === "includes") {
+    return Array.isArray(answer) && answer.includes(rule.value);
+  }
+  if (rule.operator === "equals") return answer === rule.value;
+  return answer !== rule.value;
+}
+
+function answerIsPresent(answer: unknown): boolean {
+  return answer !== undefined && answer !== null && answer !== "";
 }
 
 function duplicateValues(values: string[]): string[] {

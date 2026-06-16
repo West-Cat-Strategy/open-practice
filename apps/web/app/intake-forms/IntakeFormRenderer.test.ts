@@ -100,6 +100,60 @@ describe("shared intake renderer inputs", () => {
     );
   });
 
+  it("keeps public runner branch visibility unchanged for staff-authored rules", () => {
+    const branchDefinition: Extract<EmbeddedIntakeTemplateDefinition, { schemaVersion: 2 }> = {
+      ...definition,
+      questions: [
+        ...definition.questions,
+        { id: "deadline", label: "Deadline", type: "date", required: true },
+      ],
+      branchRules: [
+        {
+          id: "urgent-deadline",
+          questionId: "urgent",
+          operator: "equals",
+          value: true,
+          showQuestionIds: ["deadline"],
+        },
+      ],
+      sections: [
+        {
+          ...definition.sections[0]!,
+          items: [
+            ...definition.sections[0]!.items,
+            { id: "deadline-item", kind: "question", questionId: "deadline" },
+          ],
+        },
+      ],
+    };
+    const payload: PublicIntakeFormPayload = {
+      link: {
+        status: "active",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      },
+      draft: null,
+      review: null,
+      template: {
+        id: "template-001",
+        name: "Synthetic intake",
+        definitionVersion: 2,
+        definition: branchDefinition,
+      },
+      actions: [],
+    };
+
+    expect(
+      visibleSections(payload, { client_name: "Ada M.", urgent: false }).flatMap((section) =>
+        section.items.map((item) => item.id),
+      ),
+    ).not.toContain("deadline-item");
+    expect(
+      visibleSections(payload, { client_name: "Ada M.", urgent: true }).flatMap((section) =>
+        section.items.map((item) => item.id),
+      ),
+    ).toContain("deadline-item");
+  });
+
   it("restores only question-shaped draft answers and keeps receipts locked", () => {
     expect(
       answersFromDraft(definition, {

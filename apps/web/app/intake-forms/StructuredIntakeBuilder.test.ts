@@ -1,11 +1,31 @@
 import { describe, expect, it } from "vitest";
 import type { EmbeddedIntakeTemplateDefinitionV2 } from "@open-practice/domain";
-import { intakeBuilderItemRegistry, itemKinds, makeIntakeItem } from "../intake-forms-dashboard";
+import {
+  intakeBuilderItemRegistry,
+  itemKinds,
+  makeIntakeBranchRule,
+  makeIntakeItem,
+  summarizeIntakeBranchPathCounts,
+  summarizeIntakeBranchRulePath,
+  summarizeIntakeBranchRuleTrigger,
+} from "../intake-forms-dashboard";
 import { structuredIntakeDiagnostics } from "./structured-builder-diagnostics";
 
 const validDefinition: EmbeddedIntakeTemplateDefinitionV2 = {
   schemaVersion: 2,
-  questions: [{ id: "client_name", label: "Client name", type: "text", required: true }],
+  questions: [
+    { id: "client_name", label: "Client name", type: "text", required: true },
+    {
+      id: "matter_type",
+      label: "Matter type",
+      type: "select",
+      options: [
+        { value: "tenancy", label: "Tenancy" },
+        { value: "employment", label: "Employment" },
+      ],
+    },
+    { id: "urgent", label: "Urgent filing", type: "boolean" },
+  ],
   branchRules: [],
   packages: [
     {
@@ -18,7 +38,11 @@ const validDefinition: EmbeddedIntakeTemplateDefinitionV2 = {
     {
       id: "client",
       title: "Client",
-      items: [{ id: "client-name-item", kind: "question", questionId: "client_name" }],
+      items: [
+        { id: "client-name-item", kind: "question", questionId: "client_name" },
+        { id: "matter-type-item", kind: "question", questionId: "matter_type" },
+        { id: "urgent-item", kind: "question", questionId: "urgent" },
+      ],
     },
   ],
 };
@@ -126,6 +150,65 @@ describe("structured intake builder diagnostics", () => {
         message: "Branch rule bad-package-target references unknown package missing-package",
       }),
     ]);
+  });
+
+  it("creates visual branch-rule defaults with unique staff IDs", () => {
+    expect(makeIntakeBranchRule(validDefinition)).toEqual({
+      id: "branch-1",
+      questionId: "client_name",
+      operator: "present",
+      showQuestionIds: [],
+      eligiblePackageIds: [],
+    });
+    expect(
+      makeIntakeBranchRule({
+        ...validDefinition,
+        branchRules: [
+          {
+            id: "branch-1",
+            questionId: "client_name",
+            operator: "present",
+          },
+        ],
+      }).id,
+    ).toBe("branch-2");
+  });
+
+  it("summarizes visual branch-rule triggers and preview paths", () => {
+    const rule = {
+      id: "tenancy-path",
+      questionId: "matter_type",
+      operator: "equals" as const,
+      value: "tenancy",
+      showQuestionIds: ["urgent"],
+      eligiblePackageIds: ["residential-tenancy"],
+    };
+    const definition = { ...validDefinition, branchRules: [rule] };
+
+    expect(summarizeIntakeBranchRuleTrigger(rule, definition)).toBe("Matter type equals tenancy");
+    expect(
+      summarizeIntakeBranchPathCounts({
+        visibleQuestionIds: ["client_name", "matter_type", "urgent"],
+        visibleFormItemIds: ["client-name-item", "matter-type-item", "urgent-item"],
+        requiredIncompleteItemIds: ["client-name-item"],
+        eligiblePackageIds: ["residential-tenancy"],
+        packageDocumentCount: 1,
+      }),
+    ).toBe(
+      "3 visible questions · 3 visible items · 1 required incomplete · 1 package · 1 document",
+    );
+
+    expect(summarizeIntakeBranchRulePath(rule, definition)).toEqual(
+      expect.objectContaining({
+        ruleId: "tenancy-path",
+        trigger: "Matter type equals tenancy",
+        visibleQuestionIds: ["client_name", "matter_type", "urgent"],
+        visibleFormItemIds: ["client-name-item", "matter-type-item", "urgent-item"],
+        matchedBranchRuleIds: ["tenancy-path"],
+        eligiblePackageIds: ["residential-tenancy"],
+        packageDocumentCount: 1,
+      }),
+    );
   });
 
   it("blocks unsupported variable mappings before staff save", () => {

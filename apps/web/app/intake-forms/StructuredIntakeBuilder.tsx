@@ -3,17 +3,23 @@
 import { AlertTriangle, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
+  EmbeddedIntakeBranchOperator,
+  EmbeddedIntakeBranchRule,
   EmbeddedIntakeFormItem,
   EmbeddedIntakeQuestion,
   EmbeddedIntakeTemplateDefinitionV2,
   IntakeVariableTargetScope,
 } from "@open-practice/domain";
 import {
+  branchRuleOperators,
   buildVariableMapping,
   buildIntakeBuilderDiagnostics,
   itemKinds,
+  makeIntakeBranchRule,
   makeIntakeItem,
   questionTypes,
+  summarizeIntakeBranchRulePath,
+  summarizeIntakeBranchRuleTrigger,
   variableTargetFields,
 } from "../intake-forms-dashboard";
 import { structuredIntakeDiagnostics } from "./structured-builder-diagnostics";
@@ -167,6 +173,28 @@ export default function StructuredIntakeBuilder({
     });
   }
 
+  function addBranchRule(): void {
+    updateDefinition((draft) => {
+      draft.branchRules.push(makeIntakeBranchRule(draft));
+    });
+  }
+
+  function removeBranchRule(ruleIndex: number): void {
+    updateDefinition((draft) => {
+      draft.branchRules.splice(ruleIndex, 1);
+    });
+  }
+
+  function updateBranchRule(
+    ruleIndex: number,
+    updater: (rule: EmbeddedIntakeBranchRule) => void,
+  ): void {
+    updateDefinition((draft) => {
+      const rule = draft.branchRules[ruleIndex];
+      if (rule) updater(rule);
+    });
+  }
+
   function applyJson(): void {
     try {
       const parsed = JSON.parse(jsonValue) as EmbeddedIntakeTemplateDefinitionV2;
@@ -316,6 +344,37 @@ export default function StructuredIntakeBuilder({
         ))}
       </div>
 
+      <div className="section-title">
+        <h3>Branch rules</h3>
+        <button
+          className="secondary-button compact-button"
+          disabled={definition.questions.length === 0}
+          onClick={addBranchRule}
+          type="button"
+        >
+          <Plus size={16} />
+          Add rule
+        </button>
+      </div>
+
+      <div className="intake-branch-rule-list">
+        {definition.branchRules.map((rule, ruleIndex) => (
+          <BranchRuleEditor
+            definition={definition}
+            key={rule.id}
+            removeRule={() => removeBranchRule(ruleIndex)}
+            rule={rule}
+            updateRule={(updater) => updateBranchRule(ruleIndex, updater)}
+          />
+        ))}
+        {definition.branchRules.length === 0 ? (
+          <p className="inline-empty">
+            No branch rules yet. Add one to show follow-up questions or packages from a
+            staff-defined answer path.
+          </p>
+        ) : null}
+      </div>
+
       <details
         className="advanced-json-editor"
         open={jsonOpen}
@@ -398,6 +457,214 @@ export default function StructuredIntakeBuilder({
         ) : (
           <p className="inline-empty">No local authoring diagnostics found.</p>
         )}
+      </div>
+    </div>
+  );
+}
+
+function BranchRuleEditor({
+  definition,
+  rule,
+  removeRule,
+  updateRule,
+}: {
+  definition: EmbeddedIntakeTemplateDefinitionV2;
+  rule: EmbeddedIntakeBranchRule;
+  removeRule: () => void;
+  updateRule: (updater: (rule: EmbeddedIntakeBranchRule) => void) => void;
+}) {
+  const sourceQuestion = definition.questions.find((question) => question.id === rule.questionId);
+  const pathSummary = summarizeIntakeBranchRulePath(rule, definition);
+  const showQuestionIds = new Set(rule.showQuestionIds ?? []);
+  const eligiblePackageIds = new Set(rule.eligiblePackageIds ?? []);
+
+  function setRuleValue(value: string): void {
+    updateRule((draft) => {
+      if (sourceQuestion?.type === "boolean") {
+        draft.value = value === "true";
+      } else {
+        draft.value = value;
+      }
+    });
+  }
+
+  function toggleShownQuestion(questionId: string, checked: boolean): void {
+    updateRule((draft) => {
+      const next = new Set(draft.showQuestionIds ?? []);
+      if (checked) next.add(questionId);
+      else next.delete(questionId);
+      draft.showQuestionIds = [...next];
+    });
+  }
+
+  function toggleEligiblePackage(packageId: string, checked: boolean): void {
+    updateRule((draft) => {
+      const next = new Set(draft.eligiblePackageIds ?? []);
+      if (checked) next.add(packageId);
+      else next.delete(packageId);
+      draft.eligiblePackageIds = [...next];
+    });
+  }
+
+  return (
+    <div className="intake-branch-rule-editor">
+      <div className="intake-item-editor-header">
+        <strong>{rule.id}</strong>
+        <button
+          aria-label={`Remove branch rule ${rule.id}`}
+          className="icon-button"
+          onClick={removeRule}
+          title="Remove branch rule"
+          type="button"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
+      <div className="intake-question-grid">
+        <label className="form-field">
+          <span>Rule ID</span>
+          <input
+            onChange={(event) =>
+              updateRule((draft) => {
+                draft.id = event.target.value;
+              })
+            }
+            value={rule.id}
+          />
+        </label>
+        <label className="form-field">
+          <span>Source question</span>
+          <select
+            onChange={(event) =>
+              updateRule((draft) => {
+                draft.questionId = event.target.value;
+                draft.value =
+                  definition.questions.find((question) => question.id === event.target.value)
+                    ?.type === "boolean"
+                    ? false
+                    : undefined;
+              })
+            }
+            value={rule.questionId}
+          >
+            {definition.questions.map((question) => (
+              <option key={question.id} value={question.id}>
+                {question.label}
+              </option>
+            ))}
+            {sourceQuestion ? null : (
+              <option value={rule.questionId}>Missing question: {rule.questionId}</option>
+            )}
+          </select>
+        </label>
+      </div>
+      <div className="intake-question-grid">
+        <label className="form-field">
+          <span>Operator</span>
+          <select
+            onChange={(event) =>
+              updateRule((draft) => {
+                draft.operator = event.target.value as EmbeddedIntakeBranchOperator;
+                if (draft.operator === "present") draft.value = undefined;
+                else if (sourceQuestion?.type === "boolean" && typeof draft.value !== "boolean") {
+                  draft.value = false;
+                }
+              })
+            }
+            value={rule.operator}
+          >
+            {branchRuleOperators.map((operator) => (
+              <option key={operator} value={operator}>
+                {operator.replaceAll("_", " ")}
+              </option>
+            ))}
+          </select>
+        </label>
+        {rule.operator === "present" ? (
+          <p className="field-hint">This rule matches when the source answer is not blank.</p>
+        ) : sourceQuestion?.type === "boolean" ? (
+          <label className="form-field">
+            <span>Value</span>
+            <select
+              onChange={(event) => setRuleValue(event.target.value)}
+              value={String(rule.value ?? false)}
+            >
+              <option value="false">false</option>
+              <option value="true">true</option>
+            </select>
+          </label>
+        ) : sourceQuestion?.type === "select" ? (
+          <label className="form-field">
+            <span>Value</span>
+            <select
+              onChange={(event) => setRuleValue(event.target.value)}
+              value={String(rule.value ?? "")}
+            >
+              <option value="">No value selected</option>
+              {(sourceQuestion.options ?? []).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className="form-field">
+            <span>Value</span>
+            <input
+              onChange={(event) => setRuleValue(event.target.value)}
+              value={String(rule.value ?? "")}
+            />
+          </label>
+        )}
+      </div>
+
+      <div className="intake-branch-target-grid">
+        <fieldset>
+          <legend>Shown questions</legend>
+          {definition.questions
+            .filter((question) => question.id !== rule.questionId)
+            .map((question) => (
+              <label className="check-row share-check-row" key={question.id}>
+                <input
+                  checked={showQuestionIds.has(question.id)}
+                  onChange={(event) => toggleShownQuestion(question.id, event.target.checked)}
+                  type="checkbox"
+                />
+                <span>{question.label}</span>
+              </label>
+            ))}
+          {definition.questions.length <= 1 ? (
+            <p className="inline-empty">No follow-up questions are available.</p>
+          ) : null}
+        </fieldset>
+        <fieldset>
+          <legend>Eligible packages</legend>
+          {definition.packages.map((intakePackage) => (
+            <label className="check-row share-check-row" key={intakePackage.id}>
+              <input
+                checked={eligiblePackageIds.has(intakePackage.id)}
+                onChange={(event) => toggleEligiblePackage(intakePackage.id, event.target.checked)}
+                type="checkbox"
+              />
+              <span>{intakePackage.title}</span>
+            </label>
+          ))}
+          {definition.packages.length === 0 ? (
+            <p className="inline-empty">No packages are defined.</p>
+          ) : null}
+        </fieldset>
+      </div>
+
+      <div className="intake-branch-path-summary">
+        <strong>{summarizeIntakeBranchRuleTrigger(rule, definition)}</strong>
+        <span>{pathSummary.path}</span>
+        <small>
+          Matched rules:{" "}
+          {pathSummary.matchedBranchRuleIds.length
+            ? pathSummary.matchedBranchRuleIds.join(", ")
+            : "none"}
+        </small>
       </div>
     </div>
   );

@@ -44,17 +44,18 @@ central reference corpus at `/Users/bryan/projects/reference-repos`. OP-T108 thr
 treated as shipped work and are not re-proposed here. No third-party code, schemas, UI, tests,
 assets, or distinctive prose are copied into this repo by this catalogue.
 
-OP-T155 shipped the first intake widget registry and validator adapter slice, so the former intake
-widget registry candidate is no longer re-proposed here.
+OP-T155 shipped the first intake widget registry and validator adapter slice, and OP-T157 shipped
+the first staff visual branch-rule authoring slice, so those former intake candidates are no longer
+re-proposed here.
 
 #### Intake, Documents, And Signing
 
-- **Visual branch-rule authoring**
-  - **First slice:** Add a structured branch-rule editor with preview path summaries; keep public
-    form semantics unchanged.
-  - **Local gap / shipped boundary:** Branch rules exist in the domain and runner, but definition
-    editing still falls back to advanced JSON for complex rule work; OP-T92 diagnostics do not give
-    staff a visual rule editor.
+- **Advanced intake rule simulation matrix**
+  - **First slice:** Add saved staff QA scenarios across multiple branch paths and package
+    combinations without changing public form semantics.
+  - **Local gap / shipped boundary:** OP-T157 gives staff a visual rule editor and per-rule draft
+    preview summaries, but it does not persist named scenario matrices or approval history for
+    multi-path QA.
   - **References:** `surveyjs__survey-creator`, `surveyjs__survey-library`, and `formio__formio.js`.
   - **Reuse and snippets:** Survey Creator and Form.io remain reference-only; SurveyJS runtime
     snippets would need attribution and a documented reuse decision.

@@ -829,13 +829,15 @@
 }
 
 .intake-section-editor-list,
-.intake-item-editor-list {
+.intake-item-editor-list,
+.intake-branch-rule-list {
   display: grid;
   gap: 10px;
 }
 
 .intake-section-editor,
-.intake-item-editor {
+.intake-item-editor,
+.intake-branch-rule-editor {
   display: grid;
   gap: 10px;
   border: 1px solid var(--line);
@@ -872,6 +874,40 @@
 .intake-question-editor {
   display: grid;
   gap: 10px;
+}
+
+.intake-branch-target-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.intake-branch-target-grid fieldset {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.intake-branch-target-grid legend {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+.intake-branch-path-summary {
+  display: grid;
+  gap: 4px;
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}
+
+.intake-branch-path-summary span,
+.intake-branch-path-summary small {
+  color: var(--muted);
 }
 
 .advanced-json-editor {
