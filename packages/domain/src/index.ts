@@ -11,6 +11,7 @@ export * from "./document-assembly.js";
 export * from "./document-suggestions.js";
 export * from "./email-provider-settings.js";
 export * from "./fiscal-host-workflows.js";
+export * from "./financial-command-journal.js";
 export * from "./intake.js";
 export * from "./intake-pipeline.js";
 export * from "./ledger.js";

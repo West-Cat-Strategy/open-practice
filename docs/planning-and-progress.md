@@ -8,19 +8,29 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                    |
-| --------------------- | ------------------------------------------------------------------------ |
-| Current focus         | Three validated 2026-06-16 follow-up lanes are being merged to mainline. |
-| Next recommended pick | Pick the next candidate from the durable roadmap/backlog.                |
-| Ready rows            | 0                                                                        |
-| Candidate rows        | 0                                                                        |
-| In progress rows      | 0                                                                        |
-| Review rows           | 0                                                                        |
-| Blocked rows          | 0                                                                        |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).     |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`         |
+| Snapshot              | Value                                                                       |
+| --------------------- | --------------------------------------------------------------------------- |
+| Current focus         | Financial command approval journal validation is the active follow-up lane. |
+| Next recommended pick | Pick the next candidate from the durable roadmap/backlog.                   |
+| Ready rows            | 0                                                                           |
+| Candidate rows        | 0                                                                           |
+| In progress rows      | 0                                                                           |
+| Review rows           | 0                                                                           |
+| Blocked rows          | 0                                                                           |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).        |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`            |
 
 ## Current Handoff Notes
+
+The 2026-06-16 financial command approval journal branch adds a read-only `financialCommandJournal`
+projection to the existing trust controls payload. It normalizes existing audit metadata for
+trust-transfer review/link decisions, ledger transaction approval decisions, invoice approvals,
+reconciliation decisions, and manual-payment reconciliation into safe reviewer cues without raw audit
+metadata values, evidence payloads, statement rows, settlement payloads, invoice narratives, new
+posting commands, settlement behavior, public routes, or read-side audit events. The Trust Controls
+dashboard shows the compact journal, empty state, and audit-chain-invalid warning. Proof is recorded
+in
+[Financial command approval journal proof](validation/OP_FINANCIAL_COMMAND_APPROVAL_JOURNAL_PROOF_2026-06-16.md).
 
 The 2026-06-16 single-contact CRM contact-history export runtime adds
 `POST /api/contacts/:contactId/history-export` for authenticated staff/admin users with the

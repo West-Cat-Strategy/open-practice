@@ -7,6 +7,7 @@ import type {
   BillReminderState,
   CreditWriteOffPosture,
   ExpenseCategoryProfileCue,
+  FinancialCommandJournal,
   HostedPaymentProcessorState,
   JurisdictionalTrustReport,
   LedgerAccount,
@@ -156,6 +157,7 @@ export interface TrustControlsDashboardResponse {
     };
     compliancePosture: string;
   };
+  financialCommandJournal: FinancialCommandJournal;
 }
 
 export type JurisdictionalTrustReportResponse = JurisdictionalTrustReport;

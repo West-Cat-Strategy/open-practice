@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   ledgerAccountingReviewSummary,
   ledgerBankFeedReconciliationReviewSummary,
+  buildFinancialCommandJournal,
   ledgerControlsDiagnostics,
 } from "@open-practice/domain";
 import { hasFirmWideLedgerAccess } from "../../http/auth-guards.js";
@@ -51,8 +52,12 @@ export function registerLedgerReadRoutes(
 
     const ledger = await repository.getLedger(request.auth.firmId, query);
     const visibleTransactionIds = new Set(ledger.entries.map((entry) => entry.transactionId));
-    const approvals = (await repository.listLedgerTransactionApprovals(request.auth.firmId)).filter(
-      (approval) => visibleTransactionIds.has(approval.transactionId),
+    const [allApprovals, audit] = await Promise.all([
+      repository.listLedgerTransactionApprovals(request.auth.firmId),
+      repository.listAuditEvents(request.auth.firmId),
+    ]);
+    const approvals = allApprovals.filter((approval) =>
+      visibleTransactionIds.has(approval.transactionId),
     );
     const [reconciliations, importBatches, matchRuleProfiles, accountingProfiles] =
       hasFirmWideAccess
@@ -90,6 +95,7 @@ export function registerLedgerReadRoutes(
           diagnostics,
         }),
       },
+      financialCommandJournal: buildFinancialCommandJournal({ audit, matterId: query.matterId }),
       trustControlPolicy: {
         automaticTrustPosting: false,
         transferRequestPosting: "requires_explicit_approval_and_manual_post",

@@ -112,6 +112,29 @@ export function emptyTrustControlsDashboard(): TrustControlsDashboardResponse {
       },
       compliancePosture: "operational_controls_only_not_jurisdiction_certified",
     },
+    financialCommandJournal: {
+      scope: { kind: "firm" },
+      chainValid: true,
+      reviewOnly: true,
+      entries: [],
+      summary: {
+        total: 0,
+        byFamily: {
+          trust_transfer: 0,
+          trust_transaction: 0,
+          invoice_approval: 0,
+          reconciliation: 0,
+        },
+        byDecision: {},
+      },
+      policy: {
+        source: "audit_metadata",
+        rawMetadataValues: "redacted_allowlisted_cues_only",
+        postingAutomation: false,
+        settlementAutomation: false,
+        publicExposure: false,
+      },
+    },
   };
 }
 

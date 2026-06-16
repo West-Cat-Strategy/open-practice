@@ -316,6 +316,246 @@ describe("ledger routes", () => {
     });
   });
 
+  it("returns a read-only financial command journal from safe audit metadata cues", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.appendAuditEvent({
+      id: "audit-financial-ledger-posted",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      occurredAt: "2026-06-16T15:55:00.000Z",
+      action: "ledger.transaction.posted",
+      resourceType: "ledger_transaction",
+      resourceId: "trust-retainer",
+      metadata: {
+        transactionId: "trust-retainer",
+        matterIds: ["matter-001"],
+        accountIds: ["acct-trust-bank", "acct-client-liability"],
+        status: "posted",
+        entryCount: 2,
+        memo: "Synthetic ledger memo must stay out of the journal.",
+      },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-financial-ledger-approval",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      occurredAt: "2026-06-16T16:00:00.000Z",
+      action: "ledger.transaction_approval.decided",
+      resourceType: "ledger_transaction_approval",
+      resourceId: "approval-trust-retainer",
+      metadata: {
+        transactionId: "trust-retainer",
+        matterIds: ["matter-001"],
+        decision: "approved",
+        notes: "Synthetic privileged approval note must stay out of the journal.",
+      },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-financial-trust-transfer",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      occurredAt: "2026-06-16T16:05:00.000Z",
+      action: "trust_transfer_request.approved",
+      resourceType: "trust_transfer_request",
+      resourceId: "trust-transfer-journal",
+      metadata: {
+        matterId: "matter-001",
+        trustTransferRequestId: "trust-transfer-journal",
+        invoiceId: "invoice-journal",
+        previousStatus: "pending_approval",
+        status: "approved",
+        amountCents: 12000,
+        evidencePresent: true,
+        rawEvidence: "Synthetic trust evidence payload must stay out of the journal.",
+      },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-financial-invoice",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      occurredAt: "2026-06-16T16:10:00.000Z",
+      action: "invoice.approved",
+      resourceType: "invoice",
+      resourceId: "invoice-journal",
+      metadata: {
+        matterId: "matter-001",
+        invoiceId: "invoice-journal",
+        previousStatus: "draft",
+        status: "approved",
+        totalCents: 12000,
+        balanceDueCents: 12000,
+        narrative: "Synthetic billing narrative must stay out of the journal.",
+      },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-financial-reconciliation",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      occurredAt: "2026-06-16T16:15:00.000Z",
+      action: "ledger.reconciliation.created",
+      resourceType: "ledger_reconciliation",
+      resourceId: "reconciliation-journal",
+      metadata: {
+        accountId: "acct-trust-bank",
+        status: "exception",
+        statementRowCount: 4,
+        matchedStatementRowCount: 3,
+        unmatchedStatementRowCount: 1,
+        varianceCents: -250,
+        statementRows: ["Synthetic row body must stay out of the journal."],
+      },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-financial-manual-payment",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      occurredAt: "2026-06-16T16:20:00.000Z",
+      action: "manual_payment.reconciled",
+      resourceType: "manual_payment",
+      resourceId: "payment-journal",
+      metadata: {
+        matterId: "matter-001",
+        paymentId: "payment-journal",
+        invoiceId: "invoice-journal",
+        status: "received",
+        amountCents: 5000,
+        allocationCount: 1,
+        evidencePresent: true,
+        receiptBody: "Synthetic private receipt body must stay out of the journal.",
+      },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-financial-hidden-matter",
+      firmId: "firm-west-legal",
+      actorId: "user-admin",
+      occurredAt: "2026-06-16T16:25:00.000Z",
+      action: "trust_transfer_request.rejected",
+      resourceType: "trust_transfer_request",
+      resourceId: "trust-transfer-hidden",
+      metadata: {
+        matterId: "matter-002",
+        trustTransferRequestId: "trust-transfer-hidden",
+        invoiceId: "invoice-hidden",
+        previousStatus: "pending_approval",
+        status: "rejected",
+        amountCents: 7000,
+        evidencePresent: true,
+      },
+    });
+
+    const firmResponse = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/ledger/controls",
+    });
+    const matterResponse = await testServer({ repository }).inject({
+      method: "GET",
+      url: "/api/ledger/controls?matterId=matter-001",
+      headers: {
+        "x-open-practice-user-id": "user-licensee",
+        "x-open-practice-firm-id": "firm-west-legal",
+      },
+    });
+
+    expect(firmResponse.statusCode).toBe(200);
+    const firmJournal = firmResponse.json<{
+      financialCommandJournal: {
+        chainValid: boolean;
+        entries: Array<Record<string, unknown>>;
+        policy: Record<string, unknown>;
+        summary: {
+          total: number;
+          byFamily: Record<string, number>;
+          byDecision: Record<string, number>;
+        };
+      };
+    }>().financialCommandJournal;
+    expect(firmJournal).toMatchObject({
+      chainValid: true,
+      policy: {
+        source: "audit_metadata",
+        rawMetadataValues: "redacted_allowlisted_cues_only",
+        postingAutomation: false,
+        settlementAutomation: false,
+        publicExposure: false,
+      },
+      summary: {
+        total: 6,
+        byFamily: {
+          trust_transfer: 2,
+          trust_transaction: 1,
+          invoice_approval: 1,
+          reconciliation: 2,
+        },
+        byDecision: {
+          approved: 3,
+          exception: 1,
+          reconciled: 1,
+          rejected: 1,
+        },
+      },
+    });
+    expect(firmJournal.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          auditEventId: "audit-financial-trust-transfer",
+          family: "trust_transfer",
+          decision: "approved",
+          matterId: "matter-001",
+          trustTransferRequestId: "trust-transfer-journal",
+          invoiceId: "invoice-journal",
+          amountCents: 12000,
+          evidencePresent: true,
+        }),
+        expect.objectContaining({
+          auditEventId: "audit-financial-manual-payment",
+          family: "reconciliation",
+          decision: "reconciled",
+          paymentId: "payment-journal",
+          allocationCount: 1,
+        }),
+        expect.objectContaining({
+          auditEventId: "audit-financial-reconciliation",
+          family: "reconciliation",
+          decision: "exception",
+          accountId: "acct-trust-bank",
+          statementRowCount: 4,
+          varianceCents: -250,
+        }),
+      ]),
+    );
+    const serializedFirmJournal = JSON.stringify(firmJournal);
+    expect(serializedFirmJournal).not.toContain("audit-financial-ledger-posted");
+    expect(serializedFirmJournal).not.toContain("Synthetic ledger memo");
+    expect(serializedFirmJournal).not.toContain("Synthetic privileged approval note");
+    expect(serializedFirmJournal).not.toContain("Synthetic trust evidence payload");
+    expect(serializedFirmJournal).not.toContain("Synthetic billing narrative");
+    expect(serializedFirmJournal).not.toContain("Synthetic row body");
+    expect(serializedFirmJournal).not.toContain("Synthetic private receipt body");
+
+    expect(matterResponse.statusCode).toBe(200);
+    const matterJournal = matterResponse.json<{
+      financialCommandJournal: {
+        scope: Record<string, unknown>;
+        entries: Array<{ auditEventId: string; resourceId: string }>;
+        summary: { total: number };
+      };
+    }>().financialCommandJournal;
+    expect(matterJournal.scope).toEqual({ kind: "matter", matterId: "matter-001" });
+    expect(matterJournal.summary.total).toBe(4);
+    expect(matterJournal.entries.map((entry) => entry.auditEventId).sort()).toEqual([
+      "audit-financial-invoice",
+      "audit-financial-ledger-approval",
+      "audit-financial-manual-payment",
+      "audit-financial-trust-transfer",
+    ]);
+    expect(matterJournal.entries.map((entry) => entry.resourceId)).not.toContain(
+      "reconciliation-journal",
+    );
+    expect(matterJournal.entries.map((entry) => entry.resourceId)).not.toContain(
+      "trust-transfer-hidden",
+    );
+  });
+
   it("returns aggregate-only jurisdictional trust reports for firm-wide ledger users", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await seedMatterTwoLedgerControls(repository);
