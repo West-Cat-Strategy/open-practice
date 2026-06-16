@@ -193,6 +193,92 @@ function buildSyntheticControls(): TrustControlsDashboardResponse {
     exceptionReconciliationIds: ["reconciliation_synthetic"],
     overdrawnBalanceKeys: ["matter_synthetic:trust_account_synthetic"],
   };
+  controls.financialCommandJournal = {
+    scope: { kind: "matter", matterId: "matter_synthetic" },
+    chainValid: true,
+    reviewOnly: true,
+    entries: [
+      {
+        auditEventId: "audit_ledger_approval_synthetic",
+        actorId: "user_synthetic",
+        occurredAt: "2026-06-06T00:40:00.000Z",
+        action: "ledger.transaction_approval.decided",
+        family: "trust_transaction",
+        decision: "approved",
+        resourceType: "ledger_transaction_approval",
+        resourceId: "approval_synthetic",
+        matterIds: ["matter_synthetic"],
+        transactionId: "trust_txn_synthetic",
+        status: "approved",
+      },
+      {
+        auditEventId: "audit_trust_transfer_synthetic",
+        actorId: "user_synthetic",
+        occurredAt: "2026-06-06T00:30:00.000Z",
+        action: "trust_transfer_request.approved",
+        family: "trust_transfer",
+        decision: "approved",
+        resourceType: "trust_transfer_request",
+        resourceId: "trust_transfer_synthetic",
+        matterId: "matter_synthetic",
+        invoiceId: "invoice_synthetic",
+        trustTransferRequestId: "trust_transfer_synthetic",
+        previousStatus: "pending_approval",
+        status: "approved",
+        amountCents: 12500,
+        evidencePresent: true,
+      },
+      {
+        auditEventId: "audit_invoice_synthetic",
+        actorId: "user_synthetic",
+        occurredAt: "2026-06-06T00:20:00.000Z",
+        action: "invoice.approved",
+        family: "invoice_approval",
+        decision: "approved",
+        resourceType: "invoice",
+        resourceId: "invoice_synthetic",
+        matterId: "matter_synthetic",
+        invoiceId: "invoice_synthetic",
+        totalCents: 12500,
+        balanceDueCents: 12500,
+      },
+      {
+        auditEventId: "audit_reconciliation_synthetic",
+        actorId: "user_synthetic",
+        occurredAt: "2026-06-06T00:10:00.000Z",
+        action: "ledger.reconciliation.created",
+        family: "reconciliation",
+        decision: "exception",
+        resourceType: "ledger_reconciliation",
+        resourceId: "reconciliation_synthetic",
+        accountId: "trust_account_synthetic",
+        statementRowCount: 2,
+        matchedStatementRowCount: 1,
+        unmatchedStatementRowCount: 1,
+        varianceCents: -100,
+      },
+    ],
+    summary: {
+      total: 4,
+      byFamily: {
+        trust_transfer: 1,
+        trust_transaction: 1,
+        invoice_approval: 1,
+        reconciliation: 1,
+      },
+      byDecision: {
+        approved: 3,
+        exception: 1,
+      },
+    },
+    policy: {
+      source: "audit_metadata",
+      rawMetadataValues: "redacted_allowlisted_cues_only",
+      postingAutomation: false,
+      settlementAutomation: false,
+      publicExposure: false,
+    },
+  };
 
   return controls;
 }
@@ -242,6 +328,15 @@ describe("TrustControlsSection", () => {
     expect(html).toContain("Matter trust balance");
     expect(html).toContain("Trust controls workbench");
     expect(html).toContain("Trust controls loaded.");
+    expect(html).toContain("Financial command journal");
+    expect(html).toContain("4 decisions · audit chain valid");
+    expect(html).toContain("Trust transaction · approval_synthetic");
+    expect(html).toContain("transaction trust_txn_synthetic");
+    expect(html).toContain("ledger.transaction_approval.decided");
+    expect(html).toContain("Trust transfer · trust_transfer_synthetic");
+    expect(html).toContain("invoice invoice_synthetic");
+    expect(html).toContain("reviewer evidence");
+    expect(html).toContain("redacted allowlisted cues only");
     expect(html).toContain("review-only profiles · no automatic matching");
     expect(html).toContain("metadata only · manual review required");
     expect(html).toContain("No auto-match · no ledger posting · no live feed");
@@ -285,11 +380,34 @@ describe("TrustControlsSection", () => {
     );
 
     expect(html).toContain("0 accounts");
+    expect(html).toContain("No financial command journal entries are present");
     expect(html).toContain("No accounting review profiles are recorded");
     expect(html).toContain("No bank-feed import batch metadata is recorded");
     expect(html).toContain("No trust ledger postings are linked to this matter yet.");
     expect(html).toContain("No reconciliation exceptions or unreconciled trust accounts");
     expect(html).toContain("Pending approval transaction IDs");
     expect(html).toContain("<small>none</small>");
+  });
+
+  it("shows invalid audit-chain state for the command journal", () => {
+    const controls = emptyTrustControlsDashboard();
+    controls.financialCommandJournal.chainValid = false;
+    const html = renderToStaticMarkup(
+      createElement(TrustControlsSection, {
+        activeJurisdictionTrustSummary: jurisdictionSummary,
+        activeTrustBalanceCents: 0,
+        activeTrustControls: controls,
+        activeTrustPostings: [],
+        compactDate,
+        compactStatus,
+        formatCurrency,
+        trustControlsStatus: "Trust controls loaded.",
+        trustReviewSummary: summarizeTrustControls(controls),
+      }),
+    );
+
+    expect(html).toContain("0 decisions · audit chain invalid");
+    expect(html).toContain("Audit chain requires review");
+    expect(html).toContain("Use the audit log before relying on this financial journal.");
   });
 });

@@ -31,6 +31,13 @@ snapshots, safe preview/audit metadata, related-resource matter matching, focuse
 domain/database/API/web tests, and the preserved no-campaign/no-bulk-send/no-provider-side-effect
 boundary.
 
+The 2026-06-16 financial command approval journal proof is recorded in
+[OP_FINANCIAL_COMMAND_APPROVAL_JOURNAL_PROOF_2026-06-16.md](OP_FINANCIAL_COMMAND_APPROVAL_JOURNAL_PROOF_2026-06-16.md).
+It covers the read-only trust controls `financialCommandJournal` projection over existing audit
+metadata for trust-transfer, ledger transaction approval, invoice approval, and reconciliation
+decisions, matter-scoped filtering, dashboard rendering, safe allowlisted cues, and the preserved
+no-schema/no-posting/no-settlement/no-public-route/no-read-audit-event boundary.
+
 The 2026-06-16 inbound email matter draft proof is recorded in
 [OP_INBOUND_EMAIL_MATTER_DRAFT_PROOF_2026-06-16.md](OP_INBOUND_EMAIL_MATTER_DRAFT_PROOF_2026-06-16.md).
 It covers the review-only `POST /api/inbound-email/messages/:id/matter-draft` endpoint, sanitized

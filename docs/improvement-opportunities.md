@@ -17,6 +17,11 @@ statement match-rule/accounting-profile depth is shipped as OP-T136. Future trus
 candidates should compare against OP-T104 preview, OP-T107 exception-resolution, OP-T118 batch
 metadata, and OP-T136 accounting-review proof before proposing another slice.
 
+The first financial command approval journal slice shipped on 2026-06-16. Future maker-checker or
+command-audit candidates should compare against the read-only trust controls
+`financialCommandJournal` projection over existing financial audit metadata before proposing new
+command storage or posting behavior.
+
 The workflow-step history projection candidate is shipped in the 2026-06-16 workflow history
 branch. Future workflow candidates should compare against the read-only `GET /api/jobs/workflows`
 projection over redacted job lifecycle records and workflow audit events before proposing a new
@@ -248,14 +253,6 @@ surface.
   - **References:** `blnkfinance__blnk`, `apache__fineract`.
   - **Reuse and snippets:** Apache-2.0/adopt-selectively; snippets are possible only with provenance,
     but domain behavior is simple enough to author locally.
-
-- **Financial command approval journal**
-  - **First slice:** Add a read-only command/decision journal for trust-transfer, trust-transaction,
-    invoice approval, and reconciliation decisions using existing audit metadata.
-  - **Local gap / shipped boundary:** OP has maker-checker-like approvals in separate domains, but no
-    unified financial command journal for reviewers.
-  - **References:** `apache__fineract`.
-  - **Reuse and snippets:** Apache-2.0/adopt-selectively; use module vocabulary, not Java code.
 
 - **Manual payment reconciliation gate**
   - **Shipped first slice:** Manual payments now start in `pending_reconciliation` with reviewer

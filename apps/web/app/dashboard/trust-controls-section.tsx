@@ -1,5 +1,6 @@
 import { AlertTriangle, Banknote, Clock3, FileText, ShieldCheck } from "lucide-react";
 
+import type { FinancialCommandJournalEntry, FinancialCommandJournalFamily } from "../types";
 import type { TrustControlsDashboardResponse } from "../_features/billing/models";
 import {
   accountLabel,
@@ -22,6 +23,77 @@ interface TrustControlsSectionProps {
   trustReviewSummary: TrustReviewSummary;
 }
 
+const financialCommandFamilyLabels: Record<FinancialCommandJournalFamily, string> = {
+  trust_transfer: "Trust transfer",
+  trust_transaction: "Trust transaction",
+  invoice_approval: "Invoice approval",
+  reconciliation: "Reconciliation",
+};
+
+function financialCommandDecisionIsRisk(decision: string): boolean {
+  return ["exception", "needs_follow_up", "rejected"].includes(decision);
+}
+
+function financialCommandStatusCue(entry: FinancialCommandJournalEntry): string | undefined {
+  if (entry.previousStatus && entry.status) return `${entry.previousStatus} to ${entry.status}`;
+  return entry.status;
+}
+
+function financialCommandAmountCue(
+  entry: FinancialCommandJournalEntry,
+  formatCurrency: (value: number) => string,
+): string | undefined {
+  if (entry.amountCents !== undefined) return `amount ${formatCurrency(entry.amountCents)}`;
+  if (entry.totalCents !== undefined) return `total ${formatCurrency(entry.totalCents)}`;
+  if (entry.balanceDueCents !== undefined)
+    return `balance ${formatCurrency(entry.balanceDueCents)}`;
+  if (entry.varianceCents !== undefined) return `variance ${formatCurrency(entry.varianceCents)}`;
+  return undefined;
+}
+
+function financialCommandIdentityCue(entry: FinancialCommandJournalEntry): string {
+  return [
+    entry.matterId ? `matter ${entry.matterId}` : undefined,
+    !entry.matterId && entry.matterIds ? `matters ${entry.matterIds.join(", ")}` : undefined,
+    entry.invoiceId ? `invoice ${entry.invoiceId}` : undefined,
+    entry.transactionId ? `transaction ${entry.transactionId}` : undefined,
+    entry.trustTransferRequestId ? `transfer ${entry.trustTransferRequestId}` : undefined,
+    entry.paymentId ? `payment ${entry.paymentId}` : undefined,
+    entry.accountId ? `account ${entry.accountId}` : undefined,
+    !entry.accountId && entry.accountIds ? `accounts ${entry.accountIds.join(", ")}` : undefined,
+    entry.statementRowId ? `statement row ${entry.statementRowId}` : undefined,
+  ]
+    .filter((cue): cue is string => Boolean(cue))
+    .join(" · ");
+}
+
+function financialCommandDetailCue(
+  entry: FinancialCommandJournalEntry,
+  formatCurrency: (value: number) => string,
+): string {
+  return (
+    [
+      financialCommandIdentityCue(entry),
+      financialCommandStatusCue(entry),
+      financialCommandAmountCue(entry, formatCurrency),
+      entry.allocationCount !== undefined ? `${entry.allocationCount} allocations` : undefined,
+      entry.entryCount !== undefined ? `${entry.entryCount} entries` : undefined,
+      entry.statementRowCount !== undefined
+        ? `${entry.statementRowCount} statement rows`
+        : undefined,
+      entry.matchedStatementRowCount !== undefined
+        ? `${entry.matchedStatementRowCount} matched`
+        : undefined,
+      entry.unmatchedStatementRowCount !== undefined
+        ? `${entry.unmatchedStatementRowCount} unmatched`
+        : undefined,
+      entry.evidencePresent ? "reviewer evidence" : undefined,
+    ]
+      .filter((cue): cue is string => Boolean(cue))
+      .join(" · ") || entry.resourceId
+  );
+}
+
 export function TrustControlsSection({
   activeJurisdictionTrustSummary,
   activeTrustBalanceCents,
@@ -37,6 +109,8 @@ export function TrustControlsSection({
   const accountingSummary = accountingReview.summary;
   const bankFeedReviewSummary = accountingReview.bankFeedReviewSummary;
   const bankFeedImportBatches = accountingReview.importBatches;
+  const financialCommandJournal = activeTrustControls.financialCommandJournal;
+  const financialCommandEntries = financialCommandJournal.entries.slice(0, 6);
   const protectedAccountingProfiles = accountingReview.accountingProfiles.filter(
     (profile) => profile.protectedFunds.protected,
   );
@@ -118,6 +192,59 @@ export function TrustControlsSection({
           <ShieldCheck size={18} />
           <strong>{accountingSummary.protectedAccountCount} protected cues</strong>
           <span>{accountingSummary.bankFeedShellCount} bank-feed shells</span>
+        </div>
+      </div>
+
+      <div className="section-title">
+        <h3>Financial command journal</h3>
+        <span>
+          {financialCommandJournal.summary.total} decisions · audit chain{" "}
+          {financialCommandJournal.chainValid ? "valid" : "invalid"}
+        </span>
+      </div>
+      <div className="party-list">
+        {!financialCommandJournal.chainValid ? (
+          <div className="party-row">
+            <span>
+              <strong>Audit chain requires review</strong>
+              <small>Use the audit log before relying on this financial journal.</small>
+            </span>
+            <em className="risk">invalid</em>
+          </div>
+        ) : null}
+        {financialCommandEntries.map((entry) => (
+          <div className="party-row" key={entry.auditEventId}>
+            <span>
+              <strong>
+                {financialCommandFamilyLabels[entry.family]} · {entry.resourceId}
+              </strong>
+              <small>
+                {entry.action} · {compactDate(entry.occurredAt)} · actor {entry.actorId}
+              </small>
+              <small>{financialCommandDetailCue(entry, formatCurrency)}</small>
+            </span>
+            <em className={financialCommandDecisionIsRisk(entry.decision) ? "risk" : undefined}>
+              {entry.decision.replaceAll("_", " ")}
+            </em>
+          </div>
+        ))}
+        {financialCommandEntries.length === 0 ? (
+          <p className="inline-empty">
+            No financial command journal entries are present in the current controls payload.
+          </p>
+        ) : null}
+        <div className="party-row">
+          <span>
+            <strong>Journal boundary</strong>
+            <small>
+              {financialCommandJournal.summary.byFamily.trust_transfer} trust transfer ·{" "}
+              {financialCommandJournal.summary.byFamily.trust_transaction} trust transaction ·{" "}
+              {financialCommandJournal.summary.byFamily.invoice_approval} invoice approval ·{" "}
+              {financialCommandJournal.summary.byFamily.reconciliation} reconciliation
+            </small>
+            <small>{financialCommandJournal.policy.rawMetadataValues.replaceAll("_", " ")}</small>
+          </span>
+          <em>review only</em>
         </div>
       </div>
 
