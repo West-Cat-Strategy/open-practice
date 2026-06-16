@@ -1,4 +1,5 @@
 import type {
+  ActivityTimelineEntry,
   Contact,
   ContactRoleCategory,
   ContactStatus,
@@ -223,6 +224,57 @@ export const contactDataQualityResolutionDecisions = [
 
 export type ContactDataQualityResolutionDecision =
   (typeof contactDataQualityResolutionDecisions)[number];
+
+export const contactTimelineActivityFilters = [
+  "all",
+  "crm_activity",
+  "task_cues",
+  "open_tasks",
+  "follow_ups",
+] as const;
+
+export type ContactTimelineActivityFilter = (typeof contactTimelineActivityFilters)[number];
+
+const CONTACT_TIMELINE_CRM_ACTIVITY_KINDS = new Set<ActivityTimelineEntry["kind"]>([
+  "audit",
+  "conflict",
+  "contact",
+  "portal",
+]);
+const CONTACT_TIMELINE_TASK_CUE_TYPES = new Set(["open_task", "follow_up_review"]);
+
+function contactTimelineCueType(entry: ActivityTimelineEntry): string | undefined {
+  const cueType = entry.metadata.cueType;
+  return typeof cueType === "string" ? cueType : undefined;
+}
+
+export function filterContactTimelineEntries(
+  entries: ActivityTimelineEntry[],
+  activity: ContactTimelineActivityFilter = "all",
+): ActivityTimelineEntry[] {
+  switch (activity) {
+    case "all":
+      return [...entries];
+    case "crm_activity":
+      return entries.filter((entry) => CONTACT_TIMELINE_CRM_ACTIVITY_KINDS.has(entry.kind));
+    case "task_cues":
+      return entries.filter(
+        (entry) =>
+          entry.kind === "task" &&
+          CONTACT_TIMELINE_TASK_CUE_TYPES.has(contactTimelineCueType(entry) ?? ""),
+      );
+    case "open_tasks":
+      return entries.filter(
+        (entry) => entry.kind === "task" && contactTimelineCueType(entry) === "open_task",
+      );
+    case "follow_ups":
+      return entries.filter(
+        (entry) => entry.kind === "task" && contactTimelineCueType(entry) === "follow_up_review",
+      );
+  }
+  const exhaustiveActivity: never = activity;
+  return exhaustiveActivity;
+}
 
 export interface ContactDataQualityResolutionRecord {
   id: string;

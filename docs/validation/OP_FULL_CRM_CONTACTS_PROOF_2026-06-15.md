@@ -198,3 +198,64 @@ Validation:
 - `pnpm --filter @open-practice/web typecheck`
 - `pnpm build`
   - 6 workspace builds passed.
+
+## Contact Timeline Activity Filter Follow-Up
+
+Date: 2026-06-16 PDT
+
+Scope:
+
+- Added optional `activity` filtering to `GET /api/contacts/:contactId/timeline` with the existing
+  `{ timeline }` response shape. Supported filters are `all`, `crm_activity`, `task_cues`,
+  `open_tasks`, and `follow_ups`.
+- Kept filtering as a post-authorization projection over already-redacted contact timeline entries.
+  The slice does not add outbound CRM sync, automatic task creation, raw private-history exposure,
+  retained export bodies, schema/migrations, workers, providers, or broader permissions.
+- The Contacts dashboard now defaults to review-only task/follow-up cues and lets staff switch
+  between all safe activity, CRM activity, task/follow-up cues, open tasks, and follow-up reviews.
+  Non-task CRM rows render only safe titles, kinds, timestamps, visible matter numbers, and
+  allowlisted status/review labels.
+- Contact-history export still uses the full authorized timeline projection for the transient
+  `staff_review` JSON export and does not inherit the dashboard filter.
+
+Validation:
+
+- `pnpm verify:select -- --files apps/api/src/routes/contacts.test.ts apps/api/src/routes/contacts.ts apps/web/app/_features/contacts/models.ts apps/web/app/dashboard-client.test.ts apps/web/app/dashboard-client.tsx apps/web/app/dashboard/contacts-section.tsx docs/api-and-state-machines.md docs/improvement-opportunities.md docs/planning-and-progress.md docs/validation/OP_FULL_CRM_CONTACTS_PROOF_2026-06-15.md docs/validation/README.md packages/domain/src/contact-models.ts packages/domain/src/contacts.test.ts packages/domain/src/contacts.ts`
+  - Passed and selected the broad domain/database/API/web/docs validation bundle.
+- `pnpm --filter @open-practice/domain test -- contacts.test.ts tasks.test.ts`
+  - 28 files, 189 tests passed.
+- `pnpm --filter @open-practice/domain test`
+  - 28 files, 189 tests passed.
+- `pnpm --filter @open-practice/domain typecheck`
+- `pnpm --filter @open-practice/database test`
+  - 21 files, 123 tests passed.
+- `pnpm --filter @open-practice/database db:check`
+- `pnpm --filter @open-practice/database typecheck`
+- `pnpm --filter @open-practice/api exec vitest run src/routes/contacts.test.ts`
+  - 1 file, 7 tests passed after building the fresh worktree upstream package entrypoints.
+- `pnpm --filter @open-practice/api typecheck`
+- `pnpm --filter @open-practice/providers test`
+  - 9 files, 20 tests passed.
+- `pnpm --filter @open-practice/worker test`
+  - 5 files, 42 tests passed.
+- `pnpm --filter @open-practice/web test -- dashboard-client.test.ts`
+  - 35 files, 193 tests passed after building the fresh worktree upstream package entrypoints.
+- `pnpm --filter @open-practice/web test`
+  - 35 files, 193 tests passed.
+- `pnpm --filter @open-practice/web typecheck`
+- `pnpm format:check`
+- `pnpm docs:check`
+- `pnpm policy:check`
+- `pnpm build`
+  - 6 workspace builds passed.
+- `git diff --check`
+
+Default-timeout caveat:
+
+- `pnpm --filter @open-practice/api test` was rerun in isolation after the focused contact route
+  test passed. The suite reached 40 passing files and 533 passing tests, then failed on four
+  existing CalDAV tests that exceeded the default 5s test timeout. A targeted CalDAV rerun also
+  timed out one test at the default 5s limit; the same file passed with the read-only diagnostic
+  command `pnpm --filter @open-practice/api exec vitest run src/routes/caldav.test.ts --testTimeout=15000`
+  with 1 file and 8 tests passed. No CalDAV, calendar, or API timeout code was changed in this
+  activity-filter slice.

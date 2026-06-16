@@ -319,6 +319,7 @@ import {
   type ContactDataQualityResolutionsResponse,
   type ContactDossiersResponse,
   type ContactHistoryExportResponse,
+  type ContactTimelineActivityFilter,
   type ContactTimelineResponse,
   type ContactReviewQueueResponse,
 } from "./_features/contacts/models";
@@ -950,6 +951,8 @@ export default function DashboardClient({
   const [activeContactTimeline, setActiveContactTimeline] = useState<
     ContactTimelineResponse["timeline"]
   >([]);
+  const [contactTimelineActivityFilter, setContactTimelineActivityFilter] =
+    useState<ContactTimelineActivityFilter>("task_cues");
   const [contactTimelineStatus, setContactTimelineStatus] = useState("No contact timeline loaded.");
   const [contactHistoryExportReason, setContactHistoryExportReason] = useState("");
   const [contactHistoryExportStatus, setContactHistoryExportStatus] = useState(
@@ -1292,7 +1295,9 @@ export default function DashboardClient({
     setContactTimelineStatus("Loading contact timeline...");
     void requestDashboardJson<ContactTimelineResponse>(
       apiBaseUrl,
-      `/api/contacts/${encodeURIComponent(activeContactDossier.contact.id)}/timeline`,
+      `/api/contacts/${encodeURIComponent(
+        activeContactDossier.contact.id,
+      )}/timeline?activity=${encodeURIComponent(contactTimelineActivityFilter)}`,
       { headers: devHeaders },
     )
       .then((payload) => {
@@ -1311,7 +1316,7 @@ export default function DashboardClient({
     return () => {
       cancelled = true;
     };
-  }, [activeContactDossier, apiBaseUrl, devHeaders]);
+  }, [activeContactDossier, apiBaseUrl, contactTimelineActivityFilter, devHeaders]);
   const canRecordContactDataQualityResolution = Boolean(
     canRecordContactDataQualityResolutions(capabilities.sections),
   );
@@ -5344,6 +5349,7 @@ export default function DashboardClient({
                   contactHistoryExportStatus={contactHistoryExportStatus}
                   contactHistoryExportSummary={contactHistoryExportSummary}
                   contactTimeline={activeContactTimeline}
+                  contactTimelineActivityFilter={contactTimelineActivityFilter}
                   contactTimelineStatus={contactTimelineStatus}
                   contactSearch={contactSearch}
                   creatingContact={creatingContact}
@@ -5356,6 +5362,7 @@ export default function DashboardClient({
                   onContactCreatePhoneChange={setContactCreatePhone}
                   onContactCreateRoleCategoryChange={setContactCreateRoleCategory}
                   onContactHistoryExportReasonChange={setContactHistoryExportReason}
+                  onContactTimelineActivityFilterChange={setContactTimelineActivityFilter}
                   onExportContactHistory={() => void exportContactHistory()}
                   onCreateContact={() => void createContact()}
                   onCreateMatterFromContact={(dossier) => void createMatterFromContact(dossier)}
@@ -5958,6 +5965,7 @@ export default function DashboardClient({
                   contactHistoryExportStatus={contactHistoryExportStatus}
                   contactHistoryExportSummary={contactHistoryExportSummary}
                   contactTimeline={activeContactTimeline}
+                  contactTimelineActivityFilter={contactTimelineActivityFilter}
                   contactTimelineStatus={contactTimelineStatus}
                   contactSearch={contactSearch}
                   creatingContact={creatingContact}
@@ -5970,6 +5978,7 @@ export default function DashboardClient({
                   onContactCreatePhoneChange={setContactCreatePhone}
                   onContactCreateRoleCategoryChange={setContactCreateRoleCategory}
                   onContactHistoryExportReasonChange={setContactHistoryExportReason}
+                  onContactTimelineActivityFilterChange={setContactTimelineActivityFilter}
                   onExportContactHistory={() => void exportContactHistory()}
                   onCreateContact={() => void createContact()}
                   onCreateMatterFromContact={(dossier) => void createMatterFromContact(dossier)}

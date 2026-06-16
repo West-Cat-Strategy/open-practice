@@ -2529,6 +2529,7 @@ describe("dashboard client behavior", () => {
           },
         },
       ],
+      contactTimelineActivityFilter: "task_cues" as const,
       contactTimelineStatus: "1 timeline cue loaded.",
       contactSearch: "",
       creatingContact: false,
@@ -2539,6 +2540,7 @@ describe("dashboard client behavior", () => {
       onContactCreateKindChange: () => {},
       onContactCreatePhoneChange: () => {},
       onContactHistoryExportReasonChange: () => {},
+      onContactTimelineActivityFilterChange: () => {},
       onExportContactHistory: () => {},
       onCreateContact: () => {},
       onCreateMatterFromContact: () => {},
@@ -2567,7 +2569,9 @@ describe("dashboard client behavior", () => {
     );
 
     expect(readOnlyHtml).toContain("Resolution history");
-    expect(readOnlyHtml).toContain("Timeline cues");
+    expect(readOnlyHtml).toContain("Timeline activity");
+    expect(readOnlyHtml).toContain("Activity filter");
+    expect(readOnlyHtml).toContain("Task and follow-up cues");
     expect(readOnlyHtml).toContain("Task deadline cue");
     expect(readOnlyHtml).toContain("2026-0001");
     expect(readOnlyHtml).toContain("review only");
@@ -2590,6 +2594,52 @@ describe("dashboard client behavior", () => {
     expect(writableHtml).toContain("Export JSON");
     expect(writableHtml).toContain("Transient export; no server-side export body stored.");
     expect(writableHtml).toContain("Needs review");
+
+    const crmActivityHtml = renderToStaticMarkup(
+      createElement(ContactsSection, {
+        ...commonProps,
+        canExportContactHistory: false,
+        canRecordContactDataQualityResolution: false,
+        contactTimelineActivityFilter: "crm_activity",
+        contactTimeline: [
+          {
+            id: "portal-grant:private-portal-grant-id",
+            firmId: "firm-west-legal",
+            matterId: "matter-001",
+            occurredAt: "2026-05-02T19:00:00.000Z",
+            title: "Portal access invited",
+            kind: "portal" as const,
+            metadata: {
+              portalGrantId: "private-portal-grant-id",
+              contactId: "contact-river",
+              status: "invited",
+            },
+          },
+        ],
+        contactTimelineStatus: "1 timeline activity loaded.",
+      }),
+    );
+    expect(crmActivityHtml).toContain("CRM activity");
+    expect(crmActivityHtml).toContain("Portal access invited");
+    expect(crmActivityHtml).toContain("2026-0001");
+    expect(crmActivityHtml).toContain("2026-05-02T19:00:00.000Z");
+    expect(crmActivityHtml).toContain("portal");
+    expect(crmActivityHtml).toContain("invited");
+    expect(crmActivityHtml).not.toContain("private-portal-grant-id");
+    expect(crmActivityHtml).not.toContain("contact-river");
+
+    const emptyFilteredHtml = renderToStaticMarkup(
+      createElement(ContactsSection, {
+        ...commonProps,
+        canExportContactHistory: false,
+        canRecordContactDataQualityResolution: false,
+        contactTimelineActivityFilter: "follow_ups",
+        contactTimeline: [],
+        contactTimelineStatus: "0 timeline activities loaded.",
+      }),
+    );
+    expect(emptyFilteredHtml).toContain("Follow-up reviews");
+    expect(emptyFilteredHtml).toContain("No timeline activity matches this filter.");
   });
 
   it("filters matters by API-backed matter fields", () => {

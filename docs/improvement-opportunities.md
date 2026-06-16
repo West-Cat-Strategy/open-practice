@@ -172,9 +172,9 @@ signature request metadata proof before proposing another envelope slice.
     The 2026-06-15 Full CRM Contacts mainline work adds contact maintenance APIs, organization contacts,
     matter-contact association state, portal-access state, relationship editing, conflict matching,
     and authorization-filtered CRM UI panels.
-  - **Remaining gap:** Future work should focus on task/follow-up integration, richer activity
-    filtering, queued/download-link contact-history export flows, matter-scoped exports,
-    approval/hold workflows, and jurisdiction-reviewed retention/privacy policies. The
+  - **Remaining gap:** Future work should focus on queued/download-link contact-history export
+    flows, matter-scoped exports, approval/hold workflows, and jurisdiction-reviewed
+    retention/privacy policies. The
     [contact-history export, retention, and privacy decision packet](contact-history-export-retention-privacy-decision-packet.md)
     now records the selected first runtime slice: single-contact `staff_review` JSON generated
     from authorized projections with a required review reason and no retained export body.

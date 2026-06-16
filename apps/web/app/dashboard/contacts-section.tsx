@@ -24,9 +24,11 @@ import type {
   ContactDataQualityResolutionRecord,
   ContactDossier,
   ContactDossiersResponse,
+  ContactTimelineActivityFilter,
   ContactTimelineResponse,
   ContactReviewQueueResponse,
 } from "../_features/contacts/models";
+import { contactTimelineActivityFilters } from "../_features/contacts/models";
 
 function contactTimelineCueValue(
   metadata: Record<string, unknown>,
@@ -38,6 +40,33 @@ function contactTimelineCueValue(
 
 function contactTimelineCueLabel(cueType?: string): string {
   return cueType === "follow_up_review" ? "Follow-up review cue" : "Task deadline cue";
+}
+
+const contactTimelineActivityFilterLabels: Record<ContactTimelineActivityFilter, string> = {
+  all: "All safe activity",
+  crm_activity: "CRM activity",
+  task_cues: "Task and follow-up cues",
+  open_tasks: "Open tasks",
+  follow_ups: "Follow-up reviews",
+};
+
+const contactTimelineMetadataLabelKeys = [
+  "role",
+  "status",
+  "relationshipKind",
+  "signalKind",
+  "decision",
+  "severity",
+] as const;
+
+function contactTimelineMetadataLabels(
+  entry: ContactTimelineResponse["timeline"][number],
+  compactStatus: (value?: string) => string,
+): string[] {
+  return contactTimelineMetadataLabelKeys
+    .map((key) => contactTimelineCueValue(entry.metadata, key))
+    .filter((value): value is string => Boolean(value))
+    .map((value) => compactStatus(value));
 }
 
 export function ContactsSection({
@@ -61,6 +90,7 @@ export function ContactsSection({
   contactHistoryExportStatus,
   contactHistoryExportSummary,
   contactTimeline,
+  contactTimelineActivityFilter,
   contactTimelineStatus,
   contactReviewQueue,
   contactSearch,
@@ -74,6 +104,7 @@ export function ContactsSection({
   onContactCreatePhoneChange,
   onContactCreateRoleCategoryChange = () => undefined,
   onContactHistoryExportReasonChange,
+  onContactTimelineActivityFilterChange,
   onExportContactHistory,
   onCreateContact,
   onCreateMatterFromContact,
@@ -106,6 +137,7 @@ export function ContactsSection({
   contactHistoryExportStatus: string;
   contactHistoryExportSummary: string;
   contactTimeline: ContactTimelineResponse["timeline"];
+  contactTimelineActivityFilter: ContactTimelineActivityFilter;
   contactTimelineStatus: string;
   contactReviewQueue?: ContactReviewQueueResponse;
   contactSearch: string;
@@ -119,6 +151,7 @@ export function ContactsSection({
   onContactCreatePhoneChange: (value: string) => void;
   onContactCreateRoleCategoryChange?: (value: string) => void;
   onContactHistoryExportReasonChange: (value: string) => void;
+  onContactTimelineActivityFilterChange: (value: ContactTimelineActivityFilter) => void;
   onExportContactHistory: () => void;
   onCreateContact: () => void;
   onCreateMatterFromContact: (dossier: ContactDossier) => void;
@@ -134,7 +167,7 @@ export function ContactsSection({
   recordingContactResolutionKey: string;
   exportingContactHistory: boolean;
 }) {
-  const taskTimelineCues = contactTimeline.filter((entry) => entry.kind === "task").slice(0, 6);
+  const timelineEntries = contactTimeline.slice(0, 6);
   const matterNumberById = new Map(
     (activeContactDossier?.matters ?? []).map((matter) => [matter.matterId, matter.matterNumber]),
   );
@@ -801,11 +834,30 @@ export function ContactsSection({
               </div>
 
               <div className="section-title">
-                <h3>Timeline cues</h3>
+                <h3>Timeline activity</h3>
                 <span>{contactTimelineStatus}</span>
               </div>
+              <div className="calendar-attendee-form contact-timeline-filter-form">
+                <label className="search-field">
+                  <span>Activity filter</span>
+                  <select
+                    onChange={(event) =>
+                      onContactTimelineActivityFilterChange(
+                        event.currentTarget.value as ContactTimelineActivityFilter,
+                      )
+                    }
+                    value={contactTimelineActivityFilter}
+                  >
+                    {contactTimelineActivityFilters.map((filter) => (
+                      <option key={filter} value={filter}>
+                        {contactTimelineActivityFilterLabels[filter]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <div className="party-list">
-                {taskTimelineCues.map((entry) => {
+                {timelineEntries.map((entry) => {
                   const cueType = contactTimelineCueValue(entry.metadata, "cueType");
                   const matterId = contactTimelineCueValue(entry.metadata, "matterId");
                   const dueAt = contactTimelineCueValue(entry.metadata, "dueAt");
@@ -816,29 +868,45 @@ export function ContactsSection({
                     entry.metadata,
                     "assignmentScope",
                   );
+                  const metadataLabels = contactTimelineMetadataLabels(entry, compactStatus);
+                  const rowDetail =
+                    entry.kind === "task"
+                      ? [
+                          matterId ? (matterNumberById.get(matterId) ?? "visible matter") : null,
+                          dueAt,
+                          bucket ? compactStatus(bucket) : null,
+                          status ? compactStatus(status) : null,
+                          priority ? compactStatus(priority) : null,
+                          assignmentScope ? compactStatus(assignmentScope) : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || entry.occurredAt
+                      : [
+                          entry.matterId
+                            ? (matterNumberById.get(entry.matterId) ?? "visible matter")
+                            : null,
+                          entry.occurredAt,
+                          compactStatus(entry.kind),
+                          ...metadataLabels,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ");
                   return (
                     <div className="party-row" key={entry.id}>
                       <span>
-                        <strong>{contactTimelineCueLabel(cueType)}</strong>
-                        <small>
-                          {[
-                            matterId ? (matterNumberById.get(matterId) ?? "visible matter") : null,
-                            dueAt,
-                            bucket ? compactStatus(bucket) : null,
-                            status ? compactStatus(status) : null,
-                            priority ? compactStatus(priority) : null,
-                            assignmentScope ? compactStatus(assignmentScope) : null,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ") || entry.occurredAt}
-                        </small>
+                        <strong>
+                          {entry.kind === "task" ? contactTimelineCueLabel(cueType) : entry.title}
+                        </strong>
+                        <small>{rowDetail}</small>
                       </span>
-                      <em className={priority === "high" ? "risk" : undefined}>review only</em>
+                      <em className={priority === "high" ? "risk" : undefined}>
+                        {entry.kind === "task" ? "review only" : compactStatus(entry.kind)}
+                      </em>
                     </div>
                   );
                 })}
-                {taskTimelineCues.length === 0 ? (
-                  <p className="inline-empty">No task or follow-up timeline cues.</p>
+                {timelineEntries.length === 0 ? (
+                  <p className="inline-empty">No timeline activity matches this filter.</p>
                 ) : null}
               </div>
 

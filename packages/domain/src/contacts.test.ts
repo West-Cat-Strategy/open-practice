@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildContactDossiers,
+  filterContactTimelineEntries,
   validateContactRecord,
   validateContactDataQualityResolutionRecord,
   validateContactRelationshipRecord,
@@ -12,8 +13,104 @@ import {
   sampleMatters,
   samplePortalGrants,
 } from "./sample-data.js";
+import type { ActivityTimelineEntry } from "./models.js";
 
 describe("contact dossiers", () => {
+  it("filters contact timeline entries by safe CRM activity and cue type", () => {
+    const entries: ActivityTimelineEntry[] = [
+      {
+        id: "contact-created",
+        firmId: "firm-west-legal",
+        occurredAt: "2026-05-01T12:00:00.000Z",
+        title: "Contact created",
+        kind: "contact",
+        metadata: { contactId: "contact-ada" },
+      },
+      {
+        id: "portal-grant",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        occurredAt: "2026-05-02T12:00:00.000Z",
+        title: "Portal access invited",
+        kind: "portal",
+        metadata: { portalGrantId: "portal-grant-001", contactId: "contact-ada" },
+      },
+      {
+        id: "quality-decision",
+        firmId: "firm-west-legal",
+        occurredAt: "2026-05-03T12:00:00.000Z",
+        title: "Data-quality resolution",
+        kind: "audit",
+        metadata: { signalKind: "duplicate_candidate", decision: "acknowledged" },
+      },
+      {
+        id: "conflict-check",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        occurredAt: "2026-05-04T12:00:00.000Z",
+        title: "Conflict review cue",
+        kind: "conflict",
+        metadata: { contactId: "contact-ada", severity: "review" },
+      },
+      {
+        id: "open-task",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        occurredAt: "2026-05-05T12:00:00.000Z",
+        title: "Task deadline cue",
+        kind: "task",
+        metadata: { cueType: "open_task", taskId: "task-001" },
+      },
+      {
+        id: "follow-up",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        occurredAt: "2026-05-06T12:00:00.000Z",
+        title: "Follow-up review cue",
+        kind: "task",
+        metadata: { cueType: "follow_up_review", schedulingRequestId: "schedule-001" },
+      },
+      {
+        id: "future-task-like-entry",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        occurredAt: "2026-05-06T18:00:00.000Z",
+        title: "Future task-like entry",
+        kind: "task",
+        metadata: { cueType: "future_task_hint", taskId: "task-future" },
+      },
+      {
+        id: "calendar-event",
+        firmId: "firm-west-legal",
+        matterId: "matter-001",
+        occurredAt: "2026-05-07T12:00:00.000Z",
+        title: "Calendar event",
+        kind: "calendar",
+        metadata: { eventId: "calendar-event-001" },
+      },
+    ];
+
+    expect(filterContactTimelineEntries(entries, "all").map((entry) => entry.id)).toEqual(
+      entries.map((entry) => entry.id),
+    );
+    expect(filterContactTimelineEntries(entries, "crm_activity").map((entry) => entry.id)).toEqual([
+      "contact-created",
+      "portal-grant",
+      "quality-decision",
+      "conflict-check",
+    ]);
+    expect(filterContactTimelineEntries(entries, "task_cues").map((entry) => entry.id)).toEqual([
+      "open-task",
+      "follow-up",
+    ]);
+    expect(filterContactTimelineEntries(entries, "open_tasks").map((entry) => entry.id)).toEqual([
+      "open-task",
+    ]);
+    expect(filterContactTimelineEntries(entries, "follow_ups").map((entry) => entry.id)).toEqual([
+      "follow-up",
+    ]);
+  });
+
   it("validates legal CRM contact invariants for people, organizations, and methods", () => {
     expect(() =>
       validateContactRecord({
