@@ -161,4 +161,25 @@ This section records the 2026-06-16 follow-up integration branch
 
 ### Follow-Up Push And Prune
 
-Pending final push and clean-merged branch/worktree pruning. Stashes remain untouched.
+Local `main` was fast-forwarded to the validated integration tip and pushed to `origin/main`.
+Post-push parity matched across local `main`, `origin/main`, and `git ls-remote --heads origin` at
+`8fb5cc9d9c5cd11d7df57faeb877c35dc0fc43cc`.
+
+Pre-prune inventory showed all four local follow-up branches merged into `main`:
+`feature/matter-lifecycle-transition-journal`,
+`codex/contact-history-export-runtime-2026-06-16`,
+`codex/inbound-email-matter-drafts-2026-06-16`, and
+`codex/open-practice-mainline-merge-2026-06-16`. `git branch --no-merged main` returned no
+branches. The two sibling worktrees
+`/Users/bryan/projects/open-practice-contact-history-runtime` and
+`/Users/bryan/projects/open-practice-inbound-email-matter-drafts` were clean before removal.
+
+Prune actions completed:
+
+- Removed the two clean merged sibling worktrees.
+- Deleted the three merged lane branches and the merged integration branch.
+- Ran `git worktree prune` and `git remote prune origin`.
+- Left all stashes untouched; stash count remained 42.
+
+Post-prune inventory showed only the primary `/Users/bryan/projects/open-practice` worktree on
+`main`, no unmerged local branches, and only `refs/heads/main` on `origin`.
