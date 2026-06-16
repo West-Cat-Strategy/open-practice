@@ -24,7 +24,12 @@ import {
 } from "../../http/auth-helpers.js";
 import { ApiHttpError } from "../../http/response.js";
 import { parseRequestPart } from "../../http/validation.js";
-import { ensureIntakeReviewTask, getTemplate, linkExpired, linkStatus } from "./shared.js";
+import {
+  ensureIntakeReviewTask,
+  getTemplateForSession,
+  linkExpired,
+  linkStatus,
+} from "./shared.js";
 import type { IntakeFormRouteDependencies } from "./shared.js";
 import { trustedEvidence } from "../trusted-evidence.js";
 import { publicTokenPolicyOptions } from "../public-token-rate-limits.js";
@@ -401,7 +406,7 @@ export function registerPublicIntakeFormRoutes(
     });
     const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
     if (!session) throw denied();
-    const template = await getTemplate(repository, link.firmId, session.templateId);
+    const template = await getTemplateForSession(repository, link.firmId, session);
     const actions = await repository.listIntakeFormItemActions(link.firmId, {
       formLinkId: link.id,
     });
@@ -528,7 +533,7 @@ export function registerPublicIntakeFormRoutes(
     }
     const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
     if (!session) throw denied();
-    const template = await getTemplate(repository, link.firmId, session.templateId);
+    const template = await getTemplateForSession(repository, link.firmId, session);
     const completedActions = await repository.listIntakeFormItemActions(link.firmId, {
       formLinkId: link.id,
     });
@@ -634,7 +639,7 @@ export function registerPublicIntakeFormRoutes(
     const link = await resolvePublicLink(repository, { token, jwtSecret, request });
     const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
     if (!session) throw denied();
-    const template = await getTemplate(repository, link.firmId, session.templateId);
+    const template = await getTemplateForSession(repository, link.firmId, session);
     const item = findFormItem(template.definition, params.itemId, "upload");
     if (!item || item.kind !== "upload") throw denied();
     if (!contentTypeAllowed(body.contentType, item.acceptedFileTypes)) {
@@ -809,7 +814,7 @@ export function registerPublicIntakeFormRoutes(
     const link = await resolvePublicLink(repository, { token, jwtSecret, request });
     const session = await repository.getIntakeSession(link.firmId, link.intakeSessionId);
     if (!session) throw denied();
-    const template = await getTemplate(repository, link.firmId, session.templateId);
+    const template = await getTemplateForSession(repository, link.firmId, session);
     const item = findFormItem(template.definition, params.itemId, "signature");
     if (!item || item.kind !== "signature") throw denied();
     const existingAction = (

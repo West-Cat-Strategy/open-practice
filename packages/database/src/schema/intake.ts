@@ -45,6 +45,35 @@ export const intakeTemplates = pgTable("intake_templates", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
 });
 
+export const intakeTemplateVersions = pgTable(
+  "intake_template_versions",
+  {
+    id: text("id").primaryKey(),
+    firmId: text("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    templateId: text("template_id")
+      .notNull()
+      .references(() => intakeTemplates.id),
+    version: integer("version").notNull(),
+    definitionVersion: integer("definition_version").notNull(),
+    definition: jsonb("definition").$type<EmbeddedIntakeTemplateDefinition>().notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+    publishedByUserId: text("published_by_user_id").references(() => users.id),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    templateVersion: uniqueIndex("intake_template_versions_template_version_idx").on(
+      table.templateId,
+      table.version,
+    ),
+    firmTemplate: index("intake_template_versions_firm_template_idx").on(
+      table.firmId,
+      table.templateId,
+    ),
+  }),
+);
+
 export const intakeSessions = pgTable("intake_sessions", {
   id: text("id").primaryKey(),
   firmId: text("firm_id")
@@ -56,6 +85,9 @@ export const intakeSessions = pgTable("intake_sessions", {
   templateId: text("template_id")
     .notNull()
     .references(() => intakeTemplates.id),
+  publishedTemplateVersionId: text("published_template_version_id").references(
+    () => intakeTemplateVersions.id,
+  ),
   provider: text("provider").notNull(),
   externalId: text("external_id").notNull(),
   status: text("status").notNull(),

@@ -3,6 +3,86 @@ import { InMemoryOpenPracticeRepository } from "../src/repository/memory.js";
 import { now } from "./repository.fixtures.js";
 
 describe("repository intake persistence", () => {
+  it("stores immutable published intake template versions separately from mutable drafts", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    const [template] = await repository.listIntakeTemplates("firm-west-legal");
+    const [seedVersion] = await repository.listIntakeTemplateVersions(
+      "firm-west-legal",
+      template.id,
+    );
+    expect(seedVersion).toMatchObject({
+      id: "intake-template-001:v2",
+      templateId: template.id,
+      version: 2,
+      definitionVersion: 2,
+    });
+
+    const updatedDraft = await repository.updateIntakeTemplate({
+      ...template,
+      name: "Residential tenancy intake draft",
+      definitionVersion: 3,
+      definition: {
+        ...template.definition,
+        questions: [
+          ...template.definition.questions,
+          {
+            id: "draft_only_question",
+            label: "Draft-only question",
+            type: "text",
+            required: false,
+          },
+        ],
+      },
+      updatedAt: "2026-06-16T12:00:00.000Z",
+    });
+    await repository.createIntakeTemplateVersion({
+      id: "intake-template-001:v3",
+      firmId: updatedDraft.firmId,
+      templateId: updatedDraft.id,
+      version: 3,
+      definitionVersion: updatedDraft.definitionVersion,
+      definition: updatedDraft.definition,
+      publishedAt: "2026-06-16T12:05:00.000Z",
+      publishedByUserId: "user-admin",
+      metadata: { source: "test" },
+    });
+
+    await expect(
+      repository.getIntakeTemplateVersion("firm-west-legal", "intake-template-001:v2"),
+    ).resolves.toMatchObject({
+      definition: expect.not.objectContaining({
+        questions: expect.arrayContaining([expect.objectContaining({ id: "draft_only_question" })]),
+      }),
+    });
+    await expect(
+      repository.getLatestIntakeTemplateVersion("firm-west-legal", template.id),
+    ).resolves.toMatchObject({
+      id: "intake-template-001:v3",
+      version: 3,
+      definition: expect.objectContaining({
+        questions: expect.arrayContaining([expect.objectContaining({ id: "draft_only_question" })]),
+      }),
+    });
+    await repository.createIntakeSession({
+      id: "intake-session-version-pin",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      templateId: template.id,
+      publishedTemplateVersionId: "intake-template-001:v3",
+      provider: "embedded",
+      externalId: "embedded:intake-session-version-pin",
+      status: "in_progress",
+      evidence: {},
+      createdAt: now,
+      updatedAt: now,
+    });
+    await expect(
+      repository.getIntakeSession("firm-west-legal", "intake-session-version-pin"),
+    ).resolves.toMatchObject({
+      publishedTemplateVersionId: "intake-template-001:v3",
+    });
+  });
+
   it("preserves embedded intake template definitions and answer resolution snapshots", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     const [template] = await repository.listIntakeTemplates("firm-west-legal");

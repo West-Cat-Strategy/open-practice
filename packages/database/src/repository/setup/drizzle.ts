@@ -166,6 +166,13 @@ export async function completeDrizzleFirstRunSetup(
           updatedAt: new Date(template.updatedAt),
         })),
       );
+      await tx.insert(schema.intakeTemplateVersions).values(
+        presetTemplates.intakeTemplateVersions.map((version) => ({
+          ...version,
+          publishedAt: new Date(version.publishedAt),
+          publishedByUserId: input.owner.id,
+        })),
+      );
     }
     await tx.insert(schema.auditEvents).values({
       ...input.auditEvent,

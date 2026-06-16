@@ -40,6 +40,7 @@ import type {
   GeneratedDocumentRecord,
   IntakeSessionRecord,
   IntakeTemplateRecord,
+  IntakeTemplateVersionRecord,
   SignatureProviderEventRecord,
   SignatureRequestRecord,
   SignatureRequestSignerRecord,
@@ -507,6 +508,20 @@ export const sampleIntakeTemplates: IntakeTemplateRecord[] = [
     definition: sampleResidentialTenancyIntakeDefinition,
     createdAt: "2026-04-01T00:00:00.000Z",
     updatedAt: "2026-04-01T00:00:00.000Z",
+    metadata: { source: "open-practice-sample" },
+  },
+];
+
+export const sampleIntakeTemplateVersions: IntakeTemplateVersionRecord[] = [
+  {
+    id: "intake-template-001:v2",
+    firmId: sampleFirm.id,
+    templateId: "intake-template-001",
+    version: 2,
+    definitionVersion: 2,
+    definition: sampleResidentialTenancyIntakeDefinition,
+    publishedAt: "2026-04-01T00:00:00.000Z",
+    publishedByUserId: "user-admin",
     metadata: { source: "open-practice-sample" },
   },
 ];

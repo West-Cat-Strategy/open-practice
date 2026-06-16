@@ -7,6 +7,7 @@ import {
   type Firm,
   type FirmSettings,
   type IntakeTemplateRecord,
+  type IntakeTemplateVersionRecord,
   type Matter,
   type MatterParty,
   type ProviderSettingRecord,
@@ -37,6 +38,7 @@ export interface MemorySetupStore {
   webAuthnCredentials: WebAuthnCredentialRecord[];
   draftTemplates: DraftTemplateRecord[];
   intakeTemplates: IntakeTemplateRecord[];
+  intakeTemplateVersions: IntakeTemplateVersionRecord[];
   auditEvents: AuditEvent[];
   providerSettings: ProviderSettingRecord[];
   providerConfigCipher?: ProviderConfigCipher;
@@ -101,6 +103,10 @@ export function completeMemoryFirstRunSetup(
     ...presetTemplates.draftTemplates,
   ];
   store.intakeTemplates = presetTemplates.intakeTemplates;
+  store.intakeTemplateVersions = presetTemplates.intakeTemplateVersions.map((version) => ({
+    ...version,
+    publishedByUserId: input.owner.id,
+  }));
   store.auditEvents = [clone(input.auditEvent)];
   if ((input.providerSettings ?? []).length > 0) {
     store.providerSettings.length = 0;

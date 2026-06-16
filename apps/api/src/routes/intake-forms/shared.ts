@@ -4,7 +4,9 @@ import type {
   EmbeddedIntakeFormItem,
   EmbeddedIntakeTemplateDefinition,
   IntakeFormLinkRecord,
+  IntakeSessionRecord,
   IntakeTemplateRecord,
+  IntakeTemplateVersionRecord,
 } from "@open-practice/domain";
 import { validateEmbeddedIntakeTemplateDefinition } from "@open-practice/domain";
 import { requireAccess } from "../../http/auth-guards.js";
@@ -53,6 +55,31 @@ export async function getTemplate(
     throw Object.assign(new Error("Intake template was not found"), { statusCode: 404 });
   validateEmbeddedIntakeTemplateDefinition(template.definition);
   return template;
+}
+
+export type EffectiveIntakeTemplate = IntakeTemplateRecord & {
+  publishedVersion?: IntakeTemplateVersionRecord;
+};
+
+export async function getTemplateForSession(
+  repository: ApiRouteDependencies["repository"],
+  firmId: string,
+  session: IntakeSessionRecord,
+): Promise<EffectiveIntakeTemplate> {
+  const template = await getTemplate(repository, firmId, session.templateId);
+  if (!session.publishedTemplateVersionId) return template;
+  const publishedVersion = await repository.getIntakeTemplateVersion(
+    firmId,
+    session.publishedTemplateVersionId,
+  );
+  if (!publishedVersion || publishedVersion.templateId !== template.id) return template;
+  validateEmbeddedIntakeTemplateDefinition(publishedVersion.definition);
+  return {
+    ...template,
+    definitionVersion: publishedVersion.definitionVersion,
+    definition: publishedVersion.definition,
+    publishedVersion,
+  };
 }
 
 export function signatureItems(definition: EmbeddedIntakeTemplateDefinition): Array<{

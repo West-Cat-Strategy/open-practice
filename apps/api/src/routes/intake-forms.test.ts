@@ -282,6 +282,33 @@ describe("intake form builder routes", () => {
         editable: true,
       },
     });
+    await expect(
+      repository.listIntakeTemplateVersions("firm-west-legal", "intake-template-builder-test"),
+    ).resolves.toMatchObject([
+      {
+        templateId: "intake-template-builder-test",
+        version: 3,
+        definitionVersion: 3,
+        definition: expect.objectContaining({ schemaVersion: 2 }),
+        publishedByUserId: "user-admin",
+        metadata: { source: "open-practice-form-builder", reason: "initial-create" },
+      },
+    ]);
+    const published = await server.inject({
+      method: "POST",
+      url: "/api/intake-templates/intake-template-builder-test/publish",
+    });
+    expect(published.statusCode).toBe(200);
+    expect(published.json()).toMatchObject({
+      publishedVersion: {
+        templateId: "intake-template-builder-test",
+        version: 4,
+        definitionVersion: 4,
+        definition: expect.objectContaining({ schemaVersion: 2 }),
+        publishedByUserId: "user-admin",
+        metadata: { source: "open-practice-form-builder", reason: "staff-publish" },
+      },
+    });
     await expect(repository.listAuditEvents("firm-west-legal")).resolves.toMatchObject({
       valid: true,
       events: expect.arrayContaining([
@@ -289,27 +316,41 @@ describe("intake form builder routes", () => {
           action: "intake_template.created",
           resourceType: "intake_template",
           resourceId: "intake-template-builder-test",
-          metadata: {
+          metadata: expect.objectContaining({
             templateId: "intake-template-builder-test",
             definitionVersion: 3,
+            publishedVersion: 3,
             schemaVersion: 2,
-          },
+          }),
         }),
         expect.objectContaining({
           action: "intake_template.updated",
           resourceType: "intake_template",
           resourceId: "intake-template-builder-test",
-          metadata: {
+          metadata: expect.objectContaining({
             templateId: "intake-template-builder-test",
             definitionVersion: 4,
             schemaVersion: 2,
-          },
+          }),
+        }),
+        expect.objectContaining({
+          action: "intake_template.published",
+          resourceType: "intake_template",
+          resourceId: "intake-template-builder-test",
+          metadata: expect.objectContaining({
+            templateId: "intake-template-builder-test",
+            publishedVersion: 4,
+            definitionVersion: 4,
+            schemaVersion: 2,
+          }),
         }),
       ]),
     });
     const audit = await repository.listAuditEvents("firm-west-legal");
     for (const event of audit.events.filter((candidate) =>
-      ["intake_template.created", "intake_template.updated"].includes(candidate.action),
+      ["intake_template.created", "intake_template.updated", "intake_template.published"].includes(
+        candidate.action,
+      ),
     )) {
       expect(event.metadata).not.toHaveProperty("definition");
     }
@@ -1491,5 +1532,91 @@ describe("intake form builder routes", () => {
         }),
       ]),
     );
+  });
+
+  it("keeps active public links pinned to the originally published template definition", async () => {
+    const { repository, server } = testServer();
+    const [seedTemplate] = await repository.listIntakeTemplates("firm-west-legal");
+    if (!seedTemplate || seedTemplate.definition.schemaVersion !== 2) {
+      throw new Error("Seeded V2 intake template is required for this test");
+    }
+    const definition = JSON.parse(
+      JSON.stringify(seedTemplate.definition),
+    ) as typeof seedTemplate.definition;
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/intake-templates",
+      payload: {
+        id: "intake-template-public-pin",
+        name: "Synthetic public pin template",
+        active: true,
+        definitionVersion: 7,
+        definition,
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    const initialVersion = await repository.getLatestIntakeTemplateVersion(
+      "firm-west-legal",
+      "intake-template-public-pin",
+    );
+    if (!initialVersion) throw new Error("Published template version is required");
+    await repository.createIntakeSession({
+      id: "intake-session-public-pin",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      templateId: "intake-template-public-pin",
+      publishedTemplateVersionId: initialVersion.id,
+      provider: "embedded",
+      externalId: "embedded:intake-session-public-pin",
+      status: "in_progress",
+      evidence: { mode: "test" },
+      createdAt: "2026-06-16T12:00:00.000Z",
+      updatedAt: "2026-06-16T12:00:00.000Z",
+    });
+    const link = await server.inject({
+      method: "POST",
+      url: "/api/intake-form-links",
+      payload: {
+        intakeSessionId: "intake-session-public-pin",
+        expiresAt: "2099-06-01T00:00:00.000Z",
+      },
+    });
+    const token = link.json<{ token: string }>().token;
+    const editedDefinition = JSON.parse(JSON.stringify(definition)) as typeof definition;
+    editedDefinition.questions.push({
+      id: "draft_only_public_link_question",
+      label: "Draft-only public link question",
+      type: "text",
+      required: false,
+    });
+    const patched = await server.inject({
+      method: "PATCH",
+      url: "/api/intake-templates/intake-template-public-pin",
+      payload: {
+        name: "Synthetic public pin template draft",
+        active: true,
+        definitionVersion: 8,
+        definition: editedDefinition,
+      },
+    });
+    expect(patched.statusCode).toBe(200);
+    const published = await server.inject({
+      method: "POST",
+      url: "/api/intake-templates/intake-template-public-pin/publish",
+    });
+    expect(published.statusCode).toBe(200);
+
+    const loaded = await server.inject({
+      method: "GET",
+      url: `/api/portal/intake-forms/${token}`,
+    });
+    expect(loaded.statusCode).toBe(200);
+    expect(loaded.json()).toMatchObject({
+      template: {
+        id: "intake-template-public-pin",
+        definitionVersion: 7,
+      },
+    });
+    expect(loaded.body).not.toContain("draft_only_public_link_question");
   });
 });
