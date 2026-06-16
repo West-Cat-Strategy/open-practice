@@ -1478,7 +1478,8 @@ describe("worker processors", () => {
       answerSnapshotId: "answer-snapshot-worker-package",
       packageId: "repair_notice_package",
       documentCount: 2,
-      generatedDocumentIds,
+      generatedDocumentIdCount: 2,
+      generatedDocumentIds: expect.arrayContaining(generatedDocumentIds),
       providerCount: 1,
     });
     expect(JSON.stringify(packageAudit?.metadata)).not.toContain("Synthetic raw client answer");

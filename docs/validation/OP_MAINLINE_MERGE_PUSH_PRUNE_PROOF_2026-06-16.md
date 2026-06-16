@@ -110,3 +110,55 @@ to `origin/main`. Post-push parity will compare local `main`, `origin/main`, and
 `git ls-remote origin refs/heads/main`. Only the 15 sibling worktrees plus the merged local lane
 branches will be pruned; the primary `/Users/bryan/projects/open-practice` checkout remains the
 main worktree, and stashes remain untouched.
+
+## Three-Lane Follow-Up Merge
+
+This section records the 2026-06-16 follow-up integration branch
+`codex/open-practice-mainline-merge-2026-06-16`, forked from refreshed `main` at
+`d22d0d96`.
+
+| Branch                                            | Commit     | Scope                                                                  |
+| ------------------------------------------------- | ---------- | ---------------------------------------------------------------------- |
+| `feature/matter-lifecycle-transition-journal`     | `a62b76e5` | Matter lifecycle transition journal API and dashboard summary records. |
+| `codex/contact-history-export-runtime-2026-06-16` | `04ce9b6`  | Transient single-contact history export runtime.                       |
+| `codex/inbound-email-matter-drafts-2026-06-16`    | `dd729dc`  | Review-only inbound email matter draft preparation.                    |
+
+### Follow-Up Lane Validation
+
+| Lane                                | Selector                        | Result                                                                                                                                                                                                                                                                                  |
+| ----------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Matter lifecycle transition journal | `pnpm verify:select -- --dirty` | Passed selected format, docs, policy, root/package tests, domain/API/web typechecks, providers and worker checks, `pnpm build`, plus database `test`, `db:check`, `migrations:check`, typecheck, and build.                                                                             |
+| Contact-history export runtime      | `pnpm verify:select -- --dirty` | Passed selected format, docs, policy, root/package tests, domain/API/web typechecks, providers and worker checks, and `pnpm build`.                                                                                                                                                     |
+| Inbound email matter drafts         | `pnpm verify:select -- --dirty` | Passed selected format, docs, policy, root/package tests, domain/API/web typechecks, providers and worker checks, and `pnpm build`. The first domain-test attempt stopped on local `ENOSPC`; only ignored `.next` and `.turbo` build caches were removed, then the same command passed. |
+
+### Follow-Up Merge Reconciliation
+
+- `feature/matter-lifecycle-transition-journal` merged cleanly.
+- `docs/validation/README.md` conflicted while merging
+  `codex/contact-history-export-runtime-2026-06-16`; the resolution preserved both the matter
+  lifecycle and contact-history proof handoff notes.
+- `docs/planning-and-progress.md` conflicted while merging
+  `codex/inbound-email-matter-drafts-2026-06-16`; the resolution preserved both the
+  contact-history runtime and inbound-email matter-draft handoff notes.
+- Shared API authorization surfaces kept all three additions:
+  `GET/POST /api/matters/:matterId/lifecycle-transitions`,
+  `POST /api/contacts/:contactId/history-export`, and
+  `POST /api/inbound-email/messages/:id/matter-draft`.
+
+### Follow-Up Integrated Validation
+
+| Command                                    | Result  | Notes                                                                                                                                                                                                                                                                       |
+| ------------------------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm verify:select -- --base origin/main` | Passed  | Selected format, docs, policy, root/package tests, domain/database/API/provider/worker/web package checks, database `db:check`, `migrations:check`, worker build, web typecheck, and `pnpm build`.                                                                          |
+| `pnpm --filter @open-practice/worker test` | Passed  | Focused rerun after the first `pnpm ci:local` attempt exposed an order-sensitive worker assertion for `generatedDocumentIds`. The repair keeps the bounded metadata count and membership assertion without depending on repository list order; 5 files and 42 tests passed. |
+| `pnpm ci:local`                            | Passed  | Rerun passed after the worker assertion repair. It includes formatting, lint, typecheck, package/script tests, database check, policy checks, build, and `git diff --check`; migration parity passed at 61 SQL files and 61 journal entries.                                |
+| `git diff --check`                         | Passed  | No whitespace errors before browser validation.                                                                                                                                                                                                                             |
+| `pnpm e2e:host`                            | Passed  | Host Playwright lane passed: 35 tests in about 1.1 minutes.                                                                                                                                                                                                                 |
+| `pnpm e2e:matterless`                      | Passed  | Matterless Playwright lane passed: 1 test in about 3.5 seconds.                                                                                                                                                                                                             |
+| `pnpm e2e:client-portal`                   | Passed  | Client portal Playwright lane passed: 2 tests in about 2.4 seconds.                                                                                                                                                                                                         |
+| `node scripts/run-e2e.mjs first-run`       | Passed  | First-run setup lane passed: 1 test in about 8.8 seconds.                                                                                                                                                                                                                   |
+| `docker info`                              | Blocked | Docker client is installed, but the daemon/server check failed with `ERROR: Error reading remote info: EOF` and `Server: errors pretty printing info`. `pnpm e2e:docker` was not run because Docker was not usable.                                                         |
+
+### Follow-Up Push And Prune
+
+Pending final push and clean-merged branch/worktree pruning. Stashes remain untouched.

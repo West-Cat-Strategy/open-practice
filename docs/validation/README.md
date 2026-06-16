@@ -29,7 +29,10 @@ The 2026-06-16 16-lane mainline merge/push/prune proof is recorded in
 [OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md](OP_MAINLINE_MERGE_PUSH_PRUNE_PROOF_2026-06-16.md).
 It covers the dirty-lane commits, shared proof/workboard/API doc reconciliation, dependency
 compatibility merge choices, migration renumbering from `0056` through `0059`, selector-driven
-validation plan, and final push/prune handoff.
+validation plan, and final push/prune handoff. The same proof file now also records the three-lane
+follow-up merge for matter lifecycle transition journals, CRM contact-history export runtime, and
+inbound email matter drafts, including lane-local validation, conflict reconciliation, integrated
+validation, push parity, and prune disposition.
 
 The 2026-06-16 matter lifecycle transition journal proof is recorded in
 [OP_MATTER_LIFECYCLE_TRANSITION_JOURNAL_PROOF_2026-06-16.md](OP_MATTER_LIFECYCLE_TRANSITION_JOURNAL_PROOF_2026-06-16.md).

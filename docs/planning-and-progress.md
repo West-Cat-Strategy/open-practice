@@ -8,17 +8,17 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## At a Glance
 
-| Snapshot              | Value                                                                |
-| --------------------- | -------------------------------------------------------------------- |
+| Snapshot              | Value                                                                    |
+| --------------------- | ------------------------------------------------------------------------ |
 | Current focus         | Three validated 2026-06-16 follow-up lanes are being merged to mainline. |
-| Next recommended pick | Pick the next candidate from the durable roadmap/backlog.            |
-| Ready rows            | 0                                                                    |
-| Candidate rows        | 0                                                                    |
-| In progress rows      | 0                                                                    |
-| Review rows           | 0                                                                    |
-| Blocked rows          | 0                                                                    |
-| Archive               | Historical snapshots and proof live in [Archive](archive/README.md). |
-| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
+| Next recommended pick | Pick the next candidate from the durable roadmap/backlog.                |
+| Ready rows            | 0                                                                        |
+| Candidate rows        | 0                                                                        |
+| In progress rows      | 0                                                                        |
+| Review rows           | 0                                                                        |
+| Blocked rows          | 0                                                                        |
+| Archive               | Historical snapshots and proof live in [Archive](archive/README.md).     |
+| Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`         |
 
 ## Current Handoff Notes
 
