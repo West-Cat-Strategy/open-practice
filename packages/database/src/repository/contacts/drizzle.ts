@@ -1,9 +1,11 @@
 import {
+  buildContactTimelineTaskCues,
   buildContactDossiers,
   validateContactRecord,
   validateContactDataQualityResolutionRecord,
   validateContactRelationshipRecord,
   type ActivityTimelineEntry,
+  type CalendarSchedulingRequestRecord,
   type Contact,
   type ContactDataQualityResolutionRecord,
   type ContactDossier,
@@ -11,6 +13,7 @@ import {
   type IntakeVariableProposal,
   type MatterParty,
   type PortalGrant,
+  type TaskDeadlineRecord,
   type User,
 } from "@open-practice/domain";
 import { and, desc, eq } from "drizzle-orm";
@@ -38,6 +41,14 @@ import {
 export interface DrizzleContactDependencies {
   listMattersForUser(user: User): Promise<MatterSummary[]>;
   listPortalGrants(firmId: string): Promise<PortalGrant[]>;
+  listTaskDeadlines(
+    firmId: string,
+    options?: { matterIds?: string[]; includeCompleted?: boolean },
+  ): Promise<TaskDeadlineRecord[]>;
+  listCalendarSchedulingRequests(
+    firmId: string,
+    options?: { matterId?: string; status?: CalendarSchedulingRequestRecord["status"] },
+  ): Promise<CalendarSchedulingRequestRecord[]>;
   listIntakeVariableProposals(
     firmId: string,
     options?: { matterId?: string; status?: IntakeVariableProposal["status"] },
@@ -471,6 +482,37 @@ export async function listDrizzleContactTimelineForUser(
       },
     });
   }
+  const visibleMatterIdList = [...visibleMatterIds].sort();
+  const tasks =
+    visibleMatterIdList.length > 0
+      ? await dependencies.listTaskDeadlines(user.firmId, {
+          matterIds: visibleMatterIdList,
+          includeCompleted: false,
+        })
+      : [];
+  const schedulingRequests =
+    visibleMatterIdList.length > 0
+      ? (
+          await Promise.all(
+            visibleMatterIdList.map((matterId) =>
+              dependencies.listCalendarSchedulingRequests(user.firmId, {
+                matterId,
+                status: "needs_review",
+              }),
+            ),
+          )
+        ).flat()
+      : [];
+  entries.push(
+    ...buildContactTimelineTaskCues({
+      contactId,
+      firmId: user.firmId,
+      tasks,
+      schedulingRequests,
+      userId: user.id,
+      visibleMatterIds: visibleMatterIdList,
+    }),
+  );
   return entries.sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt));
 }
 

@@ -387,8 +387,27 @@ describe("contact routes", () => {
           kind: "portal",
           metadata: expect.objectContaining({ portalGrantId }),
         }),
+        expect.objectContaining({
+          kind: "task",
+          title: "Task deadline cue",
+          metadata: expect.objectContaining({
+            cueType: "open_task",
+            contactId,
+            matterId: "matter-001",
+            taskId: "task-deadline-001",
+            reviewBoundary: {
+              automaticTaskCreation: false,
+              automaticDeadlineMutation: false,
+              automaticReminderChanges: false,
+              queueDelivery: false,
+            },
+          }),
+        }),
       ]),
     });
+    expect(JSON.stringify(timeline.json())).not.toContain("Review tenant evidence package");
+    expect(JSON.stringify(timeline.json())).not.toContain("Review filing deadline schedule");
+    expect(JSON.stringify(timeline.json())).not.toContain("sourceLabel");
 
     const audit = await repository.listAuditEvents("firm-west-legal");
     expect(audit.events.map((event) => event.action)).toEqual(

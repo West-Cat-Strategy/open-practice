@@ -15,8 +15,21 @@ import type {
   ContactDataQualityResolutionRecord,
   ContactDossier,
   ContactDossiersResponse,
+  ContactTimelineResponse,
   ContactReviewQueueResponse,
 } from "../_features/contacts/models";
+
+function contactTimelineCueValue(
+  metadata: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function contactTimelineCueLabel(cueType?: string): string {
+  return cueType === "follow_up_review" ? "Follow-up review cue" : "Task deadline cue";
+}
 
 export function ContactsSection({
   activeContactDossier,
@@ -34,6 +47,8 @@ export function ContactsSection({
   contactDataQualityResolutions,
   contactDataQualityStatus,
   contactDossiers,
+  contactTimeline,
+  contactTimelineStatus,
   contactReviewQueue,
   contactSearch,
   creatingContact,
@@ -70,6 +85,8 @@ export function ContactsSection({
   contactDataQualityResolutions: ContactDataQualityResolutionRecord[];
   contactDataQualityStatus: string;
   contactDossiers: ContactDossiersResponse;
+  contactTimeline: ContactTimelineResponse["timeline"];
+  contactTimelineStatus: string;
   contactReviewQueue?: ContactReviewQueueResponse;
   contactSearch: string;
   creatingContact: boolean;
@@ -94,6 +111,11 @@ export function ContactsSection({
   onSelectMatter: (matterId: string) => void;
   recordingContactResolutionKey: string;
 }) {
+  const taskTimelineCues = contactTimeline.filter((entry) => entry.kind === "task").slice(0, 6);
+  const matterNumberById = new Map(
+    (activeContactDossier?.matters ?? []).map((matter) => [matter.matterId, matter.matterNumber]),
+  );
+
   return (
     <>
       <div className="detail-grid contact-summary-grid">
@@ -742,6 +764,48 @@ export function ContactsSection({
                 })}
                 {activeContactDossier.qualityReview.signals.length === 0 ? (
                   <p className="inline-empty">No quality review signals.</p>
+                ) : null}
+              </div>
+
+              <div className="section-title">
+                <h3>Timeline cues</h3>
+                <span>{contactTimelineStatus}</span>
+              </div>
+              <div className="party-list">
+                {taskTimelineCues.map((entry) => {
+                  const cueType = contactTimelineCueValue(entry.metadata, "cueType");
+                  const matterId = contactTimelineCueValue(entry.metadata, "matterId");
+                  const dueAt = contactTimelineCueValue(entry.metadata, "dueAt");
+                  const bucket = contactTimelineCueValue(entry.metadata, "bucket");
+                  const status = contactTimelineCueValue(entry.metadata, "status");
+                  const priority = contactTimelineCueValue(entry.metadata, "priority");
+                  const assignmentScope = contactTimelineCueValue(
+                    entry.metadata,
+                    "assignmentScope",
+                  );
+                  return (
+                    <div className="party-row" key={entry.id}>
+                      <span>
+                        <strong>{contactTimelineCueLabel(cueType)}</strong>
+                        <small>
+                          {[
+                            matterId ? (matterNumberById.get(matterId) ?? "visible matter") : null,
+                            dueAt,
+                            bucket ? compactStatus(bucket) : null,
+                            status ? compactStatus(status) : null,
+                            priority ? compactStatus(priority) : null,
+                            assignmentScope ? compactStatus(assignmentScope) : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || entry.occurredAt}
+                        </small>
+                      </span>
+                      <em className={priority === "high" ? "risk" : undefined}>review only</em>
+                    </div>
+                  );
+                })}
+                {taskTimelineCues.length === 0 ? (
+                  <p className="inline-empty">No task or follow-up timeline cues.</p>
                 ) : null}
               </div>
 

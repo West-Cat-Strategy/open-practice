@@ -140,7 +140,55 @@ Skipped/environmental:
 
 ## Remaining Follow-Ups
 
-- Full task/follow-up workflow integration for contact timeline cues remains future work.
+- Full task/follow-up workflow integration for contact timeline cues was completed in the
+  2026-06-16 follow-up noted below.
 - Duplicate assistance remains review-only; there is still no unsafe automatic merge.
 - Jurisdiction-specific contact-history export, retention, and privacy-policy decisions require
   explicit legal/product review before implementation.
+
+## Contact Timeline Task Cue Follow-Up
+
+Date: 2026-06-16 PDT
+
+Scope:
+
+- Added review-only task and follow-up cue entries to the existing contact timeline projection using
+  already visible matter task and scheduling-request surfaces.
+- Kept `GET /api/contacts/:contactId/timeline` on the existing `{ timeline }` response shape and
+  reused `ActivityTimelineEntry.kind = "task"`.
+- Kept cue metadata redacted to IDs, matter ID, due/status/priority/bucket/assignment-scope fields,
+  and explicit review-boundary flags. Task descriptions, task titles, scheduling request titles,
+  scheduling source labels, contact identifiers, aliases, private notes, hidden matter details, and
+  provider/queue mutation claims are not exposed by the cue projection.
+- The Contacts dashboard now loads the active contact timeline and renders compact generic
+  “Timeline cues” rows. It shows matter numbers only from the already visible active dossier and
+  labels all cue actions as review-only.
+
+Validation:
+
+- `pnpm verify:select -- --files apps/api/src/routes/contacts.test.ts apps/web/app/_features/contacts/models.ts apps/web/app/dashboard-client.test.ts apps/web/app/dashboard-client.tsx apps/web/app/dashboard/contacts-section.tsx docs/validation/OP_FULL_CRM_CONTACTS_PROOF_2026-06-15.md packages/database/src/repository/contacts/drizzle.ts packages/database/src/repository/contacts/memory.ts packages/database/src/repository/drizzle.ts packages/database/src/repository/memory.ts packages/domain/src/contact-models.ts packages/domain/src/tasks.test.ts packages/domain/src/tasks.ts`
+  - Passed and selected the broad domain/database/API/web/docs validation bundle.
+- `pnpm format:check`
+- `pnpm docs:check`
+- `pnpm policy:check`
+- `pnpm --filter @open-practice/domain test -- tasks.test.ts contacts.test.ts`
+  - 27 files, 173 tests passed.
+- `pnpm --filter @open-practice/domain typecheck`
+- `pnpm --filter @open-practice/database test`
+  - 18 files, 115 tests passed.
+- `pnpm --filter @open-practice/database db:check`
+- `pnpm migrations:check`
+- `pnpm --filter @open-practice/database typecheck`
+- `pnpm --filter @open-practice/database build`
+- `pnpm --filter @open-practice/api test -- contacts.test.ts`
+  - 41 files, 514 tests passed after building the fresh worktree upstream packages.
+- `pnpm --filter @open-practice/api typecheck`
+- `pnpm --filter @open-practice/providers test`
+  - 9 files, 20 tests passed.
+- `pnpm --filter @open-practice/worker test`
+  - 5 files, 40 tests passed.
+- `pnpm --filter @open-practice/web test -- dashboard-client.test.ts`
+  - 35 files, 187 tests passed.
+- `pnpm --filter @open-practice/web typecheck`
+- `pnpm build`
+  - 6 workspace builds passed.

@@ -494,6 +494,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return listDrizzleContactDossiersForUser(this.db, user, {
       listMattersForUser: (candidate) => this.listMattersForUser(candidate),
       listPortalGrants: (firmId) => this.listPortalGrants(firmId),
+      listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
+      listCalendarSchedulingRequests: (firmId, options) =>
+        this.listCalendarSchedulingRequests(firmId, options),
       listIntakeVariableProposals: (firmId, options) =>
         this.listIntakeVariableProposals(firmId, options),
     });
@@ -509,6 +512,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
       {
         listMattersForUser: (candidate) => this.listMattersForUser(candidate),
         listPortalGrants: (firmId) => this.listPortalGrants(firmId),
+        listTaskDeadlines: (firmId, taskOptions) => this.listTaskDeadlines(firmId, taskOptions),
+        listCalendarSchedulingRequests: (firmId, schedulingOptions) =>
+          this.listCalendarSchedulingRequests(firmId, schedulingOptions),
         listIntakeVariableProposals: (firmId, proposalOptions) =>
           this.listIntakeVariableProposals(firmId, proposalOptions),
       },
@@ -566,6 +572,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return listDrizzleContactPortalGrantsForUser(this.db, user, contactId, {
       listMattersForUser: (candidate) => this.listMattersForUser(candidate),
       listPortalGrants: (firmId) => this.listPortalGrants(firmId),
+      listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
+      listCalendarSchedulingRequests: (firmId, options) =>
+        this.listCalendarSchedulingRequests(firmId, options),
       listIntakeVariableProposals: (firmId, options) =>
         this.listIntakeVariableProposals(firmId, options),
     });
@@ -578,6 +587,9 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     return listDrizzleContactTimelineForUser(this.db, user, contactId, {
       listMattersForUser: (candidate) => this.listMattersForUser(candidate),
       listPortalGrants: (firmId) => this.listPortalGrants(firmId),
+      listTaskDeadlines: (firmId, options) => this.listTaskDeadlines(firmId, options),
+      listCalendarSchedulingRequests: (firmId, options) =>
+        this.listCalendarSchedulingRequests(firmId, options),
       listIntakeVariableProposals: (firmId, options) =>
         this.listIntakeVariableProposals(firmId, options),
     });

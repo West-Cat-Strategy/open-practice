@@ -1,4 +1,5 @@
 import type {
+  ActivityTimelineEntry,
   Contact,
   ContactDataQualityResolutionRecord,
   ContactDossier,
@@ -51,3 +52,7 @@ export interface ContactReviewQueueResponse {
 }
 
 export type ContactDataQualityResolutionsResponse = ContactDataQualityResolutionRecord[];
+
+export interface ContactTimelineResponse {
+  timeline: ActivityTimelineEntry[];
+}
