@@ -733,6 +733,57 @@ export interface WorkerHealthResponse {
   queues: WorkerQueueHealthSummary[];
 }
 
+export type WorkflowHistoryStatus = "queued" | "active" | "succeeded" | "failed" | "skipped";
+
+export interface WorkflowHistoryStep {
+  id: string;
+  source: "audit" | "job";
+  label: string;
+  status: WorkflowHistoryStatus;
+  occurredAt: string;
+  matterIds: string[];
+  resourceType?: string;
+  resourceId?: string;
+  action?: string;
+  queueName?: string;
+  jobName?: string;
+  jobId?: string;
+  retryOfJobId?: string;
+  idempotencyKeyPresent?: boolean;
+  attemptsMade?: number;
+  maxAttempts?: number;
+  metadata: Record<string, string | number | boolean | undefined>;
+}
+
+export interface WorkflowHistoryItem {
+  id: string;
+  groupKey: string;
+  title: string;
+  status: WorkflowHistoryStatus;
+  startedAt: string;
+  lastObservedAt: string;
+  finishedAt?: string;
+  matterIds: string[];
+  resourceType?: string;
+  resourceId?: string;
+  queueNames: string[];
+  jobIds: string[];
+  stepCount: number;
+  steps: WorkflowHistoryStep[];
+}
+
+export interface WorkflowHistoryResponse {
+  status: string;
+  generatedAt: string;
+  summary: {
+    total: number;
+    active: number;
+    failed: number;
+    terminal: number;
+  };
+  workflows: WorkflowHistoryItem[];
+}
+
 export interface ProviderStatusSetting {
   kind: string;
   status: string;

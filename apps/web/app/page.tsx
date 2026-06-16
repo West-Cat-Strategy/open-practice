@@ -303,6 +303,7 @@ export default async function Home({ searchParams }: { searchParams?: HomeSearch
       jurisdictionalTrustReport={jurisdictionalTrustReport}
       trustControls={trustControls}
       workerHealth={operationsResources.workerHealth}
+      workflowHistory={operationsResources.workflowHistory}
       workerRuns={operationsResources.workerRuns}
     />
   );

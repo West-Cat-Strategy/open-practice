@@ -350,6 +350,149 @@ describe("jobs routes", () => {
     expect(serialized).not.toContain("private content");
   });
 
+  it("returns read-only workflow history over visible jobs and workflow audit events", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-ocr-workflow",
+      firmId,
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "completed",
+      targetResourceType: "document",
+      targetResourceId: "doc-001",
+      attemptsMade: 1,
+      maxAttempts: 3,
+      queuedAt: "2026-05-02T10:00:05.000Z",
+      finishedAt: "2026-05-02T10:01:00.000Z",
+      idempotencyKey: "private-idempotency-key",
+      metadata: {
+        requestId: "req-ocr-workflow",
+        matterId: "matter-001",
+        documentId: "doc-001",
+        task: "ocr",
+        rawBody: "raw document text must not be exposed",
+        storageKey: "matters/matter-001/private.pdf",
+        token: "synthetic-token",
+      },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-ocr-workflow",
+      firmId,
+      actorId: "user-licensee",
+      action: "document_processing.ocr.queued",
+      resourceType: "document",
+      resourceId: "doc-001",
+      occurredAt: "2026-05-02T10:00:00.000Z",
+      metadata: {
+        requestId: "req-ocr-workflow",
+        actorType: "licensee",
+        actorId: "user-licensee",
+        matterId: "matter-001",
+        workflowStatus: "queued",
+        beforeStatus: "verified",
+        expectedStatus: "queued",
+        afterStatus: "queued",
+        idempotencyKeyPresent: true,
+        rawBody: "raw audit body must not be exposed",
+        providerPayload: { private: true },
+      },
+    });
+
+    const response = await testServer({ repository, ocrJobQueue: fakeQueue }).inject({
+      method: "GET",
+      url: "/api/jobs/workflows?matterId=matter-001&queueName=ocr",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "available",
+      summary: { total: 1, active: 0, failed: 0, terminal: 1 },
+      workflows: [
+        expect.objectContaining({
+          id: "request:req-ocr-workflow",
+          status: "succeeded",
+          matterIds: ["matter-001"],
+          queueNames: ["ocr"],
+          jobIds: ["job-ocr-workflow"],
+          stepCount: 2,
+        }),
+      ],
+    });
+    expect(
+      response.json().workflows[0].steps.map((step: { source: string }) => step.source),
+    ).toEqual(["audit", "job"]);
+    const serialized = response.body;
+    expect(serialized).not.toContain("raw document text");
+    expect(serialized).not.toContain("raw audit body");
+    expect(serialized).not.toContain("private.pdf");
+    expect(serialized).not.toContain("synthetic-token");
+    expect(serialized).not.toContain("private-idempotency-key");
+  });
+
+  it("keeps workflow history scoped to visible matter job and audit events", async () => {
+    const repository = new InMemoryOpenPracticeRepository();
+    await repository.createJobLifecycleRecord({
+      id: "job-visible-workflow",
+      firmId,
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "failed",
+      targetResourceType: "document",
+      targetResourceId: "doc-001",
+      attemptsMade: 2,
+      maxAttempts: 3,
+      queuedAt: "2026-05-02T10:00:00.000Z",
+      failedAt: "2026-05-02T10:05:00.000Z",
+      errorMessage: "Synthetic private provider detail",
+      metadata: { matterId: "matter-001", documentId: "doc-001", task: "ocr" },
+    });
+    await repository.createJobLifecycleRecord({
+      id: "job-hidden-workflow",
+      firmId,
+      queueName: "ocr",
+      jobName: "extract_document_text",
+      status: "failed",
+      targetResourceType: "document",
+      targetResourceId: "doc-002",
+      attemptsMade: 2,
+      maxAttempts: 3,
+      queuedAt: "2026-05-02T10:10:00.000Z",
+      failedAt: "2026-05-02T10:15:00.000Z",
+      errorMessage: "Synthetic private provider detail",
+      metadata: { matterId: "matter-002", documentId: "doc-002", task: "ocr" },
+    });
+    await repository.appendAuditEvent({
+      id: "audit-hidden-workflow",
+      firmId,
+      actorId: "user-licensee",
+      action: "document_processing.ocr.queued",
+      resourceType: "document",
+      resourceId: "doc-002",
+      occurredAt: "2026-05-02T10:09:00.000Z",
+      metadata: {
+        requestId: "req-hidden",
+        matterId: "matter-002",
+        workflowStatus: "queued",
+      },
+    });
+
+    const response = await testServer({ repository, role: "licensee" }).inject({
+      method: "GET",
+      url: "/api/jobs/workflows",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().workflows).toHaveLength(1);
+    expect(response.json().workflows[0]).toMatchObject({
+      id: "job:job-visible-workflow",
+      status: "failed",
+      matterIds: ["matter-001"],
+      jobIds: ["job-visible-workflow"],
+    });
+    expect(response.body).not.toContain("matter-002");
+    expect(response.body).not.toContain("Synthetic private provider detail");
+  });
+
   it("marks old queued and active jobs as stalled in worker health", async () => {
     const repository = new InMemoryOpenPracticeRepository();
     await repository.createJobLifecycleRecord({

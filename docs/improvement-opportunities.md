@@ -17,6 +17,11 @@ statement match-rule/accounting-profile depth is shipped as OP-T136. Future trus
 candidates should compare against OP-T104 preview, OP-T107 exception-resolution, OP-T118 batch
 metadata, and OP-T136 accounting-review proof before proposing another slice.
 
+The workflow-step history projection candidate is shipped in the 2026-06-16 workflow history
+branch. Future workflow candidates should compare against the read-only `GET /api/jobs/workflows`
+projection over redacted job lifecycle records and workflow audit events before proposing a new
+workflow/activity history surface.
+
 ### Core-Suite Clio Parity Candidates - 2026-06-04
 
 The 2026-06-04 [core-suite parity gap audit](validation/OP_CLIO_CORE_PARITY_GAP_AUDIT_2026-06-04.md)
@@ -119,15 +124,6 @@ staff-only intake submissions operations queue candidate is no longer re-propose
   - **References:** `chatwoot__chatwoot` and inbound-channel patterns in `paperless-ngx__paperless-ngx`.
   - **Reuse and snippets:** Chatwoot has MIT core plus enterprise directories; use architecture only
     unless a file-level review excludes enterprise-only material.
-
-- **Workflow-step history projection**
-  - **First slice:** Add a read-only workflow-step history projection over existing jobs and audit
-    events for multi-step OP actions; do not adopt Temporal as a service.
-  - **Local gap / shipped boundary:** OP has redacted job lifecycle records and worker health, but no
-    higher-level workflow/activity history for compound actions.
-  - **References:** `temporalio__temporal`, `activepieces__activepieces`.
-  - **Reuse and snippets:** Temporal is MIT/adopt-selectively, but Go snippets are unnecessary; use
-    vocabulary and event-history semantics.
 
 - **Meeting availability request review**
   - **First slice:** Add staff-reviewed availability/request records for meeting scheduling without

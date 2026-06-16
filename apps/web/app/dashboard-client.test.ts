@@ -177,14 +177,19 @@ import {
 import {
   buildWorkerHealthPath,
   buildWorkerRunsPath,
+  buildWorkflowHistoryPath,
+  describeWorkflowHistoryStatus,
   emptyWorkerHealthResponse,
+  emptyWorkflowHistoryResponse,
   describeWorkerRunStatus,
   emptyWorkerRunsResponse,
   formatWorkerRunAttempts,
   formatWorkerRunTiming,
   summarizeWorkerHealth,
+  summarizeWorkflowHistory,
   summarizeWorkerRuns,
   workerHealthTone,
+  workflowHistorySafeContext,
   workerRunsForFilter,
   workerRunSafeContext,
 } from "./worker-runs-dashboard";
@@ -3384,6 +3389,56 @@ describe("dashboard client behavior", () => {
       workerHealth: emptyWorkerHealthResponse(),
       workerHealthStateTone: "neutral" as const,
       workerHealthSummary: "No worker queues observed.",
+      workflowHistory: {
+        ...emptyWorkflowHistoryResponse("available"),
+        summary: { total: 1, active: 0, failed: 0, terminal: 1 },
+        workflows: [
+          {
+            id: "request:req-ocr-001",
+            groupKey: "request:req-ocr-001",
+            title: "document processing ocr queued",
+            status: "succeeded" as const,
+            startedAt: "2026-05-02T10:00:00.000Z",
+            lastObservedAt: "2026-05-02T10:01:00.000Z",
+            finishedAt: "2026-05-02T10:01:00.000Z",
+            matterIds: ["matter-001"],
+            resourceType: "document",
+            resourceId: "doc-001",
+            queueNames: ["ocr"],
+            jobIds: ["job-ocr-001"],
+            stepCount: 2,
+            steps: [
+              {
+                id: "audit-ocr-001",
+                source: "audit" as const,
+                label: "document processing ocr queued",
+                status: "queued" as const,
+                occurredAt: "2026-05-02T10:00:00.000Z",
+                matterIds: ["matter-001"],
+                resourceType: "document",
+                resourceId: "doc-001",
+                action: "document_processing.ocr.queued",
+                metadata: { requestId: "req-ocr-001", matterId: "matter-001" },
+              },
+              {
+                id: "job-ocr-001",
+                source: "job" as const,
+                label: "extract document text",
+                status: "succeeded" as const,
+                occurredAt: "2026-05-02T10:01:00.000Z",
+                matterIds: ["matter-001"],
+                queueName: "ocr",
+                jobName: "extract_document_text",
+                jobId: "job-ocr-001",
+                metadata: { documentId: "doc-001", rawBody: "must not render" },
+              },
+            ],
+          },
+        ],
+      },
+      workflowHistorySafeContext,
+      workflowHistoryStatus: describeWorkflowHistoryStatus,
+      workflowHistorySummary: "1 workflow histories. 0 active or queued. 0 failed. 1 terminal.",
       workerRunFilter: "all" as const,
       workerRunFilterOptions: [{ key: "all" as const, label: "All" }],
       workerRunSafeContext: () => "No worker context.",
@@ -3405,6 +3460,10 @@ describe("dashboard client behavior", () => {
     );
 
     expect(writableHtml).toContain("AI operational proposals");
+    expect(writableHtml).toContain("Workflow history");
+    expect(writableHtml).toContain("document processing ocr queued");
+    expect(writableHtml).toContain("2 steps");
+    expect(writableHtml).not.toContain("must not render");
     expect(writableHtml).toContain("Task/deadline review");
     expect(writableHtml).toContain("Review tenant evidence package");
     expect(writableHtml).toContain("2026-0001");
@@ -4493,6 +4552,7 @@ describe("dashboard client behavior", () => {
 
     expect(buildWorkerRunsPath()).toBe("/api/jobs");
     expect(buildWorkerRunsPath("email")).toBe("/api/jobs?queueName=email");
+    expect(buildWorkflowHistoryPath()).toBe("/api/jobs/workflows");
     expect(workerRunsForFilter(dashboard, "email").jobs).toHaveLength(1);
     expect(workerRunsForFilter(dashboard, "email").jobs[0]!.queueName).toBe("email");
     expect(workerRunsForFilter(dashboard, "ocr").jobs[0]!.queueName).toBe("ocr");
@@ -4514,6 +4574,35 @@ describe("dashboard client behavior", () => {
     );
     expect(workerRunSafeContext(dashboard.all.jobs[1]!)).not.toContain("storage");
     expect(workerRunSafeContext(dashboard.all.jobs[1]!)).not.toContain("raw document text");
+
+    const workflowHistory = {
+      ...emptyWorkflowHistoryResponse("available"),
+      summary: { total: 1, active: 0, failed: 1, terminal: 0 },
+      workflows: [
+        {
+          id: "job:job-ocr-retry",
+          groupKey: "job:job-ocr-retry",
+          title: "extract document text",
+          status: "failed" as const,
+          startedAt: "2026-05-02T10:00:00.000Z",
+          lastObservedAt: "2026-05-02T10:01:00.000Z",
+          matterIds: ["matter-001"],
+          resourceType: "document",
+          resourceId: "doc-001",
+          queueNames: ["ocr"],
+          jobIds: ["job-ocr-retry"],
+          stepCount: 1,
+          steps: [],
+        },
+      ],
+    };
+    expect(summarizeWorkflowHistory(workflowHistory)).toBe(
+      "1 workflow histories. 0 active or queued. 1 failed. 0 terminal.",
+    );
+    expect(describeWorkflowHistoryStatus("failed")).toEqual({ label: "failed", tone: "risk" });
+    expect(workflowHistorySafeContext(workflowHistory.workflows[0]!)).toBe(
+      "target document:doc-001 · matters matter-001 · queues ocr · 1 job refs",
+    );
   });
 
   it("describes compact worker health without raw job detail", () => {

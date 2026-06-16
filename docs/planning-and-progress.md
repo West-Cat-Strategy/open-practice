@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-15
+**Last Updated:** 2026-06-16
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -22,6 +22,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-16 workflow-step history projection branch adds a read-only history view over existing
+job lifecycle records and workflow-shaped audit events. It keeps the implementation additive: no
+Temporal service, no new workflow engine, no worker orchestration changes, no workflow table, and
+no sensitive job payload or raw audit metadata values in serialized output. The API route is
+`GET /api/jobs/workflows`; the dashboard Operations/Queues surface shows compact workflow history
+rows near worker runs; route authorization manifest coverage remains `job:read`; and validation is
+recorded in
+[workflow-step history projection proof](validation/OP_WORKFLOW_STEP_HISTORY_PROJECTION_PROOF_2026-06-16.md).
+
 The 2026-06-15 contact-history export, retention, and privacy decision packet is docs-first policy
 groundwork for future CRM export work. It records the pre-implementation choices needed for export
 purpose, authorized requester paths, redaction, matter boundaries, retention/hold posture, and
@@ -36,7 +45,7 @@ actions, public routes, automatic matter creation, campaign/SMS/bulk delivery, a
 or automatic client contact was added. Proof is recorded in
 [OP-T157 staff submissions operations proof](validation/OP-T157_STAFF_SUBMISSIONS_OPERATIONS_PROOF_2026-06-15.md).
 
-The 2026-06-15 Full CRM Contacts mainline work expands Contacts into a legal-practice CRM while preserving
+The 2026-06-15 Full CRM Contacts mainline work expands Contacts into a legal-practice CRM while
 the existing dossier, review queue, data-quality, conflict-check, matter-party, and client-portal
 grant foundations. It keeps organizations as `Contact.kind = "organization"`, uses
 `matter_parties` as the matter-contact association surface, adds reviewable contact methods,

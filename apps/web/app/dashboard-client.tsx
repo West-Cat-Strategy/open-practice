@@ -188,11 +188,14 @@ import {
 } from "./billing-dashboard";
 import {
   describeWorkerRunStatus,
+  describeWorkflowHistoryStatus,
   formatWorkerRunAttempts,
   formatWorkerRunTiming,
   summarizeWorkerRuns,
+  summarizeWorkflowHistory,
   summarizeWorkerHealth,
   workerHealthTone,
+  workflowHistorySafeContext,
   workerRunFilters,
   workerRunsForFilter,
   workerRunSafeContext,
@@ -399,6 +402,7 @@ import type {
   WorkerHealthResponse,
   WorkerRunQueueFilter,
   WorkerRunsDashboardResponse,
+  WorkflowHistoryResponse,
 } from "./types";
 
 interface DashboardClientProps {
@@ -443,6 +447,7 @@ interface DashboardClientProps {
   trustControls: TrustControlsDashboardResponse;
   queues: QueuesResponse;
   workerHealth: WorkerHealthResponse;
+  workflowHistory: WorkflowHistoryResponse;
   workerRuns: WorkerRunsDashboardResponse;
 }
 
@@ -650,6 +655,7 @@ export default function DashboardClient({
   trustControls,
   queues: initialQueues,
   workerHealth,
+  workflowHistory,
   workerRuns,
   shareLinksStatus,
 }: DashboardClientProps) {
@@ -1500,6 +1506,10 @@ export default function DashboardClient({
   const workerRunSummary = useMemo(() => summarizeWorkerRuns(activeWorkerRuns), [activeWorkerRuns]);
   const workerHealthSummary = useMemo(() => summarizeWorkerHealth(workerHealth), [workerHealth]);
   const workerHealthStateTone = workerHealthTone(workerHealth.status);
+  const workflowHistorySummary = useMemo(
+    () => summarizeWorkflowHistory(workflowHistory),
+    [workflowHistory],
+  );
   const taskDeadlineSummary = useMemo(() => {
     const my = taskWorkbench.counters.my;
     return `${my.overdue} overdue, ${my.today} due today, ${my.upcoming} upcoming`;
@@ -5228,6 +5238,10 @@ export default function DashboardClient({
                   workerHealth={workerHealth}
                   workerHealthStateTone={workerHealthStateTone}
                   workerHealthSummary={workerHealthSummary}
+                  workflowHistory={workflowHistory}
+                  workflowHistorySafeContext={workflowHistorySafeContext}
+                  workflowHistoryStatus={describeWorkflowHistoryStatus}
+                  workflowHistorySummary={workflowHistorySummary}
                   workerRunFilter={workerRunFilter}
                   workerRunFilterOptions={workerRunFilters}
                   workerRunSafeContext={workerRunSafeContext}
@@ -6142,6 +6156,10 @@ export default function DashboardClient({
                   workerHealth={workerHealth}
                   workerHealthStateTone={workerHealthStateTone}
                   workerHealthSummary={workerHealthSummary}
+                  workflowHistory={workflowHistory}
+                  workflowHistorySafeContext={workflowHistorySafeContext}
+                  workflowHistoryStatus={describeWorkflowHistoryStatus}
+                  workflowHistorySummary={workflowHistorySummary}
                   workerRunFilter={workerRunFilter}
                   workerRunFilterOptions={workerRunFilters}
                   workerRunSafeContext={workerRunSafeContext}
