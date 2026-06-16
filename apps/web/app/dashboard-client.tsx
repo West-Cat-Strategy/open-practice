@@ -304,10 +304,12 @@ import {
   upsertIntakeSession,
 } from "./types";
 import {
+  canExportContactHistory,
   canRecordContactDataQualityResolutions,
   type ContactDataQualityResolutionRecord,
   type ContactDataQualityResolutionsResponse,
   type ContactDossiersResponse,
+  type ContactHistoryExportResponse,
   type ContactTimelineResponse,
   type ContactReviewQueueResponse,
 } from "./_features/contacts/models";
@@ -771,6 +773,12 @@ export default function DashboardClient({
     ContactTimelineResponse["timeline"]
   >([]);
   const [contactTimelineStatus, setContactTimelineStatus] = useState("No contact timeline loaded.");
+  const [contactHistoryExportReason, setContactHistoryExportReason] = useState("");
+  const [contactHistoryExportStatus, setContactHistoryExportStatus] = useState(
+    "No contact-history export generated in this session.",
+  );
+  const [contactHistoryExportSummary, setContactHistoryExportSummary] = useState("");
+  const [exportingContactHistory, setExportingContactHistory] = useState(false);
   const [recordingContactResolutionKey, setRecordingContactResolutionKey] = useState("");
   const [conflictName, setConflictName] = useState("");
   const [conflictAliases, setConflictAliases] = useState("");
@@ -1133,6 +1141,7 @@ export default function DashboardClient({
     (section) =>
       section.key === "contacts" && section.enabled && section.actions.includes("create"),
   );
+  const canExportSelectedContactHistory = canExportContactHistory(capabilities.sections);
   const activeMatter = matters.find((matter) => matter.id === activeMatterId) ?? matters[0];
   const activeSignatures = signatures.filter(
     (signature) => signature.matterId === activeMatter?.id,
@@ -2413,6 +2422,57 @@ export default function DashboardClient({
     } else if (!dossiers.some((dossier) => dossier.contact.id === activeContactId)) {
       setActiveContactId(dossiers[0]?.contact.id ?? "");
       setCalendarClientContactId(dossiers[0]?.contact.id ?? "");
+    }
+  }
+
+  function downloadContactHistoryExport(payload: ContactHistoryExportResponse): void {
+    if (typeof document === "undefined" || typeof URL === "undefined") return;
+    const encodedContactId = payload.exportRequest.contactId.replace(/[^a-z0-9_-]+/gi, "-");
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `contact-history-${encodedContactId}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportContactHistory(): Promise<void> {
+    const reason = contactHistoryExportReason.trim();
+    if (!activeContactDossier || !canExportSelectedContactHistory || reason.length < 8) return;
+    setExportingContactHistory(true);
+    setContactHistoryExportStatus("Generating contact-history export...");
+    setContactHistoryExportSummary("");
+    try {
+      const payload = await requestDashboardJson<ContactHistoryExportResponse>(
+        apiBaseUrl,
+        `/api/contacts/${encodeURIComponent(activeContactDossier.contact.id)}/history-export`,
+        {
+          method: "POST",
+          headers: devHeaders,
+          payload: { purpose: "staff_review", reviewReason: reason },
+        },
+      );
+      downloadContactHistoryExport(payload);
+      const categoryCount = Object.keys(payload.export.categories).length;
+      const timelineCount = payload.export.categories.timelineCues.length;
+      const matterCount = payload.export.categories.matterPartyPosture.length;
+      const portalGrantCount = payload.export.categories.portalAccessPosture.grants?.length ?? 0;
+      setContactHistoryExportStatus(
+        `Export generated ${payload.exportRequest.generatedAt}; JSON download prepared.`,
+      );
+      setContactHistoryExportSummary(
+        `${categoryCount} categories, ${timelineCount} timeline cues, ${matterCount} matter links, ${portalGrantCount} portal grants. Transient export; no server-side export body stored.`,
+      );
+    } catch (error) {
+      setContactHistoryExportStatus(`Contact-history export failed: ${dashboardApiStatus(error)}`);
+      setContactHistoryExportSummary("");
+    } finally {
+      setExportingContactHistory(false);
     }
   }
 
@@ -4967,6 +5027,7 @@ export default function DashboardClient({
                 <ContactsSection
                   activeContactDossier={activeContactDossier}
                   canRecordContactDataQualityResolution={canRecordContactDataQualityResolution}
+                  canExportContactHistory={canExportSelectedContactHistory}
                   canCreateContact={canCreateContact}
                   canCreateMatter={canCreateMatter}
                   compactStatus={compactStatus}
@@ -4981,6 +5042,9 @@ export default function DashboardClient({
                   contactDataQualityResolutions={activeContactDataQualityResolutions}
                   contactDataQualityStatus={contactDataQualityStatus}
                   contactReviewQueue={contactReviewQueue}
+                  contactHistoryExportReason={contactHistoryExportReason}
+                  contactHistoryExportStatus={contactHistoryExportStatus}
+                  contactHistoryExportSummary={contactHistoryExportSummary}
                   contactTimeline={activeContactTimeline}
                   contactTimelineStatus={contactTimelineStatus}
                   contactSearch={contactSearch}
@@ -4993,6 +5057,8 @@ export default function DashboardClient({
                   onContactCreateLifecycleStatusChange={setContactCreateLifecycleStatus}
                   onContactCreatePhoneChange={setContactCreatePhone}
                   onContactCreateRoleCategoryChange={setContactCreateRoleCategory}
+                  onContactHistoryExportReasonChange={setContactHistoryExportReason}
+                  onExportContactHistory={() => void exportContactHistory()}
                   onCreateContact={() => void createContact()}
                   onCreateMatterFromContact={(dossier) => void createMatterFromContact(dossier)}
                   onNewAppointmentForContact={prepareAppointmentForContact}
@@ -5002,6 +5068,7 @@ export default function DashboardClient({
                   onSelectContact={setActiveContactId}
                   onSelectMatter={selectMatter}
                   recordingContactResolutionKey={recordingContactResolutionKey}
+                  exportingContactHistory={exportingContactHistory}
                 />
               </article>
             ) : null}
@@ -5557,6 +5624,7 @@ export default function DashboardClient({
                 <ContactsSection
                   activeContactDossier={activeContactDossier}
                   canRecordContactDataQualityResolution={canRecordContactDataQualityResolution}
+                  canExportContactHistory={canExportSelectedContactHistory}
                   canCreateContact={canCreateContact}
                   canCreateMatter={canCreateMatter}
                   compactStatus={compactStatus}
@@ -5571,6 +5639,9 @@ export default function DashboardClient({
                   contactDataQualityResolutions={activeContactDataQualityResolutions}
                   contactDataQualityStatus={contactDataQualityStatus}
                   contactReviewQueue={contactReviewQueue}
+                  contactHistoryExportReason={contactHistoryExportReason}
+                  contactHistoryExportStatus={contactHistoryExportStatus}
+                  contactHistoryExportSummary={contactHistoryExportSummary}
                   contactTimeline={activeContactTimeline}
                   contactTimelineStatus={contactTimelineStatus}
                   contactSearch={contactSearch}
@@ -5583,6 +5654,8 @@ export default function DashboardClient({
                   onContactCreateLifecycleStatusChange={setContactCreateLifecycleStatus}
                   onContactCreatePhoneChange={setContactCreatePhone}
                   onContactCreateRoleCategoryChange={setContactCreateRoleCategory}
+                  onContactHistoryExportReasonChange={setContactHistoryExportReason}
+                  onExportContactHistory={() => void exportContactHistory()}
                   onCreateContact={() => void createContact()}
                   onCreateMatterFromContact={(dossier) => void createMatterFromContact(dossier)}
                   onNewAppointmentForContact={prepareAppointmentForContact}
@@ -5592,6 +5665,7 @@ export default function DashboardClient({
                   onSelectContact={setActiveContactId}
                   onSelectMatter={selectMatter}
                   recordingContactResolutionKey={recordingContactResolutionKey}
+                  exportingContactHistory={exportingContactHistory}
                 />
               ) : null}
 

@@ -325,6 +325,14 @@ export const ROUTE_AUTHORIZATION_MANIFEST = [
   authRoute(
     "registerContactRoutes",
     "apps/api/src/routes/contacts.test.ts",
+    "POST",
+    "/api/contacts/:contactId/history-export",
+    "contact",
+    "export",
+  ),
+  authRoute(
+    "registerContactRoutes",
+    "apps/api/src/routes/contacts.test.ts",
     "PATCH",
     "/api/contacts/:contactId",
     "contact",

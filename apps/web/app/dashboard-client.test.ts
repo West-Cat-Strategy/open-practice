@@ -310,6 +310,7 @@ import {
   upsertIntakeSession,
 } from "./types";
 import {
+  canExportContactHistory,
   canRecordContactDataQualityResolutions,
   type ContactDataQualityResolutionRecord,
   type ContactDossier,
@@ -2350,6 +2351,10 @@ describe("dashboard client behavior", () => {
         capability("contacts", { actions: ["read", "update"] }),
       ]),
     ).toBe(true);
+    expect(canExportContactHistory([capability("contacts", { actions: ["read"] })])).toBe(false);
+    expect(canExportContactHistory([capability("contacts", { actions: ["read", "export"] })])).toBe(
+      true,
+    );
     expect(latestResolution?.decision).toBe("false_positive");
     expect(historyRowText).toContain("not duplicate");
     expect(historyRowText).toContain("duplicate candidate");
@@ -2372,6 +2377,10 @@ describe("dashboard client behavior", () => {
       contactDataQualityResolutions: resolutions,
       contactDataQualityStatus: "1 resolution loaded.",
       contactDossiers: [dossier],
+      contactHistoryExportReason: "Synthetic staff review",
+      contactHistoryExportStatus: "Export generated 2026-05-01T20:00:00.000Z.",
+      contactHistoryExportSummary:
+        "9 categories, 1 timeline cues, 1 matter links, 0 portal grants. Transient export; no server-side export body stored.",
       contactTimeline: [
         {
           id: "task-cue:contact-river:task-private-review",
@@ -2408,6 +2417,8 @@ describe("dashboard client behavior", () => {
       onContactCreateEmailChange: () => {},
       onContactCreateKindChange: () => {},
       onContactCreatePhoneChange: () => {},
+      onContactHistoryExportReasonChange: () => {},
+      onExportContactHistory: () => {},
       onCreateContact: () => {},
       onCreateMatterFromContact: () => {},
       onNewAppointmentForContact: () => {},
@@ -2417,16 +2428,19 @@ describe("dashboard client behavior", () => {
       onSelectContact: () => {},
       onSelectMatter: () => {},
       recordingContactResolutionKey: "",
+      exportingContactHistory: false,
     };
     const readOnlyHtml = renderToStaticMarkup(
       createElement(ContactsSection, {
         ...commonProps,
+        canExportContactHistory: false,
         canRecordContactDataQualityResolution: false,
       }),
     );
     const writableHtml = renderToStaticMarkup(
       createElement(ContactsSection, {
         ...commonProps,
+        canExportContactHistory: true,
         canRecordContactDataQualityResolution: true,
       }),
     );
@@ -2446,10 +2460,14 @@ describe("dashboard client behavior", () => {
     expect(readOnlyHtml).toContain("1 shared visible matter");
     expect(readOnlyHtml).toContain("related contact noted");
     expect(readOnlyHtml).not.toContain("contact-resolution-actions");
+    expect(readOnlyHtml).not.toContain("Contact-history export");
     expect(readOnlyHtml).not.toContain("legal@rivercity.example");
     expect(readOnlyHtml).not.toContain("task-private-review");
     expect(readOnlyHtml).not.toContain("relatedContact&quot;:{&quot;id");
     expect(writableHtml).toContain("contact-resolution-actions");
+    expect(writableHtml).toContain("Contact-history export");
+    expect(writableHtml).toContain("Export JSON");
+    expect(writableHtml).toContain("Transient export; no server-side export body stored.");
     expect(writableHtml).toContain("Needs review");
   });
 

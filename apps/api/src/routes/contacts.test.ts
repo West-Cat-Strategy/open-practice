@@ -269,8 +269,11 @@ describe("contact routes", () => {
             value: "experts@example.test",
             preferred: true,
             conflictCheckIncluded: true,
+            notes: "Synthetic private contact-method note.",
           },
         ],
+        notes: "Synthetic operational contact note.",
+        privateNotes: "Synthetic private contact note.",
         conflictSensitive: true,
       },
     });
@@ -313,6 +316,7 @@ describe("contact routes", () => {
         label: "Expert for",
         reciprocalLabel: "Uses expert",
         matterId: "matter-001",
+        privateNotes: "Synthetic private relationship note.",
         includeInConflictCheck: true,
       },
     });
@@ -326,6 +330,7 @@ describe("contact routes", () => {
         role: "expert",
         side: "neutral",
         notes: "Synthetic expert association.",
+        privateNotes: "Synthetic private association note.",
         conflictCheckIncluded: true,
       },
     });
@@ -409,6 +414,83 @@ describe("contact routes", () => {
     expect(JSON.stringify(timeline.json())).not.toContain("Review filing deadline schedule");
     expect(JSON.stringify(timeline.json())).not.toContain("sourceLabel");
 
+    const exportResponse = await server.inject({
+      method: "POST",
+      url: `/api/contacts/${contactId}/history-export`,
+      payload: {
+        purpose: "staff_review",
+        reviewReason: "Synthetic staff review reason for contact history export.",
+      },
+    });
+    expect(exportResponse.statusCode).toBe(200);
+    expect(exportResponse.json()).toMatchObject({
+      exportRequest: {
+        contactId,
+        purpose: "staff_review",
+        generatedByUserId: "user-owner_admin",
+        storedBody: false,
+        retentionPosture: "transient_regenerated_no_retained_export_body",
+        legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
+        privacyPosture: "redacted_authorized_projection_only",
+      },
+      export: {
+        policyBoundary: {
+          rawPrivateContactHistory: false,
+          retainedExportArtifact: false,
+          deletionAutomation: false,
+          retentionDeadline: false,
+          jurisdictionCertifiedRecordsClaim: false,
+        },
+        categories: {
+          identityPosture: expect.objectContaining({ contactId, kind: "organization" }),
+          contactMethodPosture: expect.objectContaining({
+            identifierTypes: ["business_number", "registry_id"],
+            identifierCount: 2,
+          }),
+          matterPartyPosture: [expect.objectContaining({ matterId: "matter-001" })],
+          portalAccessPosture: expect.objectContaining({
+            grants: [expect.objectContaining({ status: "suspended", accountBound: false })],
+          }),
+          timelineCues: expect.arrayContaining([
+            expect.objectContaining({
+              title: "Task deadline cue",
+              metadata: expect.objectContaining({
+                cueType: "open_task",
+                reviewBoundary: expect.objectContaining({ queueDelivery: false }),
+              }),
+            }),
+          ]),
+        },
+      },
+    });
+    const serializedExport = JSON.stringify(exportResponse.json());
+    expect(serializedExport).not.toContain("experts@example.test");
+    expect(serializedExport).not.toContain("10 Synthetic Plaza");
+    expect(serializedExport).not.toContain("BN-EXPERT-1");
+    expect(serializedExport).not.toContain("BC9999999");
+    expect(serializedExport).not.toContain("Synthetic private contact-method note");
+    expect(serializedExport).not.toContain("Synthetic operational contact note");
+    expect(serializedExport).not.toContain("Synthetic private contact note");
+    expect(serializedExport).not.toContain("Synthetic expert association.");
+    expect(serializedExport).not.toContain("Synthetic private association note");
+    expect(serializedExport).not.toContain("Synthetic private relationship note");
+    expect(serializedExport).not.toContain("Review tenant evidence package");
+    expect(serializedExport).not.toContain("Review filing deadline schedule");
+    expect(serializedExport).not.toContain("sourceLabel");
+
+    const deniedExport = await testServer({
+      repository,
+      user: user("firm_member", ["matter-001"]),
+    }).inject({
+      method: "POST",
+      url: `/api/contacts/${contactId}/history-export`,
+      payload: {
+        purpose: "staff_review",
+        reviewReason: "Synthetic staff review reason for denied export.",
+      },
+    });
+    expect(deniedExport.statusCode).toBe(403);
+
     const audit = await repository.listAuditEvents("firm-west-legal");
     expect(audit.events.map((event) => event.action)).toEqual(
       expect.arrayContaining([
@@ -417,8 +499,32 @@ describe("contact routes", () => {
         "contact.matter_association.updated",
         "portal.grant.invited",
         "portal.grant.suspended",
+        "contact_history_export.requested",
       ]),
     );
+    const exportAudit = audit.events.find(
+      (event) => event.action === "contact_history_export.requested",
+    );
+    expect(exportAudit).toMatchObject({
+      resourceType: "contact_history_export",
+      resourceId: contactId,
+      metadata: {
+        contactId,
+        purpose: "staff_review",
+        reviewReasonPresent: true,
+        generatedCategoryCount: 9,
+        matterAssociationCount: 1,
+        portalGrantCount: 1,
+        retentionPosture: "transient_regenerated_no_retained_export_body",
+        legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
+        privacyPosture: "redacted_authorized_projection_only",
+      },
+    });
+    const serializedAudit = JSON.stringify(exportAudit);
+    expect(serializedAudit).not.toContain("Synthetic Expert Services");
+    expect(serializedAudit).not.toContain("experts@example.test");
+    expect(serializedAudit).not.toContain("10 Synthetic Plaza");
+    expect(serializedAudit).not.toContain("Synthetic private");
   });
 
   it("returns an audit-safe contact review queue without widening matter visibility", async () => {

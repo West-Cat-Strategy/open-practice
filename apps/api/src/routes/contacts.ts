@@ -170,6 +170,13 @@ const contactDataQualityResolutionBodySchema = z.object({
   resolutionNote: z.string().min(1),
 });
 
+const contactHistoryExportBodySchema = z
+  .object({
+    purpose: z.literal("staff_review"),
+    reviewReason: z.string().trim().min(8).max(240),
+  })
+  .strict();
+
 const createContactBodySchema = z.object({
   kind: contactKindSchema,
   status: contactStatusSchema.default("active"),
@@ -385,6 +392,181 @@ function serializeContactDetail(dossier: ContactDossier, portalGrants: PortalGra
     conflictCues: dossier.conflictCues,
     qualityReview: serializedDossier.qualityReview,
     conflictHistory: dossier.conflictHistory,
+  };
+}
+
+type ContactTimelineEntry = Awaited<
+  ReturnType<OpenPracticeRepository["listContactTimelineForUser"]>
+>[number];
+
+function contactMethodPosture(method: ContactMethod) {
+  return {
+    id: method.id,
+    type: method.type,
+    label: method.label,
+    preferred: Boolean(method.preferred),
+    doNotContact: Boolean(method.doNotContact),
+    verificationStatus: method.verificationStatus ?? "unverified",
+    conflictCheckIncluded: method.conflictCheckIncluded ?? true,
+    valueRedacted: Boolean(method.value),
+    addressRedacted: Boolean(method.address),
+    notesRedacted: Boolean(method.notes),
+  };
+}
+
+function contactTimelineExportEntry(entry: ContactTimelineEntry) {
+  const metadata = entry.metadata;
+  return {
+    id: entry.id,
+    matterId: entry.matterId,
+    occurredAt: entry.occurredAt,
+    title:
+      entry.kind === "task"
+        ? entry.title === "Follow-up review cue"
+          ? "Follow-up review cue"
+          : "Task deadline cue"
+        : entry.title,
+    kind: entry.kind,
+    actorId: entry.actorId,
+    metadata:
+      entry.kind === "task"
+        ? {
+            cueType: typeof metadata.cueType === "string" ? metadata.cueType : undefined,
+            contactId: typeof metadata.contactId === "string" ? metadata.contactId : undefined,
+            matterId: typeof metadata.matterId === "string" ? metadata.matterId : undefined,
+            dueAt: typeof metadata.dueAt === "string" ? metadata.dueAt : undefined,
+            bucket: typeof metadata.bucket === "string" ? metadata.bucket : undefined,
+            status: typeof metadata.status === "string" ? metadata.status : undefined,
+            priority: typeof metadata.priority === "string" ? metadata.priority : undefined,
+            assignmentScope:
+              typeof metadata.assignmentScope === "string" ? metadata.assignmentScope : undefined,
+            reviewBoundary: metadata.reviewBoundary,
+          }
+        : metadata,
+  };
+}
+
+function buildContactHistoryExport(input: {
+  detail: ReturnType<typeof serializeContactDetail>;
+  generatedAt: string;
+  generatedByUserId: string;
+  purpose: "staff_review";
+  resolutions: ContactDataQualityResolutionRecord[];
+  reviewReason: string;
+  timeline: ContactTimelineEntry[];
+}) {
+  const { contact } = input.detail;
+  const categories = {
+    identityPosture: {
+      contactId: contact.id,
+      kind: contact.kind,
+      status: contact.status,
+      displayName: contact.displayName,
+      roleCategories: contact.roleCategories,
+      riskFlags: contact.riskFlags,
+      conflictSensitive: contact.conflictSensitive,
+      adverse: contact.adverse,
+      confidentialityMarker: contact.confidentialityMarker,
+      doNotContact: contact.doNotContact,
+    },
+    namePosture: {
+      canonicalName: contact.canonicalName,
+      givenName: contact.givenName,
+      middleName: contact.middleName,
+      familyName: contact.familyName,
+      title: contact.title,
+      pronouns: contact.pronouns,
+      organizationLegalName: contact.organizationLegalName,
+      organizationOperatingName: contact.organizationOperatingName,
+      organizationRegisteredName: contact.organizationRegisteredName,
+      organizationType: contact.organizationType,
+      aliasCount: contact.aliases.length,
+      aliases: contact.aliases,
+      formerNameCount: contact.formerNames.length,
+      formerNames: contact.formerNames,
+    },
+    contactMethodPosture: {
+      identifierTypes: Array.from(
+        new Set(contact.identifiers.map((identifier) => identifier.type)),
+      ),
+      identifierCount: contact.identifiers.length,
+      methods: contact.contactMethods.map(contactMethodPosture),
+      preferredContactMethodId: contact.preferredContactMethodId,
+      preferredLanguage: contact.preferredLanguage,
+      timezone: contact.timezone,
+      communicationNotesPresent: Boolean(contact.communicationNotes?.trim()),
+      accessibilityNotesPresent: Boolean(contact.accessibilityNotes?.trim()),
+    },
+    relationshipPosture: input.detail.relationships,
+    matterPartyPosture: input.detail.matters,
+    portalAccessPosture: {
+      activeGrantCount: input.detail.portal.activeGrantCount,
+      permissionLabels: input.detail.portal.permissionLabels,
+      grants: input.detail.portal.grants.map((grant) => ({
+        id: grant.id,
+        matterId: grant.matterId,
+        contactId: grant.contactId,
+        accountBound: Boolean(grant.accountUserId),
+        grantedByUserId: grant.grantedByUserId,
+        status: grant.status,
+        permissions: grant.permissions,
+        expiresAt: grant.expiresAt,
+        revokedAt: grant.revokedAt,
+        suspendedAt: grant.suspendedAt,
+        invitedAt: grant.invitedAt,
+        activatedAt: grant.activatedAt,
+        createdAt: grant.createdAt,
+        updatedAt: grant.updatedAt,
+      })),
+    },
+    conflictReviewPosture: {
+      cues: input.detail.conflictCues,
+      history: input.detail.conflictHistory,
+    },
+    dataQualityAndDuplicateReviewPosture: {
+      summary: input.detail.qualityReview.summary,
+      signals: input.detail.qualityReview.signals,
+      resolutions: input.resolutions.map((resolution) => ({
+        id: resolution.id,
+        contactId: resolution.contactId,
+        signalKind: resolution.signalKind,
+        decision: resolution.decision,
+        matterId: resolution.matterId,
+        relatedContactPresent: Boolean(resolution.relatedContactId),
+        sourceRecordPresent: Boolean(resolution.sourceRecordId),
+        resolutionNotePresent: Boolean(resolution.resolutionNote.trim()),
+        recordedByUserId: resolution.recordedByUserId,
+        recordedAt: resolution.recordedAt,
+      })),
+    },
+    timelineCues: input.timeline.map(contactTimelineExportEntry),
+  };
+  return {
+    exportRequest: {
+      purpose: input.purpose,
+      contactId: contact.id,
+      generatedAt: input.generatedAt,
+      generatedByUserId: input.generatedByUserId,
+      reviewReasonPresent: Boolean(input.reviewReason.trim()),
+      retentionPosture: "transient_regenerated_no_retained_export_body",
+      legalHoldPosture: "respects_existing_matter_visibility_no_hold_override",
+      privacyPosture: "redacted_authorized_projection_only",
+      storedBody: false,
+    },
+    export: {
+      generatedAt: input.generatedAt,
+      generatedByUserId: input.generatedByUserId,
+      purpose: input.purpose,
+      policyBoundary: {
+        rawPrivateContactHistory: false,
+        exportBodyStoredInAuditMetadata: false,
+        retainedExportArtifact: false,
+        deletionAutomation: false,
+        retentionDeadline: false,
+        jurisdictionCertifiedRecordsClaim: false,
+      },
+      categories,
+    },
   };
 }
 
@@ -729,6 +911,56 @@ export function registerContactRoutes(
       params.contactId,
     );
     return serializeContactDetail(dossier, portalGrants);
+  });
+
+  server.post("/api/contacts/:contactId/history-export", async (request) => {
+    const access = requireAccess(request.auth, { resource: "contact", action: "export" });
+    if (!access.ok) throw access.error;
+    const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const body = parseRequestPart(contactHistoryExportBodySchema, request.body, "body");
+    const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
+    const dossier = findVisibleDossier(dossiers, params.contactId);
+    const [portalGrants, timeline, resolutions] = await Promise.all([
+      options.repository.listContactPortalGrantsForUser(request.auth.user, params.contactId),
+      options.repository.listContactTimelineForUser(request.auth.user, params.contactId),
+      options.repository.listContactDataQualityResolutions(request.auth.firmId, {
+        contactId: params.contactId,
+      }),
+    ]);
+    const detail = serializeContactDetail(dossier, portalGrants);
+    const visibleResolutions = filterVisibleResolutions(resolutions, dossiers).filter(
+      (resolution) => resolution.contactId === params.contactId,
+    );
+    const generatedAt = new Date().toISOString();
+    const payload = buildContactHistoryExport({
+      detail,
+      generatedAt,
+      generatedByUserId: request.auth.user.id,
+      purpose: body.purpose,
+      resolutions: visibleResolutions,
+      reviewReason: body.reviewReason,
+      timeline,
+    });
+    const generatedCategoryCount = Object.keys(payload.export.categories).length;
+    await appendRouteAuditEvent(options.repository, request.auth, {
+      action: "contact_history_export.requested",
+      resourceType: "contact_history_export",
+      resourceId: params.contactId,
+      metadata: {
+        contactId: params.contactId,
+        purpose: body.purpose,
+        reviewReasonPresent: Boolean(body.reviewReason.trim()),
+        generatedCategoryCount,
+        timelineEntryCount: timeline.length,
+        matterAssociationCount: detail.matters.length,
+        portalGrantCount: detail.portal.grants.length,
+        conflictSummaryCount: detail.conflictHistory.length + detail.conflictCues.length,
+        retentionPosture: payload.exportRequest.retentionPosture,
+        legalHoldPosture: payload.exportRequest.legalHoldPosture,
+        privacyPosture: payload.exportRequest.privacyPosture,
+      },
+    });
+    return payload;
   });
 
   server.patch("/api/contacts/:contactId", async (request) => {
