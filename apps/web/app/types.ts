@@ -45,6 +45,7 @@ import type {
   LedgerStatementMatchRuleProfileRecord,
   LedgerTransactionApprovalRecord,
   Matter,
+  MatterLifecycleTransitionRecord,
   MatterParty,
   MatterSetupProfile,
   PaymentPlanPlaceholder,
@@ -161,6 +162,7 @@ export interface MatterSummary extends Matter {
   timeEntries: TimeEntry[];
   expenses: ExpenseEntry[];
   activity: ActivityTimelineEntry[];
+  lifecycleTransitions: MatterLifecycleTransitionRecord[];
   trustBalanceCents: number;
   setupProfile: MatterSetupProfile;
 }

@@ -1,12 +1,15 @@
-import type {
-  AuditEvent,
-  Contact,
-  ContactIdentifier,
-  Matter,
-  MatterParty,
-  NewAuditEvent,
-  PublicConsultationIntakeRecord,
-  User,
+import {
+  buildMatterLifecycleTransitionAuditMetadata,
+  buildMatterLifecycleTransitionRecord,
+  type AuditEvent,
+  type Contact,
+  type ContactIdentifier,
+  type Matter,
+  type MatterLifecycleTransitionRecord,
+  type MatterParty,
+  type NewAuditEvent,
+  type PublicConsultationIntakeRecord,
+  type User,
 } from "@open-practice/domain";
 import { clone } from "../contracts.js";
 import type {
@@ -21,6 +24,7 @@ export interface MemoryMatterLifecycleStore {
   matters: Matter[];
   matterParties: MatterParty[];
   publicConsultationIntakes: PublicConsultationIntakeRecord[];
+  matterLifecycleTransitions: MatterLifecycleTransitionRecord[];
 }
 
 export interface MemoryMatterLifecycleDependencies {
@@ -246,4 +250,58 @@ export async function convertMemoryPublicConsultationIntakeToMatter(
   const summary = created?.id === input.matterId ? created : undefined;
   if (!summary) throw new Error(`Created matter ${input.matterId} was not visible`);
   return { intake: clone(reviewedIntake), matter: summary };
+}
+
+export function listMemoryMatterLifecycleTransitions(
+  store: MemoryMatterLifecycleStore,
+  firmId: string,
+  matterId: string,
+): MatterLifecycleTransitionRecord[] {
+  return clone(
+    store.matterLifecycleTransitions
+      .filter((record) => record.firmId === firmId && record.matterId === matterId)
+      .sort((left, right) => right.reviewedAt.localeCompare(left.reviewedAt)),
+  );
+}
+
+export async function createMemoryMatterLifecycleTransition(
+  store: MemoryMatterLifecycleStore,
+  input: Parameters<
+    import("../matter-lifecycle-contracts.js").MatterLifecycleRepository["createMatterLifecycleTransition"]
+  >[0],
+  dependencies: MemoryMatterLifecycleDependencies,
+): Promise<MatterLifecycleTransitionRecord> {
+  const matter = store.matters.find(
+    (candidate) => candidate.firmId === input.firmId && candidate.id === input.matterId,
+  );
+  if (!matter) throw new Error(`Matter ${input.matterId} was not found`);
+  const reviewer = store.users.find(
+    (user) => user.firmId === input.firmId && user.id === input.reviewedByUserId,
+  );
+  if (!reviewer) throw new Error(`Unknown user ${input.reviewedByUserId}`);
+  const record = buildMatterLifecycleTransitionRecord({
+    id: input.id,
+    firmId: input.firmId,
+    matterId: input.matterId,
+    transition: input.transition,
+    currentStatus: matter.status,
+    readiness: input.readiness,
+    reason: input.reason,
+    blockers: input.blockers,
+    reviewedByUserId: input.reviewedByUserId,
+    reviewedAt: input.reviewedAt,
+    createdAt: input.createdAt,
+  });
+  store.matterLifecycleTransitions = [clone(record), ...store.matterLifecycleTransitions];
+  await dependencies.appendAuditEvent({
+    id: input.auditEventId,
+    firmId: input.firmId,
+    actorId: input.reviewedByUserId,
+    action: "matter.lifecycle_transition_reviewed",
+    resourceType: "matter",
+    resourceId: input.matterId,
+    occurredAt: input.reviewedAt,
+    metadata: buildMatterLifecycleTransitionAuditMetadata(record),
+  });
+  return clone(record);
 }

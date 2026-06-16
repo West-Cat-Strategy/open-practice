@@ -2,6 +2,7 @@ import {
   Banknote,
   CalendarDays,
   Clock3,
+  ClipboardCheck,
   CreditCard,
   FileSignature,
   FilePenLine,
@@ -14,6 +15,7 @@ import {
 import type { OpenPracticeSidebarNavigationSection } from "../../routes/routeCatalog";
 import {
   buildMatterFileCommandCenter,
+  type MatterLifecycleTransitionFormState,
   filterMatterActivity,
   formatMatterActivityKind,
   formatMatterActivityStatus,
@@ -132,6 +134,12 @@ export function MatterOverviewSection({
   onActivityKindFilterChange,
   onActivityStatusFilterChange,
   onSelectSection,
+  canRecordLifecycleTransition,
+  lifecycleTransitionForm,
+  lifecycleTransitionStatus,
+  recordingLifecycleTransition,
+  onLifecycleTransitionFormChange,
+  onRecordLifecycleTransition,
 }: {
   activeActivitySummary: ReturnType<typeof summarizeMatterActivity>;
   activeCommunicationsInbox?: CommunicationsInboxDashboardResponse["inboxByMatterId"][string];
@@ -152,6 +160,12 @@ export function MatterOverviewSection({
   onActivityKindFilterChange: (value: MatterActivityKindFilter) => void;
   onActivityStatusFilterChange: (value: MatterActivityStatusFilter) => void;
   onSelectSection: (section: LocalDashboardSectionKey) => void;
+  canRecordLifecycleTransition: boolean;
+  lifecycleTransitionForm: MatterLifecycleTransitionFormState;
+  lifecycleTransitionStatus: string;
+  recordingLifecycleTransition: boolean;
+  onLifecycleTransitionFormChange: (value: MatterLifecycleTransitionFormState) => void;
+  onRecordLifecycleTransition: () => void;
 }) {
   const fiscalHostMetadata = fiscalHostWorkflowMetadata(
     activeLegalClinicProgram,
@@ -167,6 +181,7 @@ export function MatterOverviewSection({
   const customFieldDefinitions = setupProfile.fieldDefinitions;
   const financialSnapshotCues = setupProfile.financialSnapshot.cues;
   const setupSummaryLabel = setupStage.label;
+  const latestLifecycleRecords = activeMatter.lifecycleTransitions.slice(0, 4);
   const customFieldAttentionCount = customFieldDefinitions.filter(
     (cue) => cueTone(cue) === "risk",
   ).length;
@@ -274,6 +289,125 @@ export function MatterOverviewSection({
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      <div className="section-title">
+        <h3>Lifecycle readiness</h3>
+        <span>review-only records · no status automation</span>
+      </div>
+      <div className="activity-grid lifecycle-readiness-grid">
+        <div className="activity-card lifecycle-readiness-review-card">
+          <ClipboardCheck size={18} />
+          <strong>{latestLifecycleRecords.length} recent reviews</strong>
+          <span>{lifecycleTransitionStatus}</span>
+          <div className="party-list">
+            {latestLifecycleRecords.map((record) => (
+              <div className="party-row" key={record.id}>
+                <span>
+                  <strong>
+                    {readableSetupText(record.transition)} readiness:{" "}
+                    {readableSetupText(record.readiness)}
+                  </strong>
+                  <small>
+                    {readableSetupText(record.currentStatus)} to{" "}
+                    {readableSetupText(record.targetStatus)} · {compactDate(record.reviewedAt)}
+                  </small>
+                  <small>{record.reason}</small>
+                  {record.blockers.length > 0 ? (
+                    <small>{record.blockers.length} blocker evidence rows recorded.</small>
+                  ) : null}
+                </span>
+                <em className={record.readiness === "blocked" ? "risk" : undefined}>
+                  {record.readiness === "blocked" ? "Blocked" : "Ready"}
+                </em>
+              </div>
+            ))}
+            {latestLifecycleRecords.length === 0 ? (
+              <p className="inline-empty">No lifecycle readiness review records yet.</p>
+            ) : null}
+          </div>
+        </div>
+        <div className="activity-card lifecycle-readiness-form-card">
+          <strong>Record review evidence</strong>
+          <span>Snapshots current status and target readiness only.</span>
+          <label className="search-field compact">
+            <span>Transition</span>
+            <select
+              disabled={!canRecordLifecycleTransition || recordingLifecycleTransition}
+              onChange={(event) =>
+                onLifecycleTransitionFormChange({
+                  ...lifecycleTransitionForm,
+                  transition: event.target
+                    .value as MatterLifecycleTransitionFormState["transition"],
+                })
+              }
+              value={lifecycleTransitionForm.transition}
+            >
+              {(["pause", "close", "archive", "reopen"] as const).map((transition) => (
+                <option key={transition} value={transition}>
+                  {readableSetupText(transition)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="search-field compact">
+            <span>Readiness</span>
+            <select
+              disabled={!canRecordLifecycleTransition || recordingLifecycleTransition}
+              onChange={(event) =>
+                onLifecycleTransitionFormChange({
+                  ...lifecycleTransitionForm,
+                  readiness: event.target.value as MatterLifecycleTransitionFormState["readiness"],
+                })
+              }
+              value={lifecycleTransitionForm.readiness}
+            >
+              {(["ready", "blocked"] as const).map((readiness) => (
+                <option key={readiness} value={readiness}>
+                  {readableSetupText(readiness)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="search-field compact">
+            <span>Reason</span>
+            <input
+              disabled={!canRecordLifecycleTransition || recordingLifecycleTransition}
+              maxLength={240}
+              onChange={(event) =>
+                onLifecycleTransitionFormChange({
+                  ...lifecycleTransitionForm,
+                  reason: event.target.value,
+                })
+              }
+              value={lifecycleTransitionForm.reason}
+            />
+          </label>
+          <label className="search-field compact">
+            <span>Blockers</span>
+            <textarea
+              disabled={!canRecordLifecycleTransition || recordingLifecycleTransition}
+              maxLength={640}
+              onChange={(event) =>
+                onLifecycleTransitionFormChange({
+                  ...lifecycleTransitionForm,
+                  blockers: event.target.value,
+                })
+              }
+              rows={3}
+              value={lifecycleTransitionForm.blockers}
+            />
+          </label>
+          <button
+            className="secondary-button compact-button"
+            disabled={!canRecordLifecycleTransition || recordingLifecycleTransition}
+            onClick={onRecordLifecycleTransition}
+            type="button"
+          >
+            <ClipboardCheck size={15} />
+            {recordingLifecycleTransition ? "Recording..." : "Record review"}
+          </button>
         </div>
       </div>
 

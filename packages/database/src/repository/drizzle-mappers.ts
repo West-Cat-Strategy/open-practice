@@ -79,6 +79,7 @@ import {
   type LegalResearchArtifactRecord,
   type ManualPaymentRecord,
   type Matter,
+  type MatterLifecycleTransitionRecord,
   type MatterParty,
   type PaymentAllocationRecord,
   type PortalGrant,
@@ -2562,6 +2563,25 @@ export function mapMatter(row: typeof schema.matters.$inferSelect): Matter {
     responsibleUserId: row.responsibleUserId,
     openedOn: dateToIso(row.openedOn),
     closedOn: dateToIso(row.closedOn),
+  };
+}
+
+export function mapMatterLifecycleTransitionRow(
+  row: typeof schema.matterLifecycleTransitionRecords.$inferSelect,
+): MatterLifecycleTransitionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    matterId: row.matterId,
+    transition: row.transition,
+    currentStatus: row.currentStatus,
+    targetStatus: row.targetStatus,
+    readiness: row.readiness,
+    reason: row.reason,
+    blockers: row.blockers,
+    reviewedByUserId: row.reviewedByUserId,
+    reviewedAt: row.reviewedAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
   };
 }
 

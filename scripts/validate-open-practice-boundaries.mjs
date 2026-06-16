@@ -345,7 +345,12 @@ export const FORBIDDEN_SERVER_ROUTE_GROUPS = [
   },
   {
     owner: "matter endpoints in apps/api/src/routes/matters.ts",
-    routeLiterals: ["/api/overview", "/api/matters", "/api/conflicts/check"],
+    routeLiterals: [
+      "/api/overview",
+      "/api/matters",
+      "/api/matters/:matterId/lifecycle-transitions",
+      "/api/conflicts/check",
+    ],
   },
   { owner: "audit endpoints in apps/api/src/routes/audit.ts", routeLiterals: ["/api/audit"] },
   {

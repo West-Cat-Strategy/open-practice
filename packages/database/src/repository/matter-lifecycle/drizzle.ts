@@ -1,7 +1,10 @@
 import {
   appendAuditEvent,
+  buildMatterLifecycleTransitionAuditMetadata,
+  buildMatterLifecycleTransitionRecord,
   type ContactIdentifier,
   type Matter,
+  type MatterLifecycleTransitionRecord,
   type PublicConsultationIntakeRecord,
   type User,
 } from "@open-practice/domain";
@@ -13,7 +16,7 @@ import type {
   CreateMatterWithClientInput,
 } from "../matter-lifecycle-contracts.js";
 import type { MatterSummary } from "../matter-workspace-contracts.js";
-import { mapMatter } from "../drizzle-mappers.js";
+import { mapMatter, mapMatterLifecycleTransitionRow } from "../drizzle-mappers.js";
 import { mapPublicConsultationIntakeRow } from "../public-consultation-intakes/mappers.js";
 
 export interface DrizzleMatterLifecycleDependencies {
@@ -311,4 +314,99 @@ export async function convertDrizzlePublicConsultationIntakeToMatter(
   );
   if (!created) throw new Error(`Created matter ${input.matterId} was not visible`);
   return { intake, matter: created };
+}
+
+export async function listDrizzleMatterLifecycleTransitions(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  matterId: string,
+): Promise<MatterLifecycleTransitionRecord[]> {
+  const rows = await db
+    .select()
+    .from(schema.matterLifecycleTransitionRecords)
+    .where(
+      and(
+        eq(schema.matterLifecycleTransitionRecords.firmId, firmId),
+        eq(schema.matterLifecycleTransitionRecords.matterId, matterId),
+      ),
+    )
+    .orderBy(desc(schema.matterLifecycleTransitionRecords.reviewedAt));
+  return rows.map(mapMatterLifecycleTransitionRow);
+}
+
+export async function createDrizzleMatterLifecycleTransition(
+  db: OpenPracticeDatabase,
+  input: Parameters<
+    import("../matter-lifecycle-contracts.js").MatterLifecycleRepository["createMatterLifecycleTransition"]
+  >[0],
+): Promise<MatterLifecycleTransitionRecord> {
+  return db.transaction(async (tx) => {
+    const [matterRow] = await tx
+      .select()
+      .from(schema.matters)
+      .where(and(eq(schema.matters.firmId, input.firmId), eq(schema.matters.id, input.matterId)));
+    if (!matterRow) throw new Error(`Matter ${input.matterId} was not found`);
+    const [reviewerRow] = await tx
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(
+        and(eq(schema.users.firmId, input.firmId), eq(schema.users.id, input.reviewedByUserId)),
+      );
+    if (!reviewerRow) throw new Error(`Unknown user ${input.reviewedByUserId}`);
+
+    const matter = mapMatter(matterRow);
+    const record = buildMatterLifecycleTransitionRecord({
+      id: input.id,
+      firmId: input.firmId,
+      matterId: input.matterId,
+      transition: input.transition,
+      currentStatus: matter.status,
+      readiness: input.readiness,
+      reason: input.reason,
+      blockers: input.blockers,
+      reviewedByUserId: input.reviewedByUserId,
+      reviewedAt: input.reviewedAt,
+      createdAt: input.createdAt,
+    });
+    const [row] = await tx
+      .insert(schema.matterLifecycleTransitionRecords)
+      .values({
+        ...record,
+        reviewedAt: new Date(record.reviewedAt),
+        createdAt: new Date(record.createdAt),
+      })
+      .returning();
+
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.firmId}, 0))`);
+    const [previousRow] = await tx
+      .select()
+      .from(schema.auditEvents)
+      .where(eq(schema.auditEvents.firmId, input.firmId))
+      .orderBy(desc(schema.auditEvents.sequence))
+      .limit(1);
+    const previous = previousRow
+      ? {
+          ...previousRow,
+          occurredAt: previousRow.occurredAt.toISOString(),
+          metadata: previousRow.metadata as Record<string, unknown>,
+        }
+      : undefined;
+    const audit = appendAuditEvent(previous, {
+      id: input.auditEventId,
+      firmId: input.firmId,
+      actorId: input.reviewedByUserId,
+      action: "matter.lifecycle_transition_reviewed",
+      resourceType: "matter",
+      resourceId: input.matterId,
+      occurredAt: input.reviewedAt,
+      metadata: buildMatterLifecycleTransitionAuditMetadata(record),
+    });
+    await tx.insert(schema.auditEvents).values({
+      ...audit,
+      occurredAt: new Date(audit.occurredAt),
+      metadata: audit.metadata,
+    });
+
+    return mapMatterLifecycleTransitionRow(row);
+  });
 }

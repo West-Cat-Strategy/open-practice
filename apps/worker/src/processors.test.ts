@@ -1464,7 +1464,8 @@ describe("worker processors", () => {
       metadata: expect.objectContaining({
         packageId: "repair_notice_package",
         documentCount: 2,
-        generatedDocumentIds,
+        generatedDocumentIdCount: 2,
+        generatedDocumentIds: expect.arrayContaining(generatedDocumentIds),
         providerStatus: "completed",
       }),
     });

@@ -1,4 +1,9 @@
-import type { ActivityTimelineEntry } from "@open-practice/domain";
+import type {
+  ActivityTimelineEntry,
+  MatterLifecycleReadiness,
+  MatterLifecycleTransition,
+  MatterLifecycleTransitionRecord,
+} from "@open-practice/domain";
 import type { ExternalUploadReviewItem } from "./_features/external-uploads/models";
 import type { ShareLinkRecord } from "./_features/share-links/models";
 import type {
@@ -9,6 +14,13 @@ import type {
 
 export type MatterActivityKindFilter = "all" | ActivityTimelineEntry["kind"];
 export type MatterActivityStatusFilter = "all" | "attention" | "open" | "complete";
+
+export type MatterLifecycleTransitionFormState = {
+  transition: MatterLifecycleTransition;
+  readiness: MatterLifecycleReadiness;
+  reason: string;
+  blockers: string;
+};
 
 export const matterActivityKindFilters: readonly MatterActivityKindFilter[] = [
   "all",
@@ -107,6 +119,43 @@ export function filterMatterActivity(input: {
     .filter((entry) => input.status === "all" || matterActivityStatus(entry) === input.status)
     .slice()
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+}
+
+export function buildMatterLifecycleTransitionPath(matterId: string): string {
+  return `/api/matters/${encodeURIComponent(matterId)}/lifecycle-transitions`;
+}
+
+export function buildMatterLifecycleTransitionPayload(input: MatterLifecycleTransitionFormState): {
+  transition: MatterLifecycleTransition;
+  readiness: MatterLifecycleReadiness;
+  reason: string;
+  blockers?: string[];
+} {
+  const blockers = input.blockers
+    .split(/\r?\n/)
+    .map((blocker) => blocker.trim())
+    .filter(Boolean);
+  return {
+    transition: input.transition,
+    readiness: input.readiness,
+    reason: input.reason.trim(),
+    ...(blockers.length > 0 ? { blockers } : {}),
+  };
+}
+
+export function appendMatterLifecycleTransition(
+  matter: MatterSummary,
+  record: MatterLifecycleTransitionRecord,
+): MatterSummary {
+  return {
+    ...matter,
+    lifecycleTransitions: [
+      record,
+      ...matter.lifecycleTransitions.filter((item) => item.id !== record.id),
+    ]
+      .sort((left, right) => right.reviewedAt.localeCompare(left.reviewedAt))
+      .slice(0, 8),
+  };
 }
 
 export function summarizeMatterActivity(entries: ActivityTimelineEntry[]): {

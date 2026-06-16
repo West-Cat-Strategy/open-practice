@@ -24,6 +24,12 @@ It covers the dirty-lane commits, shared proof/workboard/API doc reconciliation,
 compatibility merge choices, migration renumbering from `0056` through `0059`, selector-driven
 validation plan, and final push/prune handoff.
 
+The 2026-06-16 matter lifecycle transition journal proof is recorded in
+[OP_MATTER_LIFECYCLE_TRANSITION_JOURNAL_PROOF_2026-06-16.md](OP_MATTER_LIFECYCLE_TRANSITION_JOURNAL_PROOF_2026-06-16.md).
+It covers append-only, review-only pause/close/archive/reopen readiness records; current/target
+status snapshots; concise reason/blocker evidence; matter-scoped API and dashboard authorization;
+safe audit metadata; and the no-automation/no-destructive-closure boundary.
+
 The 2026-06-15 contact-history export, retention, and privacy decision packet is recorded in
 [OP_CONTACT_HISTORY_EXPORT_RETENTION_PRIVACY_DECISION_PACKET_PROOF_2026-06-15.md](OP_CONTACT_HISTORY_EXPORT_RETENTION_PRIVACY_DECISION_PACKET_PROOF_2026-06-15.md).
 It covers the docs-only pre-implementation decisions needed before contact-history export runtime

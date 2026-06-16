@@ -394,6 +394,7 @@ function matter(overrides: Partial<MatterSummary>): MatterSummary {
     expenses: [],
     activity: [],
     trustBalanceCents: 0,
+    lifecycleTransitions: [],
     ...overrides,
   } as MatterSummary;
 }
@@ -4402,6 +4403,22 @@ describe("dashboard client behavior", () => {
     const activeMatter = {
       ...activeMatterBase,
       timeEntries: [syntheticTimeEntry],
+      lifecycleTransitions: [
+        {
+          id: "matter-lifecycle-close",
+          firmId: "firm-west-legal",
+          matterId: activeMatterBase.id,
+          transition: "close",
+          currentStatus: "open",
+          targetStatus: "closed",
+          readiness: "blocked",
+          reason: "Synthetic close packet needs review.",
+          blockers: ["Synthetic trust review remains open."],
+          reviewedByUserId: "user-licensee",
+          reviewedAt: "2026-06-16T12:00:00.000Z",
+          createdAt: "2026-06-16T12:00:00.000Z",
+        },
+      ],
       setupProfile: buildMatterSetupProfile({
         matter: activeMatterBase,
         parties: [syntheticParty],
@@ -4425,7 +4442,15 @@ describe("dashboard client behavior", () => {
         activeMatterCommandCenter: undefined,
         activityKindFilter: "all",
         activityStatusFilter: "all",
+        canRecordLifecycleTransition: true,
         filteredMatterActivity: [],
+        lifecycleTransitionForm: {
+          transition: "pause",
+          readiness: "ready",
+          reason: "Synthetic pause review.",
+          blockers: "",
+        },
+        lifecycleTransitionStatus: "No lifecycle readiness review recorded in this session.",
         navigationSections: buildSidebarNavigationSections({
           billingCanView: true,
           capabilitySections: [capability("matters"), capability("documents"), capability("funds")],
@@ -4455,7 +4480,10 @@ describe("dashboard client behavior", () => {
         formatMinutes: (value: number) => `${value}m`,
         onActivityKindFilterChange: () => undefined,
         onActivityStatusFilterChange: () => undefined,
+        onLifecycleTransitionFormChange: () => undefined,
+        onRecordLifecycleTransition: () => undefined,
         onSelectSection: () => undefined,
+        recordingLifecycleTransition: false,
       }),
     );
 
@@ -4470,6 +4498,12 @@ describe("dashboard client behavior", () => {
     expect(html).toContain("Unbilled Work");
     expect(html).toContain("Responsible licensee");
     expect(html).toContain("Trust balance view");
+    expect(html).toContain("Lifecycle readiness");
+    expect(html).toContain("review-only records");
+    expect(html).toContain("Close readiness");
+    expect(html).toContain("Synthetic close packet needs review.");
+    expect(html).toContain("1 blocker evidence rows recorded.");
+    expect(html).toContain("Record review evidence");
   });
 
   it("describes worker run filters and redacted run context", () => {

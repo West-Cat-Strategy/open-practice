@@ -16,6 +16,7 @@ import {
   type LedgerAccount,
   type ManualPaymentRecord,
   type Matter,
+  type MatterLifecycleTransitionRecord,
   type MatterParty,
   type PortalDocumentAccess,
   type PaymentAllocationRecord,
@@ -61,6 +62,7 @@ export interface MemoryMatterWorkspaceStore {
   trustTransferRequests: TrustTransferRequestRecord[];
   ledgerAccounts: LedgerAccount[];
   postedTransactions: PostedLedgerTransaction[];
+  matterLifecycleTransitions: MatterLifecycleTransitionRecord[];
 }
 
 export interface MemoryMatterWorkspaceDependencies {
@@ -171,6 +173,10 @@ export function listMemoryMatterWorkspaceMattersForUser(
         expenses,
         activity,
         trustBalanceCents,
+        lifecycleTransitions: store.matterLifecycleTransitions
+          .filter((record) => record.firmId === user.firmId && record.matterId === matter.id)
+          .sort((left, right) => right.reviewedAt.localeCompare(left.reviewedAt))
+          .slice(0, 8),
         setupProfile: buildMatterSetupProfile({
           matter,
           parties,

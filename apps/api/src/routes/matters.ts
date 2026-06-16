@@ -9,9 +9,12 @@ import type {
 import type {
   ConflictCandidate,
   ContactIdentifier,
+  MatterLifecycleTransition,
+  MatterLifecycleReadiness,
   ProfessionalRole,
   User,
 } from "@open-practice/domain";
+import { matterLifecycleReadinessValues, matterLifecycleTransitions } from "@open-practice/domain";
 import { requireAccess, requireStaffAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -61,6 +64,17 @@ const conflictBodySchema = z.object({
   includeClosedMatters: z.boolean().default(true),
 });
 
+const matterParamsSchema = z.object({
+  matterId: z.string().trim().min(1),
+});
+
+const lifecycleTransitionBodySchema = z.object({
+  transition: z.enum(matterLifecycleTransitions),
+  readiness: z.enum(matterLifecycleReadinessValues),
+  reason: z.string().trim().min(1).max(240),
+  blockers: z.array(z.string().trim().min(1).max(160)).max(8).optional(),
+});
+
 function scopedOverview(input: {
   overview: PracticeOverview;
   matters: MatterSummary[];
@@ -94,6 +108,20 @@ function contactIdentifiers(input: { email?: string; phone?: string }): ContactI
   if (input.email) identifiers.push({ type: "email", value: input.email });
   if (input.phone) identifiers.push({ type: "phone", value: input.phone });
   return identifiers;
+}
+
+async function requireVisibleMatter(input: {
+  repository: OpenPracticeRepository;
+  user: User;
+  matterId: string;
+}): Promise<MatterSummary> {
+  const matter = (await input.repository.listMattersForUser(input.user)).find(
+    (candidate) => candidate.id === input.matterId,
+  );
+  if (!matter) {
+    throw new ApiHttpError(403, "MATTER_NOT_VISIBLE", "Matter is not visible");
+  }
+  return matter;
 }
 
 function canReadFirmWideConflictDetails(role: ProfessionalRole): boolean {
@@ -184,6 +212,65 @@ export function registerMatterRoutes(
 
     reply.code(201);
     return matter;
+  });
+
+  server.get("/api/matters/:matterId/lifecycle-transitions", async (request) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
+    const params = parseRequestPart(matterParamsSchema, request.params, "params");
+    const access = requireAccess(request.auth, {
+      resource: "matter",
+      action: "read",
+      matterId: params.matterId,
+    });
+    if (!access.ok) throw access.error;
+    await requireVisibleMatter({
+      repository: options.repository,
+      user: request.auth.user,
+      matterId: params.matterId,
+    });
+    return {
+      transitions: await options.repository.listMatterLifecycleTransitions(
+        request.auth.firmId,
+        params.matterId,
+      ),
+      reviewOnly: true,
+    };
+  });
+
+  server.post("/api/matters/:matterId/lifecycle-transitions", async (request, reply) => {
+    const staffAccess = requireStaffAccess(request.auth);
+    if (!staffAccess.ok) throw staffAccess.error;
+    const params = parseRequestPart(matterParamsSchema, request.params, "params");
+    const access = requireAccess(request.auth, {
+      resource: "matter",
+      action: "update",
+      matterId: params.matterId,
+    });
+    if (!access.ok) throw access.error;
+    await requireVisibleMatter({
+      repository: options.repository,
+      user: request.auth.user,
+      matterId: params.matterId,
+    });
+    const body = parseRequestPart(lifecycleTransitionBodySchema, request.body, "body");
+    const occurredAt = new Date().toISOString();
+    const record = await options.repository.createMatterLifecycleTransition({
+      id: prefixedId("matter-lifecycle"),
+      firmId: request.auth.firmId,
+      matterId: params.matterId,
+      transition: body.transition as MatterLifecycleTransition,
+      readiness: body.readiness as MatterLifecycleReadiness,
+      reason: body.reason,
+      blockers: body.blockers,
+      reviewedByUserId: request.auth.user.id,
+      reviewedAt: occurredAt,
+      createdAt: occurredAt,
+      auditEventId: prefixedId("audit"),
+    });
+
+    reply.code(201);
+    return record;
   });
 
   server.post("/api/conflicts/check", async (request) => {
