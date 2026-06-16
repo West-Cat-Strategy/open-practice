@@ -260,10 +260,10 @@ widget registry candidate is no longer re-proposed here.
   - **Reuse and snippets:** Apache-2.0/adopt-selectively; use module vocabulary, not Java code.
 
 - **Manual payment reconciliation gate**
-  - **First slice:** Add a `pending_reconciliation` manual-payment status and reviewer evidence
-    before payment allocations can affect invoice paid/balance status.
-  - **Local gap / shipped boundary:** Manual payments currently affect invoice balance immediately,
-    while trust/funds caveats call for reconciliation before payment state changes.
+  - **Shipped first slice:** Manual payments now start in `pending_reconciliation` with reviewer
+    evidence required before an effective allocation can change invoice paid/balance status.
+  - **Remaining boundary:** Future payment-processor imports, deposit matching, refunds,
+    chargebacks, and trust posting remain separate future work.
   - **References:** `opencollective__opencollective-api` settlement/reconciliation concepts and
     `blnkfinance__blnk` reconciliation boundaries.
   - **Reuse and snippets:** Open Collective is MIT but architecture-only in this corpus; Blnk is

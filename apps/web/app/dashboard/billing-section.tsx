@@ -634,10 +634,16 @@ export function BillingSection({
               <strong>{payment.reference ?? "Manual payment"}</strong>
               <small>
                 {new Date(payment.receivedAt).toLocaleDateString("en-CA")}
+                {` · ${payment.status.replaceAll("_", " ")}`}
                 {payment.evidencePresent ? " · evidence" : ""}
+                {payment.reconciliationEvidencePresent ? " · reviewer evidence" : ""}
               </small>
             </span>
-            <em>{cents(payment.amountCents)}</em>
+            <em>
+              {payment.status === "pending_reconciliation"
+                ? "Pending reconciliation"
+                : cents(payment.amountCents)}
+            </em>
           </div>
         ))}
         {activeManualPayments.length === 0 ? (

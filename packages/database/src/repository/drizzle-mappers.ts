@@ -2740,6 +2740,10 @@ export function mapPaymentRow(row: typeof schema.manualPayments.$inferSelect): M
     reference: row.reference ?? undefined,
     status: row.status as ManualPaymentRecord["status"],
     receivedByUserId: row.receivedByUserId,
+    reconciledAt: dateToIso(row.reconciledAt),
+    reconciledByUserId: row.reconciledByUserId ?? undefined,
+    reconciliationNotes: row.reconciliationNotes ?? undefined,
+    reconciliationEvidence: row.reconciliationEvidence as Record<string, unknown>,
     notes: row.notes ?? undefined,
     evidence: row.evidence as Record<string, unknown>,
   };
@@ -2751,6 +2755,7 @@ export function paymentInsert(
   return {
     ...payment,
     receivedAt: new Date(payment.receivedAt),
+    reconciledAt: payment.reconciledAt ? new Date(payment.reconciledAt) : null,
   };
 }
 

@@ -22,6 +22,12 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-16 manual-payment reconciliation gate branch records manual payments as
+`pending_reconciliation` evidence until staff reviewer evidence creates the effective allocation and
+recalculates invoice paid/balance status. It preserves the no-live-settlement and no-trust-posting
+posture from OP-T135/OP-T149, updates Billing dashboard cues, and records proof in
+[Manual payment reconciliation gate proof](validation/OP_MANUAL_PAYMENT_RECONCILIATION_GATE_PROOF_2026-06-16.md).
+
 The 2026-06-15 Full CRM Contacts branch expands Contacts into a legal-practice CRM while preserving
 the existing dossier, review queue, data-quality, conflict-check, matter-party, and client-portal
 grant foundations. It keeps organizations as `Contact.kind = "organization"`, uses

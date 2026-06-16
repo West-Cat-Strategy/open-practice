@@ -61,7 +61,7 @@ export type ExpenseCategoryProfileKey = ExpenseCategoryProfileCue["key"];
 
 export type ManualPaymentMethod = "cash" | "cheque" | "card" | "eft" | "other";
 
-export type ManualPaymentStatus = "received" | "void";
+export type ManualPaymentStatus = "pending_reconciliation" | "received" | "void";
 
 export const hostedPaymentRequestStatuses = [
   "ready_to_send",
@@ -235,6 +235,10 @@ export interface ManualPaymentRecord {
   reference?: string;
   status: ManualPaymentStatus;
   receivedByUserId: string;
+  reconciledAt?: string;
+  reconciledByUserId?: string;
+  reconciliationNotes?: string;
+  reconciliationEvidence?: Record<string, unknown>;
   notes?: string;
   evidence?: Record<string, unknown>;
 }

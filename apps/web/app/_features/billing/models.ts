@@ -66,9 +66,12 @@ export interface BillingPaymentSummary {
   invoiceId?: string;
   amountCents: number;
   method: "cash" | "card" | "eft" | "cheque" | "other";
+  status: "pending_reconciliation" | "received" | "void";
   receivedAt: string;
+  reconciledAt?: string;
   reference?: string;
   evidencePresent?: boolean;
+  reconciliationEvidencePresent?: boolean;
 }
 
 export interface BillingPaymentRequestSummary {

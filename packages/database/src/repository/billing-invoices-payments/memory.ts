@@ -87,6 +87,9 @@ export function createMemoryPayment(
     allocations: PaymentAllocationRecord[];
   },
 ): PaymentWithAllocations {
+  if (input.payment.status === "pending_reconciliation" && input.allocations.length > 0) {
+    throw new Error("Pending reconciliation payments cannot have effective allocations");
+  }
   const allocatedCents = input.allocations.reduce(
     (sum, allocation) => sum + allocation.amountCents,
     0,
@@ -120,6 +123,74 @@ export function createMemoryPayment(
   store.manualPayments = [...store.manualPayments, clone(input.payment)];
   store.paymentAllocations = [...store.paymentAllocations, ...clone(input.allocations)];
   return clone({ ...input.payment, allocations: input.allocations });
+}
+
+export function reconcileMemoryPayment(
+  store: MemoryBillingInvoicePaymentStore,
+  input: {
+    firmId: string;
+    paymentId: string;
+    reconciledByUserId: string;
+    reconciledAt: string;
+    notes?: string;
+    evidence?: Record<string, unknown>;
+  },
+): PaymentWithAllocations {
+  const payment = store.manualPayments.find(
+    (candidate) => candidate.firmId === input.firmId && candidate.id === input.paymentId,
+  );
+  if (!payment) throw new Error("Manual payment was not found");
+  if (payment.status !== "pending_reconciliation") {
+    throw new Error("Manual payment is not pending reconciliation");
+  }
+  if (!payment.invoiceId) throw new Error("Manual payment invoice was not found");
+  const invoice = getMemoryInvoice(store, input.firmId, payment.invoiceId);
+  if (!invoice) throw new Error("Manual payment invoice was not found");
+  if (invoice.matterId !== payment.matterId) {
+    throw new Error("Manual payment invoice must belong to the payment matter");
+  }
+  if (payment.amountCents > invoice.balanceDueCents) {
+    throw new Error("Payment allocation exceeds invoice balance");
+  }
+  const allocation: PaymentAllocationRecord = {
+    id: crypto.randomUUID(),
+    firmId: input.firmId,
+    paymentId: payment.id,
+    invoiceId: invoice.id,
+    amountCents: payment.amountCents,
+    allocatedAt: input.reconciledAt,
+  };
+  const totals = calculateInvoiceTotals({
+    lines: invoice.lines,
+    allocations: [
+      ...store.paymentAllocations.filter((existing) => existing.invoiceId === invoice.id),
+      allocation,
+    ],
+  });
+  updateMemoryInvoice(store, {
+    ...invoice,
+    ...totals,
+    status: invoiceStatusForPayment({
+      currentStatus: invoice.status,
+      totalCents: totals.totalCents,
+      paidCents: totals.paidCents,
+    }),
+  });
+  const reconciledPayment: ManualPaymentRecord = {
+    ...payment,
+    status: "received",
+    reconciledAt: input.reconciledAt,
+    reconciledByUserId: input.reconciledByUserId,
+    reconciliationNotes: input.notes,
+    reconciliationEvidence: input.evidence ?? {},
+  };
+  store.manualPayments = store.manualPayments.map((candidate) =>
+    candidate.firmId === input.firmId && candidate.id === input.paymentId
+      ? clone(reconciledPayment)
+      : candidate,
+  );
+  store.paymentAllocations = [...store.paymentAllocations, clone(allocation)];
+  return clone({ ...reconciledPayment, allocations: [allocation] });
 }
 
 export function listMemoryPayments(

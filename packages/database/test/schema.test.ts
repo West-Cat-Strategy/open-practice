@@ -1413,7 +1413,16 @@ describe("database schema hardening", () => {
       ]),
     );
     expect(getTableConfig(manualPayments).columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["received_at", "amount_cents", "method", "received_by_user_id"]),
+      expect.arrayContaining([
+        "received_at",
+        "amount_cents",
+        "method",
+        "received_by_user_id",
+        "reconciled_at",
+        "reconciled_by_user_id",
+        "reconciliation_notes",
+        "reconciliation_evidence",
+      ]),
     );
     expect(getTableConfig(paymentAllocations).columns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["payment_id", "invoice_id", "amount_cents", "allocated_at"]),

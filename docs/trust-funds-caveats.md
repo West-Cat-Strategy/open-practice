@@ -47,7 +47,8 @@ trust accounting software, accounting software, or tax-advice tooling.
 - Billing, invoice, manual-payment, and trust-transfer-request workflows should be treated as
   operational controls around review, evidence, authorization, and reconciliation.
 - No live payment processor is currently part of the product contract.
-- Manual payment records are reviewed evidence, not proof of live settlement.
+- Manual payment records are reviewed evidence, not proof of live settlement; pending manual
+  payments must be reconciled before they affect invoice paid/balance status.
 - Normalized payment settlement event records are reconciliation-review evidence only. They do not
   prove live settlement, apply invoice balances, reconcile deposits, handle refunds or chargebacks,
   authorize trust withdrawals, or move funds.
@@ -76,8 +77,10 @@ present tax treatment, trust withdrawal eligibility, invoice wording, or fee/dis
 certified for a jurisdiction without specific review.
 
 Manual payments and future payment-processor imports should be reconciled before affecting invoice
-status. A trust-transfer request may document that funds are intended to move from trust after review
-and may later be linked to an existing matching ledger transaction, but the actual trust ledger
+status. Open Practice records new manual payments as pending evidence until reviewer reconciliation
+creates the effective allocation. A trust-transfer request may document that funds are intended to
+move from trust after review and may later be linked to an existing matching ledger transaction, but
+the actual trust ledger
 change must remain a separate, explicit, balanced posting with its own audit trail.
 
 ## Before Compliance Claims
