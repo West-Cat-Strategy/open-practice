@@ -1,8 +1,8 @@
-import type { IntakeTemplateRecord } from "@open-practice/domain";
-import { and, eq } from "drizzle-orm";
+import type { IntakeTemplateRecord, IntakeTemplateVersionRecord } from "@open-practice/domain";
+import { and, desc, eq } from "drizzle-orm";
 import type { OpenPracticeDatabase } from "../../runtime.js";
 import * as schema from "../../schema.js";
-import { mapIntakeTemplateRow } from "../drizzle-mappers.js";
+import { mapIntakeTemplateRow, mapIntakeTemplateVersionRow } from "../drizzle-mappers.js";
 
 export async function listDrizzleIntakeTemplates(
   db: OpenPracticeDatabase,
@@ -54,4 +54,72 @@ export async function updateDrizzleIntakeTemplate(
     .returning();
   if (!row) throw new Error(`Unknown intake template ${template.id}`);
   return mapIntakeTemplateRow(row);
+}
+
+export async function listDrizzleIntakeTemplateVersions(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  templateId: string,
+): Promise<IntakeTemplateVersionRecord[]> {
+  const rows = await db
+    .select()
+    .from(schema.intakeTemplateVersions)
+    .where(
+      and(
+        eq(schema.intakeTemplateVersions.firmId, firmId),
+        eq(schema.intakeTemplateVersions.templateId, templateId),
+      ),
+    )
+    .orderBy(desc(schema.intakeTemplateVersions.version));
+  return rows.map(mapIntakeTemplateVersionRow);
+}
+
+export async function getDrizzleIntakeTemplateVersion(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  id: string,
+): Promise<IntakeTemplateVersionRecord | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.intakeTemplateVersions)
+    .where(
+      and(
+        eq(schema.intakeTemplateVersions.firmId, firmId),
+        eq(schema.intakeTemplateVersions.id, id),
+      ),
+    );
+  return row ? mapIntakeTemplateVersionRow(row) : undefined;
+}
+
+export async function getLatestDrizzleIntakeTemplateVersion(
+  db: OpenPracticeDatabase,
+  firmId: string,
+  templateId: string,
+): Promise<IntakeTemplateVersionRecord | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.intakeTemplateVersions)
+    .where(
+      and(
+        eq(schema.intakeTemplateVersions.firmId, firmId),
+        eq(schema.intakeTemplateVersions.templateId, templateId),
+      ),
+    )
+    .orderBy(desc(schema.intakeTemplateVersions.version))
+    .limit(1);
+  return row ? mapIntakeTemplateVersionRow(row) : undefined;
+}
+
+export async function createDrizzleIntakeTemplateVersion(
+  db: OpenPracticeDatabase,
+  version: IntakeTemplateVersionRecord,
+): Promise<IntakeTemplateVersionRecord> {
+  const [row] = await db
+    .insert(schema.intakeTemplateVersions)
+    .values({
+      ...version,
+      publishedAt: new Date(version.publishedAt),
+    })
+    .returning();
+  return mapIntakeTemplateVersionRow(row);
 }

@@ -188,6 +188,17 @@ describe("repository first-run setup", () => {
         metadata: { presetId: "bc-residential-tenancy" },
       },
     ]);
+    await expect(
+      repository.listIntakeTemplateVersions(input.firm.id, "intake-template-preset-general-canada"),
+    ).resolves.toMatchObject([
+      {
+        templateId: "intake-template-preset-general-canada",
+        version: 1,
+        definitionVersion: 1,
+        publishedByUserId: input.owner.id,
+        metadata: { source: "open-practice-preset", presetId: "general-canada" },
+      },
+    ]);
   });
 
   it("rejects a second setup attempt", async () => {

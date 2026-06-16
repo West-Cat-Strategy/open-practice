@@ -16,6 +16,7 @@ import {
   sampleGeneratedDocuments,
   sampleIntakeSessions,
   sampleIntakeTemplates,
+  sampleIntakeTemplateVersions,
   sampleHostedPaymentRequests,
   sampleInvoiceLines,
   sampleInvoices,
@@ -423,6 +424,15 @@ export async function seedSampleData(db: OpenPracticeDatabase): Promise<void> {
       })
       .where(eq(schema.intakeTemplates.id, template.id));
   }
+  await db
+    .insert(schema.intakeTemplateVersions)
+    .values(
+      sampleIntakeTemplateVersions.map((version) => ({
+        ...version,
+        publishedAt: new Date(version.publishedAt),
+      })),
+    )
+    .onConflictDoNothing();
   await db
     .insert(schema.draftTemplates)
     .values(

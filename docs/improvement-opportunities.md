@@ -75,11 +75,11 @@ signature request metadata proof before proposing another envelope slice.
     snippets would need attribution and a documented reuse decision.
 
 - **Immutable intake template draft/publish versions**
-  - **First slice:** Separate mutable staff drafts from immutable published template versions and
-    record publish metadata without changing active public links.
-  - **Local gap / shipped boundary:** Intake template create/patch flows update current records and
-    caller-provided definition versions; no candidate should duplicate the shipped preview or
-    diagnostics lane.
+  - **Status:** Shipped first slice on 2026-06-16; keep future work focused on staff UI affordances
+    for version history and explicit publish controls.
+  - **Shipped boundary:** Mutable staff drafts are separated from immutable published template
+    versions, publish metadata is recorded, new sessions pin the latest published definition, and
+    existing public link token/header/path semantics are unchanged.
   - **References:** `heyform__heyform` and `jhumanj__opnform`.
   - **Reuse and snippets:** Reference-only because of license posture; no direct snippets.
 

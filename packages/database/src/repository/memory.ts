@@ -6,6 +6,7 @@ import type {
   GeneratedDocumentRecord,
   IntakeSessionRecord,
   IntakeTemplateRecord,
+  IntakeTemplateVersionRecord,
   SignatureProviderEventRecord,
   SignatureEnvelopeRecord,
   SignatureRequestRecord,
@@ -106,6 +107,7 @@ import {
   sampleGeneratedDocuments,
   sampleIntakeSessions,
   sampleIntakeTemplates,
+  sampleIntakeTemplateVersions,
   sampleInvoiceLines,
   sampleInvoices,
   sampleHostedPaymentRequests,
@@ -217,6 +219,10 @@ import {
 } from "./contacts/memory.js";
 import {
   createMemoryIntakeTemplate,
+  createMemoryIntakeTemplateVersion,
+  getLatestMemoryIntakeTemplateVersion,
+  getMemoryIntakeTemplateVersion,
+  listMemoryIntakeTemplateVersions,
   listMemoryIntakeTemplates,
   updateMemoryIntakeTemplate,
   type MemoryIntakeTemplateStore,
@@ -565,6 +571,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
   private ledgerReconciliationExceptionResolutions: LedgerReconciliationExceptionResolutionRecord[] =
     [];
   private intakeTemplates: IntakeTemplateRecord[];
+  private intakeTemplateVersions: IntakeTemplateVersionRecord[];
   private signatureRequestSigners: SignatureRequestSignerRecord[];
   private signatureProviderEvents: SignatureProviderEventRecord[];
   private signatureWebhookAttempts: SignatureWebhookAttemptRecord[];
@@ -676,6 +683,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       },
       set intakeTemplates(value: IntakeTemplateRecord[]) {
         repository.intakeTemplates = value;
+      },
+      get intakeTemplateVersions() {
+        return repository.intakeTemplateVersions;
+      },
+      set intakeTemplateVersions(value: IntakeTemplateVersionRecord[]) {
+        repository.intakeTemplateVersions = value;
       },
       get auditEvents() {
         return repository.auditEvents;
@@ -1076,6 +1089,12 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       set intakeTemplates(value: IntakeTemplateRecord[]) {
         repository.intakeTemplates = value;
       },
+      get intakeTemplateVersions() {
+        return repository.intakeTemplateVersions;
+      },
+      set intakeTemplateVersions(value: IntakeTemplateVersionRecord[]) {
+        repository.intakeTemplateVersions = value;
+      },
     };
   }
 
@@ -1357,6 +1376,7 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
       : [];
     this.ledgerAccountingReviewProfiles = seeded ? clone(sampleLedgerAccountingReviewProfiles) : [];
     this.intakeTemplates = seeded ? clone(sampleIntakeTemplates) : [];
+    this.intakeTemplateVersions = seeded ? clone(sampleIntakeTemplateVersions) : [];
     this.draftTemplates = seeded ? clone(sampleDraftTemplates) : [];
     this.aiOperationalProposals = seeded ? clone(sampleAiOperationalProposals) : [];
     this.legalResearchArtifacts = seeded ? clone(sampleLegalResearchArtifacts) : [];
@@ -2242,6 +2262,33 @@ export class InMemoryOpenPracticeRepository implements OpenPracticeRepository {
     template: Parameters<OpenPracticeRepository["updateIntakeTemplate"]>[0],
   ): ReturnType<OpenPracticeRepository["updateIntakeTemplate"]> {
     return updateMemoryIntakeTemplate(this.intakeTemplateStore, template);
+  }
+
+  async listIntakeTemplateVersions(
+    firmId: string,
+    templateId: string,
+  ): ReturnType<OpenPracticeRepository["listIntakeTemplateVersions"]> {
+    return listMemoryIntakeTemplateVersions(this.intakeTemplateStore, firmId, templateId);
+  }
+
+  async getIntakeTemplateVersion(
+    firmId: string,
+    id: string,
+  ): ReturnType<OpenPracticeRepository["getIntakeTemplateVersion"]> {
+    return getMemoryIntakeTemplateVersion(this.intakeTemplateStore, firmId, id);
+  }
+
+  async getLatestIntakeTemplateVersion(
+    firmId: string,
+    templateId: string,
+  ): ReturnType<OpenPracticeRepository["getLatestIntakeTemplateVersion"]> {
+    return getLatestMemoryIntakeTemplateVersion(this.intakeTemplateStore, firmId, templateId);
+  }
+
+  async createIntakeTemplateVersion(
+    version: Parameters<OpenPracticeRepository["createIntakeTemplateVersion"]>[0],
+  ): ReturnType<OpenPracticeRepository["createIntakeTemplateVersion"]> {
+    return createMemoryIntakeTemplateVersion(this.intakeTemplateStore, version);
   }
 
   async listIntakeSessions(

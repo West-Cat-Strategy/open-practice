@@ -164,6 +164,7 @@ describe("intake routes", () => {
       firmId: "firm-west-legal",
       matterId: "matter-001",
       templateId: "intake-template-001",
+      publishedTemplateVersionId: "intake-template-001:v2",
       provider: "embedded",
       externalId: "embedded:matter-001:residential-tenancy-intake",
       status: "created",
@@ -183,6 +184,7 @@ describe("intake routes", () => {
           metadata: {
             matterId: "matter-001",
             templateId: "intake-template-001",
+            publishedTemplateVersionId: "intake-template-001:v2",
             provider: "embedded",
             status: "created",
           },

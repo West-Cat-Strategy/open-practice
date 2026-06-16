@@ -1,6 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { EmbeddedIntakeTemplateDefinition, IntakeTemplateRecord } from "@open-practice/domain";
+import type {
+  EmbeddedIntakeTemplateDefinition,
+  IntakeTemplateRecord,
+  IntakeTemplateVersionRecord,
+} from "@open-practice/domain";
 import {
   buildEmbeddedIntakeTemplateQaReport,
   intakeTemplatePreviewStatus,
@@ -37,6 +41,37 @@ const intakeTemplatePreviewBodySchema = z.object({
   selectedPackageIds: z.array(z.string().min(1)).optional(),
 });
 
+function versionRowId(templateId: string, version: number): string {
+  return `${templateId}:v${version}`;
+}
+
+async function publishTemplateDraft(
+  repository: IntakeFormRouteDependencies["repository"],
+  input: {
+    template: IntakeTemplateRecord;
+    publishedAt: string;
+    publishedByUserId: string;
+    metadata: Record<string, unknown>;
+  },
+): Promise<IntakeTemplateVersionRecord> {
+  const latest = await repository.getLatestIntakeTemplateVersion(
+    input.template.firmId,
+    input.template.id,
+  );
+  const version = Math.max((latest?.version ?? 0) + 1, input.template.definitionVersion);
+  return repository.createIntakeTemplateVersion({
+    id: versionRowId(input.template.id, version),
+    firmId: input.template.firmId,
+    templateId: input.template.id,
+    version,
+    definitionVersion: input.template.definitionVersion,
+    definition: input.template.definition,
+    publishedAt: input.publishedAt,
+    publishedByUserId: input.publishedByUserId,
+    metadata: input.metadata,
+  });
+}
+
 export function registerIntakeTemplateRoutes(
   server: FastifyInstance,
   dependencies: IntakeFormRouteDependencies,
@@ -66,6 +101,15 @@ export function registerIntakeTemplateRoutes(
       },
     };
     const created = await repository.createIntakeTemplate(template);
+    const published = await publishTemplateDraft(repository, {
+      template: created,
+      publishedAt: now,
+      publishedByUserId: request.auth.user.id,
+      metadata: {
+        source: "open-practice-form-builder",
+        reason: "initial-create",
+      },
+    });
     await appendRouteAuditEvent(repository, request.auth, {
       action: "intake_template.created",
       resourceType: "intake_template",
@@ -73,6 +117,8 @@ export function registerIntakeTemplateRoutes(
       metadata: {
         templateId: created.id,
         definitionVersion: created.definitionVersion,
+        publishedTemplateVersionId: published.id,
+        publishedVersion: published.version,
         schemaVersion: created.definition.schemaVersion,
       },
     });
@@ -103,6 +149,34 @@ export function registerIntakeTemplateRoutes(
       },
     });
     return updated;
+  });
+
+  server.post("/api/intake-templates/:id/publish", async (request) => {
+    const params = parseRequestPart(intakeTemplateParamsSchema, request.params, "params");
+    assertIntakeAccess(request.auth, { resource: "intake_session", action: "update" });
+    const template = await getTemplate(repository, request.auth.firmId, params.id);
+    const published = await publishTemplateDraft(repository, {
+      template,
+      publishedAt: new Date().toISOString(),
+      publishedByUserId: request.auth.user.id,
+      metadata: {
+        source: "open-practice-form-builder",
+        reason: "staff-publish",
+      },
+    });
+    await appendRouteAuditEvent(repository, request.auth, {
+      action: "intake_template.published",
+      resourceType: "intake_template",
+      resourceId: template.id,
+      metadata: {
+        templateId: template.id,
+        publishedTemplateVersionId: published.id,
+        publishedVersion: published.version,
+        definitionVersion: published.definitionVersion,
+        schemaVersion: published.definition.schemaVersion,
+      },
+    });
+    return { template, publishedVersion: published };
   });
 
   server.post("/api/intake-templates/preview", async (request) => {

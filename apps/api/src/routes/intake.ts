@@ -16,6 +16,7 @@ import { registerIntakeGeneratedDocumentRoutes } from "./intake/generated-docume
 import { assertIntakeAccess, idParamsSchema, requireAutomationProvider } from "./intake/shared.js";
 import { queueRouteEmailOutbox, summarizeQueuedRouteEmail } from "./outbound-email.js";
 import type { ApiRouteDependencies } from "./types.js";
+import { getTemplateForSession } from "./intake-forms/shared.js";
 
 const intakeSessionQuerySchema = z.object({
   matterId: z.string().min(1).optional(),
@@ -55,7 +56,8 @@ async function getEmbeddedTemplate(
     });
   }
   validateEmbeddedIntakeTemplateDefinition(template.definition);
-  return template;
+  const publishedVersion = await repository.getLatestIntakeTemplateVersion(firmId, templateId);
+  return { template, publishedVersion };
 }
 
 export function registerIntakeRoutes(
@@ -108,7 +110,11 @@ export function registerIntakeRoutes(
       action: "create",
       matterId: body.matterId,
     });
-    const template = await getEmbeddedTemplate(repository, request.auth.firmId, body.templateId);
+    const { template, publishedVersion } = await getEmbeddedTemplate(
+      repository,
+      request.auth.firmId,
+      body.templateId,
+    );
     requireEmailDeliveryConfirmation(body.deliveryConfirmation, { recipientCount: 1 });
     const now = new Date().toISOString();
     const provider = requireAutomationProvider(automationProvider);
@@ -124,6 +130,7 @@ export function registerIntakeRoutes(
       firmId: request.auth.firmId,
       matterId: body.matterId,
       templateId: body.templateId,
+      publishedTemplateVersionId: publishedVersion?.id,
       provider: providerRef.provider,
       externalId: providerRef.externalId,
       status: providerRef.status,
@@ -142,6 +149,7 @@ export function registerIntakeRoutes(
       metadata: {
         matterId: created.matterId,
         templateId: created.templateId,
+        publishedTemplateVersionId: created.publishedTemplateVersionId,
         provider: created.provider,
         status: created.status,
       },
@@ -193,7 +201,7 @@ export function registerIntakeRoutes(
       matterId: session.matterId,
     });
     const body = parseRequestPart(answerSnapshotBodySchema, request.body, "body");
-    const template = await getEmbeddedTemplate(repository, request.auth.firmId, session.templateId);
+    const template = await getTemplateForSession(repository, request.auth.firmId, session);
     const resolution = resolveEmbeddedIntakeAnswers({
       templateId: template.id,
       templateVersion: template.definitionVersion,

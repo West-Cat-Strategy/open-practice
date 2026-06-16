@@ -480,11 +480,24 @@ export interface IntakeTemplateRecord {
   metadata: Record<string, unknown>;
 }
 
+export interface IntakeTemplateVersionRecord {
+  id: string;
+  firmId: string;
+  templateId: string;
+  version: number;
+  definitionVersion: number;
+  definition: EmbeddedIntakeTemplateDefinition;
+  publishedAt: string;
+  publishedByUserId?: string;
+  metadata: Record<string, unknown>;
+}
+
 export interface IntakeSessionRecord {
   id: string;
   firmId: string;
   matterId: string;
   templateId: string;
+  publishedTemplateVersionId?: string;
   provider: AutomationSessionRef["provider"];
   externalId: string;
   status: AutomationSessionRef["status"];

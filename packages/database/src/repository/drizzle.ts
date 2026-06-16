@@ -93,8 +93,12 @@ import {
   updateDrizzleMatterContactAssociation,
 } from "./contacts/drizzle.js";
 import {
+  createDrizzleIntakeTemplateVersion,
   createDrizzleIntakeTemplate,
+  getDrizzleIntakeTemplateVersion,
+  getLatestDrizzleIntakeTemplateVersion,
   listDrizzleIntakeTemplates,
+  listDrizzleIntakeTemplateVersions,
   updateDrizzleIntakeTemplate,
 } from "./intake-templates/drizzle.js";
 import {
@@ -1230,6 +1234,33 @@ export class DrizzleOpenPracticeRepository implements OpenPracticeRepository {
     template: Parameters<OpenPracticeRepository["updateIntakeTemplate"]>[0],
   ): ReturnType<OpenPracticeRepository["updateIntakeTemplate"]> {
     return updateDrizzleIntakeTemplate(this.db, template);
+  }
+
+  async listIntakeTemplateVersions(
+    firmId: string,
+    templateId: string,
+  ): ReturnType<OpenPracticeRepository["listIntakeTemplateVersions"]> {
+    return listDrizzleIntakeTemplateVersions(this.db, firmId, templateId);
+  }
+
+  async getIntakeTemplateVersion(
+    firmId: string,
+    id: string,
+  ): ReturnType<OpenPracticeRepository["getIntakeTemplateVersion"]> {
+    return getDrizzleIntakeTemplateVersion(this.db, firmId, id);
+  }
+
+  async getLatestIntakeTemplateVersion(
+    firmId: string,
+    templateId: string,
+  ): ReturnType<OpenPracticeRepository["getLatestIntakeTemplateVersion"]> {
+    return getLatestDrizzleIntakeTemplateVersion(this.db, firmId, templateId);
+  }
+
+  async createIntakeTemplateVersion(
+    version: Parameters<OpenPracticeRepository["createIntakeTemplateVersion"]>[0],
+  ): ReturnType<OpenPracticeRepository["createIntakeTemplateVersion"]> {
+    return createDrizzleIntakeTemplateVersion(this.db, version);
   }
 
   async listIntakeSessions(

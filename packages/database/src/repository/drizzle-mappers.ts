@@ -6,6 +6,7 @@ import type {
   GeneratedDocumentRecord,
   IntakeSessionRecord,
   IntakeTemplateRecord,
+  IntakeTemplateVersionRecord,
   SignatureProviderEventRecord,
   SignatureProviderStatus,
   SignatureEnvelopeRecord,
@@ -1716,6 +1717,7 @@ export function mapIntakeSessionRow(
     firmId: row.firmId,
     matterId: row.matterId,
     templateId: row.templateId,
+    publishedTemplateVersionId: row.publishedTemplateVersionId ?? undefined,
     provider: row.provider as IntakeSessionRecord["provider"],
     externalId: row.externalId,
     status: row.status as IntakeSessionRecord["status"],
@@ -2477,6 +2479,22 @@ export function mapIntakeTemplateRow(
     definition: row.definition,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    metadata: row.metadata as Record<string, unknown>,
+  };
+}
+
+export function mapIntakeTemplateVersionRow(
+  row: typeof schema.intakeTemplateVersions.$inferSelect,
+): IntakeTemplateVersionRecord {
+  return {
+    id: row.id,
+    firmId: row.firmId,
+    templateId: row.templateId,
+    version: row.version,
+    definitionVersion: row.definitionVersion,
+    definition: row.definition,
+    publishedAt: row.publishedAt.toISOString(),
+    publishedByUserId: row.publishedByUserId ?? undefined,
     metadata: row.metadata as Record<string, unknown>,
   };
 }

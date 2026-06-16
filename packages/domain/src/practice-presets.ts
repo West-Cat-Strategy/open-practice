@@ -1,7 +1,7 @@
 import type { DraftTemplateRecord, TipTapDocument, TipTapNode } from "./drafting.js";
 import type { EmbeddedIntakeTemplateDefinition } from "./intake.js";
 import type { Province } from "./models.js";
-import type { IntakeTemplateRecord } from "./signatures.js";
+import type { IntakeTemplateRecord, IntakeTemplateVersionRecord } from "./signatures.js";
 
 export type { Province } from "./models.js";
 
@@ -33,6 +33,7 @@ export interface BuiltPracticePresetTemplates {
   selectedPresetIds: PracticePresetId[];
   draftTemplates: DraftTemplateRecord[];
   intakeTemplates: IntakeTemplateRecord[];
+  intakeTemplateVersions: IntakeTemplateVersionRecord[];
 }
 
 function cloneJson<T>(value: T): T {
@@ -326,6 +327,15 @@ export function buildPracticePresetTemplates(input: {
   const selectedPresets = PRACTICE_PRESET_CATALOG.filter((preset) =>
     selectedPresetIds.includes(preset.id),
   );
+  const intakeTemplates = selectedPresets.flatMap((preset) =>
+    preset.intakeTemplates.map((template) => ({
+      ...template,
+      metadata: cloneJson(template.metadata),
+      firmId: input.firmId,
+      createdAt: input.timestamp,
+      updatedAt: input.timestamp,
+    })),
+  );
 
   return {
     selectedPresetIds,
@@ -339,14 +349,19 @@ export function buildPracticePresetTemplates(input: {
         updatedAt: input.timestamp,
       })),
     ),
-    intakeTemplates: selectedPresets.flatMap((preset) =>
-      preset.intakeTemplates.map((template) => ({
-        ...template,
-        metadata: cloneJson(template.metadata),
-        firmId: input.firmId,
-        createdAt: input.timestamp,
-        updatedAt: input.timestamp,
-      })),
-    ),
+    intakeTemplates,
+    intakeTemplateVersions: intakeTemplates.map((template) => ({
+      id: `${template.id}:v${template.definitionVersion}`,
+      firmId: template.firmId,
+      templateId: template.id,
+      version: template.definitionVersion,
+      definitionVersion: template.definitionVersion,
+      definition: cloneJson(template.definition),
+      publishedAt: input.timestamp,
+      metadata: {
+        source: "open-practice-preset",
+        presetId: template.metadata.presetId,
+      },
+    })),
   };
 }
