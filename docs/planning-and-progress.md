@@ -22,6 +22,16 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 ## Current Handoff Notes
 
+The 2026-06-16 private document conversion and annotation boundary branch records docs-first
+policy for future local-only conversion, annotation, chunking, and semantic-review prototypes. It
+keeps OCR as the only actionable document-processing queue today and requires any future retained
+state to be OP-authored, redacted summaries, counts, statuses, and posture metadata only. Raw client
+text, raw converted Markdown, raw annotations, provider payloads, prompts, sensitive chunks,
+embeddings, storage keys, object bodies, and private excerpts must stay out of job metadata, audit
+metadata, API posture, and proof notes. No API, database, worker, provider, route, dependency,
+schema, runtime prototype, or reference-derived source was added. Proof is recorded in
+[private document conversion and annotation boundary proof](validation/OP_PRIVATE_DOCUMENT_CONVERSION_ANNOTATION_BOUNDARY_PROOF_2026-06-16.md).
+
 The 2026-06-16 single-contact CRM contact-history export runtime adds
 `POST /api/contacts/:contactId/history-export` for authenticated staff/admin users with the
 existing `contact:export` permission. It returns a transient `staff_review` JSON export for one

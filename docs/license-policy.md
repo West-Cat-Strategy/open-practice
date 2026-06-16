@@ -20,9 +20,20 @@ Detailed reuse classes and admission rules live in `docs/reuse-decision-policy.m
 
 ## Optional Services
 
-Copyleft services may be studied as references or run beside the core only after an explicit future integration decision. The current runtime keeps e-signing and intake embedded; a future paperless-style OCR/document-processing service would need a documented boundary.
+Copyleft services may be studied as references or run beside the core only after an explicit future
+integration decision. The current runtime keeps e-signing and intake embedded; a future
+paperless-style OCR/document-processing service, conversion worker, annotation service, or
+model-backed extraction service would need a documented local/private-processing boundary.
 
 Optional services must remain separate containers/processes and must not be required for core startup unless an explicit deployment profile enables them.
+
+Document conversion and annotation references such as MarkItDown, Unstructured, Zerox,
+OpenContracts, paperless-ngx, and Papermerge are clean-room research inputs unless a later reuse
+decision says otherwise. Do not copy source, schemas, migrations, tests, UI markup, styles, assets,
+distinctive prose, provider payload shapes, or sample document content from those projects into the
+Apache-2.0 core. Any future dependency, optional service, or source excerpt must record the source
+project, exact commit/tag, license, reuse class, touched files, upstream files or APIs referenced,
+notices, reviewer, and decision date before implementation.
 
 ## Reuse Checklist
 
@@ -43,4 +54,7 @@ Before any third-party source excerpt, vendored asset, or new runtime dependency
 - DocuSeal is historical/reference-only for current runtime scope.
 - docassemble is historical/reference-only for current runtime scope.
 - j-lawyer.org, ArkCase, paperless-ngx, Kimai, LedgerSMB, CiviCRM, and Midaz are clean-room references only.
+- MarkItDown, Unstructured, Zerox, OpenContracts, and Papermerge remain research/reference inputs
+  for document conversion, annotation, chunking, and extraction boundaries until a documented reuse
+  decision admits a dependency, optional service, or excerpt.
 - Midaz must be treated as Elastic License 2.0 in the pinned clone unless legal review confirms a compatible licensing path.

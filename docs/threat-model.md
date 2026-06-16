@@ -4,6 +4,7 @@
 
 - Client and matter information.
 - Privileged and work-product documents.
+- Derived document text, conversion summaries, annotation posture, and extraction metadata.
 - Portal messages and document exchanges.
 - Signature evidence and signed records.
 - Intake answers, generated-document metadata, and automation-session evidence.
@@ -16,6 +17,9 @@
 - Overbroad portal grants exposing privileged documents.
 - Tampered audit logs or trust ledger records.
 - Uploaded malware or unsafe document previews.
+- Derived-document leakage through raw converted Markdown, raw annotations, sensitive chunks,
+  embeddings, provider payloads, prompts, object-storage keys, or private excerpts in job metadata,
+  audit metadata, API posture, or validation proof.
 - Forged upload-completion claims, checksum mismatches, or scan-state bypasses.
 - Spoofed, duplicated, or out-of-order embedded signature/provider events.
 - Overexposed intake answers or generated documents.
@@ -28,6 +32,9 @@
 - Explicit portal grants with expiry and revocation.
 - Signed URLs with short expiry and scan-gated sharing.
 - Upload-complete records that preserve checksum and scan status before share decisions.
+- Local-only document-processing boundaries that retain only OP-authored redacted summaries,
+  counts, statuses, and posture metadata until a separately reviewed conversion or annotation
+  prototype proves the same no-raw-text/no-provider-payload posture.
 - Hash-chained domain audit events.
 - Balanced double-entry ledger posting and idempotency keys.
 - Provider-agnostic e-sign evidence stored in core records.
