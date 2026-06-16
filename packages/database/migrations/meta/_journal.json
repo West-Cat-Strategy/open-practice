@@ -393,6 +393,13 @@
       "when": 1781481600000,
       "tag": "0055_full_crm_contacts",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1781568000000,
+      "tag": "0056_signature_request_envelope_metadata",
+      "breakpoints": true
     }
   ]
 }

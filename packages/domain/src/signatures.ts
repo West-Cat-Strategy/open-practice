@@ -14,6 +14,139 @@ export interface CreateSignatureRequestInput {
   consentText: string;
 }
 
+export const signatureRequestEnvelopeValidationStatuses = [
+  "unchecked",
+  "valid",
+  "needs_review",
+  "invalid",
+] as const;
+
+export type SignatureRequestEnvelopeValidationStatus =
+  (typeof signatureRequestEnvelopeValidationStatuses)[number];
+
+export type SignatureRequestEnvelopeFieldType = "signature" | "initials" | "date" | "text";
+
+export interface SignatureRequestEnvelopeSignerOrder {
+  role: string;
+  order: number;
+  required: boolean;
+}
+
+export interface SignatureRequestEnvelopeFieldPlacement {
+  id: string;
+  role: string;
+  fieldType: SignatureRequestEnvelopeFieldType;
+  page: number;
+  required: boolean;
+  documentId?: string;
+  xPercent?: number;
+  yPercent?: number;
+}
+
+export interface SignatureRequestEnvelopeMetadata {
+  signerOrder: SignatureRequestEnvelopeSignerOrder[];
+  fieldPlacements: SignatureRequestEnvelopeFieldPlacement[];
+  validationStatus: SignatureRequestEnvelopeValidationStatus;
+}
+
+export interface SignatureRequestEnvelopeValidationResult {
+  status: SignatureRequestEnvelopeValidationStatus;
+  issues: string[];
+  signerCount: number;
+  fieldCount: number;
+  requiredFieldCount: number;
+}
+
+export function defaultSignatureRequestEnvelopeMetadata(): SignatureRequestEnvelopeMetadata {
+  return {
+    signerOrder: [],
+    fieldPlacements: [],
+    validationStatus: "unchecked",
+  };
+}
+
+export function validateSignatureRequestEnvelopeMetadata(input: {
+  signerOrder: readonly SignatureRequestEnvelopeSignerOrder[];
+  fieldPlacements: readonly SignatureRequestEnvelopeFieldPlacement[];
+  documentId: string;
+}): SignatureRequestEnvelopeValidationResult {
+  const issues: string[] = [];
+  const roles = new Set<string>();
+  const orders = new Set<number>();
+
+  if (input.signerOrder.length === 0) {
+    issues.push("Signer order is required before sending.");
+  }
+
+  for (const signer of input.signerOrder) {
+    if (signer.order < 1 || !Number.isInteger(signer.order)) {
+      issues.push(`Signer role ${signer.role} has an invalid signing order.`);
+    }
+    if (orders.has(signer.order)) {
+      issues.push(`Signing order ${signer.order} is assigned more than once.`);
+    }
+    orders.add(signer.order);
+    if (roles.has(signer.role)) {
+      issues.push(`Signer role ${signer.role} is duplicated.`);
+    }
+    roles.add(signer.role);
+  }
+
+  for (const field of input.fieldPlacements) {
+    if (!roles.has(field.role)) {
+      issues.push(`Field ${field.id} references signer role ${field.role} outside signer order.`);
+    }
+    if (field.page < 1 || !Number.isInteger(field.page)) {
+      issues.push(`Field ${field.id} has an invalid page.`);
+    }
+    if (field.documentId !== undefined && field.documentId !== input.documentId) {
+      issues.push(`Field ${field.id} is linked to a different document.`);
+    }
+    if (field.xPercent !== undefined && (field.xPercent < 0 || field.xPercent > 100)) {
+      issues.push(`Field ${field.id} has an invalid horizontal placement.`);
+    }
+    if (field.yPercent !== undefined && (field.yPercent < 0 || field.yPercent > 100)) {
+      issues.push(`Field ${field.id} has an invalid vertical placement.`);
+    }
+  }
+
+  return {
+    status: issues.length === 0 ? "valid" : "invalid",
+    issues: [...new Set(issues)].sort(),
+    signerCount: input.signerOrder.length,
+    fieldCount: input.fieldPlacements.length,
+    requiredFieldCount: input.fieldPlacements.filter((field) => field.required).length,
+  };
+}
+
+export function safeSignatureRequestEnvelopeValidationSummary(input: {
+  signerOrder?: readonly SignatureRequestEnvelopeSignerOrder[];
+  fieldPlacements?: readonly SignatureRequestEnvelopeFieldPlacement[];
+  validationStatus?: SignatureRequestEnvelopeValidationStatus;
+  documentId: string;
+}): SignatureRequestEnvelopeValidationResult {
+  const signerOrder = input.signerOrder ?? [];
+  const fieldPlacements = input.fieldPlacements ?? [];
+  if (
+    input.validationStatus === "unchecked" &&
+    signerOrder.length === 0 &&
+    fieldPlacements.length === 0
+  ) {
+    return {
+      status: "unchecked",
+      issues: [],
+      signerCount: 0,
+      fieldCount: 0,
+      requiredFieldCount: 0,
+    };
+  }
+  return validateSignatureRequestEnvelopeMetadata({
+    signerOrder,
+    fieldPlacements,
+    documentId: input.documentId,
+  });
+}
+
 export interface SignatureProviderSubmission {
   provider: "embedded" | "manual" | "docuseal";
   externalId: string;
@@ -255,6 +388,9 @@ export interface SignatureRequestRecord {
   signingUrl?: string;
   consentText: string;
   evidence: Record<string, unknown>;
+  signerOrder?: SignatureRequestEnvelopeSignerOrder[];
+  fieldPlacements?: SignatureRequestEnvelopeFieldPlacement[];
+  validationStatus?: SignatureRequestEnvelopeValidationStatus;
   createdAt: string;
   completedAt?: string;
   declinedAt?: string;

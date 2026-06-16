@@ -6,6 +6,11 @@ import type {
   SignatureRequestRecord,
   SignatureRequestSignerRecord,
 } from "@open-practice/domain";
+import {
+  defaultSignatureRequestEnvelopeMetadata,
+  safeSignatureRequestEnvelopeValidationSummary,
+  validateSignatureRequestEnvelopeMetadata,
+} from "@open-practice/domain";
 import { requireAccess, requireStaffAccess } from "../http/auth-guards.js";
 import { ApiHttpError } from "../http/response.js";
 import { parseRequestPart } from "../http/validation.js";
@@ -23,6 +28,32 @@ const signatureQuerySchema = z.object({
   matterId: z.string().min(1).optional(),
 });
 
+const signatureEnvelopeMetadataSchema = z.object({
+  signerOrder: z
+    .array(
+      z.object({
+        role: z.string().min(1),
+        order: z.number().int(),
+        required: z.boolean(),
+      }),
+    )
+    .default([]),
+  fieldPlacements: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        role: z.string().min(1),
+        fieldType: z.enum(["signature", "initials", "date", "text"]),
+        page: z.number().int(),
+        required: z.boolean(),
+        documentId: z.string().min(1).optional(),
+        xPercent: z.number().optional(),
+        yPercent: z.number().optional(),
+      }),
+    )
+    .default([]),
+});
+
 const signatureRequestBodySchema = z.object({
   matterId: z.string().min(1),
   documentId: z.string().min(1),
@@ -37,6 +68,7 @@ const signatureRequestBodySchema = z.object({
       }),
     )
     .min(1),
+  envelopeMetadata: signatureEnvelopeMetadataSchema.optional(),
   deliveryConfirmation: deliveryConfirmationSchema.optional(),
 });
 
@@ -90,6 +122,32 @@ function redactedEvidenceSummary(evidence: Record<string, unknown>): {
   };
 }
 
+function signatureEnvelopeMetadataForRequest(
+  body: z.infer<typeof signatureRequestBodySchema>,
+): Pick<SignatureRequestRecord, "signerOrder" | "fieldPlacements" | "validationStatus"> {
+  if (!body.envelopeMetadata) {
+    return defaultSignatureRequestEnvelopeMetadata();
+  }
+  const validation = validateSignatureRequestEnvelopeMetadata({
+    signerOrder: body.envelopeMetadata.signerOrder,
+    fieldPlacements: body.envelopeMetadata.fieldPlacements,
+    documentId: body.documentId,
+  });
+  if (validation.issues.length > 0) {
+    throw new ApiHttpError(
+      400,
+      "SIGNATURE_ENVELOPE_METADATA_INVALID",
+      "Signature envelope metadata is invalid",
+      { issues: validation.issues },
+    );
+  }
+  return {
+    signerOrder: body.envelopeMetadata.signerOrder,
+    fieldPlacements: body.envelopeMetadata.fieldPlacements,
+    validationStatus: validation.status,
+  };
+}
+
 export function registerSignatureRoutes(
   server: FastifyInstance,
   { repository, signatureProvider, emailJobQueue }: ApiRouteDependencies,
@@ -137,6 +195,7 @@ export function registerSignatureRoutes(
         statusCode: 400,
       });
     }
+    const envelopeMetadata = signatureEnvelopeMetadataForRequest(body);
     if (!signatureProvider) {
       throw Object.assign(new Error("Signature provider is not configured"), { statusCode: 503 });
     }
@@ -165,6 +224,7 @@ export function registerSignatureRoutes(
       signingUrl: submission.signingUrl,
       consentText: body.consentText,
       evidence: submission.evidence ?? {},
+      ...envelopeMetadata,
       createdAt: now,
     };
     const signers: SignatureRequestSignerRecord[] = body.signers.map((signer) => ({
@@ -400,6 +460,12 @@ export function registerSignatureRoutes(
       createdAt: signature.createdAt,
       completedAt: signature.completedAt,
       declinedAt: signature.declinedAt,
+      envelopeValidation: safeSignatureRequestEnvelopeValidationSummary({
+        signerOrder: signature.signerOrder,
+        fieldPlacements: signature.fieldPlacements,
+        validationStatus: signature.validationStatus,
+        documentId: signature.documentId,
+      }),
       signers: signers.map((signer) => ({
         id: signer.id,
         role: signer.role,

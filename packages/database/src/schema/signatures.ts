@@ -1,4 +1,5 @@
 import { jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import type { SignatureRequestRecord } from "@open-practice/domain";
 import { firms, users } from "./core.js";
 import { documents } from "./documents.js";
 import { matters } from "./matters.js";
@@ -24,6 +25,18 @@ export const signatureRequests = pgTable("signature_requests", {
   signingUrl: text("signing_url"),
   consentText: text("consent_text").notNull().default(""),
   evidence: jsonb("evidence").notNull(),
+  signerOrder: jsonb("signer_order")
+    .$type<NonNullable<SignatureRequestRecord["signerOrder"]>>()
+    .notNull()
+    .default([]),
+  fieldPlacements: jsonb("field_placements")
+    .$type<NonNullable<SignatureRequestRecord["fieldPlacements"]>>()
+    .notNull()
+    .default([]),
+  validationStatus: text("validation_status")
+    .$type<NonNullable<SignatureRequestRecord["validationStatus"]>>()
+    .notNull()
+    .default("unchecked"),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   declinedAt: timestamp("declined_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

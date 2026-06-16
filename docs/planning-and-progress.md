@@ -1,6 +1,6 @@
 # Planning and Progress
 
-**Last Updated:** 2026-06-15
+**Last Updated:** 2026-06-16
 
 Use this file for live tracked work, immediate next moves, and the forward-looking development plan.
 Use `docs/planning.md` for the durable roadmap, `docs/improvement-opportunities.md` for candidate
@@ -10,8 +10,8 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 
 | Snapshot              | Value                                                                |
 | --------------------- | -------------------------------------------------------------------- |
-| Current focus         | Full CRM Contacts is implemented and validated in branch.            |
-| Next recommended pick | Merge handoff for `feature/full-crm-contacts`.                       |
+| Current focus         | Signature request envelope metadata is implemented in branch.        |
+| Next recommended pick | Merge handoff for `feature/signature-envelope-metadata`.             |
 | Ready rows            | 0                                                                    |
 | Candidate rows        | 0                                                                    |
 | In progress rows      | 0                                                                    |
@@ -21,6 +21,15 @@ backlog ideas, and `docs/archive/` for historical snapshots and completed valida
 | Status vocabulary     | `Ready`, `Candidate`, `In Progress`, `Review`, `Blocked`, `Done`     |
 
 ## Current Handoff Notes
+
+The 2026-06-16 Signature Request Envelope Metadata branch adds OP-authored signer-order and
+field-placement metadata directly to existing signature requests. Domain validation stays
+provider-neutral, invalid metadata is rejected before provider submission or email/audit side
+effects, PostgreSQL and memory repositories keep default `unchecked` compatibility for legacy
+requests, staff evidence packets expose only safe validation counts/issues, and the dashboard shows
+compact envelope posture without signer emails, consent text, provider evidence, or raw placement
+coordinates. Proof is recorded in
+[Signature request envelope metadata proof](validation/OP_SIGNATURE_REQUEST_ENVELOPE_METADATA_PROOF_2026-06-16.md).
 
 The 2026-06-15 Full CRM Contacts branch expands Contacts into a legal-practice CRM while preserving
 the existing dossier, review queue, data-quality, conflict-check, matter-party, and client-portal
