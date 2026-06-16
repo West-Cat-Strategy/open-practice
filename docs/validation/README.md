@@ -18,6 +18,12 @@ skipped-check context. The live workboard remains
 
 ## Current Handoff Notes
 
+The 2026-06-16 CRM contact timeline activity-filter follow-up is recorded in
+[OP_FULL_CRM_CONTACTS_PROOF_2026-06-15.md](OP_FULL_CRM_CONTACTS_PROOF_2026-06-15.md).
+It covers the optional `activity` filter for the existing contact timeline projection, Contacts
+dashboard filtering for safe CRM activity and review-only task/follow-up cues, and the preserved
+no-sync/no-automatic-task/no-raw-private-history boundary.
+
 The 2026-06-16 inbound email matter draft proof is recorded in
 [OP_INBOUND_EMAIL_MATTER_DRAFT_PROOF_2026-06-16.md](OP_INBOUND_EMAIL_MATTER_DRAFT_PROOF_2026-06-16.md).
 It covers the review-only `POST /api/inbound-email/messages/:id/matter-draft` endpoint, sanitized

@@ -375,6 +375,30 @@ describe("contact routes", () => {
     });
     expect(suspended.statusCode).toBe(200);
     expect(suspended.json()).toMatchObject({ grant: { status: "suspended" } });
+    await repository.createCalendarSchedulingRequest({
+      id: "calendar-scheduling-request-contact-follow-up",
+      firmId: "firm-west-legal",
+      matterId: "matter-001",
+      kind: "event_scheduling",
+      status: "needs_review",
+      title: "Private follow-up scheduling title must stay out",
+      ownerUserId: "user-owner_admin",
+      sourceType: "calendar_event",
+      sourceId: "calendar-event-private",
+      sourceLabel: "Private follow-up source label must stay out",
+      requestedDueAt: "2026-05-04T17:00:00.000Z",
+      reminderPosture: "dashboard_pending",
+      privacy: "staff_only",
+      timeCaptureCue: {
+        posture: "none",
+        existingTimeEntryCount: 0,
+        billable: false,
+      },
+      createdAt: "2026-05-02T12:00:00.000Z",
+      updatedAt: "2026-05-02T12:00:00.000Z",
+      createdByUserId: "user-owner_admin",
+      updatedByUserId: "user-owner_admin",
+    });
 
     const detail = await server.inject({ method: "GET", url: `/api/contacts/${contactId}` });
     expect(detail.statusCode).toBe(200);
@@ -420,11 +444,105 @@ describe("contact routes", () => {
             },
           }),
         }),
+        expect.objectContaining({
+          kind: "task",
+          title: "Follow-up review cue",
+          metadata: expect.objectContaining({
+            cueType: "follow_up_review",
+            contactId,
+            matterId: "matter-001",
+            schedulingRequestId: "calendar-scheduling-request-contact-follow-up",
+            reviewBoundary: {
+              automaticTaskCreation: false,
+              automaticDeadlineMutation: false,
+              automaticReminderChanges: false,
+              queueDelivery: false,
+            },
+          }),
+        }),
       ]),
     });
     expect(JSON.stringify(timeline.json())).not.toContain("Review tenant evidence package");
     expect(JSON.stringify(timeline.json())).not.toContain("Review filing deadline schedule");
+    expect(JSON.stringify(timeline.json())).not.toContain("Private follow-up scheduling title");
+    expect(JSON.stringify(timeline.json())).not.toContain("Private follow-up source label");
     expect(JSON.stringify(timeline.json())).not.toContain("sourceLabel");
+
+    const crmActivityTimeline = await server.inject({
+      method: "GET",
+      url: `/api/contacts/${contactId}/timeline?activity=crm_activity`,
+    });
+    expect(crmActivityTimeline.statusCode).toBe(200);
+    expect(
+      crmActivityTimeline
+        .json<{ timeline: Array<{ kind: string }> }>()
+        .timeline.map((entry) => entry.kind),
+    ).toEqual(expect.arrayContaining(["contact", "portal"]));
+    expect(
+      crmActivityTimeline
+        .json<{ timeline: Array<{ kind: string }> }>()
+        .timeline.some((entry) => entry.kind === "task"),
+    ).toBe(false);
+
+    const taskCueTimeline = await server.inject({
+      method: "GET",
+      url: `/api/contacts/${contactId}/timeline?activity=task_cues`,
+    });
+    expect(taskCueTimeline.statusCode).toBe(200);
+    expect(
+      taskCueTimeline.json<{
+        timeline: Array<{ kind: string; metadata: Record<string, unknown> }>;
+      }>().timeline,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ metadata: expect.objectContaining({ cueType: "open_task" }) }),
+        expect.objectContaining({
+          metadata: expect.objectContaining({ cueType: "follow_up_review" }),
+        }),
+      ]),
+    );
+    expect(
+      taskCueTimeline
+        .json<{ timeline: Array<{ kind: string }> }>()
+        .timeline.every((entry) => entry.kind === "task"),
+    ).toBe(true);
+
+    const openTaskTimeline = await server.inject({
+      method: "GET",
+      url: `/api/contacts/${contactId}/timeline?activity=open_tasks`,
+    });
+    expect(openTaskTimeline.statusCode).toBe(200);
+    expect(
+      openTaskTimeline
+        .json<{ timeline: Array<{ metadata: Record<string, unknown> }> }>()
+        .timeline.map((entry) => entry.metadata.cueType),
+    ).toEqual(["open_task", "open_task"]);
+
+    const followUpTimeline = await server.inject({
+      method: "GET",
+      url: `/api/contacts/${contactId}/timeline?activity=follow_ups`,
+    });
+    expect(followUpTimeline.statusCode).toBe(200);
+    expect(followUpTimeline.json()).toMatchObject({
+      timeline: [
+        expect.objectContaining({
+          title: "Follow-up review cue",
+          metadata: expect.objectContaining({
+            cueType: "follow_up_review",
+            schedulingRequestId: "calendar-scheduling-request-contact-follow-up",
+          }),
+        }),
+      ],
+    });
+    expect(JSON.stringify(followUpTimeline.json())).not.toContain(
+      "Private follow-up scheduling title",
+    );
+
+    const invalidTimelineFilter = await server.inject({
+      method: "GET",
+      url: `/api/contacts/${contactId}/timeline?activity=raw_history`,
+    });
+    expect(invalidTimelineFilter.statusCode).toBe(400);
 
     const exportResponse = await server.inject({
       method: "POST",

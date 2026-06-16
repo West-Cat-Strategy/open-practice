@@ -171,9 +171,10 @@ surface.
     matter-contact association state, portal-access state, relationship editing, conflict matching,
     and authorization-filtered CRM UI panels. The 2026-06-16 contact-history export follow-ups add
     the synchronous single-contact `staff_review` export route plus the queued request/poll/
-    short-lived authenticated download-link path, both under existing `contact:export`.
-  - **Remaining gap:** Future work should focus on task/follow-up integration, richer activity
-    filtering, matter-scoped exports, approval/hold workflows, and jurisdiction-reviewed
+    short-lived authenticated download-link path, both under existing `contact:export`; the
+    timeline now also has an authorized/redacted `activity` filter for safe dashboard review.
+  - **Remaining gap:** Future work should focus on matter-scoped exports, approval/hold workflows,
+    and jurisdiction-reviewed
     retention/privacy policies. The
     [contact-history export, retention, and privacy decision packet](contact-history-export-retention-privacy-decision-packet.md)
     now records the selected single-contact runtime posture: `staff_review` JSON generated from

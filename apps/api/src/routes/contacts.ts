@@ -19,6 +19,8 @@ import {
   contactRelationshipStatuses,
   contactRoleCategories,
   contactStatuses,
+  contactTimelineActivityFilters,
+  filterContactTimelineEntries,
   type JobLifecycleRecord,
 } from "@open-practice/domain";
 import { requireAccess } from "../http/auth-guards.js";
@@ -152,6 +154,10 @@ const contactListQuerySchema = z.object({
   roleCategory: contactRoleCategorySchema.optional(),
   limit: z.coerce.number().int().positive().max(200).default(100),
   offset: z.coerce.number().int().nonnegative().default(0),
+});
+
+const contactTimelineQuerySchema = z.object({
+  activity: z.enum(contactTimelineActivityFilters).default("all"),
 });
 
 const contactParamsSchema = z.object({
@@ -1827,12 +1833,13 @@ export function registerContactRoutes(
     const access = requireAccess(request.auth, { resource: "contact", action: "read" });
     if (!access.ok) throw access.error;
     const params = parseRequestPart(contactParamsSchema, request.params, "params");
+    const query = parseRequestPart(contactTimelineQuerySchema, request.query, "query");
     const dossiers = await options.repository.listContactDossiersForUser(request.auth.user);
     findVisibleDossier(dossiers, params.contactId);
     const timeline = await options.repository.listContactTimelineForUser(
       request.auth.user,
       params.contactId,
     );
-    return { timeline };
+    return { timeline: filterContactTimelineEntries(timeline, query.activity) };
   });
 }

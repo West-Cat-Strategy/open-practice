@@ -3,10 +3,13 @@ import type {
   Contact,
   ContactDataQualityResolutionRecord,
   ContactDossier,
+  ContactTimelineActivityFilter,
   DashboardSectionCapability,
 } from "@open-practice/domain/contact-models";
+import { contactTimelineActivityFilters } from "@open-practice/domain/contact-models";
 
-export type { ContactDataQualityResolutionRecord, ContactDossier };
+export { contactTimelineActivityFilters };
+export type { ContactDataQualityResolutionRecord, ContactDossier, ContactTimelineActivityFilter };
 
 export function canRecordContactDataQualityResolutions(
   sections: DashboardSectionCapability[],

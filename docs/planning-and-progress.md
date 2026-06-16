@@ -31,6 +31,14 @@ QA responses, and the slice adds no approval automation, public scenario UI, sch
 worker, provider, dependency, or public runner behavior change. Proof is recorded in
 [Staff intake QA scenario matrix proof](validation/OP_INTAKE_QA_SCENARIO_MATRIX_PROOF_2026-06-16.md).
 
+The 2026-06-16 CRM contact timeline activity-filter branch adds an optional
+`activity` query to `GET /api/contacts/:contactId/timeline` and a Contacts dashboard filter for
+all safe activity, CRM activity, task/follow-up cues, open tasks, and follow-up reviews. Filtering
+runs only after the existing authorized/redacted contact timeline projection, keeps the `{ timeline }`
+response shape, and preserves the no-CRM-sync/no-automatic-task-creation/no-raw-private-history
+boundary. Proof is recorded in
+[Full CRM contacts proof](validation/OP_FULL_CRM_CONTACTS_PROOF_2026-06-15.md).
+
 The 2026-06-16 queued CRM contact-history export link follow-up adds authenticated
 `POST /api/contacts/:contactId/history-export-requests`, poll, and short-lived download routes on
 the existing reports queue for the same `staff_review` purpose and `contact:export` permission. It
